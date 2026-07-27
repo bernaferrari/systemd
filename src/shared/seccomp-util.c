@@ -66,7 +66,7 @@ uint32_t seccomp_local_archs[] = {
                 SCMP_ARCH_AARCH64,     /* native */
 #elif defined(__arm__)
                 SCMP_ARCH_ARM,
-#elif defined(__loongarch_lp64)
+#elif defined(__loongarch_lp64) && defined(SCMP_ARCH_LOONGARCH64)
                 SCMP_ARCH_LOONGARCH64,
 #elif defined(__mips__) && __BYTE_ORDER == __BIG_ENDIAN && _MIPS_SIM == _MIPS_SIM_ABI32
                 SCMP_ARCH_MIPSEL,

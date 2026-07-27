@@ -1,0 +1,2604 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# C → Rust sync manifest for systemd shadow port.
+# Each entry tracks a C source file and its Rust twin.
+#
+# status: "done" | "in-progress" | "todo"
+# tier:   1 = pure computation, 2 = parsing with alloc, 3 = string ops, 4 = header inline
+# test_file: corresponding test file path
+# symbols: FFI exported functions count
+# sync_status: "synced" | "needs_review" | "out_of_date"
+# header_file: associated C header file
+#
+# Source authority may be one-to-one (`c_file`, `rust_file`) or many-to-many
+# (`c_paths`, `rust_paths`). Legacy comma-separated C and semicolon-separated
+# Rust strings remain readable. Reviewed sticky states must eventually pin
+# every path with singular `last_synced_{upstream,rust}_blob` fields for a
+# one-path side, or exact path-to-blob `last_synced_{upstream,rust}_blobs`
+# tables for a multi-path side. Never stamp a blob without reviewing parity.
+#
+# Idiomatic Rust decomposition uses `scope` plus `rust_scope_paths` as an
+# inventory boundary. Directories recursively enumerate Rust leaves; they are
+# never C behavior authority. `rust_paths` remains the exact materialized
+# inventory and `rust_interface_paths` adds ABI headers or similar interfaces.
+#
+# Partial, static review uses `last_reviewed_*` snapshots and a machine-checked
+# `contract_file`. These hashes detect future drift without claiming full
+# parity. Reserve `last_synced_*` and sync_status="synced" for completed parity.
+
+[analyze-compare-versions]
+c_file = "src/analyze/analyze-compare-versions.c"
+rust_file = "src/analyze/rust/lib.rs;src/analyze/rust/main.rs"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "A real, selected-verb Rust executable implements compare-versions with the C argument arity, textual/symbolic operators, warnings, printed comparison form, and rpmdev-vercmp exit statuses. The remaining systemd-analyze verbs are intentionally rejected by the Rust executable; Meson/C systemd-analyze remains the installed production owner. Static audit only 2026-07-27; no Cargo/build/tests/VM."
+
+[hexdecoct]
+c_file = "src/basic/hexdecoct.c"
+rust_file = "src/basic/rust/hexdecoct.rs"
+status = "in-progress"
+tier = 1
+notes = "22 shadow tests pass. 17 FFI exports: rs_octchar, rs_unoctchar, rs_decchar, rs_undecchar, rs_hexchar, rs_unhexchar, rs_base32hexchar, rs_unbase32hexchar, rs_base64char, rs_urlsafe_base64char, rs_unbase64char, rs_hexmem, rs_unhexmem_full, rs_base32hexmem, rs_unbase32hexmem, rs_base64mem_full, rs_unbase64mem_full, rs_base64_append. Skipped: hexdump (uses FILE*)."
+
+[sort-util]
+c_file = "src/basic/sort-util.c"
+rust_file = "src/basic/rust/sort_util.rs"
+header_file = "src/basic/sort-util.h"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "2026-07-27 source audit: not a completed C port. Rust has no C ABI exports, while the C header exposes xbsearch_r, bsearch_safe_internal, qsort_safe, qsort_r_safe, cmp_int, cmp_uint16, and cmp_unsigned. The safe generic API has no raw callback/layout/NULL contract; cmp_unsigned is absent; and qsort_r_safe uses a stable insertion algorithm rather than C qsort_r callback behavior. Re-establish an exact C facade and differential coverage before an anchored completion claim."
+
+[utf8]
+c_file = "src/basic/utf8.c"
+rust_file = "src/basic/rust/utf8.rs"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: UTF-8 decoding, escaping, console-width, and C-string behavior has no complete current behavior review or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[ansi-color]
+c_file = "src/basic/ansi-color.c"
+rust_file = "src/basic/rust/ansi_color.rs"
+header_file = "src/basic/ansi-color.h"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "2026-07-27 source audit: no Rust C ABI exports or reviewed C fixture/header surface exists. Rust omits C's cached color/underline state and reset_ansi_feature_caches(), PID1-specific terminal branch, and full systemd boolean grammar (y/t/n/f aliases). It must gain an audited environment/runtime boundary and exact C ABI before it can be anchored."
+
+[glyph-util]
+c_file = "src/basic/glyph-util.c"
+rust_file = "src/basic/rust/glyph_util.rs"
+header_file = "src/basic/glyph-util.h"
+test_file = "tests-extra/test-glyph-util-rust.c"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "2026-07-27 source audit: Rust exports no rs_glyph_full despite the Rust header/fixture. glyph_full() chooses UTF-8 only when force_utf, but C also chooses locale UTF-8 for non-emoji glyphs and emoji_enabled() for emoji glyphs. Rust's environment boolean grammar and cache/reset behavior are not C-equivalent. Keep in progress pending a narrow C facade and exact selection-policy parity."
+
+[string-table]
+c_file = "src/basic/string-table.c"
+rust_file = "src/basic/rust/string_table.rs"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: string-table parsing, ownership, and C helper behavior has no complete current behavior review or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[parse-util]
+c_file = "src/basic/parse-util.c"
+rust_file = "src/basic/rust/parse_util.rs"
+header_file = "src/basic/parse-util.h"
+status = "in-progress"
+tier = 2
+sync_status = "needs_review"
+notes = "Static audit 2026-07-27; no build/tests/VM. Sixteen additional parse/header-inline/time formatting facades now have explicit exact extern-C definitions, canonical header declarations, current C authority and direct registered fixture calls. Target C long/unsigned long/size_t widths, transactional output publication, loadavg wrapping arithmetic, and first-dot/empty-part grammar were reviewed. Unreviewed historical declarations in rust/parse_util.h remain unclaimed; runtime and cross-target differential execution remain P2."
+
+[time-util]
+c_file = "src/basic/time-util.c"
+rust_file = "src/basic/rust/time_util.rs"
+status = "in-progress"
+tier = 2
+sync_status = "needs_review"
+notes = "Static audit only: the Rust facade preserves 27 public Rust symbols. The reviewed time_util.h shadow surface now also includes exact parse_gmtoff/format_timespan facades with current-C authority and direct registered fixture calls. Remaining C-only gaps include now/now_nsec/map_clock_usec; dual/triple timestamp constructors; format_timestamp_style/relative and weekday_to_string; parse_timestamp/parse_nsec; timezone discovery/validation/state; clock_supported/usec_shift_clock; localtime/mktime helpers; calendar parsing; jiffies conversion; in_utc_timezone; usleep_safe; and time_change_fd. Runtime differential execution remains P2."
+
+[extract-word]
+c_file = "src/basic/extract-word.c"
+rust_file = "src/basic/rust/extract_word.rs"
+status = "in-progress"
+tier = 2
+notes = "Historical record: 23 shadow tests passed; not rerun in the 2026-07-27 storage-constrained audit. One FFI export: rs_extract_first_word. C strings now use target libc::c_char; returned storage remains C-allocator owned. Skipped and_warn (variadic log_syntax) and many_words_internal (variadic)."
+
+[strv]
+c_file = "src/basic/strv.c"
+rust_file = "src/basic/rust/strv.rs"
+status = "in-progress"
+tier = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: registered strv ABI coverage is narrower than the complete C vector/ownership surface and has no path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[escape]
+c_file = "src/basic/escape.c"
+rust_file = "src/basic/rust/escape.rs"
+status = "in-progress"
+tier = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: escape allocation, byte, and C-ownership behavior has no complete current behavior review or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[string-util]
+c_file = "src/basic/string-util.c"
+rust_file = "src/basic/rust/string_util.rs"
+status = "in-progress"
+tier = 3
+notes = "Static audit 2026-07-27; no build or tests run. Cohesive acyclic domains cover owned allocation/transfer, replacement, line/word processing, escape, JSON/growth mutation, and scan/validation. The remaining 23 registered mutation/inline symbols now have exact extern-C facades, canonical rust/string_util.h declarations, current-C authority, and direct comparison coverage. Byte-level fixes distinguish NULL from an explicitly empty reject set, use a NUL-terminated default whitespace argument, preserve reject-set aliasing during in-place mutation, publish allocated outputs only on success, handle the empty haystack/needle line case, and pass EXTRACT_DONT_COALESCE_SEPARATORS when C does. Existing reviewed fixes include raw byte-counted comparisons, optional outputs, allocate-before-release replacement, multi-byte split separators, exact size_t strrep, and checked allocation arithmetic. Runtime/fault-injection and extract-word arbitrary-byte differential coverage remain P2; broader unported C gaps remain explicit."
+
+[in-addr-util]
+c_file = "src/basic/in-addr-util.c"
+rust_file = "src/basic/rust/in_addr_util.rs"
+status = "in-progress"
+tier = 4
+notes = "35 shadow tests pass. 30 FFI exports covering: null checks, link-local, multicast, localhost, equality, prefix_intersect, prefix_nth/next, netmask, default_prefixlen, mask, prefix_covers. Skipped: string conversion, hash functions, random functions."
+
+[stat-util]
+c_paths = ["src/basic/stat-util.c", "src/basic/stat-util.h", "src/basic/siphash24.c", "src/basic/siphash24.h", "src/basic/chattr-util.c", "src/basic/chattr-util.h", "src/basic/chase.c", "src/basic/chase.h", "src/basic/dirent-util.h", "src/basic/fd-util.c", "src/basic/fd-util.h", "src/basic/filesystem-sets.py", "src/basic/fs-util.c", "src/basic/fs-util.h", "src/basic/mountpoint-util.c", "src/basic/mountpoint-util.h", "src/basic/path-util.c", "src/basic/path-util.h", "src/include/uapi/linux/magic.h", "src/basic/time-util.c", "src/shared/btrfs-util.c", "src/shared/btrfs-util.h"]
+rust_file = "src/basic/rust/stat_util.rs"
+header_file = "src/basic/rust/stat_util.h"
+status = "in-progress"
+tier = 1
+symbols = 69
+sync_status = "needs_review"
+notes = "Static implementation complete 2026-07-27; no Cargo/Meson/build/tests/VM. Sixty-nine canonical-header exports cover all 67 public stat-util function APIs plus btrfs_might_be_subvol and chattr-util's inode_type_can_chattr. Fifteen native stat/statx value verification exports live in stat_util/verification.rs; nine inode comparison/type exports live in stat_util/inode.rs; 13 descriptor/path adapters live in stat_util/descriptor.rs; 11 statvfs/statfs/filesystem exports live in stat_util/filesystem.rs; eight directory/null/fs/proc helpers live in stat_util/moderate.rs; xstatx_full/xstatx live in stat_util/xstatx.rs; inode identity lives in stat_util/inode_same.rs; and the two inode hashes live in stat_util/hash.rs. Hashing compresses exact target-native dev_t/ino_t/mode_t/time_t/nanosecond/off_t/dev_t objects in current-C order through the canonical C SipHash compressor and opaque state, with regular/device branches and typed sentinels matching inode_unmodified_compare. inode_same preserves O_PATH pinning, all at-flags, dynamically sized native libc file handles, AT_HANDLE_FID retry, unique/ordinary mount-ID fallback, fatal/contextual errors, RAII, and final native fstatat identity. xstatx preserves masks, attributes, mount-ID-best, XAT_FDROOT, errno, and output ordering. No guessed native stat/statx/statfs/statvfs/file-handle/SipHash layouts remain in the stat slice. Path-util owns is_device_path separately. Only runtime/kernel/cross-target differential validation remains in P2 children; no static stat API gap remains."
+
+[socket-util]
+c_file = "src/basic/socket-util.h"
+rust_file = "src/basic/rust/socket_util.rs"
+status = "in-progress"
+tier = 4
+notes = "Shadow tests pass. 28 FFI exports: ifname_valid_char/full/valid, vsock_parse_port/cid, sockaddr_port/in_addr/set_in_addr/equal, sockaddr_ll_len/un_len/len, sockaddr_un_set_path, socket_address_verify/can_accept/get_path/parse_unix/parse_vsock, socket_address_equal_unix. Uses byte-offset pointer arithmetic for SocketAddress struct layout."
+
+[percent-util]
+c_file = "src/basic/percent-util.c"
+rust_file = "src/basic/rust/percent_util.rs"
+header_file = "src/basic/percent-util.h"
+status = "in-progress"
+tier = 2
+symbols = 12
+sync_status = "needs_review"
+notes = "Six parser exports plus six UINT32_SCALE_FROM/TO exact C ABI facades. Parser suffix/range logic is safe byte-oriented Rust; the safe_atoi boundary deliberately delegates target base-zero/locale/overflow grammar to libc strtol after systemd's 0b/0o mangle, avoiding a second drifting C parser. NULL and invalid bytes fail closed, and target-libc-sensitive prefixes are compared without hard-coded results. Scaling preserves clamping, u64 intermediates and rounding. Exact Rust-linked Meson/CI/static coverage exists; runtime is unclaimed."
+
+[siphash24]
+c_file = "src/basic/siphash24.c"
+rust_file = "src/basic/rust/siphash24.rs"
+header_file = "src/basic/siphash24.h"
+test_file = "tests-extra/test-siphash24-rust.c"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "2026-07-27 source audit: the Rust file has no repr(C) state or rs_siphash24_* exports although the Rust header/fixture declares six. Current C also exposes iovec and typed helper paths that Rust lacks. State length uses checked Rust addition rather than documented C size_t wrapping, so an overflow can panic. Build a bounded repr(C) ABI facade and complete the streaming/helper audit before anchoring."
+
+[MurmurHash2]
+c_file = "src/basic/MurmurHash2.c"
+rust_file = "src/basic/rust/murmurhash2.rs"
+header_file = "src/basic/MurmurHash2.h"
+test_file = "tests-extra/test-murmurhash2-rust.c"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "2026-07-27 source audit: no rs_MurmurHash2 export exists despite the Rust header/fixture declaration. The Rust API accepts a slice rather than C's signed int length/null contract and forces little-endian block loading while current C intentionally follows native unaligned uint32_t loads. Add a narrow checked C ABI and decide/document target-endian parity before any completion anchor."
+
+[format-util]
+c_file = "src/basic/format-util.c"
+rust_file = "src/basic/rust/format_util.rs"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: the reviewed format-bytes ABI is narrower than the complete C format-util surface and has no path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[strxcpyx]
+c_file = "src/basic/strxcpyx.c"
+rust_file = "src/basic/rust/strxcpyx.rs"
+status = "in-progress"
+tier = 3
+notes = "12 shadow tests pass. 4 FFI exports: strnpcpy_full, strpcpy_full, strnscpy_full, strscpy_full. Skipped variadic variants."
+
+[nulstr-util]
+c_file = "src/basic/nulstr-util.c"
+rust_file = "src/basic/rust/nulstr_util.rs"
+status = "in-progress"
+tier = 3
+notes = "11 shadow tests pass. 2 FFI exports: nulstr_get, strv_parse_nulstr_full. Skipped strv_split_nulstr (uses strv_extend), strv_make_nulstr (uses GREEDY_REALLOC), set_make_nulstr (uses Set)."
+
+[devnum-util]
+c_paths = [
+    "src/basic/devnum-util.c",
+    "src/basic/devnum-util.h",
+]
+rust_paths = [
+    "src/basic/rust/devnum_util.rs",
+    "src/basic/rust/devnum_util.h",
+]
+scope = "basic.devnum-util"
+rust_scope_paths = ["src/basic/rust/devnum_util.rs"]
+rust_interface_paths = ["src/basic/rust/devnum_util.h"]
+contract_file = "tools/rust-port/contracts/basic/devnum-util.toml"
+test_file = "tests-extra/test-devnum-util-rust.c"
+status = "in-progress"
+tier = 2
+symbols = 7
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/devnum-util.c" = "e7d7b652281aefe052efe762f7fb9dec911c0a4e", "src/basic/devnum-util.h" = "a23dfcacb484807a7c783c65a450d5c933a56939" }
+last_reviewed_rust_blobs = { "src/basic/rust/devnum_util.rs" = "2b5f9710a546ced5a056189f1f5eba7c0403e0c4", "src/basic/rust/devnum_util.h" = "9e57d9e55a146e6ffef62a2280d090f36a7995e9" }
+notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. The machine-checked contract covers five non-inline operations plus the two inline predicates, with exact ABI, byte grammar, errno, libc allocation, ownership, and success-only output publication evidence. device_path_make_canonical remains explicitly excluded, so this is partial reviewed provenance rather than synced or runtime parity."
+
+[hostname-util]
+c_file = "src/basic/hostname-util.c"
+rust_file = "src/basic/rust/hostname_util.rs"
+status = "in-progress"
+tier = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: hostname validation/cleanup and environment behavior has no complete current behavior review or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[uid-range]
+c_file = "src/basic/uid-range.c"
+rust_file = "src/basic/rust/uid_range.rs"
+status = "in-progress"
+tier = 3
+notes = "19 shadow tests pass. 13 FFI exports: rs_uid_range_free, rs_uid_range_add_internal, rs_uid_range_covers, rs_uid_range_contains, rs_uid_range_overlaps, rs_uid_range_size, rs_uid_range_is_empty, rs_uid_range_equal, rs_uid_range_base, rs_uid_range_next_lower, rs_uid_range_clip, rs_uid_range_copy, rs_uid_range_translate, rs_uid_range_remove. Uses repr(C) UIDRange/UIDRangeEntry structs. Skipped I/O functions (uid_map_read_one, uid_range_load_userns_*, uid_range_translate_userns_fd, uid_map_search_root)."
+
+[ether-addr-util]
+c_paths = [
+    "src/basic/ether-addr-util.c",
+    "src/basic/ether-addr-util.h",
+]
+rust_paths = [
+    "src/basic/rust/ether_addr_util.rs",
+    "src/basic/rust/ether_addr_util.h",
+]
+scope = "basic.ether-addr-util"
+rust_scope_paths = ["src/basic/rust/ether_addr_util.rs"]
+rust_interface_paths = ["src/basic/rust/ether_addr_util.h"]
+contract_file = "tools/rust-port/contracts/basic/ether-addr-util.toml"
+test_file = "tests-extra/test-ether-addr-util-rust.c"
+status = "in-progress"
+tier = 2
+symbols = 16
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/ether-addr-util.c" = "4ea4be594e10ed4ff82e867e0e1dcf26ff07184e", "src/basic/ether-addr-util.h" = "d97748f115e6df46b0dfbb8d5b2325db90d07cbd" }
+last_reviewed_rust_blobs = { "src/basic/rust/ether_addr_util.rs" = "1f54e74a8abb2932d01bfb539cdfd00ac364ad30", "src/basic/rust/ether_addr_util.h" = "34ccd3d52a2fa6584b6ae2c9d16cebd3c2dc4b7e" }
+notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. Sixteen fixed-layout and parser facades are split into 12 machine-checked contracts covering repr(C) ABI, opaque bytes, caller storage, error publication, and no allocator crossing. Six C callables and the hash-op variables remain outside the slice, so provenance is partial and runtime evidence is unclaimed."
+
+[ratelimit]
+c_file = "src/basic/ratelimit.c"
+rust_file = "src/basic/rust/ratelimit.rs"
+status = "in-progress"
+tier = 1
+notes = "4 FFI exports: rs_ratelimit_below, rs_ratelimit_num_dropped, rs_ratelimit_end, rs_ratelimit_left. Calls C now() for monotonic clock. Inline usec_add/usec_sub_unsigned/saturate_add."
+
+[sha256-hmac]
+c_file = "src/basic/sha256.c, src/basic/hmac.c"
+rust_file = "src/basic/rust/sha256_hmac.rs"
+status = "in-progress"
+tier = 1
+notes = "3 FFI exports: rs_sha256_is_valid, rs_parse_sha256, rs_hmac_sha256. Calls C sha256_init_ctx/process_bytes/finish_ctx/direct via extern. Skipped sha256_fd (file I/O)."
+
+[path-util]
+c_file = "src/basic/path-util.c, src/basic/path-util.h"
+rust_paths = [
+    "src/basic/rust/path_util.rs",
+    "src/basic/rust/path_util/byte_abi.rs",
+]
+header_file = "src/basic/rust/path_util.h"
+status = "in-progress"
+tier = 1
+symbols = 23
+sync_status = "needs_review"
+notes = "Static-only audit 2026-07-27; no Cargo/Meson/build/tests/VM. 23 reviewed explicit C ABI exports: rs_is_device_path plus the 22 registered pure path byte APIs exercised by test-path-funcs-rust and test-path-util-extra-rust. The 22 share one safe &[u8] component core with narrow CStr/borrowed-offset/libc-allocation facades; repeated slashes, dot/dot-dot, roots/relative paths, NULL/empty cases, in-place simplification, output-on-success, native O_DIRECTORY, pointer constness, and arbitrary non-UTF-8 bytes track current path-util.c/path-util.h. Canonical declarations live only in rust/path_util.h and generic current-C authority is registered. Remaining historical unreviewed declarations and filesystem-I/O path APIs are not counted."
+
+[bus-label]
+c_file = "src/basic/bus-label.c"
+rust_file = "src/basic/rust/bus_label.rs"
+status = "in-progress"
+tier = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: bus-label encoding/decoding has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[gunicode]
+c_file = "src/basic/gunicode.c"
+rust_file = "src/basic/rust/gunicode.rs"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: Unicode tables and width/UTF-8 boundary behavior has no complete current behavior review or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[iovec-util]
+c_paths = [
+    "src/basic/iovec-util.c",
+    "src/basic/iovec-util.h",
+    "src/fundamental/iovec-util.h",
+]
+rust_paths = [
+    "src/basic/rust/iovec_util.rs",
+    "src/basic/rust/iovec_util.h",
+]
+scope = "basic.iovec-util"
+rust_scope_paths = ["src/basic/rust/iovec_util.rs"]
+rust_interface_paths = ["src/basic/rust/iovec_util.h"]
+contract_file = "tools/rust-port/contracts/basic/iovec-util.toml"
+test_file = "tests-extra/test-iovec-util-rust.c"
+status = "in-progress"
+tier = 1
+symbols = 12
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/iovec-util.c" = "0be326a18364e75ed4e1e919a360b1f0cb9c8a5b", "src/basic/iovec-util.h" = "ab6178d653a884d0848ec928bb8c2911c4ed805c", "src/fundamental/iovec-util.h" = "7d8f65db43d2ba81fa9f5b4b0e00336af040a20b" }
+last_reviewed_rust_blobs = { "src/basic/rust/iovec_util.rs" = "5be02da73330a58ec5fb58e8854fb0c82139dd56", "src/basic/rust/iovec_util.h" = "1e8f097b202d4169632a022787bfac20a68cec0d" }
+notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. Twelve selected allocation, release, erase, increment, borrowed-string, comparison, and copy/aliasing facades are covered by nine machine-checked contracts. The exact basic and fundamental C headers are authority; eight public C callables remain excluded. This is partial provenance with static-only evidence, not runtime parity."
+
+[architecture]
+c_file = "src/basic/architecture.c"
+rust_file = "src/basic/rust/architecture.rs"
+status = "in-progress"
+tier = 1
+notes = "2 shadow tests pass. 2 FFI exports: rs_architecture_to_string, rs_architecture_from_string. 33-entry string table matching C architecture_table. Skipped: uname_architecture (platform-specific arch_map, uname syscall)."
+
+[device-nodes]
+c_file = "src/basic/device-nodes.c"
+rust_file = "src/basic/rust/device_nodes.rs"
+status = "in-progress"
+tier = 1
+notes = "2 shadow tests pass. 2 FFI exports: rs_allow_listed_char_for_devnode, rs_encode_devnode_name. UTF-8 passthrough, \\xHH escaping for disallowed chars. Skipped: devnode_same (uses stat())."
+
+[runtime-scope]
+c_file = "src/basic/runtime-scope.c"
+rust_file = "src/basic/rust/runtime_scope.rs"
+status = "in-progress"
+tier = 1
+notes = "3 shadow tests pass. 4 FFI exports: rs_runtime_scope_to_string, rs_runtime_scope_from_string, rs_runtime_scope_cmdline_option_to_string, rs_runtime_scope_to_socket_mode. 3-entry string tables."
+
+[iovec-wrapper]
+c_file = "src/basic/iovec-wrapper.c"
+rust_file = "src/basic/rust/iovec_wrapper.rs"
+status = "in-progress"
+tier = 1
+notes = "5 shadow tests pass. 9 FFI exports: rs_iovw_new, rs_iovw_free, rs_iovw_free_free, rs_iovw_done, rs_iovw_done_free, rs_iovw_put, rs_iovw_rebase, rs_iovw_size, rs_iovw_isempty. Uses IoVec from iovec_util. Skipped: iovw_append, iovw_put_string_field_full/f (use strjoin)."
+
+[alloc-util]
+c_file = "src/basic/alloc-util.c"
+rust_file = "src/basic/rust/alloc_util.rs"
+status = "in-progress"
+tier = 1
+notes = "3 shadow tests pass. 3 FFI exports: rs_memdup, rs_memdup_suffix0, rs_free_many. Skipped: greedy_realloc*, realloc0, malloc_sizeof_safe (depend on glibc malloc_usable_size)."
+
+[strbuf]
+c_file = "src/basic/strbuf.c"
+rust_file = "src/basic/rust/strbuf.rs"
+status = "in-progress"
+tier = 2
+notes = "5 shadow tests pass. 4 FFI exports: rs_strbuf_new, rs_strbuf_add_string_full, rs_strbuf_complete, rs_strbuf_free. Trie-based string deduplication. Uses doubling growth instead of GREEDY_REALLOC."
+
+[prioq]
+c_file = "src/basic/prioq.c"
+rust_file = "src/basic/rust/prioq.rs"
+status = "in-progress"
+tier = 2
+notes = "4 shadow tests pass. 9 FFI exports: rs_prioq_new, rs_prioq_free, rs_prioq_put, rs_prioq_remove, rs_prioq_reshuffle, rs_prioq_peek_by_index, rs_prioq_pop, rs_prioq_size, rs_prioq_isempty. Min-heap with C comparator callback."
+
+[syslog-util]
+c_file = "src/basic/syslog-util.c"
+rust_file = "src/basic/rust/syslog_util.rs"
+status = "in-progress"
+tier = 1
+notes = "7 shadow tests pass. 7 FFI exports: rs_syslog_parse_priority, rs_log_facility_unshifted_from_string, rs_log_facility_unshifted_to_string_alloc, rs_log_facility_unshifted_is_valid, rs_log_level_from_string, rs_log_level_to_string_alloc, rs_log_level_is_valid. Skipped: log_namespace_name_valid (depends on C filename_is_valid, unit_instance_is_valid, string_is_safe)."
+
+[signal-util]
+c_file = "src/basic/signal-util.c"
+rust_file = "src/basic/rust/signal_util.rs"
+status = "in-progress"
+tier = 1
+notes = "Static-only 2026-07-27 audit: exact safe extern-C facades exist for SIGNAL_VALID and signal_to_string_with_check. They use linked C helpers for runtime SIGRTMIN/SIGRTMAX/_NSIG, static borrowed names for standard signals, and a thread-local allocation-free buffer for dynamic names. Canonical header/current-inline authority and registered comparison coverage are enforced. Historical runtime tests were not rerun; other header declarations remain explicitly unbacked and broader signal APIs remain unported."
+
+[process-util-str-tables]
+c_file = "src/basic/process-util.c"
+rust_file = "src/basic/rust/process_util_str_tables.rs"
+status = "in-progress"
+tier = 1
+notes = "4 shadow tests pass. 4 FFI exports: rs_sigchld_code_to_string, rs_sigchld_code_from_string, rs_sched_policy_to_string, rs_sched_policy_from_string. sched_policy_from_string has numeric fallback via DEFINE_STRING_TABLE_LOOKUP_WITH_FALLBACK. Skipped: all syscall/process/PID functions."
+
+[compress-util]
+c_file = "src/basic/compress.c"
+rust_file = "src/basic/rust/compress_util.rs"
+status = "in-progress"
+tier = 1
+notes = "5 shadow tests pass. 5 FFI exports: rs_compression_to_string, rs_compression_from_string, rs_compression_to_string_lowercase, rs_compression_from_string_lowercase, rs_compression_supported. Uses extern C for rs_get_compression_supported_mask. Skipped: all compress/decompress functions (dlopen, zlib, lz4, zstd)."
+
+[locale-util]
+c_file = "src/basic/locale-util.c"
+rust_file = "src/basic/rust/locale_util.rs"
+status = "in-progress"
+tier = 1
+notes = "3 shadow tests pass. 3 FFI exports: rs_locale_variable_to_string, rs_locale_variable_from_string, rs_locale_is_valid. 14-entry locale_variable table. Calls crate::ffi::strlen, crate::utf8::rs_utf8_is_valid_n, crate::path_util::rs_filename_is_valid. Skipped: get_locales, locale_is_installed, is_locale_utf8, locale_variables_free/simplify."
+
+[virt]
+c_file = "src/basic/virt.c"
+rust_file = "src/basic/rust/virt.rs"
+status = "in-progress"
+tier = 1
+notes = "4 shadow tests pass (in batch3). 2 FFI exports: rs_virtualization_to_string, rs_virtualization_from_string. 31-entry table (NONE=0..CONTAINER_OTHER=30). Skipped: detect_vm/detect_container/detect_virtualization (file I/O, CPUID)."
+
+[image-class]
+c_file = "src/basic/os-util.c"
+rust_file = "src/basic/rust/image_class.rs"
+header_file = "src/basic/rust/image_class.h"
+status = "in-progress"
+tier = 1
+symbols = 3
+sync_status = "needs_review"
+notes = "Static source audit 2026-07-27; no build/tests/VM. Three explicit ABI exports: image-class table conversion plus rs_os_release_pretty_name, which returns a borrowed non-empty input pointer or immutable static Linux storage without allocation. The registered image-name comparison now consumes the canonical header and is CI-reviewed; link/runtime differential validation remains unclaimed. Image I/O and detection functions remain C-only."
+
+[confidential-virt]
+c_file = "src/basic/confidential-virt.c"
+rust_file = "src/basic/rust/confidential_virt.rs"
+status = "in-progress"
+tier = 1
+notes = "4 shadow tests pass (in batch3). 2 FFI exports: rs_confidential_virtualization_to_string, rs_confidential_virtualization_from_string. 7-entry table (NONE=0..CCA=6). Skipped: detect_confidential_virtualization (CPUID, file I/O)."
+
+[log-target]
+c_file = "src/basic/log.c"
+rust_file = "src/basic/rust/log_target.rs"
+status = "in-progress"
+tier = 1
+notes = "4 shadow tests pass (in batch3). 2 FFI exports: rs_log_target_to_string, rs_log_target_from_string. 9-entry table (CONSOLE=0..NULL=8). Skipped: all logging functions (log_struct, log_meta, etc.)."
+
+[unit-def]
+c_file = "src/basic/unit-def.c"
+rust_file = "src/basic/rust/unit_def.rs"
+status = "in-progress"
+tier = 1
+notes = "Registered C comparison test exhaustively covers all 20 unit-def string tables, their reverse lookups, and invalid/NULL boundaries. 42 explicit FFI exports: 20 table pairs plus freezer_state_finish/objective. ABI tables are static NUL-backed bytes; inbound strings are byte-exact and NULL-safe. The four D-Bus helpers remain intentionally unbacked because their path/name functions return C-owned allocations and require a separately audited allocator boundary."
+
+[cgroup-util-str-tables]
+c_file = "src/basic/cgroup-util.c"
+rust_file = "src/basic/rust/cgroup_util_str_tables.rs"
+status = "in-progress"
+tier = 1
+notes = "Registered C comparison sources specify four cgroup string tables, byte-exact escape helpers, controller-mask conversion, and controller:path splitting. 13 explicit FFI exports: four table pairs, byte-exact rs_cg_needs_escape, borrowed-pointer rs_cg_unescape, plus three reviewed C-allocator-owning helpers. Static NUL-backed table strings avoid allocator crossings; returned strings use the process C allocator. Link/runtime validation remains unclaimed; cgroup I/O and filesystem operations remain out of scope."
+
+[proc-cmdline]
+c_file = "src/basic/proc-cmdline.c"
+rust_file = "src/basic/rust/proc_cmdline.rs"
+status = "in-progress"
+tier = 3
+notes = "11 shadow tests pass. 2 FFI exports: rs_proc_cmdline_key_startswith, rs_proc_cmdline_key_streq. Relaxed string comparison treating '-' and '_' as equivalent. Skipped: all functions that read /proc/cmdline, filter pid1 args, parse callbacks, get_key/get_bool (depend on file I/O, strv)."
+
+[rlimit-util]
+c_file = "src/basic/rlimit-util.c"
+rust_file = "src/basic/rust/rlimit_util.rs"
+status = "in-progress"
+tier = 1
+notes = "7 exact FFI exports now cover the 16-entry string table plus the registered nice/u64/size parsers and libc-allocated formatter. Static C authority pins base-zero parsing, Linux rlim_t layout, output-on-success, and NULL behavior. Still skipped: full rlimit_parse_one/parse dispatch (sec/usec resources), setrlimit_closest, rlimit_copy_all/free_all, rlimit_nofile_bump/safe, pid_getrlimit; build/runtime validation remains pending."
+
+[memeqbyte]
+c_paths = ["src/fundamental/memory-util.c", "src/fundamental/memory-util.h"]
+rust_file = "src/basic/rust/memory_util.rs"
+header_file = "src/fundamental/memory-util.h"
+status = "in-progress"
+tier = 1
+sync_status = "needs_review"
+notes = "6 shadow tests pass (including exhaustive C-vs-Rust loop). 1 FFI export: rs_memeqbyte. Checks if a buffer consists entirely of one byte. Uses first-16-bytes-then-memcmp optimization from casync. 2026-07-27 provenance audit re-anchored this slice to the current fundamental memory-util source and declaration; runtime parity remains unclaimed."
+
+[edid]
+c_paths = ["src/fundamental/edid.c", "src/fundamental/edid.h"]
+rust_file = "src/basic/rust/edid.rs"
+header_file = "src/fundamental/edid.h"
+test_file = "tests-extra/test-edid-rust.c"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "5 shadow tests pass. 2 FFI exports: rs_edid_parse_blob, rs_edid_get_panel_id. Parses EDID header (manufacturer_id byte-swapping, panel ID extraction). Uses repr(C, packed) EdidHeader struct. 2026-07-27 provenance audit re-anchored to current fundamental EDID source, header, and Rust comparator; runtime parity remains unclaimed."
+
+[af_list]
+c_file = "src/basic/af-list.c"
+rust_file = "src/basic/rust/af_list.rs"
+header_file = "src/basic/af-list.h"
+test_file = "tests-extra/test-af-list-rust.c"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 source audit: Rust now covers all six visible conversion wrappers including af_max(), but still hard-codes the generated af-name tables without anchoring af-from-name.inc/af-to-name.inc. Complete generated-table source parity and exact header/fixture inventory before an anchored completion claim."
+
+[argv_util]
+c_file = "src/basic/argv-util.c"
+rust_file = "src/basic/rust/argv_util.rs"
+header_file = "src/basic/argv-util.h"
+status = "in-progress"
+tier = 3
+symbols = 1
+sync_status = "needs_review"
+notes = "Only convert_meminfo_value_to_uint64_bytes has a faithful exact Rust ABI and current-C static comparison. procfs_get_pid_max, procfs_get_threads_max, procfs_tasks_set_limit, procfs_tasks_get_current, procfs_cpu_get_usage, and procfs_memory_get remain unported under systemd-eu62.19."
+
+[arphrd_util]
+c_file = "src/basic/arphrd-util.c"
+rust_file = "src/basic/rust/arphrd_util.rs"
+header_file = "src/basic/arphrd-util.h"
+test_file = "src/test/test-arphrd.c"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-arphrd.c); re-anchor to current upstream files before claiming completion."
+
+[at_flags_util]
+c_file = "src/basic/fs-util.h"
+rust_file = "src/basic/rust/at_flags_util.rs"
+header_file = "src/basic/fs-util.h"
+status = "in-progress"
+tier = 1
+symbols = 4
+sync_status = "needs_review"
+notes = "The four exported normalizers are header-inline behavior from current fs-util.h. 2026-07-27 provenance audit removed the nonexistent synthetic .c/.h pair; runtime parity remains unclaimed."
+
+[basic_validators]
+c_file = "src/basic/cgroup-util.h"
+rust_file = "src/basic/rust/basic_validators.rs"
+header_file = "src/basic/rust/basic_validators.h"
+status = "in-progress"
+tier = 3
+symbols = 27
+sync_status = "needs_review"
+notes = "This heterogeneous leaf facade consolidates 27 current inline helpers from cgroup/io/audit/errno/socket/process/pidref/alloc/fileio/string authorities behind one self-contained Rust-owned header. Scalar logic is safe; PidRef field order/types are mechanically pinned to pid_t,int,u64, pointer readers have explicit contracts, and target-width overflow is fail-closed. Exact Rust-linked comparison coverage is static-only; no build/link/runtime claim."
+
+[bitmap]
+c_paths = ["src/shared/bitmap.c", "src/shared/bitmap.h"]
+rust_file = "src/basic/rust/bitmap.rs"
+header_file = "src/shared/bitmap.h"
+test_file = "src/test/test-bitmap.c"
+status = "in-progress"
+tier = 2
+symbols = 14
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored the bitmap slice to current shared bitmap.c/.h; behavioral completion remains unclaimed."
+
+[bootspec_util]
+c_paths = ["src/shared/bootspec.c", "src/shared/bootspec.h", "src/fundamental/bootspec.c", "src/fundamental/bootspec.h"]
+rust_file = "src/basic/rust/bootspec_util.rs"
+header_file = "src/shared/bootspec.h"
+status = "in-progress"
+tier = 3
+symbols = 7
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps filename-tries and boot-entry metadata behavior to the current shared and fundamental bootspec authorities; behavioral completion remains unclaimed."
+
+[btrfs_util]
+c_file = "src/basic/btrfs-util.c"
+rust_file = "src/basic/rust/btrfs_util.rs"
+header_file = "src/basic/btrfs-util.h"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: Btrfs ioctl/error behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_error_util]
+c_paths = ["src/libsystemd/sd-bus/bus-error.c", "src/libsystemd/sd-bus/bus-error.h"]
+rust_file = "src/basic/rust/bus_error_util.rs"
+header_file = "src/libsystemd/sd-bus/bus-error.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored D-Bus error accessors to current libsystemd sd-bus authority; behavioral completion remains unclaimed."
+
+[bus_type_util]
+c_paths = ["src/libsystemd/sd-bus/bus-type.c", "src/libsystemd/sd-bus/bus-type.h", "src/basic/hash-funcs.c", "src/basic/hash-funcs.h"]
+rust_file = "src/basic/rust/bus_type_util.rs"
+header_file = "src/basic/rust/bus_type_util.h"
+status = "in-progress"
+tier = 1
+symbols = 9
+sync_status = "needs_review"
+notes = "Static ABI audit 2026-07-27; no build/tests/VM. Six bus-type and three comparison exports are exact header-backed extern-C facades over current sd-bus/hash authorities. 2026-07-27 provenance audit replaces the malformed semicolon-delimited source field with reviewed current source/header pairs. Scalar C char stays symbolic as libc::c_char, fixing unsigned-char Linux target ABI. Exact Rust-linked Meson tests and both CI phases are pinned; runtime parity remains unclaimed."
+
+[capability_list]
+c_file = "src/basic/capability-list.c"
+rust_file = "src/basic/rust/capability_list.rs"
+header_file = "src/basic/capability-list.h"
+test_file = "src/test/test-capability.c"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-capability.c); re-anchor to current upstream files before claiming completion."
+
+[capability_util]
+c_paths = ["src/basic/capability-util.c", "src/basic/capability-util.h"]
+rust_file = "src/basic/rust/capability_util.rs"
+header_file = "src/basic/rust/capability_util.h"
+test_file = "tests-extra/test-capability-util-rust.c"
+status = "in-progress"
+tier = 1
+symbols = 4
+sync_status = "needs_review"
+notes = "Static ABI audit 2026-07-27; no build/tests/VM. The four inline helpers are exact header-backed extern-C facades over repr(C) CapabilityQuintet, retaining the C-owned complete five-uint64_t layout instead of a prefix assumption. The registered C comparison test now consumes the canonical Rust ABI header; runtime differential remains required."
+
+[compare_operator]
+c_paths = ["src/shared/compare-operator.c", "src/shared/compare-operator.h"]
+rust_file = "src/basic/rust/compare_operator.rs"
+header_file = "src/shared/compare-operator.h"
+test_file = "src/test/test-compare-operator.c"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored compare-operator behavior to current shared source/header; behavioral completion remains unclaimed."
+
+[credential_validators]
+c_paths = ["src/shared/creds-util.c", "src/shared/creds-util.h", "src/basic/path-util.c", "src/basic/path-util.h", "src/basic/fd-util.c", "src/basic/fd-util.h"]
+rust_file = "src/basic/rust/credential_validators.rs"
+header_file = "src/shared/creds-util.h"
+status = "in-progress"
+tier = 3
+symbols = 8
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps credential validation plus delegated filename/fd-name predicates to their current shared/basic authorities; behavioral completion remains unclaimed."
+
+[dirent_util]
+c_file = "src/basic/dirent-util.c"
+rust_file = "src/basic/rust/dirent_util.rs"
+header_file = "src/basic/dirent-util.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: directory-entry traversal/FD behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[dns_domain_validators]
+c_paths = ["src/shared/dns-domain.c", "src/shared/dns-domain.h"]
+rust_file = "src/basic/rust/dns_domain_validators.rs"
+header_file = "src/shared/dns-domain.h"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored service/subtype validation to current shared DNS-domain source/header; behavioral completion remains unclaimed."
+
+[dns_label]
+c_paths = ["src/shared/dns-domain.c", "src/shared/dns-domain.h"]
+rust_file = "src/basic/rust/dns_label.rs"
+header_file = "src/shared/dns-domain.h"
+test_file = "tests-extra/test-dns-label-rust.c"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored DNS label/name behavior and its Rust comparator to current shared authorities; behavioral completion remains unclaimed."
+
+[dns_type_predicates]
+c_file = "src/shared/dns-type.c"
+rust_file = "src/basic/rust/dns_type_predicates.rs"
+header_file = "src/shared/dns-type.h"
+test_file = "tests-extra/test-dns-type-predicates-rust.c"
+status = "in-progress"
+tier = 1
+symbols = 16
+sync_status = "needs_review"
+notes = "Static audit 2026-07-27; no build/tests/VM. Sixteen exact extern-C exports cover every scalar predicate, dns_type_to_af(), and the three TLSA string lookups in current src/shared/dns-type.c. The FFI uses uint16_t/uint8_t, C bool/int, target libc address-family values, -EINVAL on unsupported address types, and borrowed static NUL-terminated strings. Exact source/header signatures plus future exhaustive C-versus-Rust Meson/CI comparisons are pinned; runtime parity is unclaimed."
+
+[efivars_util]
+c_paths = ["src/fundamental/efivars.c", "src/fundamental/efivars.h", "src/basic/efivars.c", "src/basic/efivars.h", "src/shared/efi-api.c", "src/shared/efi-api.h"]
+rust_file = "src/basic/rust/efivars_util.rs"
+header_file = "src/basic/efivars.h"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps secure-boot, backslash, and GUID/ID128 behavior to their current fundamental/basic/shared authorities; behavioral completion remains unclaimed."
+
+[env_util]
+c_file = "src/basic/env-util.c"
+rust_file = "src/basic/rust/env_util.rs"
+header_file = "src/basic/env-util.h"
+status = "in-progress"
+tier = 3
+symbols = 9
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: environment parsing, mutation, and ownership behavior has no complete current behavior review or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[errno_classify]
+c_file = "src/basic/errno-util.h"
+rust_file = "src/basic/rust/errno_classify.rs"
+header_file = "src/basic/errno-util.h"
+status = "in-progress"
+tier = 1
+symbols = 26
+sync_status = "needs_review"
+notes = "Safe classifier core mirrors the 24 errno-util.h and two shared/seccomp-util.h inline classifiers using target libc errno values and intmax_t, including INTMAX_MIN handling. Exact C ABI shells live in errno_util.rs. Static authority/test comparison is reviewed; runtime remains unclaimed."
+
+[errno_util]
+c_file = "src/basic/errno-util.c"
+rust_file = "src/basic/rust/errno_util.rs"
+header_file = "src/basic/errno-util.h"
+status = "in-progress"
+tier = 1
+symbols = 32
+sync_status = "needs_review"
+notes = "Three errno name/string exports, three errno-return helpers, and 26 classifier facades have exact C ABI. Classifiers use target libc and intmax_t; INT_MIN paths fail closed without unwinding. glibc name lookup calls strerrorname_np like C; non-glibc generated-table reconciliation remains tracked as systemd-q491.4.7.1. Registered boundary comparisons, exact Rust linkage, and both CI phases are static-only; runtime is unclaimed."
+
+[exec_util]
+c_paths = ["src/shared/exec-util.c", "src/shared/exec-util.h", "src/shared/bootspec.c", "src/shared/bootspec.h"]
+rust_file = "src/basic/rust/exec_util.rs"
+header_file = "src/shared/exec-util.h"
+test_file = "src/test/test-exec-util.c"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps command-flag conversions and embedded-newline indentation to current shared exec/bootspec authorities; behavioral completion remains unclaimed."
+
+[exit_status]
+c_paths = ["src/shared/exit-status.c", "src/shared/exit-status.h", "src/shared/securebits-util.c", "src/shared/securebits-util.h"]
+rust_file = "src/basic/rust/exit_status.rs"
+header_file = "src/shared/exit-status.h"
+test_file = "src/test/test-exit-status.c"
+status = "in-progress"
+tier = 1
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps status lookup and securebit naming behavior to current shared authorities; behavioral completion remains unclaimed."
+
+[file_classify]
+c_file = "src/basic/login-util.h"
+rust_file = "src/basic/rust/file_classify.rs"
+header_file = "src/basic/login-util.h"
+status = "in-progress"
+tier = 1
+symbols = 7
+sync_status = "needs_review"
+notes = "The registered session predicate is declared by current login-util.h (and implemented in login-util.c). 2026-07-27 provenance audit removed the nonexistent synthetic authority; behavioral completion remains unclaimed."
+
+[fstype_util]
+c_paths = ["src/basic/mountpoint-util.c", "src/basic/mountpoint-util.h"]
+rust_file = "src/basic/rust/fstype_util.rs"
+header_file = "src/basic/mountpoint-util.h"
+status = "in-progress"
+tier = 1
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored filesystem and path predicates to current mountpoint-util source/header; behavioral completion remains unclaimed."
+
+[glob_util]
+c_file = "src/basic/glob-util.c"
+rust_file = "src/basic/rust/glob_util.rs"
+header_file = "src/basic/glob-util.h"
+test_file = "src/test/test-glob.c"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-glob.c); re-anchor to current upstream files before claiming completion."
+
+[gpt_util]
+c_file = "src/shared/gpt.c"
+rust_file = "src/shared/rust/gpt.rs"
+header_file = "src/shared/gpt.h"
+test_file = "src/test/test-gpt.c"
+status = "in-progress"
+tier = 2
+symbols = 20
+sync_status = "needs_review"
+notes = "Pure GPT model/table parity is generated and drift-checked from src/systemd/sd-gpt.h plus src/shared/gpt.c. gpt_probe, target-native/secondary aliases, C ABI, and production consumer integration remain in systemd-eu62.18."
+
+[gpt_basic_abi]
+c_paths = ["src/shared/gpt.c", "src/shared/gpt.h", "src/shared/vlan-util.c", "src/shared/vlan-util.h"]
+rust_file = "src/basic/rust/gpt_util.rs"
+header_file = "src/basic/rust/gpt_util.h"
+test_file = "tests-extra/test-gpt-util-rust.c; tests-extra/test-misc-rust3.c; tests-extra/test-inline-helpers-rust.c"
+status = "in-progress"
+tier = 1
+symbols = 13
+sync_status = "needs_review"
+notes = "Static-only ABI restoration 2026-07-27. The basic crate owns 13 explicit rs_* C adapters over an allocation-free safe core for designator, mountpoint, GPT header, label, and VLAN parsing policy. 2026-07-27 provenance audit replaces the malformed semicolon-delimited source field with reviewed current GPT and VLAN source/header authorities. tools/rust-port/check-gpt-basic-abi.py mechanically verifies every dedicated header declaration has exactly one unsafe(no_mangle) extern C export, matching the C type inventory, and that source/test Meson membership remains intact. No Cargo/build/tests/VM run; canonical gpt_probe/table/consumer integration remains systemd-eu62.18."
+
+[hostname_setup]
+c_paths = ["src/shared/hostname-setup.c", "src/shared/hostname-setup.h"]
+rust_file = "src/basic/rust/hostname_setup.rs"
+header_file = "src/shared/hostname-setup.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored hostname shortening behavior to current shared source/header; behavioral completion remains unclaimed."
+
+[id128_util]
+c_paths = ["src/libsystemd/sd-id128/sd-id128.c", "src/libsystemd/sd-id128/id128-util.c", "src/libsystemd/sd-id128/id128-util.h", "src/systemd/sd-id128.h"]
+rust_file = "src/basic/rust/id128_util.rs"
+header_file = "src/libsystemd/sd-id128/id128-util.h"
+test_file = "tests-extra/test-id128-rust.c"
+status = "in-progress"
+tier = 1
+symbols = 7
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored ID128 utility and public API behavior to current libsystemd sources and Rust comparator; behavioral completion remains unclaimed."
+
+[image_policy_util]
+c_paths = ["src/shared/image-policy.c", "src/shared/image-policy.h"]
+rust_file = "src/basic/rust/image_policy_util.rs"
+header_file = "src/shared/image-policy.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored image-policy flag and parsing behavior to current shared source/header; behavioral completion remains unclaimed."
+
+[import_util]
+c_file = "src/shared/import-util.c, src/shared/reboot-util.c"
+rust_file = "src/basic/rust/import_util.rs"
+header_file = "src/basic/rust/import_util.h"
+status = "in-progress"
+tier = 2
+symbols = 5
+sync_status = "partial"
+notes = "Static audit 2026-07-27; no build/tests/VM. The five registered C ABI exports (URL last-component/change-suffix, tar/raw suffix stripping, reboot parameter validation) are byte-oriented unsafe extern-C facades over safe range cores. Successful string results are fresh libc malloc allocations for C free(3); malformed/non-UTF-8 bytes remain opaque. Current C sources, canonical header, registered shadow test, and reviewed CI are pinned by check-basic-rust-ffi-abi.py. Other import-util APIs are not claimed by this slice; runtime differential/link validation remains pending."
+
+[ioprio_util]
+c_file = "src/shared/ioprio-util.h"
+rust_file = "src/basic/rust/ioprio_util.rs"
+header_file = "src/shared/ioprio-util.h"
+test_file = "tests-extra/test-ioprio-util-rust.c"
+status = "in-progress"
+tier = 1
+symbols = 4
+sync_status = "needs_review"
+notes = "The registered I/O-priority helpers are current shared header-inline behavior. 2026-07-27 provenance audit removed the nonexistent synthetic basic .c/.h pair; runtime parity remains unclaimed."
+
+[mempool]
+c_file = "src/basic/mempool.c"
+rust_file = "src/basic/rust/mempool.rs"
+header_file = "src/basic/mempool.h"
+status = "in-progress"
+tier = 2
+symbols = 6
+sync_status = "needs_review"
+
+[misc_validators]
+c_paths = ["src/basic/mountpoint-util.c", "src/basic/parse-util.c", "src/basic/os-util.c", "src/shared/hostname-setup.c", "src/shared/bus-print-properties.c", "src/basic/user-util.c", "src/shared/reboot-util.c", "src/basic/syslog-util.c", "src/basic/socket-util.c"]
+rust_file = "src/basic/rust/misc_validators.rs;src/basic/rust/mountpoint_util.rs"
+header_file = "src/basic/mountpoint-util.h"
+status = "in-progress"
+tier = 3
+symbols = 10
+sync_status = "needs_review"
+notes = "2026-07-27 static audit: ten exact C ABI predicates cover raw scalar domains and byte-oriented account, log, nft, and bus-property validation. Current C sources/headers, canonical Rust headers, and Rust-linked comparison fixtures are registered; runtime parity is unclaimed."
+
+[mount_setup]
+c_paths = ["src/shared/mount-setup.c", "src/shared/mount-setup.h"]
+rust_file = "src/basic/rust/mount_setup.rs"
+header_file = "src/shared/mount-setup.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored mount classification tables to current shared source/header; behavioral completion remains unclaimed."
+
+[mountpoint_util]
+c_file = "src/basic/mountpoint-util.c"
+rust_file = "src/basic/rust/mountpoint_util.rs"
+header_file = "src/basic/mountpoint-util.h"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+
+[namespace_util]
+c_file = "src/basic/namespace-util.c"
+rust_file = "src/basic/rust/namespace_util.rs"
+header_file = "src/basic/namespace-util.h"
+status = "in-progress"
+tier = 1
+symbols = 3
+sync_status = "needs_review"
+
+[netdev_str_tables]
+c_file = "src/shared/bond-util.c"
+rust_file = "src/basic/rust/netdev_str_tables.rs"
+header_file = "src/shared/rust/netdev_str_tables.h"
+status = "in-progress"
+tier = 1
+symbols = 137
+sync_status = "needs_review"
+notes = "Multi-source C-ABI shadow across basic/, shared/, resolve/, and network/ (header groups name each domain). The 137 header declarations are mechanically audited as unique unmangled extern-C exports with exact C/Rust signature parity, and every C string now uses target libc::c_char. The <1000-line facade owns shared ABI machinery; cohesive source domains live in netdev_str_tables/{network_link,network_virtual,boot_import,resolve_modes,dns_security,tpm_bpf_wifi}.rs, and pure matching lives in core.rs. The unconsumed shared prototype was removed. Table values remain a manually maintained subset and require per-domain upstream parity review, especially platform-header-derived nl80211 values and allocation/error paths. Static audit only; tracked by systemd-efxr.12."
+
+[nsflags]
+c_paths = ["src/shared/nsflags.c", "src/shared/nsflags.h"]
+rust_file = "src/basic/rust/nsflags.rs"
+header_file = "src/shared/nsflags.h"
+status = "in-progress"
+tier = 1
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored namespace flag conversion behavior to current shared source/header; behavioral completion remains unclaimed."
+
+[pe_binary]
+c_paths = ["src/shared/pe-binary.c", "src/shared/pe-binary.h"]
+rust_file = "src/basic/rust/pe_binary.rs"
+header_file = "src/shared/pe-binary.h"
+status = "in-progress"
+tier = 2
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored PE parsing behavior to current shared source/header; behavioral completion remains unclaimed."
+
+[procfs_util]
+c_file = "src/basic/procfs-util.c"
+rust_file = "src/basic/rust/procfs_util.rs"
+header_file = "src/basic/rust/procfs_util.h"
+status = "in-progress"
+tier = 1
+symbols = 7
+sync_status = "needs_review"
+notes = "All seven current C surfaces (the six procfs runtime APIs plus meminfo conversion) now have ABI-complete Rust shadow implementations with bounded byte parsing and output-on-success wrappers. The Meson topology deliberately leaves C as production authority and links Rust only into shadow tests; differential runtime validation on real /proc and sysctl write failures remains tracked separately."
+
+[recovery_key]
+c_paths = ["src/shared/recovery-key.c", "src/shared/recovery-key.h"]
+rust_file = "src/basic/rust/recovery_key.rs"
+header_file = "src/shared/recovery-key.h"
+status = "in-progress"
+tier = 2
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored recovery-key encoding behavior to current shared source/header; behavioral completion remains unclaimed."
+
+[replace_var]
+c_file = "src/basic/replace-var.c"
+rust_file = "src/basic/rust/replace_var.rs"
+header_file = "src/basic/replace-var.h"
+test_file = "src/test/test-replace-var.c"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+
+[resize_fs_util]
+c_paths = ["src/shared/resize-fs.c", "src/shared/resize-fs.h"]
+rust_file = "src/basic/rust/resize_fs_util.rs"
+header_file = "src/shared/resize-fs.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored resize policy helpers to current shared source/header; behavioral completion remains unclaimed."
+
+[safe_math]
+c_file = "src/basic/macro.h"
+rust_file = "src/basic/rust/safe_math.rs"
+header_file = "src/basic/macro.h"
+test_file = "tests-extra/test-safe-math-rust.c"
+status = "in-progress"
+tier = 1
+symbols = 22
+sync_status = "needs_review"
+notes = "The registered arithmetic helpers are macro/header-inline behavior from current macro.h. 2026-07-27 provenance audit removes the nonexistent synthetic .c/.h pair; runtime parity remains unclaimed."
+
+[seccomp_util]
+c_file = "src/shared/seccomp-util.c"
+rust_file = "src/shared/rust/seccomp_util.rs"
+header_file = "src/shared/seccomp-util.h"
+status = "in-progress"
+tier = 1
+symbols = 12
+sync_status = "needs_review"
+notes = "Static architecture/parity audit only; no build/tests/VM. The shared Rust facade preserves 83 prior public definitions and adds current-C LoongArch64 support, but has zero in-tree consumers, zero C ABI exports, and no Meson membership. Remaining runtime/filter/parser/list gaps are enumerated in src/shared/rust/seccomp_util/ARCHITECTURE.md and tracked by P0 systemd-newl.4. The separate Meson-built basic Rust comparison surface now backs all five rs_seccomp_* declarations with exact extern-C exports, target-libc errno mappings, stable static C strings, corrected libseccomp architecture tokens, C shadow fixtures, and check-seccomp-basic-abi.py. This repairs the comparison ABI only; it does not wire a production Rust libseccomp runtime."
+
+[serialize]
+c_paths = ["src/shared/serialize.c", "src/shared/serialize.h"]
+rust_file = "src/basic/rust/serialize.rs"
+header_file = "src/shared/serialize.h"
+status = "in-progress"
+tier = 1
+symbols = 9
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored timestamp deserialization behavior to current shared source/header; behavioral completion remains unclaimed."
+
+[sha1]
+c_paths = ["src/fundamental/sha1.c", "src/fundamental/sha1.h"]
+rust_file = "src/basic/rust/sha1.rs"
+header_file = "src/fundamental/sha1.h"
+test_file = "src/test/test-sha1.c"
+status = "in-progress"
+tier = 1
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored SHA-1 behavior to current fundamental source/header and existing test fixture; behavioral completion remains unclaimed."
+
+[shared_lookup_facades]
+c_paths = ["src/shared/condition.c", "src/shared/condition.h", "src/shared/resolve-util.c", "src/shared/resolve-util.h", "src/shared/netif-util.c", "src/shared/netif-util.h", "src/basic/compress.c", "src/basic/compress.h", "src/basic/socket-util.c", "src/basic/socket-util.h", "src/shared/output-mode.c", "src/shared/output-mode.h"]
+rust_paths = ["src/basic/rust/shared_facades/lookups.rs", "src/basic/rust/shared_facades/lookups.h"]
+status = "in-progress"
+tier = 1
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit records each current table/predicate authority behind this heterogeneous facade; behavioral completion remains unclaimed."
+
+[shared_validation_facades]
+c_paths = ["src/shared/compare-operator.c", "src/shared/compare-operator.h", "src/shared/web-util.c", "src/shared/web-util.h", "src/shared/color-util.c", "src/shared/color-util.h", "src/shared/boot-entry.c", "src/shared/boot-entry.h", "src/shared/pkcs11-util.c", "src/shared/pkcs11-util.h", "src/shared/user-record.c", "src/shared/user-record.h"]
+rust_paths = ["src/basic/rust/shared_facades/validation.rs", "src/basic/rust/shared_facades/validation.h"]
+status = "in-progress"
+tier = 3
+symbols = 11
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit records the distinct parser, URL, color, boot-entry, PKCS#11, and blob-name authorities behind this aggregate facade; behavioral completion remains unclaimed."
+
+[shared_policy_facades]
+c_paths = ["src/shared/securebits-util.c", "src/shared/securebits-util.h", "src/shared/ioprio-util.h", "src/shared/vlan-util.c", "src/shared/vlan-util.h", "src/shared/condition.h", "src/shared/kbd-util.c", "src/shared/kbd-util.h"]
+rust_paths = ["src/basic/rust/shared_facades/policy.rs", "src/basic/rust/shared_facades/policy.h"]
+status = "in-progress"
+tier = 3
+symbols = 10
+sync_status = "needs_review"
+notes = "2026-07-27 exports all ten securebits, I/O-priority, VLAN, condition, and keymap shadow-test facades with a canonical Rust C header and current C authorities. Allocation outputs use C ownership and transactional publication; differential runtime parity remains P2."
+
+[header_inline_predicates]
+c_paths = ["src/shared/output-mode.h", "src/shared/sleep-config.h", "src/basic/user-util.h"]
+rust_paths = ["src/basic/rust/shared_facades/header_predicates.rs", "src/basic/rust/shared_facades/header_predicates.h"]
+status = "in-progress"
+tier = 3
+symbols = 7
+sync_status = "needs_review"
+notes = "The registered predicates are current header-inline behavior from output-mode, sleep-config, and user-util headers. 2026-07-27 provenance audit removes the nonexistent synthetic authority; runtime parity remains unclaimed."
+
+[shared_facades-root]
+rust_file = "src/basic/rust/shared_facades/mod.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Rust-only module index. Each child facade owns its exact C/H authority separately; this row prevents the directory root from becoming an implicit semantic authority."
+
+[specifier_util]
+c_paths = ["src/shared/specifier.c", "src/shared/specifier.h", "src/shared/efi-loader.c", "src/shared/efi-loader.h"]
+rust_file = "src/basic/rust/specifier_util.rs"
+header_file = "src/shared/specifier.h"
+status = "in-progress"
+tier = 3
+symbols = 8
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps specifier escaping and EFI entry validation to current shared authorities; behavioral completion remains unclaimed."
+
+[strverscmp]
+c_paths = ["src/fundamental/string-util.c", "src/fundamental/string-util.h"]
+rust_file = "src/basic/rust/strverscmp.rs"
+header_file = "src/fundamental/string-util.h"
+test_file = "tests-extra/test-strverscmp-rust.c"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored version ordering behavior and Rust comparator to current fundamental authorities; behavioral completion remains unclaimed."
+
+[sysctl_util]
+c_file = "src/basic/sysctl-util.c"
+rust_file = "src/basic/rust/sysctl_util.rs"
+header_file = "src/basic/sysctl-util.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+
+[terminal_util]
+c_file = "src/basic/terminal-util.c"
+rust_file = "src/basic/rust/terminal_util.rs"
+header_file = "src/basic/terminal-util.h"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+
+[udev_util]
+c_file = "src/shared/udev-util.c"
+rust_file = "src/basic/rust/udev_util.rs"
+header_file = "src/shared/udev-util.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "Current authority is src/shared/udev-util.c/.h. The two registered Rust C-test transforms have exact basic-artifact ABI facades; the production shared C implementation remains authoritative until integration is separately reviewed."
+
+[uid_classification]
+c_file = "src/basic/uid-classification.c"
+rust_file = "src/basic/rust/uid_classification.rs"
+header_file = "src/basic/uid-classification.h"
+status = "in-progress"
+tier = 1
+symbols = 9
+sync_status = "needs_review"
+notes = "Nine header-backed exact uid_t/gid_t classifiers mirror current inline C behavior. Meson supplies all configured boundaries, rejects non-u32, inverted or misaligned ranges, and Rust compile-time assertions protect direct Cargo overrides. Tests avoid endpoint overflow and compare UID/GID paths. Exact wiring, Rust-linked Meson target and both CI phases are pinned; runtime remains unclaimed."
+
+[unaligned]
+c_file = "src/basic/unaligned.h"
+rust_file = "src/basic/rust/unaligned.rs"
+header_file = "src/basic/unaligned.h"
+test_file = "src/test/test-unaligned.c"
+status = "in-progress"
+tier = 1
+symbols = 12
+sync_status = "needs_review"
+notes = "The BE/LE authority is src/basic/unaligned.h; fundamental owns only native-endian access. Twelve exact void-pointer wrappers use alignment-one fixed-byte copies with documented contracts. Independent C/Rust buffers, every deliberate misalignment offset, endian/width values and guard bytes prevent vacuous write tests. Exact Rust linkage/CI is static-only; runtime execution remains unclaimed."
+
+[unit_name]
+c_file = "src/basic/unit-name.c"
+rust_file = "src/basic/rust/unit_name.rs"
+header_file = "src/basic/unit-name.h"
+test_file = "src/test/test-unit-name.c"
+status = "in-progress"
+tier = 3
+symbols = 17
+sync_status = "needs_review"
+
+[user_shell_util]
+c_paths = ["src/basic/user-util.c", "src/basic/user-util.h", "src/basic/parse-util.c", "src/basic/parse-util.h"]
+rust_file = "src/basic/rust/user_shell_util.rs"
+header_file = "src/basic/user-util.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps shell classification and fractional parsing to their current basic authorities; behavioral completion remains unclaimed."
+
+[user_util]
+c_file = "src/basic/user-util.c"
+rust_file = "src/basic/rust/user_util.rs"
+header_file = "src/basic/user-util.h"
+status = "in-progress"
+tier = 3
+symbols = 7
+sync_status = "needs_review"
+notes = "Static ABI correction 2026-07-27: seven tested symbols use exact extern-C definitions, target libc::c_char, explicit pointer contracts, allocation-free capsule validation, and an authoritative Rust-owned header. Exact Rust-linked Meson/function-body/CI coverage is pinned. This is only the validator/UID/ID128/password subset, not full user-util parity; no build/tests/VM run."
+
+[xattr_util]
+c_file = "src/basic/xattr-util.c"
+rust_file = "src/basic/rust/xattr_util.rs"
+header_file = "src/basic/xattr-util.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+
+[xml_tokenizer]
+c_paths = ["src/shared/xml.c", "src/shared/xml.h"]
+rust_file = "src/basic/rust/xml_tokenizer.rs"
+header_file = "src/shared/xml.h"
+status = "in-progress"
+tier = 3
+symbols = 7
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored XML tokenization behavior to current shared source/header; behavioral completion remains unclaimed."
+
+#
+# src/core modules
+#
+
+[audit_fd]
+c_file = "src/core/audit-fd.c"
+rust_file = "src/core/rust/audit_fd.rs"
+header_file = "src/core/audit-fd.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: audit-FD lifecycle and kernel error behavior have no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[automount_tables]
+c_file = "src/core/automount.c"
+rust_file = "src/core/rust/automount_tables.rs"
+header_file = "src/core/automount.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: automount unit state/table behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[cgroup_tables]
+c_file = "src/core/cgroup.c"
+rust_file = "src/core/rust/cgroup_tables.rs"
+header_file = "src/core/cgroup.h"
+status = "in-progress"
+tier = 1
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: core cgroup state/table behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[clock_warp]
+c_file = "src/core/clock-warp.c"
+rust_file = "src/core/rust/clock_warp.rs"
+header_file = "src/core/clock-warp.h"
+status = "in-progress"
+tier = 2
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: clock-warp privilege/time behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[efi_random]
+c_file = "src/core/efi-random.c"
+rust_file = "src/core/rust/efi_random.rs"
+header_file = "src/core/efi-random.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: EFI random-seed/kernel-interface behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[emergency_action]
+c_file = "src/core/emergency-action.c"
+rust_file = "src/core/rust/emergency_action.rs"
+header_file = "src/core/emergency-action.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: emergency action/PID1 state behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[execute_tables]
+c_file = "src/core/execute.c"
+rust_file = "src/core/rust/execute_tables.rs"
+header_file = "src/core/execute.h"
+status = "in-progress"
+tier = 1
+symbols = 8
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: execute-unit state/table behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[generator_setup]
+c_file = "src/core/generator-setup.c"
+rust_file = "src/core/rust/generator_setup.rs"
+header_file = "src/core/generator-setup.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: generator setup/filesystem behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[job_tables]
+c_file = "src/core/job.c"
+rust_file = "src/core/rust/job_tables.rs"
+header_file = "src/core/job.h"
+status = "in-progress"
+tier = 1
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: job state/table behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[kill]
+c_file = "src/core/kill.c"
+rust_file = "src/core/rust/kill.rs"
+header_file = "src/core/kill.h"
+status = "in-progress"
+tier = 2
+symbols = 3
+sync_status = "needs_review"
+
+[manager_tables]
+c_file = "src/core/manager.c"
+rust_file = "src/core/rust/manager_tables.rs"
+header_file = "src/core/manager.h"
+status = "in-progress"
+tier = 1
+symbols = 6
+sync_status = "needs_review"
+
+[mount_tables]
+c_file = "src/core/mount.c"
+rust_file = "src/core/rust/mount_tables.rs"
+header_file = "src/core/mount.h"
+status = "in-progress"
+tier = 1
+symbols = 4
+sync_status = "needs_review"
+
+[namespace_tables]
+c_file = "src/core/namespace.c"
+rust_file = "src/core/rust/namespace_tables.rs"
+header_file = "src/core/namespace.h"
+status = "in-progress"
+tier = 1
+symbols = 3
+sync_status = "needs_review"
+
+[path_tables]
+c_file = "src/core/path.c"
+rust_file = "src/core/rust/path_tables.rs"
+header_file = "src/core/path.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+
+[scope_tables]
+c_file = "src/core/scope.c"
+rust_file = "src/core/rust/scope_tables.rs"
+header_file = "src/core/scope.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+
+[service_tables]
+c_file = "src/core/service.c"
+rust_file = "src/core/rust/service_tables.rs"
+header_file = "src/core/service.h"
+status = "in-progress"
+tier = 1
+symbols = 10
+sync_status = "needs_review"
+
+[show_status]
+c_file = "src/core/show-status.c"
+rust_file = "src/core/rust/show_status.rs"
+header_file = "src/core/show-status.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+
+[socket_tables]
+c_file = "src/core/socket.c"
+rust_file = "src/core/rust/socket_tables.rs"
+header_file = "src/core/socket.h"
+status = "in-progress"
+tier = 1
+symbols = 6
+sync_status = "needs_review"
+
+[swap_tables]
+c_file = "src/core/swap.c"
+rust_file = "src/core/rust/swap_tables.rs"
+header_file = "src/core/swap.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+
+[timer_tables]
+c_file = "src/core/timer.c"
+rust_file = "src/core/rust/timer_tables.rs"
+header_file = "src/core/timer.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+
+[unit_tables]
+c_file = "src/core/unit.c"
+rust_file = "src/core/rust/unit_tables.rs"
+header_file = "src/core/unit.h"
+status = "in-progress"
+tier = 1
+symbols = 12
+sync_status = "needs_review"
+
+[varlink_common]
+c_file = "src/core/varlink-common.c"
+rust_file = "src/core/rust/varlink_common.rs"
+header_file = "src/core/varlink-common.h"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+
+#
+# src/libsystemd modules
+#
+
+[bus_address_escape]
+c_paths = ["src/libsystemd/sd-bus/bus-internal.c", "src/libsystemd/sd-bus/bus-internal.h"]
+rust_file = "src/libsystemd/rust/bus_address_escape.rs"
+header_file = "src/libsystemd/sd-bus/bus-internal.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored percent escaping to current bus-internal source/private declaration; behavioral completion remains unclaimed."
+
+[bus_common_errors]
+c_file = "src/libsystemd/sd-bus/bus-common-errors.c"
+rust_file = "src/libsystemd/rust/bus_common_errors.rs"
+header_file = "src/libsystemd/sd-bus/bus-common-errors.h"
+status = "in-progress"
+tier = 1
+symbols = 1
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: sd-bus common-error mapping has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_internal_types]
+c_file = "src/libsystemd/sd-bus/bus-internal.h"
+rust_file = "src/libsystemd/rust/bus_internal_types.rs"
+header_file = "src/libsystemd/sd-bus/bus-internal.h"
+status = "in-progress"
+tier = 4
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: sd-bus internal layout/type behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_kernel]
+c_file = "src/libsystemd/sd-bus/bus-kernel.c"
+rust_file = "src/libsystemd/rust/bus_kernel.rs"
+header_file = "src/libsystemd/sd-bus/bus-kernel.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: sd-bus kernel transport behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_match_types]
+c_file = "src/libsystemd/sd-bus/bus-match.c"
+rust_file = "src/libsystemd/rust/bus_match_types.rs"
+header_file = "src/systemd/sd-bus.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: sd-bus match parser/type behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_signature]
+c_file = "src/libsystemd/sd-bus/bus-signature.c"
+rust_file = "src/libsystemd/rust/bus_signature.rs"
+header_file = "src/libsystemd/sd-bus/bus-signature.h"
+test_file = "src/test/test-bus-signature.c"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-bus-signature.c); re-anchor to current upstream files before claiming completion."
+
+[device_action]
+c_paths = ["src/libsystemd/sd-device/device-private.c", "src/libsystemd/sd-device/device-private.h", "src/systemd/sd-device.h"]
+rust_file = "src/libsystemd/rust/device_action.rs"
+header_file = "src/libsystemd/sd-device/device-private.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored device action tables to current sd-device private source/declarations and public enum; behavioral completion remains unclaimed."
+
+[event_source_type]
+c_file = "src/libsystemd/sd-event/sd-event.c"
+rust_file = "src/libsystemd/rust/event_source_type.rs"
+header_file = "src/systemd/sd-event.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: sd-event source layout/lifetime behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[id128_util_lib]
+c_file = "src/libsystemd/sd-id128/sd-id128.c"
+rust_file = "src/libsystemd/rust/id128_util.rs"
+header_file = "src/systemd/sd-id128.h"
+status = "in-progress"
+tier = 1
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: libsystemd ID128 parsing/layout behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[journal_object_type]
+c_paths = ["src/libsystemd/sd-journal/journal-file.c", "src/libsystemd/sd-journal/journal-file.h", "src/libsystemd/sd-journal/journal-def.h"]
+rust_file = "src/libsystemd/rust/journal_object_type.rs"
+header_file = "src/libsystemd/sd-journal/journal-file.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored journal object-type strings and enum declaration to current journal-file/journal-def authorities; behavioral completion remains unclaimed."
+
+[netlink_sock_diag]
+c_file = "src/libsystemd/sd-netlink/netlink-sock-diag.c"
+rust_file = "src/libsystemd/rust/netlink_sock_diag.rs"
+header_file = "src/libsystemd/sd-netlink/netlink-sock-diag.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+
+[network_util]
+c_file = "src/libsystemd/sd-network/network-util.c"
+rust_file = "src/libsystemd/rust/network_util.rs"
+header_file = "src/systemd/sd-network.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+
+[sd_daemon_checks]
+c_file = "src/libsystemd/sd-daemon/sd-daemon.c"
+rust_file = "src/libsystemd/rust/sd_daemon_checks.rs"
+header_file = "src/systemd/sd-daemon.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+
+[sd_id128_strings]
+c_file = "src/libsystemd/sd-id128/sd-id128.c"
+rust_file = "src/libsystemd/rust/sd_id128_strings.rs"
+header_file = "src/systemd/sd-id128.h"
+test_file = "src/test/test-id128.c"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-id128.c); re-anchor to current upstream files before claiming completion."
+
+[varlink_state]
+c_paths = ["src/libsystemd/sd-varlink/sd-varlink.c", "src/libsystemd/sd-varlink/varlink-internal.h"]
+rust_file = "src/libsystemd/rust/varlink_state.rs"
+header_file = "src/libsystemd/sd-varlink/varlink-internal.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored Varlink state table and enum to current sd-varlink source/private declaration; behavioral completion remains unclaimed."
+
+#
+# src/shared modules
+#
+
+[acpi_fpdt]
+c_file = "src/shared/acpi-fpdt.c"
+rust_file = "src/shared/rust/acpi_fpdt.rs"
+header_file = "src/shared/acpi-fpdt.h"
+status = "in-progress"
+tier = 2
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: ACPI FPDT table parsing/timestamp behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[apparmor_util]
+c_file = "src/shared/apparmor-util.c"
+rust_file = "src/shared/rust/apparmor_util.rs"
+header_file = "src/shared/apparmor-util.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: AppArmor policy/filesystem behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[async_util]
+c_paths = ["src/shared/async.c", "src/shared/async.h"]
+rust_file = "src/shared/rust/async_util.rs"
+header_file = "src/shared/async.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored asynchronous sync/fsync/close/rm-rf behavior to current shared async source/header; behavioral completion remains unclaimed."
+
+[barrier]
+c_file = "src/shared/barrier.c"
+rust_file = "src/shared/rust/barrier.rs"
+header_file = "src/shared/barrier.h"
+status = "in-progress"
+tier = 2
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: barrier process/FD synchronization behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[base_filesystem]
+c_file = "src/shared/base-filesystem.c"
+rust_file = "src/shared/rust/base_filesystem.rs"
+header_file = "src/shared/base-filesystem.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: base filesystem creation/mutation behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[battery_util]
+c_file = "src/shared/battery-util.c"
+rust_file = "src/shared/rust/battery_util.rs"
+header_file = "src/shared/battery-util.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: battery sysfs/probing behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[binfmt_util]
+c_file = "src/shared/binfmt-util.c"
+rust_file = "src/shared/rust/binfmt_util.rs"
+header_file = "src/shared/binfmt-util.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: binfmt configuration/filesystem behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bitmap_shared]
+c_file = "src/shared/bitmap.c"
+rust_file = "src/shared/rust/bitmap.rs"
+header_file = "src/shared/bitmap.h"
+status = "in-progress"
+tier = 2
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: shared bitmap parsing/serialization behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[blkid_util]
+c_file = "src/shared/blkid-util.c"
+rust_file = "src/shared/rust/blkid_util.rs"
+header_file = "src/shared/blkid-util.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: blkid probe/ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[blockdev_util]
+c_file = "src/shared/blockdev-util.c"
+rust_file = "src/shared/rust/blockdev_util.rs"
+header_file = "src/shared/blockdev-util.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: block-device ioctl/probe behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bond_util]
+c_file = "src/shared/bond-util.c"
+rust_file = "src/shared/rust/bond_util.rs"
+header_file = "src/shared/bond-util.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: bond netlink attribute behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[boot_entry]
+c_file = "src/shared/boot-entry.c"
+rust_file = "src/shared/rust/boot_entry.rs"
+header_file = "src/shared/boot-entry.h"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: boot-entry parsing/ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[boot_timestamps]
+c_file = "src/shared/boot-timestamps.c"
+rust_file = "src/shared/rust/boot_timestamps.rs"
+header_file = "src/shared/boot-timestamps.h"
+status = "in-progress"
+tier = 2
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: boot timestamp/firmware behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bootspec]
+c_file = "src/shared/bootspec.c"
+rust_file = "src/shared/rust/bootspec.rs"
+header_file = "src/shared/bootspec.h"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: bootspec parsing/schema/ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bpf_dlopen]
+c_paths = ["src/shared/bpf-util.c", "src/shared/bpf-util.h"]
+rust_file = "src/shared/rust/bpf_dlopen.rs"
+header_file = "src/shared/bpf-util.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 history/source audit: bpf-dlopen was renamed to bpf-util (7d822ca8af). The current source/header own libbpf dynamic loading and error translation; behavioral completion remains unclaimed."
+
+[bpf_program]
+c_file = "src/shared/bpf-program.c"
+rust_file = "src/shared/rust/bpf_program.rs"
+header_file = "src/shared/bpf-program.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: BPF program loading/kernel ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bridge_util]
+c_file = "src/shared/bridge-util.c"
+rust_file = "src/shared/rust/bridge_util.rs"
+header_file = "src/shared/bridge-util.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: bridge netlink attribute behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_get_properties]
+c_file = "src/shared/bus-get-properties.c"
+rust_file = "src/shared/rust/bus_get_properties.rs"
+header_file = "src/shared/bus-get-properties.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus property retrieval/error behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_locator]
+c_file = "src/shared/bus-locator.c"
+rust_file = "src/shared/rust/bus_locator.rs"
+header_file = "src/shared/bus-locator.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus locator/path behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_log_control_api]
+c_file = "src/shared/bus-log-control-api.c"
+rust_file = "src/shared/rust/bus_log_control_api.rs"
+header_file = "src/shared/bus-log-control-api.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus log-control API/message behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_map_properties]
+c_file = "src/shared/bus-map-properties.c"
+rust_file = "src/shared/rust/bus_map_properties.rs"
+header_file = "src/shared/bus-map-properties.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus property map/ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_message_util]
+c_file = "src/shared/bus-message-util.c"
+rust_file = "src/shared/rust/bus_message_util.rs"
+header_file = "src/shared/bus-message-util.h"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus message parsing/ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_object]
+c_file = "src/shared/bus-object.c"
+rust_file = "src/shared/rust/bus_object.rs"
+header_file = "src/shared/bus-object.h"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus object dispatch/lifetime behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_polkit]
+c_file = "src/shared/bus-polkit.c"
+rust_file = "src/shared/rust/bus_polkit.rs"
+header_file = "src/shared/bus-polkit.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus polkit authorization/lifetime behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_print_properties]
+c_file = "src/shared/bus-print-properties.c"
+rust_file = "src/shared/rust/bus_print_properties.rs"
+header_file = "src/shared/bus-print-properties.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus property rendering/format behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_unit_procs]
+c_file = "src/shared/bus-unit-procs.c"
+rust_file = "src/shared/rust/bus_unit_procs.rs"
+header_file = "src/shared/bus-unit-procs.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus unit-process traversal/ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_unit_util]
+c_file = "src/shared/bus-unit-util.c"
+rust_file = "src/shared/rust/bus_unit_util.rs"
+header_file = "src/shared/bus-unit-util.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus unit conversion/parsing behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_util]
+c_file = "src/shared/bus-util.c"
+rust_file = "src/shared/rust/bus_util.rs"
+header_file = "src/shared/bus-util.h"
+status = "in-progress"
+tier = 3
+symbols = 7
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus utility/error/ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_wait_for_jobs]
+c_file = "src/shared/bus-wait-for-jobs.c"
+rust_file = "src/shared/rust/bus_wait_for_jobs.rs"
+header_file = "src/shared/bus-wait-for-jobs.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus job wait/progress behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[bus_wait_for_units]
+c_file = "src/shared/bus-wait-for-units.c"
+rust_file = "src/shared/rust/bus_wait_for_units.rs"
+header_file = "src/shared/bus-wait-for-units.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: D-Bus unit wait/progress behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[calendarspec]
+c_file = "src/shared/calendarspec.c"
+rust_file = "src/shared/rust/calendarspec.rs"
+header_file = "src/shared/calendarspec.h"
+test_file = "src/test/test-calendarspec.c"
+status = "in-progress"
+tier = 3
+symbols = 12
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: calendar parsing/timezone/normalization behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[cgroup_setup]
+c_file = "src/shared/cgroup-setup.c"
+rust_file = "src/shared/rust/cgroup_setup.rs"
+header_file = "src/shared/cgroup-setup.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: cgroup setup/kernel/filesystem behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[cgroup_show]
+c_file = "src/shared/cgroup-show.c"
+rust_file = "src/shared/rust/cgroup_show.rs"
+header_file = "src/shared/cgroup-show.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: cgroup presentation/recursive traversal behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[chown_recursive]
+c_file = "src/shared/chown-recursive.c"
+rust_file = "src/shared/rust/chown_recursive.rs"
+header_file = "src/shared/chown-recursive.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: recursive ownership/filesystem error behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[clean_ipc]
+c_file = "src/shared/clean-ipc.c"
+rust_file = "src/shared/rust/clean_ipc.rs"
+header_file = "src/shared/clean-ipc.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: IPC cleanup/process/filesystem behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[clock_util]
+c_file = "src/shared/clock-util.c"
+rust_file = "src/shared/rust/clock_util.rs"
+header_file = "src/shared/clock-util.h"
+status = "in-progress"
+tier = 2
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: clock adjustment/system-call behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[color_util]
+c_file = "src/shared/color-util.c"
+rust_file = "src/shared/rust/color_util.rs"
+header_file = "src/shared/color-util.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: color parsing/terminal environment behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[common_signal]
+c_file = "src/shared/common-signal.c"
+rust_file = "src/shared/rust/common_signal.rs"
+header_file = "src/shared/common-signal.h"
+status = "in-progress"
+tier = 2
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: signal handler/FD behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[condition]
+c_file = "src/shared/condition.c"
+rust_file = "src/shared/rust/condition.rs"
+header_file = "src/shared/condition.h"
+status = "in-progress"
+tier = 3
+symbols = 8
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: condition evaluation, filesystem, and unit-state behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[conf_parser]
+c_file = "src/shared/conf-parser.c"
+rust_file = "src/shared/rust/conf_parser.rs"
+header_file = "src/shared/conf-parser.h"
+status = "in-progress"
+tier = 3
+symbols = 12
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: configuration parser callbacks, include, and ownership behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[copy]
+c_file = "src/shared/copy.c"
+rust_file = "src/shared/rust/copy.rs"
+header_file = "src/shared/copy.h"
+test_file = "src/test/test-copy.c"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: copy/reflink/xattr/filesystem behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[coredump_util]
+c_file = "src/shared/coredump-util.c"
+rust_file = "src/shared/rust/coredump_util.rs"
+header_file = "src/shared/coredump-util.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: coredump metadata/filesystem behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[cpu_set_util]
+c_file = "src/shared/cpu-set-util.c"
+rust_file = "src/shared/rust/cpu_set_util.rs"
+header_file = "src/shared/cpu-set-util.h"
+test_file = "src/test/test-cpu-set.c"
+status = "in-progress"
+tier = 2
+symbols = 7
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-cpu-set.c); re-anchor to current upstream files before claiming completion."
+
+[device_enumerator]
+c_paths = ["src/libsystemd/sd-device/device-enumerator.c", "src/libsystemd/sd-device/device-enumerator-private.h"]
+rust_file = "src/shared/rust/device_enumerator.rs"
+header_file = "src/libsystemd/sd-device/device-enumerator-private.h"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored device enumeration to current libsystemd sd-device source/private declaration; behavioral completion remains unclaimed."
+
+[device_util]
+c_paths = ["src/libsystemd/sd-device/device-util.c", "src/libsystemd/sd-device/device-util.h"]
+rust_file = "src/shared/rust/device_util.rs"
+header_file = "src/libsystemd/sd-device/device-util.h"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored device property/subsystem helpers to current libsystemd sd-device source/header; behavioral completion remains unclaimed."
+
+[dhcp_identifier]
+c_paths = ["src/libsystemd-network/sd-dhcp-duid.c", "src/libsystemd-network/sd-dhcp-client-id.c", "src/libsystemd-network/dhcp-duid-internal.h", "src/libsystemd-network/dhcp-client-id-internal.h"]
+rust_file = "src/shared/rust/dhcp_identifier.rs"
+header_file = "src/libsystemd-network/dhcp-duid-internal.h"
+status = "in-progress"
+tier = 2
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored DUID/client-ID state and IAID behavior to current libsystemd-network source/internal declarations; behavioral completion remains unclaimed."
+
+[dhcp_option]
+rust_file = "src/shared/rust/dhcp_option.rs"
+status = "todo"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit: the old DHCP option source/header no longer exist, and the current DHCP message/IPv6 option APIs do not expose the Rust facade's historical v4 TLV API. No replacement authority is claimed; re-review and partition the Rust behavior against current interfaces before re-adding c_paths."
+
+[discover_image]
+c_file = "src/shared/discover-image.c"
+rust_file = "src/shared/rust/discover_image.rs"
+header_file = "src/shared/discover-image.h"
+test_file = "src/test/test-discover-image.c"
+status = "in-progress"
+tier = 3
+symbols = 7
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-discover-image.c); re-anchor to current upstream files before claiming completion."
+
+[dissect_image]
+c_file = "src/shared/dissect-image.c"
+rust_file = "src/shared/rust/dissect_image.rs"
+header_file = "src/shared/dissect-image.h"
+test_file = "src/test/test-dissect-image.c"
+status = "in-progress"
+tier = 3
+symbols = 7
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-dissect-image.c); re-anchor to current upstream files before claiming completion."
+
+[dns_domain]
+c_file = "src/shared/dns-domain.c"
+rust_file = "src/shared/rust/dns_domain.rs"
+header_file = "src/shared/dns-domain.h"
+test_file = "src/test/test-dns-domain.c"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: DNS domain parsing/escaping/IDNA behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[efi_api]
+c_file = "src/shared/efi-api.c"
+rust_file = "src/shared/rust/efi_api.rs"
+header_file = "src/shared/efi-api.h"
+test_file = "src/test/test-efi-api.c"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-efi-api.c); re-anchor to current upstream files before claiming completion."
+
+[efivars]
+c_paths = ["src/basic/efivars.c", "src/basic/efivars.h", "src/fundamental/efivars.c", "src/fundamental/efivars.h"]
+rust_file = "src/shared/rust/efivars.rs"
+header_file = "src/basic/efivars.h"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps efivarfs I/O, secure-boot, and variable conversion behavior to current basic/fundamental EFI-variable authorities; behavioral completion remains unclaimed."
+
+[enable_mempool]
+c_file = "src/shared/enable-mempool.c"
+rust_file = "src/shared/rust/enable_mempool.rs"
+header_file = "src/shared/enable-mempool.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (header_file=src/shared/enable-mempool.h); re-anchor to current upstream files before claiming completion."
+
+[env_file_label]
+c_paths = ["src/basic/env-file.c", "src/basic/env-file.h", "src/basic/label-util.c", "src/basic/label-util.h", "src/shared/selinux-util.c", "src/shared/selinux-util.h"]
+rust_file = "src/shared/rust/env_file_label.rs"
+header_file = "src/basic/env-file.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps labelled env/vconsole writes to current basic env-file and label operations plus shared SELinux implementation; behavioral completion remains unclaimed."
+
+[ethtool_util]
+c_file = "src/shared/ethtool-util.c"
+rust_file = "src/shared/rust/ethtool_util.rs"
+header_file = "src/shared/ethtool-util.h"
+test_file = "src/test/test-ethtool.c"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-ethtool.c); re-anchor to current upstream files before claiming completion."
+
+[exec_util_shared]
+c_file = "src/shared/exec-util.c"
+rust_file = "src/shared/rust/exec_util.rs"
+header_file = "src/shared/exec-util.h"
+test_file = "src/test/test-exec-util.c"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: shared exec environment/FD/process behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[exit_status_shared]
+c_file = "src/shared/exit-status.c"
+rust_file = "src/shared/rust/exit_status.rs"
+header_file = "src/shared/exit-status.h"
+test_file = "src/test/test-exit-status.c"
+status = "in-progress"
+tier = 1
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: shared exit-status classification/string behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[fdset]
+c_file = "src/shared/fdset.c"
+rust_file = "src/shared/rust/fdset.rs"
+header_file = "src/shared/fdset.h"
+test_file = "src/test/test-fdset.c"
+status = "in-progress"
+tier = 2
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: FD-set allocation, serialization, and ownership behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[fileio_label]
+c_paths = ["src/basic/fileio.c", "src/basic/fileio.h", "src/basic/label-util.c", "src/basic/label-util.h", "src/shared/selinux-util.c", "src/shared/selinux-util.h"]
+rust_file = "src/shared/rust/fileio_label.rs"
+header_file = "src/basic/fileio.h"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit maps labelled file creation/write behavior to current basic fileio/label operations plus shared SELinux implementation; behavioral completion remains unclaimed."
+
+[firewall_util]
+c_file = "src/shared/firewall-util.c"
+rust_file = "src/shared/rust/firewall_util.rs"
+header_file = "src/shared/firewall-util.h"
+test_file = "src/test/test-firewall.c"
+status = "in-progress"
+tier = 3
+symbols = 6
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-firewall.c); re-anchor to current upstream files before claiming completion."
+
+[format_table]
+c_file = "src/shared/format-table.c"
+rust_file = "src/shared/rust/format_table.rs"
+header_file = "src/shared/format-table.h"
+test_file = "src/test/test-format-table.c"
+status = "in-progress"
+tier = 3
+symbols = 7
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: format-table layout, terminal, and allocation behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[fstab_util]
+c_file = "src/shared/fstab-util.c"
+rust_file = "src/shared/rust/fstab_util.rs"
+header_file = "src/shared/fstab-util.h"
+test_file = "src/test/test-fstab.c"
+status = "in-progress"
+tier = 3
+symbols = 5
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-fstab.c); re-anchor to current upstream files before claiming completion."
+
+[geneve_util]
+c_file = "src/shared/geneve-util.c"
+rust_file = "src/shared/rust/geneve_util.rs"
+header_file = "src/shared/geneve-util.h"
+status = "in-progress"
+tier = 2
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: GENEVE netlink option behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[idn_util]
+c_file = "src/shared/idn-util.c"
+rust_file = "src/shared/rust/idn_util.rs"
+header_file = "src/shared/idn-util.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: IDN conversion/library error behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[ima_util]
+c_file = "src/shared/ima-util.c"
+rust_file = "src/shared/rust/ima_util.rs"
+header_file = "src/shared/ima-util.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: IMA measurement/kernel interface behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[ioprio_util_shared]
+c_file = "src/shared/ioprio-util.c"
+rust_file = "src/shared/rust/ioprio_util.rs"
+header_file = "src/shared/ioprio-util.h"
+test_file = "src/test/test-ioprio.c"
+status = "in-progress"
+tier = 1
+symbols = 4
+sync_status = "needs_review"
+notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-ioprio.c); re-anchor to current upstream files before claiming completion."
+
+[ipvlan_util]
+c_file = "src/shared/ipvlan-util.c"
+rust_file = "src/shared/rust/ipvlan_util.rs"
+header_file = "src/shared/ipvlan-util.h"
+status = "in-progress"
+tier = 2
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 static source review: IPVLAN netlink attribute behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+
+[log_assert_critical]
+c_file = "src/shared/log-assert-critical.c"
+rust_file = "src/shared/rust/log_assert_critical.rs"
+header_file = "src/shared/log-assert-critical.h"
+status = "in-progress"
+tier = 1
+symbols = 2
+sync_status = "needs_review"
+
+[macvlan_util]
+c_file = "src/shared/macvlan-util.c"
+rust_file = "src/shared/rust/macvlan_util.rs"
+header_file = "src/shared/macvlan-util.h"
+status = "in-progress"
+tier = 2
+symbols = 3
+sync_status = "needs_review"
+
+[resolve_hook_util]
+c_file = "src/shared/resolve-hook-util.c"
+rust_file = "src/shared/rust/resolve_hook_util.rs"
+header_file = "src/shared/resolve-hook-util.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+
+[tmpfile_util_label]
+c_paths = ["src/shared/tmpfile-util.c", "src/shared/tmpfile-util.h"]
+rust_file = "src/shared/rust/tmpfile_util_label.rs"
+header_file = "src/shared/tmpfile-util.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored SELinux-aware temporary-file creation to current shared tmpfile-util source/header; behavioral completion remains unclaimed."
+
+[tomoyo_util]
+c_file = "src/shared/tomoyo-util.c"
+rust_file = "src/shared/rust/tomoyo_util.rs"
+header_file = "src/shared/tomoyo-util.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+
+[varlink_journal]
+c_paths = ["src/shared/varlink-io.systemd.Journal.c", "src/shared/varlink-io.systemd.Journal.h"]
+rust_file = "src/shared/rust/varlink_journal.rs"
+header_file = "src/shared/varlink-io.systemd.Journal.h"
+status = "in-progress"
+tier = 3
+symbols = 4
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored Journal Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
+
+[varlink_journal_access]
+c_paths = ["src/shared/varlink-io.systemd.JournalAccess.c", "src/shared/varlink-io.systemd.JournalAccess.h"]
+rust_file = "src/shared/rust/varlink_journal_access.rs"
+header_file = "src/shared/varlink-io.systemd.JournalAccess.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored JournalAccess Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
+
+[varlink_managed_oom]
+c_paths = ["src/shared/varlink-io.systemd.ManagedOOM.c", "src/shared/varlink-io.systemd.ManagedOOM.h"]
+rust_file = "src/shared/rust/varlink_managed_oom.rs"
+header_file = "src/shared/varlink-io.systemd.ManagedOOM.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored ManagedOOM Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
+
+[varlink_mute_console]
+c_paths = ["src/shared/varlink-io.systemd.MuteConsole.c", "src/shared/varlink-io.systemd.MuteConsole.h"]
+rust_file = "src/shared/rust/varlink_mute_console.rs"
+header_file = "src/shared/varlink-io.systemd.MuteConsole.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored MuteConsole Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
+
+[varlink_oom]
+c_paths = ["src/shared/varlink-io.systemd.oom.c", "src/shared/varlink-io.systemd.oom.h"]
+rust_file = "src/shared/rust/varlink_oom.rs"
+header_file = "src/shared/varlink-io.systemd.oom.h"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored oom Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
+
+[varlink_oom_prekill]
+c_paths = ["src/shared/varlink-io.systemd.oom.Prekill.c", "src/shared/varlink-io.systemd.oom.Prekill.h"]
+rust_file = "src/shared/rust/varlink_oom_prekill.rs"
+header_file = "src/shared/varlink-io.systemd.oom.Prekill.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored oom.Prekill Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
+
+[varlink_pcr_lock]
+c_paths = ["src/shared/varlink-io.systemd.PCRLock.c", "src/shared/varlink-io.systemd.PCRLock.h"]
+rust_file = "src/shared/rust/varlink_pcr_lock.rs"
+header_file = "src/shared/varlink-io.systemd.PCRLock.h"
+status = "in-progress"
+tier = 3
+symbols = 2
+sync_status = "needs_review"
+notes = "2026-07-27 provenance audit re-anchored PCRLock Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
+
+[journalctl]
+c_file = "src/journal/journalctl.c"
+rust_file = "src/journal/rust/journalctl.rs"
+status = "in-progress"
+tier = 3
+symbols = 1
+sync_status = "needs_review"
+notes = "Rust path currently uses journalctl_main.rs compatibility shim to exec journalctl-c backend; native Rust CLI action dispatch not ported yet."
+
+[journalctl_authenticate]
+c_file = "src/journal/journalctl-authenticate.c"
+rust_file = "src/journal/rust/journalctl_authenticate.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Port-sync wrapper only; C still provides key setup and verify side actions."
+
+[journalctl_catalog]
+c_file = "src/journal/journalctl-catalog.c"
+rust_file = "src/journal/rust/journalctl_catalog.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Port-sync wrapper only; catalog operations still handled in C."
+
+[journalctl_filter]
+c_file = "src/journal/journalctl-filter.c"
+rust_file = "src/journal/rust/journalctl_filter.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Port-sync wrapper only; unit/priority/boot filtering logic still in C backend."
+
+[journalctl_misc]
+c_file = "src/journal/journalctl-misc.c"
+rust_file = "src/journal/rust/journalctl_misc.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Port-sync wrapper only; verify/list/info helper actions still in C."
+
+[journalctl_show]
+c_file = "src/journal/journalctl-show.c"
+rust_file = "src/journal/rust/journalctl_show.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Port-sync wrapper only; output rendering modes and follow/cursor display path still in C."
+
+[journalctl_util]
+c_file = "src/journal/journalctl-util.c"
+rust_file = "src/journal/rust/journalctl_util.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Port-sync wrapper only; utility helpers still in C."
+
+[journalctl_varlink]
+c_file = "src/journal/journalctl-varlink.c"
+rust_file = "src/journal/rust/journalctl_varlink.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Port-sync wrapper only; rotate/vacuum varlink control path still in C."
+
+[journalctl_varlink_server]
+c_file = "src/journal/journalctl-varlink-server.c"
+rust_file = "src/journal/rust/journalctl_varlink_server.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Port-sync wrapper only; varlink server methods still in C."
+
+[libsystemd_network_dhcp_option]
+c_file = "src/libsystemd-network/dhcp-message.c, src/libsystemd-network/dhcp-protocol.c"
+rust_file = "src/libsystemd-network/rust/dhcp_option.rs"
+header_file = "src/libsystemd-network/dhcp-message.h, src/libsystemd-network/dhcp-protocol.h"
+status = "in-progress"
+tier = 2
+symbols = 0
+sync_status = "needs_review"
+notes = "Behavioral DHCPv4 option parse/append slice only. The former dhcp-option.c source-text adapter was removed after its source split; remaining message construction, route/client-ID helpers, and full public API parity are still todo."
+
+[libsystemd_sd_resolve]
+c_file = "src/libsystemd/sd-resolve/sd-resolve.c"
+rust_file = "src/libsystemd/rust/sd_resolve.rs"
+header_file = "src/systemd/sd-resolve.h"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Uses real libc resolver workers and pollable completion signalling. The public C ABI, sd-event attachment, callback/ref/floating-query semantics, fork detection, worker recovery, and executable parity tests remain incomplete."
+
+[resolved_daemon_startup]
+c_file = "src/resolve/resolved.c"
+rust_file = "src/resolve/rust/resolved.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Real passwd lookup, runtime-directory ownership, and Linux UID/GID/capability transition slice only. The incomplete systemd-resolved Rust executable target was removed: the manager is still a lifecycle skeleton and does not implement the resolved DNS, cache, protocol, bus, varlink, or sd-event behavior."
+
+[systemctl_partial_client]
+c_file = "src/systemctl/systemctl.c, src/systemctl/systemctl-list-units.c, src/systemctl/systemctl-start-unit.c, src/systemctl/systemctl-is-active.c, src/systemctl/systemctl-daemon-reload.c"
+rust_file = "src/systemctl/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed system-D-Bus client for list-units, start, stop, restart, is-active, and daemon-reload only. Unsupported verbs explicitly fail; option parsing, canonical exit codes, job waiting, output modes, scopes/transports, and full command parity remain todo."
+
+[homed_daemon_startup]
+c_file = "src/home/homed.c"
+rust_file = "src/home/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed executable boundary only. Help and version work, but operational startup refuses before side effects because the Rust port lacks the canonical manager, D-Bus, Varlink, home discovery/activation, and worker lifecycle."
+
+[core_dbus_manager]
+c_file = "src/core/dbus-manager.c"
+rust_file = "src/core/rust/dbus_manager.rs"
+status = "in-progress"
+tier = 2
+symbols = 0
+sync_status = "needs_review"
+notes = "Typed transport-neutral request/reply, model, authorization, and dispatch slice only. Pseudo-FFI pointer adapters and false-success method inventory were removed; production callers must supply peer identity and use the authorized boundary. The sd-bus vtable/transport, 59 manager methods, async polkit continuation, sender-specific subscriptions, signals/properties, canonical lookups/errors, and PID1 wiring remain todo."
+
+[importd_daemon_startup]
+c_file = "src/import/importd.c"
+rust_file = "src/import/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed executable boundary only. Help and version work, but operational startup refuses before binding sockets or announcing readiness because the Rust port lacks the canonical D-Bus/Varlink transfer manager lifecycle."
+
+[logind_daemon_startup]
+c_file = "src/login/logind.c"
+rust_file = "src/login/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed executable boundary only. Help and version work, but operational startup refuses before side effects because the Rust port lacks the canonical manager, D-Bus, Varlink, udev, session, device, inhibitor, and event lifecycles."
+
+[machined_daemon_startup]
+c_file = "src/machine/machined.c"
+rust_file = "src/machine/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed executable boundary only. Help and version work, but operational startup refuses before binding sockets or announcing readiness because the Rust port lacks the machine manager, machine1 D-Bus API, Varlink API, and event lifecycle."
+
+[mount_tool_runtime]
+c_file = "src/mount/mount-tool.c"
+rust_file = "src/mount/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed executable boundary only. Help and version work, but operational requests refuse before path, /proc, mount, or D-Bus side effects because canonical option parsing, transient units/jobs, transports, discovery, listing, and unmount policy are not implemented."
+
+[mstack_tool_runtime]
+c_file = "src/mstack/mstack-tool.c"
+rust_file = "src/mstack/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed executable boundary only. Help and version work, but inspect/mount/unmount requests refuse before filesystem or mount side effects because option handling, image dissection, mount namespaces, and the canonical cleanup lifecycle are not implemented."
+
+[networkd_daemon_startup]
+c_file = "src/network/networkd.c"
+rust_file = "src/network/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed executable boundary only. Help and version work, but operational startup refuses before sysfs or runtime-directory side effects because the Rust port lacks the canonical manager, configuration, link, service, D-Bus, and sd-event lifecycle."
+
+[random_seed_runtime]
+c_file = "src/random-seed/random-seed-tool.c"
+rust_file = "src/random-seed/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Hardened partial Linux runtime: the RNDADDENTROPY request has one documented, bounds-checked unsafe ioctl boundary over an owned descriptor and real payload; I/O failures propagate; unsupported platforms fail. Full parity still needs xattr/first-boot credit policy, machine-ID mixing, pool sizing, nonblocking fallback, anti-regression hashing, ownership/durability policy, and exact CLI behavior. Meson keeps the C implementation selected."
+
+[update_utmp_runtime]
+c_file = "src/update-utmp/update-utmp.c"
+rust_file = "src/update-utmp/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed executable boundary only. Help and version work, but record updates refuse before utmp/wtmp side effects because audit events, system-manager timestamps, clock conversion, and canonical utmp_put_* semantics are not implemented."
+
+[volatile_root_runtime]
+c_file = "src/volatile-root/volatile-root.c"
+rust_file = "src/volatile-root/rust/main.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Fail-closed executable boundary only. Help and version work, but operational requests refuse before mount or filesystem side effects because kernel-command-line resolution, sysroot/backing-device validation, the staged mount transition, and cleanup ordering are not implemented."
+
+[journal_field_validation]
+c_file = "src/libsystemd/sd-journal/journal-file.c"
+rust_file = "src/shared/rust/journal_field.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "Canonical pure journal_field_valid helper shared by journald ingress and the journal importer. The duplicate permissive validator and unconsumed simulated logs-show renderer were removed; a C-vs-Rust shadow test is still todo before claiming completion."
+
+[core_unit_runtime]
+c_file = "src/core/unit.c"
+rust_file = "src/core/rust/unit.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Architecture-audited Rust unit model with cohesive state, relationship, lifecycle, runtime, dependency, integration, and orchestration modules. Public inventory is preserved and two proven ordering/environment bugs were corrected, but the model still omits canonical vtable/job/manager/cgroup/D-Bus/filesystem lifecycles, full dependency atoms and errno behavior; see unit/ARCHITECTURE.md."
+
+[shared_dns_resource_record]
+c_file = "src/shared/dns-rr.c"
+rust_file = "src/shared/rust/dns_rr.rs"
+status = "in-progress"
+tier = 2
+symbols = 0
+sync_status = "needs_review"
+notes = "Cohesive safe Rust DNS record model, key, wire, record, and formatting layers. DNAME redirect construction now preserves the original key class/type like C. Remaining gaps include packet-integrated compression, C ref/static-key ownership semantics, JSON conversion, and direct resolved packet integration."
+
+[libsystemd_journal_file]
+c_file = "src/libsystemd/sd-journal/journal-file.c, src/libsystemd/sd-journal/journal-verify.c"
+rust_file = "src/libsystemd/rust/sd_journal_file.rs"
+status = "in-progress"
+tier = 3
+symbols = 0
+sync_status = "needs_review"
+notes = "Acyclic wire/validation/index/records/graph implementation with checked disk parsing, canonical layout constants, secure file opens, machine ownership checks, and fail-closed sealed writes. Remaining gaps include compression, full backlink/hash graph proof, FSPRG/HMAC authentication, crash-ordering/mmap lifecycle, old-header recovery, and canonical traversal."
+
+[tpm2_util]
+c_file = "src/shared/tpm2-util.c"
+rust_file = "src/shared/rust/tpm2_util.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+notes = "The shared Rust crate is IDE-only and not an authoritative Meson build input. The former three-symbol rust/tpm2_util.h ABI and its unregistered C test were removed fail-closed: the C helpers are HAVE_TPM2-conditional but the IDE crate receives no matching Meson configuration, so exporting its unconditional lookup core from the basic static library would be false parity. check-tpm2-util-abi.py enforces no stale header, export, baseline entry, or test registration. The IDE core's TPM2 OFB/ECB constants were corrected to 0x0041/0x0044. Tracked follow-up: systemd-2bjs."

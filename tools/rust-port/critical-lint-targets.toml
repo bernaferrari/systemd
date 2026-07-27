@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+[[target]]
+name = "core"
+manifest = "src/core/rust/Cargo.toml"
+source_dir = "src/core/rust"
+cargo_args = ["--lib"]
+
+[[target]]
+name = "platform"
+manifest = "src/platform/rust/Cargo.toml"
+source_dir = "src/platform/rust"
+cargo_args = ["--lib"]
+
+[[target]]
+name = "dbus"
+manifest = "src/dbus/rust/Cargo.toml"
+source_dir = "src/dbus/rust"
+cargo_args = ["--lib"]
+
+[[target]]
+name = "journal"
+manifest = "src/journal/rust/Cargo.toml"
+source_dir = "src/journal/rust"
+cargo_args = ["--lib"]
+
+[[target]]
+name = "network"
+manifest = "src/network/rust/Cargo.toml"
+source_dir = "src/network/rust"
+cargo_args = ["--lib"]

@@ -1,0 +1,128 @@
+schema = 1
+module = "devnum-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["device_path_make_canonical"]
+
+[authority]
+c_headers = ["src/basic/devnum-util.h"]
+c_sources = ["src/basic/devnum-util.c"]
+rust_headers = ["src/basic/rust/devnum_util.h"]
+rust_sources = ["src/basic/rust/devnum_util.rs"]
+
+[[surface]]
+id = "parse-devnum"
+c_symbols = ["parse_devnum"]
+rust_symbols = ["rs_parse_devnum"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-devnum-util-rust.c"
+meson_target = "test-devnum-util-rust"
+labels = ["parse-devnum"]
+
+[[surface]]
+id = "format-devnum"
+c_symbols = ["format_devnum"]
+rust_symbols = ["rs_format_devnum"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "buf"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-devnum-util-rust.c"
+meson_target = "test-devnum-util-rust"
+labels = ["format-devnum"]
+
+[[surface]]
+id = "devnum-inline-predicates"
+c_symbols = ["devnum_is_zero", "devnum_set_and_equal"]
+rust_symbols = ["rs_devnum_is_zero", "rs_devnum_set_and_equal"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-devnum-util-rust.c"
+meson_target = "test-devnum-util-rust"
+labels = ["devnum-inline-predicates"]
+
+[[surface]]
+id = "device-path-parse"
+c_symbols = ["device_path_parse_major_minor"]
+rust_symbols = ["rs_device_path_parse_major_minor"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret_mode"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+arg = "ret_devnum"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-devnum-util-rust.c"
+meson_target = "test-devnum-util-rust"
+labels = ["device-path-parse"]
+
+[[surface]]
+id = "device-path-allocation"
+c_symbols = ["device_path_make_major_minor", "device_path_make_inaccessible"]
+rust_symbols = ["rs_device_path_make_major_minor", "rs_device_path_make_inaccessible"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-devnum-util-rust.c"
+meson_target = "test-devnum-util-rust"
+labels = ["device-path-allocation"]

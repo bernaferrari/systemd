@@ -1,0 +1,27 @@
+{
+  "core": {
+    "transmute": 0,
+    "unsafe": 4,
+    "warnings": 170
+  },
+  "dbus": {
+    "transmute": 0,
+    "unsafe": 0,
+    "warnings": 1
+  },
+  "journal": {
+    "transmute": 0,
+    "unsafe": 0,
+    "warnings": 0
+  },
+  "network": {
+    "transmute": 0,
+    "unsafe": 139,
+    "warnings": 278
+  },
+  "platform": {
+    "transmute": 0,
+    "unsafe": 5,
+    "warnings": 0
+  }
+}

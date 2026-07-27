@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Cargo.toml exists for IDE support (rust-analyzer) only.
+# Meson is the authoritative build system.
+
+[package]
+publish = false
+name = "systemd-core-rs"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+libc = { workspace = true }
+nix = { workspace = true }
+zbus = { workspace = true }
+systemd-shared-rs = { path = "../../shared/rust" }
+systemd-basic-rs = { path = "../../basic/rust" }
+systemd-platform-rs = { path = "../../platform/rust" }
+systemd-event-loop-rs = { path = "../../event-loop/rust" }
+systemd-libsystemd-rs = { path = "../../libsystemd/rust" }
+
+[lib]
+crate-type = ["lib"]
+name = "systemd_core_rs"
+path = "lib.rs"
+
+[[bin]]
+name = "systemd"
+path = "main.rs"

@@ -591,3 +591,10 @@ option('default-mountfsd-trusted-directories', type : 'boolean', value: false,
 
 option('default-oci-registry', type : 'string', value : 'docker.io',
        description : 'Default OCI registry name')
+
+option('rust', type : 'feature',
+       description : 'build Rust shadow modules in src/basic/rust/')
+option('rust-core-pid1', type : 'feature',
+       description : 'EXPERIMENTAL developer-only incomplete Rust PID1; forbidden in release mode and for production installation')
+option('rust-init-milestones', type : 'feature',
+       description : 'enable Rust init replacement milestone integration test gates')

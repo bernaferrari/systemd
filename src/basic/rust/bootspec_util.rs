@@ -1,0 +1,381 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+//
+// PORT-SYNC: src/shared/bootspec.c, src/shared/bootspec.h,
+//            src/fundamental/bootspec.c,
+//            src/fundamental/bootspec.h
+//
+// Boot specification utilities: filename try-count extraction and
+// os-release field selection for boot entry metadata.
+
+// ── Constants ─────────────────────────────────────────────────────────────
+
+/// Sentinel for "no tries parsed" (mirrors C's `UINT_MAX`).
+pub const TRIES_UNSET: u32 = u32::MAX;
+
+/// Maximum allowed try count (mirrors C's `INT_MAX` limit from `safe_atou_full`).
+pub const TRIES_MAX: u64 = i32::MAX as u64;
+
+// ── Error type ────────────────────────────────────────────────────────────
+
+/// Errors from boot filename parsing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BootFilenameError {
+    /// The try counter exceeds `INT_MAX`.
+    OutOfRange,
+    /// A required pointer argument was null (C FFI guard; unused in pure Rust).
+    InvalidArgument,
+    /// Memory allocation failure.
+    NoMemory,
+}
+
+impl std::fmt::Display for BootFilenameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BootFilenameError::OutOfRange => write!(f, "try counter out of range"),
+            BootFilenameError::InvalidArgument => write!(f, "invalid argument"),
+            BootFilenameError::NoMemory => write!(f, "memory allocation failure"),
+        }
+    }
+}
+
+impl std::error::Error for BootFilenameError {}
+
+// ── Result of boot_filename_extract_tries ─────────────────────────────────
+
+/// Parsed result from `boot_filename_extract_tries`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BootFilenameTries {
+    /// The filename with the `+N-M` try section stripped.
+    pub stripped: String,
+    /// Number of remaining boot attempts, or `TRIES_UNSET` if none parsed.
+    pub tries_left: u32,
+    /// Number of completed boot attempts, or `TRIES_UNSET` if none parsed.
+    pub tries_done: u32,
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────
+
+/// Parse an unsigned integer from the start of `s`.
+///
+/// Returns:
+/// - `Ok((parsed_value, digit_count))` if digits were found and in range
+/// - `Ok((TRIES_UNSET, 0))` if no leading digits
+/// - `Err(OutOfRange)` if the number exceeds `INT_MAX`
+///
+/// Mirrors C `parse_tries()` from bootspec.c:
+/// ```c
+/// n = strspn(*p, DIGITS);
+/// if (n == 0) { *ret = UINT_MAX; return 0; }
+/// d = strndup(*p, n);
+/// r = safe_atou_full(d, 10, &tries);
+/// if (r >= 0 && tries > INT_MAX) r = -ERANGE;
+/// ```
+fn parse_tries(s: &str) -> Result<(u32, usize), BootFilenameError> {
+    let n = s.chars().take_while(|c| c.is_ascii_digit()).count();
+    if n == 0 {
+        return Ok((TRIES_UNSET, 0));
+    }
+
+    let digit_str = &s[..n];
+    let tries: u64 = digit_str
+        .parse()
+        .map_err(|_| BootFilenameError::OutOfRange)?;
+
+    if tries > TRIES_MAX {
+        return Err(BootFilenameError::OutOfRange);
+    }
+
+    Ok((tries as u32, n))
+}
+
+// ── Public API ────────────────────────────────────────────────────────────
+
+/// Extract boot try counters from a filename.
+///
+/// For a filename like `"entry+3-2.conf"`, returns:
+/// - `stripped`: `"entry.conf"`
+/// - `tries_left`: `3`
+/// - `tries_done`: `2`
+///
+/// If the filename does not contain a `+N` or `+N-M` pattern before the
+/// suffix, returns the original filename unchanged with both try counts
+/// set to `TRIES_UNSET`.
+///
+/// Mirrors C `boot_filename_extract_tries()` from bootspec.c.
+pub fn boot_filename_extract_tries(fname: &str) -> Result<BootFilenameTries, BootFilenameError> {
+    // Find last '.' (suffix)
+    let suffix_idx = match fname.rfind('.') {
+        Some(i) => i,
+        None => return fallback(fname),
+    };
+
+    // Find last '+' before the suffix
+    let before_suffix = &fname[..suffix_idx];
+    let plus_idx = match before_suffix.rfind('+') {
+        Some(i) => i,
+        None => return fallback(fname),
+    };
+
+    let mut p = &fname[plus_idx + 1..];
+
+    let (tries_left, consumed) = parse_tries(p)?;
+    if consumed == 0 {
+        return fallback(fname);
+    }
+    p = &p[consumed..];
+
+    let mut tries_done = TRIES_UNSET;
+    if p.starts_with('-') {
+        p = &p[1..];
+        let (done, consumed2) = parse_tries(p)?;
+        if consumed2 == 0 {
+            return fallback(fname);
+        }
+        tries_done = done;
+        p = &p[consumed2..];
+    }
+
+    // p must now point exactly to the suffix
+    let expected_suffix_start = plus_idx + 1 + (fname[plus_idx + 1..].len() - p.len());
+    if expected_suffix_start != suffix_idx {
+        return fallback(fname);
+    }
+
+    // Build stripped: fname[0..plus_idx] + fname[suffix_idx..]
+    let stripped = format!("{}{}", &fname[..plus_idx], &fname[suffix_idx..]);
+
+    Ok(BootFilenameTries {
+        stripped,
+        tries_left,
+        tries_done,
+    })
+}
+
+/// "nothing" fallback: return fname as-is with `TRIES_UNSET` for both counters.
+fn fallback(fname: &str) -> Result<BootFilenameTries, BootFilenameError> {
+    Ok(BootFilenameTries {
+        stripped: fname.to_string(),
+        tries_left: TRIES_UNSET,
+        tries_done: TRIES_UNSET,
+    })
+}
+
+// ── Boot entry name/version/sort-key selection ────────────────────────────
+
+/// Select the best human-readable title, version string, and sort key
+/// for a boot entry from os-release fields.
+///
+/// Priority (from C `bootspec_pick_name_version_sort_key()` in
+/// bootspec.c):
+/// - **name**: PRETTY_NAME > IMAGE_ID > NAME > ID
+/// - **version**: IMAGE_VERSION > VERSION > VERSION_ID > BUILD_ID
+/// - **sort_key**: IMAGE_ID > ID
+///
+/// Returns `Ok((name, version, sort_key))` if at least a name could be
+/// resolved; returns `Err(())` if all name fields are `None`.
+pub fn bootspec_pick_name_version_sort_key<'a>(
+    os_pretty_name: Option<&'a str>,
+    os_image_id: Option<&'a str>,
+    os_name: Option<&'a str>,
+    os_id: Option<&'a str>,
+    os_image_version: Option<&'a str>,
+    os_version: Option<&'a str>,
+    os_version_id: Option<&'a str>,
+    os_build_id: Option<&'a str>,
+) -> Result<(Option<&'a str>, Option<&'a str>, Option<&'a str>), ()> {
+    let good_name = os_pretty_name.or(os_image_id).or(os_name).or(os_id);
+
+    let good_version = os_image_version
+        .or(os_version)
+        .or(os_version_id)
+        .or(os_build_id);
+
+    let good_sort_key = os_image_id.or(os_id);
+
+    if good_name.is_none() {
+        return Err(());
+    }
+
+    Ok((good_name, good_version, good_sort_key))
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- parse_tries -----------------------------------------------------------
+
+    #[test]
+    fn test_parse_tries_valid() {
+        assert_eq!(parse_tries("123abc"), Ok((123, 3)));
+        assert_eq!(parse_tries("0abc"), Ok((0, 1)));
+        assert_eq!(parse_tries("42"), Ok((42, 2)));
+    }
+
+    #[test]
+    fn test_parse_tries_no_digits() {
+        assert_eq!(parse_tries("abc"), Ok((TRIES_UNSET, 0)));
+        assert_eq!(parse_tries(""), Ok((TRIES_UNSET, 0)));
+        assert_eq!(parse_tries("-1"), Ok((TRIES_UNSET, 0)));
+    }
+
+    #[test]
+    fn test_parse_tries_overflow() {
+        let big = format!("{}abc", u64::MAX);
+        assert!(parse_tries(&big).is_err());
+    }
+
+    #[test]
+    fn test_parse_tries_at_int_max() {
+        let s = format!("{}abc", i32::MAX);
+        assert_eq!(parse_tries(&s), Ok((i32::MAX as u32, s.len() - 3)));
+    }
+
+    #[test]
+    fn test_parse_tries_over_int_max() {
+        let val = (i32::MAX as u64) + 1;
+        let s = format!("{}abc", val);
+        assert!(parse_tries(&s).is_err());
+    }
+
+    // -- boot_filename_extract_tries -------------------------------------------
+
+    #[test]
+    fn test_extract_tries_basic() {
+        let r = boot_filename_extract_tries("entry+3-2.conf").unwrap();
+        assert_eq!(r.stripped, "entry.conf");
+        assert_eq!(r.tries_left, 3);
+        assert_eq!(r.tries_done, 2);
+    }
+
+    #[test]
+    fn test_extract_tries_left_only() {
+        let r = boot_filename_extract_tries("entry+5.conf").unwrap();
+        assert_eq!(r.stripped, "entry.conf");
+        assert_eq!(r.tries_left, 5);
+        assert_eq!(r.tries_done, TRIES_UNSET);
+    }
+
+    #[test]
+    fn test_extract_tries_no_plus() {
+        let r = boot_filename_extract_tries("entry.conf").unwrap();
+        assert_eq!(r.stripped, "entry.conf");
+        assert_eq!(r.tries_left, TRIES_UNSET);
+        assert_eq!(r.tries_done, TRIES_UNSET);
+    }
+
+    #[test]
+    fn test_extract_tries_no_suffix() {
+        let r = boot_filename_extract_tries("entry+3-2").unwrap();
+        assert_eq!(r.stripped, "entry+3-2");
+        assert_eq!(r.tries_left, TRIES_UNSET);
+        assert_eq!(r.tries_done, TRIES_UNSET);
+    }
+
+    #[test]
+    fn test_extract_tries_zero_tries() {
+        let r = boot_filename_extract_tries("entry+0-0.conf").unwrap();
+        assert_eq!(r.stripped, "entry.conf");
+        assert_eq!(r.tries_left, 0);
+        assert_eq!(r.tries_done, 0);
+    }
+
+    #[test]
+    fn test_extract_tries_large_number() {
+        let fname = format!("entry+{}.conf", i32::MAX);
+        let r = boot_filename_extract_tries(&fname).unwrap();
+        assert_eq!(r.stripped, "entry.conf");
+        assert_eq!(r.tries_left, i32::MAX as u32);
+    }
+
+    #[test]
+    fn test_extract_tries_efi_suffix() {
+        let r = boot_filename_extract_tries("linux+1-0.efi").unwrap();
+        assert_eq!(r.stripped, "linux.efi");
+        assert_eq!(r.tries_left, 1);
+        assert_eq!(r.tries_done, 0);
+    }
+
+    // -- bootspec_pick_name_version_sort_key -----------------------------------
+
+    #[test]
+    fn test_pick_all_fields_set() {
+        let (name, version, sort_key) = bootspec_pick_name_version_sort_key(
+            Some("Pretty Name"),
+            Some("image-id"),
+            Some("OS Name"),
+            Some("os-id"),
+            Some("1.0"),
+            Some("2.0"),
+            Some("2.0-id"),
+            Some("build-123"),
+        )
+        .unwrap();
+        assert_eq!(name, Some("Pretty Name"));
+        assert_eq!(version, Some("1.0"));
+        assert_eq!(sort_key, Some("image-id"));
+    }
+
+    #[test]
+    fn test_pick_fallback_name_to_image_id() {
+        let (name, version, sort_key) = bootspec_pick_name_version_sort_key(
+            None,
+            Some("image-id"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(name, Some("image-id"));
+        assert!(version.is_none());
+        assert_eq!(sort_key, Some("image-id"));
+    }
+
+    #[test]
+    fn test_pick_fallback_chain() {
+        let (name, version, sort_key) = bootspec_pick_name_version_sort_key(
+            None,
+            None,
+            Some("OS Name"),
+            Some("os-id"),
+            None,
+            Some("2.0"),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(name, Some("OS Name"));
+        assert_eq!(version, Some("2.0"));
+        assert_eq!(sort_key, Some("os-id"));
+    }
+
+    #[test]
+    fn test_pick_all_null() {
+        assert!(bootspec_pick_name_version_sort_key(
+            None, None, None, None, None, None, None, None
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_pick_version_fallback_to_build_id() {
+        let (name, version, _) = bootspec_pick_name_version_sort_key(
+            Some("Test"),
+            None,
+            None,
+            Some("test-id"),
+            None,
+            None,
+            None,
+            Some("build-456"),
+        )
+        .unwrap();
+        assert_eq!(name, Some("Test"));
+        assert_eq!(version, Some("build-456"));
+    }
+}

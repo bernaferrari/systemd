@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Production Rust files should stay below 2,000 lines. These entries acknowledge
+# pre-existing architecture debt without allowing it to grow silently. Remove an
+# entry as soon as the file is decomposed below the policy threshold.
+
+[policy]
+max_lines = 2000
+
+[files."src/basic/rust/strv.rs"]
+max_lines = 2401
+issue = "systemd-cpuw"
+reason = "Move the remaining vector mutation, splitting, and C ownership facades behind cohesive safe-core submodules."
+
+[files."src/basic/rust/parse_util.rs"]
+max_lines = 2031
+issue = "systemd-cpuw"
+reason = "Separate numeric-width parsing, size/range parsing, and registered C ABI facades without duplicating errno policy."
+
+[files."src/basic/rust/dns_label.rs"]
+max_lines = 2337
+issue = "systemd-cpuw"
+reason = "Partition DNS label codecs, escaping, and wire-format validation around one byte-oriented core."
+
+[files."src/basic/rust/path_util.rs"]
+max_lines = 2048
+issue = "systemd-cpuw"
+reason = "Complete the ongoing extraction of byte-path algorithms and isolate filesystem-touching operations from pure normalization."
+
+[files."src/basic/rust/in_addr_util.rs"]
+max_lines = 2111
+issue = "systemd-cpuw"
+reason = "Split address parsing, prefix arithmetic, formatting, and C ABI adaptation while retaining one representation policy."
+
+[files."src/basic/rust/unit_name.rs"]
+max_lines = 2200
+issue = "systemd-cpuw"
+reason = "Separate unit-name grammar, escaping, template manipulation, and C allocation facades into bounded modules."

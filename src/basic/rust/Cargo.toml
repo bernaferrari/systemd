@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Meson is the authoritative build/install orchestrator. It invokes Cargo for
+# dependency resolution and Rust compilation when -Drust=enabled.
+# No build.rs — all configuration comes from Meson.
+#
+# The optional libseccomp architecture cfgs are derived by Meson from the
+# selected <seccomp.h>, not from Rust's target_arch:
+#   --cfg=systemd_seccomp_arch_loongarch64
+#   --cfg=systemd_seccomp_arch_riscv64
+# Standalone Cargo users must first probe their selected libseccomp header and
+# pass only the cfgs for macros it defines. Leaving both unset is the safe
+# compatibility mode for older headers.
+#
+# NOTE: `cargo test` will fail with linker errors because the Rust code
+# calls back into C functions (e.g., sha256_process_bytes, unhexchar).
+# Tests must be run via `meson test -C build` which links the C library.
+
+[package]
+publish = false
+name = "systemd-basic-rs"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+bitflags = { workspace = true }
+libc = { workspace = true }
+systemd-fundamental-rs = { path = "../../fundamental/rust" }
+
+[lib]
+crate-type = ["lib", "staticlib"]
+name = "systemd_basic_rs"
+path = "lib.rs"

@@ -1,0 +1,246 @@
+schema = 1
+module = "ether-addr-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "parse_hw_addr",
+    "hw_addr_to_string",
+    "hw_addr_hash_func",
+    "hw_addr_equal",
+    "hw_addr_is_valid",
+    "hw_addr_ensure_broadcast",
+]
+
+[authority]
+c_headers = ["src/basic/ether-addr-util.h"]
+c_sources = ["src/basic/ether-addr-util.c"]
+rust_headers = ["src/basic/rust/ether_addr_util.h"]
+rust_sources = ["src/basic/rust/ether_addr_util.rs"]
+
+[[surface]]
+id = "hw-addr-format"
+c_symbols = ["hw_addr_to_string_full"]
+rust_symbols = ["rs_hw_addr_to_string_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "buffer"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["hw-addr-format"]
+
+[[surface]]
+id = "ether-addr-format"
+c_symbols = ["ether_addr_to_string"]
+rust_symbols = ["rs_ether_addr_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "buffer"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["ether-addr-format"]
+
+[[surface]]
+id = "hw-addr-compare"
+c_symbols = ["hw_addr_compare"]
+rust_symbols = ["rs_hw_addr_compare"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["hw-addr-compare"]
+
+[[surface]]
+id = "ether-addr-compare"
+c_symbols = ["ether_addr_compare"]
+rust_symbols = ["rs_ether_addr_compare"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["ether-addr-compare"]
+
+[[surface]]
+id = "hw-addr-null"
+c_symbols = ["hw_addr_is_null"]
+rust_symbols = ["rs_hw_addr_is_null"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["hw-addr-null"]
+
+[[surface]]
+id = "ether-addr-broadcast"
+c_symbols = ["ether_addr_is_broadcast"]
+rust_symbols = ["rs_ether_addr_is_broadcast"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["ether-addr-broadcast"]
+
+[[surface]]
+id = "ether-addr-randomize"
+c_symbols = ["ether_addr_mark_random"]
+rust_symbols = ["rs_ether_addr_mark_random"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "addr"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["ether-addr-randomize"]
+
+[[surface]]
+id = "hw-addr-set"
+c_symbols = ["hw_addr_set"]
+rust_symbols = ["rs_hw_addr_set"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "addr"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["hw-addr-set"]
+
+[[surface]]
+id = "address-parsers"
+c_symbols = ["parse_hw_addr_full", "parse_ether_addr"]
+rust_symbols = ["rs_parse_hw_addr_full", "rs_parse_ether_addr"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["address-parsers"]
+
+[[surface]]
+id = "ether-addr-equality-and-null"
+c_symbols = ["ether_addr_equal", "ether_addr_is_null"]
+rust_symbols = ["rs_ether_addr_equal", "rs_ether_addr_is_null"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["ether-addr-equality-and-null"]
+
+[[surface]]
+id = "ether-addr-multicast"
+c_symbols = ["ether_addr_is_multicast", "ether_addr_is_unicast"]
+rust_symbols = ["rs_ether_addr_is_multicast", "rs_ether_addr_is_unicast"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["ether-addr-multicast"]
+
+[[surface]]
+id = "ether-addr-locality"
+c_symbols = ["ether_addr_is_local", "ether_addr_is_global"]
+rust_symbols = ["rs_ether_addr_is_local", "rs_ether_addr_is_global"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ether-addr-util-rust.c"
+meson_target = "test-ether-addr-util-rust"
+labels = ["ether-addr-locality"]

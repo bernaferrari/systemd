@@ -1,0 +1,13 @@
+[package]
+name = "systemd-systemctl-rust-port"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+systemd-dbus-rs = { path = "../../dbus/rust" }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[[bin]]
+name = "systemctl"
+path = "main.rs"

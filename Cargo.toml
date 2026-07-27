@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Top-level Cargo workspace for the systemd Rust port.
+# This workspace wires all 85 crates through the checked dependency layers in
+# tools/rust-port/workspace-layers.toml:
+#   substrate → foundation → library → shared → application
+# See docs/rust-port-workspace.md before adding a crate or dependency edge.
+
+[workspace]
+resolver = "2"
+members = [
+    "src/dbus/rust",
+    "src/event-loop/rust",
+    "src/platform/rust",
+    "src/ac-power/rust",
+    "src/analyze/rust",
+    "src/ask-password/rust",
+    "src/backlight/rust",
+    "src/basic/rust",
+    "src/battery-check/rust",
+    "src/binfmt/rust",
+    "src/boot/rust",
+    "src/cgls/rust",
+    "src/cgtop/rust",
+    "src/core/rust",
+    "src/creds/rust",
+    "src/debug-generator/rust",
+    "src/delta/rust",
+    "src/detect-virt/rust",
+    "src/dissect/rust",
+    "src/environment-d-generator/rust",
+    "src/escape/rust",
+    "src/firstboot/rust",
+    "src/fsck/rust",
+    "src/fstab-generator/rust",
+    "src/fundamental/rust",
+    "src/getty-generator/rust",
+    "src/gpt-auto-generator/rust",
+    "src/home/rust",
+    "src/hwdb/rust",
+    "src/id128/rust",
+    "src/import/rust",
+    "src/journal/rust",
+    "src/kernel-install/rust",
+    "src/keyutil/rust",
+    "src/libsystemd-network/rust",
+    "src/libsystemd/rust",
+    "src/login/rust",
+    "src/machine-id-setup/rust",
+    "src/machine/rust",
+    "src/measure/rust",
+    "src/modules-load/rust",
+    "src/mount/rust",
+    "src/mstack/rust",
+    "src/mute-console/rust",
+    "src/network/rust",
+    "src/notify/rust",
+    "src/nspawn/rust",
+    "src/nss-myhostname/rust",
+    "src/nss-mymachines/rust",
+    "src/nss-resolve/rust",
+    "src/path/rust",
+    "src/pcrextend/rust",
+    "src/pstore/rust",
+    "src/ptyfwd/rust",
+    "src/quotacheck/rust",
+    "src/random-seed/rust",
+    "src/remount-fs/rust",
+    "src/repart/rust",
+    "src/reply-password/rust",
+    "src/report/rust",
+    "src/resolve/rust",
+    "src/rfkill/rust",
+    "src/run-generator/rust",
+    "src/run/rust",
+    "src/shared/rust",
+    "src/socket-activate/rust",
+    "src/socket-proxy/rust",
+    "src/stdio-bridge/rust",
+    "src/storagetm/rust",
+    "src/sulogin-shell/rust",
+    "src/sysctl/rust",
+    "src/sysext/rust",
+    "src/system-update-generator/rust",
+    "src/systemctl/rust",
+    "src/sysusers/rust",
+    "src/tty-ask-password-agent/rust",
+    "src/udev/rust",
+    "src/update-done/rust",
+    "src/update-utmp/rust",
+    "src/user-sessions/rust",
+    "src/validatefs/rust",
+    "src/varlinkctl/rust",
+    "src/vconsole/rust",
+    "src/volatile-root/rust",
+    "src/vpick/rust",
+]
+
+# Shared profile settings — hoisted from individual crates
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+
+# Shared workspace dependencies
+[workspace.dependencies]
+libc = "0.2"
+bitflags = "2.4"
+nix = { version = "0.29", features = ["event", "fs", "mount", "process", "signal", "socket", "uio", "poll", "net", "ioctl", "user", "time"] }
+zbus = { version = "4", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net", "signal", "io-util", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }

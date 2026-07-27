@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Stable ownership for historical C-vs-Rust comparison fixture names. The
+# fixtures remain in tests-extra because they exercise upstream-facing C ABI.
+
+schema = 1
+
+[policy]
+new_fixture_pattern = "test-<semantic-subject>-<behavior>-rust.c"
+forbid_new_numbered_extra = true
+
+[grandfathered_chronological]
+"test-alloc-util-extra2-rust.c" = "basic.alloc-util"
+"test-errno-util-extra3-rust.c" = "basic.errno-util"
+"test-escape-extra2-rust.c" = "basic.escape"
+"test-stat-util-extra2-rust.c" = "basic.stat-util"
+"test-string-util-extra2-rust.c" = "basic.string-util"
+"test-string-util-extra6-rust.c" = "basic.string-util"
+"test-string-util-extra7-rust.c" = "basic.string-util"
+"test-strv-extra2-rust.c" = "basic.strv"
+"test-strv-extra3-rust.c" = "basic.strv"
+"test-strv-extra4-rust.c" = "basic.strv"
+"test-strv-extra5-rust.c" = "basic.strv"
+"test-strv-extra6-rust.c" = "basic.strv"
+"test-strv-extra7-rust.c" = "basic.strv"
+"test-time-util-extra2-rust.c" = "basic.time-util"
+"test-misc-rust2.c" = "basic.misc"
+"test-misc-rust3.c" = "basic.misc"
+"test-socket-util-extra8.c" = "basic.socket-util"

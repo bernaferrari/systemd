@@ -1,0 +1,11 @@
+[package]
+publish = false
+name = "systemd-dbus-rs"
+version = "0.1.0"
+edition = "2021"
+license = "LGPL-2.1-or-later"
+[lib]
+path = "lib.rs"
+[dependencies]
+serde = { workspace = true }
+zbus = { workspace = true }

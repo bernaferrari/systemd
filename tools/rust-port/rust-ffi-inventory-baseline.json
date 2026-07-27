@@ -1,0 +1,639 @@
+{
+  "missing_by_header": {
+    "src/basic/rust/alloc_util.h": [
+      "rs_free_many",
+      "rs_memdup",
+      "rs_memdup_suffix0"
+    ],
+    "src/basic/rust/ansi_color.h": [
+      "rs_color_mode_from_string",
+      "rs_color_mode_to_string",
+      "rs_get_color_mode",
+      "rs_looks_like_ansi_color_code",
+      "rs_parse_systemd_colors",
+      "rs_underline_enabled"
+    ],
+    "src/basic/rust/argv_util.h": [
+      "rs_argv_looks_like_help",
+      "rs_invoked_as"
+    ],
+    "src/basic/rust/arphrd_util.h": [
+      "rs_arphrd_from_name",
+      "rs_arphrd_to_hw_addr_len",
+      "rs_arphrd_to_name"
+    ],
+    "src/basic/rust/bitmap.h": [
+      "rs_bitmap_clear",
+      "rs_bitmap_copy",
+      "rs_bitmap_ensure_allocated",
+      "rs_bitmap_equal",
+      "rs_bitmap_free",
+      "rs_bitmap_isclear",
+      "rs_bitmap_isset",
+      "rs_bitmap_iterate",
+      "rs_bitmap_new",
+      "rs_bitmap_set",
+      "rs_bitmap_unset"
+    ],
+    "src/basic/rust/bootspec_util.h": [
+      "rs_boot_filename_extract_tries",
+      "rs_bootspec_pick_name_version_sort_key"
+    ],
+    "src/basic/rust/btrfs_util.h": [
+      "rs_btrfs_validate_subvolume_name"
+    ],
+    "src/basic/rust/bus_error_util.h": [
+      "rs_bus_error_is_dirty",
+      "rs_sd_bus_error_has_name",
+      "rs_sd_bus_error_is_set"
+    ],
+    "src/basic/rust/bus_label.h": [
+      "rs_bus_label_escape",
+      "rs_bus_label_unescape_n"
+    ],
+    "src/basic/rust/capability_list.h": [
+      "rs_capability_from_name",
+      "rs_capability_list_length",
+      "rs_capability_to_name",
+      "rs_capability_to_string"
+    ],
+    "src/basic/rust/compare_operator.h": [
+      "rs_COMPARE_OPERATOR_IS_FNMATCH",
+      "rs_COMPARE_OPERATOR_IS_ORDER",
+      "rs_COMPARE_OPERATOR_IS_STRING",
+      "rs_version_or_fnmatch_compare"
+    ],
+    "src/basic/rust/compress_util.h": [
+      "rs_compression_from_string",
+      "rs_compression_from_string_lowercase",
+      "rs_compression_supported",
+      "rs_compression_to_string",
+      "rs_compression_to_string_lowercase",
+      "rs_get_compression_supported_mask"
+    ],
+    "src/basic/rust/confidential_virt.h": [
+      "rs_confidential_virtualization_from_string",
+      "rs_confidential_virtualization_to_string"
+    ],
+    "src/basic/rust/credential_validators.h": [
+      "rs_credential_glob_valid",
+      "rs_credential_name_valid"
+    ],
+    "src/basic/rust/device_nodes.h": [
+      "rs_allow_listed_char_for_devnode",
+      "rs_encode_devnode_name"
+    ],
+    "src/basic/rust/dirent_util.h": [
+      "rs_dirent_is_file",
+      "rs_dirent_is_file_with_suffix"
+    ],
+    "src/basic/rust/edid.h": [
+      "rs_edid_get_panel_id",
+      "rs_edid_parse_blob"
+    ],
+    "src/basic/rust/efivars_util.h": [
+      "rs_decode_secure_boot_mode",
+      "rs_efi_guid_to_id128",
+      "rs_efi_id128_to_guid",
+      "rs_efi_tilt_backslashes",
+      "rs_secure_boot_mode_to_string"
+    ],
+    "src/basic/rust/env_util.h": [
+      "rs_env_assignment_is_valid",
+      "rs_env_name_is_valid",
+      "rs_env_value_is_valid",
+      "rs_strv_env_is_valid",
+      "rs_strv_env_name_is_valid",
+      "rs_strv_env_name_or_assignment_is_valid"
+    ],
+    "src/basic/rust/exec_util.h": [
+      "rs_exec_command_flags_from_string",
+      "rs_exec_command_flags_from_strv",
+      "rs_exec_command_flags_to_string",
+      "rs_exec_command_flags_to_strv",
+      "rs_indent_embedded_newlines"
+    ],
+    "src/basic/rust/exit_status.h": [
+      "rs_exit_status_class",
+      "rs_exit_status_from_string",
+      "rs_exit_status_set_free",
+      "rs_exit_status_set_is_empty",
+      "rs_exit_status_set_test",
+      "rs_exit_status_to_string",
+      "rs_is_clean_exit",
+      "rs_secure_bit_to_string"
+    ],
+    "src/basic/rust/extract_word.h": [
+      "rs_extract_first_word",
+      "rs_extract_first_word_and_warn"
+    ],
+    "src/basic/rust/format_util.h": [
+      "rs_format_bytes_full"
+    ],
+    "src/basic/rust/fstype_util.h": [
+      "rs_file_handle_equal",
+      "rs_fstype_can_uid_gid",
+      "rs_fstype_is_api_vfs",
+      "rs_fstype_is_blockdev_backed",
+      "rs_fstype_is_network",
+      "rs_fstype_is_ro",
+      "rs_fstype_needs_quota",
+      "rs_path_below_api_vfs"
+    ],
+    "src/basic/rust/glyph_util.h": [
+      "rs_glyph_full"
+    ],
+    "src/basic/rust/gunicode.h": [
+      "rs_unichar_iswide",
+      "rs_utf8_prev_char"
+    ],
+    "src/basic/rust/hexdecoct.h": [
+      "rs_base32hexchar",
+      "rs_base32hexmem",
+      "rs_base64_append",
+      "rs_base64char",
+      "rs_base64mem_full",
+      "rs_decchar",
+      "rs_hexchar",
+      "rs_hexmem",
+      "rs_octchar",
+      "rs_unbase32hexchar",
+      "rs_unbase32hexmem",
+      "rs_unbase64char",
+      "rs_unbase64mem_full",
+      "rs_undecchar",
+      "rs_unhexchar",
+      "rs_unhexmem_full",
+      "rs_unoctchar",
+      "rs_urlsafe_base64char"
+    ],
+    "src/basic/rust/hostname_setup.h": [
+      "rs_shorten_overlong"
+    ],
+    "src/basic/rust/hostname_util.h": [
+      "rs_hostname_cleanup",
+      "rs_hostname_is_valid",
+      "rs_is_dns_proxy_stub_hostname",
+      "rs_is_dns_stub_hostname",
+      "rs_is_gateway_hostname",
+      "rs_is_localhost",
+      "rs_is_outbound_hostname",
+      "rs_machine_spec_valid",
+      "rs_split_user_at_host",
+      "rs_valid_ldh_char"
+    ],
+    "src/basic/rust/id128_util.h": [
+      "rs_id128_compare_func",
+      "rs_id128_digest",
+      "rs_id128_from_string_nonzero",
+      "rs_id128_make_v4_uuid",
+      "rs_sd_id128_equal",
+      "rs_sd_id128_from_string",
+      "rs_sd_id128_is_null",
+      "rs_sd_id128_string_equal",
+      "rs_sd_id128_to_string",
+      "rs_sd_id128_to_uuid_string"
+    ],
+    "src/basic/rust/image_class.h": [
+      "rs_image_class_from_string",
+      "rs_image_class_to_string"
+    ],
+    "src/basic/rust/image_policy_util.h": [
+      "rs_image_policy_equal",
+      "rs_image_policy_equiv_allow",
+      "rs_image_policy_equiv_deny",
+      "rs_image_policy_equiv_ignore",
+      "rs_image_policy_equivalent",
+      "rs_image_policy_free",
+      "rs_image_policy_from_string",
+      "rs_image_policy_get",
+      "rs_image_policy_get_exhaustively",
+      "rs_image_policy_intersect",
+      "rs_image_policy_to_string",
+      "rs_image_policy_union",
+      "rs_partition_policy_determine_fstype",
+      "rs_partition_policy_flags_extend",
+      "rs_partition_policy_flags_from_string",
+      "rs_partition_policy_flags_reduce",
+      "rs_partition_policy_flags_to_string"
+    ],
+    "src/basic/rust/iovec_wrapper.h": [
+      "rs_iovw_done",
+      "rs_iovw_done_free",
+      "rs_iovw_free",
+      "rs_iovw_free_free",
+      "rs_iovw_isempty",
+      "rs_iovw_new",
+      "rs_iovw_put",
+      "rs_iovw_rebase",
+      "rs_iovw_size"
+    ],
+    "src/basic/rust/locale_util.h": [
+      "rs_locale_is_valid",
+      "rs_locale_variable_from_string",
+      "rs_locale_variable_to_string"
+    ],
+    "src/basic/rust/log_target.h": [
+      "rs_log_target_from_string",
+      "rs_log_target_to_string"
+    ],
+    "src/basic/rust/memory_util.h": [
+      "rs_memcmp_nn",
+      "rs_memcmp_safe",
+      "rs_memcpy_safe",
+      "rs_memdup_reverse",
+      "rs_memeqbyte",
+      "rs_memmem_safe",
+      "rs_mempcpy_safe",
+      "rs_mempmem_safe",
+      "rs_mempset",
+      "rs_page_size"
+    ],
+    "src/basic/rust/mempool.h": [
+      "rs_mempool_alloc0_tile",
+      "rs_mempool_alloc_tile",
+      "rs_mempool_free_tile",
+      "rs_mempool_init"
+    ],
+    "src/basic/rust/mount_setup.h": [
+      "rs_mount_point_ignore",
+      "rs_mount_point_is_api"
+    ],
+    "src/basic/rust/mountpoint_util.h": [
+      "rs_is_name_to_handle_at_fatal_error",
+      "rs_mount_propagation_flag_from_string",
+      "rs_mount_propagation_flag_to_string"
+    ],
+    "src/basic/rust/murmurhash2.h": [
+      "rs_MurmurHash2"
+    ],
+    "src/basic/rust/namespace_util.h": [
+      "rs_clone_flag_to_namespace_type",
+      "rs_userns_shift_range_valid"
+    ],
+    "src/basic/rust/nulstr_util.h": [
+      "rs_nulstr_get",
+      "rs_strv_parse_nulstr_full"
+    ],
+    "src/basic/rust/parse_util.h": [
+      "rs_parse_boolean",
+      "rs_parse_errno",
+      "rs_parse_fd",
+      "rs_parse_fractional_part_u",
+      "rs_parse_ifindex",
+      "rs_parse_ip_port",
+      "rs_parse_mode",
+      "rs_parse_nice",
+      "rs_parse_pid",
+      "rs_parse_range",
+      "rs_parse_size",
+      "rs_safe_atoi",
+      "rs_safe_atoi16",
+      "rs_safe_atoi64",
+      "rs_safe_atolli",
+      "rs_safe_atollu",
+      "rs_safe_atollu_full",
+      "rs_safe_atolu_full",
+      "rs_safe_atou",
+      "rs_safe_atou16_full",
+      "rs_safe_atou64",
+      "rs_safe_atou8_full",
+      "rs_safe_atou_bounded",
+      "rs_safe_atou_full",
+      "rs_safe_atoux64"
+    ],
+    "src/basic/rust/path_util.h": [
+      "rs_dot_or_dot_dot",
+      "rs_empty_or_root",
+      "rs_empty_to_root",
+      "rs_fdname_is_valid",
+      "rs_file_in_same_dir",
+      "rs_filename_is_valid",
+      "rs_filename_part_is_valid",
+      "rs_hidden_or_backup_file",
+      "rs_is_path",
+      "rs_path_implies_directory",
+      "rs_path_is_absolute",
+      "rs_path_is_normalized",
+      "rs_valid_device_allow_pattern",
+      "rs_valid_device_node_path"
+    ],
+    "src/basic/rust/pe_binary.h": [
+      "rs_pe_header_find_section",
+      "rs_pe_header_get_data_directory",
+      "rs_pe_header_is_64bit",
+      "rs_pe_is_addon",
+      "rs_pe_is_native",
+      "rs_pe_is_uki",
+      "rs_pe_section_table_find"
+    ],
+    "src/basic/rust/prioq.h": [
+      "rs_prioq_free",
+      "rs_prioq_isempty",
+      "rs_prioq_new",
+      "rs_prioq_peek_by_index",
+      "rs_prioq_pop",
+      "rs_prioq_put",
+      "rs_prioq_remove",
+      "rs_prioq_reshuffle",
+      "rs_prioq_size"
+    ],
+    "src/basic/rust/proc_cmdline.h": [
+      "rs_proc_cmdline_key_startswith",
+      "rs_proc_cmdline_key_streq"
+    ],
+    "src/basic/rust/process_util_str_tables.h": [
+      "rs_sched_policy_from_string",
+      "rs_sched_policy_to_string",
+      "rs_sigchld_code_from_string",
+      "rs_sigchld_code_to_string"
+    ],
+    "src/basic/rust/ratelimit.h": [
+      "rs_ratelimit_below",
+      "rs_ratelimit_configured",
+      "rs_ratelimit_end",
+      "rs_ratelimit_left",
+      "rs_ratelimit_num_dropped",
+      "rs_ratelimit_reset"
+    ],
+    "src/basic/rust/recovery_key.h": [
+      "rs_decode_modhex_char",
+      "rs_normalize_recovery_key"
+    ],
+    "src/basic/rust/replace_var.h": [
+      "rs_replace_var"
+    ],
+    "src/basic/rust/resize_fs_util.h": [
+      "rs_fs_can_online_shrink_and_grow",
+      "rs_minimal_size_by_fs_magic",
+      "rs_minimal_size_by_fs_name"
+    ],
+    "src/basic/rust/runtime_scope.h": [
+      "rs_runtime_scope_cmdline_option_to_string",
+      "rs_runtime_scope_from_string",
+      "rs_runtime_scope_to_socket_mode",
+      "rs_runtime_scope_to_string"
+    ],
+    "src/basic/rust/serialize.h": [
+      "rs_deserialize_dual_timestamp",
+      "rs_deserialize_usec"
+    ],
+    "src/basic/rust/sha1.h": [
+      "rs_sha1_finish_ctx",
+      "rs_sha1_init_ctx",
+      "rs_sha1_process_bytes"
+    ],
+    "src/basic/rust/sha256_hmac.h": [
+      "rs_hmac_sha256",
+      "rs_parse_sha256",
+      "rs_sha256_is_valid"
+    ],
+    "src/basic/rust/signal_util.h": [
+      "rs_get_nsig",
+      "rs_get_sigrtmax",
+      "rs_get_sigrtmin",
+      "rs_parse_signo",
+      "rs_si_code_from_process",
+      "rs_signal_from_string",
+      "rs_signal_to_string"
+    ],
+    "src/basic/rust/siphash24.h": [
+      "rs_siphash24",
+      "rs_siphash24_compress",
+      "rs_siphash24_compress_string",
+      "rs_siphash24_finalize",
+      "rs_siphash24_init",
+      "rs_siphash24_string"
+    ],
+    "src/basic/rust/socket_util.h": [
+      "rs_ifname_valid",
+      "rs_ifname_valid_char",
+      "rs_ifname_valid_full",
+      "rs_sockaddr_equal",
+      "rs_sockaddr_in_addr",
+      "rs_sockaddr_len",
+      "rs_sockaddr_ll_len",
+      "rs_sockaddr_port",
+      "rs_sockaddr_set_in_addr",
+      "rs_sockaddr_un_len",
+      "rs_sockaddr_un_set_path",
+      "rs_socket_address_can_accept",
+      "rs_socket_address_equal_unix",
+      "rs_socket_address_get_path",
+      "rs_socket_address_parse_unix",
+      "rs_socket_address_parse_vsock",
+      "rs_socket_address_verify",
+      "rs_vsock_parse_cid",
+      "rs_vsock_parse_port"
+    ],
+    "src/basic/rust/sort_util.h": [
+      "rs_bsearch_safe_internal",
+      "rs_cmp_int",
+      "rs_cmp_uint16",
+      "rs_qsort_r_safe",
+      "rs_qsort_safe",
+      "rs_xbsearch_r"
+    ],
+    "src/basic/rust/specifier_util.h": [
+      "rs_efi_loader_entry_name_valid",
+      "rs_specifier_escape",
+      "rs_specifier_escape_strv"
+    ],
+    "src/basic/rust/strbuf.h": [
+      "rs_strbuf_add_string_full",
+      "rs_strbuf_complete",
+      "rs_strbuf_free",
+      "rs_strbuf_new"
+    ],
+    "src/basic/rust/string_table.h": [
+      "rs_string_table_lookup_from_string",
+      "rs_string_table_lookup_from_string_fallback",
+      "rs_string_table_lookup_from_string_with_boolean",
+      "rs_string_table_lookup_to_string",
+      "rs_string_table_lookup_to_string_fallback"
+    ],
+    "src/basic/rust/strv.h": [
+      "rs_strv_compare",
+      "rs_strv_copy_n",
+      "rs_strv_equal_ignore_order",
+      "rs_strv_find",
+      "rs_strv_find_case",
+      "rs_strv_find_closest_by_levenshtein",
+      "rs_strv_find_closest_prefix",
+      "rs_strv_find_prefix",
+      "rs_strv_find_startswith",
+      "rs_strv_free_and_replace",
+      "rs_strv_is_uniq",
+      "rs_strv_length",
+      "rs_strv_overlap",
+      "rs_strv_remove",
+      "rs_strv_reverse",
+      "rs_strv_skip",
+      "rs_strv_sort",
+      "rs_strv_uniq"
+    ],
+    "src/basic/rust/strverscmp.h": [
+      "rs_strverscmp_improved"
+    ],
+    "src/basic/rust/strxcpyx.h": [
+      "rs_strnpcpy_full",
+      "rs_strnscpy_full",
+      "rs_strpcpy_full",
+      "rs_strscpy_full"
+    ],
+    "src/basic/rust/sysctl_util.h": [
+      "rs_sysctl_normalize"
+    ],
+    "src/basic/rust/syslog_util.h": [
+      "rs_log_facility_unshifted_from_string",
+      "rs_log_facility_unshifted_is_valid",
+      "rs_log_facility_unshifted_to_string_alloc",
+      "rs_log_level_from_string",
+      "rs_log_level_is_valid",
+      "rs_log_level_to_string_alloc",
+      "rs_syslog_parse_priority"
+    ],
+    "src/basic/rust/terminal_util.h": [
+      "rs_tty_is_console",
+      "rs_tty_is_vc",
+      "rs_url_suitable_for_osc8",
+      "rs_vtnr_from_tty"
+    ],
+    "src/basic/rust/time_util.h": [
+      "rs_map_clock_usec_raw",
+      "rs_parse_sec",
+      "rs_parse_sec_def_infinity",
+      "rs_parse_sec_fix_0",
+      "rs_parse_time",
+      "rs_timespec_load",
+      "rs_timespec_load_nsec",
+      "rs_timespec_store",
+      "rs_timespec_store_nsec",
+      "rs_timestamp_style_from_string",
+      "rs_timestamp_style_to_string",
+      "rs_timeval_load",
+      "rs_timeval_store",
+      "rs_triple_timestamp_by_clock"
+    ],
+    "src/basic/rust/uid_range.h": [
+      "rs_uid_range_add_internal",
+      "rs_uid_range_add_str_full",
+      "rs_uid_range_base",
+      "rs_uid_range_clip",
+      "rs_uid_range_contains",
+      "rs_uid_range_copy",
+      "rs_uid_range_covers",
+      "rs_uid_range_equal",
+      "rs_uid_range_free",
+      "rs_uid_range_is_empty",
+      "rs_uid_range_next_lower",
+      "rs_uid_range_overlaps",
+      "rs_uid_range_partition",
+      "rs_uid_range_remove",
+      "rs_uid_range_size",
+      "rs_uid_range_translate"
+    ],
+    "src/basic/rust/unit_def.h": [
+      "rs_unit_dbus_interface_from_name",
+      "rs_unit_dbus_interface_from_type",
+      "rs_unit_dbus_path_from_name",
+      "rs_unit_name_from_dbus_path"
+    ],
+    "src/basic/rust/utf8.h": [
+      "rs_ascii_is_valid_n",
+      "rs_char16_strlen",
+      "rs_char16_strsize",
+      "rs_unichar_is_valid",
+      "rs_utf16_encode_unichar",
+      "rs_utf16_to_utf8",
+      "rs_utf8_char_console_width",
+      "rs_utf8_console_width",
+      "rs_utf8_encode_unichar",
+      "rs_utf8_encoded_to_unichar",
+      "rs_utf8_encoded_valid_unichar",
+      "rs_utf8_escape_invalid",
+      "rs_utf8_escape_non_printable_full",
+      "rs_utf8_is_printable_newline",
+      "rs_utf8_is_valid_n",
+      "rs_utf8_last_length",
+      "rs_utf8_n_codepoints",
+      "rs_utf8_to_ascii",
+      "rs_utf8_to_utf16"
+    ],
+    "src/shared/rust/dns_domain_validators.h": [
+      "rs_dns_service_name_is_valid",
+      "rs_dns_srv_type_is_valid",
+      "rs_dns_subtype_name_is_valid",
+      "rs_dnssd_srv_type_is_valid"
+    ],
+    "src/shared/rust/dns_label.h": [
+      "rs_dns_label_escape",
+      "rs_dns_label_escape_new",
+      "rs_dns_label_unescape",
+      "rs_dns_label_unescape_suffix",
+      "rs_dns_name_address",
+      "rs_dns_name_between",
+      "rs_dns_name_change_suffix",
+      "rs_dns_name_common_suffix",
+      "rs_dns_name_compare_func",
+      "rs_dns_name_concat",
+      "rs_dns_name_count_labels",
+      "rs_dns_name_dont_resolve",
+      "rs_dns_name_dot_suffixed",
+      "rs_dns_name_endswith",
+      "rs_dns_name_equal",
+      "rs_dns_name_equal_skip",
+      "rs_dns_name_from_wire_format",
+      "rs_dns_name_is_root",
+      "rs_dns_name_is_single_label",
+      "rs_dns_name_is_valid",
+      "rs_dns_name_is_valid_ldh",
+      "rs_dns_name_normalize",
+      "rs_dns_name_parent",
+      "rs_dns_name_reverse",
+      "rs_dns_name_skip",
+      "rs_dns_name_startswith",
+      "rs_dns_name_suffix",
+      "rs_dns_name_to_wire_format",
+      "rs_dns_service_join",
+      "rs_dns_service_split",
+      "rs_dns_srv_type_is_valid",
+      "rs_dnssd_srv_type_is_valid"
+    ],
+    "src/shared/rust/exit_status.h": [
+      "rs_exit_status_class",
+      "rs_exit_status_from_string",
+      "rs_exit_status_to_string",
+      "rs_secure_bit_to_string"
+    ],
+    "src/shared/rust/file_classify.h": [
+      "rs_session_id_valid"
+    ],
+    "src/shared/rust/fstype_util.h": [
+      "rs_file_handle_equal",
+      "rs_fstype_can_uid_gid",
+      "rs_fstype_is_ro",
+      "rs_fstype_needs_quota",
+      "rs_path_below_api_vfs"
+    ],
+    "src/shared/rust/glob_util.h": [
+      "rs_glob_non_glob_prefix",
+      "rs_string_is_glob"
+    ],
+    "src/shared/rust/nsflags.h": [
+      "rs_namespace_flags_from_string",
+      "rs_namespace_flags_to_string",
+      "rs_namespace_flags_to_strv",
+      "rs_namespace_single_flag_to_string"
+    ],
+    "src/shared/rust/user_shell_util.h": [
+      "rs_is_nologin_shell",
+      "rs_parse_fractional_part_u",
+      "rs_shell_is_placeholder"
+    ],
+    "src/shared/rust/xml_tokenizer.h": [
+      "rs_xml_tokenize"
+    ]
+  },
+  "version": 1
+}

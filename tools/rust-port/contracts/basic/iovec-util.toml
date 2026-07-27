@@ -1,0 +1,218 @@
+schema = 1
+module = "iovec-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "iovec_shift",
+    "iovec_inc",
+    "iovec_done_erase",
+    "set_iovec_string_field",
+    "set_iovec_string_field_free",
+    "iovec_array_free",
+    "iovec_equal",
+    "iovec_append",
+]
+
+[authority]
+c_headers = ["src/basic/iovec-util.h", "src/fundamental/iovec-util.h"]
+c_sources = ["src/basic/iovec-util.c"]
+rust_headers = ["src/basic/rust/iovec_util.h"]
+rust_sources = ["src/basic/rust/iovec_util.rs"]
+
+[[surface]]
+id = "iovec-validation"
+c_symbols = ["iovec_is_set", "iovec_is_valid"]
+rust_symbols = ["rs_iovec_is_set", "rs_iovec_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-validation"]
+
+[[surface]]
+id = "iovec-release"
+c_symbols = ["iovec_done", "iovec_done_many_and_free"]
+rust_symbols = ["rs_iovec_done", "rs_iovec_done_many_and_free"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "iovec"
+ownership = "owned-libc"
+release = "free"
+publication_success = "n/a"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-release"]
+
+[[surface]]
+id = "iovec-allocation"
+c_symbols = ["iovec_alloc"]
+rust_symbols = ["rs_iovec_alloc"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-allocation"]
+
+[[surface]]
+id = "iovec-erasure"
+c_symbols = ["iovec_erase"]
+rust_symbols = ["rs_iovec_erase"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "iovec"
+ownership = "borrowed"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-erasure"]
+
+[[surface]]
+id = "iovec-total-size"
+c_symbols = ["iovec_total_size"]
+rust_symbols = ["rs_iovec_total_size"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-total-size"]
+
+[[surface]]
+id = "iovec-increment"
+c_symbols = ["iovec_inc_many"]
+rust_symbols = ["rs_iovec_inc_many"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "iovec"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-increment"]
+
+[[surface]]
+id = "iovec-borrowed-string"
+c_symbols = ["iovec_make_string"]
+rust_symbols = ["rs_iovec_make_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "iovec"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-borrowed-string"]
+
+[[surface]]
+id = "iovec-byte-comparison"
+c_symbols = ["iovec_memcmp"]
+rust_symbols = ["rs_iovec_memcmp"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-byte-comparison"]
+
+[[surface]]
+id = "iovec-copy-and-ret-aliasing"
+c_symbols = ["iovec_memdup", "iovec_done_and_memdup"]
+rust_symbols = ["rs_iovec_memdup", "rs_iovec_done_and_memdup"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[[surface.output]]
+arg = "iovec"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-copy-and-ret-aliasing"]

@@ -13,12 +13,30 @@ project('systemd', 'c',
         meson_version : '>= 0.62.0',
 )
 
+# Cargo resolves every Rust crate in this tree through the repository workspace.
+# Keep the workspace manifest and lockfile as the single dependency authority for
+# all Meson-driven Cargo targets; per-crate lockfiles are intentionally ignored.
+rust_workspace_inputs = files('Cargo.toml', 'Cargo.lock')
+
+default_test_excludes = ['clang-tidy', 'coccinelle', 'unused-symbols']
+if not get_option('rust-init-milestones').enabled()
+        default_test_excludes += ['integration-tests']
+endif
+
 add_test_setup(
         'default',
-        exclude_suites : ['clang-tidy', 'coccinelle', 'unused-symbols', 'integration-tests'],
+        exclude_suites : default_test_excludes,
         exe_wrapper : find_program('tools/test-crash-trace.sh'),
         is_default : true,
 )
+
+if get_option('rust-init-milestones').enabled()
+        add_test_setup(
+                'rust-init-milestones',
+                exclude_suites : ['clang-tidy', 'unused-symbols'],
+                is_default : false,
+        )
+endif
 
 project_major_version = meson.project_version().split('.')[0].split('~')[0]
 if meson.project_version().contains('.')
@@ -826,20 +844,36 @@ endif
 
 greeter_uid_min = get_option('greeter-uid-min')
 greeter_uid_max = get_option('greeter-uid-max')
+if greeter_uid_min < 0 or greeter_uid_max > 0xffffffff or greeter_uid_min > greeter_uid_max
+        error('Invalid greeter UID range')
+endif
 conf.set('GREETER_UID_MIN', greeter_uid_min)
 conf.set('GREETER_UID_MAX', greeter_uid_max)
 
 dynamic_uid_min = get_option('dynamic-uid-min')
 dynamic_uid_max = get_option('dynamic-uid-max')
+if dynamic_uid_min < 0 or dynamic_uid_max > 0xffffffff or dynamic_uid_min > dynamic_uid_max
+        error('Invalid dynamic UID range')
+endif
 conf.set('DYNAMIC_UID_MIN', dynamic_uid_min)
 conf.set('DYNAMIC_UID_MAX', dynamic_uid_max)
 
 container_uid_base_min = get_option('container-uid-base-min')
 container_uid_base_max = get_option('container-uid-base-max')
+if (container_uid_base_min < 0 or
+    container_uid_base_max > 0xffff0000 or
+    container_uid_base_min > container_uid_base_max or
+    container_uid_base_min % 0x10000 != 0 or
+    container_uid_base_max % 0x10000 != 0)
+        error('Invalid container UID base range')
+endif
 conf.set('CONTAINER_UID_BASE_MIN', container_uid_base_min)
 conf.set('CONTAINER_UID_BASE_MAX', container_uid_base_max)
 
 foreign_uid_base = get_option('foreign-uid-base')
+if foreign_uid_base < 0 or foreign_uid_base > 0xffff0000 or foreign_uid_base % 0x10000 != 0
+        error('Invalid foreign UID base')
+endif
 conf.set('FOREIGN_UID_BASE', foreign_uid_base)
 
 nobody_user = get_option('nobody-user')
@@ -1114,6 +1148,19 @@ libseccomp = dependency('libseccomp',
                         version : '>= 2.4.0',
                         required : get_option('seccomp'))
 conf.set10('HAVE_SECCOMP', libseccomp.found())
+have_seccomp_arch_loongarch64 = false
+have_seccomp_arch_riscv64 = false
+if libseccomp.found()
+        # libseccomp 2.4 is old enough that these architecture tokens may be
+        # absent even when the build target itself supports the architecture.
+        # Keep this tied to the selected dependency/header, not host macros.
+        have_seccomp_arch_loongarch64 = cc.has_header_symbol(
+                'seccomp.h', 'SCMP_ARCH_LOONGARCH64', dependencies : libseccomp)
+        have_seccomp_arch_riscv64 = cc.has_header_symbol(
+                'seccomp.h', 'SCMP_ARCH_RISCV64', dependencies : libseccomp)
+endif
+conf.set10('HAVE_SECCOMP_ARCH_LOONGARCH64', have_seccomp_arch_loongarch64)
+conf.set10('HAVE_SECCOMP_ARCH_RISCV64', have_seccomp_arch_riscv64)
 libseccomp_cflags = declare_dependency(
         dependencies : libseccomp.partial_dependency(includes: true, compile_args: true),
         compile_args : '-DSYSTEMD_CFLAGS_MARKER_LIBSECCOMP',
@@ -2257,6 +2304,7 @@ subdir('src/xdg-autostart-generator')
 subdir('src/systemd')
 
 subdir('src/test')
+subdir('tests-extra')
 subdir('src/fuzz')
 subdir('src/ukify/test')  # needs to be last for test_env variable
 subdir('test/fuzz')

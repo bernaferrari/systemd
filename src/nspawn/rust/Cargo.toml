@@ -1,0 +1,15 @@
+[package]
+name = "systemd-nspawn-rust"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+systemd-shared-rs = { path = "../../shared/rust" }
+
+[[bin]]
+name = "systemd-nspawn"
+path = "main.rs"

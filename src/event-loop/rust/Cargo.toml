@@ -1,0 +1,14 @@
+[package]
+publish = false
+name = "systemd-event-loop-rs"
+version = "0.1.0"
+edition = "2021"
+license = "LGPL-2.1-or-later"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+libc = { workspace = true }
+nix = { workspace = true }
+systemd-platform-rs = { path = "../../platform/rust" }

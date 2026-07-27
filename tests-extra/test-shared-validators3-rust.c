@@ -1,0 +1,46 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* Shadow test: Various shared header inline functions vs Rust */
+
+#include <assert.h>
+#include <errno.h>
+#include "tests.h"
+#include "output-mode.h"
+#include "rust/shared_facades/header_predicates.h"
+#include "sleep-config.h"
+#include "user-util.h"
+
+static void test_OUTPUT_MODE_IS_JSON(void) {
+        assert_se(OUTPUT_MODE_IS_JSON(OUTPUT_JSON) == rs_OUTPUT_MODE_IS_JSON(OUTPUT_JSON));
+        assert_se(OUTPUT_MODE_IS_JSON(OUTPUT_JSON_PRETTY) == rs_OUTPUT_MODE_IS_JSON(OUTPUT_JSON_PRETTY));
+        assert_se(OUTPUT_MODE_IS_JSON(OUTPUT_JSON_SSE) == rs_OUTPUT_MODE_IS_JSON(OUTPUT_JSON_SSE));
+        assert_se(OUTPUT_MODE_IS_JSON(OUTPUT_JSON_SEQ) == rs_OUTPUT_MODE_IS_JSON(OUTPUT_JSON_SEQ));
+        assert_se(OUTPUT_MODE_IS_JSON(OUTPUT_SHORT) == rs_OUTPUT_MODE_IS_JSON(OUTPUT_SHORT));
+        assert_se(OUTPUT_MODE_IS_JSON(OUTPUT_EXPORT) == rs_OUTPUT_MODE_IS_JSON(OUTPUT_EXPORT));
+        assert_se(OUTPUT_MODE_IS_JSON(OUTPUT_CAT) == rs_OUTPUT_MODE_IS_JSON(OUTPUT_CAT));
+        assert_se(OUTPUT_MODE_IS_JSON(-1) == rs_OUTPUT_MODE_IS_JSON(-1));
+        assert_se(OUTPUT_MODE_IS_JSON(100) == rs_OUTPUT_MODE_IS_JSON(100));
+}
+
+static void test_SLEEP_OPERATION_IS_HIBERNATION(void) {
+        assert_se(SLEEP_OPERATION_IS_HIBERNATION(SLEEP_SUSPEND) == rs_SLEEP_OPERATION_IS_HIBERNATION(SLEEP_SUSPEND));
+        assert_se(SLEEP_OPERATION_IS_HIBERNATION(SLEEP_HIBERNATE) == rs_SLEEP_OPERATION_IS_HIBERNATION(SLEEP_HIBERNATE));
+        assert_se(SLEEP_OPERATION_IS_HIBERNATION(SLEEP_HYBRID_SLEEP) == rs_SLEEP_OPERATION_IS_HIBERNATION(SLEEP_HYBRID_SLEEP));
+        assert_se(SLEEP_OPERATION_IS_HIBERNATION(SLEEP_SUSPEND_THEN_HIBERNATE) == rs_SLEEP_OPERATION_IS_HIBERNATION(SLEEP_SUSPEND_THEN_HIBERNATE));
+        assert_se(SLEEP_OPERATION_IS_HIBERNATION(-1) == rs_SLEEP_OPERATION_IS_HIBERNATION(-1));
+        assert_se(SLEEP_OPERATION_IS_HIBERNATION(100) == rs_SLEEP_OPERATION_IS_HIBERNATION(100));
+}
+
+static void test_ERRNO_IS_NEG_BAD_ACCOUNT(void) {
+        assert_se(ERRNO_IS_NEG_BAD_ACCOUNT(-ESRCH) == rs_ERRNO_IS_NEG_BAD_ACCOUNT(-ESRCH));
+        assert_se(ERRNO_IS_NEG_BAD_ACCOUNT(-ENOEXEC) == rs_ERRNO_IS_NEG_BAD_ACCOUNT(-ENOEXEC));
+        assert_se(ERRNO_IS_NEG_BAD_ACCOUNT(0) == rs_ERRNO_IS_NEG_BAD_ACCOUNT(0));
+        assert_se(ERRNO_IS_NEG_BAD_ACCOUNT(-EINVAL) == rs_ERRNO_IS_NEG_BAD_ACCOUNT(-EINVAL));
+        assert_se(ERRNO_IS_NEG_BAD_ACCOUNT(-ENOENT) == rs_ERRNO_IS_NEG_BAD_ACCOUNT(-ENOENT));
+}
+
+int main(int argc, char **argv) {
+        test_OUTPUT_MODE_IS_JSON();
+        test_SLEEP_OPERATION_IS_HIBERNATION();
+        test_ERRNO_IS_NEG_BAD_ACCOUNT();
+        return 0;
+}

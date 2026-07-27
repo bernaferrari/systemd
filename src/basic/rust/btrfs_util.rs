@@ -1,0 +1,186 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+//
+// PORT-SYNC: src/basic/btrfs.c (btrfs_validate_subvolume_name)
+//
+// BTRFS subvolume name validation.
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
+const BTRFS_SUBVOL_NAME_MAX: usize = 4039;
+const NAME_MAX: usize = 255;
+
+// ── Error type ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BtrfsError {
+    InvalidFileName,
+    TooLong,
+}
+
+impl std::fmt::Display for BtrfsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BtrfsError::InvalidFileName => write!(f, "invalid filename"),
+            BtrfsError::TooLong => write!(f, "name too long"),
+        }
+    }
+}
+
+impl std::error::Error for BtrfsError {}
+
+// ── Internal helpers ──────────────────────────────────────────────────────
+
+/// Check if a string is a valid filename component.
+///
+/// Mirrors C `filename_is_valid()`:
+/// - Not empty
+/// - Not "." or ".."
+/// - Does not contain '/'
+/// - Length <= NAME_MAX (255)
+fn filename_is_valid(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    if name == "." || name == ".." {
+        return false;
+    }
+    if name.contains('/') {
+        return false;
+    }
+    name.len() <= NAME_MAX
+}
+
+// ── Public API ────────────────────────────────────────────────────────────
+
+/// Validate a BTRFS subvolume name.
+///
+/// Mirrors C `btrfs_validate_subvolume_name()`:
+/// - Must be a valid filename (not empty, no '/', not "." or "..")
+/// - Must not exceed BTRFS_SUBVOL_NAME_MAX (4039) bytes
+pub fn btrfs_validate_subvolume_name(name: &str) -> Result<(), BtrfsError> {
+    if name.is_empty() || name == "." || name == ".." || name.contains('/') {
+        return Err(BtrfsError::InvalidFileName);
+    }
+
+    if name.len() > BTRFS_SUBVOL_NAME_MAX {
+        return Err(BtrfsError::TooLong);
+    }
+
+    if name.len() > NAME_MAX + 1 {
+        return Ok(());
+    }
+
+    if !filename_is_valid(name) {
+        return Err(BtrfsError::InvalidFileName);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_valid_simple() {
+        assert!(btrfs_validate_subvolume_name("my-subvol").is_ok());
+    }
+
+    #[test]
+    fn test_valid_single_char() {
+        assert!(btrfs_validate_subvolume_name("a").is_ok());
+    }
+
+    #[test]
+    fn test_valid_max_length() {
+        let name = "a".repeat(BTRFS_SUBVOL_NAME_MAX);
+        assert!(btrfs_validate_subvolume_name(&name).is_ok());
+    }
+
+    #[test]
+    fn test_too_long() {
+        let name = "a".repeat(BTRFS_SUBVOL_NAME_MAX + 1);
+        assert_eq!(
+            btrfs_validate_subvolume_name(&name),
+            Err(BtrfsError::TooLong)
+        );
+    }
+
+    #[test]
+    fn test_empty_string() {
+        assert_eq!(
+            btrfs_validate_subvolume_name(""),
+            Err(BtrfsError::InvalidFileName)
+        );
+    }
+
+    #[test]
+    fn test_with_slash() {
+        assert_eq!(
+            btrfs_validate_subvolume_name("sub/vol"),
+            Err(BtrfsError::InvalidFileName)
+        );
+    }
+
+    #[test]
+    fn test_dot() {
+        assert_eq!(
+            btrfs_validate_subvolume_name("."),
+            Err(BtrfsError::InvalidFileName)
+        );
+    }
+
+    #[test]
+    fn test_dotdot() {
+        assert_eq!(
+            btrfs_validate_subvolume_name(".."),
+            Err(BtrfsError::InvalidFileName)
+        );
+    }
+
+    #[test]
+    fn test_hidden_file_valid() {
+        assert!(btrfs_validate_subvolume_name(".hidden").is_ok());
+    }
+
+    #[test]
+    fn test_with_underscore() {
+        assert!(btrfs_validate_subvolume_name("my_subvol").is_ok());
+    }
+
+    #[test]
+    fn test_boundary_max_plus_one() {
+        let name = "b".repeat(BTRFS_SUBVOL_NAME_MAX + 1);
+        assert_eq!(
+            btrfs_validate_subvolume_name(&name),
+            Err(BtrfsError::TooLong)
+        );
+    }
+
+    #[test]
+    fn test_filename_is_valid_helper() {
+        assert!(filename_is_valid("foo"));
+        assert!(filename_is_valid("bar.txt"));
+        assert!(!filename_is_valid(""));
+        assert!(!filename_is_valid("."));
+        assert!(!filename_is_valid(".."));
+        assert!(!filename_is_valid("a/b"));
+    }
+
+    #[test]
+    fn test_error_display() {
+        assert_eq!(BtrfsError::InvalidFileName.to_string(), "invalid filename");
+        assert_eq!(BtrfsError::TooLong.to_string(), "name too long");
+    }
+
+    #[test]
+    fn test_name_max_boundary() {
+        let name_255 = "x".repeat(255);
+        assert!(btrfs_validate_subvolume_name(&name_255).is_ok());
+        let name_256 = "x".repeat(256);
+        assert_eq!(
+            btrfs_validate_subvolume_name(&name_256),
+            Err(BtrfsError::InvalidFileName)
+        );
+    }
+}

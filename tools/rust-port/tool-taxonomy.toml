@@ -1,0 +1,102 @@
+schema = 1
+
+[[category]]
+id = "navigation"
+purpose = "Keep the Rust-port tool surface discoverable and its taxonomy complete."
+paths = [
+    "tools/rust-port/check-tool-taxonomy.py",
+    "tools/rust-port/test-tool-taxonomy.py",
+]
+
+[[category]]
+id = "mapping-and-contracts"
+purpose = "Describe C-to-Rust ownership, reviewed scopes, and observable behavior contracts."
+paths = [
+    "tools/rust-port/map.toml",
+    "tools/rust-port/contracts/basic/devnum-util.toml",
+    "tools/rust-port/contracts/basic/ether-addr-util.toml",
+    "tools/rust-port/contracts/basic/iovec-util.toml",
+    "tools/rust-port/check-behavior-contract.py",
+    "tools/rust-port/test-behavior-contract.py",
+]
+
+[[category]]
+id = "sync-and-provenance"
+purpose = "Detect upstream/Rust drift and enforce map, anchor, and source-ownership hygiene."
+paths = [
+    "tools/rust-port/diff-report.py",
+    "tools/rust-port/stale-check.py",
+    "tools/rust-port/sync-metadata-gate.py",
+    "tools/rust-port/test-stale-check.py",
+    "tools/rust-port/test-sync-workflow.py",
+    "tools/rust-port/truthfulness-gate.py",
+]
+
+[[category]]
+id = "abi-and-fixtures"
+purpose = "Audit reviewed Rust C ABI facades, their C authorities, and direct comparison fixtures."
+paths = [
+    "tools/rust-port/basic_ffi_review_catalog.py",
+    "tools/rust-port/check-basic-rust-ffi-abi.py",
+    "tools/rust-port/check-c-char-abi.py",
+    "tools/rust-port/check-errno-target-authority.py",
+    "tools/rust-port/check-gpt-basic-abi.py",
+    "tools/rust-port/check-registered-test-rust-ffi.py",
+    "tools/rust-port/check-rust-fixture-catalog.py",
+    "tools/rust-port/check-seccomp-basic-abi.py",
+    "tools/rust-port/check-string-table-abi.py",
+    "tools/rust-port/check-string-table-source-parity.py",
+    "tools/rust-port/check-string-util-abi.py",
+    "tools/rust-port/check-tests-extra-header-includes.py",
+    "tools/rust-port/check-tpm2-util-abi.py",
+    "tools/rust-port/rust-ffi-inventory-gate.py",
+    "tools/rust-port/rust-fixture-catalog.toml",
+    "tools/rust-port/test-rust-fixture-catalog.py",
+    "tools/rust-port/c-char-abi-baseline.json",
+    "tools/rust-port/registered-test-rust-ffi-baseline.json",
+    "tools/rust-port/rust-ffi-inventory-baseline.json",
+]
+
+[[category]]
+id = "architecture-and-production-boundaries"
+purpose = "Keep incomplete Rust outside production and constrain experimental runtime architecture."
+paths = [
+    "tools/rust-port/analyze-rust-verb-gate.py",
+    "tools/rust-port/check-basic-shadow-boundary.py",
+    "tools/rust-port/check-condition-type-parity.py",
+    "tools/rust-port/check-core-c-retention.py",
+    "tools/rust-port/check-core-cgroup-capability.py",
+    "tools/rust-port/check-credential-safety-architecture.py",
+    "tools/rust-port/check-rust-clean-checkout.py",
+    "tools/rust-port/check-rust-production-selection.py",
+    "tools/rust-port/core-runtime-reachability-gate.py",
+    "tools/rust-port/core-runtime-reachability-baseline.json",
+    "tools/rust-port/workspace-architecture-gate.py",
+    "tools/rust-port/test-workspace-architecture-gate.py",
+    "tools/rust-port/workspace-layers.toml",
+    "tools/rust-port/large-rust-files.toml",
+]
+
+[[category]]
+id = "safety-security-and-lint"
+purpose = "Enforce Rust safety policy, critical lint scope, and dependency-audit policy."
+paths = [
+    "tools/rust-port/cargo-audit-all.py",
+    "tools/rust-port/cargo-audit-waivers.toml",
+    "tools/rust-port/critical-lint-gate.py",
+    "tools/rust-port/critical-lint-baseline.json",
+    "tools/rust-port/critical-lint-targets.toml",
+    "tools/rust-port/rust-safety-lint-policy-gate.py",
+    "tools/rust-port/rust-safety-lint-policy-baseline.json",
+    "tools/rust-port/unsafe-safety-gate.py",
+    "tools/rust-port/unsafe-safety-baseline.json",
+]
+
+[[category]]
+id = "generated-data-and-reporting"
+purpose = "Verify generated Rust-port data and produce review-oriented coverage or Port 1 reports."
+paths = [
+    "tools/rust-port/audit-port1.py",
+    "tools/rust-port/coverage-dashboard.py",
+    "tools/rust-port/generate-gpt-table.py",
+]

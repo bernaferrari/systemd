@@ -209,6 +209,17 @@ systemd_deps = [
         libselinux_cflags,
 ]
 
+use_rust_pid1 = get_option('rust-core-pid1').enabled()
+if use_rust_pid1 and not get_option('rust').enabled()
+        error('rust-core-pid1 requires -Drust=enabled')
+endif
+if use_rust_pid1 and get_option('mode') == 'release'
+        error('rust-core-pid1 is experimental and cannot be enabled in release mode')
+endif
+if use_rust_pid1
+        warning('rust-core-pid1 selects an incomplete experimental Rust PID1; developer builds only, never production installation')
+endif
+
 if conf.get('SYSTEMD_MULTICALL_BINARY') == 1
         systemd_sources += systemd_executor_sources
         systemd_deps += [
@@ -223,6 +234,8 @@ executables += [
         libexec_template + {
                 'name' : 'systemd',
                 'dbus' : true,
+                # The installed PID 1 remains the C implementation. The Rust
+                # target below is an explicitly non-installed developer aid.
                 'public' : true,
                 'sources' : systemd_sources,
                 'link_args_static' : get_option('build-static') ? ['-static'] : [],
@@ -288,6 +301,51 @@ else
         ]
 endif
 
+if use_rust_pid1
+        cargo = find_program('cargo', required : true)
+        rust_pid1_build_script = '''
+import os
+import shutil
+import subprocess
+import sys
+
+out, manifest, target_dir, cargo = sys.argv[1:5]
+env = os.environ.copy()
+env["CARGO_TARGET_DIR"] = target_dir
+subprocess.check_call(
+    [
+        cargo,
+        "build",
+        "--manifest-path",
+        manifest,
+        "--bin",
+        "systemd",
+        "--release",
+        "--locked",
+    ],
+    env=env,
+)
+src = os.path.join(target_dir, "release", "systemd")
+shutil.copy2(src, out)
+os.chmod(out, 0o755)
+'''
+
+        rust_pid1 = custom_target(
+                'systemd-rust-pid1',
+                output : 'systemd-rust',
+                input : files('rust/Cargo.toml') + rust_workspace_inputs,
+                command : [python, '-c', rust_pid1_build_script,
+                           '@OUTPUT@',
+                           meson.current_source_dir() / 'rust/Cargo.toml',
+                           meson.current_build_dir() / 'rust-pid1-target',
+                           cargo.full_path()],
+                build_by_default : true,
+                build_always_stale : true,
+                # This target is intentionally never installed. In particular,
+                # it must not replace libexecdir/systemd or its init symlink.
+                install : false)
+endif
+
 in_files = [['system.conf',                     pkgconfigfiledir],
             ['user.conf',                       pkgconfigfiledir],
             ['org.freedesktop.systemd1.policy', polkitpolicydir]]
@@ -349,3 +407,47 @@ core_test_template = test_template + {
         'include_directories' : core_includes,
         'suite' : 'core',
 }
+
+if get_option('rust-init-milestones').enabled()
+        cargo = find_program('cargo', required : true)
+
+        test('rust-init-core-runtime-manager',
+             cargo,
+             suite : 'integration-tests',
+             workdir : meson.project_source_root(),
+             timeout : 600,
+             args : [
+                     'test',
+                     '--manifest-path',
+                     'src/core/rust/Cargo.toml',
+                     'runtime_manager',
+                     '--',
+                     '--test-threads=1',
+             ])
+
+        test('rust-init-platform-cgroup',
+             cargo,
+             suite : 'integration-tests',
+             workdir : meson.project_source_root(),
+             timeout : 600,
+             args : [
+                     'test',
+                     '--manifest-path',
+                     'src/platform/rust/Cargo.toml',
+                     '--',
+                     '--test-threads=1',
+             ])
+
+        test('rust-init-critical-lint-budget',
+             python,
+             suite : 'integration-tests',
+             workdir : meson.project_source_root(),
+             timeout : 900,
+             args : [
+                     'tools/rust-port/critical-lint-gate.py',
+                     '--targets',
+                     'tools/rust-port/critical-lint-targets.toml',
+                     '--baseline',
+                     'tools/rust-port/critical-lint-baseline.json',
+             ])
+endif

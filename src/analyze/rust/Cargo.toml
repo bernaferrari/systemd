@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# This crate is an experimental behavioral implementation of a deliberately
+# narrow systemd-analyze surface. Meson/C remains the installed binary owner.
+
+[package]
+name = "systemd-analyze-rust-port"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+systemd-basic-rs = { path = "../../basic/rust" }
+
+[lib]
+name = "systemd_analyze_rust_port"
+path = "lib.rs"
+
+[[bin]]
+# This name intentionally matches the C Meson artifact. Cargo builds this
+# experimental alternative separately; it must never be installed in place of
+# the C binary until the broader command surface is implemented and reviewed.
+name = "systemd-analyze"
+path = "main.rs"

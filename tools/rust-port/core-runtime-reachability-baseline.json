@@ -1,0 +1,691 @@
+{
+  "binary_roots": [
+    "src/core/rust/main.rs"
+  ],
+  "binary_source_files": {
+    "src/core/rust/main.rs": [
+      "src/core/rust/main.rs"
+    ]
+  },
+  "modules": {
+    "apparmor_setup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/apparmor_setup.rs"
+      ]
+    },
+    "audit_fd": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/audit_fd.rs"
+      ]
+    },
+    "automount": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/automount.rs"
+      ]
+    },
+    "automount_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/automount_tables.rs"
+      ]
+    },
+    "bpf_bind_iface": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/bpf_bind_iface.rs"
+      ]
+    },
+    "bpf_devices": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/bpf_devices.rs"
+      ]
+    },
+    "bpf_firewall": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/bpf_firewall.rs"
+      ]
+    },
+    "bpf_foreign": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/bpf_foreign.rs"
+      ]
+    },
+    "bpf_restrict_fs": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/bpf_restrict_fs.rs"
+      ]
+    },
+    "bpf_restrict_ifaces": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/bpf_restrict_ifaces.rs"
+      ]
+    },
+    "bpf_socket_bind": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/bpf_socket_bind.rs"
+      ]
+    },
+    "cgroup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/cgroup.rs"
+      ]
+    },
+    "cgroup_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/cgroup_tables.rs"
+      ]
+    },
+    "clock_warp": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/clock_warp.rs"
+      ]
+    },
+    "core_model": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/core_model.rs"
+      ]
+    },
+    "crash_action": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/crash_action.rs"
+      ]
+    },
+    "crash_handler": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/crash_handler.rs"
+      ]
+    },
+    "dbus": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus.rs"
+      ]
+    },
+    "dbus_automount": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_automount.rs"
+      ]
+    },
+    "dbus_cgroup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_cgroup.rs"
+      ]
+    },
+    "dbus_device": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_device.rs"
+      ]
+    },
+    "dbus_execute": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_execute.rs"
+      ]
+    },
+    "dbus_job": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_job.rs"
+      ]
+    },
+    "dbus_kill": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_kill.rs"
+      ]
+    },
+    "dbus_manager": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_manager/authorization.rs",
+        "src/core/rust/dbus_manager/model.rs",
+        "src/core/rust/dbus_manager/protocol.rs",
+        "src/core/rust/dbus_manager.rs"
+      ]
+    },
+    "dbus_mount": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_mount.rs"
+      ]
+    },
+    "dbus_path": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_path.rs"
+      ]
+    },
+    "dbus_scope": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_scope.rs"
+      ]
+    },
+    "dbus_service": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_service.rs"
+      ]
+    },
+    "dbus_slice": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_slice.rs"
+      ]
+    },
+    "dbus_socket": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_socket.rs"
+      ]
+    },
+    "dbus_swap": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_swap.rs"
+      ]
+    },
+    "dbus_target": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_target.rs"
+      ]
+    },
+    "dbus_timer": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_timer.rs"
+      ]
+    },
+    "dbus_unit": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_unit.rs"
+      ]
+    },
+    "dbus_util": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dbus_util.rs"
+      ]
+    },
+    "device": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/device.rs"
+      ]
+    },
+    "dynamic_user": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/dynamic_user.rs"
+      ]
+    },
+    "efi_random": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/efi_random.rs"
+      ]
+    },
+    "emergency_action": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/emergency_action.rs"
+      ]
+    },
+    "exec_credential": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/exec_credential.rs"
+      ]
+    },
+    "exec_invoke": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/exec_invoke.rs"
+      ]
+    },
+    "execute": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/execute.rs"
+      ]
+    },
+    "execute_serialize": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/execute_serialize.rs"
+      ]
+    },
+    "execute_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/execute_tables.rs"
+      ]
+    },
+    "executor": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/executor.rs"
+      ]
+    },
+    "ffi": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/ffi.rs"
+      ]
+    },
+    "fuzz_execute_serialize": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/fuzz_execute_serialize.rs"
+      ]
+    },
+    "fuzz_manager_serialize": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/fuzz_manager_serialize.rs"
+      ]
+    },
+    "fuzz_unit_file": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/fuzz_unit_file.rs"
+      ]
+    },
+    "generator_setup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/generator_setup.rs"
+      ]
+    },
+    "ima_setup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/ima_setup.rs"
+      ]
+    },
+    "import_creds": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/import_creds.rs"
+      ]
+    },
+    "ipe_setup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/ipe_setup.rs"
+      ]
+    },
+    "job": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/job.rs"
+      ]
+    },
+    "job_tables": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/job_tables.rs"
+      ]
+    },
+    "kill": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/kill.rs"
+      ]
+    },
+    "kmod_setup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/kmod_setup.rs"
+      ]
+    },
+    "load_dropin": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/load_dropin.rs"
+      ]
+    },
+    "load_fragment": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/load_fragment.rs"
+      ]
+    },
+    "main_port": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/main_port.rs"
+      ]
+    },
+    "manager": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/manager.rs"
+      ]
+    },
+    "manager_dump": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/manager_dump.rs"
+      ]
+    },
+    "manager_serialize": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/manager_serialize.rs"
+      ]
+    },
+    "manager_tables": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/manager_tables.rs"
+      ]
+    },
+    "mount": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/mount.rs"
+      ]
+    },
+    "mount_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/mount_tables.rs"
+      ]
+    },
+    "namespace": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/namespace.rs"
+      ]
+    },
+    "namespace_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/namespace_tables.rs"
+      ]
+    },
+    "path": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/path.rs"
+      ]
+    },
+    "path_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/path_tables.rs"
+      ]
+    },
+    "pid1_exec_sources": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/pid1_exec_sources.rs"
+      ]
+    },
+    "pid1_lifecycle": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/pid1_lifecycle.rs"
+      ]
+    },
+    "pid1_manager_commands": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/pid1_manager_commands.rs"
+      ]
+    },
+    "pid1_manager_runtime": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/pid1_manager_runtime.rs"
+      ]
+    },
+    "pid1_socket_sources": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/pid1_socket_sources.rs"
+      ]
+    },
+    "runtime_manager": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/runtime_manager/bound_liveness.rs",
+        "src/core/rust/runtime_manager/cgroup_runtime.rs",
+        "src/core/rust/runtime_manager/job_runtime.rs",
+        "src/core/rust/runtime_manager/linux_cgroup.rs",
+        "src/core/rust/runtime_manager/service_jobs.rs",
+        "src/core/rust/runtime_manager/service_machine.rs",
+        "src/core/rust/runtime_manager/service_runtime.rs",
+        "src/core/rust/runtime_manager/service_shutdown.rs",
+        "src/core/rust/runtime_manager/socket_runtime.rs",
+        "src/core/rust/runtime_manager/unit_file.rs",
+        "src/core/rust/runtime_manager/unit_load.rs",
+        "src/core/rust/runtime_manager/unit_specifier.rs",
+        "src/core/rust/runtime_manager.rs"
+      ]
+    },
+    "scope": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/scope.rs"
+      ]
+    },
+    "scope_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/scope_tables.rs"
+      ]
+    },
+    "selinux_access": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/selinux_access.rs"
+      ]
+    },
+    "selinux_setup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/selinux_setup.rs"
+      ]
+    },
+    "service": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/service.rs"
+      ]
+    },
+    "service_tables": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/service_tables.rs"
+      ]
+    },
+    "show_status": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/show_status.rs"
+      ]
+    },
+    "slice": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/slice.rs"
+      ]
+    },
+    "smack_setup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/smack_setup.rs"
+      ]
+    },
+    "socket": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/socket.rs"
+      ]
+    },
+    "socket_activation": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/socket_activation.rs"
+      ]
+    },
+    "socket_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/socket_tables.rs"
+      ]
+    },
+    "swap": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/swap.rs"
+      ]
+    },
+    "swap_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/swap_tables.rs"
+      ]
+    },
+    "taint": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/taint.rs"
+      ]
+    },
+    "target": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/target.rs"
+      ]
+    },
+    "timer": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/timer.rs"
+      ]
+    },
+    "timer_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/timer_tables.rs"
+      ]
+    },
+    "transaction": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/transaction.rs"
+      ]
+    },
+    "unit": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/unit/activation.rs",
+        "src/core/rust/unit/dependency.rs",
+        "src/core/rust/unit/integration.rs",
+        "src/core/rust/unit/inventory.rs",
+        "src/core/rust/unit/lifecycle.rs",
+        "src/core/rust/unit/model.rs",
+        "src/core/rust/unit/orchestration.rs",
+        "src/core/rust/unit/relationships.rs",
+        "src/core/rust/unit/runtime.rs",
+        "src/core/rust/unit.rs"
+      ]
+    },
+    "unit_dependency_atom": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/unit_dependency_atom.rs"
+      ]
+    },
+    "unit_printf": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/unit_printf.rs"
+      ]
+    },
+    "unit_serialize": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/unit_serialize.rs"
+      ]
+    },
+    "unit_tables": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/unit_tables.rs"
+      ]
+    },
+    "varlink": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/varlink.rs"
+      ]
+    },
+    "varlink_cgroup": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/varlink_cgroup.rs"
+      ]
+    },
+    "varlink_common": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/varlink_common.rs"
+      ]
+    },
+    "varlink_dynamic_user": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/varlink_dynamic_user.rs"
+      ]
+    },
+    "varlink_execute": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/varlink_execute.rs"
+      ]
+    },
+    "varlink_manager": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/varlink_manager.rs"
+      ]
+    },
+    "varlink_metrics": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/varlink_metrics.rs"
+      ]
+    },
+    "varlink_unit": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/varlink_unit.rs"
+      ]
+    }
+  },
+  "version": 2
+}

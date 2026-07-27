@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+[[waiver]]
+id = "RUSTSEC-2026-0097"
+kind = "unsound"
+expires = "2026-10-01"
+reason = "Triggered by rand 0.8.5 through zbus 4.x. Current rust-systemd codebase does not register a custom logger that re-enters rand::rng()/thread_rng(), which is required for this unsoundness trigger. Track zbus major upgrade separately."

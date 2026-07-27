@@ -1,0 +1,558 @@
+---
+# vi: ts=2 sw=2 et:
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+name: Rust CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - v[0-9]+-stable
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-clean-checkout:
+    name: Rust source graph is clone-complete
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Reject local-only Rust build inputs
+        run: python3 tools/rust-port/check-rust-clean-checkout.py
+
+  rust-fmt:
+    name: cargo fmt --check
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+  rust-clippy:
+    name: cargo clippy -D warnings
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Lint workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  rust-check:
+    name: cargo check --workspace --all-targets
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Type-check workspace targets
+        # Meson is the link authority for crates that call back into C.
+        # Cargo-only workspace tests are intentionally not presented as
+        # runnable coverage.
+        run: cargo check --workspace --all-targets
+
+  rust-meson-reviewed-shadows:
+    name: Meson-reviewed Rust C shadows
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Install Meson build dependencies
+        run: |
+          sudo sed -i '/^XDG_/d' /etc/environment
+          sudo --preserve-env=GITHUB_ACTIONS,CI .github/workflows/unit-tests.sh SETUP
+      - name: Configure authoritative Rust shadow build
+        run: >-
+          meson setup build-rust-reviewed
+          --fatal-meson-warnings
+          --werror
+          -Dnobody-group=nogroup
+          -Dtests=true
+          -Dslow-tests=false
+          -Dfuzz-tests=false
+          -Dseccomp=enabled
+          -Drust=enabled
+      - name: Compile reviewed Rust shadow targets
+        run: >-
+          meson compile -C build-rust-reviewed
+          systemd_basic_rs
+          test-af-list-rust
+          test-architecture-rust
+          test-capability-util-rust
+          test-unit-name-rust
+          test-install-rust
+          test-string-util-rust
+          test-string-util-fundamental-rust
+          test-string-util-extra-rust
+          test-string-util-extra2-rust
+          test-string-util-extra6-rust
+          test-string-util-extra7-rust
+          test-escape-rust
+          test-escape-extra-rust
+          test-escape-extra2-rust
+          test-gpt-unit-install-rust
+          test-header-inline-rust
+          test-strv-extra3-rust
+          test-strv-extra-rust
+          test-strv-extra2-rust
+          test-strv-extra4-rust
+          test-strv-extra5-rust
+          test-strv-extra6-rust
+          test-strv-extra7-rust
+          test-strv-fnmatch-rust
+          test-make-cstring-rust
+          test-strreplace-rust
+          test-parse-util-extra-rust
+          test-parse-extra-rust
+          test-parse-util-inline-rust
+          test-path-funcs-rust
+          test-path-util-extra-rust
+          test-misc-inline-rust
+          test-string-mutation-rust
+          test-string-util-inline2-rust
+          test-xattr-util-rust
+          test-devnum-util-rust
+          test-iovec-util-rust
+          test-bus-type-util-rust
+          test-devt-compare-rust
+          test-user-util-rust
+          test-basic-validators-rust
+          test-inline-helpers-rust
+          test-shared-validators2-rust
+          test-shared-validators3-rust
+          test-dns-type-predicates-rust
+          test-ether-addr-util-rust
+          test-errno-util-rust
+          test-errno-util-extra3-rust
+          test-errno-classify-rust
+          test-percent-util-rust
+          test-percent-scale-rust
+          test-rlimit-util-rust
+          test-rlimit-parse-rust
+          test-securebits-rust
+          test-socket-util-rust
+          test-misc-validators-rust
+          test-image-name-rust
+          test-procfs-util-rust
+          test-stat-util-extra2-rust
+          test-stat-util-inline-rust
+          test-stat-verify-rust
+          test-stat-util-rust
+          test-shared-validators-rust
+          test-mount-color-btrfs-rust
+          test-compare-operator-rust
+          test-boot-entry-rust
+          test-pkcs11-rust
+          test-misc-rust2
+          test-misc-untested2-rust
+          test-uid-classification-rust
+          test-unaligned-rust
+          test-safe-math-rust
+          test-alloc-util-extra2-rust
+          test-at-flags-rust
+          test-ioprio-util-rust
+          test-time-util-extra2-rust
+          test-str-tables-batch3-rust
+          test-udev-util-rust
+          test-virt-rust
+          test-seccomp-util-rust
+          test-seccomp-import-rust
+      - name: Run reviewed C-versus-Rust comparisons
+        run: >-
+          meson test -C build-rust-reviewed
+          --no-rebuild
+          --print-errorlogs
+          test-af-list-rust
+          test-architecture-rust
+          test-capability-util-rust
+          test-unit-name-rust
+          test-install-rust
+          test-string-util-rust
+          test-string-util-fundamental-rust
+          test-string-util-extra-rust
+          test-string-util-extra2-rust
+          test-string-util-extra6-rust
+          test-string-util-extra7-rust
+          test-escape-rust
+          test-escape-extra-rust
+          test-escape-extra2-rust
+          test-gpt-unit-install-rust
+          test-header-inline-rust
+          test-strv-extra3-rust
+          test-strv-extra-rust
+          test-strv-extra2-rust
+          test-strv-extra4-rust
+          test-strv-extra5-rust
+          test-strv-extra6-rust
+          test-strv-extra7-rust
+          test-strv-fnmatch-rust
+          test-make-cstring-rust
+          test-strreplace-rust
+          test-parse-util-extra-rust
+          test-parse-extra-rust
+          test-parse-util-inline-rust
+          test-path-funcs-rust
+          test-path-util-extra-rust
+          test-misc-inline-rust
+          test-string-mutation-rust
+          test-string-util-inline2-rust
+          test-xattr-util-rust
+          test-devnum-util-rust
+          test-iovec-util-rust
+          test-bus-type-util-rust
+          test-devt-compare-rust
+          test-user-util-rust
+          test-basic-validators-rust
+          test-inline-helpers-rust
+          test-shared-validators2-rust
+          test-shared-validators3-rust
+          test-dns-type-predicates-rust
+          test-ether-addr-util-rust
+          test-errno-util-rust
+          test-errno-util-extra3-rust
+          test-errno-classify-rust
+          test-percent-util-rust
+          test-percent-scale-rust
+          test-rlimit-util-rust
+          test-rlimit-parse-rust
+          test-securebits-rust
+          test-socket-util-rust
+          test-misc-validators-rust
+          test-image-name-rust
+          test-procfs-util-rust
+          test-stat-util-extra2-rust
+          test-stat-util-inline-rust
+          test-stat-verify-rust
+          test-stat-util-rust
+          test-shared-validators-rust
+          test-mount-color-btrfs-rust
+          test-compare-operator-rust
+          test-boot-entry-rust
+          test-pkcs11-rust
+          test-misc-rust2
+          test-misc-untested2-rust
+          test-uid-classification-rust
+          test-unaligned-rust
+          test-safe-math-rust
+          test-alloc-util-extra2-rust
+          test-at-flags-rust
+          test-ioprio-util-rust
+          test-time-util-extra2-rust
+          test-str-tables-batch3-rust
+          test-udev-util-rust
+          test-virt-rust
+          test-seccomp-util-rust
+          test-seccomp-import-rust
+
+  rust-authz-smoke:
+    name: Rust authz smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Verify D-Bus manage-units authorization boundaries
+        run: cargo test --locked --manifest-path src/core/rust/Cargo.toml dbus_util::tests::manage_units_authorization_ -- --test-threads=1
+
+  rust-fuzz-smoke:
+    name: Rust parser fuzz smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Run deterministic parser fuzz smoke tests
+        run: ./test/test-rust-fuzz-smoke.sh
+
+  rust-pid1-syscall-smoke:
+    name: Rust PID1 syscall smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Install syscall tracing dependencies
+        run: sudo apt-get update && sudo apt-get install -y strace
+      - name: Run Linux PID1 syscall trace smoke
+        run: ./test/test-rust-pid1-syscall-smoke.sh
+
+  host-systemd-journal-behavior-smoke:
+    # This invokes the runner's installed systemd and journalctl only. It does
+    # not build or execute a Rust artifact, so it is host-environment coverage,
+    # not evidence of Rust port parity.
+    name: Host systemd journal behavior smoke (not Rust artifact coverage)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Run host Linux journal behavior smoke
+        run: ./test/test-rust-journal-parity-smoke.sh
+
+  rust-journalctl-shim-smoke:
+    name: Rust journalctl shim smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Run journalctl shim smoke
+        run: ./test/test-rust-journalctl-shim-smoke.sh
+
+  host-systemd-cgroup-isolation-smoke:
+    # This exercises the runner's host manager. It does not build or execute a
+    # Rust artifact and must not be interpreted as Rust port coverage.
+    name: Host systemd cgroup isolation smoke (not Rust artifact coverage)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Verify Linux/systemd smoke preconditions
+        run: |
+          test "$(ps -p 1 -o comm= | tr -d '[:space:]')" = "systemd"
+          test -f /sys/fs/cgroup/cgroup.controllers
+          sudo -n true
+      - name: Run host Linux cgroup/resource/namespace isolation smoke
+        run: ./test/test-rust-cgroup-isolation-smoke.sh
+
+  host-systemd-activation-ordering-smoke:
+    # This exercises the runner's host manager. It does not build or execute a
+    # Rust artifact and must not be interpreted as Rust port coverage.
+    name: Host systemd activation/ordering smoke (not Rust artifact coverage)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Verify Linux/systemd smoke preconditions
+        run: |
+          test "$(ps -p 1 -o comm= | tr -d '[:space:]')" = "systemd"
+          test -d /run/systemd/system
+          sudo -n true
+      - name: Run host Linux socket/dependency propagation smoke
+        run: ./test/test-rust-activation-ordering-smoke.sh
+
+  host-systemd-service-lifecycle-smoke:
+    # This exercises the runner's host manager. It does not build or execute a
+    # Rust artifact and must not be interpreted as Rust port coverage.
+    name: Host systemd service lifecycle smoke (not Rust artifact coverage)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Verify Linux/systemd smoke preconditions
+        run: |
+          test "$(ps -p 1 -o comm= | tr -d '[:space:]')" = "systemd"
+          test -d /run/systemd/system
+          sudo -n true
+      - name: Run host Linux service lifecycle smoke
+        run: ./test/test-rust-service-lifecycle-smoke.sh
+
+  rust-unsafe-safety-gate:
+    name: Rust unsafe and safety-lint policy gates
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Run SAFETY baseline gate
+        run: python3 tools/rust-port/unsafe-safety-gate.py --baseline tools/rust-port/unsafe-safety-baseline.json
+      - name: Reject growth in blanket Rust safety-lint allowances
+        run: python3 tools/rust-port/rust-safety-lint-policy-gate.py
+
+  rust-port-truthfulness:
+    name: Rust port architecture/truthfulness gates
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reject unsupported completed mappings
+        run: python3 tools/rust-port/truthfulness-gate.py
+      - name: Pin production C ownership for unported core behavior
+        run: python3 tools/rust-port/check-core-c-retention.py
+      - name: Keep the basic Rust archive inside its shadow-test boundary
+        run: python3 tools/rust-port/check-basic-shadow-boundary.py
+      - name: Keep incomplete Rust executables out of production selection
+        run: python3 tools/rust-port/check-rust-production-selection.py
+      - name: Verify many-to-many Rust port sync anchor schema
+        run: python3 tools/rust-port/test-stale-check.py
+      - name: Verify semantic behavior-contract fixtures
+        run: python3 tools/rust-port/test-behavior-contract.py
+      - name: Verify Rust port sync workflow fixtures
+        run: python3 tools/rust-port/test-sync-workflow.py
+      - name: Keep Rust port tooling discoverable
+        run: python3 tools/rust-port/test-tool-taxonomy.py && python3 tools/rust-port/check-tool-taxonomy.py --repo-root .
+      - name: Keep Rust comparison fixtures semantically discoverable
+        run: python3 tools/rust-port/test-rust-fixture-catalog.py && python3 tools/rust-port/check-rust-fixture-catalog.py --repo-root .
+      - name: Verify Rust workspace layout fixtures
+        run: python3 tools/rust-port/test-workspace-architecture-gate.py
+      - name: Require truthful Rust port ownership metadata
+        run: python3 tools/rust-port/sync-metadata-gate.py --repo-root .
+      - name: Validate reviewed C-to-Rust behavior contracts
+        run: python3 tools/rust-port/check-behavior-contract.py --repo-root .
+      - name: Reject sticky claims without anchors or anchored source drift
+        run: python3 tools/rust-port/stale-check.py --repo-root . --strict --require-existing-paths
+      - name: Report C authorities and Rust twins changed by this update
+        env:
+          RUST_SYNC_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if test -n "$RUST_SYNC_BASE" && git cat-file -e "$RUST_SYNC_BASE^{commit}" 2>/dev/null; then
+              python3 tools/rust-port/diff-report.py --base "$RUST_SYNC_BASE" --head "$GITHUB_SHA" --show-unmapped
+          else
+              python3 tools/rust-port/diff-report.py --range HEAD^..HEAD --show-unmapped
+          fi
+      - name: Keep Rust systemd-analyze behavioral and fail-closed
+        run: python3 tools/rust-port/analyze-rust-verb-gate.py
+      - name: Reject growth in unbacked Rust C ABI declarations
+        run: python3 tools/rust-port/rust-ffi-inventory-gate.py
+      - name: Reject hard-coded signed C char ABI
+        run: python3 tools/rust-port/check-c-char-abi.py
+      - name: Reject growth in manual unbacked Rust test ABI promises
+        run: python3 tools/rust-port/check-registered-test-rust-ffi.py
+      - name: Validate workspace, target, and module architecture
+        run: python3 tools/rust-port/workspace-architecture-gate.py
+      - name: Classify experimental Rust PID1 runtime boundary
+        run: python3 tools/rust-port/core-runtime-reachability-gate.py
+      - name: Keep credential plaintext descriptor-owned and zeroizing
+        run: python3 tools/rust-port/check-credential-safety-architecture.py
+      - name: Verify PID1 cgroup root capability confinement
+        run: python3 tools/rust-port/check-core-cgroup-capability.py
+      - name: Reject stale generated GPT partition data
+        run: python3 tools/rust-port/generate-gpt-table.py --check
+      - name: Verify dedicated basic Rust GPT C ABI
+        run: python3 tools/rust-port/check-gpt-basic-abi.py
+      - name: Verify Rust string-table C ABI inventory
+        run: python3 tools/rust-port/check-string-table-abi.py
+      - name: Verify Rust string-table current-C source parity
+        run: python3 tools/rust-port/check-string-table-source-parity.py
+      - name: Verify current-C condition type order and names
+        run: python3 tools/rust-port/check-condition-type-parity.py
+      - name: Verify reviewed Rust string-util C ABI inventory
+        run: python3 tools/rust-port/check-string-util-abi.py
+      - name: Verify reviewed basic Rust C ABI inventory
+        run: python3 tools/rust-port/check-basic-rust-ffi-abi.py
+      - name: Verify reviewed basic Rust seccomp C ABI inventory
+        run: python3 tools/rust-port/check-seccomp-basic-abi.py
+      - name: Verify Rust errno target-build authority
+        run: python3 tools/rust-port/check-errno-target-authority.py
+      - name: Keep unbuilt TPM2 Rust C ABI fail-closed
+        run: python3 tools/rust-port/check-tpm2-util-abi.py
+      - name: Verify registered Rust C-test project headers resolve
+        run: python3 tools/rust-port/check-tests-extra-header-includes.py
+
+  rust-cargo-audit:
+    name: Rust cargo audit
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: Run full lockfile dependency audit
+        run: python3 tools/rust-port/cargo-audit-all.py --waivers tools/rust-port/cargo-audit-waivers.toml --write-report docs/rust-security-audit.md
+
+  rust-miri-smoke:
+    name: Rust Miri smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Run Miri smoke checks
+        run: ./test/test-rust-miri-smoke.sh
+
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Repository checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny
+      - name: Enforce dependency policies
+        run: cargo deny check advisories bans licenses sources

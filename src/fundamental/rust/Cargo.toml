@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Cargo.toml exists for IDE support (rust-analyzer) only.
+# Meson is the authoritative build system — do NOT use `cargo build`.
+#
+# This crate is #![no_std] compatible — it provides fundamental
+# utilities shared with the EFI boot code (sd-boot).
+
+[package]
+publish = false
+name = "systemd-fundamental-rs"
+version = "0.0.1"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+name = "systemd_fundamental_rs"
+path = "lib.rs"

@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+//
+// systemd-libsystemd-rs: conservative Rust shadow modules for src/libsystemd/
+#![deny(unsafe_op_in_unsafe_fn)]
+#![deny(clippy::missing_safety_doc)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(dead_code)]
+
+pub mod bus_address_escape;
+pub mod bus_common_errors;
+pub mod bus_internal_types;
+pub mod bus_kernel;
+pub mod bus_match_types;
+pub mod bus_message;
+pub mod bus_signature;
+pub mod device_action;
+pub mod event_source_type;
+pub mod ffi;
+pub mod id128_util;
+pub mod journal_object_type;
+pub mod netlink_sock_diag;
+pub mod network_util;
+pub mod sd_daemon;
+pub mod sd_daemon_checks;
+pub mod sd_device;
+pub mod sd_device_enumerator;
+pub mod sd_device_filter;
+pub mod sd_device_monitor;
+pub mod sd_device_private;
+pub mod sd_device_test_device;
+pub mod sd_device_test_device_util;
+pub mod sd_device_test_monitor;
+pub mod sd_device_test_thread;
+pub mod sd_device_util;
+pub mod sd_event;
+pub mod sd_event_test;
+pub mod sd_event_util;
+pub mod sd_hwdb;
+pub mod sd_id128_api;
+pub mod sd_id128_strings;
+pub mod sd_id128_util_ext;
+pub mod sd_journal;
+pub mod sd_journal_audit_type;
+pub mod sd_journal_authenticate;
+pub mod sd_journal_catalog;
+pub mod sd_journal_file;
+pub mod sd_journal_fsprg;
+pub mod sd_journal_lookup3;
+pub mod sd_journal_mmap_cache;
+pub mod sd_journal_send;
+pub mod sd_journal_test_append;
+pub mod sd_journal_test_audit_type;
+pub mod sd_journal_test_catalog;
+pub mod sd_journal_test_dump;
+pub mod sd_journal_test_enum;
+pub mod sd_journal_test_file;
+pub mod sd_journal_test_flush;
+pub mod sd_journal_test_init;
+pub mod sd_journal_test_interleaving;
+pub mod sd_journal_test_journal;
+pub mod sd_journal_test_match;
+pub mod sd_journal_test_mmap_cache;
+pub mod sd_journal_test_send;
+pub mod sd_journal_test_stream;
+pub mod sd_journal_test_verify;
+pub mod sd_journal_vacuum;
+pub mod sd_journal_verify;
+pub mod sd_json;
+pub mod sd_json_util;
+pub mod sd_login;
+pub mod sd_login_test;
+pub mod sd_login_test_sd;
+pub mod sd_netlink;
+pub mod sd_netlink_genl;
+pub mod sd_netlink_message;
+pub mod sd_netlink_message_nfnl;
+pub mod sd_netlink_message_rtnl;
+pub mod sd_netlink_slot;
+pub mod sd_netlink_socket;
+pub mod sd_netlink_test;
+pub mod sd_netlink_types;
+pub mod sd_netlink_types_genl;
+pub mod sd_netlink_types_nfnl;
+pub mod sd_netlink_types_rtnl;
+pub mod sd_netlink_types_sdnl;
+pub mod sd_netlink_util;
+pub mod sd_network;
+pub mod sd_path;
+pub mod sd_path_lookup;
+pub mod sd_resolve;
+pub mod sd_resolve_test;
+pub mod sd_varlink;
+pub mod sd_varlink_idl;
+pub mod sd_varlink_io_systemd;
+pub mod sd_varlink_org_varlink_service;
+pub mod sd_varlink_util;
+pub mod varlink_state;
+
+pub use ffi::Errno;

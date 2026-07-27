@@ -39,3 +39,12 @@ __pycache__/
 /worktrees
 .envrc
 .direnv/
+
+# Generated Rust build and IDE artifacts.
+/target/
+**/rust/target/
+**/target/flycheck*/
+**/rust/Cargo.lock
+
+# Local filesystem metadata.
+.DS_Store

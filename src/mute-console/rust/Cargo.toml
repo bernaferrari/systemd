@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Cargo.toml exists for IDE support (rust-analyzer) only.
+# Meson is the authoritative build system — do NOT use `cargo build`.
+# No build.rs — all configuration comes from Meson.
+
+[package]
+publish = false
+name = "systemd-mute-console-rs"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+systemd-shared-rs = { path = "../../shared/rust" }
+libc = "0.2"
+
+[lib]
+crate-type = ["lib"]
+name = "systemd_mute_console_rs"
+path = "lib.rs"
+
+[[bin]]
+name = "systemd-mute-console"
+path = "main.rs"

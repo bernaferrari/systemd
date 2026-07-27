@@ -1,0 +1,13 @@
+[package]
+name = "libsystemd-network-rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "LGPL-2.1-or-later"
+
+[lib]
+name = "libsystemd_network_rust"
+path = "lib.rs"
+
+[dependencies]
+systemd-basic-rs = { path = "../../basic/rust" }

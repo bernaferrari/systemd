@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Cargo.toml exists for IDE support (rust-analyzer) only.
+# Meson is the authoritative build system — do NOT use `cargo build`.
+[package]
+publish = false
+name = "systemd-environment-d-generator-rs"
+version = "0.0.1"
+edition = "2021"
+[dependencies]
+systemd-shared-rs = { path = "../../shared/rust" }
+libc = "0.2"
+[lib]
+crate-type = ["lib"]
+name = "systemd_environment_d_generator_rs"
+path = "lib.rs"
+
+[[bin]]
+name = "30-systemd-environment-d-generator"
+path = "main.rs"

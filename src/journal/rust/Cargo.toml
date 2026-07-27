@@ -1,0 +1,23 @@
+[package]
+name = "systemd-journal-rust-port"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+systemd-shared-rs = { path = "../../shared/rust" }
+systemd-platform-rs = { path = "../../platform/rust" }
+systemd-event-loop-rs = { path = "../../event-loop/rust" }
+systemd-libsystemd-rs = { path = "../../libsystemd/rust" }
+nix = { workspace = true }
+
+[[bin]]
+name = "systemd-journald"
+path = "main.rs"
+
+[[bin]]
+name = "journalctl"
+path = "journalctl_main.rs"

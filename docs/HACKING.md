@@ -58,6 +58,22 @@ $ mkosi boot                                       # Boot the image with systemd
 $ mkosi vm                                         # Boot the image with qemu.
 ```
 
+For a reproducible Ubuntu 24.04 boot milestone runner for the Rust systemd
+port, use:
+
+```sh
+$ cargo build --locked --manifest-path src/core/rust/Cargo.toml --bin systemd
+$ test/systemd-cd4.sh
+```
+
+The runner checks for QEMU, cloud-init image tooling, and a built Rust
+`systemd` binary, then boots a Noble cloud image, injects the Rust PID 1, and
+verifies `multi-user.target`, networking, journal access, and service restart
+behavior. Override `SYSTEMD_CD4_SYSTEMD` or `SYSTEMD_CD4_CACHE_DIR` if you want
+to point at a different binary or image cache. By default it uses the
+workspace artifact at `target/debug/systemd` and fails if that required
+milestone input is absent.
+
 Putting this all together, here's a series of commands for preparing a patch for
 systemd:
 

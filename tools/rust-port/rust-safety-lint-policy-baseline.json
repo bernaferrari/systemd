@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "unsafe_op_in_unsafe_fn_missing": [],
+  "blanket_safety_lint_allowances": []
+}

@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Cargo.toml exists for IDE support (rust-analyzer) only.
+# Meson is the authoritative build system — do NOT use `cargo build`.
+# No build.rs — all configuration comes from Meson.
+#
+# NOTE: `cargo test` will fail with linker errors because the Rust code
+# calls back into C functions (e.g., sha256_process_bytes, unhexchar).
+# Tests must be run via `meson test -C build` which links the C library.
+
+[package]
+publish = false
+name = "systemd-shared-rs"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+bitflags = { workspace = true }
+libc = { workspace = true }
+nix = { workspace = true, features = ["zerocopy"] }
+openssl = "0.10"
+systemd-basic-rs = { path = "../../basic/rust" }
+systemd-libsystemd-rs = { path = "../../libsystemd/rust" }
+systemd-platform-rs = { path = "../../platform/rust" }
+tempfile = "3"
+
+[lib]
+crate-type = ["lib"]
+name = "systemd_shared_rs"
+path = "lib.rs"
