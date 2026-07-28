@@ -1,8 +1,14 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: edid-parse-blob */
+/* RUST-CONTRACT: edid-panel-id */
 
 #include "edid.h"
 #include "rust/edid.h"
 #include "tests.h"
+
+assert_cc(sizeof(EdidHeader) == 20);
+assert_cc(alignof(EdidHeader) == 1);
+assert_cc(sizeof(char16_t) == 2);
 
 static void make_valid_edid_blob(uint8_t blob[128], uint16_t manufacturer_id, uint16_t product_code) {
         memset(blob, 0, 128);
@@ -29,18 +35,31 @@ static void make_valid_edid_blob(uint8_t blob[128], uint16_t manufacturer_id, ui
 }
 
 TEST(edid_parse_blob_too_small) {
-        EdidHeader header;
+        EdidHeader ch, rh;
         uint8_t blob[64];
-        assert_se(edid_parse_blob(blob, 64, &header) == -EINVAL);
-        assert_se(rs_edid_parse_blob(blob, 64, &header) == -EINVAL);
+
+        memset(&ch, 0xa5, sizeof(ch));
+        memcpy(&rh, &ch, sizeof(rh));
+
+        assert_se(edid_parse_blob(blob, 64, &ch) == -EINVAL);
+        assert_se(rs_edid_parse_blob(blob, 64, &rh) == -EINVAL);
+        assert_se(memcmp(&ch, &rh, sizeof(ch)) == 0);
+
+        assert_se(edid_parse_blob(NULL, 0, &ch) == -EINVAL);
+        assert_se(rs_edid_parse_blob(NULL, 0, &rh) == -EINVAL);
 }
 
 TEST(edid_parse_blob_bad_pattern) {
-        EdidHeader header;
+        EdidHeader ch, rh;
         uint8_t blob[128];
+
         memset(blob, 0x01, 128);
-        assert_se(edid_parse_blob(blob, 128, &header) == -EINVAL);
-        assert_se(rs_edid_parse_blob(blob, 128, &header) == -EINVAL);
+        memset(&ch, 0xa5, sizeof(ch));
+        memcpy(&rh, &ch, sizeof(rh));
+
+        assert_se(edid_parse_blob(blob, 128, &ch) == -EINVAL);
+        assert_se(rs_edid_parse_blob(blob, 128, &rh) == -EINVAL);
+        assert_se(memcmp(&ch, &rh, sizeof(ch)) == 0);
 }
 
 TEST(edid_parse_blob_valid) {
@@ -53,6 +72,10 @@ TEST(edid_parse_blob_valid) {
         assert_se(edid_parse_blob(blob, 128, &ch) == 0);
         assert_se(rs_edid_parse_blob(blob, 128, &rh) == 0);
 
+        assert_se(memcmp(&ch, &rh, sizeof(ch)) == 0);
+        assert_se(memcmp(rh.pattern,
+                         (const uint8_t[]) { 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0 },
+                         8) == 0);
         assert_se(ch.manufacturer_id == rh.manufacturer_id);
         assert_se(ch.manufacturer_product_code == rh.manufacturer_product_code);
         assert_se(ch.serial_number == rh.serial_number);
@@ -63,6 +86,21 @@ TEST(edid_parse_blob_valid) {
 
         assert_se(rh.manufacturer_id == 0x4C2D);
         assert_se(rh.manufacturer_product_code == 0x1234);
+}
+
+TEST(edid_parse_blob_unaligned) {
+        uint8_t storage[129];
+        uint8_t c_header_storage[sizeof(EdidHeader) + 1];
+        uint8_t r_header_storage[sizeof(EdidHeader) + 1];
+        uint8_t *blob = storage + 1;
+        EdidHeader *ch = (EdidHeader*) (c_header_storage + 1);
+        EdidHeader *rh = (EdidHeader*) (r_header_storage + 1);
+
+        make_valid_edid_blob(blob, 0x244D, 0x5600);
+
+        assert_se(edid_parse_blob(blob, 128, ch) == 0);
+        assert_se(rs_edid_parse_blob(blob, 128, rh) == 0);
+        assert_se(memcmp(ch, rh, sizeof(*ch)) == 0);
 }
 
 TEST(edid_get_panel_id) {
@@ -98,11 +136,45 @@ TEST(edid_get_panel_id_invalid) {
         char16_t rpanel[8];
 
         memset(&header, 0, sizeof(header));
-        /* Letter value 0x1B = 27 > 26 → invalid */
-        header.manufacturer_id = (0x1B << 10);
+        memset(cpanel, 0xa5, sizeof(cpanel));
+        memcpy(rpanel, cpanel, sizeof(rpanel));
+        /* The first loop iteration writes panel[2], then the second
+         * manufacturer letter (27) fails. This proves C's partial publication
+         * contract rather than only checking a first-letter failure. */
+        header.manufacturer_id = (0x1B << 5) | 1;
 
         assert_se(edid_get_panel_id(&header, cpanel) == -EINVAL);
         assert_se(rs_edid_get_panel_id(&header, rpanel) == -EINVAL);
+        assert_se(memcmp(cpanel, rpanel, sizeof(cpanel)) == 0);
+        assert_se(cpanel[2] == 'A');
+        assert_se(cpanel[0] == 0xa5a5);
+        assert_se(cpanel[1] == 0xa5a5);
+}
+
+TEST(edid_get_panel_id_zero_letters) {
+        EdidHeader header = {};
+        char16_t cpanel[8], rpanel[8];
+
+        assert_se(edid_get_panel_id(&header, cpanel) == 0);
+        assert_se(rs_edid_get_panel_id(&header, rpanel) == 0);
+        assert_se(memcmp(cpanel, rpanel, sizeof(cpanel)) == 0);
+        assert_se(cpanel[0] == '@');
+        assert_se(cpanel[1] == '@');
+        assert_se(cpanel[2] == '@');
+        assert_se(cpanel[3] == '0');
+        assert_se(cpanel[6] == '0');
+        assert_se(cpanel[7] == 0);
+}
+
+TEST(edid_rust_null_extension) {
+        EdidHeader header = {};
+        char16_t panel[8];
+        uint8_t blob[128] = {};
+
+        assert_se(rs_edid_parse_blob(blob, sizeof(blob), NULL) == -EINVAL);
+        assert_se(rs_edid_parse_blob(NULL, sizeof(blob), &header) == -EINVAL);
+        assert_se(rs_edid_get_panel_id(NULL, panel) == -EINVAL);
+        assert_se(rs_edid_get_panel_id(&header, NULL) == -EINVAL);
 }
 
 DEFINE_TEST_MAIN(LOG_INFO);

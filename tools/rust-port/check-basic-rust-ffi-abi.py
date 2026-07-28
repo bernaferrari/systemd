@@ -82,6 +82,7 @@ C_TYPES = {
     "double *": "*mutf64",
     "char": "c_char",
     "char16_t": "u16",
+    "char16_t *": "*mutu16",
     "char32_t": "u32",
     "char32_t *": "*mutu32",
     "ssize_t": "isize",
@@ -98,6 +99,7 @@ C_TYPES = {
     "void **": "*mut*mutc_void",
     "const uint64_t *": "*constu64",
     "const CapabilityQuintet *": "*constCapabilityQuintet",
+    "const EdidHeader *": "*constEdidHeaderAbi",
     "const dev_t *": "*constu64",
     "const PidRef *": "*constPidRef",
     "const InstallChange *": "*constInstallChange",
@@ -112,6 +114,7 @@ C_TYPES = {
     "const struct statx_timestamp *": "*conststatx_timestamp",
     "const sd_bus_error *": "*constSdBusError",
     "void *": "*mutc_void",
+    "EdidHeader *": "*mutEdidHeaderAbi",
     "struct stat *": "*mutstat",
     "struct statfs *": "*mutstatfs",
     "struct statx *": "*mutstatx",
@@ -306,6 +309,8 @@ def strip_meson_comments(text: str) -> str:
 def c_parameter_type(parameter: str) -> str:
     parameter = re.sub(r"\s+", " ", parameter.strip())
     parameter = parameter.replace("[static DEVNUM_STR_MAX]", "[]")
+    parameter = parameter.replace("[static CAPABILITY_TO_STRING_MAX]", "[]")
+    parameter = parameter.replace("[static 8]", "[]")
     parameter = re.sub(r"\bUnitNameFlags\b", "int", parameter)
     parameter = re.sub(r"\bUnitType\b", "int", parameter)
     parameter = re.sub(r"\bVirtualization\b", "int", parameter)
@@ -327,6 +332,7 @@ def c_parameter_type(parameter: str) -> str:
                 # instead of collapsing `char *argv[]` into a single pointer.
                 array_types = {
                     "char": "*mutc_char",
+                    "char16_t": "*mutu16",
                     "char *": "*mut*mutc_char",
                     "const char *": "*mut*constc_char",
                 }

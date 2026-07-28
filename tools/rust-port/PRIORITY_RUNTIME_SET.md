@@ -32,6 +32,9 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Filesystem predicates | `test-fstype-util-rust` | Opaque bytes, generated filesystem sets, fuse aliases, and API-VFS path boundaries |
 | D-Bus error accessors | `test-bus-error-rust` | Public struct layout, NULL predicates, and opaque C-string name matching |
 | Namespace scalar helpers | `test-namespace-mountpoint-rust` | Namespace-bit masking, Linux clone-flag values, and native uid_t overflow boundaries |
+| Namespace flag conversions | `test-nsflags-rust` | Native-width flags, C whitespace/backslash parsing, ordered names, and C-owned string/strv release |
+| Capability name conversion | `test-capability-list-rust` | Target-generated capability table, ASCII gperf case folding, numeric grammar, and caller-buffer fallback |
+| EDID parsing | `test-edid-rust` | Packed 20-byte layout, unaligned inputs, byte order, failure publication, and partial panel output |
 | Session classification | `test-file-classify-rust` | ASCII-only session IDs, NULL/empty rejection, and opaque non-UTF-8 bytes |
 | Strv ownership / allocation | `test-strv-rust`, `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Includes base vector search/mutation plus registered push/consume/split/join/fnmatch surface |
 | Stat | `test-stat-util-rust`, `test-stat-util-extra2-rust`, `test-stat-util-inline-rust`, `test-stat-verify-rust` | Includes non-UTF-8 inode type string |

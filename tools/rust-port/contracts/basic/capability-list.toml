@@ -1,0 +1,102 @@
+schema = 1
+module = "capability_list"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "capability_set_to_string",
+    "capability_set_to_string_negative",
+    "capability_set_to_strv",
+    "capability_set_from_string",
+]
+
+[authority]
+c_headers = ["src/basic/capability-list.h"]
+c_sources = ["src/basic/capability-list.c"]
+rust_headers = ["src/basic/rust/capability_list.h"]
+rust_sources = ["src/basic/rust/capability_list.rs"]
+
+[[surface]]
+id = "capability-name-rendering"
+c_symbols = ["capability_to_name"]
+rust_symbols = ["rs_capability_to_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-capability-list-rust.c"
+meson_target = "test-capability-list-rust"
+labels = ["capability-name-rendering"]
+
+[[surface]]
+id = "capability-string-rendering"
+c_symbols = ["capability_to_string"]
+rust_symbols = ["rs_capability_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "buf"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-capability-list-rust.c"
+meson_target = "test-capability-list-rust"
+labels = ["capability-string-rendering"]
+
+[[surface]]
+id = "capability-name-parsing"
+c_symbols = ["capability_from_name"]
+rust_symbols = ["rs_capability_from_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-capability-list-rust.c"
+meson_target = "test-capability-list-rust"
+labels = ["capability-name-parsing"]
+
+[[surface]]
+id = "capability-list-length"
+c_symbols = ["capability_list_length"]
+rust_symbols = ["rs_capability_list_length"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-capability-list-rust.c"
+meson_target = "test-capability-list-rust"
+labels = ["capability-list-length"]

@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+/* PORT-SYNC: scope=fundamental.edid; authority=src/fundamental/edid.c,src/fundamental/edid.h */
+
 #include <stddef.h>
 #include <stdint.h>
 #include "edid.h"

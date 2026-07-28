@@ -29,12 +29,6 @@
       "rs_bus_label_escape",
       "rs_bus_label_unescape_n"
     ],
-    "src/basic/rust/capability_list.h": [
-      "rs_capability_from_name",
-      "rs_capability_list_length",
-      "rs_capability_to_name",
-      "rs_capability_to_string"
-    ],
     "src/basic/rust/compress_util.h": [
       "rs_compression_from_string",
       "rs_compression_from_string_lowercase",
@@ -50,10 +44,6 @@
     "src/basic/rust/dirent_util.h": [
       "rs_dirent_is_file",
       "rs_dirent_is_file_with_suffix"
-    ],
-    "src/basic/rust/edid.h": [
-      "rs_edid_get_panel_id",
-      "rs_edid_parse_blob"
     ],
     "src/basic/rust/efivars_util.h": [
       "rs_decode_secure_boot_mode",
@@ -502,12 +492,6 @@
     "src/shared/rust/glob_util.h": [
       "rs_glob_non_glob_prefix",
       "rs_string_is_glob"
-    ],
-    "src/shared/rust/nsflags.h": [
-      "rs_namespace_flags_from_string",
-      "rs_namespace_flags_to_string",
-      "rs_namespace_flags_to_strv",
-      "rs_namespace_single_flag_to_string"
     ],
     "src/shared/rust/user_shell_util.h": [
       "rs_is_nologin_shell",

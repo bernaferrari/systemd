@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/fundamental/edid.c
+// PORT-SYNC: scope=fundamental.edid; authority=src/fundamental/edid.c,src/fundamental/edid.h
 //
 // EDID header parsing functions.
 // Pure computation — no I/O, no syscalls.
+
+use std::ffi::c_void;
+use std::mem::{align_of, size_of};
+use std::ptr;
 
 use crate::ffi::Errno;
 
@@ -26,7 +30,44 @@ pub struct EdidHeader {
     pub edid_revision: u8,
 }
 
+/// Exact ABI mirror of C's packed `EdidHeader`.
+///
+/// Keep this separate from the ergonomic, naturally aligned `EdidHeader`
+/// returned by the safe Rust API. Raw packed fields must only be accessed with
+/// unaligned reads and writes.
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+pub struct EdidHeaderAbi {
+    pattern: [u8; 8],
+    manufacturer_id: u16,
+    manufacturer_product_code: u16,
+    serial_number: u32,
+    week_of_manufacture: u8,
+    year_of_manufacture: u8,
+    edid_version: u8,
+    edid_revision: u8,
+}
+
+const _: () = assert!(size_of::<EdidHeaderAbi>() == 20);
+const _: () = assert!(align_of::<EdidHeaderAbi>() == 1);
+
 // ── Parsing ───────────────────────────────────────────────────────────────
+
+fn parse_edid_prefix(prefix: &[u8; 20]) -> Result<EdidHeader, Errno> {
+    if prefix[..8] != EDID_FIXED_HEADER_PATTERN {
+        return Err(Errno::EINVAL);
+    }
+
+    Ok(EdidHeader {
+        manufacturer_id: u16::from_be_bytes([prefix[8], prefix[9]]),
+        manufacturer_product_code: u16::from_le_bytes([prefix[10], prefix[11]]),
+        serial_number: u32::from_le_bytes([prefix[12], prefix[13], prefix[14], prefix[15]]),
+        week_of_manufacture: prefix[16],
+        year_of_manufacture: prefix[17],
+        edid_version: prefix[18],
+        edid_revision: prefix[19],
+    })
+}
 
 /// Parse an EDID blob into an EdidHeader.
 ///
@@ -37,22 +78,45 @@ pub fn edid_parse_blob(blob: &[u8]) -> Result<EdidHeader, Errno> {
         return Err(Errno::EINVAL);
     }
 
-    if blob[..8] != EDID_FIXED_HEADER_PATTERN {
-        return Err(Errno::EINVAL);
-    }
-
-    Ok(EdidHeader {
-        manufacturer_id: u16::from_be_bytes([blob[8], blob[9]]),
-        manufacturer_product_code: u16::from_le_bytes([blob[10], blob[11]]),
-        serial_number: u32::from_le_bytes([blob[12], blob[13], blob[14], blob[15]]),
-        week_of_manufacture: blob[16],
-        year_of_manufacture: blob[17],
-        edid_version: blob[18],
-        edid_revision: blob[19],
-    })
+    let prefix: &[u8; 20] = blob[..20].try_into().expect("fixed-size EDID prefix");
+    parse_edid_prefix(prefix)
 }
 
 // ── Panel ID ──────────────────────────────────────────────────────────────
+
+fn write_panel_id(
+    manufacturer_id: u16,
+    manufacturer_product_code: u16,
+    mut write: impl FnMut(usize, u16),
+) -> Result<(), Errno> {
+    for i in 0..3usize {
+        let letter = (manufacturer_id >> (5 * i)) & 0x1F;
+        if letter > 0x1A {
+            return Err(Errno::EINVAL);
+        }
+        write(2 - i, letter + u16::from(b'A') - 1);
+    }
+
+    write(
+        3,
+        u16::from(LOWERCASE_HEXDIGITS[((manufacturer_product_code >> 12) & 0x0F) as usize]),
+    );
+    write(
+        4,
+        u16::from(LOWERCASE_HEXDIGITS[((manufacturer_product_code >> 8) & 0x0F) as usize]),
+    );
+    write(
+        5,
+        u16::from(LOWERCASE_HEXDIGITS[((manufacturer_product_code >> 4) & 0x0F) as usize]),
+    );
+    write(
+        6,
+        u16::from(LOWERCASE_HEXDIGITS[(manufacturer_product_code & 0x0F) as usize]),
+    );
+    write(7, 0);
+
+    Ok(())
+}
 
 /// Extract the panel ID string from an EDID header.
 ///
@@ -60,26 +124,105 @@ pub fn edid_parse_blob(blob: &[u8]) -> Result<EdidHeader, Errno> {
 /// Returns an array of 8 u16 values (3 letter code + 4 hex digits + NUL).
 pub fn edid_get_panel_id(header: &EdidHeader) -> Result<[u16; 8], Errno> {
     let mut panel = [0u16; 8];
+    write_panel_id(
+        header.manufacturer_id,
+        header.manufacturer_product_code,
+        |index, value| panel[index] = value,
+    )?;
+    Ok(panel)
+}
 
-    for i in 0..3usize {
-        let letter = (header.manufacturer_id >> (5 * i)) & 0x1F;
-        if letter > 0x1A {
-            return Err(Errno::EINVAL);
-        }
-        panel[2 - i] = (letter as u16) + (b'A' as u16) - 1;
+/// C ABI mirror of `edid_parse_blob()`.
+///
+/// Like the C authority, this validates the advertised 128-byte minimum before
+/// reading only the 20-byte fixed header and leaves `ret_header` untouched on
+/// failure.
+///
+/// # Safety
+///
+/// When `blob_size >= 128`, `blob` must point to at least 128 readable bytes.
+/// `ret_header` must point to writable storage for one packed C `EdidHeader`.
+/// Null `ret_header`, and null `blob` with a sufficient advertised size, are
+/// invalid in the C API; this facade returns `-EINVAL` instead of triggering a
+/// C assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_edid_parse_blob(
+    blob: *const c_void,
+    blob_size: usize,
+    ret_header: *mut EdidHeaderAbi,
+) -> i32 {
+    if ret_header.is_null() || blob_size < 128 {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    if blob.is_null() {
+        return Errno::EINVAL.to_neg_errno();
     }
 
-    panel[3] =
-        LOWERCASE_HEXDIGITS[((header.manufacturer_product_code >> 12) & 0x0F) as usize] as u16;
-    panel[4] =
-        LOWERCASE_HEXDIGITS[((header.manufacturer_product_code >> 8) & 0x0F) as usize] as u16;
-    panel[5] =
-        LOWERCASE_HEXDIGITS[((header.manufacturer_product_code >> 4) & 0x0F) as usize] as u16;
-    panel[6] =
-        LOWERCASE_HEXDIGITS[((header.manufacturer_product_code >> 0) & 0x0F) as usize] as u16;
-    panel[7] = 0;
+    // SAFETY: after the size and null checks, the entry-point contract
+    // guarantees at least 128 readable bytes; copying the 20-byte prefix is
+    // sufficient and does not impose alignment on the opaque input pointer.
+    let prefix = unsafe { ptr::read_unaligned(blob.cast::<[u8; 20]>()) };
+    let parsed = match parse_edid_prefix(&prefix) {
+        Ok(parsed) => parsed,
+        Err(error) => return error.to_neg_errno(),
+    };
 
-    Ok(panel)
+    let output = EdidHeaderAbi {
+        pattern: EDID_FIXED_HEADER_PATTERN,
+        manufacturer_id: parsed.manufacturer_id,
+        manufacturer_product_code: parsed.manufacturer_product_code,
+        serial_number: parsed.serial_number,
+        week_of_manufacture: parsed.week_of_manufacture,
+        year_of_manufacture: parsed.year_of_manufacture,
+        edid_version: parsed.edid_version,
+        edid_revision: parsed.edid_revision,
+    };
+
+    // SAFETY: the entry-point contract guarantees writable storage for the
+    // packed output. `write_unaligned` avoids assuming more than C's alignment.
+    unsafe { ptr::write_unaligned(ret_header, output) };
+    0
+}
+
+/// C ABI mirror of `edid_get_panel_id()`.
+///
+/// Output is published in the same order as C. In particular, an invalid
+/// manufacturer letter can leave characters from earlier loop iterations in
+/// `ret_panel`; the remaining elements stay untouched.
+///
+/// # Safety
+///
+/// `edid_header` must point to a live packed C `EdidHeader`, and `ret_panel`
+/// must point to at least eight writable C `char16_t` elements. The regions
+/// must not overlap. Null pointers are invalid in the C API; this facade
+/// returns `-EINVAL` instead of triggering a C assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_edid_get_panel_id(
+    edid_header: *const EdidHeaderAbi,
+    ret_panel: *mut u16,
+) -> i32 {
+    if edid_header.is_null() || ret_panel.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: the entry-point contract guarantees a readable packed header.
+    // Copying it unaligned prevents references to packed fields.
+    let header = unsafe { ptr::read_unaligned(edid_header) };
+    let manufacturer_id = header.manufacturer_id;
+    let manufacturer_product_code = header.manufacturer_product_code;
+
+    match write_panel_id(
+        manufacturer_id,
+        manufacturer_product_code,
+        |index, value| {
+            // SAFETY: the entry-point contract guarantees eight writable
+            // char16_t elements. Each index is in 0..8 and written at most once.
+            unsafe { ptr::write_unaligned(ret_panel.add(index), value) };
+        },
+    ) {
+        Ok(()) => 0,
+        Err(error) => error.to_neg_errno(),
+    }
 }
 
 #[cfg(test)]

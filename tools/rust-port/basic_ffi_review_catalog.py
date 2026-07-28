@@ -635,6 +635,35 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "capability_list": (
+            basic_rust / "capability_list.h",
+            basic_rust / "capability_list.rs",
+            frozenset(
+                {
+                    "rs_capability_to_name",
+                    "rs_capability_to_string",
+                    "rs_capability_from_name",
+                    "rs_capability_list_length",
+                }
+            ),
+        ),
+        "edid": (
+            basic_rust / "edid.h",
+            basic_rust / "edid.rs",
+            frozenset({"rs_edid_parse_blob", "rs_edid_get_panel_id"}),
+        ),
+        "nsflags": (
+            shared_rust / "nsflags.h",
+            basic_rust / "nsflags.rs",
+            frozenset(
+                {
+                    "rs_namespace_single_flag_to_string",
+                    "rs_namespace_flags_to_strv",
+                    "rs_namespace_flags_to_string",
+                    "rs_namespace_flags_from_string",
+                }
+            ),
+        ),
     }
     partial_extra_sources = {
         "escape": (
@@ -794,6 +823,9 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "bus_error_util": (tests_extra / "test-bus-error-rust.c",),
         "fstype_util": (tests_extra / "test-fstype-util-rust.c",),
         "namespace_util": (tests_extra / "test-namespace-mountpoint-rust.c",),
+        "capability_list": (tests_extra / "test-capability-list-rust.c",),
+        "edid": (tests_extra / "test-edid-rust.c",),
+        "nsflags": (tests_extra / "test-nsflags-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -1047,6 +1079,18 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "namespace_util": (
             root / "src/basic/namespace-util.c",
             root / "src/basic/namespace-util.h",
+        ),
+        "capability_list": (
+            root / "src/basic/capability-list.c",
+            root / "src/basic/capability-list.h",
+        ),
+        "edid": (
+            root / "src/fundamental/edid.c",
+            root / "src/fundamental/edid.h",
+        ),
+        "nsflags": (
+            root / "src/shared/nsflags.c",
+            root / "src/shared/nsflags.h",
         ),
     }
     return BasicFfiReviewCatalog(

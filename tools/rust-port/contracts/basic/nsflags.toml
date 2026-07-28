@@ -1,0 +1,105 @@
+schema = 1
+module = "nsflags"
+semantic_coverage = "complete"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+
+[authority]
+c_headers = ["src/shared/nsflags.h"]
+c_sources = ["src/shared/nsflags.c"]
+rust_headers = ["src/shared/rust/nsflags.h"]
+rust_sources = ["src/basic/rust/nsflags.rs"]
+
+[[surface]]
+id = "namespace-single-flag-name"
+c_symbols = ["namespace_single_flag_to_string"]
+rust_symbols = ["rs_namespace_single_flag_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-nsflags-rust.c"
+meson_target = "test-nsflags-rust"
+labels = ["namespace-single-flag-name"]
+
+[[surface]]
+id = "namespace-flags-to-strv"
+c_symbols = ["namespace_flags_to_strv"]
+rust_symbols = ["rs_namespace_flags_to_strv"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-nsflags-rust.c"
+meson_target = "test-nsflags-rust"
+labels = ["namespace-flags-to-strv"]
+
+[[surface]]
+id = "namespace-flags-to-string"
+c_symbols = ["namespace_flags_to_string"]
+rust_symbols = ["rs_namespace_flags_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-nsflags-rust.c"
+meson_target = "test-nsflags-rust"
+labels = ["namespace-flags-to-string"]
+
+[[surface]]
+id = "namespace-flags-from-string"
+c_symbols = ["namespace_flags_from_string"]
+rust_symbols = ["rs_namespace_flags_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-nsflags-rust.c"
+meson_target = "test-nsflags-rust"
+labels = ["namespace-flags-from-string"]

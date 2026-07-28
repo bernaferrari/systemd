@@ -57,6 +57,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 7
     },
+    "src/basic/rust/capability_list.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
+    },
     "src/basic/rust/capability_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -107,6 +112,11 @@
         "1948:1:unsafe fn alloc_strndup(s: *const c_char, n: usize) -> *mut c_char {"
       ],
       "unsafe_sites": 102
+    },
+    "src/basic/rust/edid.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 6
     },
     "src/basic/rust/errno_util.rs": {
       "missing_safety": 0,
@@ -273,6 +283,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 20
+    },
+    "src/basic/rust/nsflags.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 13
     },
     "src/basic/rust/parse_util.rs": {
       "missing_safety": 18,

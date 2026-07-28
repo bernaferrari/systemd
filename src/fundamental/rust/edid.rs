@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/fundamental/edid.h, src/fundamental/edid.c
+// PORT-SYNC: scope=fundamental.edid; authority=src/fundamental/edid.c,src/fundamental/edid.h
 //
 // EDID (Extended Display Identification Data) parsing.
 
@@ -18,6 +18,9 @@ pub struct EdidHeader {
     pub edid_version: u8,
     pub edid_revision: u8,
 }
+
+const _: () = assert!(core::mem::size_of::<EdidHeader>() == 20);
+const _: () = assert!(core::mem::align_of::<EdidHeader>() == 1);
 
 const EDID_FIXED_HEADER_PATTERN: [u8; 8] = [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00];
 
@@ -52,7 +55,7 @@ pub fn edid_get_panel_id(edid_header: &EdidHeader) -> Result<[u16; 8]> {
     let mut ret_panel = [0u16; 8];
     for i in 0..3 {
         let letter = (edid_header.manufacturer_id >> (5 * i)) & 0b11111;
-        if letter > 0b11010 || letter == 0 {
+        if letter > 0b11010 {
             return Err(EdidError::InvalidManufacturerId);
         }
         ret_panel[2 - i] = (letter + b'A' as u16 - 1) as u16;
@@ -105,5 +108,33 @@ mod tests {
         let panel = edid_get_panel_id(&header).unwrap();
         assert_eq!(panel[3], b'1' as u16);
         assert_eq!(panel[6], b'4' as u16);
+    }
+
+    #[test]
+    fn zero_manufacturer_letters_match_c_at_sign_output() {
+        let header = EdidHeader {
+            pattern: EDID_FIXED_HEADER_PATTERN,
+            manufacturer_id: 0,
+            manufacturer_product_code: 0,
+            serial_number: 0,
+            week_of_manufacture: 0,
+            year_of_manufacture: 0,
+            edid_version: 1,
+            edid_revision: 4,
+        };
+
+        assert_eq!(
+            edid_get_panel_id(&header).unwrap(),
+            [
+                u16::from(b'@'),
+                u16::from(b'@'),
+                u16::from(b'@'),
+                u16::from(b'0'),
+                u16::from(b'0'),
+                u16::from(b'0'),
+                u16::from(b'0'),
+                0,
+            ]
+        );
     }
 }

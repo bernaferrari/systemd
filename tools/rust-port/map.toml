@@ -726,14 +726,27 @@ notes = "6 shadow tests pass (including exhaustive C-vs-Rust loop). 1 FFI export
 
 [edid]
 c_paths = ["src/fundamental/edid.c", "src/fundamental/edid.h"]
-rust_file = "src/basic/rust/edid.rs"
-header_file = "src/fundamental/edid.h"
+rust_paths = [
+    "src/basic/rust/edid.rs",
+    "src/fundamental/rust/edid.rs",
+    "src/basic/rust/edid.h",
+]
+scope = "fundamental.edid"
+rust_scope_paths = ["src/basic/rust/edid.rs", "src/fundamental/rust/edid.rs"]
+rust_interface_paths = ["src/basic/rust/edid.h"]
+contract_file = "tools/rust-port/contracts/basic/edid.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/fundamental/edid.c", rust_paths = ["src/basic/rust/edid.rs", "src/fundamental/rust/edid.rs", "src/basic/rust/edid.h"] },
+    { kind = "direct", path = "src/fundamental/edid.h", rust_paths = ["src/basic/rust/edid.rs", "src/fundamental/rust/edid.rs", "src/basic/rust/edid.h"] },
+]
 test_file = "tests-extra/test-edid-rust.c"
 status = "in-progress"
 tier = 1
 symbols = 2
-sync_status = "needs_review"
-notes = "5 shadow tests pass. 2 FFI exports: rs_edid_parse_blob, rs_edid_get_panel_id. Parses EDID header (manufacturer_id byte-swapping, panel ID extraction). Uses repr(C, packed) EdidHeader struct. 2026-07-27 provenance audit re-anchored to current fundamental EDID source, header, and Rust comparator; runtime parity remains unclaimed."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/fundamental/edid.c" = "980a3989b71155dc2fef55efa71548801ed8633a", "src/fundamental/edid.h" = "6c5930f4c6ac3d2b7e75847248ee72b3db67cae5" }
+last_reviewed_rust_blobs = { "src/basic/rust/edid.rs" = "5d15e4230d0bed9b5a14ad53abb3e03cfbf2fbd0", "src/fundamental/rust/edid.rs" = "ea23422508b3e368bd5ad9d4475ea8960ad084db", "src/basic/rust/edid.h" = "151d2a3b89b8e5263def8059d78ed574992d6cdd" }
+notes = "Reviewed static EDID ABI slice 2026-07-28; no build/tests/VM. Two facades preserve the 20-byte, alignment-one packed C layout, unaligned blob/header access, byte-order conversion, parse failure non-publication, and panel-ID partial writes before an invalid later manufacturer letter. The duplicate fundamental safe core now permits manufacturer code zero to produce C's '@'. C remains the production authority; runtime parity is unclaimed."
 
 [af_list]
 c_paths = [
@@ -947,15 +960,46 @@ sync_status = "needs_review"
 notes = "Static ABI audit 2026-07-27; no build/tests/VM. Six bus-type and three comparison exports are exact header-backed extern-C facades over current sd-bus/hash authorities. 2026-07-27 provenance audit replaces the malformed semicolon-delimited source field with reviewed current source/header pairs. Scalar C char stays symbolic as libc::c_char, fixing unsigned-char Linux target ABI. Exact Rust-linked Meson tests and both CI phases are pinned; runtime parity remains unclaimed."
 
 [capability_list]
-c_file = "src/basic/capability-list.c"
-rust_file = "src/basic/rust/capability_list.rs"
-header_file = "src/basic/capability-list.h"
-test_file = "src/test/test-capability.c"
+c_paths = [
+    "src/basic/capability-list.c",
+    "src/basic/capability-list.h",
+    "src/basic/parse-util.c",
+    "src/basic/parse-util.h",
+    "src/basic/generate-capability-list.sh",
+    "src/basic/capability-to-name.awk",
+    "src/basic/meson.build",
+    "src/include/meson.build",
+    "src/include/uapi/linux/capability.h",
+    "tools/generate-gperfs.py",
+]
+rust_paths = [
+    "src/basic/rust/capability_list.rs",
+    "src/basic/rust/capability_list.h",
+]
+scope = "basic.capability-list"
+rust_scope_paths = ["src/basic/rust/capability_list.rs"]
+rust_interface_paths = ["src/basic/rust/capability_list.h"]
+contract_file = "tools/rust-port/contracts/basic/capability-list.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/capability-list.c", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+    { kind = "direct", path = "src/basic/capability-list.h", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+    { kind = "direct", path = "src/basic/parse-util.c", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+    { kind = "direct", path = "src/basic/parse-util.h", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+    { kind = "direct", path = "src/basic/generate-capability-list.sh", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+    { kind = "direct", path = "src/basic/capability-to-name.awk", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+    { kind = "direct", path = "src/basic/meson.build", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+    { kind = "direct", path = "src/include/meson.build", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+    { kind = "direct", path = "src/include/uapi/linux/capability.h", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+    { kind = "direct", path = "tools/generate-gperfs.py", rust_paths = ["src/basic/rust/capability_list.rs", "src/basic/rust/capability_list.h"] },
+]
+test_file = "tests-extra/test-capability-list-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 2
-sync_status = "needs_review"
-notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-capability.c); re-anchor to current upstream files before claiming completion."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/capability-list.c" = "6c60888327c31046f46decb004f0b5ab11e04d46", "src/basic/capability-list.h" = "f60569a61abc131c3b2442adc4bdb5e0c0776a02", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890", "src/basic/generate-capability-list.sh" = "ab87f94f500dccf931ad42ce7b05a892f82fe9f7", "src/basic/capability-to-name.awk" = "bd8a28c2fe8e32e90ae3201e67e524440c90e7cb", "src/basic/meson.build" = "3b74e2bb1b89485bd0ff55c2fdb561a806d25c5e", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/uapi/linux/capability.h" = "60fd34309de01c518f1de2d384ea4cf09525b29f", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_rust_blobs = { "src/basic/rust/capability_list.rs" = "466bd5573fec2f53213ad85eae4929e0428bbbf8", "src/basic/rust/capability_list.h" = "8284fb977e94a0044ee93b26c0975ff5bc182d3e" }
+notes = "Reviewed static capability-list ABI slice 2026-07-28; no build/tests/VM. Four facades preserve NUL-backed borrowed names, target-generated gperf ASCII case folding, safe_atoi numeric grammar, CAP_LIMIT bounds, and caller-buffer numeric rendering without allocation. The table is anchored to vendored UAPI and generation inputs; the Linux C-vs-Rust fixture deliberately detects a newer target table. Capability-set allocation/vector APIs remain C-only. C remains the production authority; runtime parity is unclaimed."
 
 [capability_util]
 c_paths = ["src/basic/capability-util.c", "src/basic/capability-util.h"]
@@ -1370,14 +1414,34 @@ sync_status = "needs_review"
 notes = "Multi-source C-ABI shadow across basic/, shared/, resolve/, and network/ (header groups name each domain). The 137 header declarations are mechanically audited as unique unmangled extern-C exports with exact C/Rust signature parity, and every C string now uses target libc::c_char. The <1000-line facade owns shared ABI machinery; cohesive source domains live in netdev_str_tables/{network_link,network_virtual,boot_import,resolve_modes,dns_security,tpm_bpf_wifi}.rs, and pure matching lives in core.rs. The unconsumed shared prototype was removed. Table values remain a manually maintained subset and require per-domain upstream parity review, especially platform-header-derived nl80211 values and allocation/error paths. Static audit only; tracked by systemd-efxr.12."
 
 [nsflags]
-c_paths = ["src/shared/nsflags.c", "src/shared/nsflags.h"]
-rust_file = "src/basic/rust/nsflags.rs"
-header_file = "src/shared/nsflags.h"
+c_paths = [
+    "src/shared/nsflags.c",
+    "src/shared/nsflags.h",
+    "src/basic/namespace-util.c",
+    "src/basic/namespace-util.h",
+]
+rust_paths = [
+    "src/basic/rust/nsflags.rs",
+    "src/shared/rust/nsflags.h",
+]
+scope = "shared.nsflags"
+rust_scope_paths = ["src/basic/rust/nsflags.rs"]
+rust_interface_paths = ["src/shared/rust/nsflags.h"]
+contract_file = "tools/rust-port/contracts/basic/nsflags.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/nsflags.c", rust_paths = ["src/basic/rust/nsflags.rs", "src/shared/rust/nsflags.h"] },
+    { kind = "direct", path = "src/shared/nsflags.h", rust_paths = ["src/basic/rust/nsflags.rs", "src/shared/rust/nsflags.h"] },
+    { kind = "direct", path = "src/basic/namespace-util.c", rust_paths = ["src/basic/rust/nsflags.rs", "src/shared/rust/nsflags.h"] },
+    { kind = "direct", path = "src/basic/namespace-util.h", rust_paths = ["src/basic/rust/nsflags.rs", "src/shared/rust/nsflags.h"] },
+]
+test_file = "tests-extra/test-nsflags-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored namespace flag conversion behavior to current shared source/header; behavioral completion remains unclaimed."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/nsflags.c" = "b852221c6757f595b49f3611604ab36a6c5ce9a7", "src/shared/nsflags.h" = "eae199d73fa3deb7610bf89a781990f1f821a7fb", "src/basic/namespace-util.c" = "72e7005c946133b8e693fb8ac5817f8a8ed90ada", "src/basic/namespace-util.h" = "d0eff636a9d2b921da859e0f98cf449785b7be8a" }
+last_reviewed_rust_blobs = { "src/basic/rust/nsflags.rs" = "5c9ece426655fec022d6e8f64710836bb622c282", "src/shared/rust/nsflags.h" = "3d64d407b1e49e141fd206db0e0ede68293c9694" }
+notes = "Reviewed static namespace-flag ABI slice 2026-07-28; no build/tests/VM. Four facades preserve native unsigned-long flags, ordered namespace names, full C WHITESPACE/backslash parsing, output-on-success, borrowed static names, and libc-compatible string/strv ownership. Namespace FD, pidref, userns, mount, and syscall operations remain C-only. C remains the production authority; runtime parity is unclaimed."
 
 [pe_binary]
 c_paths = ["src/shared/pe-binary.c", "src/shared/pe-binary.h"]

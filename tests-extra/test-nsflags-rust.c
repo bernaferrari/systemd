@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C nsflags.c vs Rust */
 
+/* RUST-CONTRACT: namespace-single-flag-name */
+/* RUST-CONTRACT: namespace-flags-to-strv */
+/* RUST-CONTRACT: namespace-flags-to-string */
+/* RUST-CONTRACT: namespace-flags-from-string */
+
 #include <sched.h>
 #include <assert.h>
 #include <string.h>
@@ -144,6 +149,9 @@ static void test_namespace_flags_to_strv(void) {
 /* -- namespace_flags_from_string ------------------------------------------ */
 
 static void test_namespace_flags_from_string(void) {
+        static const char c_whitespace[] = "\tmnt\nnet\vuser\futs\r";
+        static const char escaped_names[] = "m\\nt n\\et";
+        static const char invalid_utf8[] = { 'n', 'e', 't', (char) 0xff, 0 };
         unsigned long c_flags, rs_flags;
         int r;
 
@@ -179,9 +187,34 @@ static void test_namespace_flags_from_string(void) {
         assert_se(c_flags == NAMESPACE_FLAGS_ALL);
 
         /* Invalid namespace */
+        c_flags = 0xdeadUL;
+        rs_flags = 0xdeadUL;
         r = namespace_flags_from_string("invalid", &c_flags);
         assert_se(r == -EINVAL);
         r = rs_namespace_flags_from_string("invalid", &rs_flags);
+        assert_se(r == -EINVAL);
+        assert_se(c_flags == rs_flags);
+
+        /* extract_first_word() uses C ASCII whitespace, not Unicode rules. */
+        r = namespace_flags_from_string(c_whitespace, &c_flags);
+        assert_se(r >= 0);
+        r = rs_namespace_flags_from_string(c_whitespace, &rs_flags);
+        assert_se(r >= 0);
+        assert_se(c_flags == rs_flags);
+        assert_se(c_flags == (CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWUSER | CLONE_NEWUTS));
+
+        /* With zero extract flags, a backslash escapes the next byte. */
+        r = namespace_flags_from_string(escaped_names, &c_flags);
+        assert_se(r >= 0);
+        r = rs_namespace_flags_from_string(escaped_names, &rs_flags);
+        assert_se(r >= 0);
+        assert_se(c_flags == rs_flags);
+        assert_se(c_flags == (CLONE_NEWNS | CLONE_NEWNET));
+
+        /* C comparison remains byte-oriented for malformed UTF-8. */
+        r = namespace_flags_from_string(invalid_utf8, &c_flags);
+        assert_se(r == -EINVAL);
+        r = rs_namespace_flags_from_string(invalid_utf8, &rs_flags);
         assert_se(r == -EINVAL);
 
         /* NULL */

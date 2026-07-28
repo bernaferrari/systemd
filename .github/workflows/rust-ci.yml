@@ -144,6 +144,7 @@ jobs:
           systemd_basic_rs
           test-af-list-rust
           test-architecture-rust
+          test-capability-list-rust
           test-capability-util-rust
           test-unit-name-rust
           test-install-rust
@@ -218,6 +219,7 @@ jobs:
           test-confidential-virt-rust
           test-hexdecoct-rust
           test-env-util-rust
+          test-edid-rust
           test-credential-validators-rust
           test-locale-util-rust
           test-image-class-rust
@@ -236,6 +238,7 @@ jobs:
           test-at-flags-rust
           test-ioprio-util-rust
           test-namespace-mountpoint-rust
+          test-nsflags-rust
           test-time-util-extra2-rust
           test-str-tables-batch3-rust
           test-udev-util-rust
@@ -249,6 +252,7 @@ jobs:
           --print-errorlogs
           test-af-list-rust
           test-architecture-rust
+          test-capability-list-rust
           test-capability-util-rust
           test-unit-name-rust
           test-install-rust
@@ -323,6 +327,7 @@ jobs:
           test-confidential-virt-rust
           test-hexdecoct-rust
           test-env-util-rust
+          test-edid-rust
           test-credential-validators-rust
           test-locale-util-rust
           test-image-class-rust
@@ -341,6 +346,7 @@ jobs:
           test-at-flags-rust
           test-ioprio-util-rust
           test-namespace-mountpoint-rust
+          test-nsflags-rust
           test-time-util-extra2-rust
           test-str-tables-batch3-rust
           test-udev-util-rust
