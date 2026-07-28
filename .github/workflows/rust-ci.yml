@@ -83,6 +83,29 @@ jobs:
         # runnable coverage.
         run: cargo check --workspace --all-targets
 
+  # Executable confidence bottleneck after static gates: compile then run the
+  # reviewed C-versus-Rust comparison fixtures on Linux. Target membership is
+  # owned by tools/rust-port/basic_ffi_review_catalog.py (SHADOW_TESTS,
+  # PARTIAL_SHADOW_TESTS, ci_only_shadow_tests) and enforced by
+  # check-basic-rust-ffi-abi.py — compile and meson test lists must match that
+  # set exactly (no YAML comments inside the command bodies).
+  #
+  # Priority runtime coverage already in this job:
+  #   path/non-UTF-8: test-path-funcs-rust, test-path-util-extra-rust
+  #   strv ownership/alloc: test-strv-extra{,2-7}-rust, test-strv-fnmatch-rust,
+  #                         test-string-util-extra6-rust
+  #   stat: test-stat-util-rust, test-stat-util-extra2-rust,
+  #         test-stat-util-inline-rust, test-stat-verify-rust
+  #   shared facades: test-shared-validators{,2,3}-rust (+ related validators)
+  #   parse/time slices: test-parse-util-extra-rust, test-parse-extra-rust,
+  #                      test-parse-util-inline-rust, test-time-util-extra2-rust
+  #   allocator overflow guards: test-alloc-util-extra2-rust
+  #   non-UTF-8 extras: test-header-inline-rust, string/escape/errno fixtures
+  #
+  # Intentionally NOT listed until C ABI exports exist (no_mangle/export_name):
+  #   test-strv-rust, test-path-util-rust, test-parse-util-rust,
+  #   test-time-util-rust, test-time-util-extra-rust, test-utf8-rust,
+  #   test-alloc-util-rust — see tools/rust-port/PRIORITY_RUNTIME_SET.md
   rust-meson-reviewed-shadows:
     name: Meson-reviewed Rust C shadows
     runs-on: ubuntu-24.04

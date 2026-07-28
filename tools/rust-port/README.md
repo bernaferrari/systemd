@@ -11,6 +11,7 @@ The taxonomy gate rejects an unclassified Python, TOML, or JSON tool artifact.
 | Map C authority to Rust twins | [`map.toml`](map.toml), `stale-check.py`, `diff-report.py` |
 | Describe a reviewed partial behavior slice | `contracts/`, `check-behavior-contract.py` |
 | Audit C ABI/fixture parity | `basic_ffi_review_catalog.py`, `check-*-abi.py` |
+| Executable Linux priority runtime set | [`PRIORITY_RUNTIME_SET.md`](PRIORITY_RUNTIME_SET.md), job `rust-meson-reviewed-shadows` |
 | Enforce safe production boundaries | `truthfulness-gate.py`, `check-*-boundary.py`, `workspace-architecture-gate.py` |
 | Review safety, lints, or dependencies | `unsafe-safety-gate.py`, `rust-safety-lint-policy-gate.py`, `cargo-audit-all.py` |
 | Regenerate or inspect reports | `generate-gpt-table.py`, `coverage-dashboard.py`, `audit-port1.py` |
