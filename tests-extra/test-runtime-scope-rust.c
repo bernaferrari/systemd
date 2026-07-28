@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C runtime-scope vs Rust rs_runtime_scope */
+/* RUST-CONTRACT: runtime-scope-name */
+/* RUST-CONTRACT: runtime-scope-parse */
+/* RUST-CONTRACT: runtime-scope-command-line-option */
+/* RUST-CONTRACT: runtime-scope-socket-mode */
 
 #include <string.h>
 #include <sys/stat.h>
@@ -68,6 +72,8 @@ static void test_runtime_scope_cmdline(void) {
 
         assert_se(runtime_scope_cmdline_option_to_string(-1) == NULL);
         assert_se(rs_runtime_scope_cmdline_option_to_string(-1) == NULL);
+        assert_se(runtime_scope_cmdline_option_to_string(_RUNTIME_SCOPE_MAX) == NULL);
+        assert_se(rs_runtime_scope_cmdline_option_to_string(_RUNTIME_SCOPE_MAX) == NULL);
 }
 
 /* ── runtime_scope_to_socket_mode ──────────────────────────────────────── */

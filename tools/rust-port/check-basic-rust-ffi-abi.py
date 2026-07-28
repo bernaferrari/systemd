@@ -75,6 +75,8 @@ C_TYPES = {
     # These C enums have `int` ABI, but the Rust facades intentionally take
     # raw integers so invalid C discriminants remain defined/non-matching.
     "OutputMode": "i32",
+    "RuntimeScope": "i32",
+    "ValidHostnameFlags": "i32",
     "SleepOperation": "i32",
     "bool": "bool",
     "bool *": "*mutbool",
@@ -95,6 +97,7 @@ C_TYPES = {
     "const char *": "*constc_char",
     "const char **": "*mut*constc_char",
     "const char * *": "*mut*constc_char",
+    "const sd_id128_t *": "*constSdId128",
     "const void *": "*constc_void",
     "void **": "*mut*mutc_void",
     "const uint64_t *": "*constu64",
@@ -122,6 +125,7 @@ C_TYPES = {
     "struct rs_IoVec *": "*mutIoVec",
     "struct iovec *": "*mutIoVec",
     "sd_bus_error *": "*mutSdBusError",
+    "sd_id128_t *": "*mutSdId128",
     "dev_t *": "*mutu64",
     "mode_t *": "*mutu32",
     "rlim_t *": "*mutu64",
@@ -143,6 +147,7 @@ C_TYPES = {
     "int64_t": "i64",
     "off_t": "i64",
     "pid_t": "i32",
+    "sd_id128_t": "SdId128",
     "gid_t": "u32",
     "unsigned": "u32",
     "unsigned int": "u32",
@@ -310,6 +315,8 @@ def c_parameter_type(parameter: str) -> str:
     parameter = re.sub(r"\s+", " ", parameter.strip())
     parameter = parameter.replace("[static DEVNUM_STR_MAX]", "[]")
     parameter = parameter.replace("[static CAPABILITY_TO_STRING_MAX]", "[]")
+    parameter = parameter.replace("[static SD_ID128_STRING_MAX]", "[]")
+    parameter = parameter.replace("[static SD_ID128_UUID_STRING_MAX]", "[]")
     parameter = parameter.replace("[static 8]", "[]")
     parameter = re.sub(r"\bUnitNameFlags\b", "int", parameter)
     parameter = re.sub(r"\bUnitType\b", "int", parameter)
@@ -348,7 +355,9 @@ def c_parameter_type(parameter: str) -> str:
 
 def c_result_type(result: str) -> str:
     normalized = re.sub(r"\s+", " ", result.strip())
-    normalized = re.sub(r"^(?:static\s+inline|static|extern)\s+", "", normalized)
+    normalized = re.sub(
+        r"^(?:(?:static|extern|inline|_public_|__inline__)\s+)+", "", normalized
+    )
     normalized = re.sub(r"\b(?:UnitNameFlags|UnitType)\b", "int", normalized)
     normalized = re.sub(r"\bVirtualization\b", "int", normalized)
     normalized = re.sub(r"\s*\*\s*", " *", normalized)
@@ -2931,8 +2940,40 @@ def main() -> int:
                     )
                 authority_curated += 1
                 continue
+            for suffix in ("_to_string", "_from_string"):
+                if c_symbol.endswith(suffix):
+                    table = c_symbol.removesuffix(suffix)
+                    if re.search(
+                        rf"\bDEFINE_STRING_TABLE_LOOKUP\(\s*{re.escape(table)}\s*,",
+                        authority,
+                    ):
+                        actual = (
+                            (("i32",), "*constc_char")
+                            if suffix == "_to_string"
+                            else (("*constc_char",), "i32")
+                        )
+                        if actual != expected:
+                            return fail(
+                                f"{name}: current C string-table signature mismatch for {symbol}"
+                            )
+                        authority_curated += 1
+                        break
+                    if suffix == "_to_string" and re.search(
+                        rf"\bDEFINE_STRING_TABLE_LOOKUP_TO_STRING\(\s*{re.escape(table)}\s*,",
+                        authority,
+                    ):
+                        if (("i32",), "*constc_char") != expected:
+                            return fail(
+                                f"{name}: current C to-string table signature mismatch for {symbol}"
+                            )
+                        authority_curated += 1
+                        break
+            else:
+                table = None
+            if table is not None:
+                continue
             match = re.search(
-                rf"^[ \t]*([A-Za-z_][A-Za-z0-9_ \t*]*?(?:\s|\*))"
+                rf"^[ \t]*(?!return\b)([A-Za-z_][A-Za-z0-9_ \t*]*?(?:\s|\*))"
                 rf"{re.escape(c_symbol)}\s*\(([^)]*)\)\s*(?:\{{|;)",
                 authority_code,
                 flags=re.MULTILINE,

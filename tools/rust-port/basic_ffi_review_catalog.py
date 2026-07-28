@@ -664,6 +664,71 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "runtime_scope": (
+            basic_rust / "runtime_scope.h",
+            basic_rust / "runtime_scope.rs",
+            frozenset(
+                {
+                    "rs_runtime_scope_to_string",
+                    "rs_runtime_scope_from_string",
+                    "rs_runtime_scope_cmdline_option_to_string",
+                    "rs_runtime_scope_to_socket_mode",
+                }
+            ),
+        ),
+        "memory_util": (
+            basic_rust / "memory_util.h",
+            basic_rust / "memory_util.rs",
+            frozenset(
+                {
+                    "rs_page_size",
+                    "rs_memcpy_safe",
+                    "rs_mempcpy_safe",
+                    "rs_memcmp_safe",
+                    "rs_memcmp_nn",
+                    "rs_mempset",
+                    "rs_memmem_safe",
+                    "rs_mempmem_safe",
+                    "rs_memeqbyte",
+                }
+            ),
+        ),
+        "hostname_util": (
+            basic_rust / "hostname_util.h",
+            basic_rust / "hostname_util.rs",
+            frozenset(
+                {
+                    "rs_valid_ldh_char",
+                    "rs_hostname_is_valid",
+                    "rs_hostname_cleanup",
+                    "rs_is_localhost",
+                    "rs_is_gateway_hostname",
+                    "rs_is_outbound_hostname",
+                    "rs_is_dns_stub_hostname",
+                    "rs_is_dns_proxy_stub_hostname",
+                    "rs_split_user_at_host",
+                    "rs_machine_spec_valid",
+                }
+            ),
+        ),
+        "id128_util": (
+            basic_rust / "id128_util.h",
+            basic_rust / "id128_util.rs",
+            frozenset(
+                {
+                    "rs_sd_id128_to_string",
+                    "rs_sd_id128_to_uuid_string",
+                    "rs_sd_id128_from_string",
+                    "rs_sd_id128_string_equal",
+                    "rs_id128_from_string_nonzero",
+                    "rs_id128_make_v4_uuid",
+                    "rs_id128_compare_func",
+                    "rs_sd_id128_equal",
+                    "rs_sd_id128_is_null",
+                    "rs_id128_digest",
+                }
+            ),
+        ),
     }
     partial_extra_sources = {
         "escape": (
@@ -826,6 +891,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "capability_list": (tests_extra / "test-capability-list-rust.c",),
         "edid": (tests_extra / "test-edid-rust.c",),
         "nsflags": (tests_extra / "test-nsflags-rust.c",),
+        "runtime_scope": (tests_extra / "test-runtime-scope-rust.c",),
+        "memory_util": (tests_extra / "test-memory-util-rust.c",),
+        "hostname_util": (tests_extra / "test-hostname-util-rust.c",),
+        "id128_util": (tests_extra / "test-id128-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -1091,6 +1160,34 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "nsflags": (
             root / "src/shared/nsflags.c",
             root / "src/shared/nsflags.h",
+        ),
+        "runtime_scope": (
+            root / "src/basic/runtime-scope.c",
+            root / "src/basic/runtime-scope.h",
+        ),
+        "memory_util": (
+            root / "src/basic/memory-util.c",
+            root / "src/basic/memory-util.h",
+            root / "src/fundamental/memory-util.c",
+            root / "src/fundamental/memory-util.h",
+        ),
+        "hostname_util": (
+            root / "src/basic/hostname-util.c",
+            root / "src/basic/hostname-util.h",
+            root / "src/basic/user-util.c",
+            root / "src/basic/user-util.h",
+            root / "src/basic/string-util.c",
+            root / "src/basic/string-util.h",
+            root / "src/basic/utf8.c",
+            root / "src/basic/utf8.h",
+        ),
+        "id128_util": (
+            root / "src/libsystemd/sd-id128/sd-id128.c",
+            root / "src/libsystemd/sd-id128/id128-util.c",
+            root / "src/libsystemd/sd-id128/id128-util.h",
+            root / "src/systemd/sd-id128.h",
+            root / "src/fundamental/sha256.c",
+            root / "src/fundamental/sha256.h",
         ),
     }
     return BasicFfiReviewCatalog(

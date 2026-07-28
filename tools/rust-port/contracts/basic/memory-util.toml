@@ -1,0 +1,108 @@
+schema = 1
+module = "memory-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["erase_and_free"]
+
+[authority]
+c_headers = ["src/basic/memory-util.h", "src/fundamental/memory-util.h"]
+c_sources = ["src/basic/memory-util.c", "src/fundamental/memory-util.c"]
+rust_headers = ["src/basic/rust/memory_util.h"]
+rust_sources = ["src/basic/rust/memory_util.rs"]
+
+[[surface]]
+id = "page-size"
+c_symbols = ["page_size"]
+rust_symbols = ["rs_page_size"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-memory-util-rust.c"
+meson_target = "test-memory-util-rust"
+labels = ["page-size"]
+
+[[surface]]
+id = "counted-copy-and-fill"
+c_symbols = ["memcpy_safe", "mempcpy_safe", "mempset"]
+rust_symbols = ["rs_memcpy_safe", "rs_mempcpy_safe", "rs_mempset"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["memcpy_safe", "mempcpy_safe", "mempset"]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-memory-util-rust.c"
+meson_target = "test-memory-util-rust"
+labels = ["counted-copy-and-fill"]
+
+[[surface]]
+id = "counted-comparison"
+c_symbols = ["memcmp_safe", "memcmp_nn"]
+rust_symbols = ["rs_memcmp_safe", "rs_memcmp_nn"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-memory-util-rust.c"
+meson_target = "test-memory-util-rust"
+labels = ["counted-comparison"]
+
+[[surface]]
+id = "counted-search"
+c_symbols = ["memmem_safe", "mempmem_safe"]
+rust_symbols = ["rs_memmem_safe", "rs_mempmem_safe"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["memmem_safe", "mempmem_safe"]
+arg = "return"
+ownership = "borrowed-interior"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-memory-util-rust.c"
+meson_target = "test-memory-util-rust"
+labels = ["counted-search"]
+
+[[surface]]
+id = "uniform-byte-predicate"
+c_symbols = ["memeqbyte"]
+rust_symbols = ["rs_memeqbyte"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-memory-util-rust.c"
+meson_target = "test-memory-util-rust"
+labels = ["uniform-byte-predicate"]

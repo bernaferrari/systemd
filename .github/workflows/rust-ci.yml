@@ -220,6 +220,10 @@ jobs:
           test-hexdecoct-rust
           test-env-util-rust
           test-edid-rust
+          test-runtime-scope-rust
+          test-memory-util-rust
+          test-hostname-util-rust
+          test-id128-rust
           test-credential-validators-rust
           test-locale-util-rust
           test-image-class-rust
@@ -328,6 +332,10 @@ jobs:
           test-hexdecoct-rust
           test-env-util-rust
           test-edid-rust
+          test-runtime-scope-rust
+          test-memory-util-rust
+          test-hostname-util-rust
+          test-id128-rust
           test-credential-validators-rust
           test-locale-util-rust
           test-image-class-rust

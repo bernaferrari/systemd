@@ -390,12 +390,42 @@ last_reviewed_rust_blobs = { "src/basic/rust/devnum_util.rs" = "9995b6259a31d92d
 notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. The machine-checked contract covers five non-inline operations plus the two inline predicates, with exact ABI, byte grammar, errno, libc allocation, ownership, and success-only output publication evidence. device_path_make_canonical remains explicitly excluded, so this is partial reviewed provenance rather than synced or runtime parity."
 
 [hostname-util]
-c_file = "src/basic/hostname-util.c"
-rust_file = "src/basic/rust/hostname_util.rs"
+c_paths = [
+    "src/basic/hostname-util.c",
+    "src/basic/hostname-util.h",
+    "src/basic/user-util.c",
+    "src/basic/user-util.h",
+    "src/basic/string-util.c",
+    "src/basic/string-util.h",
+    "src/basic/utf8.c",
+    "src/basic/utf8.h",
+]
+rust_paths = [
+    "src/basic/rust/hostname_util.rs",
+    "src/basic/rust/hostname_util.h",
+]
+scope = "basic.hostname-util-abi"
+rust_scope_paths = ["src/basic/rust/hostname_util.rs"]
+rust_interface_paths = ["src/basic/rust/hostname_util.h"]
+contract_file = "tools/rust-port/contracts/basic/hostname-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/hostname-util.c", rust_paths = ["src/basic/rust/hostname_util.rs", "src/basic/rust/hostname_util.h"] },
+    { kind = "direct", path = "src/basic/hostname-util.h", rust_paths = ["src/basic/rust/hostname_util.rs", "src/basic/rust/hostname_util.h"] },
+    { kind = "direct", path = "src/basic/user-util.c", rust_paths = ["src/basic/rust/hostname_util.rs", "src/basic/rust/hostname_util.h"] },
+    { kind = "direct", path = "src/basic/user-util.h", rust_paths = ["src/basic/rust/hostname_util.rs", "src/basic/rust/hostname_util.h"] },
+    { kind = "direct", path = "src/basic/string-util.c", rust_paths = ["src/basic/rust/hostname_util.rs", "src/basic/rust/hostname_util.h"] },
+    { kind = "direct", path = "src/basic/string-util.h", rust_paths = ["src/basic/rust/hostname_util.rs", "src/basic/rust/hostname_util.h"] },
+    { kind = "direct", path = "src/basic/utf8.c", rust_paths = ["src/basic/rust/hostname_util.rs", "src/basic/rust/hostname_util.h"] },
+    { kind = "direct", path = "src/basic/utf8.h", rust_paths = ["src/basic/rust/hostname_util.rs", "src/basic/rust/hostname_util.h"] },
+]
+test_file = "tests-extra/test-hostname-util-rust.c"
 status = "in-progress"
 tier = 2
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: hostname validation/cleanup and environment behavior has no complete current behavior review or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+symbols = 10
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/hostname-util.c" = "ea49676ea304e57aa5188cf6d43bacf844f245de", "src/basic/hostname-util.h" = "3eb676064a97b520d31be687536d941e59db2365", "src/basic/user-util.c" = "fe4c0e6a36858f6b915705f50219a00c104a50f1", "src/basic/user-util.h" = "8355548b00ca3cd41ad52990f7f66f0807e47bc0", "src/basic/string-util.c" = "9de61aafe88b5cf3b2fb61eb1ae96c6e875cb7aa", "src/basic/string-util.h" = "74d6ca16826ab8b709b284fb4cd4c86c94988f99", "src/basic/utf8.c" = "0fccc4711cb9eb8e3817eff421e41b2f2f951be3", "src/basic/utf8.h" = "fde72a0d5422c9800125484ac619decf7ac93ffb" }
+last_reviewed_rust_blobs = { "src/basic/rust/hostname_util.rs" = "efcb4a7466899af9467e3b481471e1f03f5f7401", "src/basic/rust/hostname_util.h" = "54819d3b78c05b969430fe1fa6d96bd22600a214" }
+notes = "Reviewed static hostname ABI slice 2026-07-28; no build/tests/VM. Ten facades preserve raw-byte LDH validation, trailing-dot policy, in-place cleanup aliasing, ASCII-only synthetic classifiers, libc-owned split outputs with success-only publication, and relaxed user/machine-spec behavior. Environment/file hostname getters and unrelated hostname utilities remain excluded. C remains production authority; runtime parity unclaimed."
 
 [uid-range]
 c_file = "src/basic/uid-range.c"
@@ -533,11 +563,30 @@ tier = 1
 notes = "2 shadow tests pass. 2 FFI exports: rs_allow_listed_char_for_devnode, rs_encode_devnode_name. UTF-8 passthrough, \\xHH escaping for disallowed chars. Skipped: devnode_same (uses stat())."
 
 [runtime-scope]
-c_file = "src/basic/runtime-scope.c"
-rust_file = "src/basic/rust/runtime_scope.rs"
+c_paths = [
+    "src/basic/runtime-scope.c",
+    "src/basic/runtime-scope.h",
+]
+rust_paths = [
+    "src/basic/rust/runtime_scope.rs",
+    "src/basic/rust/runtime_scope.h",
+]
+scope = "basic.runtime_scope"
+rust_scope_paths = ["src/basic/rust/runtime_scope.rs"]
+rust_interface_paths = ["src/basic/rust/runtime_scope.h"]
+contract_file = "tools/rust-port/contracts/basic/runtime-scope.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/runtime-scope.c", rust_paths = ["src/basic/rust/runtime_scope.rs", "src/basic/rust/runtime_scope.h"] },
+    { kind = "direct", path = "src/basic/runtime-scope.h", rust_paths = ["src/basic/rust/runtime_scope.rs", "src/basic/rust/runtime_scope.h"] },
+]
+test_file = "tests-extra/test-runtime-scope-rust.c"
 status = "in-progress"
 tier = 1
-notes = "3 shadow tests pass. 4 FFI exports: rs_runtime_scope_to_string, rs_runtime_scope_from_string, rs_runtime_scope_cmdline_option_to_string, rs_runtime_scope_to_socket_mode. 3-entry string tables."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/runtime-scope.c" = "3d653d6cefc572f2cb0c3b2f8614505d5d34ff50", "src/basic/runtime-scope.h" = "88faa0f24f7fdc5eb1c448748457b59883311e09" }
+last_reviewed_rust_blobs = { "src/basic/rust/runtime_scope.rs" = "d2c49a4023d191f6b99fa79bf788268d5797b13a", "src/basic/rust/runtime_scope.h" = "f0be8b095369f764b1dd8acab5a06924bcffb192" }
+notes = "Reviewed static runtime-scope ABI slice 2026-07-28; no build/tests/VM. Four facades preserve static string-table borrowing, opaque byte parsing, invalid integer behavior, and the MODE_INVALID socket-mode default. C remains production authority; runtime parity unclaimed."
 
 [iovec-wrapper]
 c_file = "src/basic/iovec-wrapper.c"
@@ -715,14 +764,35 @@ status = "in-progress"
 tier = 1
 notes = "7 exact FFI exports now cover the 16-entry string table plus the registered nice/u64/size parsers and libc-allocated formatter. Static C authority pins base-zero parsing, Linux rlim_t layout, output-on-success, and NULL behavior. Still skipped: full rlimit_parse_one/parse dispatch (sec/usec resources), setrlimit_closest, rlimit_copy_all/free_all, rlimit_nofile_bump/safe, pid_getrlimit; build/runtime validation remains pending."
 
-[memeqbyte]
-c_paths = ["src/fundamental/memory-util.c", "src/fundamental/memory-util.h"]
-rust_file = "src/basic/rust/memory_util.rs"
-header_file = "src/fundamental/memory-util.h"
+[memory-util]
+c_paths = [
+    "src/basic/memory-util.c",
+    "src/basic/memory-util.h",
+    "src/fundamental/memory-util.c",
+    "src/fundamental/memory-util.h",
+]
+rust_paths = [
+    "src/basic/rust/memory_util.rs",
+    "src/basic/rust/memory_util.h",
+]
+scope = "basic.memory-util"
+rust_scope_paths = ["src/basic/rust/memory_util.rs"]
+rust_interface_paths = ["src/basic/rust/memory_util.h"]
+contract_file = "tools/rust-port/contracts/basic/memory-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/memory-util.c", rust_paths = ["src/basic/rust/memory_util.rs", "src/basic/rust/memory_util.h"] },
+    { kind = "direct", path = "src/basic/memory-util.h", rust_paths = ["src/basic/rust/memory_util.rs", "src/basic/rust/memory_util.h"] },
+    { kind = "direct", path = "src/fundamental/memory-util.c", rust_paths = ["src/basic/rust/memory_util.rs", "src/basic/rust/memory_util.h"] },
+    { kind = "direct", path = "src/fundamental/memory-util.h", rust_paths = ["src/basic/rust/memory_util.rs", "src/basic/rust/memory_util.h"] },
+]
+test_file = "tests-extra/test-memory-util-rust.c"
 status = "in-progress"
 tier = 1
-sync_status = "needs_review"
-notes = "6 shadow tests pass (including exhaustive C-vs-Rust loop). 1 FFI export: rs_memeqbyte. Checks if a buffer consists entirely of one byte. Uses first-16-bytes-then-memcmp optimization from casync. 2026-07-27 provenance audit re-anchored this slice to the current fundamental memory-util source and declaration; runtime parity remains unclaimed."
+symbols = 9
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/memory-util.c" = "10a5157ca64666934769ffea67ccfba54ecb508e", "src/basic/memory-util.h" = "7a73e76c94ef3c096cc0cbed39873c087ceaf9f0", "src/fundamental/memory-util.c" = "39d116cc8b65dbfd7a84f802ed82b25d6f3040fb", "src/fundamental/memory-util.h" = "55ed19e15ca8e6e0e6b5bcd99290d42f4a93f843" }
+last_reviewed_rust_blobs = { "src/basic/rust/memory_util.rs" = "acd555bdaf865d07b3f2052af055632de6e3a673", "src/basic/rust/memory_util.h" = "440819374c0cdd4ac9967df6046ebf8c3fa81707" }
+notes = "Reviewed static memory slice 2026-07-28; no build/tests/VM. Nine C-backed facades cover the current basic/fundamental memory APIs exposed by rust/memory_util.h, preserving C assertions, zero-length pointer exceptions, borrowed interior results, and the fundamental memeqbyte first-16/self-compare algorithm. The stale rs_memdup_reverse declaration and fixture claim were removed: upstream deleted that C API in 75bc106095. erase_and_free and other allocation/erase surfaces remain excluded. C remains production authority; runtime parity unclaimed."
 
 [edid]
 c_paths = ["src/fundamental/edid.c", "src/fundamental/edid.h"]
@@ -1281,15 +1351,38 @@ sync_status = "needs_review"
 notes = "2026-07-27 provenance audit re-anchored hostname shortening behavior to current shared source/header; behavioral completion remains unclaimed."
 
 [id128_util]
-c_paths = ["src/libsystemd/sd-id128/sd-id128.c", "src/libsystemd/sd-id128/id128-util.c", "src/libsystemd/sd-id128/id128-util.h", "src/systemd/sd-id128.h"]
-rust_file = "src/basic/rust/id128_util.rs"
-header_file = "src/libsystemd/sd-id128/id128-util.h"
+c_paths = [
+    "src/libsystemd/sd-id128/sd-id128.c",
+    "src/libsystemd/sd-id128/id128-util.c",
+    "src/libsystemd/sd-id128/id128-util.h",
+    "src/systemd/sd-id128.h",
+    "src/fundamental/sha256.c",
+    "src/fundamental/sha256.h",
+]
+rust_paths = [
+    "src/basic/rust/id128_util.rs",
+    "src/basic/rust/id128_util.h",
+]
+scope = "basic.id128-util"
+rust_scope_paths = ["src/basic/rust/id128_util.rs"]
+rust_interface_paths = ["src/basic/rust/id128_util.h"]
+contract_file = "tools/rust-port/contracts/basic/id128-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/libsystemd/sd-id128/sd-id128.c", rust_paths = ["src/basic/rust/id128_util.rs", "src/basic/rust/id128_util.h"] },
+    { kind = "direct", path = "src/libsystemd/sd-id128/id128-util.c", rust_paths = ["src/basic/rust/id128_util.rs", "src/basic/rust/id128_util.h"] },
+    { kind = "direct", path = "src/libsystemd/sd-id128/id128-util.h", rust_paths = ["src/basic/rust/id128_util.rs", "src/basic/rust/id128_util.h"] },
+    { kind = "direct", path = "src/systemd/sd-id128.h", rust_paths = ["src/basic/rust/id128_util.rs", "src/basic/rust/id128_util.h"] },
+    { kind = "direct", path = "src/fundamental/sha256.c", rust_paths = ["src/basic/rust/id128_util.rs", "src/basic/rust/id128_util.h"] },
+    { kind = "direct", path = "src/fundamental/sha256.h", rust_paths = ["src/basic/rust/id128_util.rs", "src/basic/rust/id128_util.h"] },
+]
 test_file = "tests-extra/test-id128-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 7
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored ID128 utility and public API behavior to current libsystemd sources and Rust comparator; behavioral completion remains unclaimed."
+symbols = 10
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/libsystemd/sd-id128/sd-id128.c" = "ba3e47dd8d5c1bda9dcedded75a9e1f7e355dffc", "src/libsystemd/sd-id128/id128-util.c" = "b961be0659d97014864bfab73746e77e5995171e", "src/libsystemd/sd-id128/id128-util.h" = "874fc9f4460e08648b6dcaf7459d1db708cb01f0", "src/systemd/sd-id128.h" = "b579d72440afa789cb79f1066a16aaf437c51179", "src/fundamental/sha256.c" = "ac514eddabbc2043463dd2ece3a12360915a05c7", "src/fundamental/sha256.h" = "dbb08e35e57e259256d01a8719731dc30c057583" }
+last_reviewed_rust_blobs = { "src/basic/rust/id128_util.rs" = "710f069ecf17d35d68b727bc3b1911e03b6f46fc", "src/basic/rust/id128_util.h" = "59d0a6c1c45677594c90c4befc8d8053ef3ca99d" }
+notes = "Reviewed static ID128 ABI slice 2026-07-28; no build/tests/VM. Ten facades preserve the 16-byte aligned union by-value ABI, caller-buffer rendering, raw C-byte parsing, output-on-success, exact libc memcmp values, inline equality/null predicates, and SIZE_MAX C-string digest semantics. I/O, randomization, and ID discovery remain excluded. C remains production authority; runtime parity unclaimed."
 
 [image_policy_util]
 c_paths = ["src/shared/image-policy.c", "src/shared/image-policy.h"]

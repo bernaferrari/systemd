@@ -1,4 +1,10 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: valid-ldh-char */
+/* RUST-CONTRACT: hostname-validation */
+/* RUST-CONTRACT: hostname-cleanup */
+/* RUST-CONTRACT: hostname-classifiers */
+/* RUST-CONTRACT: split-user-at-host */
+/* RUST-CONTRACT: machine-spec-validation */
 
 #include <string.h>
 
@@ -66,6 +72,12 @@ TEST(hostname_is_valid_invalid) {
         assert_se(hostname_is_valid("foo_bar", 0) == rs_hostname_is_valid("foo_bar", 0));
 }
 
+TEST(hostname_is_valid_raw_bytes) {
+        const char invalid_utf8[] = "host\xFF";
+
+        assert_se(hostname_is_valid(invalid_utf8, 0) == rs_hostname_is_valid(invalid_utf8, 0));
+}
+
 /* ── hostname_cleanup ───────────────────────────────────────────────────── */
 
 TEST(hostname_cleanup_basic) {
@@ -96,6 +108,15 @@ TEST(hostname_cleanup_trailing_dot) {
         char cb[256] = "host.";
         char rb[256] = "host.";
         assert_se(streq(hostname_cleanup(cb), rs_hostname_cleanup(rb)));
+}
+
+TEST(hostname_cleanup_preserves_input_pointer) {
+        char cb[256] = "foo..bar---";
+        char rb[256] = "foo..bar---";
+
+        assert_se(hostname_cleanup(cb) == cb);
+        assert_se(rs_hostname_cleanup(rb) == rb);
+        assert_se(streq(cb, rb));
 }
 
 /* ── is_localhost ───────────────────────────────────────────────────────── */
@@ -147,6 +168,15 @@ TEST(is_dns_proxy_stub_hostname) {
         assert_se(is_dns_proxy_stub_hostname("localdnsproxy") == rs_is_dns_proxy_stub_hostname("localdnsproxy"));
 }
 
+TEST(synthetic_hostname_raw_bytes) {
+        const char invalid_utf8[] = "_gateway\xFF";
+
+        assert_se(is_gateway_hostname(invalid_utf8) == rs_is_gateway_hostname(invalid_utf8));
+        assert_se(is_outbound_hostname(invalid_utf8) == rs_is_outbound_hostname(invalid_utf8));
+        assert_se(is_dns_stub_hostname(invalid_utf8) == rs_is_dns_stub_hostname(invalid_utf8));
+        assert_se(is_dns_proxy_stub_hostname(invalid_utf8) == rs_is_dns_proxy_stub_hostname(invalid_utf8));
+}
+
 /* ── split_user_at_host ─────────────────────────────────────────────────── */
 
 TEST(split_user_at_host_with_user) {
@@ -195,6 +225,16 @@ TEST(split_user_at_host_invalid) {
         assert_se(rs_split_user_at_host("", &ru, &rh) < 0);
 }
 
+TEST(split_user_at_host_first_separator_and_ownership) {
+        _cleanup_free_ char *cu = NULL, *ch = NULL;
+        _cleanup_free_ char *ru = NULL, *rh = NULL;
+
+        assert_se(split_user_at_host("user@host@tail", &cu, &ch) > 0);
+        assert_se(rs_split_user_at_host("user@host@tail", &ru, &rh) > 0);
+        assert_se(streq(cu, ru));
+        assert_se(streq(ch, rh));
+}
+
 /* ── machine_spec_valid ────────────────────────────────────────────────── */
 
 TEST(machine_spec_valid_basic) {
@@ -206,6 +246,14 @@ TEST(machine_spec_valid_invalid) {
         assert_se(machine_spec_valid("") == rs_machine_spec_valid(""));
         assert_se(machine_spec_valid("@") == rs_machine_spec_valid("@"));
         assert_se(machine_spec_valid("invalid user@host") == rs_machine_spec_valid("invalid user@host"));
+}
+
+TEST(machine_spec_valid_relaxed_user_and_raw_bytes) {
+        const char invalid_utf8[] = "\xFF@host";
+
+        assert_se(machine_spec_valid("user.name@host") == rs_machine_spec_valid("user.name@host"));
+        assert_se(machine_spec_valid("user name@host") == rs_machine_spec_valid("user name@host"));
+        assert_se(machine_spec_valid(invalid_utf8) == rs_machine_spec_valid(invalid_utf8));
 }
 
 /* ── main ────────────────────────────────────────────────────────────────── */

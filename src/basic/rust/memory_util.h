@@ -1,10 +1,18 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+
+/* PORT-SYNC: scope=basic.memory-util; authority=src/basic/memory-util.c,src/basic/memory-util.h,src/fundamental/memory-util.c,src/fundamental/memory-util.h */
+
+/*
+ * `memdup_reverse()` no longer exists in the current C authority. Do not add
+ * an rs_ declaration for it without restoring and reviewing that C API.
+ */
 
 size_t rs_page_size(void);
-void *rs_memdup_reverse(const void *mem, size_t size);
 void *rs_memcpy_safe(void *dst, const void *src, size_t n);
 void *rs_mempcpy_safe(void *dst, const void *src, size_t n);
 int rs_memcmp_safe(const void *s1, const void *s2, size_t n);

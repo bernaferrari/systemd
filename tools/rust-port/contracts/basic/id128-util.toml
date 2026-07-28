@@ -1,0 +1,162 @@
+schema = 1
+module = "id128_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["sd_id128_randomize"]
+
+[authority]
+c_headers = [
+    "src/libsystemd/sd-id128/id128-util.h",
+    "src/systemd/sd-id128.h",
+    "src/fundamental/sha256.h",
+]
+c_sources = [
+    "src/libsystemd/sd-id128/sd-id128.c",
+    "src/libsystemd/sd-id128/id128-util.c",
+    "src/fundamental/sha256.c",
+]
+rust_headers = ["src/basic/rust/id128_util.h"]
+rust_sources = ["src/basic/rust/id128_util.rs"]
+
+[[surface]]
+id = "id128-string-rendering"
+c_symbols = ["sd_id128_to_string", "sd_id128_to_uuid_string"]
+rust_symbols = ["rs_sd_id128_to_string", "rs_sd_id128_to_uuid_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["sd_id128_to_string", "sd_id128_to_uuid_string"]
+arg = "s"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[[surface.output]]
+symbols = ["sd_id128_to_string", "sd_id128_to_uuid_string"]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-id128-rust.c"
+meson_target = "test-id128-rust"
+labels = ["id128-string-rendering"]
+
+[[surface]]
+id = "id128-string-parsing"
+c_symbols = ["sd_id128_from_string"]
+rust_symbols = ["rs_sd_id128_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-id128-rust.c"
+meson_target = "test-id128-rust"
+labels = ["id128-string-parsing"]
+
+[[surface]]
+id = "id128-nonzero-parsing"
+c_symbols = ["id128_from_string_nonzero"]
+rust_symbols = ["rs_id128_from_string_nonzero"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-id128-rust.c"
+meson_target = "test-id128-rust"
+labels = ["id128-nonzero-parsing"]
+
+[[surface]]
+id = "id128-string-equality"
+c_symbols = ["sd_id128_string_equal"]
+rust_symbols = ["rs_sd_id128_string_equal"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-id128-rust.c"
+meson_target = "test-id128-rust"
+labels = ["id128-string-equality"]
+
+[[surface]]
+id = "id128-v4-uuid"
+c_symbols = ["id128_make_v4_uuid"]
+rust_symbols = ["rs_id128_make_v4_uuid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-id128-rust.c"
+meson_target = "test-id128-rust"
+labels = ["id128-v4-uuid"]
+
+[[surface]]
+id = "id128-comparison-and-predicates"
+c_symbols = ["id128_compare_func", "sd_id128_equal", "sd_id128_is_null"]
+rust_symbols = ["rs_id128_compare_func", "rs_sd_id128_equal", "rs_sd_id128_is_null"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-id128-rust.c"
+meson_target = "test-id128-rust"
+labels = ["id128-comparison-and-predicates"]
+
+[[surface]]
+id = "id128-digest"
+c_symbols = ["id128_digest"]
+rust_symbols = ["rs_id128_digest"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-id128-rust.c"
+meson_target = "test-id128-rust"
+labels = ["id128-digest"]

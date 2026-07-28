@@ -1,16 +1,18 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+/* PORT-SYNC: scope=basic.id128-util; authority=src/libsystemd/sd-id128/sd-id128.c,src/libsystemd/sd-id128/id128-util.c,src/libsystemd/sd-id128/id128-util.h,src/systemd/sd-id128.h,src/fundamental/sha256.c,src/fundamental/sha256.h */
+
 #include <stdint.h>
 #include <stddef.h>
 
 #include "sd-id128.h"
 
-/* Shadow FFI for sd_id128 functions */
+/* Safe-Rust ABI facades for the pure sd-id128 helpers. */
 
-/* sd_id128_t is passed by value; Rust uses repr(C, align(8)) matching the C union */
-char *rs_sd_id128_to_string(sd_id128_t id, char *s);
-char *rs_sd_id128_to_uuid_string(sd_id128_t id, char *s);
+/* sd_id128_t is passed by value; Rust preserves the C union's 16-byte layout. */
+char *rs_sd_id128_to_string(sd_id128_t id, char s[static SD_ID128_STRING_MAX]);
+char *rs_sd_id128_to_uuid_string(sd_id128_t id, char s[static SD_ID128_UUID_STRING_MAX]);
 int rs_sd_id128_from_string(const char *s, sd_id128_t *ret);
 int rs_sd_id128_string_equal(const char *s, sd_id128_t id);
 

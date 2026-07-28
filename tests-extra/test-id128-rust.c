@@ -1,4 +1,11 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: id128-string-rendering */
+/* RUST-CONTRACT: id128-string-parsing */
+/* RUST-CONTRACT: id128-nonzero-parsing */
+/* RUST-CONTRACT: id128-string-equality */
+/* RUST-CONTRACT: id128-v4-uuid */
+/* RUST-CONTRACT: id128-comparison-and-predicates */
+/* RUST-CONTRACT: id128-digest */
 /* Shadow test: C sd-id128 functions vs Rust */
 
 #include "tests.h"
@@ -41,6 +48,20 @@ TEST(sd_id128_to_string_all_ff) {
         assert_se(rs_sd_id128_to_string(id, rs) == rs);
         assert_se(streq(cs, "ffffffffffffffffffffffffffffffff"));
         assert_se(streq(cs, rs));
+}
+
+TEST(sd_id128_to_string_preserves_caller_boundary) {
+        sd_id128_t id = SD_ID128_MAKE(f9,7d,15,8c,50,d4,4e,ba,a4,96,7a,35,e1,d4,07,5c);
+        char cs[SD_ID128_STRING_MAX + 1] = {};
+        char rs[SD_ID128_STRING_MAX + 1] = {};
+
+        cs[SD_ID128_STRING_MAX] = '#';
+        rs[SD_ID128_STRING_MAX] = '#';
+        assert_se(sd_id128_to_string(id, cs) == cs);
+        assert_se(rs_sd_id128_to_string(id, rs) == rs);
+        assert_se(streq(cs, rs));
+        assert_se(cs[SD_ID128_STRING_MAX] == '#');
+        assert_se(rs[SD_ID128_STRING_MAX] == '#');
 }
 
 TEST(sd_id128_to_uuid_string_basic) {
@@ -140,6 +161,32 @@ TEST(sd_id128_from_string_errors) {
         assert_se(rr2 == rc);
 }
 
+TEST(sd_id128_from_string_preserves_output_on_error) {
+        sd_id128_t initial = SD_ID128_MAKE(aa,bb,cc,dd,ee,ff,01,23,45,67,89,ab,cd,ef,10,20);
+        sd_id128_t cr = initial, rr = initial;
+        int rc, rr2;
+
+        rc = sd_id128_from_string("not-an-id", &cr);
+        rr2 = rs_sd_id128_from_string("not-an-id", &rr);
+        assert_se(rc == -EINVAL);
+        assert_se(rr2 == rc);
+        assert_se(sd_id128_equal(cr, initial));
+        assert_se(sd_id128_equal(rr, initial));
+}
+
+TEST(sd_id128_from_string_is_byte_oriented) {
+        char invalid[] = { (char) 0xff, 0 };
+        sd_id128_t cr = SD_ID128_ALLF, rr = SD_ID128_ALLF;
+        int rc, rr2;
+
+        rc = sd_id128_from_string(invalid, &cr);
+        rr2 = rs_sd_id128_from_string(invalid, &rr);
+        assert_se(rc == -EINVAL);
+        assert_se(rr2 == rc);
+        assert_se(sd_id128_equal(cr, SD_ID128_ALLF));
+        assert_se(sd_id128_equal(rr, SD_ID128_ALLF));
+}
+
 TEST(sd_id128_from_string_uppercase) {
         sd_id128_t id = SD_ID128_MAKE(ab,cd,ef,01,23,45,67,89,fe,dc,ba,98,76,54,32,10);
         sd_id128_t cr, rr;
@@ -221,6 +268,19 @@ TEST(id128_from_string_nonzero_null_id) {
         rr2 = rs_id128_from_string_nonzero("00000000000000000000000000000000", &rr);
         assert_se(rc == -ENXIO);
         assert_se(rr2 == rc);
+}
+
+TEST(id128_from_string_nonzero_preserves_output_on_error) {
+        sd_id128_t initial = SD_ID128_MAKE(aa,bb,cc,dd,ee,ff,01,23,45,67,89,ab,cd,ef,10,20);
+        sd_id128_t cr = initial, rr = initial;
+        int rc, rr2;
+
+        rc = id128_from_string_nonzero("00000000000000000000000000000000", &cr);
+        rr2 = rs_id128_from_string_nonzero("00000000000000000000000000000000", &rr);
+        assert_se(rc == -ENXIO);
+        assert_se(rr2 == rc);
+        assert_se(sd_id128_equal(cr, initial));
+        assert_se(sd_id128_equal(rr, initial));
 }
 
 TEST(id128_from_string_nonzero_null_args) {
@@ -327,6 +387,13 @@ TEST(id128_compare_func_null_vs_nonnull) {
 
         assert_se(id128_compare_func(&a, &b) == rs_id128_compare_func(&a, &b));
         assert_se(id128_compare_func(&a, &b) < 0);
+}
+
+TEST(id128_compare_func_preserves_memcmp_result) {
+        sd_id128_t a = SD_ID128_MAKE(00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,ff);
+        sd_id128_t b = SD_ID128_MAKE(00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,01);
+
+        assert_se(id128_compare_func(&a, &b) == rs_id128_compare_func(&a, &b));
 }
 
 /* ── sd_id128_equal / sd_id128_is_null ───────────────────────────────────── */
@@ -452,6 +519,24 @@ TEST(id128_digest_empty) {
         /* Empty input (size=0, data can be anything) */
         cr = id128_digest("", 0);
         rr = rs_id128_digest("", 0);
+        assert_se(sd_id128_equal(cr, rr));
+}
+
+TEST(id128_digest_binary_input) {
+        const uint8_t data[] = { 0, 0xff, 0, 0x80, 0x7f };
+        sd_id128_t cr, rr;
+
+        cr = id128_digest(data, sizeof(data));
+        rr = rs_id128_digest(data, sizeof(data));
+        assert_se(sd_id128_equal(cr, rr));
+}
+
+TEST(id128_digest_size_max_uses_c_string_length) {
+        const char *data = "digest text";
+        sd_id128_t cr, rr;
+
+        cr = id128_digest(data, SIZE_MAX);
+        rr = rs_id128_digest(data, SIZE_MAX);
         assert_se(sd_id128_equal(cr, rr));
 }
 

@@ -95,30 +95,6 @@
     "src/basic/rust/hostname_setup.h": [
       "rs_shorten_overlong"
     ],
-    "src/basic/rust/hostname_util.h": [
-      "rs_hostname_cleanup",
-      "rs_hostname_is_valid",
-      "rs_is_dns_proxy_stub_hostname",
-      "rs_is_dns_stub_hostname",
-      "rs_is_gateway_hostname",
-      "rs_is_localhost",
-      "rs_is_outbound_hostname",
-      "rs_machine_spec_valid",
-      "rs_split_user_at_host",
-      "rs_valid_ldh_char"
-    ],
-    "src/basic/rust/id128_util.h": [
-      "rs_id128_compare_func",
-      "rs_id128_digest",
-      "rs_id128_from_string_nonzero",
-      "rs_id128_make_v4_uuid",
-      "rs_sd_id128_equal",
-      "rs_sd_id128_from_string",
-      "rs_sd_id128_is_null",
-      "rs_sd_id128_string_equal",
-      "rs_sd_id128_to_string",
-      "rs_sd_id128_to_uuid_string"
-    ],
     "src/basic/rust/image_policy_util.h": [
       "rs_image_policy_equal",
       "rs_image_policy_equiv_allow",
@@ -152,18 +128,6 @@
     "src/basic/rust/log_target.h": [
       "rs_log_target_from_string",
       "rs_log_target_to_string"
-    ],
-    "src/basic/rust/memory_util.h": [
-      "rs_memcmp_nn",
-      "rs_memcmp_safe",
-      "rs_memcpy_safe",
-      "rs_memdup_reverse",
-      "rs_memeqbyte",
-      "rs_memmem_safe",
-      "rs_mempcpy_safe",
-      "rs_mempmem_safe",
-      "rs_mempset",
-      "rs_page_size"
     ],
     "src/basic/rust/mempool.h": [
       "rs_mempool_alloc0_tile",
@@ -268,12 +232,6 @@
       "rs_fs_can_online_shrink_and_grow",
       "rs_minimal_size_by_fs_magic",
       "rs_minimal_size_by_fs_name"
-    ],
-    "src/basic/rust/runtime_scope.h": [
-      "rs_runtime_scope_cmdline_option_to_string",
-      "rs_runtime_scope_from_string",
-      "rs_runtime_scope_to_socket_mode",
-      "rs_runtime_scope_to_string"
     ],
     "src/basic/rust/serialize.h": [
       "rs_deserialize_dual_timestamp",

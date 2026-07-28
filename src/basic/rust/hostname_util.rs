@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/hostname-util.c, src/basic/hostname-util.h
+// PORT-SYNC: scope=basic.hostname-util-abi; authority=src/basic/hostname-util.c,src/basic/hostname-util.h,src/basic/user-util.c,src/basic/user-util.h,src/basic/string-util.c,src/basic/string-util.h,src/basic/utf8.c,src/basic/utf8.h
 //
 // Hostname validation, cleanup, and parsing utilities.
 //
 // Supports validation of LDH hostnames, localhost detection,
 // synthetic hostname checks, and user@host expression splitting.
 
-use libc::c_char;
+use std::ffi::CStr;
+use std::ptr;
+
+use libc::{c_char, c_int};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -107,10 +110,6 @@ pub fn valid_ldh_char(c: u8) -> bool {
     ascii_isalpha(c) || ascii_isdigit(c) || c == b'-'
 }
 
-pub fn rs_valid_ldh_char(c: c_char) -> bool {
-    valid_ldh_char(c as u8)
-}
-
 /// Check if a string looks like a valid hostname or FQDN.
 ///
 /// Returns `true` if valid, `false` otherwise.
@@ -153,7 +152,7 @@ pub fn hostname_is_valid(s: &str, flags: ValidHostnameFlags) -> bool {
         }
     }
 
-    if dot && !flags.contains(ValidHostnameFlags::TRAILING_DOT) {
+    if dot && (n_dots < 2 || !flags.contains(ValidHostnameFlags::TRAILING_DOT)) {
         return false;
     }
     if hyphen {
@@ -419,6 +418,443 @@ pub fn machine_tags_from_string(s: &str, graceful: bool) -> Result<Vec<String>, 
     Ok(cleaned)
 }
 
+// ── C ABI adapters ───────────────────────────────────────────────────────
+
+/// Current `hostname_is_valid()` policy over the visible bytes of a C string.
+///
+/// The C authority is deliberately byte-oriented: host names only admit the
+/// ASCII LDH alphabet plus the two explicitly enabled placeholder bytes.
+fn hostname_is_valid_bytes(bytes: &[u8], flags: u32) -> bool {
+    if bytes.is_empty() {
+        return false;
+    }
+
+    if bytes == b".host" {
+        return flags & ValidHostnameFlags::DOT_HOST.bits() != 0;
+    }
+
+    let mut n_dots = 0_u32;
+    let mut dot = true;
+    let mut hyphen = true;
+    for &byte in bytes {
+        match byte {
+            b'.' => {
+                if dot || hyphen {
+                    return false;
+                }
+                dot = true;
+                hyphen = false;
+                n_dots += 1;
+            }
+            b'-' => {
+                if dot {
+                    return false;
+                }
+                dot = false;
+                hyphen = true;
+            }
+            _ => {
+                if !valid_ldh_char(byte)
+                    && (byte != b'?' || flags & ValidHostnameFlags::QUESTION_MARK.bits() == 0)
+                    && (byte != b'$' || flags & ValidHostnameFlags::WORD_TOKEN.bits() == 0)
+                {
+                    return false;
+                }
+                dot = false;
+                hyphen = false;
+            }
+        }
+    }
+
+    if dot && (n_dots < 2 || flags & ValidHostnameFlags::TRAILING_DOT.bits() == 0) {
+        return false;
+    }
+    !hyphen && bytes.len() <= LINUX_HOST_NAME_MAX
+}
+
+#[inline]
+fn bytes_equal_no_case(left: &[u8], right: &[u8]) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right)
+            .all(|(&left, &right)| ascii_tolower(left) == ascii_tolower(right))
+}
+
+#[inline]
+fn bytes_ends_with_no_case(bytes: &[u8], suffix: &[u8]) -> bool {
+    bytes.len() >= suffix.len() && bytes_equal_no_case(&bytes[bytes.len() - suffix.len()..], suffix)
+}
+
+fn localhost_bytes_are_valid(bytes: &[u8]) -> bool {
+    [
+        b"localhost".as_slice(),
+        b"localhost.".as_slice(),
+        b"localhost.localdomain".as_slice(),
+        b"localhost.localdomain.".as_slice(),
+    ]
+    .into_iter()
+    .any(|candidate| bytes_equal_no_case(bytes, candidate))
+        || [
+            b".localhost".as_slice(),
+            b".localhost.".as_slice(),
+            b".localhost.localdomain".as_slice(),
+            b".localhost.localdomain.".as_slice(),
+        ]
+        .into_iter()
+        .any(|suffix| bytes_ends_with_no_case(bytes, suffix))
+}
+
+fn bytes_in_no_case_set(bytes: &[u8], choices: &[&[u8]]) -> bool {
+    choices
+        .iter()
+        .copied()
+        .any(|choice| bytes_equal_no_case(bytes, choice))
+}
+
+fn malloc_c_string(bytes: &[u8]) -> *mut c_char {
+    let Some(allocation_size) = bytes.len().checked_add(1) else {
+        return ptr::null_mut();
+    };
+    let allocation = crate::ffi::malloc(allocation_size).cast::<u8>();
+    if allocation.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: `allocation` names `allocation_size` writable bytes from the C
+    // allocator; `bytes` is live for the copy and the final NUL is in range.
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr(), allocation, bytes.len());
+        *allocation.add(bytes.len()) = 0;
+    }
+    allocation.cast::<c_char>()
+}
+
+fn valid_utf8_bytes(bytes: &[u8]) -> bool {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let Some((length, _)) = crate::string_util::valid_utf8_character(&bytes[offset..]) else {
+            return false;
+        };
+        offset += length;
+    }
+    true
+}
+
+fn parses_as_valid_uid(bytes: &[u8]) -> bool {
+    if bytes.is_empty() || (bytes.len() > 1 && bytes[0] == b'0') {
+        return false;
+    }
+
+    let mut value = 0_u32;
+    for &byte in bytes {
+        if !byte.is_ascii_digit() {
+            return false;
+        }
+        let Some(next) = value
+            .checked_mul(10)
+            .and_then(|value| value.checked_add(u32::from(byte - b'0')))
+        else {
+            return false;
+        };
+        value = next;
+    }
+    value != u32::MAX && value != 0xffff
+}
+
+/// The `VALID_USER_RELAX | VALID_USER_ALLOW_NUMERIC` slice used solely by
+/// `machine_spec_valid()`. This keeps the C ABI path raw-byte-safe while
+/// preserving C's UTF-8 and control-character restrictions.
+fn valid_machine_user_bytes(bytes: &[u8]) -> bool {
+    if bytes.is_empty() {
+        return false;
+    }
+    if parses_as_valid_uid(bytes) {
+        return true;
+    }
+    if bytes.first() == Some(&b' ') || bytes.last() == Some(&b' ') {
+        return false;
+    }
+    if !valid_utf8_bytes(bytes)
+        || bytes.iter().any(|byte| *byte < b' ' || *byte == 127)
+        || bytes.iter().any(|byte| matches!(*byte, b':' | b'/'))
+    {
+        return false;
+    }
+    if bytes.iter().all(u8::is_ascii_digit)
+        || (bytes.first() == Some(&b'-') && bytes[1..].iter().all(u8::is_ascii_digit))
+    {
+        return false;
+    }
+    !matches!(bytes, b"." | b"..")
+}
+
+/// C ABI for `valid_ldh_char()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_valid_ldh_char(c: c_char) -> bool {
+    valid_ldh_char(c as u8)
+}
+
+/// C ABI for `hostname_is_valid()`.
+///
+/// # Safety
+/// `s` must be null or point to a readable NUL-terminated byte string that
+/// remains live for the call. A null pointer is rejected rather than invoking
+/// the C authority's assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_hostname_is_valid(s: *const c_char, flags: c_int) -> bool {
+    if s.is_null() {
+        return false;
+    }
+    // SAFETY: documented by this adapter's C-string contract.
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    hostname_is_valid_bytes(bytes, flags as u32)
+}
+
+/// C ABI for `hostname_cleanup()`.
+///
+/// # Safety
+/// `s` must be null or point to an exclusively owned, writable,
+/// NUL-terminated byte string. The input allocation must remain live for the
+/// call; the returned pointer aliases that same allocation and must not be
+/// freed separately.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_hostname_cleanup(s: *mut c_char) -> *mut c_char {
+    if s.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: documented by this adapter's C-string contract.
+    let input_len = unsafe { CStr::from_ptr(s.cast_const()) }.to_bytes().len();
+    let mut destination = 0;
+    let mut dot = true;
+    let mut hyphen = true;
+
+    for source in 0..input_len {
+        // SAFETY: `source` lies before the validated terminating NUL.
+        let byte = unsafe { *s.add(source) as u8 };
+        match byte {
+            b'.' if !dot && !hyphen => {
+                // SAFETY: the write position never advances beyond `source`.
+                unsafe { *s.add(destination) = b'.' as c_char };
+                destination += 1;
+                dot = true;
+                hyphen = false;
+            }
+            b'-' if !dot => {
+                // SAFETY: the write position never advances beyond `source`.
+                unsafe { *s.add(destination) = b'-' as c_char };
+                destination += 1;
+                dot = false;
+                hyphen = true;
+            }
+            byte if valid_ldh_char(byte) || matches!(byte, b'?' | b'$') => {
+                // SAFETY: the write position never advances beyond `source`.
+                unsafe { *s.add(destination) = byte as c_char };
+                destination += 1;
+                dot = false;
+                hyphen = false;
+            }
+            _ => {}
+        }
+        if destination >= LINUX_HOST_NAME_MAX {
+            break;
+        }
+    }
+
+    while destination > 0 {
+        // SAFETY: `destination - 1` is a byte this adapter wrote above.
+        let byte = unsafe { *s.add(destination - 1) as u8 };
+        if !matches!(byte, b'-' | b'.') {
+            break;
+        }
+        destination -= 1;
+    }
+    // SAFETY: `destination` is at most the original input length, so this
+    // NUL write is within the caller-provided writable C string.
+    unsafe { *s.add(destination) = 0 };
+    s
+}
+
+/// C ABI for `is_localhost()`.
+///
+/// # Safety
+/// `hostname` must be null or point to a readable NUL-terminated byte string
+/// that remains live for the call. A null pointer is rejected instead of
+/// triggering C's assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_is_localhost(hostname: *const c_char) -> bool {
+    if hostname.is_null() {
+        return false;
+    }
+    // SAFETY: documented by this adapter's C-string contract.
+    localhost_bytes_are_valid(unsafe { CStr::from_ptr(hostname) }.to_bytes())
+}
+
+/// Evaluate one synthetic hostname classifier after the shared C-string
+/// boundary check.
+///
+/// # Safety
+/// `hostname` must be null or point to a readable NUL-terminated byte string
+/// that remains live for the call.
+unsafe fn is_synthetic_hostname(hostname: *const c_char, first: &[u8], second: &[u8]) -> bool {
+    if hostname.is_null() {
+        return false;
+    }
+    // SAFETY: forwarded from this helper's C-string contract.
+    let bytes = unsafe { CStr::from_ptr(hostname) }.to_bytes();
+    bytes_in_no_case_set(bytes, &[first, second])
+}
+
+/// C ABI for `is_gateway_hostname()`.
+///
+/// # Safety
+/// `hostname` must be null or point to a readable NUL-terminated byte string
+/// that remains live for the call. A null pointer is rejected instead of
+/// triggering C's assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_is_gateway_hostname(hostname: *const c_char) -> bool {
+    // SAFETY: forwarded from this adapter's C-string contract.
+    unsafe { is_synthetic_hostname(hostname, b"_gateway", b"_gateway.") }
+}
+
+/// C ABI for `is_outbound_hostname()`.
+///
+/// # Safety
+/// `hostname` must be null or point to a readable NUL-terminated byte string
+/// that remains live for the call. A null pointer is rejected instead of
+/// triggering C's assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_is_outbound_hostname(hostname: *const c_char) -> bool {
+    // SAFETY: forwarded from this adapter's C-string contract.
+    unsafe { is_synthetic_hostname(hostname, b"_outbound", b"_outbound.") }
+}
+
+/// C ABI for `is_dns_stub_hostname()`.
+///
+/// # Safety
+/// `hostname` must be null or point to a readable NUL-terminated byte string
+/// that remains live for the call. A null pointer is rejected instead of
+/// triggering C's assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_is_dns_stub_hostname(hostname: *const c_char) -> bool {
+    // SAFETY: forwarded from this adapter's C-string contract.
+    unsafe { is_synthetic_hostname(hostname, b"_localdnsstub", b"_localdnsstub.") }
+}
+
+/// C ABI for `is_dns_proxy_stub_hostname()`.
+///
+/// # Safety
+/// `hostname` must be null or point to a readable NUL-terminated byte string
+/// that remains live for the call. A null pointer is rejected instead of
+/// triggering C's assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_is_dns_proxy_stub_hostname(hostname: *const c_char) -> bool {
+    // SAFETY: forwarded from this adapter's C-string contract.
+    unsafe { is_synthetic_hostname(hostname, b"_localdnsproxy", b"_localdnsproxy.") }
+}
+
+/// C ABI for `split_user_at_host()`.
+///
+/// # Safety
+/// `s` must be null or point to a readable NUL-terminated byte string that
+/// remains live for the call. Each non-null output pointer must designate
+/// writable `char *` storage. On success, non-null outputs receive either
+/// null or a fresh libc allocation owned by the C caller and released with
+/// `free(3)`. Outputs are not modified on allocation failure.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_split_user_at_host(
+    s: *const c_char,
+    ret_user: *mut *mut c_char,
+    ret_host: *mut *mut c_char,
+) -> c_int {
+    if s.is_null() {
+        return EINVAL;
+    }
+    // SAFETY: documented by this adapter's C-string contract.
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let at = bytes.iter().position(|byte| *byte == b'@');
+    if at.is_none() && bytes.is_empty() {
+        return EINVAL;
+    }
+
+    let (user, host, result) = match at {
+        Some(at) => (
+            (!ret_user.is_null() && at > 0).then(|| &bytes[..at]),
+            (!ret_host.is_null() && at + 1 < bytes.len()).then(|| &bytes[at + 1..]),
+            1,
+        ),
+        None => (None, (!ret_host.is_null()).then_some(bytes), 0),
+    };
+    let user_allocation = user.map_or(ptr::null_mut(), malloc_c_string);
+    if user.is_some() && user_allocation.is_null() {
+        return ENOMEM;
+    }
+    let host_allocation = host.map_or(ptr::null_mut(), malloc_c_string);
+    if host.is_some() && host_allocation.is_null() {
+        // SAFETY: this allocation was created by `malloc_c_string` above and
+        // has not been published to the caller.
+        unsafe { crate::ffi::free(user_allocation.cast()) };
+        return ENOMEM;
+    }
+
+    if !ret_user.is_null() {
+        // SAFETY: documented by this adapter's output-pointer contract.
+        unsafe { *ret_user = user_allocation };
+    }
+    if !ret_host.is_null() {
+        // SAFETY: documented by this adapter's output-pointer contract.
+        unsafe { *ret_host = host_allocation };
+    }
+    result
+}
+
+/// C ABI for `machine_spec_valid()`.
+///
+/// # Safety
+/// `s` must be null or point to a readable NUL-terminated byte string that
+/// remains live for the call. A null pointer is rejected instead of invoking
+/// C's assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_machine_spec_valid(s: *const c_char) -> c_int {
+    if s.is_null() {
+        return 0;
+    }
+    let mut user = ptr::null_mut();
+    let mut host = ptr::null_mut();
+    // SAFETY: local output slots are writable; `s` satisfies this function's
+    // documented C-string contract.
+    let split = unsafe { rs_split_user_at_host(s, &mut user, &mut host) };
+    if split == EINVAL {
+        return 0;
+    }
+    if split < 0 {
+        return split;
+    }
+
+    let user_is_valid = if user.is_null() {
+        true
+    } else {
+        // SAFETY: `user` is this function's live allocation from the splitter.
+        valid_machine_user_bytes(unsafe { CStr::from_ptr(user) }.to_bytes())
+    };
+    let host_is_valid = if host.is_null() {
+        true
+    } else {
+        // SAFETY: `host` is this function's live allocation from the splitter.
+        hostname_is_valid_bytes(
+            unsafe { CStr::from_ptr(host) }.to_bytes(),
+            ValidHostnameFlags::DOT_HOST.bits(),
+        )
+    };
+
+    // SAFETY: both pointers are null or unique C allocations created above.
+    unsafe {
+        crate::ffi::free(user.cast());
+        crate::ffi::free(host.cast());
+    }
+    c_int::from(user_is_valid && host_is_valid)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,12 +905,12 @@ mod tests {
     #[test]
     fn test_hostname_is_valid_trailing_dot() {
         assert!(!hostname_is_valid("myhost.", ValidHostnameFlags::empty()));
-        assert!(hostname_is_valid(
+        assert!(!hostname_is_valid(
             "myhost.",
             ValidHostnameFlags::TRAILING_DOT
         ));
         assert!(hostname_is_valid(
-            "myhost.",
+            "myhost.example.",
             ValidHostnameFlags::TRAILING_DOT | ValidHostnameFlags::QUESTION_MARK
         ));
     }

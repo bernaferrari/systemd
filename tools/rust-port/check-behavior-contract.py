@@ -200,6 +200,12 @@ def contains_symbol(paths: list[str], root: Path, symbol: str) -> bool:
         ):
             if symbol in {f"{table}_to_string", f"{table}_from_string"}:
                 return True
+        for table in re.findall(
+            r"\bDECLARE_STRING_TABLE_LOOKUP_TO_STRING\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,",
+            code,
+        ):
+            if symbol == f"{table}_to_string":
+                return True
     return False
 
 

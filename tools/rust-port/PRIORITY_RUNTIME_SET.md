@@ -35,6 +35,10 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Namespace flag conversions | `test-nsflags-rust` | Native-width flags, C whitespace/backslash parsing, ordered names, and C-owned string/strv release |
 | Capability name conversion | `test-capability-list-rust` | Target-generated capability table, ASCII gperf case folding, numeric grammar, and caller-buffer fallback |
 | EDID parsing | `test-edid-rust` | Packed 20-byte layout, unaligned inputs, byte order, failure publication, and partial panel output |
+| Runtime scope conversion | `test-runtime-scope-rust` | Borrowed static table strings, opaque C-string parsing, invalid enums, and socket mode defaults |
+| Counted memory primitives | `test-memory-util-rust` | Raw C pointer preconditions, zero-length exceptions, borrowed search results, and fundamental uniform-byte semantics |
+| Hostname conversion | `test-hostname-util-rust` | Raw-byte grammar, in-place cleanup, synthetic names, and C-allocated user@host splits |
+| ID128 conversion | `test-id128-rust` | Union ABI, caller buffers, opaque string parsing, exact comparison, and SHA-256 UUID digesting |
 | Session classification | `test-file-classify-rust` | ASCII-only session IDs, NULL/empty rejection, and opaque non-UTF-8 bytes |
 | Strv ownership / allocation | `test-strv-rust`, `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Includes base vector search/mutation plus registered push/consume/split/join/fnmatch surface |
 | Stat | `test-stat-util-rust`, `test-stat-util-extra2-rust`, `test-stat-util-inline-rust`, `test-stat-verify-rust` | Includes non-UTF-8 inode type string |

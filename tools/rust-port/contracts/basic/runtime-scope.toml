@@ -1,0 +1,89 @@
+schema = 1
+module = "runtime-scope"
+semantic_coverage = "complete"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+
+[authority]
+c_headers = ["src/basic/runtime-scope.h"]
+c_sources = ["src/basic/runtime-scope.c"]
+rust_headers = ["src/basic/rust/runtime_scope.h"]
+rust_sources = ["src/basic/rust/runtime_scope.rs"]
+
+[[surface]]
+id = "runtime-scope-name"
+c_symbols = ["runtime_scope_to_string"]
+rust_symbols = ["rs_runtime_scope_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-runtime-scope-rust.c"
+meson_target = "test-runtime-scope-rust"
+labels = ["runtime-scope-name"]
+
+[[surface]]
+id = "runtime-scope-parse"
+c_symbols = ["runtime_scope_from_string"]
+rust_symbols = ["rs_runtime_scope_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-runtime-scope-rust.c"
+meson_target = "test-runtime-scope-rust"
+labels = ["runtime-scope-parse"]
+
+[[surface]]
+id = "runtime-scope-command-line-option"
+c_symbols = ["runtime_scope_cmdline_option_to_string"]
+rust_symbols = ["rs_runtime_scope_cmdline_option_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-runtime-scope-rust.c"
+meson_target = "test-runtime-scope-rust"
+labels = ["runtime-scope-command-line-option"]
+
+[[surface]]
+id = "runtime-scope-socket-mode"
+c_symbols = ["runtime_scope_to_socket_mode"]
+rust_symbols = ["rs_runtime_scope_to_socket_mode"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-runtime-scope-rust.c"
+meson_target = "test-runtime-scope-rust"
+labels = ["runtime-scope-socket-mode"]

@@ -1,0 +1,153 @@
+schema = 1
+module = "hostname-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["get_default_hostname_raw"]
+
+[authority]
+c_headers = [
+    "src/basic/hostname-util.h",
+    "src/basic/user-util.h",
+    "src/basic/string-util.h",
+    "src/basic/utf8.h",
+]
+c_sources = [
+    "src/basic/hostname-util.c",
+    "src/basic/user-util.c",
+    "src/basic/string-util.c",
+    "src/basic/utf8.c",
+]
+rust_headers = ["src/basic/rust/hostname_util.h"]
+rust_sources = ["src/basic/rust/hostname_util.rs"]
+
+[[surface]]
+id = "valid-ldh-char"
+c_symbols = ["valid_ldh_char"]
+rust_symbols = ["rs_valid_ldh_char"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-hostname-util-rust.c"
+meson_target = "test-hostname-util-rust"
+labels = ["valid-ldh-char"]
+
+[[surface]]
+id = "hostname-validation"
+c_symbols = ["hostname_is_valid"]
+rust_symbols = ["rs_hostname_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-hostname-util-rust.c"
+meson_target = "test-hostname-util-rust"
+labels = ["hostname-validation"]
+
+[[surface]]
+id = "hostname-cleanup"
+c_symbols = ["hostname_cleanup"]
+rust_symbols = ["rs_hostname_cleanup"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-hostname-util-rust.c"
+meson_target = "test-hostname-util-rust"
+labels = ["hostname-cleanup"]
+
+[[surface]]
+id = "hostname-classifiers"
+c_symbols = [
+    "is_localhost",
+    "is_gateway_hostname",
+    "is_outbound_hostname",
+    "is_dns_stub_hostname",
+    "is_dns_proxy_stub_hostname",
+]
+rust_symbols = [
+    "rs_is_localhost",
+    "rs_is_gateway_hostname",
+    "rs_is_outbound_hostname",
+    "rs_is_dns_stub_hostname",
+    "rs_is_dns_proxy_stub_hostname",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-hostname-util-rust.c"
+meson_target = "test-hostname-util-rust"
+labels = ["hostname-classifiers"]
+
+[[surface]]
+id = "split-user-at-host"
+c_symbols = ["split_user_at_host"]
+rust_symbols = ["rs_split_user_at_host"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret_user"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+arg = "ret_host"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-hostname-util-rust.c"
+meson_target = "test-hostname-util-rust"
+labels = ["split-user-at-host"]
+
+[[surface]]
+id = "machine-spec-validation"
+c_symbols = ["machine_spec_valid"]
+rust_symbols = ["rs_machine_spec_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-hostname-util-rust.c"
+meson_target = "test-hostname-util-rust"
+labels = ["machine-spec-validation"]
