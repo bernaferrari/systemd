@@ -99,13 +99,14 @@ jobs:
   #   shared facades: test-shared-validators{,2,3}-rust (+ related validators)
   #   parse/time slices: test-parse-util-extra-rust, test-parse-extra-rust,
   #                      test-parse-util-inline-rust, test-time-util-extra2-rust
-  #   allocator overflow guards: test-alloc-util-extra2-rust
+  #   allocator ownership/overflow: test-alloc-util-rust,
+  #                                 test-alloc-util-extra2-rust
   #   non-UTF-8 extras: test-header-inline-rust, string/escape/errno fixtures
   #
   # Intentionally NOT listed until C ABI exports exist (no_mangle/export_name):
   #   test-strv-rust, test-path-util-rust, test-parse-util-rust,
-  #   test-time-util-rust, test-time-util-extra-rust, test-utf8-rust,
-  #   test-alloc-util-rust — see tools/rust-port/PRIORITY_RUNTIME_SET.md
+  #   test-time-util-rust, test-time-util-extra-rust, test-utf8-rust
+  #   — see tools/rust-port/PRIORITY_RUNTIME_SET.md
   rust-meson-reviewed-shadows:
     name: Meson-reviewed Rust C shadows
     runs-on: ubuntu-24.04
@@ -209,6 +210,7 @@ jobs:
           test-uid-classification-rust
           test-unaligned-rust
           test-safe-math-rust
+          test-alloc-util-rust
           test-alloc-util-extra2-rust
           test-at-flags-rust
           test-ioprio-util-rust
@@ -295,6 +297,7 @@ jobs:
           test-uid-classification-rust
           test-unaligned-rust
           test-safe-math-rust
+          test-alloc-util-rust
           test-alloc-util-extra2-rust
           test-at-flags-rust
           test-ioprio-util-rust

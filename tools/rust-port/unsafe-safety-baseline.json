@@ -18,7 +18,7 @@
     "src/basic/rust/alloc_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 8
+      "unsafe_sites": 14
     },
     "src/basic/rust/architecture.rs": {
       "missing_safety": 0,

@@ -23,8 +23,8 @@ static void test_memdup(void) {
         free(r);
 
         /* Zero-length: C allocates 1 byte */
-        c = memdup(data, 0);
-        r = rs_memdup(data, 0);
+        c = memdup(NULL, 0);
+        r = rs_memdup(NULL, 0);
         assert_se(c != NULL);
         assert_se(r != NULL);
         free(c);
@@ -49,8 +49,8 @@ static void test_memdup_suffix0(void) {
         free(r);
 
         /* Zero-length: copy 0 bytes + NUL suffix */
-        c = memdup_suffix0(data, 0);
-        r = rs_memdup_suffix0(data, 0);
+        c = memdup_suffix0(NULL, 0);
+        r = rs_memdup_suffix0(NULL, 0);
         assert_se(c != NULL);
         assert_se(r != NULL);
         assert_se(c[0] == '\0');
@@ -68,24 +68,11 @@ static void test_memdup_suffix0(void) {
 /* ── free_many ────────────────────────────────────────────────────────── */
 
 static void test_free_many(void) {
-        void *ptrs[3];
+        void *c_ptrs[] = { strdup("hello"), NULL, strdup("test") };
+        void *r_ptrs[] = { strdup("hello"), NULL, strdup("test") };
 
-        ptrs[0] = strdup("hello");
-        ptrs[1] = strdup("world");
-        ptrs[2] = strdup("test");
-        assert_se(ptrs[0] && ptrs[1] && ptrs[2]);
-
-        /* C version */
-        void *c_ptrs[3];
-        c_ptrs[0] = strdup("hello");
-        c_ptrs[1] = strdup("world");
-        c_ptrs[2] = strdup("test");
-
-        /* Rust version */
-        void *r_ptrs[3];
-        r_ptrs[0] = strdup("hello");
-        r_ptrs[1] = strdup("world");
-        r_ptrs[2] = strdup("test");
+        assert_se(c_ptrs[0] && c_ptrs[2]);
+        assert_se(r_ptrs[0] && r_ptrs[2]);
 
         free_many(c_ptrs, 3);
         rs_free_many(r_ptrs, 3);
@@ -99,11 +86,6 @@ static void test_free_many(void) {
         /* NULL array with n==0 is safe */
         free_many(NULL, 0);
         rs_free_many(NULL, 0);
-
-        /* Cleanup the originals */
-        free(ptrs[0]);
-        free(ptrs[1]);
-        free(ptrs[2]);
 }
 
 /* ── Main ─────────────────────────────────────────────────────────────── */

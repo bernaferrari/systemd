@@ -211,6 +211,72 @@ unsafe fn c_allocate_copy(
     destination
 }
 
+/// Exact C ABI facade for `memdup(p, l)`.
+///
+/// # Safety
+/// `p` may be null only when `l` is zero. Otherwise it must designate at
+/// least `l` readable bytes. On success the returned C allocation is owned by
+/// the caller and must be released exactly once with `free()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_memdup(p: *const c_void, l: usize) -> *mut c_void {
+    if l != 0 && p.is_null() {
+        return ptr::null_mut();
+    }
+
+    // C deliberately turns malloc(0) into a non-NULL one-byte allocation.
+    let allocation_len = l.max(1);
+    // SAFETY: the wrapper contract provides the source validity requirement;
+    // `allocation_len` is nonzero and at least `l`.
+    unsafe { c_allocate_copy(p, l, allocation_len, false) }
+}
+
+/// Exact C ABI facade for `memdup_suffix0(p, l)`.
+///
+/// # Safety
+/// `p` may be null only when `l` is zero. Otherwise it must designate at
+/// least `l` readable bytes. On success the returned C allocation is owned by
+/// the caller and must be released exactly once with `free()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_memdup_suffix0(p: *const c_void, l: usize) -> *mut c_void {
+    let Some(allocation_len) = suffix0_allocation_size(l) else {
+        return ptr::null_mut();
+    };
+    if l != 0 && p.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: the wrapper contract provides the source validity requirement;
+    // the checked allocation has one writable suffix byte after `l`.
+    unsafe { c_allocate_copy(p, l, allocation_len, true) }
+}
+
+/// Exact C ABI facade for `free_many(p, n)`.
+///
+/// # Safety
+/// When `n` is nonzero, `p` must designate `n` writable pointer slots. Every
+/// non-null slot must contain a unique, still-live base pointer from the C
+/// allocator. No allocation may occur in more than one slot.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_free_many(p: *mut *mut c_void, n: usize) {
+    if n == 0 {
+        return;
+    }
+    if p.is_null() {
+        return;
+    }
+
+    // SAFETY: the wrapper contract provides `n` initialized writable slots;
+    // each allocation satisfies `ffi::free`'s C-allocator ownership contract
+    // and appears only once. Freeing the value does not invalidate its slot.
+    unsafe {
+        for index in 0..n {
+            let slot = p.add(index);
+            ffi::free(*slot);
+            *slot = ptr::null_mut();
+        }
+    }
+}
+
 /// Exact C ABI facade for `malloc_multiply(need, size)`.
 ///
 /// A zero product requests one byte, while multiplication overflow returns

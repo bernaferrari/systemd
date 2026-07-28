@@ -40,7 +40,6 @@ They are **omitted** from `rust-meson-reviewed-shadows` until the exports land.
 | `test-time-util-rust` | `rs_map_clock_usec_raw`, `rs_parse_sec`, `rs_parse_sec_def_infinity`, `rs_parse_sec_fix_0`, `rs_parse_time`, `rs_timespec_load`, `rs_timespec_load_nsec`, `rs_timespec_store`, `rs_timespec_store_nsec`, `rs_timeval_load`, `rs_timeval_store`, `rs_triple_timestamp_by_clock` |
 | `test-time-util-extra-rust` | `rs_timestamp_style_from_string`, `rs_timestamp_style_to_string` |
 | `test-utf8-rust` | Full `rs_utf8_*` / `rs_utf16_*` / `rs_unichar_*` / `rs_ascii_is_valid_n` / `rs_char16_*` surface (no C exports yet) |
-| `test-alloc-util-rust` | `rs_memdup`, `rs_memdup_suffix0`, `rs_free_many` (multiply helpers already exported and CI-run) |
 
 ## Rules
 

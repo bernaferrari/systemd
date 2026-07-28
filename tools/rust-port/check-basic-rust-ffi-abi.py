@@ -2323,6 +2323,33 @@ def alloc_util_multiply_boundary_is_reviewed() -> bool:
     )
 
 
+def alloc_util_boundary_is_reviewed() -> bool:
+    """Pin C allocator ownership and exact zero/overflow/free-many behavior."""
+
+    header, source, _ = PARTIAL_SURFACES["alloc_util"]
+    test = PARTIAL_SHADOW_TESTS["alloc_util"][0].read_text()
+    source_text = source.read_text()
+    header_text = header.read_text()
+    return (
+        "pub unsafe extern \"C\" fn rs_memdup(" in source_text
+        and "let allocation_len = l.max(1);" in source_text
+        and "pub unsafe extern \"C\" fn rs_memdup_suffix0(" in source_text
+        and "suffix0_allocation_size(l)" in source_text
+        and "pub unsafe extern \"C\" fn rs_free_many(" in source_text
+        and "if n == 0" in source_text
+        and "ffi::free(*slot)" in source_text
+        and "*slot = ptr::null_mut()" in source_text
+        and "void *rs_memdup(const void *p, size_t l);" in header_text
+        and "void *rs_memdup_suffix0(const void *p, size_t l);" in header_text
+        and "void rs_free_many(void **p, size_t n);" in header_text
+        and '#include "rust/alloc_util.h"' in test
+        and "rs_memdup(NULL, 0)" in test
+        and "rs_memdup_suffix0(NULL, 0)" in test
+        and "rs_memdup_suffix0(data, SIZE_MAX)" in test
+        and "rs_free_many(NULL, 0)" in test
+    )
+
+
 def escape_boundary_is_reviewed() -> bool:
     """Pin the byte-oriented C allocation boundary for the escape helpers."""
 
@@ -2980,6 +3007,10 @@ def main() -> int:
     if not udev_util_boundary_is_reviewed():
         return fail(
             "udev_util must preserve bounded/in-place whitespace, byte-oriented UTF-8, malformed \\\\x, and C-string ownership semantics"
+        )
+    if not alloc_util_boundary_is_reviewed():
+        return fail(
+            "alloc-util ABI must preserve checked C allocation, zero-length non-NULL results, suffix overflow, slot nulling, and free() ownership"
         )
     if not alloc_util_multiply_boundary_is_reviewed():
         return fail(

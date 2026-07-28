@@ -159,6 +159,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "misc_validators.rs",
             frozenset({"rs_image_name_is_valid"}),
         ),
+        "alloc_util": (
+            basic_rust / "alloc_util.h",
+            basic_rust / "alloc_util.rs",
+            frozenset({"rs_memdup", "rs_memdup_suffix0", "rs_free_many"}),
+        ),
         "alloc_util_multiply": (
             basic_rust / "alloc_util.h",
             basic_rust / "alloc_util.rs",
@@ -526,6 +531,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "image_name_is_valid": (tests_extra / "test-image-name-rust.c",),
         "os_release_pretty_name": (tests_extra / "test-image-name-rust.c",),
+        "alloc_util": (tests_extra / "test-alloc-util-rust.c",),
         "alloc_util_multiply": (tests_extra / "test-alloc-util-extra2-rust.c",),
         "escape": (
             tests_extra / "test-escape-rust.c",
@@ -687,6 +693,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "image_name_is_valid": (root / "src/basic/os-util.c",),
         "os_release_pretty_name": (root / "src/basic/os-util.c",),
+        "alloc_util": (
+            root / "src/basic/alloc-util.c",
+            root / "src/basic/alloc-util.h",
+        ),
         "alloc_util_multiply": (root / "src/basic/alloc-util.h",),
         "escape": (root / "src/basic/escape.c", root / "src/basic/escape.h"),
         "strv_escape_and_fnmatch": (root / "src/basic/strv.c", root / "src/basic/strv.h"),
