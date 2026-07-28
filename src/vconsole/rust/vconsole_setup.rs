@@ -165,29 +165,35 @@ mod tests {
     }
     #[test]
     fn keyboard_command_supports_utf8() {
-        assert!(keyboard_command("/dev/tty1", &Context::default(), true)
-            .unwrap()
-            .unwrap()
-            .contains(&"-u".into()));
+        assert!(
+            keyboard_command("/dev/tty1", &Context::default(), true)
+                .unwrap()
+                .unwrap()
+                .contains(&"-u".into())
+        );
     }
     #[test]
     fn keyboard_command_skips_kernel_keymap() {
-        assert!(keyboard_command(
-            "/dev/tty1",
-            &Context {
-                keymap: Some("@kernel".into()),
-                ..Default::default()
-            },
-            false
-        )
-        .unwrap()
-        .is_none());
+        assert!(
+            keyboard_command(
+                "/dev/tty1",
+                &Context {
+                    keymap: Some("@kernel".into()),
+                    ..Default::default()
+                },
+                false
+            )
+            .unwrap()
+            .is_none()
+        );
     }
     #[test]
     fn font_command_absent_without_settings() {
-        assert!(font_command("/dev/tty1", &Context::default())
-            .unwrap()
-            .is_none());
+        assert!(
+            font_command("/dev/tty1", &Context::default())
+                .unwrap()
+                .is_none()
+        );
     }
     #[test]
     fn font_command_includes_optional_flags() {

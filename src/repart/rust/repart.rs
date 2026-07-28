@@ -298,26 +298,34 @@ mod tests {
     #[test]
     fn empty_mode_detection() {
         assert!(!RepartConfig::new().is_empty_mode());
-        assert!(!RepartConfig {
-            empty: EmptyMode::Refuse,
-            ..Default::default()
-        }
-        .is_empty_mode());
-        assert!(RepartConfig {
-            empty: EmptyMode::Force,
-            ..Default::default()
-        }
-        .is_empty_mode());
-        assert!(RepartConfig {
-            empty: EmptyMode::Create,
-            ..Default::default()
-        }
-        .is_empty_mode());
-        assert!(RepartConfig {
-            empty: EmptyMode::Allow,
-            ..Default::default()
-        }
-        .is_empty_mode());
+        assert!(
+            !RepartConfig {
+                empty: EmptyMode::Refuse,
+                ..Default::default()
+            }
+            .is_empty_mode()
+        );
+        assert!(
+            RepartConfig {
+                empty: EmptyMode::Force,
+                ..Default::default()
+            }
+            .is_empty_mode()
+        );
+        assert!(
+            RepartConfig {
+                empty: EmptyMode::Create,
+                ..Default::default()
+            }
+            .is_empty_mode()
+        );
+        assert!(
+            RepartConfig {
+                empty: EmptyMode::Allow,
+                ..Default::default()
+            }
+            .is_empty_mode()
+        );
     }
 
     #[test]

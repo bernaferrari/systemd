@@ -120,16 +120,20 @@ mod tests {
     }
     #[test]
     fn yes_plan_contains_replace_root() {
-        assert!(plan(VolatileMode::Yes, "/sysroot", "/old/usr")
-            .unwrap()
-            .iter()
-            .any(|s| matches!(s, MountStep::ReplaceRoot { .. })));
+        assert!(
+            plan(VolatileMode::Yes, "/sysroot", "/old/usr")
+                .unwrap()
+                .iter()
+                .any(|s| matches!(s, MountStep::ReplaceRoot { .. }))
+        );
     }
     #[test]
     fn overlay_plan_contains_overlay_step() {
-        assert!(plan(VolatileMode::Overlay, "/sysroot", "/old/usr")
-            .unwrap()
-            .iter()
-            .any(|s| matches!(s, MountStep::Overlay { .. })));
+        assert!(
+            plan(VolatileMode::Overlay, "/sysroot", "/old/usr")
+                .unwrap()
+                .iter()
+                .any(|s| matches!(s, MountStep::Overlay { .. }))
+        );
     }
 }

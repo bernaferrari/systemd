@@ -299,11 +299,13 @@ mod tests {
 
     #[test]
     fn config_is_disabled_only_for_none() {
-        assert!(PStoreConfig {
-            storage: PStoreStorage::None,
-            ..Default::default()
-        }
-        .is_disabled());
+        assert!(
+            PStoreConfig {
+                storage: PStoreStorage::None,
+                ..Default::default()
+            }
+            .is_disabled()
+        );
         assert!(!PStoreConfig::new().is_disabled());
     }
 

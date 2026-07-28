@@ -274,7 +274,7 @@ fn base64_encode(data: &[u8]) -> String {
 ///
 /// Uses OpenSSL's SHA-256 implementation.
 fn sha256_digest(data: &[u8]) -> Result<[u8; SHA256_DIGEST_SIZE]> {
-    use openssl::hash::{hash, MessageDigest};
+    use openssl::hash::{MessageDigest, hash};
     let digest = hash(MessageDigest::sha256(), data).map_err(|_| PcrextendError::io_error())?;
     let bytes = digest.as_ref();
     if bytes.len() != SHA256_DIGEST_SIZE {

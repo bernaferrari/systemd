@@ -207,11 +207,7 @@ impl WriteQueueItem {
     /// Format the state as "0" or "1".
     /// Corresponds to `one_zero(item->state)`.
     pub fn state_str(&self) -> &'static str {
-        if self.state != 0 {
-            "1"
-        } else {
-            "0"
-        }
+        if self.state != 0 { "1" } else { "0" }
     }
 }
 

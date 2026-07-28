@@ -3,7 +3,6 @@
 // PORT-SYNC: src/libsystemd/sd-bus/bus-dump.c
 //
 
-
 pub type Result<T> = std::result::Result<T, i32>;
 
 pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);

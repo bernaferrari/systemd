@@ -210,11 +210,7 @@ impl LogLevel {
 /// to validate the `level` parameter of SetLogLevel.
 pub fn parse_log_level(value: i32) -> Option<LogLevel> {
     let level = LogLevel(value);
-    if level.is_valid() {
-        Some(level)
-    } else {
-        None
-    }
+    if level.is_valid() { Some(level) } else { None }
 }
 
 // ── Method Parameters & Replies ────────────────────────────────────────────

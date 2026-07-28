@@ -62,17 +62,25 @@ mod tests {
 
     #[test]
     fn test_introspect_constants_contain_expected_tags() {
-        assert!(std::str::from_utf8(BUS_INTROSPECT_INTERFACE_PEER)
-            .unwrap()
-            .contains("org.freedesktop.DBus.Peer"));
-        assert!(std::str::from_utf8(BUS_INTROSPECT_INTERFACE_INTROSPECTABLE)
-            .unwrap()
-            .contains("Introspect"));
-        assert!(std::str::from_utf8(BUS_INTROSPECT_INTERFACE_PROPERTIES)
-            .unwrap()
-            .contains("Properties"));
-        assert!(std::str::from_utf8(BUS_INTROSPECT_INTERFACE_OBJECT_MANAGER)
-            .unwrap()
-            .contains("ObjectManager"));
+        assert!(
+            std::str::from_utf8(BUS_INTROSPECT_INTERFACE_PEER)
+                .unwrap()
+                .contains("org.freedesktop.DBus.Peer")
+        );
+        assert!(
+            std::str::from_utf8(BUS_INTROSPECT_INTERFACE_INTROSPECTABLE)
+                .unwrap()
+                .contains("Introspect")
+        );
+        assert!(
+            std::str::from_utf8(BUS_INTROSPECT_INTERFACE_PROPERTIES)
+                .unwrap()
+                .contains("Properties")
+        );
+        assert!(
+            std::str::from_utf8(BUS_INTROSPECT_INTERFACE_OBJECT_MANAGER)
+                .unwrap()
+                .contains("ObjectManager")
+        );
     }
 }

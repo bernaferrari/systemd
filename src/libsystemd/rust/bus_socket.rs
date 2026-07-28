@@ -44,7 +44,10 @@ pub struct IoVec {
 
 impl IoVec {
     pub fn new(bytes: impl Into<Vec<u8>>) -> Self {
-        Self { bytes: bytes.into(), offset: 0 }
+        Self {
+            bytes: bytes.into(),
+            offset: 0,
+        }
     }
 
     pub fn remaining(&self) -> usize {
@@ -195,7 +198,11 @@ pub fn iovec_advance(iov: &mut [IoVec], idx: &mut usize, mut size: usize) {
 }
 
 pub fn bus_socket_auth_needs_write(auth_iovec: &[IoVec], auth_index: usize) -> bool {
-    auth_iovec.get(auth_index..).unwrap_or(&[]).iter().any(|iov| iov.remaining() > 0)
+    auth_iovec
+        .get(auth_index..)
+        .unwrap_or(&[])
+        .iter()
+        .any(|iov| iov.remaining() > 0)
 }
 
 pub fn line_equals(s: &[u8], line: &str) -> bool {
@@ -310,7 +317,12 @@ fn bus_socket_auth_write(bus: &mut Bus, text: &str) -> Result<()> {
         bus.auth_iovec.push(IoVec::new(Vec::new()));
     }
 
-    let first = bus.auth_iovec.first().map(|iov| iov.remaining_bytes()).unwrap_or(&[]).to_vec();
+    let first = bus
+        .auth_iovec
+        .first()
+        .map(|iov| iov.remaining_bytes())
+        .unwrap_or(&[])
+        .to_vec();
     let mut merged = first;
     merged.extend_from_slice(text.as_bytes());
     bus.auth_iovec = vec![IoVec::new(merged)];
@@ -362,12 +374,18 @@ pub fn bus_socket_auth_verify_client(bus: &mut Bus) -> Result<bool> {
 
     let ok_line = lines[index];
     let peer = parse_server_id(ok_line)?;
-    if let Some(expected) = bus.server_id && expected != peer {
+    if let Some(expected) = bus.server_id
+        && expected != peer
+    {
         return Err(EPERM);
     }
 
     bus.server_id = Some(peer);
-    bus.auth = if bus.anonymous_auth { BusAuth::Anonymous } else { BusAuth::External };
+    bus.auth = if bus.anonymous_auth {
+        BusAuth::Anonymous
+    } else {
+        BusAuth::External
+    };
     index += 1;
 
     if bus.accept_fd {
@@ -375,7 +393,14 @@ pub fn bus_socket_auth_verify_client(bus: &mut Bus) -> Result<bool> {
         index += 1;
     }
 
-    let consumed = bus.rbuffer.windows(2).enumerate().filter(|(_, w)| *w == b"\r\n").nth(index - 1).map(|(i, _)| i + 2).unwrap_or(0);
+    let consumed = bus
+        .rbuffer
+        .windows(2)
+        .enumerate()
+        .filter(|(_, w)| *w == b"\r\n")
+        .nth(index - 1)
+        .map(|(i, _)| i + 2)
+        .unwrap_or(0);
     bus.rbuffer.drain(..consumed);
     bus_start_running(bus)
 }
@@ -414,7 +439,12 @@ pub fn bus_socket_auth_verify_server(bus: &mut Bus) -> Result<bool> {
                 }
             }
         } else if line_begins(line, "AUTH EXTERNAL") {
-            if !verify_external_token(bus.anonymous_auth, bus.ucred_valid, bus.ucred_uid, &line["AUTH EXTERNAL".len()..]) {
+            if !verify_external_token(
+                bus.anonymous_auth,
+                bus.ucred_valid,
+                bus.ucred_uid,
+                &line["AUTH EXTERNAL".len()..],
+            ) {
                 bus_socket_auth_write(bus, "REJECTED\r\n")?;
             } else {
                 bus.auth = BusAuth::External;
@@ -445,7 +475,12 @@ pub fn bus_socket_auth_verify_server(bus: &mut Bus) -> Result<bool> {
             } else {
                 let ok = match bus.auth {
                     BusAuth::Anonymous => verify_anonymous_token(bus.anonymous_auth, &line[4..]),
-                    BusAuth::External => verify_external_token(bus.anonymous_auth, bus.ucred_valid, bus.ucred_uid, &line[4..]),
+                    BusAuth::External => verify_external_token(
+                        bus.anonymous_auth,
+                        bus.ucred_valid,
+                        bus.ucred_uid,
+                        &line[4..],
+                    ),
                     BusAuth::Invalid => false,
                 };
                 if !ok {
@@ -550,7 +585,11 @@ mod tests {
         assert_eq!(bus.state, BusState::Authenticating);
         assert_eq!(bus.auth_iovec.len(), 2);
         assert_eq!(bus.auth_iovec[0].remaining_bytes(), [0]);
-        assert!(std::str::from_utf8(bus.auth_iovec[1].remaining_bytes()).unwrap().contains("AUTH ANONYMOUS"));
+        assert!(
+            std::str::from_utf8(bus.auth_iovec[1].remaining_bytes())
+                .unwrap()
+                .contains("AUTH ANONYMOUS")
+        );
     }
 
     #[test]

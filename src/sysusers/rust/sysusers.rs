@@ -59,11 +59,7 @@ pub fn pick_shell(is_root: bool, configured: Option<&str>) -> &'static str {
     if configured.is_some() {
         return "configured";
     }
-    if is_root {
-        "/bin/sh"
-    } else {
-        "/sbin/nologin"
-    }
+    if is_root { "/bin/sh" } else { "/sbin/nologin" }
 }
 
 pub fn password_field(locked: bool, is_root: bool) -> &'static str {

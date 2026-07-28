@@ -295,10 +295,12 @@ mod tests {
     #[test]
     fn test_merge_params_validate() {
         assert!(MergeParams::new().validate().is_ok());
-        assert!(MergeParams::new()
-            .class(ImageClass::Sysext)
-            .validate()
-            .is_ok());
+        assert!(
+            MergeParams::new()
+                .class(ImageClass::Sysext)
+                .validate()
+                .is_ok()
+        );
     }
 
     #[test]
