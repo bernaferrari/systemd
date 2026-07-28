@@ -8,7 +8,8 @@
 #include "strv.h"
 #include "rust/strv.h"
 
-/* RUST-CONTRACT: strv-filter-and-extend-strv */
+/* RUST-CONTRACT: strv-filter-prefix */
+/* RUST-CONTRACT: strv-extend-strv */
 static void test_strv_filter_prefix(void) {
         char * const input[] = { (char*)"hello", (char*)"helpful", (char*)"world", (char*)"helper", NULL };
         char **c_r, **rs_r;

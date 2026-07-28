@@ -56,6 +56,7 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
+symbols = ["path_find_first_component", "path_find_last_component"]
 arg = "ret"
 ownership = "borrowed-interior"
 publication_success = "write"
@@ -63,6 +64,7 @@ publication_error = "unchanged"
 optional = true
 
 [[surface.output]]
+symbols = ["path_find_first_component"]
 arg = "p"
 ownership = "caller-storage"
 publication_success = "write"
@@ -70,6 +72,7 @@ publication_error = "unchanged"
 optional = false
 
 [[surface.output]]
+symbols = ["path_find_last_component"]
 arg = "next"
 ownership = "caller-storage"
 publication_success = "write"
@@ -343,6 +346,7 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
+symbols = ["path_extract_filename", "path_extract_directory"]
 arg = "ret"
 ownership = "owned-libc"
 release = "free"
@@ -351,6 +355,7 @@ publication_error = "unchanged"
 optional = false
 
 [[surface.output]]
+symbols = ["path_split_prefix_filename"]
 arg = "ret_dir"
 ownership = "owned-libc"
 release = "free"
@@ -359,6 +364,7 @@ publication_error = "unchanged"
 optional = true
 
 [[surface.output]]
+symbols = ["path_split_prefix_filename"]
 arg = "ret_filename"
 ownership = "owned-libc"
 release = "free"

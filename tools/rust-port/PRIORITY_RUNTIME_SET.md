@@ -16,7 +16,7 @@ rebuilds deps). CI keeps a separate `meson compile` then
 
 ## Priority areas and CI status
 
-| Area | Fixtures executed in CI today | Notes |
+| Area | Fixtures configured for Linux CI execution | Notes |
 | --- | --- | --- |
 | Path / pure path / non-UTF-8 | `test-path-funcs-rust`, `test-path-util-extra-rust` | Includes `\\xff` path component and split cases |
 | Strv ownership / allocation | `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Registered push/consume/split/join/fnmatch surface |

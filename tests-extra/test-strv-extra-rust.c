@@ -6,7 +6,9 @@
 #include "strv.h"
 #include "rust/strv.h"
 
-/* RUST-CONTRACT: strv-find-closest-and-affix */
+/* RUST-CONTRACT: strv-find-closest */
+/* RUST-CONTRACT: strv-affix */
+/* RUST-CONTRACT: strv-join-full */
 static void test_strv_find_closest(void) {
         char * const list[] = { (char*)"hello", (char*)"world", (char*)"help", (char*)"hallo", NULL };
 

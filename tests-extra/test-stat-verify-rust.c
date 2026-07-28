@@ -19,6 +19,7 @@
 /* -- stat_verify_regular --------------------------------------------------- */
 
 /* RUST-CONTRACT: stat-value-verification */
+/* RUST-CONTRACT: stat-value-predicates */
 static void test_stat_verify_regular(void) {
         struct stat st;
 

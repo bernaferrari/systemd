@@ -37,9 +37,32 @@ meson_target = "test-iovec-util-rust"
 labels = ["iovec-validation"]
 
 [[surface]]
-id = "iovec-release"
-c_symbols = ["iovec_done", "iovec_done_many_and_free"]
-rust_symbols = ["rs_iovec_done", "rs_iovec_done_many_and_free"]
+id = "iovec-done"
+c_symbols = ["iovec_done"]
+rust_symbols = ["rs_iovec_done"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "iovec"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-done"]
+
+[[surface]]
+id = "iovec-done-many-and-free"
+c_symbols = ["iovec_done_many_and_free"]
+rust_symbols = ["rs_iovec_done_many_and_free"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "scalar"
@@ -58,7 +81,7 @@ optional = false
 [surface.static_fixture]
 file = "tests-extra/test-iovec-util-rust.c"
 meson_target = "test-iovec-util-rust"
-labels = ["iovec-release"]
+labels = ["iovec-done-many-and-free"]
 
 [[surface]]
 id = "iovec-allocation"
@@ -186,9 +209,32 @@ meson_target = "test-iovec-util-rust"
 labels = ["iovec-byte-comparison"]
 
 [[surface]]
-id = "iovec-copy-and-ret-aliasing"
-c_symbols = ["iovec_memdup", "iovec_done_and_memdup"]
-rust_symbols = ["rs_iovec_memdup", "rs_iovec_done_and_memdup"]
+id = "iovec-memdup"
+c_symbols = ["iovec_memdup"]
+rust_symbols = ["rs_iovec_memdup"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-util-rust.c"
+meson_target = "test-iovec-util-rust"
+labels = ["iovec-memdup"]
+
+[[surface]]
+id = "iovec-done-and-memdup"
+c_symbols = ["iovec_done_and_memdup"]
+rust_symbols = ["rs_iovec_done_and_memdup"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "ptr-len-opaque"
@@ -197,17 +243,8 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
-arg = "ret"
-ownership = "owned-libc"
-release = "free"
-publication_success = "write"
-publication_error = "unchanged"
-optional = false
-
-[[surface.output]]
 arg = "iovec"
-ownership = "owned-libc"
-release = "free"
+ownership = "caller-storage"
 publication_success = "write"
 publication_error = "unchanged"
 optional = false
@@ -215,4 +252,4 @@ optional = false
 [surface.static_fixture]
 file = "tests-extra/test-iovec-util-rust.c"
 meson_target = "test-iovec-util-rust"
-labels = ["iovec-copy-and-ret-aliasing"]
+labels = ["iovec-done-and-memdup"]

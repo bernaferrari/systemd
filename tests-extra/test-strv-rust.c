@@ -9,7 +9,8 @@
 /* Rust FFI */
 #include "rust/strv.h"
 
-/* RUST-CONTRACT: strv-length-and-find */
+/* RUST-CONTRACT: strv-length */
+/* RUST-CONTRACT: strv-find */
 /* ── strv_length ─────────────────────────────────────────────────────────── */
 
 TEST(strv_length_normal) {

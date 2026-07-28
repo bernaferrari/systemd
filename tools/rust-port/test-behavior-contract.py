@@ -109,6 +109,61 @@ labels = ['demo']
         contract.write_text(self.contract().replace("ownership = 'caller-storage'", "ownership = 'owned-libc'"))
         self.assertTrue(any("release = 'free'" in error for error in self.validate()))
 
+    def test_multi_symbol_output_requires_explicit_symbols(self) -> None:
+        contract = self.root / "tools/rust-port/contracts/basic/demo.toml"
+        c_source = self.root / "src/basic/demo.c"
+        c_header = self.root / "src/basic/demo.h"
+        rust_source = self.root / "src/basic/rust/demo.rs"
+        rust_header = self.root / "src/basic/rust/demo.h"
+        fixture = self.root / "tests-extra/test-demo-rust.c"
+
+        c_source.write_text(c_source.read_text() + "int demo_two(int *ret) { return 0; }\n")
+        c_header.write_text(c_header.read_text() + "int demo_two(int *ret);\n")
+        rust_source.write_text(rust_source.read_text() + '#[no_mangle] pub extern "C" fn rs_demo_two() {}\n')
+        rust_header.write_text(rust_header.read_text() + "int rs_demo_two(int *ret);\n")
+        fixture.write_text(fixture.read_text() + "int demo_two(void); int rs_demo_two(void);\n")
+        contract.write_text(
+            self.contract()
+            .replace("c_symbols = ['demo']", "c_symbols = ['demo', 'demo_two']")
+            .replace("rust_symbols = ['rs_demo']", "rust_symbols = ['rs_demo', 'rs_demo_two']")
+        )
+        map_path = self.root / "tools/rust-port/map.toml"
+        map_path.write_text(map_path.read_text().replace("symbols = 1", "symbols = 2"))
+
+        self.assertTrue(
+            any(
+                "multi-symbol surface must declare" in error
+                for error in self.validate()
+            )
+        )
+
+    def test_output_symbols_must_belong_to_surface(self) -> None:
+        contract = self.root / "tools/rust-port/contracts/basic/demo.toml"
+        contract.write_text(
+            self.contract().replace(
+                "[[surface.output]]\n",
+                "[[surface.output]]\nsymbols = ['not_demo']\n",
+            )
+        )
+        self.assertTrue(
+            any(
+                "symbols are not members of the surface" in error
+                for error in self.validate()
+            )
+        )
+
+    def test_output_arg_must_name_c_parameter(self) -> None:
+        contract = self.root / "tools/rust-port/contracts/basic/demo.toml"
+        contract.write_text(
+            self.contract().replace("arg = 'ret'", "arg = 'not_a_parameter'")
+        )
+        self.assertTrue(
+            any(
+                "has no C parameter named 'not_a_parameter'" in error
+                for error in self.validate()
+            )
+        )
+
     def test_runtime_verified_requires_reproducible_evidence(self) -> None:
         contract = self.root / "tools/rust-port/contracts/basic/demo.toml"
         contract.write_text(

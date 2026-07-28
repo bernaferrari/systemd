@@ -148,6 +148,40 @@ test('test-old-extra2-rust', rust_test_exe)
             )
         )
 
+    def test_rejects_non_executable_reassignment(self) -> None:
+        """A later valid Meson program assignment invalidates the executable."""
+
+        (self.root / "tests-extra/meson.build").write_text(
+            """rust_test_exe = executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : [libshared, rust_staticlib])
+rust_test_exe = find_program('false')
+test('test-alpha-behavior-rust', rust_test_exe)
+other_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-old-extra2-rust', other_exe)
+"""
+        )
+        errors, _ = GATE.audit(self.root, self.catalog())
+        self.assertTrue(
+            any(
+                "test-alpha-behavior-rust" in error and "bound to its executable" in error
+                for error in errors
+            )
+        )
+
+    def test_accepts_multiline_direct_assignment(self) -> None:
+        """Whitespace may separate an assignment from executable()."""
+
+        (self.root / "tests-extra/meson.build").write_text(
+            """rust_test_exe =
+    executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-alpha-behavior-rust', rust_test_exe)
+other_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-old-extra2-rust', other_exe)
+"""
+        )
+        errors, records = GATE.audit(self.root, self.catalog())
+        self.assertEqual(errors, [])
+        self.assertEqual(len(records), 2)
+
     def test_rejects_test_bound_to_different_executable(self) -> None:
         """test() name matches, but the variable points at another executable."""
 

@@ -28,3 +28,10 @@ python3 tools/rust-port/check-behavior-contract.py --repo-root .
 Run a focused gate only when its map/contract scope exists. These checks do
 not replace build, differential, kernel, or boot validation; those claims
 remain explicitly separate in the port map and behavior contracts.
+
+An `exact` contract surface may group symbols only when its behavior axes
+apply uniformly. On a multi-symbol surface, every `[[surface.output]]` must
+name the C `symbols` it describes; this prevents one function's ownership or
+publication rules from being attributed to unrelated functions in the group.
+Its `arg` must name a parameter in each affected C declaration, or use
+`return` for the function return value.

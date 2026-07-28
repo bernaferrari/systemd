@@ -113,6 +113,31 @@ def contains_symbol(paths: list[str], root: Path, symbol: str) -> bool:
                for path in paths if (root / path).is_file())
 
 
+def declaration_has_parameter(
+    paths: list[str],
+    root: Path,
+    symbol: str,
+    parameter: str,
+) -> bool:
+    """Return whether a C declaration names ``parameter`` for ``symbol``."""
+
+    symbol_pattern = re.compile(rf"\b{re.escape(symbol)}\s*\(")
+    parameter_pattern = re.compile(rf"\b{re.escape(parameter)}\b")
+    for path in paths:
+        source = root / path
+        if not source.is_file():
+            continue
+        text = source.read_text(encoding="utf-8", errors="ignore")
+        for match in symbol_pattern.finditer(text):
+            try:
+                arguments, _end = balanced_call(text, match.end() - 1)
+            except ValueError:
+                continue
+            if parameter_pattern.search(arguments):
+                return True
+    return False
+
+
 def meson_target_links_fixture(root: Path, target: str, fixture: str) -> bool:
     """Conservatively verify a registered Rust-linked tests-extra target."""
 
@@ -363,19 +388,70 @@ def validate_contract(
         if not isinstance(outputs, list):
             fail(errors, f"{prefix}: output must be an array of tables")
             outputs = []
-        output_args: set[str] = set()
+        output_args: set[tuple[str, str]] = set()
         for output_index, output in enumerate(outputs):
             output_prefix = f"{prefix}: output[{output_index}]"
             if not isinstance(output, dict):
                 fail(errors, f"{output_prefix}: must be a table")
                 continue
-            if set(output) - {"arg", "ownership", "release", "publication_success", "publication_error", "optional"}:
+            if set(output) - {
+                "symbols", "arg", "ownership", "release",
+                "publication_success", "publication_error", "optional",
+            }:
                 fail(errors, f"{output_prefix}: unknown output field")
-            arg = output.get("arg")
-            if not isinstance(arg, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", arg) or arg in output_args:
-                fail(errors, f"{output_prefix}: arg must be a unique C identifier")
+            output_symbols = output.get("symbols")
+            if output_symbols is None:
+                if len(c_symbols) > 1:
+                    fail(
+                        errors,
+                        f"{output_prefix}: multi-symbol surface must declare "
+                        "the C symbols this output applies to",
+                    )
+                    output_symbols = []
+                else:
+                    output_symbols = c_symbols
             else:
-                output_args.add(arg)
+                output_symbols = symbol_list(
+                    output_symbols,
+                    f"{output_prefix}: symbols",
+                    errors,
+                )
+                unknown_output_symbols = set(output_symbols) - set(c_symbols)
+                if unknown_output_symbols:
+                    fail(
+                        errors,
+                        f"{output_prefix}: symbols are not members of the surface: "
+                        f"{sorted(unknown_output_symbols)}",
+                    )
+            arg = output.get("arg")
+            if not isinstance(arg, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", arg):
+                fail(errors, f"{output_prefix}: arg must be a C identifier")
+            else:
+                duplicates = {
+                    (symbol, arg)
+                    for symbol in output_symbols
+                    if (symbol, arg) in output_args
+                }
+                if duplicates:
+                    fail(
+                        errors,
+                        f"{output_prefix}: duplicate symbol/output pairs: "
+                        f"{sorted(duplicates)}",
+                    )
+                output_args.update((symbol, arg) for symbol in output_symbols)
+                if arg != "return":
+                    for symbol in output_symbols:
+                        if not declaration_has_parameter(
+                            c_headers,
+                            root,
+                            symbol,
+                            arg,
+                        ):
+                            fail(
+                                errors,
+                                f"{output_prefix}: {symbol} has no C parameter "
+                                f"named {arg!r}",
+                            )
             if output.get("ownership") not in OWNERSHIP:
                 fail(errors, f"{output_prefix}: ownership must be one of {sorted(OWNERSHIP)}")
             for publication in ("publication_success", "publication_error"):

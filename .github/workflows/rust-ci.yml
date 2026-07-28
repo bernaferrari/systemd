@@ -90,7 +90,7 @@ jobs:
   # check-basic-rust-ffi-abi.py — compile and meson test lists must match that
   # set exactly (no YAML comments inside the command bodies).
   #
-  # Priority runtime coverage already in this job:
+  # Priority runtime coverage configured in this job:
   #   path/non-UTF-8: test-path-funcs-rust, test-path-util-extra-rust
   #   strv ownership/alloc: test-strv-extra{,2-7}-rust, test-strv-fnmatch-rust,
   #                         test-string-util-extra6-rust

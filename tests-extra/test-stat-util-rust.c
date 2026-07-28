@@ -157,6 +157,7 @@ static void test_inode_unmodified_compare_func(void) {
 /* -- stat_inode_same ------------------------------------------------------ */
 
 /* RUST-CONTRACT: stat-inode-identity */
+/* RUST-CONTRACT: statx-mount-identity */
 static void test_stat_inode_same(void) {
         struct stat a = {}, b = {};
 
@@ -511,7 +512,9 @@ static void test_vfs_free_bytes(void) {
 
 /* -- statfs descriptor/path queries -------------------------------------- */
 
-/* RUST-CONTRACT: statfs-queries */
+/* RUST-CONTRACT: statfs-read */
+/* RUST-CONTRACT: statfs-fd-path-queries */
+/* RUST-CONTRACT: statfs-predicates */
 static void test_statfs_queries(void) {
         struct statfs c_statfs = {}, rust_statfs = {}, synthetic = {};
         int c_result, rust_result;
@@ -561,6 +564,7 @@ static void test_statfs_queries(void) {
 /* -- moderate directory/null/proc helpers -------------------------------- */
 
 /* RUST-CONTRACT: moderate-helpers */
+/* RUST-CONTRACT: null-or-empty-predicate */
 static void test_moderate_stat_helpers(void) {
         char directory[] = "/tmp/test-stat-util-rust.XXXXXX";
         struct stat st = {};

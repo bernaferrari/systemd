@@ -115,6 +115,7 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
+symbols = ["device_path_make_major_minor", "device_path_make_inaccessible"]
 arg = "ret"
 ownership = "owned-libc"
 release = "free"

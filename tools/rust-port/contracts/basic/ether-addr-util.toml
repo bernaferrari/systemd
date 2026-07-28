@@ -186,6 +186,7 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
+symbols = ["parse_hw_addr_full", "parse_ether_addr"]
 arg = "ret"
 ownership = "caller-storage"
 publication_success = "write"

@@ -66,7 +66,8 @@ static void test_iovec_is_valid(void) {
         assert_se(!rs_iovec_is_valid(to_rs_c(&v)));
 }
 
-/* RUST-CONTRACT: iovec-release */
+/* RUST-CONTRACT: iovec-done */
+/* RUST-CONTRACT: iovec-done-many-and-free */
 /* ── iovec_done / iovec_done_many_and_free ────────────────────────────── */
 
 static void test_iovec_done(void) {
@@ -335,7 +336,8 @@ static void test_iovec_memcmp(void) {
         assert_se(r_ret < 0);
 }
 
-/* RUST-CONTRACT: iovec-copy-and-ret-aliasing */
+/* RUST-CONTRACT: iovec-memdup */
+/* RUST-CONTRACT: iovec-done-and-memdup */
 /* ── iovec_memdup ──────────────────────────────────────────────────────── */
 
 static void test_iovec_memdup(void) {

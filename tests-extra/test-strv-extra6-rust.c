@@ -32,7 +32,11 @@ static char **make_empty_strv(void) {
         return v;
 }
 
-/* RUST-CONTRACT: strv-split-and-consume-pair */
+/* RUST-CONTRACT: strv-split-full */
+/* RUST-CONTRACT: strv-split */
+/* RUST-CONTRACT: strv-consume-pair */
+/* RUST-CONTRACT: strv-extend-strv-consume */
+/* RUST-CONTRACT: strv-contains */
 static void test_strv_split(void) {
         char **c_r, **rs_r;
         size_t i;

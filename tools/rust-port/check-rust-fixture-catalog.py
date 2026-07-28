@@ -53,12 +53,38 @@ def balanced_call(text: str, opening: int) -> tuple[str, int]:
     return text[opening + 1 : index - 1], index
 
 
-def _executable_assignment_name(text: str, executable_start: int) -> str | None:
-    """Return the identifier assigned from ``executable(`` if present."""
+def _assignment_events(text: str) -> list[tuple[int, int, str]]:
+    """Return direct Meson variable assignments in source order.
 
-    prefix = text[max(0, executable_start - 120) : executable_start]
-    match = re.search(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*$", prefix)
-    return match.group(1) if match else None
+    Meson assignments are statements, so their identifier starts the logical
+    line (after indentation). Both ``=`` and ``+=`` replace an executable
+    object's identity for this gate: the latter produces an array, not the
+    original executable object.
+    """
+
+    return [
+        (match.start(), match.end(), match.group(1))
+        for match in re.finditer(
+            r"(?m)^[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*(?:\+=|=(?!=))",
+            text,
+        )
+    ]
+
+
+def _direct_assignment_name(
+    text: str,
+    executable_start: int,
+    assignments: list[tuple[int, int, str]],
+) -> str | None:
+    """Return the identifier whose assignment RHS is this ``executable()``."""
+
+    for _start, end, name in reversed(assignments):
+        if end > executable_start:
+            continue
+        if text[end:executable_start].strip():
+            return None
+        return name
+    return None
 
 
 def rust_linked_fixtures(root: Path) -> list[tuple[str, str]]:
@@ -75,7 +101,11 @@ def rust_linked_fixtures(root: Path) -> list[tuple[str, str]]:
     meson = root / "tests-extra/meson.build"
     text = meson.read_text(encoding="utf-8")
 
-    events: list[tuple[int, str, re.Match[str]]] = []
+    assignments = _assignment_events(text)
+    events: list[tuple[int, str, str | re.Match[str]]] = [
+        (start, "assignment", name)
+        for start, _end, name in assignments
+    ]
     for match in re.finditer(r"\bexecutable\s*\(", text):
         events.append((match.start(), "executable", match))
     for match in re.finditer(r"\btest\s*\(", text):
@@ -88,7 +118,16 @@ def rust_linked_fixtures(root: Path) -> list[tuple[str, str]]:
     proven: set[str] = set()
     records: list[tuple[str, str]] = []
 
-    for _pos, kind, match in events:
+    for _pos, kind, event in events:
+        if kind == "assignment":
+            assert isinstance(event, str)
+            # Every assignment invalidates the old object. A directly assigned
+            # executable() event below may establish a new binding.
+            bindings.pop(event, None)
+            continue
+
+        assert isinstance(event, re.Match)
+        match = event
         if kind == "executable":
             body, _ = balanced_call(text, match.end() - 1)
             # Track every assigned executable name so wrong-variable bindings fail.
@@ -96,7 +135,7 @@ def rust_linked_fixtures(root: Path) -> list[tuple[str, str]]:
             if name_match is None:
                 continue
             target = name_match.group(1)
-            assigned = _executable_assignment_name(text, match.start())
+            assigned = _direct_assignment_name(text, match.start(), assignments)
             if assigned is not None:
                 bindings[assigned] = target
 

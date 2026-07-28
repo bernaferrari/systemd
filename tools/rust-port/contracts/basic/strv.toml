@@ -39,16 +39,30 @@ rust_sources = [
 ]
 
 [[surface]]
-id = "strv-length-and-find"
+id = "strv-length"
+c_symbols = ["strv_length"]
+rust_symbols = ["rs_strv_length"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-rust.c"
+meson_target = "test-strv-rust"
+labels = ["strv-length"]
+
+[[surface]]
+id = "strv-find"
 c_symbols = [
-    "strv_length",
     "strv_find",
     "strv_find_case",
     "strv_find_prefix",
     "strv_find_startswith",
 ]
 rust_symbols = [
-    "rs_strv_length",
     "rs_strv_find",
     "rs_strv_find_case",
     "rs_strv_find_prefix",
@@ -64,7 +78,7 @@ verification = "static-only"
 [surface.static_fixture]
 file = "tests-extra/test-strv-rust.c"
 meson_target = "test-strv-rust"
-labels = ["strv-length-and-find"]
+labels = ["strv-find"]
 
 [[surface]]
 id = "strv-uniqueness-and-compare"
@@ -116,9 +130,9 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
-arg = "l"
-ownership = "owned-libc"
-release = "free"
+symbols = ["strv_remove", "strv_uniq", "strv_sort", "strv_reverse", "strv_skip"]
+arg = "return"
+ownership = "borrowed"
 publication_success = "return"
 publication_error = "n/a"
 optional = false
@@ -153,19 +167,56 @@ meson_target = "test-strv-rust"
 labels = ["strv-copy-n"]
 
 [[surface]]
-id = "strv-find-closest-and-affix"
-c_symbols = [
-    "strv_find_closest",
-    "startswith_strv_internal",
-    "endswith_strv_internal",
-    "strv_join_full",
-]
-rust_symbols = [
-    "rs_strv_find_closest",
-    "rs_startswith_strv_internal",
-    "rs_endswith_strv_internal",
-    "rs_strv_join_full",
-]
+id = "strv-find-closest"
+c_symbols = ["strv_find_closest"]
+rust_symbols = ["rs_strv_find_closest"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra-rust.c"
+meson_target = "test-strv-extra-rust"
+labels = ["strv-find-closest"]
+
+[[surface]]
+id = "strv-affix"
+c_symbols = ["startswith_strv_internal", "endswith_strv_internal"]
+rust_symbols = ["rs_startswith_strv_internal", "rs_endswith_strv_internal"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["startswith_strv_internal", "endswith_strv_internal"]
+arg = "return"
+ownership = "borrowed-interior"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra-rust.c"
+meson_target = "test-strv-extra-rust"
+labels = ["strv-affix"]
+
+[[surface]]
+id = "strv-join-full"
+c_symbols = ["strv_join_full"]
+rust_symbols = ["rs_strv_join_full"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "borrowed-cstr-opaque"
@@ -184,22 +235,35 @@ optional = false
 [surface.static_fixture]
 file = "tests-extra/test-strv-extra-rust.c"
 meson_target = "test-strv-extra-rust"
-labels = ["strv-find-closest-and-affix"]
+labels = ["strv-join-full"]
 
 [[surface]]
-id = "strv-sort-uniq-and-insert"
-c_symbols = [
-    "strv_sort_uniq",
-    "strv_push_pair",
-    "strv_insert",
-    "strv_copy_unless_empty",
-]
-rust_symbols = [
-    "rs_strv_sort_uniq",
-    "rs_strv_push_pair",
-    "rs_strv_insert",
-    "rs_strv_copy_unless_empty",
-]
+id = "strv-sort-uniq"
+c_symbols = ["strv_sort_uniq"]
+rust_symbols = ["rs_strv_sort_uniq"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra2-rust.c"
+meson_target = "test-strv-extra2-rust"
+labels = ["strv-sort-uniq"]
+
+[[surface]]
+id = "strv-push-pair-and-insert"
+c_symbols = ["strv_push_pair", "strv_insert"]
+rust_symbols = ["rs_strv_push_pair", "rs_strv_insert"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "borrowed-cstr-opaque"
@@ -208,12 +272,29 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
+symbols = ["strv_push_pair", "strv_insert"]
 arg = "l"
 ownership = "owned-libc"
 release = "free"
 publication_success = "write"
 publication_error = "unchanged"
 optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra2-rust.c"
+meson_target = "test-strv-extra2-rust"
+labels = ["strv-push-pair-and-insert"]
+
+[[surface]]
+id = "strv-copy-unless-empty"
+c_symbols = ["strv_copy_unless_empty"]
+rust_symbols = ["rs_strv_copy_unless_empty"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
 
 [[surface.output]]
 arg = "ret"
@@ -226,16 +307,16 @@ optional = false
 [surface.static_fixture]
 file = "tests-extra/test-strv-extra2-rust.c"
 meson_target = "test-strv-extra2-rust"
-labels = ["strv-sort-uniq-and-insert"]
+labels = ["strv-copy-unless-empty"]
 
 [[surface]]
-id = "strv-filter-and-extend-strv"
-c_symbols = ["strv_filter_prefix", "strv_extend_strv"]
-rust_symbols = ["rs_strv_filter_prefix", "rs_strv_extend_strv"]
+id = "strv-filter-prefix"
+c_symbols = ["strv_filter_prefix"]
+rust_symbols = ["rs_strv_filter_prefix"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "borrowed-cstr-opaque"
-errors = "negative-errno"
+errors = "nullable"
 runtime = "none"
 verification = "static-only"
 
@@ -246,6 +327,22 @@ release = "free"
 publication_success = "return"
 publication_error = "n/a"
 optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra3-rust.c"
+meson_target = "test-strv-extra3-rust"
+labels = ["strv-filter-prefix"]
+
+[[surface]]
+id = "strv-extend-strv"
+c_symbols = ["strv_extend_strv"]
+rust_symbols = ["rs_strv_extend_strv"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
 
 [[surface.output]]
 arg = "a"
@@ -258,7 +355,7 @@ optional = false
 [surface.static_fixture]
 file = "tests-extra/test-strv-extra3-rust.c"
 meson_target = "test-strv-extra3-rust"
-labels = ["strv-filter-and-extend-strv"]
+labels = ["strv-extend-strv"]
 
 [[surface]]
 id = "strv-grow-and-consume"
@@ -290,6 +387,16 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
+symbols = [
+    "strv_extend_n",
+    "strv_extend_assignment",
+    "strv_consume_prepend",
+    "strv_prepend",
+    "strv_push_with_size",
+    "strv_consume_with_size",
+    "strv_consume",
+    "strv_extend",
+]
 arg = "l"
 ownership = "owned-libc"
 release = "free"
@@ -303,17 +410,9 @@ meson_target = "test-strv-extra4-rust"
 labels = ["strv-grow-and-consume"]
 
 [[surface]]
-id = "strv-split-newlines-rebreak"
-c_symbols = [
-    "strv_split_newlines_full",
-    "strv_split_newlines",
-    "strv_rebreak_lines",
-]
-rust_symbols = [
-    "rs_strv_split_newlines_full",
-    "rs_strv_split_newlines",
-    "rs_strv_rebreak_lines",
-]
+id = "strv-split-newlines-full-and-rebreak"
+c_symbols = ["strv_split_newlines_full", "strv_rebreak_lines"]
+rust_symbols = ["rs_strv_split_newlines_full", "rs_strv_rebreak_lines"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "borrowed-cstr-opaque"
@@ -322,6 +421,7 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
+symbols = ["strv_split_newlines_full", "strv_rebreak_lines"]
 arg = "ret"
 ownership = "owned-libc"
 release = "free"
@@ -332,26 +432,36 @@ optional = false
 [surface.static_fixture]
 file = "tests-extra/test-strv-extra5-rust.c"
 meson_target = "test-strv-extra5-rust"
-labels = ["strv-split-newlines-rebreak"]
+labels = ["strv-split-newlines-full-and-rebreak"]
 
 [[surface]]
-id = "strv-split-and-consume-pair"
-c_symbols = [
-    "strv_split_full",
-    "strv_split",
-    "strv_consume_pair",
-    "strv_contains",
-    "strv_extend_strv_consume",
-    "strv_split_and_extend_full",
-]
-rust_symbols = [
-    "rs_strv_split_full",
-    "rs_strv_split",
-    "rs_strv_consume_pair",
-    "rs_strv_contains",
-    "rs_strv_extend_strv_consume",
-    "rs_strv_split_and_extend_full",
-]
+id = "strv-split-newlines"
+c_symbols = ["strv_split_newlines"]
+rust_symbols = ["rs_strv_split_newlines"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "owned-libc"
+release = "free"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra5-rust.c"
+meson_target = "test-strv-extra5-rust"
+labels = ["strv-split-newlines"]
+
+[[surface]]
+id = "strv-split-full"
+c_symbols = ["strv_split_full", "strv_split_and_extend_full"]
+rust_symbols = ["rs_strv_split_full", "rs_strv_split_and_extend_full"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "borrowed-cstr-opaque"
@@ -360,12 +470,53 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
-arg = "ret"
+symbols = ["strv_split_full", "strv_split_and_extend_full"]
+arg = "t"
 ownership = "owned-libc"
 release = "free"
 publication_success = "write"
 publication_error = "unchanged"
 optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra6-rust.c"
+meson_target = "test-strv-extra6-rust"
+labels = ["strv-split-full"]
+
+[[surface]]
+id = "strv-split"
+c_symbols = ["strv_split"]
+rust_symbols = ["rs_strv_split"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "owned-libc"
+release = "free"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra6-rust.c"
+meson_target = "test-strv-extra6-rust"
+labels = ["strv-split"]
+
+[[surface]]
+id = "strv-consume-pair"
+c_symbols = ["strv_consume_pair"]
+rust_symbols = ["rs_strv_consume_pair"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
 
 [[surface.output]]
 arg = "l"
@@ -378,32 +529,12 @@ optional = false
 [surface.static_fixture]
 file = "tests-extra/test-strv-extra6-rust.c"
 meson_target = "test-strv-extra6-rust"
-labels = ["strv-split-and-consume-pair"]
+labels = ["strv-consume-pair"]
 
 [[surface]]
-id = "strv-inline-and-join"
-c_symbols = [
-    "strv_copy",
-    "strv_push",
-    "strv_push_prepend",
-    "strv_equal",
-    "STRV_IFNOTNULL",
-    "strv_isempty",
-    "strv_join",
-    "strv_fnmatch",
-    "strv_fnmatch_or_empty",
-]
-rust_symbols = [
-    "rs_strv_copy",
-    "rs_strv_push",
-    "rs_strv_push_prepend",
-    "rs_strv_equal",
-    "rs_STRV_IFNOTNULL",
-    "rs_strv_isempty",
-    "rs_strv_join",
-    "rs_strv_fnmatch",
-    "rs_strv_fnmatch_or_empty",
-]
+id = "strv-extend-strv-consume"
+c_symbols = ["strv_extend_strv_consume"]
+rust_symbols = ["rs_strv_extend_strv_consume"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "borrowed-cstr-opaque"
@@ -412,6 +543,47 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
+arg = "a"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra6-rust.c"
+meson_target = "test-strv-extra6-rust"
+labels = ["strv-extend-strv-consume"]
+
+[[surface]]
+id = "strv-contains"
+c_symbols = ["strv_contains"]
+rust_symbols = ["rs_strv_contains"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra6-rust.c"
+meson_target = "test-strv-extra6-rust"
+labels = ["strv-contains"]
+
+[[surface]]
+id = "strv-copy-and-join"
+c_symbols = ["strv_copy", "strv_join"]
+rust_symbols = ["rs_strv_copy", "rs_strv_join"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["strv_copy", "strv_join"]
 arg = "return"
 ownership = "owned-libc"
 release = "free"
@@ -419,7 +591,24 @@ publication_success = "return"
 publication_error = "n/a"
 optional = false
 
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra7-rust.c"
+meson_target = "test-strv-extra7-rust"
+labels = ["strv-copy-and-join"]
+
+[[surface]]
+id = "strv-push-inline"
+c_symbols = ["strv_push", "strv_push_prepend"]
+rust_symbols = ["rs_strv_push", "rs_strv_push_prepend"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
 [[surface.output]]
+symbols = ["strv_push", "strv_push_prepend"]
 arg = "l"
 ownership = "owned-libc"
 release = "free"
@@ -430,7 +619,56 @@ optional = false
 [surface.static_fixture]
 file = "tests-extra/test-strv-extra7-rust.c"
 meson_target = "test-strv-extra7-rust"
-labels = ["strv-inline-and-join"]
+labels = ["strv-push-inline"]
+
+[[surface]]
+id = "strv-inline-predicates"
+c_symbols = [
+    "strv_equal",
+    "strv_isempty",
+    "strv_fnmatch",
+    "strv_fnmatch_or_empty",
+]
+rust_symbols = [
+    "rs_strv_equal",
+    "rs_strv_isempty",
+    "rs_strv_fnmatch",
+    "rs_strv_fnmatch_or_empty",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra7-rust.c"
+meson_target = "test-strv-extra7-rust"
+labels = ["strv-inline-predicates"]
+
+[[surface]]
+id = "strv-if-not-null"
+c_symbols = ["STRV_IFNOTNULL"]
+rust_symbols = ["rs_STRV_IFNOTNULL"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra7-rust.c"
+meson_target = "test-strv-extra7-rust"
+labels = ["strv-if-not-null"]
 
 [[surface]]
 id = "strv-fnmatch-full"
@@ -467,9 +705,8 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
-arg = "l"
-ownership = "owned-libc"
-release = "free"
+arg = "return"
+ownership = "borrowed"
 publication_success = "return"
 publication_error = "n/a"
 optional = false

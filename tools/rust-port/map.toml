@@ -135,7 +135,7 @@ symbols = 53
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/strv.c" = "eb3cd8d4b213f16d1d770b32d2c1f60b63acefd6", "src/basic/strv.h" = "2a0c2730d1ac46f2548996f04d15f7b120124795", "src/fundamental/strv.h" = "0ede9c3b796a1cac05e018c25fb9a94915531b8d" }
 last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "e8123536266586c210f896eaebf40692579c3fa2", "src/basic/rust/strv/allocating_transforms.rs" = "c6e937a561e2b285365962f3acedc678c6230298", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "19ff2e852070741f3723035d08e99face88d31cd" }
-notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.strv owns the decomposed Rust leaves (strv.rs plus allocating_transforms/matching_escape) and rust/strv.h. Machine-checked contract covers 53 dual-compared ABI surfaces across registered strv fixtures (length/find/compare/mutation/copy, closest/affix/join_full, sort_uniq/insert/push_pair, filter/extend_strv, grow/consume, split/rebreak, contains/consume_pair, inline join/fnmatch, fnmatch_full, shell_escape). Explicit exclusions cover free/print I/O, hashmap/set helpers, variadic constructors, and unreviewed static closest helpers. Partial provenance with static-only evidence; runtime parity unclaimed."
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.strv owns the decomposed Rust leaves (strv.rs plus allocating_transforms/matching_escape) and rust/strv.h. Twenty-seven homogeneous machine-checked surfaces cover 53 dual-compared ABI symbols across registered strv fixtures, with borrowed-interior, borrowed-alias, libc-owned return, negative-errno, nullable, and boolean behaviors kept separate. Explicit exclusions cover free/print I/O, hashmap/set helpers, variadic constructors, and unreviewed static closest helpers. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 
 [escape]
@@ -164,6 +164,28 @@ notes = "35 shadow tests pass. 30 FFI exports covering: null checks, link-local,
 c_paths = [
     "src/basic/stat-util.c",
     "src/basic/stat-util.h",
+    "src/basic/siphash24.c",
+    "src/basic/siphash24.h",
+    "src/basic/chattr-util.c",
+    "src/basic/chattr-util.h",
+    "src/basic/chase.c",
+    "src/basic/chase.h",
+    "src/basic/dirent-util.h",
+    "src/basic/fd-util.c",
+    "src/basic/fd-util.h",
+    "src/basic/filesystem-sets.py",
+    "src/basic/filesystems.c",
+    "src/basic/filesystems.h",
+    "src/basic/fs-util.c",
+    "src/basic/fs-util.h",
+    "src/basic/mountpoint-util.c",
+    "src/basic/mountpoint-util.h",
+    "src/basic/path-util.c",
+    "src/basic/path-util.h",
+    "src/include/uapi/linux/magic.h",
+    "src/basic/time-util.c",
+    "src/shared/btrfs-util.c",
+    "src/shared/btrfs-util.h",
 ]
 rust_paths = [
     "src/basic/rust/stat_util.rs",
@@ -189,9 +211,9 @@ status = "in-progress"
 tier = 1
 symbols = 67
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/stat-util.c" = "72307fa7217822d3f930744bb3454d7bdf47f13a", "src/basic/stat-util.h" = "aa1c21ed90a91e0c03c2c4de833b29c5c4d67efa" }
-last_reviewed_rust_blobs = { "src/basic/rust/stat_util.rs" = "91e767ad74baae5b68ffa4b712d024704e022320", "src/basic/rust/stat_util.h" = "0d78cbfeebfd4fa278277fe8a59832fd4afb9d04", "src/basic/rust/stat_util/descriptor.rs" = "9f58270f7cffb3fc2404876754c51b256f0536d1", "src/basic/rust/stat_util/filesystem.rs" = "c4aa15ac88e4ddd10fc49301cf199d248a76fc12", "src/basic/rust/stat_util/hash.rs" = "a86f4392be107f22e9033defbf2e7f28ea000727", "src/basic/rust/stat_util/inode.rs" = "f0fc8f0ac4bc02a5cfc93097e334702fa347d205", "src/basic/rust/stat_util/inode_same.rs" = "d778bacee4587a79505be6125ced5d2f7e053bc0", "src/basic/rust/stat_util/moderate.rs" = "26ddda815321b3ced89645f4dd585e301a7a9196", "src/basic/rust/stat_util/verification.rs" = "82c658f9152f571734916a1d2a827cc4ed3bae93", "src/basic/rust/stat_util/xstatx.rs" = "d48f75ef546162e300a408f0c20eaacf7664227a" }
-notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.stat-util owns the decomposed stat_util facade. Contract authorities are narrowed to stat-util.c/h (chase/fs/mountpoint/siphash/btrfs/chattr paths are inventory dependencies, not this contract's reviewed authority). Fourteen machine-checked surfaces cover all 67 public stat-util function APIs (including header inlines and inode_type string-table lookup) with exact ABI, static fixture markers, and static-only evidence. inode_hash_ops and inode_unmodified_hash_ops remain excluded; rs_inode_type_can_chattr and rs_btrfs_might_be_subvol stay outside this authority slice. Runtime/kernel differential execution is unclaimed."
+last_reviewed_upstream_blobs = { "src/basic/stat-util.c" = "72307fa7217822d3f930744bb3454d7bdf47f13a", "src/basic/stat-util.h" = "aa1c21ed90a91e0c03c2c4de833b29c5c4d67efa", "src/basic/siphash24.c" = "b73ede34c8bc43c04697adb23f84db94473ab43a", "src/basic/siphash24.h" = "6da73fedaa41c21ed516779b978019ab6f9fcd33", "src/basic/chattr-util.c" = "26779305cbbbedf132ed0eeaa701487addb8f7a7", "src/basic/chattr-util.h" = "543843db2c2a4e3f3b9c689f2ba86882ca221bd5", "src/basic/chase.c" = "23a523798eb2b9a1310fff5252491d49bb01f8d5", "src/basic/chase.h" = "3d7e9f3f6b5f78bd887f5fd98ac5342000e205b1", "src/basic/dirent-util.h" = "44e751ba41438c7eccbccf0519534e1fcac24df9", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5", "src/basic/filesystem-sets.py" = "be08664aef65a08b2bb972d7853a27987492f7b6", "src/basic/filesystems.c" = "5a41252e096d218a0d2ab798d0907ae995c1186c", "src/basic/filesystems.h" = "eed3982afd5eb5d501bea2b22d1475e8b0a25627", "src/basic/fs-util.c" = "76c55e30b6a86d04a28f1042f1c68e867d6b80d4", "src/basic/fs-util.h" = "bc33f2f8e95d51311d07d4950ffded5586a554db", "src/basic/mountpoint-util.c" = "4db4d8162fd14c92f99216cc8795e264f7b1d649", "src/basic/mountpoint-util.h" = "7f29ffe177848b64d22b00f2677166672829501e", "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/include/uapi/linux/magic.h" = "4f2da935a76ccae6e1c3310b2fae5379186548b8", "src/basic/time-util.c" = "44c53067411741027580f465c9873e673db03028", "src/shared/btrfs-util.c" = "780c1be349675afc7f681824dbe1c31d146753c1", "src/shared/btrfs-util.h" = "be5e0b59d31e8221c11a3b142ce716c6cbff7130" }
+last_reviewed_rust_blobs = { "src/basic/rust/stat_util.rs" = "5d917fdbff58ca2b101d2ac8f5e833baccb6f297", "src/basic/rust/stat_util.h" = "0d78cbfeebfd4fa278277fe8a59832fd4afb9d04", "src/basic/rust/stat_util/descriptor.rs" = "fab640e6e7385427c2f99994c18bae5386f0caf2", "src/basic/rust/stat_util/filesystem.rs" = "3c999817b06873a0f39cbb2918cac8232b712bca", "src/basic/rust/stat_util/hash.rs" = "b8120cc84ee304ec701f82af7cadb2e708225563", "src/basic/rust/stat_util/inode.rs" = "61723d212320f5320d732116f8054ec580929318", "src/basic/rust/stat_util/inode_same.rs" = "f66e28ed18e40d10f21a8c9b1e6b328f398350b9", "src/basic/rust/stat_util/moderate.rs" = "a2f0eb66f98484316e5a0f10e8176661d13647a5", "src/basic/rust/stat_util/verification.rs" = "82c658f9152f571734916a1d2a827cc4ed3bae93", "src/basic/rust/stat_util/xstatx.rs" = "d48f75ef546162e300a408f0c20eaacf7664227a" }
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.stat-util owns the decomposed stat_util facade while c_paths retains the transitive behavior dependencies used or independently mirrored by its leaves, so filesystem-set, mountpoint, chase/fd/path, SipHash, chattr, and btrfs changes invalidate stale anchors. Nineteen machine-checked surfaces cover all 67 public stat-util function APIs (including header inlines and inode_type string-table lookup) with exact ABI, symbol-specific output metadata, static fixture markers, and static-only evidence. inode_hash_ops and inode_unmodified_hash_ops remain excluded; rs_inode_type_can_chattr and rs_btrfs_might_be_subvol stay outside the 67-symbol contract slice. Runtime/kernel differential execution is unclaimed."
 
 [socket-util]
 c_file = "src/basic/socket-util.h"
@@ -388,7 +410,7 @@ symbols = 12
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/iovec-util.c" = "0be326a18364e75ed4e1e919a360b1f0cb9c8a5b", "src/basic/iovec-util.h" = "ab6178d653a884d0848ec928bb8c2911c4ed805c", "src/fundamental/iovec-util.h" = "7d8f65db43d2ba81fa9f5b4b0e00336af040a20b" }
 last_reviewed_rust_blobs = { "src/basic/rust/iovec_util.rs" = "5be02da73330a58ec5fb58e8854fb0c82139dd56", "src/basic/rust/iovec_util.h" = "1e8f097b202d4169632a022787bfac20a68cec0d" }
-notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. Twelve selected allocation, release, erase, increment, borrowed-string, comparison, and copy/aliasing facades are covered by nine machine-checked contracts. The exact basic and fundamental C headers are authority; eight public C callables remain excluded. This is partial provenance with static-only evidence, not runtime parity."
+notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. Twelve selected allocation, release, erase, increment, borrowed-string, comparison, and copy/aliasing facades are covered by eleven machine-checked contracts. The exact basic and fundamental C headers are authority; eight public C callables remain excluded. This is partial provenance with static-only evidence, not runtime parity."
 
 [architecture]
 c_file = "src/basic/architecture.c"
