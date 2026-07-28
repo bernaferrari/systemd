@@ -30,9 +30,9 @@ class RustFixtureCatalogTests(unittest.TestCase):
         (self.root / "tests-extra/test-alpha-behavior-rust.c").write_text("int main(void) {}\n")
         (self.root / "tests-extra/test-old-extra2-rust.c").write_text("int main(void) {}\n")
         (self.root / "tests-extra/meson.build").write_text(
-            """executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : [libshared, rust_staticlib])
+            """rust_test_exe = executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : [libshared, rust_staticlib])
 test('test-alpha-behavior-rust', rust_test_exe)
-executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])
+rust_test_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])
 test('test-old-extra2-rust', rust_test_exe)
 """
         )
@@ -63,7 +63,7 @@ forbid_new_numbered_extra = true
         meson = self.root / "tests-extra/meson.build"
         meson.write_text(
             meson.read_text()
-            + "executable('test-new-extra9-rust', files('test-new-extra9-rust.c'), link_with : [libshared, rust_staticlib])\n"
+            + "rust_test_exe = executable('test-new-extra9-rust', files('test-new-extra9-rust.c'), link_with : [libshared, rust_staticlib])\n"
             + "test('test-new-extra9-rust', rust_test_exe)\n"
         )
         (self.root / "tests-extra/test-new-extra9-rust.c").write_text("int main(void) {}\n")
@@ -73,7 +73,7 @@ forbid_new_numbered_extra = true
     def test_catalog_entry_must_remain_registered(self) -> None:
         meson = self.root / "tests-extra/meson.build"
         meson.write_text(meson.read_text().replace(
-            "executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])\n"
+            "rust_test_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])\n"
             "test('test-old-extra2-rust', rust_test_exe)\n",
             "",
         ))
@@ -111,6 +111,80 @@ forbid_new_numbered_extra = true
         self.assertTrue(
             any(record["target"] == "test-alpha-behavior-rust" for record in records)
         )
+
+    def test_rejects_same_name_test_without_executable_binding(self) -> None:
+        """Old same-name-only gate: bare executable + test(..., rust_test_exe)."""
+
+        (self.root / "tests-extra/meson.build").write_text(
+            """executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-alpha-behavior-rust', rust_test_exe)
+rust_test_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-old-extra2-rust', rust_test_exe)
+"""
+        )
+        errors, _ = GATE.audit(self.root, self.catalog())
+        self.assertTrue(
+            any(
+                "test-alpha-behavior-rust" in error and "bound to its executable" in error
+                for error in errors
+            )
+        )
+
+    def test_rejects_stale_rust_test_exe_reassignment(self) -> None:
+        """test() after rust_test_exe was reassigned to a different target."""
+
+        (self.root / "tests-extra/meson.build").write_text(
+            """rust_test_exe = executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : [libshared, rust_staticlib])
+rust_test_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-alpha-behavior-rust', rust_test_exe)
+test('test-old-extra2-rust', rust_test_exe)
+"""
+        )
+        errors, _ = GATE.audit(self.root, self.catalog())
+        self.assertTrue(
+            any(
+                "test-alpha-behavior-rust" in error and "bound to its executable" in error
+                for error in errors
+            )
+        )
+
+    def test_rejects_test_bound_to_different_executable(self) -> None:
+        """test() name matches, but the variable points at another executable."""
+
+        (self.root / "tests-extra/meson.build").write_text(
+            """wrong_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])
+rust_test_exe = executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-alpha-behavior-rust', wrong_exe)
+test('test-old-extra2-rust', rust_test_exe)
+"""
+        )
+        errors, _ = GATE.audit(self.root, self.catalog())
+        self.assertTrue(
+            any(
+                "test-alpha-behavior-rust" in error and "bound to its executable" in error
+                for error in errors
+            )
+        )
+        self.assertTrue(
+            any(
+                "test-old-extra2-rust" in error and "bound to its executable" in error
+                for error in errors
+            )
+        )
+
+    def test_accepts_non_default_binding_variable(self) -> None:
+        """Any identifier is fine if it resolves to the matching executable target."""
+
+        (self.root / "tests-extra/meson.build").write_text(
+            """my_rust_exe = executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-alpha-behavior-rust', my_rust_exe)
+other_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-old-extra2-rust', other_exe)
+"""
+        )
+        errors, records = GATE.audit(self.root, self.catalog())
+        self.assertEqual(errors, [])
+        self.assertEqual(len(records), 2)
 
 
 if __name__ == "__main__":
