@@ -11,6 +11,7 @@
 /* Rust FFI */
 #include "rust/file_classify.h"
 
+/* RUST-CONTRACT: session-id-valid */
 /* -- session_id_valid ------------------------------------------------------- */
 
 static void test_session_id_valid(void) {
@@ -61,8 +62,13 @@ static void test_session_id_valid(void) {
         assert_se(session_id_valid("session\n") == rs_session_id_valid("session\n"));
         assert_se(session_id_valid("session\n") == false);
 
+        static const char non_ascii[] = { 's', (char) 0xff, 0 };
+        assert_se(session_id_valid(non_ascii) == rs_session_id_valid(non_ascii));
+        assert_se(!session_id_valid(non_ascii));
+
         /* NULL */
-        assert_se(rs_session_id_valid(NULL) == false);
+        assert_se(session_id_valid(NULL) == rs_session_id_valid(NULL));
+        assert_se(!session_id_valid(NULL));
 }
 
 int main(int argc, char **argv) {

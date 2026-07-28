@@ -1,0 +1,57 @@
+schema = 1
+module = "format-util"
+semantic_coverage = "complete"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+
+[authority]
+c_headers = ["src/basic/format-util.h"]
+c_sources = ["src/basic/format-util.c"]
+rust_headers = ["src/basic/rust/format_util.h"]
+rust_sources = ["src/basic/rust/format_util.rs"]
+
+[[surface]]
+id = "format-bytes-full"
+c_symbols = ["format_bytes_full"]
+rust_symbols = ["rs_format_bytes_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-format-util-rust.c"
+meson_target = "test-format-util-rust"
+labels = ["format-bytes-full"]
+
+[[surface]]
+id = "format-bytes-inline"
+c_symbols = ["format_bytes"]
+rust_symbols = ["rs_format_bytes"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-misc-inline-rust.c"
+meson_target = "test-misc-inline-rust"
+labels = ["format-bytes-inline"]

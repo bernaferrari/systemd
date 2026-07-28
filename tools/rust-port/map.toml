@@ -305,12 +305,30 @@ last_reviewed_rust_blobs = { "src/basic/rust/murmurhash2.rs" = "25dd48cc4f7c62e4
 notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. One exact C ABI export preserves C's signed-length/null behavior and native-endian word loading without C's unaligned or aliasing reads. The dual C fixture covers empty, NULL zero-length, negative-length, binary, tail, and seed cases. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 [format-util]
-c_file = "src/basic/format-util.c"
-rust_file = "src/basic/rust/format_util.rs"
+c_paths = [
+    "src/basic/format-util.c",
+    "src/basic/format-util.h",
+]
+rust_paths = [
+    "src/basic/rust/format_util.rs",
+    "src/basic/rust/format_util.h",
+]
+scope = "basic.format-util"
+rust_scope_paths = ["src/basic/rust/format_util.rs"]
+rust_interface_paths = ["src/basic/rust/format_util.h"]
+contract_file = "tools/rust-port/contracts/basic/format-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/format-util.c", rust_paths = ["src/basic/rust/format_util.rs", "src/basic/rust/format_util.h"] },
+    { kind = "direct", path = "src/basic/format-util.h", rust_paths = ["src/basic/rust/format_util.rs", "src/basic/rust/format_util.h"] },
+]
+test_file = "tests-extra/test-format-util-rust.c"
 status = "in-progress"
 tier = 1
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: the reviewed format-bytes ABI is narrower than the complete C format-util surface and has no path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/format-util.c" = "30ab0fd3b8d5f33a79f70e2962b7c4af119d89f4", "src/basic/format-util.h" = "5ab982d12692579d11883aeadf2c1b6ab224a054" }
+last_reviewed_rust_blobs = { "src/basic/rust/format_util.rs" = "0b034ca4c7b4032c9da2455d1f2980a1179ca849", "src/basic/rust/format_util.h" = "6e3d81ebfbe65e78952e8d5893c720379df4e818" }
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The full and inline byte-format facades share one bounded stack formatter, preserve C's `UINT64_MAX` sentinel and wrapping final-bucket arithmetic, and return a truncated NUL-terminated alias of the caller buffer. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 [strxcpyx]
 c_file = "src/basic/strxcpyx.c"
@@ -718,14 +736,24 @@ sync_status = "needs_review"
 notes = "2026-07-27 provenance audit maps filename-tries and boot-entry metadata behavior to the current shared and fundamental bootspec authorities; behavioral completion remains unclaimed."
 
 [btrfs_util]
-c_file = "src/basic/btrfs-util.c"
-rust_file = "src/basic/rust/btrfs_util.rs"
-header_file = "src/basic/btrfs-util.h"
+c_paths = ["src/basic/btrfs-util.c", "src/basic/btrfs-util.h"]
+rust_paths = ["src/basic/rust/btrfs_util.rs", "src/basic/rust/btrfs_util.h"]
+scope = "basic.btrfs-util"
+rust_scope_paths = ["src/basic/rust/btrfs_util.rs"]
+rust_interface_paths = ["src/basic/rust/btrfs_util.h"]
+contract_file = "tools/rust-port/contracts/basic/btrfs-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/btrfs-util.c", rust_paths = ["src/basic/rust/btrfs_util.rs", "src/basic/rust/btrfs_util.h"] },
+    { kind = "direct", path = "src/basic/btrfs-util.h", rust_paths = ["src/basic/rust/btrfs_util.rs", "src/basic/rust/btrfs_util.h"] },
+]
+test_file = "tests-extra/test-btrfs-util-rust.c"
 status = "in-progress"
-tier = 3
-symbols = 5
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: Btrfs ioctl/error behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+tier = 1
+symbols = 1
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/btrfs-util.c" = "1c605a9ef2f60f093294448c4dadc11560cbd17a", "src/basic/btrfs-util.h" = "3d7332d5041140c54227ffc54e8e8bd05a16910c" }
+last_reviewed_rust_blobs = { "src/basic/rust/btrfs_util.rs" = "476d1f7b2591d1e9eb1fe1e85f1021b1e601f690", "src/basic/rust/btrfs_util.h" = "51a18ab28f4ca22dd9932fea712fd967e4a02644" }
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The exact byte-preserving validation ABI keeps C's filename_is_valid() before BTRFS_SUBVOL_NAME_MAX, so names longer than NAME_MAX return -EINVAL rather than the formerly divergent Rust success/-E2BIG result. Btrfs ioctl/subvolume creation behavior remains C-only; runtime parity is unclaimed."
 
 [bus_error_util]
 c_paths = ["src/libsystemd/sd-bus/bus-error.c", "src/libsystemd/sd-bus/bus-error.h"]
@@ -895,14 +923,34 @@ sync_status = "needs_review"
 notes = "2026-07-27 provenance audit maps status lookup and securebit naming behavior to current shared authorities; behavioral completion remains unclaimed."
 
 [file_classify]
-c_file = "src/basic/login-util.h"
-rust_file = "src/basic/rust/file_classify.rs"
-header_file = "src/basic/login-util.h"
+c_paths = [
+    "src/basic/login-util.c",
+    "src/basic/login-util.h",
+    "src/basic/string-util.h",
+    "src/fundamental/string-util.h",
+]
+rust_paths = [
+    "src/basic/rust/file_classify.rs",
+    "src/shared/rust/file_classify.h",
+]
+scope = "basic.file-classify"
+rust_scope_paths = ["src/basic/rust/file_classify.rs"]
+rust_interface_paths = ["src/shared/rust/file_classify.h"]
+contract_file = "tools/rust-port/contracts/basic/file-classify.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/login-util.c", rust_paths = ["src/basic/rust/file_classify.rs", "src/shared/rust/file_classify.h"] },
+    { kind = "direct", path = "src/basic/login-util.h", rust_paths = ["src/basic/rust/file_classify.rs", "src/shared/rust/file_classify.h"] },
+    { kind = "transitive", path = "src/basic/string-util.h", via = ["src/basic/login-util.c"], rationale = "The inline in_charset() byte predicate implements the C session-ID character check." },
+    { kind = "transitive", path = "src/fundamental/string-util.h", via = ["src/basic/login-util.c"], rationale = "ALPHANUMERICAL defines the exact ASCII byte set consumed by in_charset()." },
+]
+test_file = "tests-extra/test-file-classify-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 7
-sync_status = "needs_review"
-notes = "The registered session predicate is declared by current login-util.h (and implemented in login-util.c). 2026-07-27 provenance audit removed the nonexistent synthetic authority; behavioral completion remains unclaimed."
+symbols = 1
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/login-util.c" = "7f9b84be3c1804900364147e5b994d6d37991da9", "src/basic/login-util.h" = "fd07ed2c6e8d038b7cfb7c2bbeae4e10a2d7fb97", "src/basic/string-util.h" = "74d6ca16826ab8b709b284fb4cd4c86c94988f99", "src/fundamental/string-util.h" = "c068c1904a8761a880c8bee6b977def7e79ead54" }
+last_reviewed_rust_blobs = { "src/basic/rust/file_classify.rs" = "d66b788fb5e43677a992d63051be6b285e3ce9fc", "src/shared/rust/file_classify.h" = "3de3977ecbbf7591132a9718984925370304f4fc" }
+notes = "Static ABI review 2026-07-28: session_id_valid has an exact C facade over an opaque ASCII-byte core. NULL and empty inputs return false; non-UTF-8 bytes are rejected without decoding. The Rust header, current C authority, registered comparison fixture, and reviewed Linux CI target are pinned. logind_running remains C-only; runtime execution remains unclaimed."
 
 [fstype_util]
 c_paths = ["src/basic/mountpoint-util.c", "src/basic/mountpoint-util.h"]
@@ -1214,14 +1262,23 @@ notes = "2026-07-27 provenance audit maps specifier escaping and EFI entry valid
 
 [strverscmp]
 c_paths = ["src/fundamental/string-util.c", "src/fundamental/string-util.h"]
-rust_file = "src/basic/rust/strverscmp.rs"
-header_file = "src/fundamental/string-util.h"
+rust_paths = ["src/basic/rust/strverscmp.rs", "src/basic/rust/strverscmp.h"]
+scope = "basic.strverscmp"
+rust_scope_paths = ["src/basic/rust/strverscmp.rs"]
+rust_interface_paths = ["src/basic/rust/strverscmp.h"]
+contract_file = "tools/rust-port/contracts/basic/strverscmp.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/fundamental/string-util.c", rust_paths = ["src/basic/rust/strverscmp.rs", "src/basic/rust/strverscmp.h"] },
+    { kind = "direct", path = "src/fundamental/string-util.h", rust_paths = ["src/basic/rust/strverscmp.rs", "src/basic/rust/strverscmp.h"] },
+]
 test_file = "tests-extra/test-strverscmp-rust.c"
 status = "in-progress"
-tier = 3
-symbols = 2
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored version ordering behavior and Rust comparator to current fundamental authorities; behavioral completion remains unclaimed."
+tier = 1
+symbols = 1
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/fundamental/string-util.c" = "bd6b81ea14da9fbe68b839a846b119164300e78a", "src/fundamental/string-util.h" = "c068c1904a8761a880c8bee6b977def7e79ead54" }
+last_reviewed_rust_blobs = { "src/basic/rust/strverscmp.rs" = "365e6d070cbd3879538ea932c1c5ffc51c52db41", "src/basic/rust/strverscmp.h" = "1225bb2a65e0d081b49551dfdca575af4bf99164" }
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The exact C ABI adapter preserves nullable-as-empty inputs, arbitrary non-UTF-8 bytes, ignored-byte boundaries, ASCII segment classification, and normalized -1/0/1 ordering without allocation. The registered dual C fixture pins RPM ordering, separators, invalid bytes, NULL inputs, and byte opacity. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 [sysctl_util]
 c_file = "src/basic/sysctl-util.c"

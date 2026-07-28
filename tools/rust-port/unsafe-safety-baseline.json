@@ -32,6 +32,11 @@
       ],
       "unsafe_sites": 20
     },
+    "src/basic/rust/btrfs_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
     "src/basic/rust/bus_type_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -108,10 +113,15 @@
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/basic/rust/format_util.rs": {
+    "src/basic/rust/file_classify.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
+    },
+    "src/basic/rust/format_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
     },
     "src/basic/rust/gpt_util.rs": {
       "missing_safety": 0,
@@ -414,6 +424,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 13
+    },
+    "src/basic/rust/strverscmp.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/basic/rust/time_util/arithmetic.rs": {
       "missing_safety": 0,
@@ -1905,8 +1920,8 @@
     }
   },
   "totals": {
-    "missing_safety": 634,
-    "unsafe_sites": 4627
+    "missing_safety": 632,
+    "unsafe_sites": 4643
   },
   "version": 2,
   "window": 3

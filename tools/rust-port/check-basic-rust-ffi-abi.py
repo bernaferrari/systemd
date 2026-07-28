@@ -511,6 +511,7 @@ def allocator_boundary_is_c_compatible(path: Path) -> bool:
 
 def misc_inline_abi_boundary_is_reviewed() -> bool:
     header, hex_source, symbols = PARTIAL_SURFACES["misc_inline_abi"]
+    format_header = PARTIAL_SURFACES["format_bytes_full"][0]
     devnum_source, format_source, xattr_source = PARTIAL_EXTRA_SOURCES["misc_inline_abi"]
     test = PARTIAL_SHADOW_TESTS["misc_inline_abi"][0]
     header_text = header.read_text()
@@ -527,7 +528,6 @@ def misc_inline_abi_boundary_is_reviewed() -> bool:
         "#include <sys/types.h>",
         "bool rs_devnum_is_zero(dev_t d);",
         "bool rs_xattr_is_acl(const char *name);",
-        "char *rs_format_bytes(char *buf, size_t l, uint64_t t);",
         "int rs_unhexmem(const char *p, void **ret_data, size_t *ret_size);",
         "ssize_t rs_base64mem(const void *p, size_t l, char **ret);",
     )
@@ -548,9 +548,11 @@ def misc_inline_abi_boundary_is_reviewed() -> bool:
         return False
 
     return (
-        len(symbols) == 8
+        len(symbols) == 7
         and all(snippet in header_text for snippet in required_header)
         and '#include "rust/misc_inline_abi.h"' in test_text
+        and '#include "rust/format_util.h"' in test_text
+        and "char* rs_format_bytes(char *buf, size_t l, uint64_t t);" in format_header.read_text()
         and all(f"{symbol}(" in test_text for symbol in symbols)
         and "Rust FFI — devnum" not in test_text
         and "unhex_decode_into(" in unhex
@@ -2855,6 +2857,10 @@ def main() -> int:
             return fail(f"{name}: reviewed C comparison test omits a reviewed symbol")
         authority = "\n".join(path.read_text() for path in PARTIAL_C_AUTHORITIES[name])
         authority_code = mask_c_non_code(authority)
+        if name == "format_bytes_full":
+            # The project defines FormatBytesFlag as a target-default enum;
+            # its reviewed ABI uses the canonical C `int` representation.
+            authority_code = authority_code.replace("FormatBytesFlag", "int")
         # GCC allocation/ownership annotations such as `_alloc_(1, 2)` and
         # `_malloc_` precede inline declarations in current alloc-util.h.
         # They are not part of the C calling signature, so remove them before

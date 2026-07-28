@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/format-util.c
+// PORT-SYNC: scope=basic.format-util; authority=src/basic/format-util.c,src/basic/format-util.h
 //
 // Byte formatting utilities — pure Rust.
 
-use libc::c_char;
+use libc::{c_char, c_int};
 
 pub const FORMAT_BYTES_USE_IEC: u32 = 1 << 0;
 pub const FORMAT_BYTES_BELOW_POINT: u32 = 1 << 1;
@@ -74,39 +74,10 @@ static TABLE_SI: &[SuffixEntry] = &[
 /// Mirrors C `format_bytes_full()`.
 /// Returns `None` when `t == u64::MAX` (sentinel).
 pub fn format_bytes_full(t: u64, flag: u32) -> Option<String> {
-    if t == u64::MAX {
-        return None;
-    }
-
-    let use_iec = (flag & FORMAT_BYTES_USE_IEC) != 0;
-    let table: &[SuffixEntry] = if use_iec { TABLE_IEC } else { TABLE_SI };
-    let n = table.len();
-
-    for i in 0..n {
-        if t >= table[i].factor {
-            let quotient = t / table[i].factor;
-            let remainder = if i != n - 1 {
-                (t / table[i + 1].factor * 10 / table[n - 1].factor) % 10
-            } else {
-                (t * 10 / table[i].factor) % 10
-            };
-
-            if (flag & FORMAT_BYTES_ALWAYS_POINT != 0)
-                || (flag & FORMAT_BYTES_BELOW_POINT != 0 && remainder > 0)
-            {
-                return Some(format!("{}.{}{}", quotient, remainder, table[i].suffix));
-            }
-            return Some(format!("{}{}", quotient, table[i].suffix));
-        }
-    }
-
-    // Below smallest unit
-    let trailing_b = if flag & FORMAT_BYTES_TRAILING_B != 0 {
-        "B"
-    } else {
-        ""
-    };
-    Some(format!("{}{}", t, trailing_b))
+    let mut output = [0_u8; FORMAT_BYTES_MAX];
+    let length = format_bytes_into(t, flag, &mut output)?;
+    // The formatter writes only ASCII decimal punctuation and suffix bytes.
+    Some(String::from_utf8(output[..length].to_vec()).expect("ASCII byte formatter"))
 }
 
 /// Format bytes with default flags (IEC + below-point + trailing-B).
@@ -142,27 +113,35 @@ fn write_u64_decimal(mut value: u64, output: &mut [u8]) -> usize {
     length
 }
 
-/// Formats the inline `format_bytes()` ABI surface without allocating.
-fn format_bytes_default_into(t: u64, output: &mut [u8; FORMAT_BYTES_MAX]) -> Option<usize> {
+/// Format the C `format_bytes_full()` surface into its bounded stack buffer.
+///
+/// This preserves C's wrapping unsigned arithmetic in the final suffix bucket,
+/// rather than allowing a debug-build Rust overflow to change the ABI result.
+fn format_bytes_into(t: u64, flag: u32, output: &mut [u8; FORMAT_BYTES_MAX]) -> Option<usize> {
     if t == u64::MAX {
         return None;
     }
 
-    for (index, entry) in TABLE_IEC.iter().enumerate() {
+    let table = if flag & FORMAT_BYTES_USE_IEC != 0 {
+        TABLE_IEC
+    } else {
+        TABLE_SI
+    };
+    for (index, entry) in table.iter().enumerate() {
         if t < entry.factor {
             continue;
         }
 
         let quotient = t / entry.factor;
-        let remainder = if index != TABLE_IEC.len() - 1 {
-            ((t / TABLE_IEC[index + 1].factor).wrapping_mul(10)
-                / TABLE_IEC[TABLE_IEC.len() - 1].factor)
-                % 10
+        let remainder = if index != table.len() - 1 {
+            ((t / table[index + 1].factor).wrapping_mul(10) / table[table.len() - 1].factor) % 10
         } else {
             (t.wrapping_mul(10) / entry.factor) % 10
         };
         let mut length = write_u64_decimal(quotient, output);
-        if remainder > 0 {
+        if flag & FORMAT_BYTES_ALWAYS_POINT != 0
+            || (flag & FORMAT_BYTES_BELOW_POINT != 0 && remainder > 0)
+        {
             output[length] = b'.';
             output[length + 1] = b'0' + remainder as u8;
             length += 2;
@@ -172,9 +151,50 @@ fn format_bytes_default_into(t: u64, output: &mut [u8; FORMAT_BYTES_MAX]) -> Opt
     }
 
     let mut length = write_u64_decimal(t, output);
-    output[length] = b'B';
-    length += 1;
+    if flag & FORMAT_BYTES_TRAILING_B != 0 {
+        output[length] = b'B';
+        length += 1;
+    }
     Some(length)
+}
+
+/// Formats the inline `format_bytes()` ABI surface without allocating.
+fn format_bytes_default_into(t: u64, output: &mut [u8; FORMAT_BYTES_MAX]) -> Option<usize> {
+    format_bytes_into(
+        t,
+        FORMAT_BYTES_USE_IEC | FORMAT_BYTES_BELOW_POINT | FORMAT_BYTES_TRAILING_B,
+        output,
+    )
+}
+
+/// C ABI facade for `format_bytes_full()`.
+///
+/// # Safety
+/// `buf` must be non-null and point to at least `l` writable bytes, where
+/// `l >= 1`. The returned pointer aliases `buf`; no allocation occurs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_format_bytes_full(
+    buf: *mut c_char,
+    l: usize,
+    t: u64,
+    flag: c_int,
+) -> *mut c_char {
+    if buf.is_null() || l == 0 {
+        return std::ptr::null_mut();
+    }
+
+    let mut formatted = [0_u8; FORMAT_BYTES_MAX];
+    let Some(length) = format_bytes_into(t, flag as u32, &mut formatted) else {
+        return std::ptr::null_mut();
+    };
+    let copied = length.min(l - 1);
+
+    // SAFETY: the C ABI contract provides `l` writable bytes at `buf`.
+    unsafe {
+        std::ptr::copy_nonoverlapping(formatted.as_ptr().cast::<c_char>(), buf, copied);
+        *buf.add(copied) = 0;
+    }
+    buf
 }
 
 /// C ABI facade for the inline `format_bytes()` convenience wrapper.

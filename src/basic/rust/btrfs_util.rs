@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/btrfs.c (btrfs_validate_subvolume_name)
+// PORT-SYNC: scope=basic.btrfs-util; authority=src/basic/btrfs-util.c,src/basic/btrfs-util.h
 //
 // BTRFS subvolume name validation.
+
+use std::ffi::CStr;
+
+use libc::c_char;
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -37,17 +41,34 @@ impl std::error::Error for BtrfsError {}
 /// - Not "." or ".."
 /// - Does not contain '/'
 /// - Length <= NAME_MAX (255)
-fn filename_is_valid(name: &str) -> bool {
+fn filename_is_valid_bytes(name: &[u8]) -> bool {
     if name.is_empty() {
         return false;
     }
-    if name == "." || name == ".." {
+    if name == b"." || name == b".." {
         return false;
     }
-    if name.contains('/') {
+    if name.contains(&b'/') {
         return false;
     }
     name.len() <= NAME_MAX
+}
+
+fn filename_is_valid(name: &str) -> bool {
+    filename_is_valid_bytes(name.as_bytes())
+}
+
+fn btrfs_validate_subvolume_name_bytes(name: &[u8]) -> Result<(), BtrfsError> {
+    // Preserve the C authority's order. With the current NAME_MAX (255) and
+    // BTRFS_SUBVOL_NAME_MAX (4039), the second error is unreachable, but it
+    // remains explicit so a future authority change cannot silently reorder it.
+    if !filename_is_valid_bytes(name) {
+        return Err(BtrfsError::InvalidFileName);
+    }
+    if name.len() > BTRFS_SUBVOL_NAME_MAX {
+        return Err(BtrfsError::TooLong);
+    }
+    Ok(())
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -58,23 +79,29 @@ fn filename_is_valid(name: &str) -> bool {
 /// - Must be a valid filename (not empty, no '/', not "." or "..")
 /// - Must not exceed BTRFS_SUBVOL_NAME_MAX (4039) bytes
 pub fn btrfs_validate_subvolume_name(name: &str) -> Result<(), BtrfsError> {
-    if name.is_empty() || name == "." || name == ".." || name.contains('/') {
-        return Err(BtrfsError::InvalidFileName);
+    btrfs_validate_subvolume_name_bytes(name.as_bytes())
+}
+
+/// C ABI mirror of `btrfs_validate_subvolume_name()`.
+///
+/// # Safety
+///
+/// `name` must be null or point to a live NUL-terminated byte string for the
+/// duration of this call. The function neither retains nor frees that storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_btrfs_validate_subvolume_name(name: *const c_char) -> libc::c_int {
+    if name.is_null() {
+        return -libc::EINVAL;
     }
 
-    if name.len() > BTRFS_SUBVOL_NAME_MAX {
-        return Err(BtrfsError::TooLong);
+    // SAFETY: the entry-point contract guarantees a live NUL-terminated string
+    // after the null check; the safe byte core preserves C's non-UTF-8 semantics.
+    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    match btrfs_validate_subvolume_name_bytes(name) {
+        Ok(()) => 0,
+        Err(BtrfsError::InvalidFileName) => -libc::EINVAL,
+        Err(BtrfsError::TooLong) => -libc::E2BIG,
     }
-
-    if name.len() > NAME_MAX + 1 {
-        return Ok(());
-    }
-
-    if !filename_is_valid(name) {
-        return Err(BtrfsError::InvalidFileName);
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -92,17 +119,20 @@ mod tests {
     }
 
     #[test]
-    fn test_valid_max_length() {
+    fn test_name_larger_than_name_max_is_invalid_before_btrfs_limit() {
         let name = "a".repeat(BTRFS_SUBVOL_NAME_MAX);
-        assert!(btrfs_validate_subvolume_name(&name).is_ok());
+        assert_eq!(
+            btrfs_validate_subvolume_name(&name),
+            Err(BtrfsError::InvalidFileName)
+        );
     }
 
     #[test]
-    fn test_too_long() {
+    fn test_btrfs_limit_is_checked_after_filename_validity() {
         let name = "a".repeat(BTRFS_SUBVOL_NAME_MAX + 1);
         assert_eq!(
             btrfs_validate_subvolume_name(&name),
-            Err(BtrfsError::TooLong)
+            Err(BtrfsError::InvalidFileName)
         );
     }
 
@@ -153,7 +183,7 @@ mod tests {
         let name = "b".repeat(BTRFS_SUBVOL_NAME_MAX + 1);
         assert_eq!(
             btrfs_validate_subvolume_name(&name),
-            Err(BtrfsError::TooLong)
+            Err(BtrfsError::InvalidFileName)
         );
     }
 
@@ -182,5 +212,10 @@ mod tests {
             btrfs_validate_subvolume_name(&name_256),
             Err(BtrfsError::InvalidFileName)
         );
+    }
+
+    #[test]
+    fn test_non_utf8_filename_bytes_are_valid() {
+        assert!(btrfs_validate_subvolume_name_bytes(&[0xff]).is_ok());
     }
 }

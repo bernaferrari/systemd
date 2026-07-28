@@ -14,6 +14,7 @@
 #include "format-util.h"
 #include "hexdecoct.h"
 #include "rust/misc_inline_abi.h"
+#include "rust/format_util.h"
 
 /* Rust FFI — in_addr */
 bool rs_in4_addr_is_set(const struct in_addr *a);
@@ -126,6 +127,7 @@ static void test_xattr_is_selinux(void) {
 
 /* ── format_bytes ──────────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: format-bytes-inline */
 static void test_format_bytes(void) {
         char c_buf[FORMAT_BYTES_MAX], rs_buf[FORMAT_BYTES_MAX];
 

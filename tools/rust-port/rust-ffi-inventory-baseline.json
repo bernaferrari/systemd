@@ -34,9 +34,6 @@
       "rs_boot_filename_extract_tries",
       "rs_bootspec_pick_name_version_sort_key"
     ],
-    "src/basic/rust/btrfs_util.h": [
-      "rs_btrfs_validate_subvolume_name"
-    ],
     "src/basic/rust/bus_error_util.h": [
       "rs_bus_error_is_dirty",
       "rs_sd_bus_error_has_name",
@@ -121,9 +118,6 @@
     "src/basic/rust/extract_word.h": [
       "rs_extract_first_word",
       "rs_extract_first_word_and_warn"
-    ],
-    "src/basic/rust/format_util.h": [
-      "rs_format_bytes_full"
     ],
     "src/basic/rust/fstype_util.h": [
       "rs_file_handle_equal",
@@ -441,9 +435,6 @@
       "rs_strv_find_closest_prefix",
       "rs_strv_free_and_replace"
     ],
-    "src/basic/rust/strverscmp.h": [
-      "rs_strverscmp_improved"
-    ],
     "src/basic/rust/strxcpyx.h": [
       "rs_strnpcpy_full",
       "rs_strnscpy_full",
@@ -574,9 +565,6 @@
       "rs_exit_status_from_string",
       "rs_exit_status_to_string",
       "rs_secure_bit_to_string"
-    ],
-    "src/shared/rust/file_classify.h": [
-      "rs_session_id_valid"
     ],
     "src/shared/rust/fstype_util.h": [
       "rs_file_handle_equal",

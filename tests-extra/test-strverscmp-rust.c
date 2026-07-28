@@ -8,6 +8,8 @@
 /* Rust FFI */
 #include "rust/strverscmp.h"
 
+/* RUST-CONTRACT: strverscmp-byte-order */
+
 static void test_strverscmp_improved_one(const char *a, const char *b, int expected) {
         int cr = strverscmp_improved(a, b);
         int rr = rs_strverscmp_improved(a, b);
@@ -143,6 +145,13 @@ TEST(strverscmp_improved_rust) {
         assert_se(rs_strverscmp_improved("~", "") < 0);
         assert_se(strverscmp_improved("~", "~") == 0);
         assert_se(rs_strverscmp_improved("~", "~") == 0);
+
+        /* Inputs are opaque bytes. In particular, an invalid non-UTF-8 byte
+         * immediately after '~' remains a segment boundary until the next
+         * outer iteration, just as in the C pointer algorithm. */
+        const char invalid_after_tilde[] = { '1', '~', (char) 0xff, '2', '\0' };
+        test_strverscmp_improved_one(invalid_after_tilde, "1~2", -1);
+        test_strverscmp_improved_one("1~2", invalid_after_tilde, 1);
 
         /* RPM compatibility tests */
         test_strverscmp_improved_one("1.0", "1.0", 0);

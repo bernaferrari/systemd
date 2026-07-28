@@ -13,11 +13,16 @@ id = "mapping-and-contracts"
 purpose = "Describe C-to-Rust ownership, reviewed scopes, and observable behavior contracts."
 paths = [
     "tools/rust-port/map.toml",
+    "tools/rust-port/contracts/basic/btrfs-util.toml",
     "tools/rust-port/contracts/basic/devnum-util.toml",
     "tools/rust-port/contracts/basic/ether-addr-util.toml",
+    "tools/rust-port/contracts/basic/file-classify.toml",
+    "tools/rust-port/contracts/basic/format-util.toml",
     "tools/rust-port/contracts/basic/iovec-util.toml",
+    "tools/rust-port/contracts/basic/murmurhash2.toml",
     "tools/rust-port/contracts/basic/path-util.toml",
     "tools/rust-port/contracts/basic/stat-util.toml",
+    "tools/rust-port/contracts/basic/strverscmp.toml",
     "tools/rust-port/contracts/basic/strv.toml",
     "tools/rust-port/check-behavior-contract.py",
     "tools/rust-port/test-behavior-contract.py",

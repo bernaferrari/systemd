@@ -30,6 +30,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     """Build the reviewed surface catalog relative to the source root."""
 
     basic_rust = root / "src/basic/rust"
+    shared_rust = root / "src/shared/rust"
     tests_extra = root / "tests-extra"
     surfaces = {
         "af_list": (basic_rust / "af_list.h", basic_rust / "af_list.rs"),
@@ -39,8 +40,9 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "bus_type_util": (basic_rust / "bus_type_util.h", basic_rust / "bus_type_util.rs"),
         "capability_util": (basic_rust / "capability_util.h", basic_rust / "capability_util.rs"),
         "devnum_util": (basic_rust / "devnum_util.h", basic_rust / "devnum_util.rs"),
+        "file_classify": (shared_rust / "file_classify.h", basic_rust / "file_classify.rs"),
         "dns_type_predicates": (
-            root / "src/shared/rust/dns_type_predicates.h",
+            shared_rust / "dns_type_predicates.h",
             basic_rust / "dns_type_predicates.rs",
         ),
         "iovec_util": (basic_rust / "iovec_util.h", basic_rust / "iovec_util.rs"),
@@ -175,6 +177,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "format_bytes_full": (
+            basic_rust / "format_util.h",
+            basic_rust / "format_util.rs",
+            frozenset({"rs_format_bytes", "rs_format_bytes_full"}),
+        ),
         "murmurhash2": (
             basic_rust / "murmurhash2.h",
             basic_rust / "murmurhash2.rs",
@@ -230,6 +237,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "strv.h",
             basic_rust / "strv/allocating_transforms.rs",
             frozenset({"rs_strv_extend_strv", "rs_strv_filter_prefix"}),
+        ),
+        "strverscmp": (
+            basic_rust / "strverscmp.h",
+            basic_rust / "strverscmp.rs",
+            frozenset({"rs_strverscmp_improved"}),
         ),
         "strv_base": (
             basic_rust / "strv.h",
@@ -458,7 +470,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_unbase64mem",
                     "rs_devnum_is_zero",
                     "rs_devnum_set_and_equal",
-                    "rs_format_bytes",
                     "rs_xattr_is_acl",
                     "rs_xattr_is_selinux",
                 }
@@ -491,6 +502,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "mountpoint_util.rs",
             frozenset({"rs_mount_propagation_flag_is_valid"}),
         ),
+        "btrfs_validate_subvolume_name": (
+            basic_rust / "btrfs_util.h",
+            basic_rust / "btrfs_util.rs",
+            frozenset({"rs_btrfs_validate_subvolume_name"}),
+        ),
     }
     partial_extra_sources = {
         "escape": (
@@ -517,6 +533,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "capability_util": (tests_extra / "test-capability-util-rust.c",),
         "devnum_util": (tests_extra / "test-devnum-util-rust.c",),
+        "file_classify": (tests_extra / "test-file-classify-rust.c",),
         "dns_type_predicates": (tests_extra / "test-dns-type-predicates-rust.c",),
         "errno_util": (
             tests_extra / "test-errno-util-rust.c",
@@ -577,6 +594,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "os_release_pretty_name": (tests_extra / "test-image-name-rust.c",),
         "alloc_util": (tests_extra / "test-alloc-util-rust.c",),
         "alloc_util_multiply": (tests_extra / "test-alloc-util-extra2-rust.c",),
+        "format_bytes_full": (
+            tests_extra / "test-format-util-rust.c",
+            tests_extra / "test-misc-inline-rust.c",
+        ),
         "murmurhash2": (tests_extra / "test-murmurhash2-rust.c",),
         "path_base_predicates": (tests_extra / "test-path-util-rust.c",),
         "escape": (
@@ -589,6 +610,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-strv-fnmatch-rust.c",
         ),
         "strv_extend_and_filter": (tests_extra / "test-strv-extra3-rust.c",),
+        "strverscmp": (tests_extra / "test-strverscmp-rust.c",),
         "strv_base": (tests_extra / "test-strv-rust.c",),
         "strv_registered": (
             tests_extra / "test-strv-extra-rust.c",
@@ -629,6 +651,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "xattr_util": (tests_extra / "test-xattr-util-rust.c",),
         "misc_validator_registered": (tests_extra / "test-misc-validators-rust.c",),
         "mount_propagation_validator": (tests_extra / "test-misc-validators-rust.c",),
+        "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -665,6 +688,12 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "bus_type_util": (root / "src/libsystemd/sd-bus/bus-type.c", root / "src/basic/hash-funcs.c"),
         "capability_util": (root / "src/basic/capability-util.h",),
         "devnum_util": (root / "src/basic/devnum-util.c", root / "src/basic/devnum-util.h"),
+        "file_classify": (
+            root / "src/basic/login-util.c",
+            root / "src/basic/login-util.h",
+            root / "src/basic/string-util.h",
+            root / "src/fundamental/string-util.h",
+        ),
         "dns_type_predicates": (root / "src/shared/dns-type.c", root / "src/shared/dns-type.h"),
         "errno_util": (
             root / "src/basic/errno-util.c",
@@ -745,6 +774,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/alloc-util.h",
         ),
         "alloc_util_multiply": (root / "src/basic/alloc-util.h",),
+        "format_bytes_full": (
+            root / "src/basic/format-util.c",
+            root / "src/basic/format-util.h",
+        ),
         "murmurhash2": (
             root / "src/basic/MurmurHash2.c",
             root / "src/basic/MurmurHash2.h",
@@ -756,6 +789,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "escape": (root / "src/basic/escape.c", root / "src/basic/escape.h"),
         "strv_escape_and_fnmatch": (root / "src/basic/strv.c", root / "src/basic/strv.h"),
         "strv_extend_and_filter": (root / "src/basic/strv.c", root / "src/basic/strv.h"),
+        "strverscmp": (
+            root / "src/fundamental/string-util.c",
+            root / "src/fundamental/string-util.h",
+        ),
         "strv_base": (
             root / "src/basic/strv.c",
             root / "src/basic/strv.h",
@@ -827,6 +864,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "mount_propagation_validator": (
             root / "src/basic/mountpoint-util.c",
             root / "src/basic/mountpoint-util.h",
+        ),
+        "btrfs_validate_subvolume_name": (
+            root / "src/basic/btrfs-util.c",
+            root / "src/basic/btrfs-util.h",
         ),
     }
     return BasicFfiReviewCatalog(

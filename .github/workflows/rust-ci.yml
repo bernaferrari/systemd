@@ -94,6 +94,7 @@ jobs:
   #   path/non-UTF-8: test-path-util-rust, test-path-funcs-rust,
   #                    test-path-util-extra-rust
   #   pure hash: test-murmurhash2-rust
+  #   pure formatting: test-format-util-rust
   #   strv ownership/alloc: test-strv-rust, test-strv-extra{,2-7}-rust,
   #                         test-strv-fnmatch-rust, test-string-util-extra6-rust
   #   stat: test-stat-util-rust, test-stat-util-extra2-rust,
@@ -103,6 +104,7 @@ jobs:
   #                      test-parse-util-inline-rust, test-time-util-extra2-rust
   #   allocator ownership/overflow: test-alloc-util-rust,
   #                                 test-alloc-util-extra2-rust
+  #   version byte ordering: test-strverscmp-rust
   #   non-UTF-8 extras: test-header-inline-rust, string/escape/errno fixtures
   #
   # Intentionally NOT listed until C ABI exports exist (no_mangle/export_name):
@@ -151,12 +153,14 @@ jobs:
           test-string-util-extra2-rust
           test-string-util-extra6-rust
           test-string-util-extra7-rust
+          test-strverscmp-rust
           test-escape-rust
           test-escape-extra-rust
           test-escape-extra2-rust
           test-gpt-unit-install-rust
           test-header-inline-rust
           test-murmurhash2-rust
+          test-format-util-rust
           test-strv-extra3-rust
           test-strv-extra-rust
           test-strv-extra2-rust
@@ -179,6 +183,7 @@ jobs:
           test-string-util-inline2-rust
           test-xattr-util-rust
           test-devnum-util-rust
+          test-file-classify-rust
           test-iovec-util-rust
           test-bus-type-util-rust
           test-devt-compare-rust
@@ -207,6 +212,7 @@ jobs:
           test-stat-util-rust
           test-shared-validators-rust
           test-mount-color-btrfs-rust
+          test-btrfs-util-rust
           test-compare-operator-rust
           test-boot-entry-rust
           test-pkcs11-rust
@@ -241,12 +247,14 @@ jobs:
           test-string-util-extra2-rust
           test-string-util-extra6-rust
           test-string-util-extra7-rust
+          test-strverscmp-rust
           test-escape-rust
           test-escape-extra-rust
           test-escape-extra2-rust
           test-gpt-unit-install-rust
           test-header-inline-rust
           test-murmurhash2-rust
+          test-format-util-rust
           test-strv-extra3-rust
           test-strv-extra-rust
           test-strv-extra2-rust
@@ -269,6 +277,7 @@ jobs:
           test-string-util-inline2-rust
           test-xattr-util-rust
           test-devnum-util-rust
+          test-file-classify-rust
           test-iovec-util-rust
           test-bus-type-util-rust
           test-devt-compare-rust
@@ -297,6 +306,7 @@ jobs:
           test-stat-util-rust
           test-shared-validators-rust
           test-mount-color-btrfs-rust
+          test-btrfs-util-rust
           test-compare-operator-rust
           test-boot-entry-rust
           test-pkcs11-rust

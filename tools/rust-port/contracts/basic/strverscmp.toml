@@ -1,0 +1,33 @@
+schema = 1
+module = "strverscmp"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "startswith_internal",
+    "startswith_no_case_internal",
+    "endswith_internal",
+    "endswith_no_case_internal",
+]
+
+[authority]
+c_headers = ["src/fundamental/string-util.h"]
+c_sources = ["src/fundamental/string-util.c"]
+rust_headers = ["src/basic/rust/strverscmp.h"]
+rust_sources = ["src/basic/rust/strverscmp.rs"]
+
+[[surface]]
+id = "strverscmp-byte-order"
+c_symbols = ["strverscmp_improved"]
+rust_symbols = ["rs_strverscmp_improved"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-strverscmp-rust.c"
+meson_target = "test-strverscmp-rust"
+labels = ["strverscmp-byte-order"]

@@ -1,0 +1,32 @@
+schema = 1
+module = "file_classify"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["logind_running"]
+
+[authority]
+c_headers = [
+    "src/basic/login-util.h",
+    "src/basic/string-util.h",
+    "src/fundamental/string-util.h",
+]
+c_sources = ["src/basic/login-util.c"]
+rust_headers = ["src/shared/rust/file_classify.h"]
+rust_sources = ["src/basic/rust/file_classify.rs"]
+
+[[surface]]
+id = "session-id-valid"
+c_symbols = ["session_id_valid"]
+rust_symbols = ["rs_session_id_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-file-classify-rust.c"
+meson_target = "test-file-classify-rust"
+labels = ["session-id-valid"]

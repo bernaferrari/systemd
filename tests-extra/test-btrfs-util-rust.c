@@ -5,9 +5,11 @@
 #include <string.h>
 
 #include "tests.h"
+#include "btrfs-util.h"
 #include "linux/btrfs.h"
 #include "rust/btrfs_util.h"
 
+/* RUST-CONTRACT: btrfs-validate-subvolume-name */
 static void test_btrfs_validate_subvolume_name_valid(void) {
         assert_se(btrfs_validate_subvolume_name("my-subvol") == rs_btrfs_validate_subvolume_name("my-subvol"));
         assert_se(btrfs_validate_subvolume_name("my-subvol") == 0);
@@ -17,6 +19,8 @@ static void test_btrfs_validate_subvolume_name_valid(void) {
 }
 
 static void test_btrfs_validate_subvolume_name_null(void) {
+        assert_se(btrfs_validate_subvolume_name(NULL) == rs_btrfs_validate_subvolume_name(NULL));
+        assert_se(btrfs_validate_subvolume_name(NULL) == -EINVAL);
         assert_se(rs_btrfs_validate_subvolume_name(NULL) < 0);
         assert_se(rs_btrfs_validate_subvolume_name(NULL) == -EINVAL);
 }
@@ -37,12 +41,30 @@ static void test_btrfs_validate_subvolume_name_dot(void) {
         assert_se(rs_btrfs_validate_subvolume_name("..") < 0);
 }
 
+static void test_btrfs_validate_subvolume_name_byte_and_length_boundaries(void) {
+        char non_utf8[] = { (char) 0xff, 0 };
+        char name_max[256], name_too_long[257];
+
+        memset(name_max, 'a', sizeof(name_max) - 1);
+        name_max[sizeof(name_max) - 1] = 0;
+        memset(name_too_long, 'a', sizeof(name_too_long) - 1);
+        name_too_long[sizeof(name_too_long) - 1] = 0;
+
+        assert_se(btrfs_validate_subvolume_name(non_utf8) == rs_btrfs_validate_subvolume_name(non_utf8));
+        assert_se(btrfs_validate_subvolume_name(non_utf8) == 0);
+        assert_se(btrfs_validate_subvolume_name(name_max) == rs_btrfs_validate_subvolume_name(name_max));
+        assert_se(btrfs_validate_subvolume_name(name_max) == 0);
+        assert_se(btrfs_validate_subvolume_name(name_too_long) == rs_btrfs_validate_subvolume_name(name_too_long));
+        assert_se(btrfs_validate_subvolume_name(name_too_long) == -EINVAL);
+}
+
 int main(int argc, char *argv[]) {
         test_btrfs_validate_subvolume_name_valid();
         test_btrfs_validate_subvolume_name_null();
         test_btrfs_validate_subvolume_name_empty();
         test_btrfs_validate_subvolume_name_with_slash();
         test_btrfs_validate_subvolume_name_dot();
+        test_btrfs_validate_subvolume_name_byte_and_length_boundaries();
 
         return 0;
 }

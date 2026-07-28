@@ -1,46 +1,34 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/fundamental/string-util.c (strverscmp_improved)
+// PORT-SYNC: scope=basic.strverscmp; authority=src/fundamental/string-util.c,src/fundamental/string-util.h
 //
 // Version string comparison utility (rpm-like version ordering).
 // Handles '~' (pre-release), '-' (version/release separator),
 // '^' (patch release), '.' (point release) markers.
 
-// ── Error type ──────────────────────────────────────────────────────────
-
-/// Error returned when version string comparison fails.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VersionError {
-    /// One or both inputs were empty.
-    EmptyInput,
-}
-
-impl std::fmt::Display for VersionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VersionError::EmptyInput => write!(f, "empty version string"),
-        }
-    }
-}
-
-impl std::error::Error for VersionError {}
+use std::ffi::{CStr, c_char};
 
 // ── Internal helpers ────────────────────────────────────────────────────
 
-fn is_valid_version_char(a: char) -> bool {
-    a.is_ascii_digit() || a.is_ascii_alphabetic() || matches!(a, '~' | '-' | '^' | '.')
+fn is_valid_version_byte(a: u8) -> bool {
+    a.is_ascii_digit() || a.is_ascii_alphabetic() || matches!(a, b'~' | b'-' | b'^' | b'.')
 }
 
 #[inline(always)]
-fn cmp(a: i32, b: i32) -> std::cmp::Ordering {
+fn cmp<T: Ord>(a: T, b: T) -> std::cmp::Ordering {
     a.cmp(&b)
+}
+
+#[inline(always)]
+fn byte_at(bytes: &[u8], index: usize) -> u8 {
+    bytes.get(index).copied().unwrap_or(0)
 }
 
 // ── Public API ──────────────────────────────────────────────────────────
 
 /// Compare two version strings using rpm-like version ordering.
 ///
-/// Returns `Ok(ordering)` where `Ordering::Less` means `a < b`,
+/// Returns an ordering where `Ordering::Less` means `a < b`,
 /// `Ordering::Greater` means `a > b`, and `Ordering::Equal` means equal.
 ///
 /// # Version ordering (older to newer)
@@ -50,43 +38,41 @@ fn cmp(a: i32, b: i32) -> std::cmp::Ordering {
 /// < 123^post1 < 123.a-1 < 123.1-1 < 123a-1 < 124-1
 /// ```
 pub fn strverscmp_improved(a: &str, b: &str) -> std::cmp::Ordering {
+    strverscmp_improved_bytes(a.as_bytes(), b.as_bytes())
+}
+
+fn strverscmp_improved_bytes(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
     let mut ai = 0usize;
     let mut bi = 0usize;
-    let ac: Vec<char> = a.chars().collect();
-    let bc: Vec<char> = b.chars().collect();
 
     loop {
-        // Drop leading invalid characters
-        while ai < ac.len() && !is_valid_version_char(ac[ai]) {
+        // Drop leading invalid bytes. C operates on opaque bytes rather than
+        // requiring UTF-8, so the core deliberately does the same.
+        while byte_at(a, ai) != 0 && !is_valid_version_byte(byte_at(a, ai)) {
             ai += 1;
         }
-        while bi < bc.len() && !is_valid_version_char(bc[bi]) {
+        while byte_at(b, bi) != 0 && !is_valid_version_byte(byte_at(b, bi)) {
             bi += 1;
         }
 
         // Handle '~': pre-release marker, oldest
-        if ai < ac.len() && ac[ai] == '~' || bi < bc.len() && bc[bi] == '~' {
-            let a_not_tilde = if ai < ac.len() { ac[ai] != '~' } else { true };
-            let b_not_tilde = if bi < bc.len() { bc[bi] != '~' } else { true };
-            let r = cmp(a_not_tilde as i32, b_not_tilde as i32);
+        if byte_at(a, ai) == b'~' || byte_at(b, bi) == b'~' {
+            let r = cmp(byte_at(a, ai) != b'~', byte_at(b, bi) != b'~');
             if r != std::cmp::Ordering::Equal {
                 return r;
             }
             ai += 1;
             bi += 1;
-            continue;
         }
 
         // End of one or both strings: longer string is newer
-        if ai >= ac.len() || bi >= bc.len() {
-            let a_val = if ai < ac.len() { ac[ai] as i32 } else { 0 };
-            let b_val = if bi < bc.len() { bc[bi] as i32 } else { 0 };
-            return cmp(a_val, b_val);
+        if byte_at(a, ai) == 0 || byte_at(b, bi) == 0 {
+            return cmp(byte_at(a, ai), byte_at(b, bi));
         }
 
         // Handle '-': separator between version and release
-        if ac[ai] == '-' || bc[bi] == '-' {
-            let r = cmp((ac[ai] != '-') as i32, (bc[bi] != '-') as i32);
+        if byte_at(a, ai) == b'-' || byte_at(b, bi) == b'-' {
+            let r = cmp(byte_at(a, ai) != b'-', byte_at(b, bi) != b'-');
             if r != std::cmp::Ordering::Equal {
                 return r;
             }
@@ -95,10 +81,8 @@ pub fn strverscmp_improved(a: &str, b: &str) -> std::cmp::Ordering {
         }
 
         // Handle '^': patched release marker
-        if ai < ac.len() && ac[ai] == '^' || bi < bc.len() && bc[bi] == '^' {
-            let a_not_caret = if ai < ac.len() { ac[ai] != '^' } else { false };
-            let b_not_caret = if bi < bc.len() { bc[bi] != '^' } else { false };
-            let r = cmp(a_not_caret as i32, b_not_caret as i32);
+        if byte_at(a, ai) == b'^' || byte_at(b, bi) == b'^' {
+            let r = cmp(byte_at(a, ai) != b'^', byte_at(b, bi) != b'^');
             if r != std::cmp::Ordering::Equal {
                 return r;
             }
@@ -107,10 +91,8 @@ pub fn strverscmp_improved(a: &str, b: &str) -> std::cmp::Ordering {
         }
 
         // Handle '.': point release separator
-        if ai < ac.len() && ac[ai] == '.' || bi < bc.len() && bc[bi] == '.' {
-            let a_not_dot = if ai < ac.len() { ac[ai] != '.' } else { false };
-            let b_not_dot = if bi < bc.len() { bc[bi] != '.' } else { false };
-            let r = cmp(a_not_dot as i32, b_not_dot as i32);
+        if byte_at(a, ai) == b'.' || byte_at(b, bi) == b'.' {
+            let r = cmp(byte_at(a, ai) != b'.', byte_at(b, bi) != b'.');
             if r != std::cmp::Ordering::Equal {
                 return r;
             }
@@ -118,48 +100,44 @@ pub fn strverscmp_improved(a: &str, b: &str) -> std::cmp::Ordering {
             bi += 1;
         }
 
-        let a_is_digit = ai < ac.len() && ac[ai].is_ascii_digit();
-        let b_is_digit = bi < bc.len() && bc[bi].is_ascii_digit();
+        let a_is_digit = byte_at(a, ai).is_ascii_digit();
+        let b_is_digit = byte_at(b, bi).is_ascii_digit();
 
         if a_is_digit || b_is_digit {
             // Numeric segment: find end of digits
             let mut aa = ai;
-            while aa < ac.len() && ac[aa].is_ascii_digit() {
+            while byte_at(a, aa).is_ascii_digit() {
                 aa += 1;
             }
             let mut bb = bi;
-            while bb < bc.len() && bc[bb].is_ascii_digit() {
+            while byte_at(b, bb).is_ascii_digit() {
                 bb += 1;
             }
 
             // If one was empty, the non-empty numeric is newer
-            let r = cmp((ai != aa) as i32, (bi != bb) as i32);
+            let r = cmp(ai != aa, bi != bb);
             if r != std::cmp::Ordering::Equal {
                 return r;
             }
 
             // Skip leading zeros
-            while ai < aa && ac[ai] == '0' {
+            while byte_at(a, ai) == b'0' {
                 ai += 1;
             }
-            while bi < bb && bc[bi] == '0' {
+            while byte_at(b, bi) == b'0' {
                 bi += 1;
             }
 
             // Longer number is newer
-            let r = cmp((aa - ai) as i32, (bb - bi) as i32);
+            let r = cmp(aa - ai, bb - bi);
             if r != std::cmp::Ordering::Equal {
                 return r;
             }
 
-            // Compare digit by digit
-            let len = aa - ai;
-            for j in 0..len {
-                let ca = ac[ai + j];
-                let cb = bc[bi + j];
-                if ca != cb {
-                    return cmp(ca as i32, cb as i32);
-                }
+            // Then compare equal-length numeric segments as byte strings.
+            let r = a[ai..aa].cmp(&b[bi..bb]);
+            if r != std::cmp::Ordering::Equal {
+                return r;
             }
 
             ai = aa;
@@ -167,26 +145,23 @@ pub fn strverscmp_improved(a: &str, b: &str) -> std::cmp::Ordering {
         } else {
             // Alpha segment: find end of alpha chars
             let mut aa = ai;
-            while aa < ac.len() && ac[aa].is_ascii_alphabetic() {
+            while byte_at(a, aa).is_ascii_alphabetic() {
                 aa += 1;
             }
             let mut bb = bi;
-            while bb < bc.len() && bc[bb].is_ascii_alphabetic() {
+            while byte_at(b, bb).is_ascii_alphabetic() {
                 bb += 1;
             }
 
-            // Compare min length
+            // Compare the common prefix as opaque bytes.
             let min_len = std::cmp::min(aa - ai, bb - bi);
-            for j in 0..min_len {
-                let ca = ac[ai + j];
-                let cb = bc[bi + j];
-                if ca != cb {
-                    return cmp(ca as i32, cb as i32);
-                }
+            let r = a[ai..ai + min_len].cmp(&b[bi..bi + min_len]);
+            if r != std::cmp::Ordering::Equal {
+                return r;
             }
 
             // Longer alpha segment is newer
-            let r = cmp((aa - ai) as i32, (bb - bi) as i32);
+            let r = cmp(aa - ai, bb - bi);
             if r != std::cmp::Ordering::Equal {
                 return r;
             }
@@ -194,6 +169,39 @@ pub fn strverscmp_improved(a: &str, b: &str) -> std::cmp::Ordering {
             ai = aa;
             bi = bb;
         }
+    }
+}
+
+/// Exact C ABI shadow of `strverscmp_improved()`.
+///
+/// NULL inputs are treated as empty strings, and non-UTF-8 bytes are compared
+/// with the same ASCII-only segment rules as the C implementation.
+///
+/// # Safety
+/// Each non-null argument must point to a live NUL-terminated byte string for
+/// the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strverscmp_improved(a: *const c_char, b: *const c_char) -> i32 {
+    // SAFETY: the caller guarantees each non-null pointer is a live C string.
+    let (a, b): (&[u8], &[u8]) = unsafe {
+        (
+            if a.is_null() {
+                &[]
+            } else {
+                CStr::from_ptr(a).to_bytes()
+            },
+            if b.is_null() {
+                &[]
+            } else {
+                CStr::from_ptr(b).to_bytes()
+            },
+        )
+    };
+
+    match strverscmp_improved_bytes(a, b) {
+        std::cmp::Ordering::Less => -1,
+        std::cmp::Ordering::Equal => 0,
+        std::cmp::Ordering::Greater => 1,
     }
 }
 
