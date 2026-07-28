@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/compare-operator.c, src/shared/compare-operator.h
+// PORT-SYNC: scope=shared.compare-operator; authority=src/shared/compare-operator.c,src/shared/compare-operator.h
 //
 // Comparison operator parsing and evaluation utilities.
 //
 // Supports various comparison operators for version strings, fnmatch
 // patterns, and simple string comparisons. Operators can be symbolic
 // (==, !=, <, >, <=, >=) or textual (eq, ne, lt, le, gt, ge).
+
+use crate::strverscmp::strverscmp_improved_bytes;
+use libc::{c_char, c_int};
+use std::ffi::CStr;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -17,17 +21,18 @@ pub const COMPARE_OPERATOR_WITH_FNMATCH_CHARS: &[u8] = b"!<=>$";
 
 /// Comparison operator types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
 pub enum CompareOperator {
-    StringEqual,
-    StringUnequal,
-    FnmatchEqual,
-    FnmatchUnequal,
-    LowerOrEqual,
-    GreaterOrEqual,
-    Lower,
-    Greater,
-    Equal,
-    Unequal,
+    StringEqual = 0,
+    StringUnequal = 1,
+    FnmatchEqual = 2,
+    FnmatchUnequal = 3,
+    LowerOrEqual = 4,
+    GreaterOrEqual = 5,
+    Lower = 6,
+    Greater = 7,
+    Equal = 8,
+    Unequal = 9,
 }
 
 impl CompareOperator {
@@ -461,6 +466,118 @@ pub fn version_or_fnmatch_compare(op: CompareOperator, a: &str, b: &str) -> Resu
         }
         _ => Err(CompareOperator::INVALID),
     }
+}
+
+// ── C ABI facades ─────────────────────────────────────────────────────────
+
+const EINVAL: c_int = -libc::EINVAL;
+
+#[inline]
+fn test_order_raw(k: c_int, op: c_int) -> c_int {
+    match op {
+        4 => (k <= 0) as c_int,
+        5 => (k >= 0) as c_int,
+        6 => (k < 0) as c_int,
+        7 => (k > 0) as c_int,
+        8 => (k == 0) as c_int,
+        9 => (k != 0) as c_int,
+        _ => EINVAL,
+    }
+}
+
+/// C ABI facade for `version_or_fnmatch_compare()`.
+///
+/// This preserves the source implementation's `fnmatch(3)` call with flags
+/// zero and uses the reviewed Rust byte core for version ordering. String
+/// equality is performed on raw C-string bytes in Rust and accepts NULL
+/// exactly as `streq_ptr()` does.
+///
+/// # Safety
+///
+/// For string and ordering operators (0, 1, and 4 through 9), each non-NULL
+/// argument must point to a live NUL-terminated byte string; NULL is accepted
+/// with the same empty-string semantics as the C authority for ordering
+/// operations. For fnmatch operators (2 and 3), both arguments must meet that
+/// requirement and be non-NULL. Invalid operators do not inspect either
+/// pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_version_or_fnmatch_compare(
+    op: c_int,
+    a: *const c_char,
+    b: *const c_char,
+) -> c_int {
+    match op {
+        0 | 1 => {
+            let equal = if a.is_null() || b.is_null() {
+                a.is_null() && b.is_null()
+            } else {
+                // SAFETY: non-NULL pointers meet this entry point's documented
+                // C-string contract; CStr only borrows the bytes for this call.
+                unsafe { CStr::from_ptr(a).to_bytes() == CStr::from_ptr(b).to_bytes() }
+            };
+            (if op == 0 { equal } else { !equal }) as c_int
+        }
+        2 | 3 => {
+            if a.is_null() || b.is_null() {
+                return EINVAL;
+            }
+
+            // SAFETY: `a` and `b` meet this entry point's C-string contract.
+            let result = unsafe { libc::fnmatch(b, a, 0) };
+            match (op, result) {
+                (2, 0) | (3, libc::FNM_NOMATCH) => 1,
+                (2, libc::FNM_NOMATCH) | (3, 0) => 0,
+                _ => EINVAL,
+            }
+        }
+        4..=9 => {
+            // SAFETY: non-NULL pointers meet this entry point's documented
+            // C-string contract. The C authority treats NULL as empty via
+            // strempty(), which the empty byte slices preserve exactly.
+            let (a, b) = unsafe {
+                (
+                    if a.is_null() {
+                        &[]
+                    } else {
+                        CStr::from_ptr(a).to_bytes()
+                    },
+                    if b.is_null() {
+                        &[]
+                    } else {
+                        CStr::from_ptr(b).to_bytes()
+                    },
+                )
+            };
+            let order = match strverscmp_improved_bytes(a, b) {
+                std::cmp::Ordering::Less => -1,
+                std::cmp::Ordering::Equal => 0,
+                std::cmp::Ordering::Greater => 1,
+            };
+            test_order_raw(order, op)
+        }
+        _ => EINVAL,
+    }
+}
+
+/// C ABI facade for `COMPARE_OPERATOR_IS_STRING()`.
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_COMPARE_OPERATOR_IS_STRING(op: c_int) -> bool {
+    (0..=1).contains(&op)
+}
+
+/// C ABI facade for `COMPARE_OPERATOR_IS_FNMATCH()`.
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_COMPARE_OPERATOR_IS_FNMATCH(op: c_int) -> bool {
+    (2..=3).contains(&op)
+}
+
+/// C ABI facade for `COMPARE_OPERATOR_IS_ORDER()`.
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_COMPARE_OPERATOR_IS_ORDER(op: c_int) -> bool {
+    (4..=9).contains(&op)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────

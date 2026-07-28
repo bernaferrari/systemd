@@ -213,7 +213,10 @@ jobs:
           test-shared-validators-rust
           test-mount-color-btrfs-rust
           test-btrfs-util-rust
+          test-argv-util-rust
           test-compare-operator-rust
+          test-confidential-virt-rust
+          test-hexdecoct-rust
           test-boot-entry-rust
           test-pkcs11-rust
           test-misc-rust2
@@ -307,7 +310,10 @@ jobs:
           test-shared-validators-rust
           test-mount-color-btrfs-rust
           test-btrfs-util-rust
+          test-argv-util-rust
           test-compare-operator-rust
+          test-confidential-virt-rust
+          test-hexdecoct-rust
           test-boot-entry-rust
           test-pkcs11-rust
           test-misc-rust2

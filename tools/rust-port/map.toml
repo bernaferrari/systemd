@@ -40,11 +40,30 @@ sync_status = "needs_review"
 notes = "A real, selected-verb Rust executable implements compare-versions with the C argument arity, textual/symbolic operators, warnings, printed comparison form, and rpmdev-vercmp exit statuses. The remaining systemd-analyze verbs are intentionally rejected by the Rust executable; Meson/C systemd-analyze remains the installed production owner. Static audit only 2026-07-27; no Cargo/build/tests/VM."
 
 [hexdecoct]
-c_file = "src/basic/hexdecoct.c"
-rust_file = "src/basic/rust/hexdecoct.rs"
+c_paths = [
+    "src/basic/hexdecoct.c",
+    "src/basic/hexdecoct.h",
+]
+rust_paths = [
+    "src/basic/rust/hexdecoct.rs",
+    "src/basic/rust/hexdecoct.h",
+]
+scope = "basic.hexdecoct"
+rust_scope_paths = ["src/basic/rust/hexdecoct.rs"]
+rust_interface_paths = ["src/basic/rust/hexdecoct.h"]
+contract_file = "tools/rust-port/contracts/basic/hexdecoct.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/hexdecoct.c", rust_paths = ["src/basic/rust/hexdecoct.rs", "src/basic/rust/hexdecoct.h"] },
+    { kind = "direct", path = "src/basic/hexdecoct.h", rust_paths = ["src/basic/rust/hexdecoct.rs", "src/basic/rust/hexdecoct.h"] },
+]
+test_file = "tests-extra/test-hexdecoct-rust.c"
 status = "in-progress"
 tier = 1
-notes = "22 shadow tests pass. 17 FFI exports: rs_octchar, rs_unoctchar, rs_decchar, rs_undecchar, rs_hexchar, rs_unhexchar, rs_base32hexchar, rs_unbase32hexchar, rs_base64char, rs_urlsafe_base64char, rs_unbase64char, rs_hexmem, rs_unhexmem_full, rs_base32hexmem, rs_unbase32hexmem, rs_base64mem_full, rs_unbase64mem_full, rs_base64_append. Skipped: hexdump (uses FILE*)."
+symbols = 11
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/hexdecoct.c" = "bbe624cc4f2ed9edb72ff364123372ad8e1992d3", "src/basic/hexdecoct.h" = "ed3c9dc39d8ecdcc4a5f3d0d0a0af3c5f30cec2e" }
+last_reviewed_rust_blobs = { "src/basic/rust/hexdecoct.rs" = "d7f5b7b843a95e3d6acb37385941dadfdf223f37", "src/basic/rust/hexdecoct.h" = "fce528c00a4d4c57c0e621744cb74ce38c5fd603" }
+notes = "Reviewed static scalar-codec slice 2026-07-28; no build/tests/VM. Eleven char/int facades preserve C masking, signed remainder, target c_char byte values, and -EINVAL decoding. Allocation, pointer/length, secure-wipe, and FILE* surfaces remain explicitly excluded. C remains the production authority; runtime parity is unclaimed."
 
 [sort-util]
 c_file = "src/basic/sort-util.c"
@@ -601,11 +620,30 @@ sync_status = "needs_review"
 notes = "Static source audit 2026-07-27; no build/tests/VM. Three explicit ABI exports: image-class table conversion plus rs_os_release_pretty_name, which returns a borrowed non-empty input pointer or immutable static Linux storage without allocation. The registered image-name comparison now consumes the canonical header and is CI-reviewed; link/runtime differential validation remains unclaimed. Image I/O and detection functions remain C-only."
 
 [confidential-virt]
-c_file = "src/basic/confidential-virt.c"
-rust_file = "src/basic/rust/confidential_virt.rs"
+c_paths = [
+    "src/basic/confidential-virt.c",
+    "src/basic/confidential-virt.h",
+]
+rust_paths = [
+    "src/basic/rust/confidential_virt.rs",
+    "src/basic/rust/confidential_virt.h",
+]
+scope = "basic.confidential-virt"
+rust_scope_paths = ["src/basic/rust/confidential_virt.rs"]
+rust_interface_paths = ["src/basic/rust/confidential_virt.h"]
+contract_file = "tools/rust-port/contracts/basic/confidential-virt.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/confidential-virt.c", rust_paths = ["src/basic/rust/confidential_virt.rs", "src/basic/rust/confidential_virt.h"] },
+    { kind = "direct", path = "src/basic/confidential-virt.h", rust_paths = ["src/basic/rust/confidential_virt.rs", "src/basic/rust/confidential_virt.h"] },
+]
+test_file = "tests-extra/test-confidential-virt-rust.c"
 status = "in-progress"
 tier = 1
-notes = "4 shadow tests pass (in batch3). 2 FFI exports: rs_confidential_virtualization_to_string, rs_confidential_virtualization_from_string. 7-entry table (NONE=0..CCA=6). Skipped: detect_confidential_virtualization (CPUID, file I/O)."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/confidential-virt.c" = "cbedae1a84e8a2ea9a07d28768a4682fc5dfd795", "src/basic/confidential-virt.h" = "795aa48833d71126680786c9645aadc89e9db400" }
+last_reviewed_rust_blobs = { "src/basic/rust/confidential_virt.rs" = "fad0db904daae37612deb085282ff5feedea145c", "src/basic/rust/confidential_virt.h" = "347a7e4a01cdaa1f24481faf393dead846a72211" }
+notes = "Reviewed static string-table slice 2026-07-28; no build/tests/VM. Two facades share one NUL-backed static table, preserve borrowed process-lifetime output, opaque inbound bytes, and NULL/-EINVAL behavior. CPUID/MSR/filesystem detection remains explicitly excluded. C remains the production authority; runtime parity is unclaimed."
 
 [log-target]
 c_file = "src/basic/log.c"
@@ -674,14 +712,30 @@ sync_status = "needs_review"
 notes = "2026-07-27 source audit: Rust now covers all six visible conversion wrappers including af_max(), but still hard-codes the generated af-name tables without anchoring af-from-name.inc/af-to-name.inc. Complete generated-table source parity and exact header/fixture inventory before an anchored completion claim."
 
 [argv_util]
-c_file = "src/basic/argv-util.c"
-rust_file = "src/basic/rust/argv_util.rs"
-header_file = "src/basic/argv-util.h"
+c_paths = [
+    "src/basic/argv-util.c",
+    "src/basic/argv-util.h",
+]
+rust_paths = [
+    "src/basic/rust/argv_util.rs",
+    "src/basic/rust/argv_util.h",
+]
+scope = "basic.argv-util"
+rust_scope_paths = ["src/basic/rust/argv_util.rs"]
+rust_interface_paths = ["src/basic/rust/argv_util.h"]
+contract_file = "tools/rust-port/contracts/basic/argv-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/argv-util.c", rust_paths = ["src/basic/rust/argv_util.rs", "src/basic/rust/argv_util.h"] },
+    { kind = "direct", path = "src/basic/argv-util.h", rust_paths = ["src/basic/rust/argv_util.rs", "src/basic/rust/argv_util.h"] },
+]
+test_file = "tests-extra/test-argv-util-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 1
-sync_status = "needs_review"
-notes = "Only convert_meminfo_value_to_uint64_bytes has a faithful exact Rust ABI and current-C static comparison. procfs_get_pid_max, procfs_get_threads_max, procfs_tasks_set_limit, procfs_tasks_get_current, procfs_cpu_get_usage, and procfs_memory_get remain unported under systemd-eu62.19."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/argv-util.c" = "20587f66ada203ec0b907674d51ac34beb5323f1", "src/basic/argv-util.h" = "a9526ef9360f3a61a1d0b50a1f0c863a6a8591f6" }
+last_reviewed_rust_blobs = { "src/basic/rust/argv_util.rs" = "b566e21a21ca18d43d0d61de3dafc6f73ca797aa", "src/basic/rust/argv_util.h" = "b16003b62f7aa60153f643d024b0e148bc4123ac" }
+notes = "Reviewed static argv-name/help slice 2026-07-28; no build/tests/VM. Two C ABI facades preserve opaque C-string bytes, trailing-slash basename semantics, secure-environment override handling, and null-terminated argv traversal. Process identity, argv mutation, and prctl/mmap behavior remain explicitly excluded. C remains the production authority; runtime parity is unclaimed."
 
 [arphrd_util]
 c_file = "src/basic/arphrd-util.c"
@@ -799,14 +853,26 @@ notes = "Static ABI audit 2026-07-27; no build/tests/VM. The four inline helpers
 
 [compare_operator]
 c_paths = ["src/shared/compare-operator.c", "src/shared/compare-operator.h"]
-rust_file = "src/basic/rust/compare_operator.rs"
-header_file = "src/shared/compare-operator.h"
-test_file = "src/test/test-compare-operator.c"
+rust_paths = [
+    "src/basic/rust/compare_operator.rs",
+    "src/basic/rust/compare_operator.h",
+]
+scope = "shared.compare-operator"
+rust_scope_paths = ["src/basic/rust/compare_operator.rs"]
+rust_interface_paths = ["src/basic/rust/compare_operator.h"]
+contract_file = "tools/rust-port/contracts/basic/compare-operator.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/compare-operator.c", rust_paths = ["src/basic/rust/compare_operator.rs", "src/basic/rust/compare_operator.h"] },
+    { kind = "direct", path = "src/shared/compare-operator.h", rust_paths = ["src/basic/rust/compare_operator.rs", "src/basic/rust/compare_operator.h"] },
+]
+test_file = "tests-extra/test-compare-operator-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 2
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored compare-operator behavior to current shared source/header; behavioral completion remains unclaimed."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/compare-operator.c" = "a13db8ee4fb6a9c736ba0e149adf73b888ed573c", "src/shared/compare-operator.h" = "aa19835fd0dfc8d94d0a4d994694162c28decaec" }
+last_reviewed_rust_blobs = { "src/basic/rust/compare_operator.rs" = "c2b9342d979e57acf612cc4074535c84c738777e", "src/basic/rust/compare_operator.h" = "8adf6309d9157fafde0a776690065ac65649aa07" }
+notes = "Reviewed static comparison slice 2026-07-28; no build/tests/VM. Four facades preserve raw enum layout, opaque C-string equality, C fnmatch(3) delegation, Rust byte version ordering, and inline range predicates. Parsing and the separately owned test_order facade remain excluded from this scope. C remains the production authority; runtime parity is unclaimed."
 
 [credential_validators]
 c_paths = ["src/shared/creds-util.c", "src/shared/creds-util.h", "src/basic/path-util.c", "src/basic/path-util.h", "src/basic/fd-util.c", "src/basic/fd-util.h"]
@@ -1277,7 +1343,7 @@ tier = 1
 symbols = 1
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/fundamental/string-util.c" = "bd6b81ea14da9fbe68b839a846b119164300e78a", "src/fundamental/string-util.h" = "c068c1904a8761a880c8bee6b977def7e79ead54" }
-last_reviewed_rust_blobs = { "src/basic/rust/strverscmp.rs" = "365e6d070cbd3879538ea932c1c5ffc51c52db41", "src/basic/rust/strverscmp.h" = "1225bb2a65e0d081b49551dfdca575af4bf99164" }
+last_reviewed_rust_blobs = { "src/basic/rust/strverscmp.rs" = "94bc24156cf38152062afe5baafbd2ab107b772b", "src/basic/rust/strverscmp.h" = "1225bb2a65e0d081b49551dfdca575af4bf99164" }
 notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The exact C ABI adapter preserves nullable-as-empty inputs, arbitrary non-UTF-8 bytes, ignored-byte boundaries, ASCII segment classification, and normalized -1/0/1 ordering without allocation. The registered dual C fixture pins RPM ordering, separators, invalid bytes, NULL inputs, and byte opacity. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 [sysctl_util]

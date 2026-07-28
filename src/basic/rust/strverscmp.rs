@@ -41,7 +41,9 @@ pub fn strverscmp_improved(a: &str, b: &str) -> std::cmp::Ordering {
     strverscmp_improved_bytes(a.as_bytes(), b.as_bytes())
 }
 
-fn strverscmp_improved_bytes(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
+/// Byte-oriented comparison core shared by C ABI facades that must preserve
+/// systemd's opaque C-string semantics without requiring UTF-8.
+pub(crate) fn strverscmp_improved_bytes(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
     let mut ai = 0usize;
     let mut bi = 0usize;
 

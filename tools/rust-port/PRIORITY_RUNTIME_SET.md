@@ -21,6 +21,9 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Path / pure path / non-UTF-8 | `test-path-util-rust`, `test-path-funcs-rust`, `test-path-util-extra-rust` | Includes base predicates, `\\xff` path component, and split cases |
 | Pure hash | `test-murmurhash2-rust` | Native-endian block loading and zero/negative signed-length boundary |
 | Pure formatting | `test-format-util-rust` | Exact SI/IEC flags, bounded output, and `UINT64_MAX` sentinel |
+| Scalar codecs | `test-hexdecoct-rust` | All decoder byte values plus masked and signed-remainder encoder boundaries |
+| Argv classification | `test-argv-util-rust` | Opaque bytes, secure environment override, trailing slash, and null-terminated argv semantics |
+| Confidential-virt table | `test-confidential-virt-rust` | NUL-backed borrowed strings and NULL/-EINVAL reverse lookup |
 | Session classification | `test-file-classify-rust` | ASCII-only session IDs, NULL/empty rejection, and opaque non-UTF-8 bytes |
 | Strv ownership / allocation | `test-strv-rust`, `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Includes base vector search/mutation plus registered push/consume/split/join/fnmatch surface |
 | Stat | `test-stat-util-rust`, `test-stat-util-extra2-rust`, `test-stat-util-inline-rust`, `test-stat-verify-rust` | Includes non-UTF-8 inode type string |

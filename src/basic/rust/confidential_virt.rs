@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/confidential-virt.c, src/basic/confidential-virt.h
+// PORT-SYNC: scope=basic.confidential-virt; authority=src/basic/confidential-virt.c,src/basic/confidential-virt.h
 //
 // Confidential virtualization string table lookups.
 //
@@ -10,6 +10,9 @@
 //
 // Skipped: `detect_confidential_virtualization()` (requires CPUID, MSR, and
 // filesystem access that is architecture-specific).
+
+use crate::ffi_string_table::{self, Entry as FfiEntry};
+use libc::c_char;
 
 // ── Enum ──────────────────────────────────────────────────────────────────
 
@@ -51,15 +54,32 @@ impl ConfidentialVirtualization {
 
 // ── String table ──────────────────────────────────────────────────────────
 
-static CONFIDENTIAL_VIRT_TABLE: &[(ConfidentialVirtualization, &str)] = &[
-    (ConfidentialVirtualization::None, "none"),
-    (ConfidentialVirtualization::Sev, "sev"),
-    (ConfidentialVirtualization::SevEs, "sev-es"),
-    (ConfidentialVirtualization::SevSnp, "sev-snp"),
-    (ConfidentialVirtualization::Tdx, "tdx"),
-    (ConfidentialVirtualization::Protvirt, "protvirt"),
-    (ConfidentialVirtualization::Cca, "cca"),
+// This is the single authority for both the Rust-facing strings and the C ABI
+// borrowed pointers. Keeping the trailing NUL here prevents the two surfaces
+// from drifting and avoids ever exposing a Rust `&str` buffer to C.
+static CONFIDENTIAL_VIRT_TABLE: &[FfiEntry] = &[
+    (ConfidentialVirtualization::None as i32, b"none\0"),
+    (ConfidentialVirtualization::Sev as i32, b"sev\0"),
+    (ConfidentialVirtualization::SevEs as i32, b"sev-es\0"),
+    (ConfidentialVirtualization::SevSnp as i32, b"sev-snp\0"),
+    (ConfidentialVirtualization::Tdx as i32, b"tdx\0"),
+    (ConfidentialVirtualization::Protvirt as i32, b"protvirt\0"),
+    (ConfidentialVirtualization::Cca as i32, b"cca\0"),
 ];
+
+#[inline]
+fn confidential_virtualization_from_raw(value: i32) -> Option<ConfidentialVirtualization> {
+    match value {
+        0 => Some(ConfidentialVirtualization::None),
+        1 => Some(ConfidentialVirtualization::Sev),
+        2 => Some(ConfidentialVirtualization::SevEs),
+        3 => Some(ConfidentialVirtualization::SevSnp),
+        4 => Some(ConfidentialVirtualization::Tdx),
+        5 => Some(ConfidentialVirtualization::Protvirt),
+        6 => Some(ConfidentialVirtualization::Cca),
+        _ => None,
+    }
+}
 
 // ── Conversion functions ──────────────────────────────────────────────────
 
@@ -71,10 +91,7 @@ static CONFIDENTIAL_VIRT_TABLE: &[(ConfidentialVirtualization, &str)] = &[
 pub fn confidential_virtualization_to_string(
     v: ConfidentialVirtualization,
 ) -> Option<&'static str> {
-    CONFIDENTIAL_VIRT_TABLE
-        .iter()
-        .find(|(variant, _)| *variant == v)
-        .map(|(_, s)| *s)
+    ffi_string_table::to_str(CONFIDENTIAL_VIRT_TABLE, v as i32)
 }
 
 /// Parse a string into a `ConfidentialVirtualization` value.
@@ -85,12 +102,9 @@ pub fn confidential_virtualization_to_string(
 pub fn confidential_virtualization_from_string(
     s: &str,
 ) -> Result<ConfidentialVirtualization, InvalidInput> {
-    for (variant, name) in CONFIDENTIAL_VIRT_TABLE {
-        if *name == s {
-            return Ok(*variant);
-        }
-    }
-    Err(InvalidInput)
+    ffi_string_table::from_str(CONFIDENTIAL_VIRT_TABLE, s)
+        .and_then(confidential_virtualization_from_raw)
+        .ok_or(InvalidInput)
 }
 
 /// Error returned when a string does not map to a known variant.
@@ -104,6 +118,28 @@ impl std::fmt::Display for InvalidInput {
 }
 
 impl std::error::Error for InvalidInput {}
+
+/// C ABI facade for `confidential_virtualization_to_string()`.
+///
+/// The result is a borrowed process-lifetime C string, or `NULL` for an
+/// unknown value, exactly like the `DEFINE_STRING_TABLE_LOOKUP` expansion.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_confidential_virtualization_to_string(value: i32) -> *const c_char {
+    ffi_string_table::to_ptr(CONFIDENTIAL_VIRT_TABLE, value)
+}
+
+/// C ABI facade for `confidential_virtualization_from_string()`.
+///
+/// # Safety
+///
+/// `input` may be NULL, which returns `-EINVAL`. Any non-NULL value must be a
+/// live NUL-terminated C string for this call; the function borrows it and
+/// never takes ownership.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_confidential_virtualization_from_string(input: *const c_char) -> i32 {
+    // SAFETY: this is precisely the documented C-string contract above.
+    unsafe { ffi_string_table::from_ptr(CONFIDENTIAL_VIRT_TABLE, input, -libc::EINVAL) }
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────────
 

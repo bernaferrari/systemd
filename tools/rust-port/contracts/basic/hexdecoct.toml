@@ -1,0 +1,79 @@
+schema = 1
+module = "hexdecoct"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "base32hexmem",
+    "base64_append",
+    "base64mem_full",
+    "hexdump",
+    "hexmem",
+    "unbase32hexmem",
+    "unbase64mem_full",
+    "unhexmem_full",
+]
+
+[authority]
+c_headers = ["src/basic/hexdecoct.h"]
+c_sources = ["src/basic/hexdecoct.c"]
+rust_headers = ["src/basic/rust/hexdecoct.h"]
+rust_sources = ["src/basic/rust/hexdecoct.rs"]
+
+[[surface]]
+id = "hexdecoct-scalar-encoders"
+c_symbols = [
+    "octchar",
+    "decchar",
+    "hexchar",
+    "base32hexchar",
+    "base64char",
+    "urlsafe_base64char",
+]
+rust_symbols = [
+    "rs_octchar",
+    "rs_decchar",
+    "rs_hexchar",
+    "rs_base32hexchar",
+    "rs_base64char",
+    "rs_urlsafe_base64char",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-hexdecoct-rust.c"
+meson_target = "test-hexdecoct-rust"
+labels = ["hexdecoct-scalar-encoders"]
+
+[[surface]]
+id = "hexdecoct-scalar-decoders"
+c_symbols = [
+    "unoctchar",
+    "undecchar",
+    "unhexchar",
+    "unbase32hexchar",
+    "unbase64char",
+]
+rust_symbols = [
+    "rs_unoctchar",
+    "rs_undecchar",
+    "rs_unhexchar",
+    "rs_unbase32hexchar",
+    "rs_unbase64char",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-hexdecoct-rust.c"
+meson_target = "test-hexdecoct-rust"
+labels = ["hexdecoct-scalar-decoders"]

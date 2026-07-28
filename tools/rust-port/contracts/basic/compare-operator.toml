@@ -1,0 +1,55 @@
+schema = 1
+module = "compare_operator"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "parse_compare_operator",
+    "test_order",
+]
+
+[authority]
+c_headers = ["src/shared/compare-operator.h"]
+c_sources = ["src/shared/compare-operator.c"]
+rust_headers = ["src/basic/rust/compare_operator.h"]
+rust_sources = ["src/basic/rust/compare_operator.rs"]
+
+[[surface]]
+id = "compare-version-or-fnmatch"
+c_symbols = ["version_or_fnmatch_compare"]
+rust_symbols = ["rs_version_or_fnmatch_compare"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-compare-operator-rust.c"
+meson_target = "test-compare-operator-rust"
+labels = ["compare-version-or-fnmatch"]
+
+[[surface]]
+id = "compare-operator-predicates"
+c_symbols = [
+    "COMPARE_OPERATOR_IS_STRING",
+    "COMPARE_OPERATOR_IS_FNMATCH",
+    "COMPARE_OPERATOR_IS_ORDER",
+]
+rust_symbols = [
+    "rs_COMPARE_OPERATOR_IS_STRING",
+    "rs_COMPARE_OPERATOR_IS_FNMATCH",
+    "rs_COMPARE_OPERATOR_IS_ORDER",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-compare-operator-rust.c"
+meson_target = "test-compare-operator-rust"
+labels = ["compare-operator-predicates"]

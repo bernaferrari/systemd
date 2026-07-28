@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/hexdecoct.c
+// PORT-SYNC: scope=basic.hexdecoct; authority=src/basic/hexdecoct.c,src/basic/hexdecoct.h
 
 use std::ffi::CStr;
 
@@ -20,7 +20,7 @@ pub fn unoctchar(c: char) -> Result<i32, i32> {
 }
 
 pub fn decchar(x: i32) -> char {
-    char::from(b'0' + (x.rem_euclid(10) as u8))
+    char::from((i32::from(b'0') + x % 10) as u8)
 }
 
 pub fn undecchar(c: char) -> Result<i32, i32> {
@@ -76,6 +76,78 @@ pub fn unbase64char(c: char) -> Result<i32, i32> {
         '/' | '_' => Ok(63),
         _ => Err(Errno::EINVAL.to_neg_errno()),
     }
+}
+
+fn decode_result(result: Result<i32, i32>) -> i32 {
+    match result {
+        Ok(value) | Err(value) => value,
+    }
+}
+
+/// Exact scalar C ABI shadow of `octchar()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_octchar(x: i32) -> c_char {
+    octchar(x) as u8 as c_char
+}
+
+/// Exact scalar C ABI shadow of `unoctchar()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_unoctchar(c: c_char) -> i32 {
+    decode_result(unoctchar(char::from(c as u8)))
+}
+
+/// Exact scalar C ABI shadow of `decchar()`, including C's negative remainder.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_decchar(x: i32) -> c_char {
+    decchar(x) as u8 as c_char
+}
+
+/// Exact scalar C ABI shadow of `undecchar()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_undecchar(c: c_char) -> i32 {
+    decode_result(undecchar(char::from(c as u8)))
+}
+
+/// Exact scalar C ABI shadow of `hexchar()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_hexchar(x: i32) -> c_char {
+    hexchar(x) as u8 as c_char
+}
+
+/// Exact scalar C ABI shadow of `unhexchar()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_unhexchar(c: c_char) -> i32 {
+    decode_result(unhexchar(char::from(c as u8)))
+}
+
+/// Exact scalar C ABI shadow of `base32hexchar()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_base32hexchar(x: i32) -> c_char {
+    base32hexchar(x) as u8 as c_char
+}
+
+/// Exact scalar C ABI shadow of `unbase32hexchar()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_unbase32hexchar(c: c_char) -> i32 {
+    decode_result(unbase32hexchar(char::from(c as u8)))
+}
+
+/// Exact scalar C ABI shadow of `base64char()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_base64char(x: i32) -> c_char {
+    base64char(x) as u8 as c_char
+}
+
+/// Exact scalar C ABI shadow of `urlsafe_base64char()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_urlsafe_base64char(x: i32) -> c_char {
+    urlsafe_base64char(x) as u8 as c_char
+}
+
+/// Exact scalar C ABI shadow of `unbase64char()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_unbase64char(c: c_char) -> i32 {
+    decode_result(unbase64char(char::from(c as u8)))
 }
 
 pub fn hexmem(data: &[u8]) -> String {

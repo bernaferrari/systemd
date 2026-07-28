@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: confidential-virt-to-string */
+/* RUST-CONTRACT: confidential-virt-from-string */
 
 #include <assert.h>
 #include <string.h>
@@ -77,6 +79,17 @@ static void test_confidential_virt_from_string_invalid(void) {
         r_r = rs_confidential_virtualization_from_string("SEV");
         assert_se(r_c == r_r);
         assert_se(r_c < 0);
+
+        r_c = confidential_virtualization_from_string(NULL);
+        r_r = rs_confidential_virtualization_from_string(NULL);
+        assert_se(r_c == r_r);
+        assert_se(r_c == -EINVAL);
+
+        static const char non_utf8[] = { 's', 'e', 'v', (char) 0xff, 0 };
+        r_c = confidential_virtualization_from_string(non_utf8);
+        r_r = rs_confidential_virtualization_from_string(non_utf8);
+        assert_se(r_c == r_r);
+        assert_se(r_c == -EINVAL);
 }
 
 /* ── roundtrip ─────────────────────────────────────────────────────────── */

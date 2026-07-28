@@ -319,9 +319,20 @@ def c_parameter_type(parameter: str) -> str:
             continue
         if re.fullmatch(r"\s*[A-Za-z_][A-Za-z0-9_]*(?:\[\])?", suffix):
             if suffix.rstrip().endswith("[]"):
-                if c_type != "char":
-                    raise ValueError(f"unsupported C array parameter: {parameter}")
-                return "*mutc_char"
+                # Function parameters declared as arrays are pointers. Handle
+                # the C spellings used for argv vectors as well as byte buffers
+                # instead of collapsing `char *argv[]` into a single pointer.
+                array_types = {
+                    "char": "*mutc_char",
+                    "char *": "*mut*mutc_char",
+                    "const char *": "*mut*constc_char",
+                }
+                try:
+                    return array_types[c_type]
+                except KeyError as error:
+                    raise ValueError(
+                        f"unsupported C array parameter: {parameter}"
+                    ) from error
             return C_TYPES[c_type]
     raise ValueError(f"unsupported C parameter: {parameter}")
 
@@ -2888,6 +2899,19 @@ def main() -> int:
                 ):
                     return fail(
                         "signal_inline_registered: SIGNAL_VALID inline authority changed"
+                    )
+                authority_curated += 1
+                continue
+            if name == "confidential_virt":
+                if (
+                    "DEFINE_STRING_TABLE_LOOKUP(confidential_virtualization, ConfidentialVirtualization);"
+                    not in authority
+                    or "DECLARE_STRING_TABLE_LOOKUP(confidential_virtualization, ConfidentialVirtualization);"
+                    not in authority
+                    or "confidential_virtualization_table" not in authority
+                ):
+                    return fail(
+                        "confidential_virt: current C string-table lookup authority changed"
                     )
                 authority_curated += 1
                 continue

@@ -507,6 +507,52 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "btrfs_util.rs",
             frozenset({"rs_btrfs_validate_subvolume_name"}),
         ),
+        "argv_util": (
+            basic_rust / "argv_util.h",
+            basic_rust / "argv_util.rs",
+            frozenset({"rs_argv_looks_like_help", "rs_invoked_as"}),
+        ),
+        "compare_operator": (
+            basic_rust / "compare_operator.h",
+            basic_rust / "compare_operator.rs",
+            frozenset(
+                {
+                    "rs_version_or_fnmatch_compare",
+                    "rs_COMPARE_OPERATOR_IS_STRING",
+                    "rs_COMPARE_OPERATOR_IS_FNMATCH",
+                    "rs_COMPARE_OPERATOR_IS_ORDER",
+                }
+            ),
+        ),
+        "confidential_virt": (
+            basic_rust / "confidential_virt.h",
+            basic_rust / "confidential_virt.rs",
+            frozenset(
+                {
+                    "rs_confidential_virtualization_to_string",
+                    "rs_confidential_virtualization_from_string",
+                }
+            ),
+        ),
+        "hexdecoct": (
+            basic_rust / "hexdecoct.h",
+            basic_rust / "hexdecoct.rs",
+            frozenset(
+                {
+                    "rs_octchar",
+                    "rs_unoctchar",
+                    "rs_decchar",
+                    "rs_undecchar",
+                    "rs_hexchar",
+                    "rs_unhexchar",
+                    "rs_base32hexchar",
+                    "rs_unbase32hexchar",
+                    "rs_base64char",
+                    "rs_urlsafe_base64char",
+                    "rs_unbase64char",
+                }
+            ),
+        ),
     }
     partial_extra_sources = {
         "escape": (
@@ -652,6 +698,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "misc_validator_registered": (tests_extra / "test-misc-validators-rust.c",),
         "mount_propagation_validator": (tests_extra / "test-misc-validators-rust.c",),
         "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
+        "argv_util": (tests_extra / "test-argv-util-rust.c",),
+        "compare_operator": (tests_extra / "test-compare-operator-rust.c",),
+        "confidential_virt": (tests_extra / "test-confidential-virt-rust.c",),
+        "hexdecoct": (tests_extra / "test-hexdecoct-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -869,6 +919,16 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/btrfs-util.c",
             root / "src/basic/btrfs-util.h",
         ),
+        "argv_util": (root / "src/basic/argv-util.c", root / "src/basic/argv-util.h"),
+        "compare_operator": (
+            root / "src/shared/compare-operator.c",
+            root / "src/shared/compare-operator.h",
+        ),
+        "confidential_virt": (
+            root / "src/basic/confidential-virt.c",
+            root / "src/basic/confidential-virt.h",
+        ),
+        "hexdecoct": (root / "src/basic/hexdecoct.c", root / "src/basic/hexdecoct.h"),
     }
     return BasicFfiReviewCatalog(
         surfaces=surfaces,

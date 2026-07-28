@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C test_order/version_or_fnmatch_compare vs Rust */
+/* RUST-CONTRACT: compare-version-or-fnmatch */
+/* RUST-CONTRACT: compare-operator-predicates */
 
 #include "tests.h"
 #include "compare-operator.h"
@@ -106,6 +108,12 @@ static void test_version_or_fnmatch_string(void) {
         rv = rs_version_or_fnmatch_compare(COMPARE_STRING_UNEQUAL, "abc", "abc");
         assert_se(cv == rv);
         assert_se(cv == false);
+
+        static const char non_utf8[] = { 'a', (char) 0xff, 0 };
+        cv = version_or_fnmatch_compare(COMPARE_STRING_EQUAL, non_utf8, non_utf8);
+        rv = rs_version_or_fnmatch_compare(COMPARE_STRING_EQUAL, non_utf8, non_utf8);
+        assert_se(cv == rv);
+        assert_se(cv == true);
 }
 
 static void test_version_or_fnmatch_fnmatch(void) {
@@ -173,6 +181,11 @@ static void test_version_or_fnmatch_order(void) {
 
         cv = version_or_fnmatch_compare(COMPARE_GREATER, "2.0.1", "2.0");
         rv = rs_version_or_fnmatch_compare(COMPARE_GREATER, "2.0.1", "2.0");
+        assert_se(cv == rv);
+        assert_se(cv == true);
+
+        cv = version_or_fnmatch_compare(COMPARE_EQUAL, NULL, "");
+        rv = rs_version_or_fnmatch_compare(COMPARE_EQUAL, NULL, "");
         assert_se(cv == rv);
         assert_se(cv == true);
 }

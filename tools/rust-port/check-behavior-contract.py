@@ -180,18 +180,27 @@ def code_only(text: str) -> str:
 
 
 def contains_symbol(paths: list[str], root: Path, symbol: str) -> bool:
-    """Return whether source code, rather than prose/literals, names a symbol."""
+    """Return whether code declares a symbol, including string-table macro APIs."""
 
     pattern = re.compile(rf"\b{re.escape(symbol)}\b")
-    return any(
-        pattern.search(
-            code_only(
-                (root / path).read_text(encoding="utf-8", errors="ignore")
-            )
-        )
-        for path in paths
-        if (root / path).is_file()
-    )
+    for path in paths:
+        source = root / path
+        if not source.is_file():
+            continue
+        code = code_only(source.read_text(encoding="utf-8", errors="ignore"))
+        if pattern.search(code):
+            return True
+
+        # DECLARE_STRING_TABLE_LOOKUP(name, Type) expands to the two public
+        # name_to_string()/name_from_string() declarations. Keep generated C
+        # APIs reviewable without pretending the macro expansion is prose.
+        for table in re.findall(
+            r"\bDECLARE_STRING_TABLE_LOOKUP\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,",
+            code,
+        ):
+            if symbol in {f"{table}_to_string", f"{table}_from_string"}:
+                return True
+    return False
 
 
 def fixture_calls_symbol(text: str, symbol: str) -> bool:

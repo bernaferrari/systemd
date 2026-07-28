@@ -25,6 +25,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
+    "src/basic/rust/argv_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
+    },
     "src/basic/rust/basic_validators.rs": {
       "missing_safety": 1,
       "missing_safety_sites": [
@@ -51,6 +56,16 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 25
+    },
+    "src/basic/rust/compare_operator.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
+    "src/basic/rust/confidential_virt.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/basic/rust/devnum_util.rs": {
       "missing_safety": 0,
@@ -1921,7 +1936,7 @@
   },
   "totals": {
     "missing_safety": 632,
-    "unsafe_sites": 4643
+    "unsafe_sites": 4657
   },
   "version": 2,
   "window": 3

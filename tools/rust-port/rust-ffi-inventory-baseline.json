@@ -8,10 +8,6 @@
       "rs_parse_systemd_colors",
       "rs_underline_enabled"
     ],
-    "src/basic/rust/argv_util.h": [
-      "rs_argv_looks_like_help",
-      "rs_invoked_as"
-    ],
     "src/basic/rust/arphrd_util.h": [
       "rs_arphrd_from_name",
       "rs_arphrd_to_hw_addr_len",
@@ -49,12 +45,6 @@
       "rs_capability_to_name",
       "rs_capability_to_string"
     ],
-    "src/basic/rust/compare_operator.h": [
-      "rs_COMPARE_OPERATOR_IS_FNMATCH",
-      "rs_COMPARE_OPERATOR_IS_ORDER",
-      "rs_COMPARE_OPERATOR_IS_STRING",
-      "rs_version_or_fnmatch_compare"
-    ],
     "src/basic/rust/compress_util.h": [
       "rs_compression_from_string",
       "rs_compression_from_string_lowercase",
@@ -62,10 +52,6 @@
       "rs_compression_to_string",
       "rs_compression_to_string_lowercase",
       "rs_get_compression_supported_mask"
-    ],
-    "src/basic/rust/confidential_virt.h": [
-      "rs_confidential_virtualization_from_string",
-      "rs_confidential_virtualization_to_string"
     ],
     "src/basic/rust/credential_validators.h": [
       "rs_credential_glob_valid",
@@ -137,24 +123,13 @@
       "rs_utf8_prev_char"
     ],
     "src/basic/rust/hexdecoct.h": [
-      "rs_base32hexchar",
       "rs_base32hexmem",
       "rs_base64_append",
-      "rs_base64char",
       "rs_base64mem_full",
-      "rs_decchar",
-      "rs_hexchar",
       "rs_hexmem",
-      "rs_octchar",
-      "rs_unbase32hexchar",
       "rs_unbase32hexmem",
-      "rs_unbase64char",
       "rs_unbase64mem_full",
-      "rs_undecchar",
-      "rs_unhexchar",
-      "rs_unhexmem_full",
-      "rs_unoctchar",
-      "rs_urlsafe_base64char"
+      "rs_unhexmem_full"
     ],
     "src/basic/rust/hostname_setup.h": [
       "rs_shorten_overlong"
