@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// Exact C ABI adapters for the small inline helpers in utf8.h,
-// terminal-util.h, and path-util.h.
+// Exact C ABI adapters for the small inline helpers in utf8.h and path-util.h.
 //
 // All behaviour lives in byte-oriented or scalar safe cores. This module is
 // the deliberately narrow boundary which borrows a NUL-terminated C string
@@ -16,7 +15,6 @@ use libc::c_char;
 use crate::escape::malloc_c_string;
 use crate::path_util::skip_dev_prefix_offset;
 use crate::string_util::{try_utf8_escape_non_printable, valid_utf8_character};
-use crate::terminal_util::{osc_char_is_valid, vtnr_is_valid};
 use crate::utf8::{
     utf16_is_surrogate, utf16_is_trailing_surrogate, utf16_surrogate_pair_to_unichar,
 };
@@ -121,18 +119,6 @@ pub extern "C" fn rs_utf16_is_trailing_surrogate(c: u16) -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_utf16_surrogate_pair_to_unichar(lead: u16, trail: u16) -> u32 {
     utf16_surrogate_pair_to_unichar(lead, trail)
-}
-
-/// C ABI for terminal-util.h's `osc_char_is_valid()` inline helper.
-#[unsafe(no_mangle)]
-pub extern "C" fn rs_osc_char_is_valid(c: c_char) -> bool {
-    osc_char_is_valid(c as u8)
-}
-
-/// C ABI for terminal-util.h's `vtnr_is_valid()` inline helper.
-#[unsafe(no_mangle)]
-pub extern "C" fn rs_vtnr_is_valid(number: u32) -> bool {
-    vtnr_is_valid(number)
 }
 
 /// C ABI for path-util.h's `skip_dev_prefix()` inline helper.

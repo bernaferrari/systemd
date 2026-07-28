@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.terminal-util; authority=src/basic/terminal-util.c,src/basic/terminal-util.h,src/shared/pretty-print.c */
 #pragma once
 
 #include <stdbool.h>

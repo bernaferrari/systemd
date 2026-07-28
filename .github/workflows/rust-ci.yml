@@ -224,6 +224,10 @@ jobs:
           test-memory-util-rust
           test-hostname-util-rust
           test-id128-rust
+          test-proc-cmdline-rust
+          test-process-util-str-tables-rust
+          test-strxcpyx-rust
+          test-terminal-util-rust
           test-credential-validators-rust
           test-locale-util-rust
           test-image-class-rust
@@ -336,6 +340,10 @@ jobs:
           test-memory-util-rust
           test-hostname-util-rust
           test-id128-rust
+          test-proc-cmdline-rust
+          test-process-util-str-tables-rust
+          test-strxcpyx-rust
+          test-terminal-util-rust
           test-credential-validators-rust
           test-locale-util-rust
           test-image-class-rust

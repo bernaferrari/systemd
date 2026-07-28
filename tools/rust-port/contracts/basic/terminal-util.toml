@@ -1,0 +1,108 @@
+schema = 1
+module = "terminal_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["tty_is_vc_resolve", "vt_disallocate", "resolve_dev_console", "get_kernel_consoles"]
+
+[authority]
+c_headers = ["src/basic/terminal-util.h"]
+c_sources = ["src/basic/terminal-util.c", "src/shared/pretty-print.c"]
+rust_headers = ["src/basic/rust/terminal_util.h"]
+rust_sources = ["src/basic/rust/terminal_util.rs"]
+
+[[surface]]
+id = "terminal-tty-vc"
+c_symbols = ["tty_is_vc"]
+rust_symbols = ["rs_tty_is_vc"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-terminal-util-rust.c"
+meson_target = "test-terminal-util-rust"
+labels = ["terminal-tty-vc"]
+
+[[surface]]
+id = "terminal-tty-console"
+c_symbols = ["tty_is_console"]
+rust_symbols = ["rs_tty_is_console"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-terminal-util-rust.c"
+meson_target = "test-terminal-util-rust"
+labels = ["terminal-tty-console"]
+
+[[surface]]
+id = "terminal-vtnr-from-tty"
+c_symbols = ["vtnr_from_tty"]
+rust_symbols = ["rs_vtnr_from_tty"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-terminal-util-rust.c"
+meson_target = "test-terminal-util-rust"
+labels = ["terminal-vtnr-from-tty"]
+
+[[surface]]
+id = "terminal-osc-char"
+c_symbols = ["osc_char_is_valid"]
+rust_symbols = ["rs_osc_char_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-terminal-util-rust.c"
+meson_target = "test-terminal-util-rust"
+labels = ["terminal-osc-char"]
+
+[[surface]]
+id = "terminal-vtnr-valid"
+c_symbols = ["vtnr_is_valid"]
+rust_symbols = ["rs_vtnr_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-terminal-util-rust.c"
+meson_target = "test-terminal-util-rust"
+labels = ["terminal-vtnr-valid"]
+
+[[surface]]
+id = "terminal-osc8-url"
+c_symbols = ["url_suitable_for_osc8"]
+rust_symbols = ["rs_url_suitable_for_osc8"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-terminal-util-rust.c"
+meson_target = "test-terminal-util-rust"
+labels = ["terminal-osc8-url"]

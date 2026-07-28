@@ -39,6 +39,10 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Counted memory primitives | `test-memory-util-rust` | Raw C pointer preconditions, zero-length exceptions, borrowed search results, and fundamental uniform-byte semantics |
 | Hostname conversion | `test-hostname-util-rust` | Raw-byte grammar, in-place cleanup, synthetic names, and C-allocated user@host splits |
 | ID128 conversion | `test-id128-rust` | Union ABI, caller buffers, opaque string parsing, exact comparison, and SHA-256 UUID digesting |
+| Kernel-command-line key matching | `test-proc-cmdline-rust` | Raw byte keys, dash/underscore-only relaxation, and borrowed interior prefix results |
+| Process string tables | `test-process-util-str-tables-rust` | Borrowed static SIGCHLD names, safe_atou-compatible scheduler parsing, and C-owned decimal fallback strings |
+| Bounded string copying | `test-strxcpyx-rust` | Explicit byte lengths, C-string lengths, cursor advancement, zero-size no-ops, and truncation publication |
+| Terminal predicates | `test-terminal-util-rust` | Component-aware /dev paths, safe_atou base-zero grammar, VT range errors, and OSC8 byte policy |
 | Session classification | `test-file-classify-rust` | ASCII-only session IDs, NULL/empty rejection, and opaque non-UTF-8 bytes |
 | Strv ownership / allocation | `test-strv-rust`, `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Includes base vector search/mutation plus registered push/consume/split/join/fnmatch surface |
 | Stat | `test-stat-util-rust`, `test-stat-util-extra2-rust`, `test-stat-util-inline-rust`, `test-stat-verify-rust` | Includes non-UTF-8 inode type string |

@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+/* PORT-SYNC: scope=basic.proc-cmdline; authority=src/basic/proc-cmdline.c,src/basic/proc-cmdline.h */
+
 #include <stdbool.h>
 
 /*

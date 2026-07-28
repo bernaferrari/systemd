@@ -1,7 +1,12 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: process-sigchld-code-to-string */
+/* RUST-CONTRACT: process-sigchld-code-from-string */
+/* RUST-CONTRACT: process-sched-policy-to-string-alloc */
+/* RUST-CONTRACT: process-sched-policy-from-string */
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +42,11 @@ static void test_sigchld_code_to_string(void) {
         c_ret = sigchld_code_to_string(0);
         r_ret = rs_sigchld_code_to_string(0);
         assert_se(streq_ptr(c_ret, r_ret));
+
+        /* The Rust facade has the same borrowed-static ownership as C's
+         * DEFINE_STRING_TABLE_LOOKUP result. */
+        r_ret = rs_sigchld_code_to_string(CLD_EXITED);
+        assert_se(r_ret == rs_sigchld_code_to_string(CLD_EXITED));
 }
 
 static void test_sigchld_code_from_string(void) {
@@ -61,43 +71,36 @@ static void test_sigchld_code_from_string(void) {
         c_ret = sigchld_code_from_string(NULL);
         r_ret = rs_sigchld_code_from_string(NULL);
         assert_se(c_ret == r_ret);
+
+        {
+                static const char non_utf8[] = { 'e', 'x', 'i', 't', 'e', 'd', (char) 0xff, 0 };
+
+                c_ret = sigchld_code_from_string(non_utf8);
+                r_ret = rs_sigchld_code_from_string(non_utf8);
+                assert_se(c_ret == r_ret);
+        }
 }
 
 /* ── sched_policy ─────────────────────────────────────────────────────── */
 
-static void test_sched_policy_to_string(void) {
-        /* sched_policy uses DEFINE_STRING_TABLE_LOOKUP_WITH_FALLBACK which
-         * generates sched_policy_to_string_alloc(int, char**). The Rust
-         * version provides a simple rs_sched_policy_to_string(int) that
-         * returns const char*. We test it independently. */
-        const char *r;
+static void test_sched_policy_to_string_alloc(void) {
+        static const int policies[] = { SCHED_OTHER, SCHED_FIFO, SCHED_RR, SCHED_BATCH, SCHED_IDLE, 4, 99, INT_MAX };
 
-        r = rs_sched_policy_to_string(SCHED_OTHER);
-        assert_se(r);
-        assert_se(streq(r, "other"));
+        for (size_t i = 0; i < sizeof(policies) / sizeof(policies[0]); i++) {
+                _cleanup_free_ char *c = NULL, *r = NULL;
 
-        r = rs_sched_policy_to_string(SCHED_FIFO);
-        assert_se(r);
-        assert_se(streq(r, "fifo"));
+                assert_se(sched_policy_to_string_alloc(policies[i], &c) >= 0);
+                assert_se(rs_sched_policy_to_string_alloc(policies[i], &r) >= 0);
+                assert_se(c && r);
+                assert_se(streq(c, r));
+        }
 
-        r = rs_sched_policy_to_string(SCHED_RR);
-        assert_se(r);
-        assert_se(streq(r, "rr"));
-
-        r = rs_sched_policy_to_string(SCHED_BATCH);
-        assert_se(r);
-        assert_se(streq(r, "batch"));
-
-        r = rs_sched_policy_to_string(SCHED_IDLE);
-        assert_se(r);
-        assert_se(streq(r, "idle"));
-
-        /* Invalid */
-        r = rs_sched_policy_to_string(99);
-        assert_se(r == NULL);
-
-        r = rs_sched_policy_to_string(4); /* gap between BATCH=3 and IDLE=5 */
-        assert_se(r == NULL);
+        /* Errors do not publish or overwrite either caller output. */
+        char *c = (char*) 1, *r = (char*) 1;
+        assert_se(sched_policy_to_string_alloc(-1, &c) == -ERANGE);
+        assert_se(rs_sched_policy_to_string_alloc(-1, &r) == -ERANGE);
+        assert_se(c == (char*) 1);
+        assert_se(r == (char*) 1);
 }
 
 static void test_sched_policy_from_string(void) {
@@ -146,12 +149,38 @@ static void test_sched_policy_from_string(void) {
         c_ret = sched_policy_from_string(NULL);
         r_ret = rs_sched_policy_from_string(NULL);
         assert_se(c_ret == r_ret);
+
+        /* The C fallback is safe_atou()-based: exercise its non-decimal,
+         * leading-space, sign, range, and trailing-byte behavior directly. */
+        static const char * const numeric_cases[] = {
+                "0b11",
+                "0o7",
+                " 1",
+                "+1",
+                "-1",
+                "2147483647",
+                "2147483648",
+                "1 ",
+        };
+        for (size_t i = 0; i < sizeof(numeric_cases) / sizeof(numeric_cases[0]); i++) {
+                c_ret = sched_policy_from_string(numeric_cases[i]);
+                r_ret = rs_sched_policy_from_string(numeric_cases[i]);
+                assert_se(c_ret == r_ret);
+        }
+
+        {
+                static const char non_utf8[] = { '1', (char) 0xff, 0 };
+
+                c_ret = sched_policy_from_string(non_utf8);
+                r_ret = rs_sched_policy_from_string(non_utf8);
+                assert_se(c_ret == r_ret);
+        }
 }
 
 int main(int argc, char **argv) {
         test_sigchld_code_to_string();
         test_sigchld_code_from_string();
-        test_sched_policy_to_string();
+        test_sched_policy_to_string_alloc();
         test_sched_policy_from_string();
         return 0;
 }

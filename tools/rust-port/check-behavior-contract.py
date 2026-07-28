@@ -206,6 +206,12 @@ def contains_symbol(paths: list[str], root: Path, symbol: str) -> bool:
         ):
             if symbol == f"{table}_to_string":
                 return True
+        for table in re.findall(
+            r"\bDECLARE_STRING_TABLE_LOOKUP_WITH_FALLBACK\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,",
+            code,
+        ):
+            if symbol in {f"{table}_to_string_alloc", f"{table}_from_string"}:
+                return True
     return False
 
 
@@ -243,6 +249,12 @@ def declaration_has_parameter(
             except ValueError:
                 continue
             if parameter_pattern.search(arguments):
+                return True
+        for table in re.findall(
+            r"\bDECLARE_STRING_TABLE_LOOKUP_WITH_FALLBACK\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,",
+            text,
+        ):
+            if symbol == f"{table}_to_string_alloc" and parameter == "ret":
                 return True
     return False
 

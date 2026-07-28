@@ -349,6 +349,16 @@
       "missing_safety_sites": [],
       "unsafe_sites": 16
     },
+    "src/basic/rust/proc_cmdline.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 7
+    },
+    "src/basic/rust/process_util_str_tables.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 9
+    },
     "src/basic/rust/procfs_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -504,6 +514,16 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
+    },
+    "src/basic/rust/strxcpyx.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 18
+    },
+    "src/basic/rust/terminal_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 10
     },
     "src/basic/rust/time_util/arithmetic.rs": {
       "missing_safety": 0,
@@ -1996,7 +2016,7 @@
   },
   "totals": {
     "missing_safety": 632,
-    "unsafe_sites": 4828
+    "unsafe_sites": 4872
   },
   "version": 2,
   "window": 3

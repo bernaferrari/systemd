@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/terminal-util.c (tty_is_vc, tty_is_console, vtnr_from_tty,
-//            url_suitable_for_osc8, osc_char_is_valid)
-//            src/basic/terminal-util.h (vtnr_is_valid, VTNR_MAX)
+// PORT-SYNC: scope=basic.terminal-util; authority=src/basic/terminal-util.c,src/basic/terminal-util.h,src/shared/pretty-print.c
 //
-// Pure terminal utility functions — no I/O, no syscalls, no raw pointers.
-// All functions operate on Rust string slices and return Result types.
+// Pure terminal utility functions — no I/O or syscalls. The safe core is
+// byte-oriented so the C adapters preserve C-string semantics exactly.
+
+use std::ffi::CStr;
+
+use libc::{c_char, c_int, c_uint};
 
 use crate::ffi::Errno;
+use crate::path_util::skip_dev_prefix_offset;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -38,45 +41,90 @@ pub fn vtnr_is_valid(n: u32) -> bool {
 
 // ── VT number extraction ──────────────────────────────────────────────────
 
-/// Skip the `/dev/` prefix from a TTY path.
+/// Parse the `safe_atou(..., base=0)` subset used by `vtnr_from_tty_raw()`.
 ///
-/// If the string starts with `/dev/`, returns the remainder.
-/// Otherwise returns the original string unchanged.
-/// Corresponds to the inline `path_startswith(p, "/dev/")` in C.
-fn skip_dev_prefix(tty: &str) -> &str {
-    tty.strip_prefix("/dev/").unwrap_or(tty)
-}
+/// This intentionally accepts C's leading ASCII whitespace and `+` sign,
+/// recognizes hexadecimal, binary, and octal prefixes, rejects trailing bytes, and
+/// reports a result that does not fit `unsigned` as `ERANGE`.
+fn safe_atou_base0(bytes: &[u8]) -> Result<u32, Errno> {
+    let mut cursor = 0;
+    while matches!(bytes.get(cursor), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+        cursor += 1;
+    }
 
-/// Parse a decimal `u32` from the beginning of a string.
-///
-/// Returns `Some(value)` if the string starts with one or more ASCII digits
-/// forming a valid `u32`, or `None` otherwise.
-fn parse_u32_prefix(s: &str) -> Option<u32> {
-    if s.is_empty() {
-        return None;
+    let signed = matches!(bytes.get(cursor), Some(b'+' | b'-'));
+    let negative = match bytes.get(cursor) {
+        Some(b'+') => {
+            cursor += 1;
+            false
+        }
+        Some(b'-') => {
+            cursor += 1;
+            true
+        }
+        _ => false,
+    };
+
+    let (base, digits_start) = if !signed
+        && bytes.get(cursor) == Some(&b'0')
+        && matches!(bytes.get(cursor + 1), Some(b'b' | b'B'))
+    {
+        (2, cursor + 2)
+    } else if !signed
+        && bytes.get(cursor) == Some(&b'0')
+        && matches!(bytes.get(cursor + 1), Some(b'o' | b'O'))
+    {
+        (8, cursor + 2)
+    } else if bytes.get(cursor) == Some(&b'0') && matches!(bytes.get(cursor + 1), Some(b'x' | b'X'))
+    {
+        (16, cursor + 2)
+    } else if bytes.get(cursor) == Some(&b'0') {
+        (8, cursor)
+    } else {
+        (10, cursor)
+    };
+
+    let mut value = 0_u32;
+    let mut digits = 0;
+    for &byte in &bytes[digits_start..] {
+        let digit = match byte {
+            b'0'..=b'9' => u32::from(byte - b'0'),
+            b'a'..=b'f' => u32::from(byte - b'a') + 10,
+            b'A'..=b'F' => u32::from(byte - b'A') + 10,
+            _ => return Err(Errno::EINVAL),
+        };
+        if digit >= base {
+            return Err(Errno::EINVAL);
+        }
+        value = value
+            .checked_mul(base)
+            .and_then(|current| current.checked_add(digit))
+            .ok_or(Errno::ERANGE)?;
+        digits += 1;
     }
-    let end = s
-        .bytes()
-        .position(|b| !b.is_ascii_digit())
-        .unwrap_or(s.len());
-    if end == 0 {
-        return None;
+
+    if digits == 0 {
+        return Err(Errno::EINVAL);
     }
-    s[..end].parse().ok()
+    if negative && value != 0 {
+        return Err(Errno::ERANGE);
+    }
+
+    Ok(value)
 }
 
 /// Internal helper: extracts VT number from a TTY string, without range validation.
 ///
-/// Skips optional `/dev/` prefix, requires `tty` prefix, then parses a decimal number.
+/// Skips a component-aware optional `/dev/` prefix, requires `tty`, then
+/// parses the remaining bytes with C's base-zero unsigned grammar.
 /// Returns the raw parsed value on success, or an `Errno` on failure.
-fn vtnr_from_tty_raw(tty: &str) -> Result<u32, Errno> {
-    let stripped = skip_dev_prefix(tty);
+fn vtnr_from_tty_raw_bytes(tty: &[u8]) -> Result<u32, Errno> {
+    let stripped = &tty[skip_dev_prefix_offset(tty)..];
 
     // Check for "tty" prefix
-    let rest = stripped.strip_prefix("tty").ok_or(Errno::EINVAL)?;
+    let rest = stripped.strip_prefix(b"tty").ok_or(Errno::EINVAL)?;
 
-    // Parse the number after "tty"
-    parse_u32_prefix(rest).ok_or(Errno::EINVAL)
+    safe_atou_base0(rest)
 }
 
 /// Extract the VT number from a TTY name string.
@@ -87,7 +135,7 @@ fn vtnr_from_tty_raw(tty: &str) -> Result<u32, Errno> {
 ///
 /// Corresponds to `vtnr_from_tty()` in terminal-util.c.
 pub fn vtnr_from_tty(tty: &str) -> Result<u32, Errno> {
-    let val = vtnr_from_tty_raw(tty)?;
+    let val = vtnr_from_tty_raw_bytes(tty.as_bytes())?;
     if !vtnr_is_valid(val) {
         return Err(Errno::ERANGE);
     }
@@ -101,7 +149,7 @@ pub fn vtnr_from_tty(tty: &str) -> Result<u32, Errno> {
 /// Returns `true` if the TTY string matches the pattern `tty<N>` or `/dev/tty<N>`.
 /// Corresponds to `tty_is_vc()` in terminal-util.c.
 pub fn tty_is_vc(tty: &str) -> bool {
-    vtnr_from_tty_raw(tty).is_ok()
+    vtnr_from_tty_raw_bytes(tty.as_bytes()).is_ok()
 }
 
 // ── tty_is_console ────────────────────────────────────────────────────────
@@ -112,8 +160,8 @@ pub fn tty_is_vc(tty: &str) -> bool {
 /// is exactly `"console"`.
 /// Corresponds to `tty_is_console()` in terminal-util.c.
 pub fn tty_is_console(tty: &str) -> bool {
-    let stripped = skip_dev_prefix(tty);
-    stripped == "console"
+    let bytes = tty.as_bytes();
+    &bytes[skip_dev_prefix_offset(bytes)..] == b"console"
 }
 
 // ── url_suitable_for_osc8 ────────────────────────────────────────────────
@@ -122,12 +170,101 @@ pub fn tty_is_console(tty: &str) -> bool {
 ///
 /// A URL is suitable if its length is ≤ 2000 characters and every character
 /// is in the printable ASCII range `32..127` (per ECMA-48).
-/// Corresponds to `url_suitable_for_osc8()` in terminal-util.c.
+/// Corresponds to the helper in `pretty-print.c` that uses terminal-util.h's
+/// OSC character policy.
 pub fn url_suitable_for_osc8(url: &str) -> bool {
-    if url.len() > OSC8_URL_MAX_LEN {
-        return false;
+    url_suitable_for_osc8_bytes(url.as_bytes())
+}
+
+/// Byte-oriented core for `url_suitable_for_osc8()` from pretty-print.c.
+fn url_suitable_for_osc8_bytes(url: &[u8]) -> bool {
+    url.len() <= OSC8_URL_MAX_LEN && url.iter().copied().all(osc_char_is_valid)
+}
+
+/// Borrow visible C-string bytes for one FFI call.
+///
+/// # Safety
+/// `input` must be null or point to a readable NUL-terminated C string.
+unsafe fn input_bytes<'a>(input: *const c_char) -> Option<&'a [u8]> {
+    if input.is_null() {
+        return None;
     }
-    url.bytes().all(|c| c >= 32 && c < 127)
+
+    // SAFETY: the entry-point contract guarantees the terminating NUL.
+    Some(unsafe { CStr::from_ptr(input) }.to_bytes())
+}
+
+/// C ABI for terminal-util.c's `tty_is_vc()`.
+///
+/// # Safety
+/// `tty` must be null or a readable NUL-terminated C string. C asserts a
+/// non-null input; this boundary instead fails closed for null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_tty_is_vc(tty: *const c_char) -> bool {
+    // SAFETY: the entry-point contract is exactly input_bytes' contract.
+    let Some(bytes) = (unsafe { input_bytes(tty) }) else {
+        return false;
+    };
+    vtnr_from_tty_raw_bytes(bytes).is_ok()
+}
+
+/// C ABI for terminal-util.c's `tty_is_console()`.
+///
+/// # Safety
+/// `tty` must be null or a readable NUL-terminated C string. C asserts a
+/// non-null input; this boundary instead fails closed for null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_tty_is_console(tty: *const c_char) -> bool {
+    // SAFETY: the entry-point contract is exactly input_bytes' contract.
+    let Some(bytes) = (unsafe { input_bytes(tty) }) else {
+        return false;
+    };
+    &bytes[skip_dev_prefix_offset(bytes)..] == b"console"
+}
+
+/// C ABI for terminal-util.c's `vtnr_from_tty()`.
+///
+/// # Safety
+/// `tty` must be null or a readable NUL-terminated C string. C asserts a
+/// non-null input; this boundary reports `-EINVAL` for null instead.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_vtnr_from_tty(tty: *const c_char) -> c_int {
+    // SAFETY: the entry-point contract is exactly input_bytes' contract.
+    let Some(bytes) = (unsafe { input_bytes(tty) }) else {
+        return Errno::EINVAL.to_neg_errno();
+    };
+
+    match vtnr_from_tty_raw_bytes(bytes) {
+        Ok(number) if vtnr_is_valid(number) => number as c_int,
+        Ok(_) => Errno::ERANGE.to_neg_errno(),
+        Err(error) => error.to_neg_errno(),
+    }
+}
+
+/// C ABI for pretty-print.c's `url_suitable_for_osc8()` helper.
+///
+/// # Safety
+/// `url` must be null or a readable NUL-terminated C string. C asserts a
+/// non-null input; this boundary instead fails closed for null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_url_suitable_for_osc8(url: *const c_char) -> bool {
+    // SAFETY: the entry-point contract is exactly input_bytes' contract.
+    let Some(bytes) = (unsafe { input_bytes(url) }) else {
+        return false;
+    };
+    url_suitable_for_osc8_bytes(bytes)
+}
+
+/// C ABI for terminal-util.h's `osc_char_is_valid()` inline helper.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_osc_char_is_valid(c: c_char) -> bool {
+    osc_char_is_valid(c as u8)
+}
+
+/// C ABI for terminal-util.h's `vtnr_is_valid()` inline helper.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_vtnr_is_valid(number: c_uint) -> bool {
+    vtnr_is_valid(number)
 }
 
 #[cfg(test)]
@@ -238,6 +375,30 @@ mod tests {
         assert!(vtnr_from_tty("notatty").is_err());
     }
 
+    #[test]
+    fn vtnr_uses_c_safe_atou_base_zero_grammar() {
+        assert_eq!(vtnr_from_tty("tty010"), Ok(8));
+        assert_eq!(vtnr_from_tty("tty0x3f"), Ok(63));
+        assert_eq!(vtnr_from_tty("tty0b111"), Ok(7));
+        assert_eq!(vtnr_from_tty("tty0o10"), Ok(8));
+        assert_eq!(vtnr_from_tty("tty+7"), Ok(7));
+        assert_eq!(vtnr_from_tty("tty\t7"), Ok(7));
+        assert_eq!(vtnr_from_tty("tty-0"), Err(Errno::ERANGE));
+        assert_eq!(vtnr_from_tty("tty-1"), Err(Errno::ERANGE));
+        assert_eq!(vtnr_from_tty("tty09"), Err(Errno::EINVAL));
+        assert_eq!(vtnr_from_tty("tty+0b1"), Err(Errno::EINVAL));
+        assert_eq!(vtnr_from_tty("tty\x0b7"), Err(Errno::EINVAL));
+        assert_eq!(vtnr_from_tty("tty7junk"), Err(Errno::EINVAL));
+        assert_eq!(vtnr_from_tty("tty4294967296"), Err(Errno::ERANGE));
+    }
+
+    #[test]
+    fn tty_prefix_is_component_aware_like_skip_dev_prefix() {
+        assert_eq!(vtnr_from_tty("//dev//tty7"), Ok(7));
+        assert_eq!(vtnr_from_tty("/./dev/tty7"), Ok(7));
+        assert!(tty_is_console("//dev//console"));
+    }
+
     // ── tty_is_vc ──────────────────────────────────────────────────────
 
     #[test]
@@ -259,6 +420,14 @@ mod tests {
     #[test]
     fn test_tty_is_vc_empty() {
         assert!(!tty_is_vc(""));
+    }
+
+    #[test]
+    fn tty_is_vc_rejects_partial_numeric_suffixes() {
+        assert!(!tty_is_vc("tty7junk"));
+        assert!(!tty_is_vc("tty09"));
+        assert!(tty_is_vc("tty999"));
+        assert!(tty_is_vc("tty0x3f"));
     }
 
     // ── tty_is_console ─────────────────────────────────────────────────

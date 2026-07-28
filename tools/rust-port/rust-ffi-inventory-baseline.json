@@ -203,16 +203,6 @@
       "rs_prioq_reshuffle",
       "rs_prioq_size"
     ],
-    "src/basic/rust/proc_cmdline.h": [
-      "rs_proc_cmdline_key_startswith",
-      "rs_proc_cmdline_key_streq"
-    ],
-    "src/basic/rust/process_util_str_tables.h": [
-      "rs_sched_policy_from_string",
-      "rs_sched_policy_to_string",
-      "rs_sigchld_code_from_string",
-      "rs_sigchld_code_to_string"
-    ],
     "src/basic/rust/ratelimit.h": [
       "rs_ratelimit_below",
       "rs_ratelimit_configured",
@@ -316,12 +306,6 @@
       "rs_strv_find_closest_prefix",
       "rs_strv_free_and_replace"
     ],
-    "src/basic/rust/strxcpyx.h": [
-      "rs_strnpcpy_full",
-      "rs_strnscpy_full",
-      "rs_strpcpy_full",
-      "rs_strscpy_full"
-    ],
     "src/basic/rust/sysctl_util.h": [
       "rs_sysctl_normalize"
     ],
@@ -333,12 +317,6 @@
       "rs_log_level_is_valid",
       "rs_log_level_to_string_alloc",
       "rs_syslog_parse_priority"
-    ],
-    "src/basic/rust/terminal_util.h": [
-      "rs_tty_is_console",
-      "rs_tty_is_vc",
-      "rs_url_suitable_for_osc8",
-      "rs_vtnr_from_tty"
     ],
     "src/basic/rust/time_util.h": [
       "rs_map_clock_usec_raw",

@@ -1,0 +1,132 @@
+schema = 1
+module = "strxcpyx"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["strpcpyf_full", "strpcpyl_full", "strscpyl_full"]
+
+[authority]
+c_headers = ["src/basic/strxcpyx.h"]
+c_sources = ["src/basic/strxcpyx.c"]
+rust_headers = ["src/basic/rust/strxcpyx.h"]
+rust_sources = ["src/basic/rust/strxcpyx.rs"]
+
+[[surface]]
+id = "strxcpyx-n-pointer"
+c_symbols = ["strnpcpy_full"]
+rust_symbols = ["rs_strnpcpy_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "dest"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[[surface.output]]
+arg = "ret_truncated"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-strxcpyx-rust.c"
+meson_target = "test-strxcpyx-rust"
+labels = ["strxcpyx-n-pointer"]
+
+[[surface]]
+id = "strxcpyx-c-string-pointer"
+c_symbols = ["strpcpy_full"]
+rust_symbols = ["rs_strpcpy_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "dest"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[[surface.output]]
+arg = "ret_truncated"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-strxcpyx-rust.c"
+meson_target = "test-strxcpyx-rust"
+labels = ["strxcpyx-c-string-pointer"]
+
+[[surface]]
+id = "strxcpyx-n-static"
+c_symbols = ["strnscpy_full"]
+rust_symbols = ["rs_strnscpy_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "dest"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[[surface.output]]
+arg = "ret_truncated"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-strxcpyx-rust.c"
+meson_target = "test-strxcpyx-rust"
+labels = ["strxcpyx-n-static"]
+
+[[surface]]
+id = "strxcpyx-c-string-static"
+c_symbols = ["strscpy_full"]
+rust_symbols = ["rs_strscpy_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "dest"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[[surface.output]]
+arg = "ret_truncated"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-strxcpyx-rust.c"
+meson_target = "test-strxcpyx-rust"
+labels = ["strxcpyx-c-string-static"]

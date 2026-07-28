@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C proc-cmdline vs Rust rs_proc_cmdline */
+/* RUST-CONTRACT: proc-cmdline-key-prefix */
+/* RUST-CONTRACT: proc-cmdline-key-equality */
 
 #include "proc-cmdline.h"
 #include "rust/proc_cmdline.h"
@@ -59,6 +61,10 @@ TEST(proc_cmdline_key_streq_edge_cases) {
         /* only dashes/underscores */
         assert_se(proc_cmdline_key_streq("_-", "-_") == rs_proc_cmdline_key_streq("_-", "-_"));
         assert_se(proc_cmdline_key_streq("_-", "-_"));
+
+        assert_se(!proc_cmdline_key_streq("a.b", "a-b"));
+        assert_se(proc_cmdline_key_streq("a.b", "a-b") ==
+                  rs_proc_cmdline_key_streq("a.b", "a-b"));
 }
 
 /* ── proc_cmdline_key_startswith ─────────────────────────────────────── */
@@ -70,6 +76,19 @@ TEST(proc_cmdline_key_startswith_match) {
         assert_se(rs_ret != NULL);
         assert_se(streq(c_ret, rs_ret));
         assert_se(streq(c_ret, "_bar"));
+
+        assert_se(c_ret == "foo_bar" + 3);
+        assert_se(rs_ret == "foo_bar" + 3);
+}
+
+TEST(proc_cmdline_key_raw_bytes) {
+        const char s[] = { 'x', (char) 0xff, '-', 'y', 0 };
+        const char prefix[] = { 'x', (char) 0xff, '_', 0 };
+
+        assert_se(proc_cmdline_key_startswith(s, prefix) == s + 3);
+        assert_se(rs_proc_cmdline_key_startswith(s, prefix) == s + 3);
+        assert_se(proc_cmdline_key_streq(s, prefix) ==
+                  rs_proc_cmdline_key_streq(s, prefix));
 }
 
 TEST(proc_cmdline_key_startswith_relaxed) {

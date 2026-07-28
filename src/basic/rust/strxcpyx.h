@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.strxcpyx; authority=src/basic/strxcpyx.c,src/basic/strxcpyx.h */
 #pragma once
 
 #include <stddef.h>

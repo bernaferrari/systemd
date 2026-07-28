@@ -430,7 +430,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "terminal_header_inline": (
             basic_rust / "terminal_util.h",
-            basic_rust / "header_inline_abi.rs",
+            basic_rust / "terminal_util.rs",
             frozenset({"rs_osc_char_is_valid", "rs_vtnr_is_valid"}),
         ),
         "path_header_inline": (
@@ -729,6 +729,52 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "proc_cmdline": (
+            basic_rust / "proc_cmdline.h",
+            basic_rust / "proc_cmdline.rs",
+            frozenset(
+                {
+                    "rs_proc_cmdline_key_startswith",
+                    "rs_proc_cmdline_key_streq",
+                }
+            ),
+        ),
+        "process_util_str_tables": (
+            basic_rust / "process_util_str_tables.h",
+            basic_rust / "process_util_str_tables.rs",
+            frozenset(
+                {
+                    "rs_sigchld_code_to_string",
+                    "rs_sigchld_code_from_string",
+                    "rs_sched_policy_to_string_alloc",
+                    "rs_sched_policy_from_string",
+                }
+            ),
+        ),
+        "strxcpyx": (
+            basic_rust / "strxcpyx.h",
+            basic_rust / "strxcpyx.rs",
+            frozenset(
+                {
+                    "rs_strnpcpy_full",
+                    "rs_strpcpy_full",
+                    "rs_strnscpy_full",
+                    "rs_strscpy_full",
+                }
+            ),
+        ),
+        "terminal_util": (
+            basic_rust / "terminal_util.h",
+            basic_rust / "terminal_util.rs",
+            frozenset(
+                {
+                    "rs_tty_is_vc",
+                    "rs_tty_is_console",
+                    "rs_vtnr_from_tty",
+                    "rs_url_suitable_for_osc8",
+                }
+            ),
+        ),
     }
     partial_extra_sources = {
         "escape": (
@@ -895,6 +941,12 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "memory_util": (tests_extra / "test-memory-util-rust.c",),
         "hostname_util": (tests_extra / "test-hostname-util-rust.c",),
         "id128_util": (tests_extra / "test-id128-rust.c",),
+        "proc_cmdline": (tests_extra / "test-proc-cmdline-rust.c",),
+        "process_util_str_tables": (
+            tests_extra / "test-process-util-str-tables-rust.c",
+        ),
+        "strxcpyx": (tests_extra / "test-strxcpyx-rust.c",),
+        "terminal_util": (tests_extra / "test-terminal-util-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -1188,6 +1240,24 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/systemd/sd-id128.h",
             root / "src/fundamental/sha256.c",
             root / "src/fundamental/sha256.h",
+        ),
+        "proc_cmdline": (
+            root / "src/basic/proc-cmdline.c",
+            root / "src/basic/proc-cmdline.h",
+        ),
+        "process_util_str_tables": (
+            root / "src/basic/process-util.c",
+            root / "src/basic/process-util.h",
+            root / "src/basic/string-table.c",
+            root / "src/basic/string-table.h",
+            root / "src/basic/parse-util.c",
+            root / "src/basic/parse-util.h",
+        ),
+        "strxcpyx": (root / "src/basic/strxcpyx.c", root / "src/basic/strxcpyx.h"),
+        "terminal_util": (
+            root / "src/basic/terminal-util.c",
+            root / "src/basic/terminal-util.h",
+            root / "src/shared/pretty-print.c",
         ),
     }
     return BasicFfiReviewCatalog(

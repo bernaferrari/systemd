@@ -1,0 +1,91 @@
+schema = 1
+module = "process-util-str-tables"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["nice_is_valid", "sched_policy_is_valid", "sched_policy_supported"]
+
+[authority]
+c_headers = ["src/basic/process-util.h", "src/basic/string-table.h", "src/basic/parse-util.h"]
+c_sources = ["src/basic/process-util.c", "src/basic/string-table.c", "src/basic/parse-util.c"]
+rust_headers = ["src/basic/rust/process_util_str_tables.h"]
+rust_sources = ["src/basic/rust/process_util_str_tables.rs"]
+
+[[surface]]
+id = "process-sigchld-code-to-string"
+c_symbols = ["sigchld_code_to_string"]
+rust_symbols = ["rs_sigchld_code_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-process-util-str-tables-rust.c"
+meson_target = "test-process-util-str-tables-rust"
+labels = ["process-sigchld-code-to-string"]
+
+[[surface]]
+id = "process-sigchld-code-from-string"
+c_symbols = ["sigchld_code_from_string"]
+rust_symbols = ["rs_sigchld_code_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-process-util-str-tables-rust.c"
+meson_target = "test-process-util-str-tables-rust"
+labels = ["process-sigchld-code-from-string"]
+
+[[surface]]
+id = "process-sched-policy-to-string-alloc"
+c_symbols = ["sched_policy_to_string_alloc"]
+rust_symbols = ["rs_sched_policy_to_string_alloc"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-process-util-str-tables-rust.c"
+meson_target = "test-process-util-str-tables-rust"
+labels = ["process-sched-policy-to-string-alloc"]
+
+[[surface]]
+id = "process-sched-policy-from-string"
+c_symbols = ["sched_policy_from_string"]
+rust_symbols = ["rs_sched_policy_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-process-util-str-tables-rust.c"
+meson_target = "test-process-util-str-tables-rust"
+labels = ["process-sched-policy-from-string"]

@@ -350,11 +350,30 @@ last_reviewed_rust_blobs = { "src/basic/rust/format_util.rs" = "0b034ca4c7b4032c
 notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The full and inline byte-format facades share one bounded stack formatter, preserve C's `UINT64_MAX` sentinel and wrapping final-bucket arithmetic, and return a truncated NUL-terminated alias of the caller buffer. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 [strxcpyx]
-c_file = "src/basic/strxcpyx.c"
-rust_file = "src/basic/rust/strxcpyx.rs"
+c_paths = [
+    "src/basic/strxcpyx.c",
+    "src/basic/strxcpyx.h",
+]
+rust_paths = [
+    "src/basic/rust/strxcpyx.rs",
+    "src/basic/rust/strxcpyx.h",
+]
+scope = "basic.strxcpyx"
+rust_scope_paths = ["src/basic/rust/strxcpyx.rs"]
+rust_interface_paths = ["src/basic/rust/strxcpyx.h"]
+contract_file = "tools/rust-port/contracts/basic/strxcpyx.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/strxcpyx.c", rust_paths = ["src/basic/rust/strxcpyx.rs", "src/basic/rust/strxcpyx.h"] },
+    { kind = "direct", path = "src/basic/strxcpyx.h", rust_paths = ["src/basic/rust/strxcpyx.rs", "src/basic/rust/strxcpyx.h"] },
+]
+test_file = "tests-extra/test-strxcpyx-rust.c"
 status = "in-progress"
 tier = 3
-notes = "12 shadow tests pass. 4 FFI exports: strnpcpy_full, strpcpy_full, strnscpy_full, strscpy_full. Skipped variadic variants."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/strxcpyx.c" = "f8410f7d0c11d345f71b29e3a4ace7af9f1285c9", "src/basic/strxcpyx.h" = "7d045fe8d2219a91a96d009fd9fab0ccfd496884" }
+last_reviewed_rust_blobs = { "src/basic/rust/strxcpyx.rs" = "876e05de3346e95aa111f798ddb82b764983abb6", "src/basic/rust/strxcpyx.h" = "07a55716b51da1d897833150d1d77dae0aaba44f" }
+notes = "Reviewed static ABI slice 2026-07-28; no build/tests/VM. Four exact facades preserve raw byte-length copying, C-string length discovery, caller cursor advancement, zero-size no-op behavior, and optional truncation publication. Variadic formatting/concatenation remain excluded; C remains production authority and runtime parity is unclaimed."
 
 [nulstr-util]
 c_file = "src/basic/nulstr-util.c"
@@ -631,11 +650,38 @@ tier = 1
 notes = "Static-only 2026-07-27 audit: exact safe extern-C facades exist for SIGNAL_VALID and signal_to_string_with_check. They use linked C helpers for runtime SIGRTMIN/SIGRTMAX/_NSIG, static borrowed names for standard signals, and a thread-local allocation-free buffer for dynamic names. Canonical header/current-inline authority and registered comparison coverage are enforced. Historical runtime tests were not rerun; other header declarations remain explicitly unbacked and broader signal APIs remain unported."
 
 [process-util-str-tables]
-c_file = "src/basic/process-util.c"
-rust_file = "src/basic/rust/process_util_str_tables.rs"
+c_paths = [
+    "src/basic/process-util.c",
+    "src/basic/process-util.h",
+    "src/basic/string-table.c",
+    "src/basic/string-table.h",
+    "src/basic/parse-util.c",
+    "src/basic/parse-util.h",
+]
+rust_paths = [
+    "src/basic/rust/process_util_str_tables.rs",
+    "src/basic/rust/process_util_str_tables.h",
+]
+scope = "basic.process-util-str-tables"
+rust_scope_paths = ["src/basic/rust/process_util_str_tables.rs"]
+rust_interface_paths = ["src/basic/rust/process_util_str_tables.h"]
+contract_file = "tools/rust-port/contracts/basic/process-util-str-tables.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/process-util.c", rust_paths = ["src/basic/rust/process_util_str_tables.rs", "src/basic/rust/process_util_str_tables.h"] },
+    { kind = "direct", path = "src/basic/process-util.h", rust_paths = ["src/basic/rust/process_util_str_tables.rs", "src/basic/rust/process_util_str_tables.h"] },
+    { kind = "direct", path = "src/basic/string-table.c", rust_paths = ["src/basic/rust/process_util_str_tables.rs", "src/basic/rust/process_util_str_tables.h"] },
+    { kind = "direct", path = "src/basic/string-table.h", rust_paths = ["src/basic/rust/process_util_str_tables.rs", "src/basic/rust/process_util_str_tables.h"] },
+    { kind = "direct", path = "src/basic/parse-util.c", rust_paths = ["src/basic/rust/process_util_str_tables.rs", "src/basic/rust/process_util_str_tables.h"] },
+    { kind = "direct", path = "src/basic/parse-util.h", rust_paths = ["src/basic/rust/process_util_str_tables.rs", "src/basic/rust/process_util_str_tables.h"] },
+]
+test_file = "tests-extra/test-process-util-str-tables-rust.c"
 status = "in-progress"
 tier = 1
-notes = "4 shadow tests pass. 4 FFI exports: rs_sigchld_code_to_string, rs_sigchld_code_from_string, rs_sched_policy_to_string, rs_sched_policy_from_string. sched_policy_from_string has numeric fallback via DEFINE_STRING_TABLE_LOOKUP_WITH_FALLBACK. Skipped: all syscall/process/PID functions."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/process-util.c" = "ab563c51058822e2ef07b71a46c61cc588d435cd", "src/basic/process-util.h" = "007397704ec42531b6e08a474f11d4e3dee29228", "src/basic/string-table.c" = "5cb1e79744e91653414531806cc77660e0a76cf2", "src/basic/string-table.h" = "38704ac6f358515ae38174719c7a451b95bc9bbf", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
+last_reviewed_rust_blobs = { "src/basic/rust/process_util_str_tables.rs" = "3e1778b376d590f269daf0162b7edb676ec59eaa", "src/basic/rust/process_util_str_tables.h" = "8fe274a8a40a848b6c257111c2fa8c01e5eb0825" }
+notes = "Reviewed static ABI slice 2026-07-28; no build/tests/VM. Exact string-table facades preserve static borrowed SIGCHLD names, safe_atou-compatible scheduler parsing, and C-allocator-owned scheduler formatting including decimal fallback and unchanged-on-error output. Syscall/process/PID APIs remain excluded; C remains production authority and runtime parity is unclaimed."
 
 [compress-util]
 c_file = "src/basic/compress.c"
@@ -751,11 +797,30 @@ tier = 1
 notes = "Registered C comparison sources specify four cgroup string tables, byte-exact escape helpers, controller-mask conversion, and controller:path splitting. 13 explicit FFI exports: four table pairs, byte-exact rs_cg_needs_escape, borrowed-pointer rs_cg_unescape, plus three reviewed C-allocator-owning helpers. Static NUL-backed table strings avoid allocator crossings; returned strings use the process C allocator. Link/runtime validation remains unclaimed; cgroup I/O and filesystem operations remain out of scope."
 
 [proc-cmdline]
-c_file = "src/basic/proc-cmdline.c"
-rust_file = "src/basic/rust/proc_cmdline.rs"
+c_paths = [
+    "src/basic/proc-cmdline.c",
+    "src/basic/proc-cmdline.h",
+]
+rust_paths = [
+    "src/basic/rust/proc_cmdline.rs",
+    "src/basic/rust/proc_cmdline.h",
+]
+scope = "basic.proc-cmdline"
+rust_scope_paths = ["src/basic/rust/proc_cmdline.rs"]
+rust_interface_paths = ["src/basic/rust/proc_cmdline.h"]
+contract_file = "tools/rust-port/contracts/basic/proc-cmdline.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/proc-cmdline.c", rust_paths = ["src/basic/rust/proc_cmdline.rs", "src/basic/rust/proc_cmdline.h"] },
+    { kind = "direct", path = "src/basic/proc-cmdline.h", rust_paths = ["src/basic/rust/proc_cmdline.rs", "src/basic/rust/proc_cmdline.h"] },
+]
+test_file = "tests-extra/test-proc-cmdline-rust.c"
 status = "in-progress"
 tier = 3
-notes = "11 shadow tests pass. 2 FFI exports: rs_proc_cmdline_key_startswith, rs_proc_cmdline_key_streq. Relaxed string comparison treating '-' and '_' as equivalent. Skipped: all functions that read /proc/cmdline, filter pid1 args, parse callbacks, get_key/get_bool (depend on file I/O, strv)."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/proc-cmdline.c" = "4de3480ff0255db7ae18ffd29e21e3ed4e1ccff0", "src/basic/proc-cmdline.h" = "34f05ee0c7f46cebe31ea4c8bf63b14e0ea07841" }
+last_reviewed_rust_blobs = { "src/basic/rust/proc_cmdline.rs" = "8579d984a76f2aeb6243f3d290f97857d78b7c84", "src/basic/rust/proc_cmdline.h" = "dfaf69bb73eb5921849a0cfcb4f2bc16c94b882a" }
+notes = "Reviewed static proc-cmdline ABI slice 2026-07-28; no build/tests/VM. Two raw-byte facades preserve C's exact dash/underscore-only relaxation and borrowed interior pointer result; the old Rust core's dot equivalence and leaking normalized remainder were removed. /proc I/O, variadic parsing, and callbacks remain excluded. C remains production authority; runtime parity unclaimed."
 
 [rlimit-util]
 c_file = "src/basic/rlimit-util.c"
@@ -1712,13 +1777,32 @@ symbols = 3
 sync_status = "needs_review"
 
 [terminal_util]
-c_file = "src/basic/terminal-util.c"
-rust_file = "src/basic/rust/terminal_util.rs"
-header_file = "src/basic/terminal-util.h"
+c_paths = [
+    "src/basic/terminal-util.c",
+    "src/basic/terminal-util.h",
+    "src/shared/pretty-print.c",
+]
+rust_paths = [
+    "src/basic/rust/terminal_util.rs",
+    "src/basic/rust/terminal_util.h",
+]
+scope = "basic.terminal-util"
+rust_scope_paths = ["src/basic/rust/terminal_util.rs"]
+rust_interface_paths = ["src/basic/rust/terminal_util.h"]
+contract_file = "tools/rust-port/contracts/basic/terminal-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/terminal-util.c", rust_paths = ["src/basic/rust/terminal_util.rs", "src/basic/rust/terminal_util.h"] },
+    { kind = "direct", path = "src/basic/terminal-util.h", rust_paths = ["src/basic/rust/terminal_util.rs", "src/basic/rust/terminal_util.h"] },
+    { kind = "direct", path = "src/shared/pretty-print.c", rust_paths = ["src/basic/rust/terminal_util.rs", "src/basic/rust/terminal_util.h"] },
+]
+test_file = "tests-extra/test-terminal-util-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 5
-sync_status = "needs_review"
+symbols = 6
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/terminal-util.c" = "597880d0ff1c878cc043f1d3f175ad05b43fa1f2", "src/basic/terminal-util.h" = "0e65d205a5296b9d6389efccb76ecfa6b6d91e2a", "src/shared/pretty-print.c" = "c5ace49f608a0bf3515789a9f5bcadcf690cb9a3" }
+last_reviewed_rust_blobs = { "src/basic/rust/terminal_util.rs" = "4d1542253c49d1751c93fe1725b164fddbf742d1", "src/basic/rust/terminal_util.h" = "3947c19e62a7f8d1e579373371c738e14fe2812b" }
+notes = "Reviewed static ABI slice 2026-07-28; no build/tests/VM. Six exact byte-oriented facades preserve component-aware /dev stripping, safe_atou base-zero grammar (including 0b/0o), VT range errors, and OSC8 character policy. Terminal I/O, console resolution, and other environment-facing APIs remain excluded; C remains production authority and runtime parity is unclaimed."
 
 [udev_util]
 c_file = "src/shared/udev-util.c"

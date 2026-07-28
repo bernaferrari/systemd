@@ -2467,6 +2467,7 @@ def header_inline_boundary_is_reviewed() -> bool:
     source = PARTIAL_SURFACES["utf8_header_inline"][1].read_text()
     utf8_header = PARTIAL_SURFACES["utf8_header_inline"][0].read_text()
     terminal_header = PARTIAL_SURFACES["terminal_header_inline"][0].read_text()
+    terminal_source = PARTIAL_SURFACES["terminal_header_inline"][1].read_text()
     path_header = PARTIAL_SURFACES["path_header_inline"][0].read_text()
     test = PARTIAL_SHADOW_TESTS["utf8_header_inline"][0].read_text()
     path_source = ROOT / "src/basic/rust/path_util.rs"
@@ -2481,12 +2482,14 @@ def header_inline_boundary_is_reviewed() -> bool:
         and "pub(crate) fn skip_dev_prefix_offset(path: &[u8]) -> usize" in path_source.read_text()
         and "pub(crate) fn valid_utf8_character(bytes: &[u8])" in escape_source.read_text()
         and "CStr::from_ptr(input)" in source
-        and source.count("#[unsafe(no_mangle)]") == 9
+        and source.count("#[unsafe(no_mangle)]") == 7
         and "bool rs_utf16_is_surrogate(char16_t c);" in utf8_header
         and "char32_t rs_utf16_surrogate_pair_to_unichar(char16_t lead, char16_t trail);" in utf8_header
         and "bool rs_osc_char_is_valid(char c);" in terminal_header
         and "bool rs_vtnr_is_valid(unsigned n);" in terminal_header
         and "#include <stdbool.h>" in terminal_header
+        and "pub extern \"C\" fn rs_osc_char_is_valid(c: c_char) -> bool" in terminal_source
+        and "pub extern \"C\" fn rs_vtnr_is_valid(number: c_uint) -> bool" in terminal_source
         and "const char *rs_skip_dev_prefix(const char *p);" in path_header
         and '#include "rust/utf8.h"' in test
         and '#include "rust/terminal_util.h"' in test
@@ -2968,10 +2971,32 @@ def main() -> int:
                             )
                         authority_curated += 1
                         break
+                    if suffix == "_from_string" and re.search(
+                        rf"\bDEFINE_STRING_TABLE_LOOKUP_WITH_FALLBACK\(\s*{re.escape(table)}\s*,",
+                        authority,
+                    ):
+                        if (("*constc_char",), "i32") != expected:
+                            return fail(
+                                f"{name}: current C fallback string-table signature mismatch for {symbol}"
+                            )
+                        authority_curated += 1
+                        break
             else:
                 table = None
             if table is not None:
                 continue
+            if c_symbol.endswith("_to_string_alloc"):
+                table = c_symbol.removesuffix("_to_string_alloc")
+                if re.search(
+                    rf"\bDEFINE_STRING_TABLE_LOOKUP_WITH_FALLBACK\(\s*{re.escape(table)}\s*,",
+                    authority,
+                ):
+                    if (("i32", "*mut*mutc_char"), "i32") != expected:
+                        return fail(
+                            f"{name}: current C fallback string-table signature mismatch for {symbol}"
+                        )
+                    authority_curated += 1
+                    continue
             match = re.search(
                 rf"^[ \t]*(?!return\b)([A-Za-z_][A-Za-z0-9_ \t*]*?(?:\s|\*))"
                 rf"{re.escape(c_symbol)}\s*\(([^)]*)\)\s*(?:\{{|;)",
