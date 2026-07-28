@@ -1,10 +1,5 @@
 {
   "missing_by_header": {
-    "src/basic/rust/alloc_util.h": [
-      "rs_free_many",
-      "rs_memdup",
-      "rs_memdup_suffix0"
-    ],
     "src/basic/rust/ansi_color.h": [
       "rs_color_mode_from_string",
       "rs_color_mode_to_string",
@@ -303,16 +298,8 @@
       "rs_safe_atoux64"
     ],
     "src/basic/rust/path_util.h": [
-      "rs_dot_or_dot_dot",
-      "rs_empty_or_root",
-      "rs_empty_to_root",
       "rs_fdname_is_valid",
       "rs_file_in_same_dir",
-      "rs_filename_is_valid",
-      "rs_filename_part_is_valid",
-      "rs_hidden_or_backup_file",
-      "rs_is_path",
-      "rs_path_implies_directory",
       "rs_path_is_absolute",
       "rs_path_is_normalized",
       "rs_valid_device_allow_pattern",
@@ -453,24 +440,9 @@
       "rs_string_table_lookup_to_string_fallback"
     ],
     "src/basic/rust/strv.h": [
-      "rs_strv_compare",
-      "rs_strv_copy_n",
-      "rs_strv_equal_ignore_order",
-      "rs_strv_find",
-      "rs_strv_find_case",
       "rs_strv_find_closest_by_levenshtein",
       "rs_strv_find_closest_prefix",
-      "rs_strv_find_prefix",
-      "rs_strv_find_startswith",
-      "rs_strv_free_and_replace",
-      "rs_strv_is_uniq",
-      "rs_strv_length",
-      "rs_strv_overlap",
-      "rs_strv_remove",
-      "rs_strv_reverse",
-      "rs_strv_skip",
-      "rs_strv_sort",
-      "rs_strv_uniq"
+      "rs_strv_free_and_replace"
     ],
     "src/basic/rust/strverscmp.h": [
       "rs_strverscmp_improved"

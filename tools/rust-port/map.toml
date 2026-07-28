@@ -144,7 +144,7 @@ tier = 3
 symbols = 53
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/strv.c" = "eb3cd8d4b213f16d1d770b32d2c1f60b63acefd6", "src/basic/strv.h" = "2a0c2730d1ac46f2548996f04d15f7b120124795", "src/fundamental/strv.h" = "0ede9c3b796a1cac05e018c25fb9a94915531b8d" }
-last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "e8123536266586c210f896eaebf40692579c3fa2", "src/basic/rust/strv/allocating_transforms.rs" = "c6e937a561e2b285365962f3acedc678c6230298", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "19ff2e852070741f3723035d08e99face88d31cd" }
+last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "3443da1dc7e6c9fd4116722a243838a1ffb6f536", "src/basic/rust/strv/allocating_transforms.rs" = "0b0903050580da0f587d8e683ae96e3a754197d4", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "19ff2e852070741f3723035d08e99face88d31cd" }
 notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.strv owns the decomposed Rust leaves (strv.rs plus allocating_transforms/matching_escape) and rust/strv.h. Twenty-seven homogeneous machine-checked surfaces cover 53 dual-compared ABI symbols across registered strv fixtures, with borrowed-interior, borrowed-alias, libc-owned return, negative-errno, nullable, and boolean behaviors kept separate. Explicit exclusions cover free/print I/O, hashmap/set helpers, variadic constructors, and unreviewed static closest helpers. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 
@@ -415,11 +415,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-path-funcs-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 23
+symbols = 31
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44" }
-last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "eaa808e38598405245d202cd3e563707d6ddfafe", "src/basic/rust/path_util/byte_abi.rs" = "8adae62fb6f2e47b83b782d9af42ca12f81e2c06", "src/basic/rust/path_util.h" = "e06e6e62f9334cd4bad35eaea18ce2810a80218e" }
-notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Twenty-three pure path byte and is_device_path facades are covered by sixteen machine-checked contracts with exact ABI, opaque C-string bytes, NULL/empty/non-UTF-8 cases, borrowed-interior offsets, in-place simplification, libc-owned outputs, and success-only publication. Filesystem I/O path APIs, historical non-no_mangle validators, and skip_dev_prefix (header_inline ownership) remain excluded. Partial provenance with static-only evidence, not runtime parity."
+last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "6d4b77bfdd9b9c20ee32a5e61ff86d7e1b9f0cca", "src/basic/rust/path_util/byte_abi.rs" = "8adae62fb6f2e47b83b782d9af42ca12f81e2c06", "src/basic/rust/path_util.h" = "e06e6e62f9334cd4bad35eaea18ce2810a80218e" }
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Thirty-one pure path byte, predicate, and is_device_path facades are covered by eighteen machine-checked contracts with exact ABI, opaque C-string bytes, NULL/empty/non-UTF-8 cases, borrowed-interior offsets, in-place simplification, libc-owned outputs, and success-only publication. Filesystem I/O path APIs, remaining unexported validators, and skip_dev_prefix (header_inline ownership) remain excluded. Partial provenance with static-only evidence, not runtime parity."
 
 [bus-label]
 c_file = "src/basic/bus-label.c"

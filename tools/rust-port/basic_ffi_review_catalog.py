@@ -175,6 +175,22 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "path_base_predicates": (
+            basic_rust / "path_util.h",
+            basic_rust / "path_util.rs",
+            frozenset(
+                {
+                    "rs_is_path",
+                    "rs_dot_or_dot_dot",
+                    "rs_empty_or_root",
+                    "rs_empty_to_root",
+                    "rs_filename_is_valid",
+                    "rs_filename_part_is_valid",
+                    "rs_hidden_or_backup_file",
+                    "rs_path_implies_directory",
+                }
+            ),
+        ),
         "os_release_pretty_name": (
             basic_rust / "image_class.h",
             basic_rust / "image_class.rs",
@@ -209,6 +225,29 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "strv.h",
             basic_rust / "strv/allocating_transforms.rs",
             frozenset({"rs_strv_extend_strv", "rs_strv_filter_prefix"}),
+        ),
+        "strv_base": (
+            basic_rust / "strv.h",
+            basic_rust / "strv.rs",
+            frozenset(
+                {
+                    "rs_strv_length",
+                    "rs_strv_find",
+                    "rs_strv_find_case",
+                    "rs_strv_find_prefix",
+                    "rs_strv_find_startswith",
+                    "rs_strv_is_uniq",
+                    "rs_strv_overlap",
+                    "rs_strv_compare",
+                    "rs_strv_equal_ignore_order",
+                    "rs_strv_copy_n",
+                    "rs_strv_remove",
+                    "rs_strv_uniq",
+                    "rs_strv_sort",
+                    "rs_strv_reverse",
+                    "rs_strv_skip",
+                }
+            ),
         ),
         "strv_registered": (
             basic_rust / "strv.h",
@@ -533,6 +572,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "os_release_pretty_name": (tests_extra / "test-image-name-rust.c",),
         "alloc_util": (tests_extra / "test-alloc-util-rust.c",),
         "alloc_util_multiply": (tests_extra / "test-alloc-util-extra2-rust.c",),
+        "path_base_predicates": (tests_extra / "test-path-util-rust.c",),
         "escape": (
             tests_extra / "test-escape-rust.c",
             tests_extra / "test-escape-extra-rust.c",
@@ -543,6 +583,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-strv-fnmatch-rust.c",
         ),
         "strv_extend_and_filter": (tests_extra / "test-strv-extra3-rust.c",),
+        "strv_base": (tests_extra / "test-strv-rust.c",),
         "strv_registered": (
             tests_extra / "test-strv-extra-rust.c",
             tests_extra / "test-strv-extra2-rust.c",
@@ -698,9 +739,18 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/alloc-util.h",
         ),
         "alloc_util_multiply": (root / "src/basic/alloc-util.h",),
+        "path_base_predicates": (
+            root / "src/basic/path-util.c",
+            root / "src/basic/path-util.h",
+        ),
         "escape": (root / "src/basic/escape.c", root / "src/basic/escape.h"),
         "strv_escape_and_fnmatch": (root / "src/basic/strv.c", root / "src/basic/strv.h"),
         "strv_extend_and_filter": (root / "src/basic/strv.c", root / "src/basic/strv.h"),
+        "strv_base": (
+            root / "src/basic/strv.c",
+            root / "src/basic/strv.h",
+            root / "src/fundamental/strv.h",
+        ),
         "strv_registered": (
             root / "src/fundamental/strv.h",
             root / "src/basic/strv.h",

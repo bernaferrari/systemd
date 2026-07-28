@@ -91,9 +91,10 @@ jobs:
   # set exactly (no YAML comments inside the command bodies).
   #
   # Priority runtime coverage configured in this job:
-  #   path/non-UTF-8: test-path-funcs-rust, test-path-util-extra-rust
-  #   strv ownership/alloc: test-strv-extra{,2-7}-rust, test-strv-fnmatch-rust,
-  #                         test-string-util-extra6-rust
+  #   path/non-UTF-8: test-path-util-rust, test-path-funcs-rust,
+  #                    test-path-util-extra-rust
+  #   strv ownership/alloc: test-strv-rust, test-strv-extra{,2-7}-rust,
+  #                         test-strv-fnmatch-rust, test-string-util-extra6-rust
   #   stat: test-stat-util-rust, test-stat-util-extra2-rust,
   #         test-stat-util-inline-rust, test-stat-verify-rust
   #   shared facades: test-shared-validators{,2,3}-rust (+ related validators)
@@ -104,8 +105,8 @@ jobs:
   #   non-UTF-8 extras: test-header-inline-rust, string/escape/errno fixtures
   #
   # Intentionally NOT listed until C ABI exports exist (no_mangle/export_name):
-  #   test-strv-rust, test-path-util-rust, test-parse-util-rust,
-  #   test-time-util-rust, test-time-util-extra-rust, test-utf8-rust
+  #   test-parse-util-rust, test-time-util-rust, test-time-util-extra-rust,
+  #   test-utf8-rust
   #   — see tools/rust-port/PRIORITY_RUNTIME_SET.md
   rust-meson-reviewed-shadows:
     name: Meson-reviewed Rust C shadows
@@ -162,6 +163,7 @@ jobs:
           test-strv-extra6-rust
           test-strv-extra7-rust
           test-strv-fnmatch-rust
+          test-strv-rust
           test-make-cstring-rust
           test-strreplace-rust
           test-parse-util-extra-rust
@@ -169,6 +171,7 @@ jobs:
           test-parse-util-inline-rust
           test-path-funcs-rust
           test-path-util-extra-rust
+          test-path-util-rust
           test-misc-inline-rust
           test-string-mutation-rust
           test-string-util-inline2-rust
@@ -249,6 +252,7 @@ jobs:
           test-strv-extra6-rust
           test-strv-extra7-rust
           test-strv-fnmatch-rust
+          test-strv-rust
           test-make-cstring-rust
           test-strreplace-rust
           test-parse-util-extra-rust
@@ -256,6 +260,7 @@ jobs:
           test-parse-util-inline-rust
           test-path-funcs-rust
           test-path-util-extra-rust
+          test-path-util-rust
           test-misc-inline-rust
           test-string-mutation-rust
           test-string-util-inline2-rust

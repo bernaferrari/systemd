@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
+#include <limits.h>
 #include <string.h>
 
 #include "tests.h"
@@ -8,6 +9,7 @@
 /* Rust FFI */
 #include "rust/path_util.h"
 
+/* RUST-CONTRACT: path-base-predicates */
 /* ── is_path ─────────────────────────────────────────────────────────── */
 
 TEST(is_path_basic) {
@@ -84,6 +86,16 @@ TEST(filename_part_is_valid_null) {
 TEST(filename_part_is_valid_with_slash) {
         assert_se(filename_part_is_valid("foo/bar") == rs_filename_part_is_valid("foo/bar"));
         assert_se(!filename_part_is_valid("foo/bar"));
+}
+
+TEST(filename_part_is_valid_name_max) {
+        char name[NAME_MAX + 2];
+
+        memset(name, 'x', sizeof(name) - 1);
+        name[sizeof(name) - 1] = 0;
+
+        assert_se(filename_part_is_valid(name) == rs_filename_part_is_valid(name));
+        assert_se(!filename_part_is_valid(name));
 }
 
 /* ── filename_is_valid ───────────────────────────────────────────────── */
@@ -174,6 +186,7 @@ TEST(empty_or_root_path) {
 
 /* ── empty_to_root ───────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: path-empty-to-root */
 TEST(empty_to_root_empty) {
         assert_se(streq(empty_to_root(""), rs_empty_to_root("")));
 }
@@ -184,6 +197,13 @@ TEST(empty_to_root_null) {
 
 TEST(empty_to_root_path) {
         assert_se(streq(empty_to_root("/foo"), rs_empty_to_root("/foo")));
+}
+
+TEST(empty_to_root_borrows_nonempty_input) {
+        static const char path[] = "/foo";
+
+        assert_se(empty_to_root(path) == path);
+        assert_se(rs_empty_to_root(path) == path);
 }
 
 /* ── path_implies_directory ──────────────────────────────────────────── */

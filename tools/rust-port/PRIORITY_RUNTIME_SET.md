@@ -18,8 +18,8 @@ rebuilds deps). CI keeps a separate `meson compile` then
 
 | Area | Fixtures configured for Linux CI execution | Notes |
 | --- | --- | --- |
-| Path / pure path / non-UTF-8 | `test-path-funcs-rust`, `test-path-util-extra-rust` | Includes `\\xff` path component and split cases |
-| Strv ownership / allocation | `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Registered push/consume/split/join/fnmatch surface |
+| Path / pure path / non-UTF-8 | `test-path-util-rust`, `test-path-funcs-rust`, `test-path-util-extra-rust` | Includes base predicates, `\\xff` path component, and split cases |
+| Strv ownership / allocation | `test-strv-rust`, `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Includes base vector search/mutation plus registered push/consume/split/join/fnmatch surface |
 | Stat | `test-stat-util-rust`, `test-stat-util-extra2-rust`, `test-stat-util-inline-rust`, `test-stat-verify-rust` | Includes non-UTF-8 inode type string |
 | Shared facades | `test-shared-validators-rust`, `test-shared-validators2-rust`, `test-shared-validators3-rust` (+ related validator fixtures in the same job) | Policy/validation facades |
 | Parse / time (exported slices) | `test-parse-util-extra-rust`, `test-parse-extra-rust`, `test-parse-util-inline-rust`, `test-time-util-extra2-rust` | Partial parse/time surfaces only |
@@ -34,8 +34,6 @@ They are **omitted** from `rust-meson-reviewed-shadows` until the exports land.
 
 | Fixture | Missing C exports (link blockers) |
 | --- | --- |
-| `test-strv-rust` | `rs_strv_length`, `rs_strv_find`, `rs_strv_find_case`, `rs_strv_find_prefix`, `rs_strv_find_startswith`, `rs_strv_is_uniq`, `rs_strv_overlap`, `rs_strv_compare`, `rs_strv_equal_ignore_order`, `rs_strv_copy_n`, `rs_strv_remove`, `rs_strv_uniq`, `rs_strv_sort`, `rs_strv_reverse`, `rs_strv_skip` |
-| `test-path-util-rust` | `rs_is_path`, `rs_dot_or_dot_dot`, `rs_empty_or_root`, `rs_empty_to_root`, `rs_filename_is_valid`, `rs_filename_part_is_valid`, `rs_hidden_or_backup_file`, `rs_path_implies_directory` |
 | `test-parse-util-rust` | `rs_parse_boolean`, `rs_parse_errno`, `rs_parse_fd`, `rs_parse_ifindex`, `rs_parse_ip_port`, `rs_parse_mode`, `rs_parse_nice`, `rs_parse_pid`, `rs_parse_size`, `rs_safe_atoi`, `rs_safe_atoi16`, `rs_safe_atolli`, `rs_safe_atollu`, `rs_safe_atollu_full`, `rs_safe_atou`, `rs_safe_atou16_full`, `rs_safe_atou8_full`, `rs_safe_atou_bounded`, `rs_safe_atou_full` |
 | `test-time-util-rust` | `rs_map_clock_usec_raw`, `rs_parse_sec`, `rs_parse_sec_def_infinity`, `rs_parse_sec_fix_0`, `rs_parse_time`, `rs_timespec_load`, `rs_timespec_load_nsec`, `rs_timespec_store`, `rs_timespec_store_nsec`, `rs_timeval_load`, `rs_timeval_store`, `rs_triple_timestamp_by_clock` |
 | `test-time-util-extra-rust` | `rs_timestamp_style_from_string`, `rs_timestamp_style_to_string` |

@@ -185,7 +185,8 @@ unsafe fn libc_free(p: *mut c_char) {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_is_path(p: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_is_path(p: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -204,7 +205,8 @@ pub unsafe fn rs_is_path(p: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dot_or_dot_dot(path: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dot_or_dot_dot(path: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -225,7 +227,8 @@ pub unsafe fn rs_dot_or_dot_dot(path: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_filename_part_is_valid(p: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_filename_part_is_valid(p: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -260,7 +263,8 @@ pub unsafe fn rs_filename_part_is_valid(p: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_filename_is_valid(p: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_filename_is_valid(p: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -316,7 +320,8 @@ pub unsafe fn rs_fdname_is_valid(s: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_hidden_or_backup_file(filename: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_hidden_or_backup_file(filename: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -394,7 +399,8 @@ pub unsafe fn rs_hidden_or_backup_file(filename: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_empty_or_root(path: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_empty_or_root(path: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -406,7 +412,10 @@ pub unsafe fn rs_empty_or_root(path: *const c_char) -> bool {
     }
 }
 
-/// Return "/" if path is empty, otherwise return path.
+/// Return a borrowed `"/"` if `path` is empty, otherwise return `path`.
+///
+/// The result is either the original borrowed pointer or this module's static
+/// NUL-terminated root string; callers must not free it.
 ///
 /// # Safety
 /// Every non-null input pointer must be valid and properly aligned for all
@@ -414,11 +423,12 @@ pub unsafe fn rs_empty_or_root(path: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_empty_to_root(path: *const c_char) -> *const c_char {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_empty_to_root(path: *const c_char) -> *const c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
-        static ROOT: &[u8] = b"/";
+        static ROOT: &[u8] = b"/\0";
         if path.is_null() || *path == 0 {
             return ROOT.as_ptr() as *const c_char;
         }
@@ -434,7 +444,8 @@ pub unsafe fn rs_empty_to_root(path: *const c_char) -> *const c_char {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_path_implies_directory(path: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_path_implies_directory(path: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -700,7 +711,11 @@ pub unsafe fn rs_path_find_first_component(
     unsafe { rs_path_find_first_component_inner(p, accept_dot_dot, ret) }
 }
 
-// Rename the internal function
+/// # Safety
+///
+/// `p` must be a writable pointer to a live C-string pointer. `ret`, when
+/// non-null, must be writable. Any pointer published through either output
+/// borrows the input C string and is valid only while that input remains live.
 unsafe fn rs_path_find_first_component_inner(
     p: *mut *const c_char,
     accept_dot_dot: bool,
@@ -759,6 +774,11 @@ unsafe fn rs_path_find_first_component_inner(
 // ── path_find_last_component ──────────────────────────────────────────────
 
 /// Skip backward past '/' and '/./' sequences.
+///
+/// # Safety
+///
+/// `path` and `q` must point into the same live NUL-terminated C string, with
+/// `q` at or after `path`. The returned pointer borrows that input string.
 unsafe fn skip_slash_or_dot_backward(path: *const c_char, mut q: *const c_char) -> *const c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.

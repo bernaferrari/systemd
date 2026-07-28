@@ -390,13 +390,13 @@
     "src/basic/rust/strv.rs": {
       "missing_safety": 7,
       "missing_safety_sites": [
-        "48:1:unsafe fn strv_iter(l: *const *const c_char) -> StrvIter<'static> {",
-        "79:1:unsafe fn strcmp_ptr(a: *const c_char, b: *const c_char) -> i32 {",
-        "107:1:unsafe fn strv_isempty(l: *const *const c_char) -> bool {",
-        "608:1:unsafe fn startswith_internal(s: *const c_char, prefix: *const c_char) -> *const c_char {",
-        "627:1:unsafe fn endswith_internal(s: *const c_char, suffix: *const c_char) -> *const c_char {",
-        "928:1:unsafe fn streq_ptr(a: *const c_char, b: *const c_char) -> bool {",
-        "2299:5:unsafe fn free_strv(l: *mut *mut c_char) {"
+        "49:1:unsafe fn strv_iter(l: *const *const c_char) -> StrvIter<'static> {",
+        "80:1:unsafe fn strcmp_ptr(a: *const c_char, b: *const c_char) -> i32 {",
+        "108:1:unsafe fn strv_isempty(l: *const *const c_char) -> bool {",
+        "643:1:unsafe fn startswith_internal(s: *const c_char, prefix: *const c_char) -> *const c_char {",
+        "662:1:unsafe fn endswith_internal(s: *const c_char, suffix: *const c_char) -> *const c_char {",
+        "963:1:unsafe fn streq_ptr(a: *const c_char, b: *const c_char) -> bool {",
+        "2334:5:unsafe fn free_strv(l: *mut *mut c_char) {"
       ],
       "unsafe_sites": 307
     },

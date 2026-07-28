@@ -2605,7 +2605,7 @@ def strv_extend_and_filter_boundary_is_reviewed() -> bool:
         in header_text
         and "fn cstr_has_prefix(entry: &CStr, prefix: &[u8]) -> bool" in source_text
         and "entry.to_bytes().starts_with(prefix)" in source_text
-        and "return unsafe { rs_strv_copy_n(l.cast::<*const c_char>(), SIZE_MAX) };" in source_text
+        and "return unsafe { rs_strv_copy_n(l, SIZE_MAX) };" in source_text
         and "let copied = calloc(slots" in source_text
         and "free((*copied.add(index)).cast::<c_void>());" in source_text
         and "fn strv_contains_cstr(l: *const *mut c_char, needle: &CStr) -> bool" in source_text

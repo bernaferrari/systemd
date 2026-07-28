@@ -23,18 +23,10 @@ excluded_c_symbols = [
     "fsck_exists",
     "fsck_exists_for_fstype",
     "safe_getcwd",
-    "is_path",
-    "filename_is_valid",
-    "filename_part_is_valid",
-    "hidden_or_backup_file",
-    "empty_or_root",
-    "empty_to_root",
     "empty_or_root_harder_to_null",
-    "path_implies_directory",
     "path_is_normalized",
     "path_is_valid_full",
     "path_is_absolute",
-    "dot_or_dot_dot",
     "valid_device_node_path",
     "valid_device_allow_pattern",
     "file_in_same_dir",
@@ -50,6 +42,61 @@ rust_sources = [
     "src/basic/rust/path_util.rs",
     "src/basic/rust/path_util/byte_abi.rs",
 ]
+
+[[surface]]
+id = "path-base-predicates"
+c_symbols = [
+    "is_path",
+    "dot_or_dot_dot",
+    "filename_part_is_valid",
+    "filename_is_valid",
+    "hidden_or_backup_file",
+    "empty_or_root",
+    "path_implies_directory",
+]
+rust_symbols = [
+    "rs_is_path",
+    "rs_dot_or_dot_dot",
+    "rs_filename_part_is_valid",
+    "rs_filename_is_valid",
+    "rs_hidden_or_backup_file",
+    "rs_empty_or_root",
+    "rs_path_implies_directory",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-rust.c"
+meson_target = "test-path-util-rust"
+labels = ["path-base-predicates"]
+
+[[surface]]
+id = "path-empty-to-root"
+c_symbols = ["empty_to_root"]
+rust_symbols = ["rs_empty_to_root"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-rust.c"
+meson_target = "test-path-util-rust"
+labels = ["path-empty-to-root"]
 
 [[surface]]
 id = "path-component-find"

@@ -43,7 +43,7 @@ pub unsafe extern "C" fn rs_strv_filter_prefix(
     // strv_copy(), including its non-null empty-vector allocation behavior.
     let Some(prefix) = prefix.filter(|prefix| !prefix.to_bytes().is_empty()) else {
         // SAFETY: the entry-point contract is the one required by copy_n.
-        return unsafe { rs_strv_copy_n(l.cast::<*const c_char>(), SIZE_MAX) };
+        return unsafe { rs_strv_copy_n(l, SIZE_MAX) };
     };
     if l.is_null() {
         return std::ptr::null_mut();
@@ -135,12 +135,12 @@ pub unsafe extern "C" fn rs_strv_extend_strv(
     }
     // SAFETY: the entry-point contract guarantees `a` is writable after the
     // explicit null check. A null b is an empty vector in C.
-    let q = unsafe { rs_strv_length(b.cast::<*const c_char>()) };
+    let q = unsafe { rs_strv_length(b) };
     if q == 0 {
         return 0;
     }
     // SAFETY: `*a` is either null or a valid vector per the entry contract.
-    let p = unsafe { rs_strv_length((*a).cast::<*const c_char>()) };
+    let p = unsafe { rs_strv_length(*a) };
     if p >= SIZE_MAX - q {
         return Errno::ENOMEM.to_neg_errno();
     }
