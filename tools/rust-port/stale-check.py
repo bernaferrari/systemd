@@ -344,6 +344,145 @@ def scoped_rust_inventory(
     return expected
 
 
+def scoped_c_provenance(
+    entry: Dict[str, Any], module_name: str, repo_root: Path
+) -> List[Dict[str, Any]] | None:
+    """Validate explicit direct and transitive C authority for a Rust scope.
+
+    A scope's ``c_paths`` is a review closure, not a directory-shaped hint.
+    Direct edges tie a Rust leaf to the authority it declares in its
+    ``PORT-SYNC`` preamble.  Transitive edges retain the additional C inputs
+    that influence that direct behavior, with an explicit direct path and
+    rationale.  Keeping this in the manifest makes a future re-port review
+    able to distinguish a leaf's own source from its dependency closure.
+    """
+
+    scope = scope_name(entry, module_name)
+    raw_edges = entry.get("c_provenance_edges")
+    if scope is None:
+        if raw_edges is not None:
+            raise ValueError(
+                f"{module_name}.c_provenance_edges requires scoped ownership"
+            )
+        return None
+
+    c_paths = c_file_paths(entry, module_name)
+    if not c_paths:
+        if raw_edges is not None:
+            raise ValueError(
+                f"{module_name}.c_provenance_edges requires mapped C paths"
+            )
+        return None
+    if not isinstance(raw_edges, list) or not raw_edges:
+        raise ValueError(
+            f"{module_name}.scope with c_paths requires non-empty "
+            "c_provenance_edges"
+        )
+
+    rust_paths = set(rust_file_paths(entry, module_name))
+    edges: List[Dict[str, Any]] = []
+    paths: List[str] = []
+    direct_paths: set[str] = set()
+    direct_by_rust: Dict[str, set[str]] = {path: set() for path in rust_paths}
+    transitive_edges: List[Dict[str, Any]] = []
+    for index, raw_edge in enumerate(raw_edges):
+        label = f"{module_name}.c_provenance_edges[{index}]"
+        if not isinstance(raw_edge, dict):
+            raise ValueError(f"{label} must be an inline table")
+        kind = raw_edge.get("kind")
+        if kind not in {"direct", "transitive"}:
+            raise ValueError(f"{label}.kind must be 'direct' or 'transitive'")
+        path = raw_edge.get("path")
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError(f"{label}.path must be a repository path")
+        path = path.strip()
+        normalized = PurePosixPath(path)
+        if (
+            normalized.is_absolute()
+            or ".." in normalized.parts
+            or str(normalized) != path
+            or "\\" in path
+        ):
+            raise ValueError(f"{label}.path is not a normalized repository path")
+        if path not in c_paths:
+            raise ValueError(f"{label}.path is not listed in {module_name}.c_paths")
+
+        edge = dict(raw_edge)
+        edge["kind"] = kind
+        edge["path"] = path
+        if kind == "direct":
+            leaves = raw_edge.get("rust_paths")
+            if not isinstance(leaves, list) or not leaves:
+                raise ValueError(f"{label}.rust_paths must name one or more Rust leaves")
+            normalized_leaves: List[str] = []
+            for leaf in leaves:
+                if not isinstance(leaf, str) or not leaf.strip():
+                    raise ValueError(f"{label}.rust_paths contains an invalid path")
+                leaf = leaf.strip()
+                if leaf not in rust_paths:
+                    raise ValueError(
+                        f"{label}.rust_paths names unmapped Rust path {leaf}"
+                    )
+                normalized_leaves.append(leaf)
+            duplicates = sorted(
+                {leaf for leaf in normalized_leaves if normalized_leaves.count(leaf) > 1}
+            )
+            if duplicates:
+                raise ValueError(
+                    f"{label}.rust_paths repeats Rust leaves: " + ", ".join(duplicates)
+                )
+            edge["rust_paths"] = normalized_leaves
+            direct_paths.add(path)
+            for leaf in normalized_leaves:
+                direct_by_rust[leaf].add(path)
+        else:
+            via = raw_edge.get("via")
+            if not isinstance(via, list) or not via:
+                raise ValueError(f"{label}.via must name one or more direct C paths")
+            normalized_via: List[str] = []
+            for direct_path in via:
+                if not isinstance(direct_path, str) or not direct_path.strip():
+                    raise ValueError(f"{label}.via contains an invalid path")
+                normalized_via.append(direct_path.strip())
+            duplicates = sorted(
+                {item for item in normalized_via if normalized_via.count(item) > 1}
+            )
+            if duplicates:
+                raise ValueError(f"{label}.via repeats paths: " + ", ".join(duplicates))
+            rationale = raw_edge.get("rationale")
+            if not isinstance(rationale, str) or not rationale.strip():
+                raise ValueError(f"{label}.rationale must explain the closure path")
+            edge["via"] = normalized_via
+            transitive_edges.append(edge)
+        paths.append(path)
+        edges.append(edge)
+
+    duplicates = sorted({path for path in paths if paths.count(path) > 1})
+    if duplicates:
+        raise ValueError(
+            f"{module_name}.c_provenance_edges repeats C paths: " + ", ".join(duplicates)
+        )
+    missing = sorted(set(c_paths) - set(paths))
+    if missing:
+        raise ValueError(
+            f"{module_name}.c_provenance_edges lacks C paths: " + ", ".join(missing)
+        )
+    for edge in transitive_edges:
+        unknown = sorted(set(edge["via"]) - direct_paths)
+        if unknown:
+            raise ValueError(
+                f"{module_name}.c_provenance_edges transitive path {edge['path']} "
+                "does not route through a direct C path: " + ", ".join(unknown)
+            )
+    missing_leaves = sorted(path for path, paths in direct_by_rust.items() if not paths)
+    if missing_leaves:
+        raise ValueError(
+            f"{module_name}.c_provenance_edges lacks direct authority for Rust leaves: "
+            + ", ".join(missing_leaves)
+        )
+    return edges
+
+
 def validate_manifest(manifest: Mapping[str, Dict[str, Any]], repo_root: Path) -> None:
     """Validate manifest-wide scoped ownership invariants.
 
@@ -357,6 +496,7 @@ def validate_manifest(manifest: Mapping[str, Dict[str, Any]], repo_root: Path) -
     for module_name, entry in sorted(manifest.items()):
         scope = scope_name(entry, module_name)
         inventory = scoped_rust_inventory(entry, module_name, repo_root)
+        scoped_c_provenance(entry, module_name, repo_root)
         for path in rust_file_paths(entry, module_name):
             owners.setdefault(path, []).append((module_name, scope is not None))
         if scope is None:
@@ -519,6 +659,7 @@ def evaluate_module(
     # Validate the local scope here as well as in validate_manifest(), so
     # callers that evaluate a single fixture cannot bypass inventory checks.
     scoped_rust_inventory(entry, module, repo_root)
+    scoped_c_provenance(entry, module, repo_root)
     upstream_blobs = expected_blobs(
         entry,
         module,

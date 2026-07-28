@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import re
+import subprocess
 import sys
 from pathlib import Path, PurePosixPath
 
@@ -20,6 +21,39 @@ SCOPED_PORT_SYNC_RE = re.compile(
     r"authority=([^*\r\n]+?)(?:\s*\*/)?\s*$",
     re.MULTILINE,
 )
+
+# Upstream commit 74d392ed1bab578e901699ee272faa0c8b922128 renamed the
+# fundamental layer to the names below.  Retaining the exact one-to-one history
+# here makes a retired name an actionable metadata error, rather than merely a
+# confusing missing path after the next sync.  Do not add aliases to map.toml:
+# its c_paths are deliberately the current C authority.
+RETIRED_FUNDAMENTAL_PATHS = {
+    "src/fundamental/assert-fundamental.h": "src/fundamental/assert-util.h",
+    "src/fundamental/bootspec-fundamental.c": "src/fundamental/bootspec.c",
+    "src/fundamental/bootspec-fundamental.h": "src/fundamental/bootspec.h",
+    "src/fundamental/chid-fundamental.c": "src/fundamental/chid.c",
+    "src/fundamental/chid-fundamental.h": "src/fundamental/chid.h",
+    "src/fundamental/cleanup-fundamental.h": "src/fundamental/cleanup-util.h",
+    "src/fundamental/confidential-virt-fundamental.h": "src/fundamental/confidential-virt.h",
+    "src/fundamental/edid-fundamental.c": "src/fundamental/edid.c",
+    "src/fundamental/edid-fundamental.h": "src/fundamental/edid.h",
+    "src/fundamental/efi-fundamental.h": "src/fundamental/efi.h",
+    "src/fundamental/efivars-fundamental.c": "src/fundamental/efivars.c",
+    "src/fundamental/efivars-fundamental.h": "src/fundamental/efivars.h",
+    "src/fundamental/iovec-util-fundamental.h": "src/fundamental/iovec-util.h",
+    "src/fundamental/macro-fundamental.h": "src/fundamental/macro.h",
+    "src/fundamental/memory-util-fundamental.c": "src/fundamental/memory-util.c",
+    "src/fundamental/memory-util-fundamental.h": "src/fundamental/memory-util.h",
+    "src/fundamental/sha1-fundamental.c": "src/fundamental/sha1.c",
+    "src/fundamental/sha1-fundamental.h": "src/fundamental/sha1.h",
+    "src/fundamental/sha256-fundamental.c": "src/fundamental/sha256.c",
+    "src/fundamental/sha256-fundamental.h": "src/fundamental/sha256.h",
+    "src/fundamental/string-table-fundamental.h": "src/fundamental/string-table.h",
+    "src/fundamental/string-util-fundamental.c": "src/fundamental/string-util.c",
+    "src/fundamental/string-util-fundamental.h": "src/fundamental/string-util.h",
+    "src/fundamental/strv-fundamental.h": "src/fundamental/strv.h",
+    "src/fundamental/unaligned-fundamental.h": "src/fundamental/unaligned.h",
+}
 
 
 def load_stale_check():
@@ -45,6 +79,13 @@ def parse_args() -> argparse.Namespace:
         default="tools/rust-port/map.toml",
         help="Rust port map relative to the repository root",
     )
+    parser.add_argument(
+        "--upstream-ref",
+        help=(
+            "Require every mapped C authority path to exist at this Git ref "
+            "(for example origin/main)"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -53,6 +94,92 @@ def annotation_in_preamble(text: str, pattern: re.Pattern[str]) -> bool:
 
     preamble = "\n".join(text.splitlines()[:16])
     return pattern.search(preamble) is not None
+
+
+def audit_reviewed_rename_history(root: Path, manifest, stale_check) -> list[str]:
+    """Reject fundamental authority names retired by the reviewed upstream rename.
+
+    The manifest is authoritative for mapped Rust, while unscoped PORT-SYNC
+    comments remain useful navigation for the broader fundamental crate. Audit
+    both so a future edit cannot reintroduce a retired name in either layer.
+    """
+
+    failures: list[str] = []
+    for module, entry in sorted(manifest.items()):
+        try:
+            authorities = stale_check.c_file_paths(entry, module)
+        except (OSError, RuntimeError, ValueError) as error:
+            # audit_manifest() reports malformed mappings with the established
+            # diagnostic; do not obscure it with a second rename error.
+            continue
+        for authority in authorities:
+            replacement = RETIRED_FUNDAMENTAL_PATHS.get(authority)
+            if replacement is not None:
+                failures.append(
+                    f"{module}: retired C authority {authority}; use {replacement}"
+                )
+
+    source_root = root / "src"
+    if not source_root.is_dir():
+        return failures
+    for source in sorted(source_root.rglob("*")):
+        if not source.is_file() or source.suffix not in {".rs", ".h"}:
+            continue
+        preamble = "\n".join(
+            source.read_text(encoding="utf-8", errors="ignore").splitlines()[:16]
+        )
+        if "PORT-SYNC:" not in preamble:
+            continue
+        for retired, replacement in RETIRED_FUNDAMENTAL_PATHS.items():
+            if retired in preamble:
+                failures.append(
+                    f"{source.relative_to(root)}: retired PORT-SYNC authority "
+                    f"{retired}; use {replacement}"
+                )
+    return failures
+
+
+def audit_upstream_authority_paths(
+    root: Path, manifest, stale_check, upstream_ref: str
+) -> list[str]:
+    """Verify C authority paths at the selected upstream tree without checkout."""
+
+    resolved = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", f"{upstream_ref}^{{commit}}"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if resolved.returncode != 0:
+        detail = resolved.stderr.strip() or resolved.stdout.strip()
+        return [f"cannot resolve upstream ref {upstream_ref!r}: {detail}"]
+
+    failures: list[str] = []
+    for module, entry in sorted(manifest.items()):
+        try:
+            authorities = stale_check.c_file_paths(entry, module)
+        except (OSError, RuntimeError, ValueError):
+            continue
+        for authority in authorities:
+            exists = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(root),
+                    "cat-file",
+                    "-e",
+                    f"{upstream_ref}:{authority}",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if exists.returncode != 0:
+                failures.append(
+                    f"{module}: C authority {authority} does not exist at "
+                    f"{upstream_ref}"
+                )
+    return failures
 
 
 def audit_manifest(
@@ -74,6 +201,9 @@ def audit_manifest(
             c_paths = stale_check.c_file_paths(entry, module)
             rust_paths = stale_check.rust_file_paths(entry, module)
             scope = stale_check.scope_name(entry, module)
+            provenance_edges = stale_check.scoped_c_provenance(
+                entry, module, root
+            )
             result = stale_check.evaluate_module(
                 module,
                 entry,
@@ -141,6 +271,15 @@ def audit_manifest(
                 )
                 continue
             if scope is not None and c_paths:
+                direct_by_rust: dict[str, set[str]] = {
+                    path: set() for path in rust_paths
+                }
+                assert provenance_edges is not None
+                for edge in provenance_edges:
+                    if edge["kind"] != "direct":
+                        continue
+                    for edge_rust_path in edge["rust_paths"]:
+                        direct_by_rust[edge_rust_path].add(edge["path"])
                 marker = SCOPED_PORT_SYNC_RE.search(
                     "\n".join(text.splitlines()[:16])
                 )
@@ -195,6 +334,22 @@ def audit_manifest(
                                 f"{module}: {rust_path} declares unmapped "
                                 f"PORT-SYNC authority {authority}"
                             )
+                    expected_direct = direct_by_rust[rust_path]
+                    declared_direct = set(authorities)
+                    if declared_direct != expected_direct:
+                        missing = sorted(expected_direct - declared_direct)
+                        extra = sorted(declared_direct - expected_direct)
+                        details = []
+                        if missing:
+                            details.append("missing " + ", ".join(missing))
+                        if extra:
+                            details.append("extra " + ", ".join(extra))
+                        failures.append(
+                            f"{module}: {rust_path} PORT-SYNC authority must "
+                            "exactly match its direct provenance edges: "
+                            + "; ".join(details)
+                        )
+    failures.extend(audit_reviewed_rename_history(root, manifest, stale_check))
     return failures, len(mapped_rust_paths), anchored, reviewed
 
 
@@ -215,6 +370,12 @@ def main() -> int:
     failures, rust_path_count, anchored, reviewed = audit_manifest(
         root, manifest, stale_check
     )
+    if args.upstream_ref:
+        failures.extend(
+            audit_upstream_authority_paths(
+                root, manifest, stale_check, args.upstream_ref
+            )
+        )
 
     if failures:
         print("Rust port sync metadata gate failed:", file=sys.stderr)

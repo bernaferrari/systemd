@@ -110,6 +110,7 @@ class SyncMetadataGateTests(unittest.TestCase):
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         for relative, contents in {
             "c/a.c": "int a;\n",
+            "c/a.h": "#define A 1\n",
             "rust/a.rs": "// PORT-SYNC: c/a.c\npub const A: i32 = 1;\n",
             "rust/gap.rs": "// PORT-GAP: current C authority is unknown\n",
             "rust/scoped.rs": (
@@ -185,6 +186,13 @@ class SyncMetadataGateTests(unittest.TestCase):
             "c_file": "c/a.c",
             "rust_scope_paths": ["rust/scoped.rs"],
             "rust_paths": ["rust/scoped.rs"],
+            "c_provenance_edges": [
+                {
+                    "kind": "direct",
+                    "path": "c/a.c",
+                    "rust_paths": ["rust/scoped.rs"],
+                }
+            ],
         }
         self.assertEqual(self.audit({"fixture": entry}), [])
 
@@ -212,6 +220,13 @@ class SyncMetadataGateTests(unittest.TestCase):
                     "c_file": "c/a.c",
                     "rust_scope_paths": ["rust/scoped.rs"],
                     "rust_paths": ["rust/scoped.rs"],
+                    "c_provenance_edges": [
+                        {
+                            "kind": "direct",
+                            "path": "c/a.c",
+                            "rust_paths": ["rust/scoped.rs"],
+                        }
+                    ],
                 }
             }
         )
@@ -226,6 +241,13 @@ class SyncMetadataGateTests(unittest.TestCase):
             "c_file": "c/a.c",
             "rust_scope_paths": ["rust/scoped.rs"],
             "rust_paths": ["rust/scoped.rs"],
+            "c_provenance_edges": [
+                {
+                    "kind": "direct",
+                    "path": "c/a.c",
+                    "rust_paths": ["rust/scoped.rs"],
+                }
+            ],
         }
         source = self.root / "rust/scoped.rs"
         source.write_text(
@@ -238,6 +260,107 @@ class SyncMetadataGateTests(unittest.TestCase):
                 "declares unmapped PORT-SYNC authority c/not-mapped.c" in item
                 for item in failures
             )
+        )
+
+    def test_scoped_marker_cannot_claim_a_transitive_closure_path(self) -> None:
+        entry = {
+            "status": "in-progress",
+            "sync_status": "needs_review",
+            "scope": "basic.scoped",
+            "contract_file": "tools/rust-port/contracts/basic/scoped.toml",
+            "c_paths": ["c/a.c", "c/a.h"],
+            "rust_scope_paths": ["rust/scoped.rs"],
+            "rust_paths": ["rust/scoped.rs"],
+            "c_provenance_edges": [
+                {
+                    "kind": "direct",
+                    "path": "c/a.c",
+                    "rust_paths": ["rust/scoped.rs"],
+                },
+                {
+                    "kind": "transitive",
+                    "path": "c/a.h",
+                    "via": ["c/a.c"],
+                    "rationale": "Fixture header closure.",
+                },
+            ],
+        }
+        source = self.root / "rust/scoped.rs"
+        source.write_text(
+            "// PORT-SYNC: scope=basic.scoped; authority=c/a.c,c/a.h\n",
+            encoding="utf-8",
+        )
+        failures = self.audit({"fixture": entry})
+        self.assertTrue(
+            any(
+                "PORT-SYNC authority must exactly match its direct provenance edges"
+                in item
+                and "extra c/a.h" in item
+                for item in failures
+            )
+        )
+
+    def test_reviewed_fundamental_rename_rejects_retired_map_and_marker(self) -> None:
+        retired = "src/fundamental/sha1-fundamental.c"
+        canonical = "src/fundamental/sha1.c"
+        source = self.root / "src/fundamental/rust/sha1.rs"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(f"// PORT-SYNC: {retired}\n", encoding="utf-8")
+
+        failures = SYNC_GATE.audit_reviewed_rename_history(
+            self.root,
+            {
+                "fixture": {
+                    "c_file": retired,
+                    "rust_file": "rust/a.rs",
+                }
+            },
+            STALE_CHECK,
+        )
+
+        self.assertIn(
+            f"fixture: retired C authority {retired}; use {canonical}", failures
+        )
+        self.assertIn(
+            f"src/fundamental/rust/sha1.rs: retired PORT-SYNC authority "
+            f"{retired}; use {canonical}",
+            failures,
+        )
+
+    def test_upstream_authority_audit_uses_a_git_tree(self) -> None:
+        subprocess.run(["git", "-C", str(self.root), "add", "."], check=True)
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self.root),
+                "-c",
+                "user.name=Rust Port Test",
+                "-c",
+                "user.email=rust-port-test@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+            check=True,
+        )
+        manifest = {"fixture": {"c_file": "c/a.c", "rust_file": "rust/a.rs"}}
+
+        self.assertEqual(
+            SYNC_GATE.audit_upstream_authority_paths(
+                self.root, manifest, STALE_CHECK, "HEAD"
+            ),
+            [],
+        )
+        missing = SYNC_GATE.audit_upstream_authority_paths(
+            self.root,
+            {"fixture": {"c_file": "c/missing.c", "rust_file": "rust/a.rs"}},
+            STALE_CHECK,
+            "HEAD",
+        )
+        self.assertEqual(
+            missing,
+            ["fixture: C authority c/missing.c does not exist at HEAD"],
         )
 
     def test_partial_sync_status_requires_scoped_review_provenance(self) -> None:

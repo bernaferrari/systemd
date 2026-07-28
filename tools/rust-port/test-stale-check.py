@@ -82,6 +82,26 @@ class StaleCheckSchemaTests(unittest.TestCase):
                 "rust/scoped.rs",
                 "rust/scoped/child.rs",
             ],
+            "c_provenance_edges": [
+                {
+                    "kind": "direct",
+                    "path": "c/a.c",
+                    "rust_paths": [
+                        "rust/abi.h",
+                        "rust/scoped.rs",
+                        "rust/scoped/child.rs",
+                    ],
+                },
+                {
+                    "kind": "direct",
+                    "path": "c/a.h",
+                    "rust_paths": [
+                        "rust/abi.h",
+                        "rust/scoped.rs",
+                        "rust/scoped/child.rs",
+                    ],
+                },
+            ],
         }
 
     def test_one_to_one_legacy_blob_fields_remain_compatible(self) -> None:
@@ -293,6 +313,36 @@ class StaleCheckSchemaTests(unittest.TestCase):
         ):
             self.evaluate(entry)
 
+    def test_scoped_provenance_must_cover_every_c_path_and_rust_leaf(self) -> None:
+        entry = self.scoped_entry()
+        entry["c_provenance_edges"] = entry["c_provenance_edges"][:1]
+        with self.assertRaisesRegex(ValueError, "lacks C paths: c/a.h"):
+            self.evaluate(entry)
+
+        entry = self.scoped_entry()
+        entry["c_provenance_edges"][0]["rust_paths"] = ["rust/scoped.rs"]
+        entry["c_provenance_edges"][1]["rust_paths"] = ["rust/scoped.rs"]
+        with self.assertRaisesRegex(ValueError, "lacks direct authority for Rust leaves"):
+            self.evaluate(entry)
+
+    def test_scoped_transitive_provenance_requires_direct_route_and_rationale(self) -> None:
+        entry = self.scoped_entry()
+        entry["c_paths"].append("c/transitive.c")
+        transitive = {
+            "kind": "transitive",
+            "path": "c/transitive.c",
+            "via": ["c/not-direct.c"],
+            "rationale": "fixture closure",
+        }
+        entry["c_provenance_edges"].append(transitive)
+        with self.assertRaisesRegex(ValueError, "does not route through a direct C path"):
+            self.evaluate(entry)
+
+        transitive["via"] = ["c/a.c"]
+        del transitive["rationale"]
+        with self.assertRaisesRegex(ValueError, "rationale must explain"):
+            self.evaluate(entry)
+
     def test_scoped_inventory_rejects_overlapping_roots(self) -> None:
         entry = self.scoped_entry()
         entry["rust_scope_paths"] = ["rust/scoped", "rust/scoped/child.rs"]
@@ -368,6 +418,8 @@ class StaleCheckSchemaTests(unittest.TestCase):
         second["rust_scope_paths"] = "rust/a.rs"
         del second["rust_interface_paths"]
         second["rust_paths"] = ["rust/a.rs"]
+        for edge in second["c_provenance_edges"]:
+            edge["rust_paths"] = ["rust/a.rs"]
         with self.assertRaisesRegex(ValueError, "duplicate scope name 'basic.scoped'"):
             STALE_CHECK.validate_manifest(
                 {"first": first, "second": second}, self.root
@@ -380,6 +432,8 @@ class StaleCheckSchemaTests(unittest.TestCase):
         second["rust_scope_paths"] = "rust/scoped.rs"
         second["rust_interface_paths"] = ["rust/abi.h"]
         second["rust_paths"] = ["rust/scoped.rs", "rust/abi.h"]
+        for edge in second["c_provenance_edges"]:
+            edge["rust_paths"] = ["rust/scoped.rs", "rust/abi.h"]
         with self.assertRaisesRegex(
             ValueError, "duplicate scoped Rust ownership for rust/abi.h"
         ):

@@ -104,6 +104,10 @@ Recommended migration:
   scoped `rust_paths` must exactly equal the source inventory plus these
   interfaces
 - optional `contract_file` below `tools/rust-port/contracts/<subsystem>/`
+- scoped entries with `c_paths` must declare `c_provenance_edges`, one inline
+  table for every mapped C path. A `kind = "direct"` edge names exact
+  `rust_paths`; a `kind = "transitive"` edge names direct C paths in `via`
+  and has a non-empty review `rationale`.
 - `status`
 - `tier`
 - `tests`
@@ -168,6 +172,25 @@ owned by the map. Likewise, `sync_status = "synced"` is permitted only when
 both sides have complete reviewed blob anchors. An unanchored row may be
 truthfully `needs_review` or `partial`; “zero stale anchored rows” must never
 be presented as “all unanchored rows are current.”
+
+### Direct and transitive C provenance
+
+For a scoped Rust port, the `PORT-SYNC` authority list is deliberately its
+direct authority only. The manifest's `c_provenance_edges` makes the complete
+`c_paths` closure machine-checkable: every C path has exactly one edge; direct
+edges list every Rust leaf whose preamble declares that source; transitive
+edges route through one or more direct paths and explain why the dependency
+remains in scope. The metadata gate rejects missing or duplicate edges,
+unmapped Rust leaves, unexplained closure paths, and markers that present a
+transitive dependency as direct authority. Directories remain Rust inventory
+boundaries, never C authority.
+
+The `src/fundamental/*-fundamental.{c,h}` spelling was renamed upstream in
+`74d392ed1b` to canonical filenames such as `bootspec.c`, `sha256.h`, and
+`string-util.c`. `map.toml` and `PORT-SYNC` comments must record only those
+current paths. The sync metadata gate keeps the reviewed rename table so a
+retired spelling is reported with its canonical replacement instead of being
+mistaken for an ordinary missing source file.
 
 ## Parity Review Checklist
 
@@ -234,6 +257,13 @@ python3 tools/rust-port/stale-check.py --strict --require-existing-paths \
 
 ```sh
 python3 tools/rust-port/sync-metadata-gate.py
+```
+
+When comparing a port branch to the official source tree, also verify every
+mapped C authority directly from that tree without checking it out:
+
+```sh
+python3 tools/rust-port/sync-metadata-gate.py --upstream-ref origin/main
 ```
 
 3. Validate semantic contracts separately from source-layout synchronization:

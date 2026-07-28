@@ -26,6 +26,10 @@
 # `last_reviewed_*` snapshots and a machine-checked `contract_file`. These
 # hashes detect future drift without claiming full parity. Reserve
 # `last_synced_*` and sync_status="synced" for completed parity.
+#
+# `src/fundamental/*-fundamental.{c,h}` names were retired upstream in
+# 74d392ed1b. Entries use only canonical current paths; the sync gate preserves
+# that reviewed rename history and rejects any retired authority spelling.
 
 [analyze-compare-versions]
 c_file = "src/analyze/analyze-compare-versions.c"
@@ -129,6 +133,11 @@ rust_scope_paths = [
 ]
 rust_interface_paths = ["src/basic/rust/strv.h"]
 contract_file = "tools/rust-port/contracts/basic/strv.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/strv.c", rust_paths = ["src/basic/rust/strv.rs", "src/basic/rust/strv/allocating_transforms.rs", "src/basic/rust/strv/matching_escape.rs", "src/basic/rust/strv.h"] },
+    { kind = "direct", path = "src/basic/strv.h", rust_paths = ["src/basic/rust/strv.rs", "src/basic/rust/strv/allocating_transforms.rs", "src/basic/rust/strv/matching_escape.rs", "src/basic/rust/strv.h"] },
+    { kind = "direct", path = "src/fundamental/strv.h", rust_paths = ["src/basic/rust/strv.rs", "src/basic/rust/strv/allocating_transforms.rs", "src/basic/rust/strv/matching_escape.rs", "src/basic/rust/strv.h"] },
+]
 test_file = "tests-extra/test-strv-rust.c"
 status = "in-progress"
 tier = 3
@@ -207,6 +216,32 @@ rust_scope_paths = [
 ]
 rust_interface_paths = ["src/basic/rust/stat_util.h"]
 contract_file = "tools/rust-port/contracts/basic/stat-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/stat-util.c", rust_paths = ["src/basic/rust/stat_util.rs", "src/basic/rust/stat_util/descriptor.rs", "src/basic/rust/stat_util/filesystem.rs", "src/basic/rust/stat_util/hash.rs", "src/basic/rust/stat_util/inode.rs", "src/basic/rust/stat_util/inode_same.rs", "src/basic/rust/stat_util/moderate.rs", "src/basic/rust/stat_util/verification.rs", "src/basic/rust/stat_util/xstatx.rs", "src/basic/rust/stat_util.h"] },
+    { kind = "direct", path = "src/basic/stat-util.h", rust_paths = ["src/basic/rust/stat_util.rs", "src/basic/rust/stat_util/descriptor.rs", "src/basic/rust/stat_util/filesystem.rs", "src/basic/rust/stat_util/hash.rs", "src/basic/rust/stat_util/inode.rs", "src/basic/rust/stat_util/inode_same.rs", "src/basic/rust/stat_util/moderate.rs", "src/basic/rust/stat_util/verification.rs", "src/basic/rust/stat_util/xstatx.rs", "src/basic/rust/stat_util.h"] },
+    { kind = "direct", path = "src/basic/siphash24.h", rust_paths = ["src/basic/rust/stat_util/hash.rs"] },
+    { kind = "direct", path = "src/basic/chattr-util.c", rust_paths = ["src/basic/rust/stat_util/inode.rs"] },
+    { kind = "direct", path = "src/basic/chase.h", rust_paths = ["src/basic/rust/stat_util/moderate.rs"] },
+    { kind = "direct", path = "src/basic/fd-util.h", rust_paths = ["src/basic/rust/stat_util/descriptor.rs"] },
+    { kind = "direct", path = "src/basic/filesystem-sets.py", rust_paths = ["src/basic/rust/stat_util/filesystem.rs"] },
+    { kind = "direct", path = "src/basic/mountpoint-util.c", rust_paths = ["src/basic/rust/stat_util/inode_same.rs"] },
+    { kind = "direct", path = "src/basic/path-util.c", rust_paths = ["src/basic/rust/stat_util/moderate.rs"] },
+    { kind = "direct", path = "src/shared/btrfs-util.c", rust_paths = ["src/basic/rust/stat_util.rs"] },
+    { kind = "transitive", path = "src/basic/siphash24.c", via = ["src/basic/siphash24.h"], rationale = "SipHash state and finalization implementation behind the direct hash declarations." },
+    { kind = "transitive", path = "src/basic/chattr-util.h", via = ["src/basic/chattr-util.c"], rationale = "Filesystem attribute declarations consumed by the direct inode policy." },
+    { kind = "transitive", path = "src/basic/chase.c", via = ["src/basic/chase.h"], rationale = "Path chase implementation behind the direct resolution declarations." },
+    { kind = "transitive", path = "src/basic/dirent-util.h", via = ["src/basic/stat-util.c"], rationale = "Directory-entry type fallback declarations used by stat-util classification." },
+    { kind = "transitive", path = "src/basic/fd-util.c", via = ["src/basic/fd-util.h"], rationale = "File-descriptor implementation behind the direct descriptor declarations." },
+    { kind = "transitive", path = "src/basic/filesystems.c", via = ["src/basic/filesystem-sets.py"], rationale = "Generated filesystem classification data consumed by the direct set generator." },
+    { kind = "transitive", path = "src/basic/filesystems.h", via = ["src/basic/filesystem-sets.py"], rationale = "Filesystem classification declarations consumed by the direct set generator." },
+    { kind = "transitive", path = "src/basic/fs-util.c", via = ["src/basic/stat-util.c"], rationale = "Filesystem helper implementation used by the stat-util behavior slice." },
+    { kind = "transitive", path = "src/basic/fs-util.h", via = ["src/basic/stat-util.c"], rationale = "Filesystem helper declarations used by the stat-util behavior slice." },
+    { kind = "transitive", path = "src/basic/mountpoint-util.h", via = ["src/basic/mountpoint-util.c"], rationale = "Mountpoint declarations paired with the direct mountpoint implementation." },
+    { kind = "transitive", path = "src/basic/path-util.h", via = ["src/basic/path-util.c"], rationale = "Path helper declarations paired with the direct path implementation." },
+    { kind = "transitive", path = "src/include/uapi/linux/magic.h", via = ["src/basic/stat-util.c"], rationale = "Filesystem magic constants interpreted by stat-util classification." },
+    { kind = "transitive", path = "src/basic/time-util.c", via = ["src/basic/stat-util.c"], rationale = "Timestamp comparison helpers used by stat-util freshness behavior." },
+    { kind = "transitive", path = "src/shared/btrfs-util.h", via = ["src/shared/btrfs-util.c"], rationale = "Btrfs declarations paired with the direct subvolume implementation." },
+]
 test_file = "tests-extra/test-stat-util-rust.c"
 status = "in-progress"
 tier = 1
@@ -214,7 +249,7 @@ symbols = 67
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/stat-util.c" = "72307fa7217822d3f930744bb3454d7bdf47f13a", "src/basic/stat-util.h" = "aa1c21ed90a91e0c03c2c4de833b29c5c4d67efa", "src/basic/siphash24.c" = "b73ede34c8bc43c04697adb23f84db94473ab43a", "src/basic/siphash24.h" = "6da73fedaa41c21ed516779b978019ab6f9fcd33", "src/basic/chattr-util.c" = "26779305cbbbedf132ed0eeaa701487addb8f7a7", "src/basic/chattr-util.h" = "543843db2c2a4e3f3b9c689f2ba86882ca221bd5", "src/basic/chase.c" = "23a523798eb2b9a1310fff5252491d49bb01f8d5", "src/basic/chase.h" = "3d7e9f3f6b5f78bd887f5fd98ac5342000e205b1", "src/basic/dirent-util.h" = "44e751ba41438c7eccbccf0519534e1fcac24df9", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5", "src/basic/filesystem-sets.py" = "be08664aef65a08b2bb972d7853a27987492f7b6", "src/basic/filesystems.c" = "5a41252e096d218a0d2ab798d0907ae995c1186c", "src/basic/filesystems.h" = "eed3982afd5eb5d501bea2b22d1475e8b0a25627", "src/basic/fs-util.c" = "76c55e30b6a86d04a28f1042f1c68e867d6b80d4", "src/basic/fs-util.h" = "bc33f2f8e95d51311d07d4950ffded5586a554db", "src/basic/mountpoint-util.c" = "4db4d8162fd14c92f99216cc8795e264f7b1d649", "src/basic/mountpoint-util.h" = "7f29ffe177848b64d22b00f2677166672829501e", "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/include/uapi/linux/magic.h" = "4f2da935a76ccae6e1c3310b2fae5379186548b8", "src/basic/time-util.c" = "44c53067411741027580f465c9873e673db03028", "src/shared/btrfs-util.c" = "780c1be349675afc7f681824dbe1c31d146753c1", "src/shared/btrfs-util.h" = "be5e0b59d31e8221c11a3b142ce716c6cbff7130" }
 last_reviewed_rust_blobs = { "src/basic/rust/stat_util.rs" = "5d917fdbff58ca2b101d2ac8f5e833baccb6f297", "src/basic/rust/stat_util.h" = "0d78cbfeebfd4fa278277fe8a59832fd4afb9d04", "src/basic/rust/stat_util/descriptor.rs" = "fab640e6e7385427c2f99994c18bae5386f0caf2", "src/basic/rust/stat_util/filesystem.rs" = "3c999817b06873a0f39cbb2918cac8232b712bca", "src/basic/rust/stat_util/hash.rs" = "b8120cc84ee304ec701f82af7cadb2e708225563", "src/basic/rust/stat_util/inode.rs" = "61723d212320f5320d732116f8054ec580929318", "src/basic/rust/stat_util/inode_same.rs" = "f66e28ed18e40d10f21a8c9b1e6b328f398350b9", "src/basic/rust/stat_util/moderate.rs" = "a2f0eb66f98484316e5a0f10e8176661d13647a5", "src/basic/rust/stat_util/verification.rs" = "82c658f9152f571734916a1d2a827cc4ed3bae93", "src/basic/rust/stat_util/xstatx.rs" = "d48f75ef546162e300a408f0c20eaacf7664227a" }
-notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.stat-util owns the decomposed stat_util facade while c_paths retains the transitive behavior dependencies used or independently mirrored by its leaves, so filesystem-set, mountpoint, chase/fd/path, SipHash, chattr, and btrfs changes invalidate stale anchors. Nineteen machine-checked surfaces cover all 67 public stat-util function APIs (including header inlines and inode_type string-table lookup) with exact ABI, symbol-specific output metadata, static fixture markers, and static-only evidence. inode_hash_ops and inode_unmodified_hash_ops remain excluded; rs_inode_type_can_chattr and rs_btrfs_might_be_subvol stay outside the 67-symbol contract slice. Runtime/kernel differential execution is unclaimed."
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.stat-util owns the decomposed stat_util facade while c_paths retains the transitive behavior dependencies used or independently mirrored by its leaves, so filesystem-set, mountpoint, chase/fd/path, SipHash, chattr, and btrfs changes invalidate stale anchors. c_provenance_edges records the ten direct leaf authorities and fourteen reasoned transitive closure paths. Nineteen machine-checked surfaces cover all 67 public stat-util function APIs (including header inlines and inode_type string-table lookup) with exact ABI, symbol-specific output metadata, static fixture markers, and static-only evidence. inode_hash_ops and inode_unmodified_hash_ops remain excluded; rs_inode_type_can_chattr and rs_btrfs_might_be_subvol stay outside the 67-symbol contract slice. Runtime/kernel differential execution is unclaimed."
 
 [socket-util]
 c_file = "src/basic/socket-util.h"
@@ -288,6 +323,10 @@ scope = "basic.devnum-util"
 rust_scope_paths = ["src/basic/rust/devnum_util.rs"]
 rust_interface_paths = ["src/basic/rust/devnum_util.h"]
 contract_file = "tools/rust-port/contracts/basic/devnum-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/devnum-util.c", rust_paths = ["src/basic/rust/devnum_util.rs", "src/basic/rust/devnum_util.h"] },
+    { kind = "direct", path = "src/basic/devnum-util.h", rust_paths = ["src/basic/rust/devnum_util.rs", "src/basic/rust/devnum_util.h"] },
+]
 test_file = "tests-extra/test-devnum-util-rust.c"
 status = "in-progress"
 tier = 2
@@ -325,6 +364,10 @@ scope = "basic.ether-addr-util"
 rust_scope_paths = ["src/basic/rust/ether_addr_util.rs"]
 rust_interface_paths = ["src/basic/rust/ether_addr_util.h"]
 contract_file = "tools/rust-port/contracts/basic/ether-addr-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/ether-addr-util.c", rust_paths = ["src/basic/rust/ether_addr_util.rs", "src/basic/rust/ether_addr_util.h"] },
+    { kind = "direct", path = "src/basic/ether-addr-util.h", rust_paths = ["src/basic/rust/ether_addr_util.rs", "src/basic/rust/ether_addr_util.h"] },
+]
 test_file = "tests-extra/test-ether-addr-util-rust.c"
 status = "in-progress"
 tier = 2
@@ -365,6 +408,10 @@ rust_scope_paths = [
 ]
 rust_interface_paths = ["src/basic/rust/path_util.h"]
 contract_file = "tools/rust-port/contracts/basic/path-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/path-util.c", rust_paths = ["src/basic/rust/path_util.rs", "src/basic/rust/path_util/byte_abi.rs", "src/basic/rust/path_util.h"] },
+    { kind = "direct", path = "src/basic/path-util.h", rust_paths = ["src/basic/rust/path_util.rs", "src/basic/rust/path_util/byte_abi.rs", "src/basic/rust/path_util.h"] },
+]
 test_file = "tests-extra/test-path-funcs-rust.c"
 status = "in-progress"
 tier = 1
@@ -404,6 +451,11 @@ scope = "basic.iovec-util"
 rust_scope_paths = ["src/basic/rust/iovec_util.rs"]
 rust_interface_paths = ["src/basic/rust/iovec_util.h"]
 contract_file = "tools/rust-port/contracts/basic/iovec-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/iovec-util.c", rust_paths = ["src/basic/rust/iovec_util.rs", "src/basic/rust/iovec_util.h"] },
+    { kind = "direct", path = "src/basic/iovec-util.h", rust_paths = ["src/basic/rust/iovec_util.rs", "src/basic/rust/iovec_util.h"] },
+    { kind = "direct", path = "src/fundamental/iovec-util.h", rust_paths = ["src/basic/rust/iovec_util.rs", "src/basic/rust/iovec_util.h"] },
+]
 test_file = "tests-extra/test-iovec-util-rust.c"
 status = "in-progress"
 tier = 1
