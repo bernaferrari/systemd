@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/arphrd-util.c, src/basic/arphrd-util.h
+// PORT-SYNC: scope=basic.arphrd-util; authority=src/basic/arphrd-util.c,src/basic/arphrd-util.h,src/basic/arphrd-to-name.awk,src/basic/generate-arphrd-list.sh,src/basic/meson.build,src/include/uapi/linux/if_arp.h,tools/generate-gperfs.py
 //
 // ARP hardware type name/value lookups and hardware address length mapping.
 
+use std::ffi::{CStr, c_char, c_int};
+
 use crate::ffi::Errno;
+use crate::ffi_string_table;
 
 // ── Arphrd enum ───────────────────────────────────────────────────────────
 
@@ -35,8 +38,6 @@ pub enum Arphrd {
     Rose = 270,
     X25 = 271,
     Hwx25 = 272,
-    Ipddp = 277,
-    Pimreg = 279,
     Can = 280,
     Mctp = 290,
     Ppp = 512,
@@ -54,7 +55,9 @@ pub enum Arphrd {
     Fddi = 774,
     Bif = 775,
     Sit = 776,
+    Ipddp = 777,
     Ipgre = 778,
+    Pimreg = 779,
     Hippi = 780,
     Ash = 781,
     Econet = 782,
@@ -80,583 +83,312 @@ pub enum Arphrd {
     Void = 65535,
 }
 
-// ── Name-to-value lookup table (sorted by name) ───────────────────────────
-
-struct ArphrdEntry {
-    name: &'static str,
-    value: i32,
-}
-
-static ARPHRD_FROM_NAME_TABLE: &[ArphrdEntry] = &[
-    ArphrdEntry {
-        name: "6LOWPAN",
-        value: 825,
-    },
-    ArphrdEntry {
-        name: "ADAPT",
-        value: 264,
-    },
-    ArphrdEntry {
-        name: "APPLETLK",
-        value: 8,
-    },
-    ArphrdEntry {
-        name: "ARCNET",
-        value: 7,
-    },
-    ArphrdEntry {
-        name: "ARPHRD_NONE",
-        value: 65534,
-    },
-    ArphrdEntry {
-        name: "ARPHRD_VOID",
-        value: 65535,
-    },
-    ArphrdEntry {
-        name: "ASH",
-        value: 781,
-    },
-    ArphrdEntry {
-        name: "ATM",
-        value: 19,
-    },
-    ArphrdEntry {
-        name: "AX25",
-        value: 3,
-    },
-    ArphrdEntry {
-        name: "BIF",
-        value: 775,
-    },
-    ArphrdEntry {
-        name: "CAN",
-        value: 280,
-    },
-    ArphrdEntry {
-        name: "CAIF",
-        value: 822,
-    },
-    ArphrdEntry {
-        name: "CHAOS",
-        value: 5,
-    },
-    ArphrdEntry {
-        name: "CISCO",
-        value: 513,
-    },
-    ArphrdEntry {
-        name: "CSLIP",
-        value: 257,
-    },
-    ArphrdEntry {
-        name: "CSLIP6",
-        value: 259,
-    },
-    ArphrdEntry {
-        name: "DDCMP",
-        value: 517,
-    },
-    ArphrdEntry {
-        name: "DLCI",
-        value: 15,
-    },
-    ArphrdEntry {
-        name: "ECONET",
-        value: 782,
-    },
-    ArphrdEntry {
-        name: "EETHER",
-        value: 2,
-    },
-    ArphrdEntry {
-        name: "ETHER",
-        value: 1,
-    },
-    ArphrdEntry {
-        name: "EUI64",
-        value: 27,
-    },
-    ArphrdEntry {
-        name: "FDDI",
-        value: 774,
-    },
-    ArphrdEntry {
-        name: "FCAL",
-        value: 785,
-    },
-    ArphrdEntry {
-        name: "FCFABRIC",
-        value: 787,
-    },
-    ArphrdEntry {
-        name: "FCPL",
-        value: 786,
-    },
-    ArphrdEntry {
-        name: "FCPP",
-        value: 784,
-    },
-    ArphrdEntry {
-        name: "FRAD",
-        value: 770,
-    },
-    ArphrdEntry {
-        name: "HIPPI",
-        value: 780,
-    },
-    ArphrdEntry {
-        name: "HWX25",
-        value: 272,
-    },
-    ArphrdEntry {
-        name: "IEEE1394",
-        value: 24,
-    },
-    ArphrdEntry {
-        name: "IEEE802",
-        value: 6,
-    },
-    ArphrdEntry {
-        name: "IEEE80211",
-        value: 801,
-    },
-    ArphrdEntry {
-        name: "IEEE80211_PRISM",
-        value: 802,
-    },
-    ArphrdEntry {
-        name: "IEEE80211_RADIOTAP",
-        value: 803,
-    },
-    ArphrdEntry {
-        name: "IEEE802154",
-        value: 804,
-    },
-    ArphrdEntry {
-        name: "IEEE802154_MONITOR",
-        value: 805,
-    },
-    ArphrdEntry {
-        name: "IEEE802_TR",
-        value: 800,
-    },
-    ArphrdEntry {
-        name: "INFINIBAND",
-        value: 32,
-    },
-    ArphrdEntry {
-        name: "IP6GRE",
-        value: 823,
-    },
-    ArphrdEntry {
-        name: "IPDDP",
-        value: 277,
-    },
-    ArphrdEntry {
-        name: "IPGRE",
-        value: 778,
-    },
-    ArphrdEntry {
-        name: "IRDA",
-        value: 783,
-    },
-    ArphrdEntry {
-        name: "LAPB",
-        value: 516,
-    },
-    ArphrdEntry {
-        name: "LOCALTLK",
-        value: 773,
-    },
-    ArphrdEntry {
-        name: "LOOPBACK",
-        value: 772,
-    },
-    ArphrdEntry {
-        name: "METRICOM",
-        value: 23,
-    },
-    ArphrdEntry {
-        name: "MCTP",
-        value: 290,
-    },
-    ArphrdEntry {
-        name: "NETLINK",
-        value: 824,
-    },
-    ArphrdEntry {
-        name: "NETROM",
-        value: 0,
-    },
-    ArphrdEntry {
-        name: "NONE",
-        value: 65534,
-    },
-    ArphrdEntry {
-        name: "PIMREG",
-        value: 279,
-    },
-    ArphrdEntry {
-        name: "PHONET",
-        value: 820,
-    },
-    ArphrdEntry {
-        name: "PHONET_PIPE",
-        value: 821,
-    },
-    ArphrdEntry {
-        name: "PPP",
-        value: 512,
-    },
-    ArphrdEntry {
-        name: "PRONET",
-        value: 4,
-    },
-    ArphrdEntry {
-        name: "RAWHDLC",
-        value: 518,
-    },
-    ArphrdEntry {
-        name: "RAWIP",
-        value: 519,
-    },
-    ArphrdEntry {
-        name: "ROSE",
-        value: 270,
-    },
-    ArphrdEntry {
-        name: "RSRVD",
-        value: 260,
-    },
-    ArphrdEntry {
-        name: "SKIP",
-        value: 771,
-    },
-    ArphrdEntry {
-        name: "SLIP",
-        value: 256,
-    },
-    ArphrdEntry {
-        name: "SLIP6",
-        value: 258,
-    },
-    ArphrdEntry {
-        name: "SIT",
-        value: 776,
-    },
-    ArphrdEntry {
-        name: "TUNNEL",
-        value: 768,
-    },
-    ArphrdEntry {
-        name: "TUNNEL6",
-        value: 769,
-    },
-    ArphrdEntry {
-        name: "VOID",
-        value: 65535,
-    },
-    ArphrdEntry {
-        name: "VSOCKMON",
-        value: 826,
-    },
-    ArphrdEntry {
-        name: "X25",
-        value: 271,
-    },
-];
-
 // ── Value-to-name lookup table (sorted by value) ──────────────────────────
+//
+// Mirrors the list generated from linux/if_arp.h. The to-name AWK authority
+// deliberately omits HDLC because it aliases CISCO; from-name accepts that
+// alias explicitly below.
 
 struct ArphrdValueEntry {
     value: i32,
-    name: &'static str,
+    name: &'static [u8],
 }
 
 static ARPHRD_TO_NAME_TABLE: &[ArphrdValueEntry] = &[
     ArphrdValueEntry {
         value: 0,
-        name: "NETROM",
+        name: b"NETROM\0",
     },
     ArphrdValueEntry {
         value: 1,
-        name: "ETHER",
+        name: b"ETHER\0",
     },
     ArphrdValueEntry {
         value: 2,
-        name: "EETHER",
+        name: b"EETHER\0",
     },
     ArphrdValueEntry {
         value: 3,
-        name: "AX25",
+        name: b"AX25\0",
     },
     ArphrdValueEntry {
         value: 4,
-        name: "PRONET",
+        name: b"PRONET\0",
     },
     ArphrdValueEntry {
         value: 5,
-        name: "CHAOS",
+        name: b"CHAOS\0",
     },
     ArphrdValueEntry {
         value: 6,
-        name: "IEEE802",
+        name: b"IEEE802\0",
     },
     ArphrdValueEntry {
         value: 7,
-        name: "ARCNET",
+        name: b"ARCNET\0",
     },
     ArphrdValueEntry {
         value: 8,
-        name: "APPLETLK",
+        name: b"APPLETLK\0",
     },
     ArphrdValueEntry {
         value: 15,
-        name: "DLCI",
+        name: b"DLCI\0",
     },
     ArphrdValueEntry {
         value: 19,
-        name: "ATM",
+        name: b"ATM\0",
     },
     ArphrdValueEntry {
         value: 23,
-        name: "METRICOM",
+        name: b"METRICOM\0",
     },
     ArphrdValueEntry {
         value: 24,
-        name: "IEEE1394",
+        name: b"IEEE1394\0",
     },
     ArphrdValueEntry {
         value: 27,
-        name: "EUI64",
+        name: b"EUI64\0",
     },
     ArphrdValueEntry {
         value: 32,
-        name: "INFINIBAND",
+        name: b"INFINIBAND\0",
     },
     ArphrdValueEntry {
         value: 256,
-        name: "SLIP",
+        name: b"SLIP\0",
     },
     ArphrdValueEntry {
         value: 257,
-        name: "CSLIP",
+        name: b"CSLIP\0",
     },
     ArphrdValueEntry {
         value: 258,
-        name: "SLIP6",
+        name: b"SLIP6\0",
     },
     ArphrdValueEntry {
         value: 259,
-        name: "CSLIP6",
+        name: b"CSLIP6\0",
     },
     ArphrdValueEntry {
         value: 260,
-        name: "RSRVD",
+        name: b"RSRVD\0",
     },
     ArphrdValueEntry {
         value: 264,
-        name: "ADAPT",
+        name: b"ADAPT\0",
     },
     ArphrdValueEntry {
         value: 270,
-        name: "ROSE",
+        name: b"ROSE\0",
     },
     ArphrdValueEntry {
         value: 271,
-        name: "X25",
+        name: b"X25\0",
     },
     ArphrdValueEntry {
         value: 272,
-        name: "HWX25",
-    },
-    ArphrdValueEntry {
-        value: 277,
-        name: "IPDDP",
-    },
-    ArphrdValueEntry {
-        value: 279,
-        name: "PIMREG",
+        name: b"HWX25\0",
     },
     ArphrdValueEntry {
         value: 280,
-        name: "CAN",
+        name: b"CAN\0",
     },
     ArphrdValueEntry {
         value: 290,
-        name: "MCTP",
+        name: b"MCTP\0",
     },
     ArphrdValueEntry {
         value: 512,
-        name: "PPP",
+        name: b"PPP\0",
     },
     ArphrdValueEntry {
         value: 513,
-        name: "CISCO",
+        name: b"CISCO\0",
     },
     ArphrdValueEntry {
         value: 516,
-        name: "LAPB",
+        name: b"LAPB\0",
     },
     ArphrdValueEntry {
         value: 517,
-        name: "DDCMP",
+        name: b"DDCMP\0",
     },
     ArphrdValueEntry {
         value: 518,
-        name: "RAWHDLC",
+        name: b"RAWHDLC\0",
     },
     ArphrdValueEntry {
         value: 519,
-        name: "RAWIP",
+        name: b"RAWIP\0",
     },
     ArphrdValueEntry {
         value: 768,
-        name: "TUNNEL",
+        name: b"TUNNEL\0",
     },
     ArphrdValueEntry {
         value: 769,
-        name: "TUNNEL6",
+        name: b"TUNNEL6\0",
     },
     ArphrdValueEntry {
         value: 770,
-        name: "FRAD",
+        name: b"FRAD\0",
     },
     ArphrdValueEntry {
         value: 771,
-        name: "SKIP",
+        name: b"SKIP\0",
     },
     ArphrdValueEntry {
         value: 772,
-        name: "LOOPBACK",
+        name: b"LOOPBACK\0",
     },
     ArphrdValueEntry {
         value: 773,
-        name: "LOCALTLK",
+        name: b"LOCALTLK\0",
     },
     ArphrdValueEntry {
         value: 774,
-        name: "FDDI",
+        name: b"FDDI\0",
     },
     ArphrdValueEntry {
         value: 775,
-        name: "BIF",
+        name: b"BIF\0",
     },
     ArphrdValueEntry {
         value: 776,
-        name: "SIT",
+        name: b"SIT\0",
+    },
+    ArphrdValueEntry {
+        value: 777,
+        name: b"IPDDP\0",
     },
     ArphrdValueEntry {
         value: 778,
-        name: "IPGRE",
+        name: b"IPGRE\0",
+    },
+    ArphrdValueEntry {
+        value: 779,
+        name: b"PIMREG\0",
     },
     ArphrdValueEntry {
         value: 780,
-        name: "HIPPI",
+        name: b"HIPPI\0",
     },
     ArphrdValueEntry {
         value: 781,
-        name: "ASH",
+        name: b"ASH\0",
     },
     ArphrdValueEntry {
         value: 782,
-        name: "ECONET",
+        name: b"ECONET\0",
     },
     ArphrdValueEntry {
         value: 783,
-        name: "IRDA",
+        name: b"IRDA\0",
     },
     ArphrdValueEntry {
         value: 784,
-        name: "FCPP",
+        name: b"FCPP\0",
     },
     ArphrdValueEntry {
         value: 785,
-        name: "FCAL",
+        name: b"FCAL\0",
     },
     ArphrdValueEntry {
         value: 786,
-        name: "FCPL",
+        name: b"FCPL\0",
     },
     ArphrdValueEntry {
         value: 787,
-        name: "FCFABRIC",
+        name: b"FCFABRIC\0",
     },
     ArphrdValueEntry {
         value: 800,
-        name: "IEEE802_TR",
+        name: b"IEEE802_TR\0",
     },
     ArphrdValueEntry {
         value: 801,
-        name: "IEEE80211",
+        name: b"IEEE80211\0",
     },
     ArphrdValueEntry {
         value: 802,
-        name: "IEEE80211_PRISM",
+        name: b"IEEE80211_PRISM\0",
     },
     ArphrdValueEntry {
         value: 803,
-        name: "IEEE80211_RADIOTAP",
+        name: b"IEEE80211_RADIOTAP\0",
     },
     ArphrdValueEntry {
         value: 804,
-        name: "IEEE802154",
+        name: b"IEEE802154\0",
     },
     ArphrdValueEntry {
         value: 805,
-        name: "IEEE802154_MONITOR",
+        name: b"IEEE802154_MONITOR\0",
     },
     ArphrdValueEntry {
         value: 820,
-        name: "PHONET",
+        name: b"PHONET\0",
     },
     ArphrdValueEntry {
         value: 821,
-        name: "PHONET_PIPE",
+        name: b"PHONET_PIPE\0",
     },
     ArphrdValueEntry {
         value: 822,
-        name: "CAIF",
+        name: b"CAIF\0",
     },
     ArphrdValueEntry {
         value: 823,
-        name: "IP6GRE",
+        name: b"IP6GRE\0",
     },
     ArphrdValueEntry {
         value: 824,
-        name: "NETLINK",
+        name: b"NETLINK\0",
     },
     ArphrdValueEntry {
         value: 825,
-        name: "6LOWPAN",
+        name: b"6LOWPAN\0",
     },
     ArphrdValueEntry {
         value: 826,
-        name: "VSOCKMON",
+        name: b"VSOCKMON\0",
     },
     ArphrdValueEntry {
         value: 65534,
-        name: "NONE",
+        name: b"NONE\0",
     },
     ArphrdValueEntry {
         value: 65535,
-        name: "VOID",
+        name: b"VOID\0",
     },
 ];
 
 // ── arphrd_from_name ──────────────────────────────────────────────────────
 
-/// Convert an ARPHRD name string to its integer value.
-/// Accepts both short names ("ETHER") and "ARPHRD_ETHER" form.
-/// Case-sensitive. Returns Err(-EINVAL) on unknown names.
-pub fn arphrd_from_name(name: &str) -> Result<i32, i32> {
-    let lookup = name.strip_prefix("ARPHRD_").unwrap_or(name);
-    for entry in ARPHRD_FROM_NAME_TABLE {
-        if entry.name == lookup {
-            return Ok(entry.value);
-        }
+fn arphrd_from_name_bytes(name: &[u8]) -> Result<i32, i32> {
+    if name.eq_ignore_ascii_case(b"HDLC") {
+        return Ok(Arphrd::Cisco as i32);
     }
-    Err(Errno::EINVAL.to_neg_errno())
+
+    ARPHRD_TO_NAME_TABLE
+        .iter()
+        .find_map(|entry| {
+            ffi_string_table::entry_cstr(entry.name)
+                .to_bytes()
+                .eq_ignore_ascii_case(name)
+                .then_some(entry.value)
+        })
+        .ok_or_else(|| Errno::EINVAL.to_neg_errno())
+}
+
+/// Convert an ARPHRD name string to its integer value.
+///
+/// The generated C gperf table is ASCII case-insensitive and accepts the
+/// `HDLC` alias for `CISCO`; names do not include an `ARPHRD_` prefix.
+pub fn arphrd_from_name(name: &str) -> Result<i32, i32> {
+    arphrd_from_name_bytes(name.as_bytes())
 }
 
 // ── arphrd_to_name ───────────────────────────────────────────────────────
@@ -664,6 +396,10 @@ pub fn arphrd_from_name(name: &str) -> Result<i32, i32> {
 /// Return the ARPHRD name string for the given hardware type value.
 /// Returns None if the value is not recognized.
 pub fn arphrd_to_name(id: i32) -> Option<&'static str> {
+    arphrd_entry(id).map(|entry| ffi_string_table::entry_str(entry.name))
+}
+
+fn arphrd_entry(id: i32) -> Option<&'static ArphrdValueEntry> {
     let mut lo: usize = 0;
     let mut hi = ARPHRD_TO_NAME_TABLE.len();
     while lo < hi {
@@ -674,7 +410,7 @@ pub fn arphrd_to_name(id: i32) -> Option<&'static str> {
         } else if mid_val > id {
             hi = mid;
         } else {
-            return Some(ARPHRD_TO_NAME_TABLE[mid].name);
+            return Some(&ARPHRD_TO_NAME_TABLE[mid]);
         }
     }
     None
@@ -685,14 +421,52 @@ pub fn arphrd_to_name(id: i32) -> Option<&'static str> {
 /// Return the hardware address length for the given ARP hardware type.
 /// Matches C arphrd_to_hw_addr_len(): ETH_ALEN=6, INFINIBAND_ALEN=20,
 /// sizeof(in_addr)=4, sizeof(in6_addr)=16.
-pub fn arphrd_to_hw_addr_len(arphrd: u32) -> usize {
-    match arphrd as i32 {
+pub fn arphrd_to_hw_addr_len(arphrd: u16) -> usize {
+    match arphrd {
         1 => 6,               // ARPHRD_ETHER
         32 => 20,             // ARPHRD_INFINIBAND
         768 | 776 | 778 => 4, // TUNNEL, SIT, IPGRE
         769 | 823 => 16,      // TUNNEL6, IP6GRE
         _ => 0,
     }
+}
+
+/// C ABI facade for `arphrd_from_name()`.
+///
+/// The C authority asserts on NULL. The Rust facade returns `-EINVAL` for that
+/// invalid call domain so the shadow ABI fails closed instead of aborting.
+///
+/// # Safety
+///
+/// A non-NULL `name` must point to a readable NUL-terminated C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_arphrd_from_name(name: *const c_char) -> c_int {
+    if name.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: required by this facade's contract and checked for NULL above.
+    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    match arphrd_from_name_bytes(name) {
+        Ok(value) | Err(value) => value,
+    }
+}
+
+/// C ABI facade for `arphrd_to_name()`.
+///
+/// Returned pointers borrow immutable process-lifetime storage and must not be
+/// freed. Unknown values return NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_arphrd_to_name(id: c_int) -> *const c_char {
+    arphrd_entry(id).map_or(std::ptr::null(), |entry| {
+        ffi_string_table::entry_cstr(entry.name).as_ptr()
+    })
+}
+
+/// C ABI facade for `arphrd_to_hw_addr_len()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_arphrd_to_hw_addr_len(arphrd: u16) -> usize {
+    arphrd_to_hw_addr_len(arphrd)
 }
 
 #[cfg(test)]
@@ -721,10 +495,11 @@ mod tests {
     }
 
     #[test]
-    fn test_arphrd_from_name_arphrd_prefix() {
-        assert_eq!(arphrd_from_name("ARPHRD_ETHER"), Ok(1));
-        assert_eq!(arphrd_from_name("ARPHRD_NONE"), Ok(65534));
-        assert_eq!(arphrd_from_name("ARPHRD_VOID"), Ok(65535));
+    fn test_arphrd_from_name_matches_generated_gperf_semantics() {
+        assert_eq!(arphrd_from_name("ether"), Ok(1));
+        assert_eq!(arphrd_from_name("Ether"), Ok(1));
+        assert_eq!(arphrd_from_name("HDLC"), Ok(513));
+        assert!(arphrd_from_name("ARPHRD_ETHER").is_err());
     }
 
     #[test]
@@ -737,6 +512,8 @@ mod tests {
         assert_eq!(arphrd_from_name("IEEE80211"), Ok(801));
         assert_eq!(arphrd_from_name("MCTP"), Ok(290));
         assert_eq!(arphrd_from_name("6LOWPAN"), Ok(825));
+        assert_eq!(arphrd_from_name("IPDDP"), Ok(777));
+        assert_eq!(arphrd_from_name("PIMREG"), Ok(779));
     }
 
     #[test]
@@ -746,8 +523,6 @@ mod tests {
             Err(Errno::EINVAL.to_neg_errno())
         );
         assert_eq!(arphrd_from_name(""), Err(Errno::EINVAL.to_neg_errno()));
-        assert!(arphrd_from_name("ether").is_err());
-        assert!(arphrd_from_name("Ether").is_err());
     }
 
     #[test]
@@ -813,7 +588,7 @@ mod tests {
         assert_eq!(arphrd_to_hw_addr_len(0), 0);
         assert_eq!(arphrd_to_hw_addr_len(3), 0);
         assert_eq!(arphrd_to_hw_addr_len(999), 0);
-        assert_eq!(arphrd_to_hw_addr_len(u32::MAX), 0);
+        assert_eq!(arphrd_to_hw_addr_len(u16::MAX), 0);
     }
 
     #[test]

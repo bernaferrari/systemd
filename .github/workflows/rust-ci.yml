@@ -217,6 +217,13 @@ jobs:
           test-compare-operator-rust
           test-confidential-virt-rust
           test-hexdecoct-rust
+          test-env-util-rust
+          test-credential-validators-rust
+          test-locale-util-rust
+          test-image-class-rust
+          test-arphrd-util-rust
+          test-bus-error-rust
+          test-fstype-util-rust
           test-boot-entry-rust
           test-pkcs11-rust
           test-misc-rust2
@@ -314,6 +321,13 @@ jobs:
           test-compare-operator-rust
           test-confidential-virt-rust
           test-hexdecoct-rust
+          test-env-util-rust
+          test-credential-validators-rust
+          test-locale-util-rust
+          test-image-class-rust
+          test-arphrd-util-rust
+          test-bus-error-rust
+          test-fstype-util-rust
           test-boot-entry-rust
           test-pkcs11-rust
           test-misc-rust2

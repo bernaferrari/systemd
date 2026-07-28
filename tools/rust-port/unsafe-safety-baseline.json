@@ -30,6 +30,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 8
     },
+    "src/basic/rust/arphrd_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
     "src/basic/rust/basic_validators.rs": {
       "missing_safety": 1,
       "missing_safety_sites": [
@@ -41,6 +46,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
+    },
+    "src/basic/rust/bus_error_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 21
     },
     "src/basic/rust/bus_type_util.rs": {
       "missing_safety": 0,
@@ -67,6 +77,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
+    "src/basic/rust/credential_validators.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
     "src/basic/rust/devnum_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -76,6 +91,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
+    },
+    "src/basic/rust/env_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 21
     },
     "src/basic/rust/dns_label.rs": {
       "missing_safety": 5,
@@ -138,6 +158,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 4
     },
+    "src/basic/rust/fstype_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 16
+    },
     "src/basic/rust/gpt_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -156,7 +181,7 @@
     "src/basic/rust/image_class.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 3
+      "unsafe_sites": 5
     },
     "src/basic/rust/import_util.rs": {
       "missing_safety": 0,
@@ -179,6 +204,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
+    },
+    "src/basic/rust/locale_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
     },
     "src/basic/rust/iovec_util.rs": {
       "missing_safety": 2,
@@ -1936,7 +1966,7 @@
   },
   "totals": {
     "missing_safety": 632,
-    "unsafe_sites": 4657
+    "unsafe_sites": 4727
   },
   "version": 2,
   "window": 3

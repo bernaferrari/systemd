@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/os-util.c (image_class string table, os_release_pretty_name)
+// PORT-SYNC: scope=basic.image-class; authority=src/basic/os-util.c,src/basic/os-util.h
 //
 // Image class string table lookups and OS release pretty name resolution.
 
 use crate::ffi::Errno;
-use libc::c_char;
+use crate::ffi_string_table::{self, Entry as FfiEntry};
+use std::ffi::c_char;
 
 // ── ImageClass enum ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(i32)]
 pub enum ImageClass {
     Machine = 0,
     Portable = 1,
@@ -35,11 +37,12 @@ impl ImageClass {
 
 // ── Image class string table ─────────────────────────────────────────────
 
-static IMAGE_CLASS_TABLE: &[(ImageClass, &str)] = &[
-    (ImageClass::Machine, "machine"),
-    (ImageClass::Portable, "portable"),
-    (ImageClass::Sysext, "sysext"),
-    (ImageClass::Confext, "confext"),
+/// The sole authority for both Rust strings and borrowed C ABI pointers.
+static IMAGE_CLASS_TABLE: &[FfiEntry] = &[
+    (ImageClass::Machine as i32, b"machine\0"),
+    (ImageClass::Portable as i32, b"portable\0"),
+    (ImageClass::Sysext as i32, b"sysext\0"),
+    (ImageClass::Confext as i32, b"confext\0"),
 ];
 
 // ── image_class_to_string ────────────────────────────────────────────────
@@ -47,11 +50,8 @@ static IMAGE_CLASS_TABLE: &[(ImageClass, &str)] = &[
 /// Convert an ImageClass to its string representation.
 /// Returns None for invalid values.
 pub fn image_class_to_string(c: ImageClass) -> &'static str {
-    IMAGE_CLASS_TABLE
-        .iter()
-        .find(|&&(class, _)| class == c)
-        .map(|&(_, name)| name)
-        .unwrap()
+    ffi_string_table::to_str(IMAGE_CLASS_TABLE, c as i32)
+        .expect("every ImageClass variant has a static C string")
 }
 
 /// Convert a raw i32 to image class string.
@@ -64,15 +64,29 @@ pub fn image_class_to_string_from_raw(val: i32) -> Option<&'static str> {
 /// Convert a string to an ImageClass.
 /// Case-sensitive. Returns Err(-EINVAL) on failure or empty input.
 pub fn image_class_from_string(s: &str) -> Result<ImageClass, i32> {
-    if s.is_empty() {
-        return Err(Errno::EINVAL.to_neg_errno());
-    }
-    for &(class, name) in IMAGE_CLASS_TABLE {
-        if name == s {
-            return Ok(class);
-        }
-    }
-    Err(Errno::EINVAL.to_neg_errno())
+    ffi_string_table::from_str(IMAGE_CLASS_TABLE, s)
+        .and_then(ImageClass::from_raw)
+        .ok_or(Errno::EINVAL.to_neg_errno())
+}
+
+/// C ABI facade for `image_class_to_string()`.
+///
+/// Returns a borrowed static C string or NULL for an unknown enum value.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_image_class_to_string(value: i32) -> *const c_char {
+    ffi_string_table::to_ptr(IMAGE_CLASS_TABLE, value)
+}
+
+/// C ABI facade for `image_class_from_string()`.
+///
+/// # Safety
+///
+/// A non-NULL `input` must point to a live NUL-terminated C string for this
+/// call. NULL maps to `-EINVAL`, matching the C string table helper.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_class_from_string(input: *const c_char) -> i32 {
+    // SAFETY: this is exactly the entry point's documented pointer contract.
+    unsafe { ffi_string_table::from_ptr(IMAGE_CLASS_TABLE, input, Errno::EINVAL.to_neg_errno()) }
 }
 
 // ── os_release_pretty_name ───────────────────────────────────────────────

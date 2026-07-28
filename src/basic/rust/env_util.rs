@@ -1,36 +1,72 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/env-util.c (validation subset)
+// PORT-SYNC: scope=basic.env-util; authority=src/basic/env-util.c,src/basic/env-util.h
 //
 // Environment variable validation functions.
-// Pure Rust — no syscalls, no raw pointer traversal.
+//
+// The ordinary Rust API accepts `&str`; the deliberately narrow C ABI
+// adapters below preserve C-string byte semantics, including invalid UTF-8
+// rejection and NULL-terminated string-vector traversal.
+
+use std::ffi::CStr;
+
+use libc::c_char;
+
+use crate::string_util::valid_utf8_character;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
-/// Default fallback for `_SC_ARG_MAX` when the system call is unavailable.
-/// Linux typically reports 2097152; we use a conservative constant.
+/// Default fallback for `_SC_ARG_MAX` when the system call unexpectedly fails.
 const DEFAULT_ARG_MAX: usize = 2097152;
 
 // ── Internal: arg_max ─────────────────────────────────────────────────────
 
 /// Return the system's `_SC_ARG_MAX` value.
 ///
-/// In the C version this calls `sysconf(_SC_ARG_MAX)`.  For the pure-Rust
-/// port we read `/proc/sys/kernel/arg_max` on Linux (the common case for
-/// systemd) and fall back to `DEFAULT_ARG_MAX` otherwise.
+/// This is the same `sysconf(_SC_ARG_MAX)` query made by C `sc_arg_max()`.
 fn arg_max() -> usize {
-    #[cfg(target_os = "linux")]
-    {
-        std::fs::read_to_string("/proc/sys/kernel/arg_max")
-            .ok()
-            .and_then(|s| s.trim().parse::<usize>().ok())
-            .filter(|&v| v > 0)
-            .unwrap_or(DEFAULT_ARG_MAX)
+    // SAFETY: `sysconf` has no pointer arguments and `_SC_ARG_MAX` is a
+    // platform constant supplied by libc.
+    let value = unsafe { libc::sysconf(libc::_SC_ARG_MAX) };
+    usize::try_from(value)
+        .ok()
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_ARG_MAX)
+}
+
+#[inline]
+fn utf8_is_valid_bytes(bytes: &[u8]) -> bool {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let Some((length, _)) = valid_utf8_character(&bytes[offset..]) else {
+            return false;
+        };
+        offset += length;
     }
-    #[cfg(not(target_os = "linux"))]
-    {
-        DEFAULT_ARG_MAX
-    }
+    true
+}
+
+fn env_name_is_valid_bytes(bytes: &[u8]) -> bool {
+    !bytes.is_empty()
+        && !bytes[0].is_ascii_digit()
+        && bytes.len() <= arg_max().saturating_sub(2)
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+}
+
+fn env_value_is_valid_bytes(bytes: &[u8]) -> bool {
+    utf8_is_valid_bytes(bytes) && bytes.len() <= arg_max().saturating_sub(3)
+}
+
+fn env_assignment_is_valid_bytes(bytes: &[u8]) -> bool {
+    let Some(eq) = bytes.iter().position(|byte| *byte == b'=') else {
+        return false;
+    };
+
+    env_name_is_valid_bytes(&bytes[..eq])
+        && env_value_is_valid_bytes(&bytes[eq + 1..])
+        && bytes.len() <= arg_max().saturating_sub(1)
 }
 
 // ── env_name_is_valid ─────────────────────────────────────────────────────
@@ -45,27 +81,7 @@ fn arg_max() -> usize {
 ///
 /// Corresponds to `env_name_is_valid()` in env-util.c.
 pub fn env_name_is_valid(name: &str) -> bool {
-    if name.is_empty() {
-        return false;
-    }
-
-    let bytes = name.as_bytes();
-
-    // Must not start with a digit
-    if bytes[0].is_ascii_digit() {
-        return false;
-    }
-
-    // Length check: name must fit within arg_max - 2
-    let max = arg_max();
-    if name.len() > max.saturating_sub(2) {
-        return false;
-    }
-
-    // All characters must be [A-Za-z0-9_]
-    bytes
-        .iter()
-        .all(|&b| b.is_ascii_alphanumeric() || b == b'_')
+    env_name_is_valid_bytes(name.as_bytes())
 }
 
 // ── env_name_is_valid_n ───────────────────────────────────────────────────
@@ -74,30 +90,18 @@ pub fn env_name_is_valid(name: &str) -> bool {
 ///
 /// Mirrors `env_name_is_valid_n(e, n)` from the C code.
 pub fn env_name_is_valid_n(s: &str, n: usize) -> bool {
-    if n == 0 {
-        return false;
-    }
-    let prefix = match s.char_indices().nth(n) {
-        Some((idx, _)) => &s[..idx],
-        None => s,
-    };
-    if prefix.len() < n {
-        return false;
-    }
-    env_name_is_valid(prefix)
+    s.as_bytes().get(..n).is_some_and(env_name_is_valid_bytes)
 }
 
 // ── env_value_is_valid ────────────────────────────────────────────────────
 
 /// Check whether `value` is a valid environment variable value.
 ///
-/// A value is valid if it is non-empty (the caller passed a real string)
-/// and shorter than `arg_max - 3`.
+/// A value is valid if it is valid UTF-8 and shorter than `arg_max - 3`.
 ///
 /// Corresponds to `env_value_is_valid()` in env-util.c.
 pub fn env_value_is_valid(value: &str) -> bool {
-    let max = arg_max();
-    value.len() <= max.saturating_sub(3)
+    env_value_is_valid_bytes(value.as_bytes())
 }
 
 // ── env_assignment_is_valid ───────────────────────────────────────────────
@@ -109,18 +113,7 @@ pub fn env_value_is_valid(value: &str) -> bool {
 ///
 /// Corresponds to `env_assignment_is_valid()` in env-util.c.
 pub fn env_assignment_is_valid(assignment: &str) -> bool {
-    let eq_pos = match assignment.find('=') {
-        Some(pos) => pos,
-        None => return false,
-    };
-
-    let name_part = &assignment[..eq_pos];
-    if !env_name_is_valid(name_part) {
-        return false;
-    }
-
-    let max = arg_max();
-    assignment.len() <= max.saturating_sub(1)
+    env_assignment_is_valid_bytes(assignment.as_bytes())
 }
 
 // ── strv_env_is_valid ─────────────────────────────────────────────────────
@@ -196,6 +189,172 @@ pub fn strv_env_name_or_assignment_is_valid(entries: &[&str]) -> bool {
         }
     }
     true
+}
+
+// ── C ABI adapters ───────────────────────────────────────────────────────
+
+/// Borrow the visible bytes of a C string for the duration of one adapter.
+///
+/// # Safety
+/// `input` must be null or point to a readable NUL-terminated C string.
+unsafe fn c_string_bytes<'a>(input: *const c_char) -> Option<&'a [u8]> {
+    if input.is_null() {
+        return None;
+    }
+
+    // SAFETY: the adapter's public contract requires a readable terminator.
+    Some(unsafe { CStr::from_ptr(input) }.to_bytes())
+}
+
+/// Get one element from a NULL-terminated C string vector.
+///
+/// # Safety
+/// `list` must be null or point to a readable NULL-terminated vector whose
+/// non-null members are readable NUL-terminated C strings.
+unsafe fn strv_entry<'a>(list: *const *mut c_char, index: usize) -> Option<&'a [u8]> {
+    if list.is_null() {
+        return None;
+    }
+
+    // SAFETY: the adapter's public contract guarantees this vector slot is
+    // readable until its terminator.
+    let entry = unsafe { *list.add(index) };
+    // SAFETY: every non-null vector member satisfies c_string_bytes' contract.
+    unsafe { c_string_bytes(entry) }
+}
+
+/// C ABI for `env_name_is_valid()`.
+///
+/// # Safety
+/// `e` must be null or point to a readable NUL-terminated C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_env_name_is_valid(e: *const c_char) -> bool {
+    // SAFETY: the entry-point contract is exactly c_string_bytes' contract.
+    unsafe { c_string_bytes(e) }.is_some_and(env_name_is_valid_bytes)
+}
+
+/// C ABI for `env_value_is_valid()`.
+///
+/// # Safety
+/// `e` must be null or point to a readable NUL-terminated C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_env_value_is_valid(e: *const c_char) -> bool {
+    // SAFETY: the entry-point contract is exactly c_string_bytes' contract.
+    unsafe { c_string_bytes(e) }.is_some_and(env_value_is_valid_bytes)
+}
+
+/// C ABI for `env_assignment_is_valid()`.
+///
+/// # Safety
+/// `e` must be null or point to a readable NUL-terminated C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_env_assignment_is_valid(e: *const c_char) -> bool {
+    // The C implementation asserts for NULL. The shadow ABI remains
+    // fail-closed for that invalid call instead of dereferencing it.
+    // SAFETY: the entry-point contract is exactly c_string_bytes' contract.
+    unsafe { c_string_bytes(e) }.is_some_and(env_assignment_is_valid_bytes)
+}
+
+/// C ABI for `strv_env_is_valid()`.
+///
+/// # Safety
+/// `entries` must be null or point to a readable NULL-terminated vector whose
+/// non-null members are readable NUL-terminated C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strv_env_is_valid(entries: *const *mut c_char) -> bool {
+    let mut index = 0;
+    loop {
+        // SAFETY: the entry-point contract is exactly strv_entry's contract.
+        let Some(entry) = (unsafe { strv_entry(entries, index) }) else {
+            return true;
+        };
+        if !env_assignment_is_valid_bytes(entry) {
+            return false;
+        }
+        let name_len = entry
+            .iter()
+            .position(|byte| *byte == b'=')
+            .expect("validated environment assignment contains '='");
+
+        let mut following = index + 1;
+        loop {
+            // SAFETY: as above, including every later vector slot.
+            let Some(other) = (unsafe { strv_entry(entries, following) }) else {
+                break;
+            };
+            if other.get(name_len) == Some(&b'=') && other[..name_len] == entry[..name_len] {
+                return false;
+            }
+            following += 1;
+        }
+        index += 1;
+    }
+}
+
+/// C ABI for `strv_env_name_is_valid()`.
+///
+/// # Safety
+/// `names` must be null or point to a readable NULL-terminated vector whose
+/// non-null members are readable NUL-terminated C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strv_env_name_is_valid(names: *const *mut c_char) -> bool {
+    let mut index = 0;
+    loop {
+        // SAFETY: the entry-point contract is exactly strv_entry's contract.
+        let Some(name) = (unsafe { strv_entry(names, index) }) else {
+            return true;
+        };
+        if !env_name_is_valid_bytes(name) {
+            return false;
+        }
+
+        let mut following = index + 1;
+        loop {
+            // SAFETY: as above, including every later vector slot.
+            let Some(other) = (unsafe { strv_entry(names, following) }) else {
+                break;
+            };
+            if other == name {
+                return false;
+            }
+            following += 1;
+        }
+        index += 1;
+    }
+}
+
+/// C ABI for `strv_env_name_or_assignment_is_valid()`.
+///
+/// # Safety
+/// `entries` must be null or point to a readable NULL-terminated vector whose
+/// non-null members are readable NUL-terminated C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strv_env_name_or_assignment_is_valid(
+    entries: *const *mut c_char,
+) -> bool {
+    let mut index = 0;
+    loop {
+        // SAFETY: the entry-point contract is exactly strv_entry's contract.
+        let Some(entry) = (unsafe { strv_entry(entries, index) }) else {
+            return true;
+        };
+        if !env_assignment_is_valid_bytes(entry) && !env_name_is_valid_bytes(entry) {
+            return false;
+        }
+
+        let mut following = index + 1;
+        loop {
+            // SAFETY: as above, including every later vector slot.
+            let Some(other) = (unsafe { strv_entry(entries, following) }) else {
+                break;
+            };
+            if other == entry {
+                return false;
+            }
+            following += 1;
+        }
+        index += 1;
+    }
 }
 
 #[cfg(test)]

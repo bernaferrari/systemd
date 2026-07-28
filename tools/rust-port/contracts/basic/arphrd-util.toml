@@ -1,0 +1,66 @@
+schema = 1
+module = "arphrd_util"
+semantic_coverage = "complete"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+
+[authority]
+c_headers = ["src/basic/arphrd-util.h"]
+c_sources = ["src/basic/arphrd-util.c"]
+rust_headers = ["src/basic/rust/arphrd_util.h"]
+rust_sources = ["src/basic/rust/arphrd_util.rs"]
+
+[[surface]]
+id = "arphrd-name-conversion"
+c_symbols = ["arphrd_from_name"]
+rust_symbols = ["rs_arphrd_from_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-arphrd-util-rust.c"
+meson_target = "test-arphrd-util-rust"
+labels = ["arphrd-name-conversion"]
+
+[[surface]]
+id = "arphrd-name-rendering"
+c_symbols = ["arphrd_to_name"]
+rust_symbols = ["rs_arphrd_to_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-arphrd-util-rust.c"
+meson_target = "test-arphrd-util-rust"
+labels = ["arphrd-name-rendering"]
+
+[[surface]]
+id = "arphrd-hardware-address-length"
+c_symbols = ["arphrd_to_hw_addr_len"]
+rust_symbols = ["rs_arphrd_to_hw_addr_len"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-arphrd-util-rust.c"
+meson_target = "test-arphrd-util-rust"
+labels = ["arphrd-hardware-address-length"]

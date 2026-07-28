@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+/* PORT-SYNC: scope=basic.fstype-util; authority=src/basic/mountpoint-util.c,src/basic/mountpoint-util.h,src/basic/filesystem-sets.py */
+
 #include <stdbool.h>
 #include <fcntl.h>
 

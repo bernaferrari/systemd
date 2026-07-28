@@ -10,6 +10,7 @@
 #include "locale-util.h"
 #include "string-util.h"
 
+/* RUST-CONTRACT: locale-variable-to-string */
 static void test_locale_variable_to_string(void) {
         const char *c_ret, *r_ret;
 
@@ -48,6 +49,7 @@ static void test_locale_variable_to_string(void) {
         assert_se(streq_ptr(c_ret, r_ret));
 }
 
+/* RUST-CONTRACT: locale-variable-from-string */
 static void test_locale_variable_from_string(void) {
         int c_ret, r_ret;
 
@@ -82,6 +84,7 @@ static void test_locale_variable_from_string(void) {
         assert_se(c_ret == r_ret);
 }
 
+/* RUST-CONTRACT: locale-is-valid */
 static void test_locale_is_valid(void) {
         bool c_ret, r_ret;
 
@@ -134,6 +137,24 @@ static void test_locale_is_valid(void) {
         c_ret = locale_is_valid("en/US");
         r_ret = rs_locale_is_valid("en/US");
         assert_se(c_ret == r_ret);
+
+        /* Invalid filenames in the C helper, despite '.' being in the charset. */
+        c_ret = locale_is_valid(".");
+        r_ret = rs_locale_is_valid(".");
+        assert_se(c_ret == r_ret);
+        assert_se(!c_ret);
+
+        c_ret = locale_is_valid("..");
+        r_ret = rs_locale_is_valid("..");
+        assert_se(c_ret == r_ret);
+        assert_se(!c_ret);
+
+        /* C strings need byte-wise validation, not lossy UTF-8 conversion. */
+        static const char invalid_utf8[] = { 'e', (char) 0xff, 0 };
+        c_ret = locale_is_valid(invalid_utf8);
+        r_ret = rs_locale_is_valid(invalid_utf8);
+        assert_se(c_ret == r_ret);
+        assert_se(!c_ret);
 }
 
 int main(int argc, char **argv) {

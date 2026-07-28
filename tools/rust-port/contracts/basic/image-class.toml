@@ -1,0 +1,79 @@
+schema = 1
+module = "image-class"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "image_name_is_valid",
+    "path_extract_image_name",
+    "path_is_extension_tree",
+    "open_extension_release",
+]
+
+[authority]
+c_headers = ["src/basic/os-util.h"]
+c_sources = ["src/basic/os-util.c"]
+rust_headers = ["src/basic/rust/image_class.h"]
+rust_sources = ["src/basic/rust/image_class.rs"]
+
+[[surface]]
+id = "image-class-to-string"
+c_symbols = ["image_class_to_string"]
+rust_symbols = ["rs_image_class_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-image-class-rust.c"
+meson_target = "test-image-class-rust"
+labels = ["image-class-to-string"]
+
+[[surface]]
+id = "image-class-from-string"
+c_symbols = ["image_class_from_string"]
+rust_symbols = ["rs_image_class_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-image-class-rust.c"
+meson_target = "test-image-class-rust"
+labels = ["image-class-from-string"]
+
+[[surface]]
+id = "os-release-pretty-name"
+c_symbols = ["os_release_pretty_name"]
+rust_symbols = ["rs_os_release_pretty_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-image-name-rust.c"
+meson_target = "test-image-name-rust"
+labels = ["os-release-pretty-name"]

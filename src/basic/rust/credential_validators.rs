@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/creds-util.c (credential_name_valid, credential_glob_valid)
+// PORT-SYNC: scope=shared.credential-validators; authority=src/shared/creds-util.c,src/shared/creds-util.h
 //
 // Credential validation pure functions.
+
+use std::ffi::CStr;
+
+use libc::c_char;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -11,38 +15,34 @@ const FDNAME_MAX: usize = 255;
 
 /// Check if a string is a valid filename (no '/', not "." or "..", length ≤ NAME_MAX).
 /// Port of C `filename_is_valid()`.
-pub fn filename_is_valid(name: &str) -> bool {
+fn filename_is_valid_bytes(name: &[u8]) -> bool {
     if name.is_empty() {
         return false;
     }
-    if name == "." || name == ".." {
+    if name == b"." || name == b".." {
         return false;
     }
-    if name.contains('/') || name.contains('\0') {
+    if name.contains(&b'/') {
         return false;
     }
-    if name.len() > NAME_MAX {
-        return false;
-    }
-    true
+    name.len() <= NAME_MAX
+}
+
+pub fn filename_is_valid(name: &str) -> bool {
+    filename_is_valid_bytes(name.as_bytes())
 }
 
 /// Check if a string is valid for $LISTEN_FDNAMES: printable ASCII, no ':', length ≤ FDNAME_MAX.
 /// Port of C `fdname_is_valid()`.
+fn fdname_is_valid_bytes(name: &[u8]) -> bool {
+    name.len() <= FDNAME_MAX
+        && name
+            .iter()
+            .all(|&byte| (b' '..=b'~').contains(&byte) && byte != b':')
+}
+
 pub fn fdname_is_valid(name: &str) -> bool {
-    if name.is_empty() {
-        // fdname_is_valid allows empty strings
-        return true;
-    }
-    if name.len() > FDNAME_MAX {
-        return false;
-    }
-    for &b in name.as_bytes() {
-        if b < 0x20 || b >= 0x7F || b == b':' {
-            return false;
-        }
-    }
-    true
+    fdname_is_valid_bytes(name.as_bytes())
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -52,7 +52,11 @@ pub fn fdname_is_valid(name: &str) -> bool {
 /// Port of C `credential_name_valid()`.
 /// Credential names must be valid as both filenames and fdnames.
 pub fn credential_name_valid(name: &str) -> bool {
-    filename_is_valid(name) && fdname_is_valid(name)
+    credential_name_valid_bytes(name.as_bytes())
+}
+
+fn credential_name_valid_bytes(name: &[u8]) -> bool {
+    filename_is_valid_bytes(name) && fdname_is_valid_bytes(name)
 }
 
 /// Check if a credential glob expression is valid.
@@ -61,25 +65,29 @@ pub fn credential_name_valid(name: &str) -> bool {
 /// Only trailing asterisk wildcards are allowed. No `?`, `[`, or `]` characters
 /// are permitted (except the trailing `*`).
 pub fn credential_glob_valid(name: &str) -> bool {
+    credential_glob_valid_bytes(name.as_bytes())
+}
+
+fn credential_glob_valid_bytes(name: &[u8]) -> bool {
     if name.is_empty() {
         return false;
     }
 
     // Find first glob character (or end of string)
     let n = name
-        .bytes()
-        .position(|b| b == b'*' || b == b'?' || b == b'[' || b == b']');
+        .iter()
+        .position(|&byte| matches!(byte, b'*' | b'?' | b'[' | b']'));
 
     // No glob found — validate as regular credential name
     let n = match n {
-        None => return credential_name_valid(name),
+        None => return credential_name_valid_bytes(name),
         Some(idx) => idx,
     };
 
     let glob_part = &name[n..];
 
     // Only allow trailing "*", no other glob characters
-    if glob_part != "*" {
+    if glob_part != b"*" {
         return false;
     }
 
@@ -90,7 +98,43 @@ pub fn credential_glob_valid(name: &str) -> bool {
 
     // Validate the portion before the wildcard
     let prefix = &name[..n];
-    credential_name_valid(prefix)
+    credential_name_valid_bytes(prefix)
+}
+
+/// C ABI mirror of `credential_name_valid()`.
+///
+/// # Safety
+///
+/// `name` must be null or point to a live NUL-terminated byte string for the
+/// duration of this call. The storage is borrowed and never retained.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_credential_name_valid(name: *const c_char) -> bool {
+    if name.is_null() {
+        return false;
+    }
+
+    // SAFETY: the entry-point contract guarantees a live NUL-terminated
+    // string after the null check.
+    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    credential_name_valid_bytes(name)
+}
+
+/// C ABI mirror of `credential_glob_valid()`.
+///
+/// # Safety
+///
+/// `name` must be null or point to a live NUL-terminated byte string for the
+/// duration of this call. The storage is borrowed and never retained.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_credential_glob_valid(name: *const c_char) -> bool {
+    if name.is_null() {
+        return false;
+    }
+
+    // SAFETY: the entry-point contract guarantees a live NUL-terminated
+    // string after the null check.
+    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    credential_glob_valid_bytes(name)
 }
 
 #[cfg(test)]

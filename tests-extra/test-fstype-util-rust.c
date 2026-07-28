@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C mountpoint-util.c fstype functions vs Rust */
+/* RUST-CONTRACT: fstype-predicates */
+/* RUST-CONTRACT: path-below-api-vfs */
 
 #include <assert.h>
 #include <string.h>
@@ -335,6 +337,20 @@ static void test_fstype_is_blockdev_backed(void) {
         assert_se(rs_fstype_is_blockdev_backed(NULL) == false);
 }
 
+/* The C predicates compare raw C-string bytes; UTF-8 is not a precondition. */
+static void test_non_utf8_inputs(void) {
+        static const char invalid_utf8[] = "\xff";
+        static const char invalid_utf8_path[] = "/\xff";
+
+        assert_se(fstype_is_ro(invalid_utf8) == rs_fstype_is_ro(invalid_utf8));
+        assert_se(fstype_needs_quota(invalid_utf8) == rs_fstype_needs_quota(invalid_utf8));
+        assert_se(fstype_can_uid_gid(invalid_utf8) == rs_fstype_can_uid_gid(invalid_utf8));
+        assert_se(path_below_api_vfs(invalid_utf8_path) == rs_path_below_api_vfs(invalid_utf8_path));
+        assert_se(fstype_is_network(invalid_utf8) == rs_fstype_is_network(invalid_utf8));
+        assert_se(fstype_is_api_vfs(invalid_utf8) == rs_fstype_is_api_vfs(invalid_utf8));
+        assert_se(fstype_is_blockdev_backed(invalid_utf8) == rs_fstype_is_blockdev_backed(invalid_utf8));
+}
+
 int main(int argc, char **argv) {
         test_fstype_is_ro();
         test_fstype_needs_quota();
@@ -343,5 +359,6 @@ int main(int argc, char **argv) {
         test_fstype_is_network();
         test_fstype_is_api_vfs();
         test_fstype_is_blockdev_backed();
+        test_non_utf8_inputs();
         return 0;
 }

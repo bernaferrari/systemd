@@ -1,0 +1,68 @@
+schema = 1
+module = "bus_error_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "sd_bus_error_free",
+    "sd_bus_error_set",
+    "sd_bus_error_copy",
+    "sd_bus_error_move",
+]
+
+[authority]
+c_headers = [
+    "src/libsystemd/sd-bus/bus-error.h",
+    "src/systemd/sd-bus-protocol.h",
+]
+c_sources = ["src/libsystemd/sd-bus/bus-error.c"]
+rust_headers = ["src/basic/rust/bus_error_util.h"]
+rust_sources = ["src/basic/rust/bus_error_util.rs"]
+
+[[surface]]
+id = "bus-error-is-dirty"
+c_symbols = ["bus_error_is_dirty"]
+rust_symbols = ["rs_bus_error_is_dirty"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-bus-error-rust.c"
+meson_target = "test-bus-error-rust"
+labels = ["bus-error-is-dirty"]
+
+[[surface]]
+id = "sd-bus-error-is-set"
+c_symbols = ["sd_bus_error_is_set"]
+rust_symbols = ["rs_sd_bus_error_is_set"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-bus-error-rust.c"
+meson_target = "test-bus-error-rust"
+labels = ["sd-bus-error-is-set"]
+
+[[surface]]
+id = "sd-bus-error-has-name"
+c_symbols = ["sd_bus_error_has_name"]
+rust_symbols = ["rs_sd_bus_error_has_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-bus-error-rust.c"
+meson_target = "test-bus-error-rust"
+labels = ["sd-bus-error-has-name"]

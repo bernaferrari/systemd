@@ -109,6 +109,7 @@ C_TYPES = {
     "const struct statfs *": "*conststatfs",
     "const struct statx *": "*conststatx",
     "const struct statx_timestamp *": "*conststatx_timestamp",
+    "const sd_bus_error *": "*constSdBusError",
     "void *": "*mutc_void",
     "struct stat *": "*mutstat",
     "struct statfs *": "*mutstatfs",
@@ -116,6 +117,7 @@ C_TYPES = {
     "struct siphash *": "*mutsiphash",
     "struct rs_IoVec *": "*mutIoVec",
     "struct iovec *": "*mutIoVec",
+    "sd_bus_error *": "*mutSdBusError",
     "dev_t *": "*mutu64",
     "mode_t *": "*mutu32",
     "rlim_t *": "*mutu64",
@@ -2902,16 +2904,23 @@ def main() -> int:
                     )
                 authority_curated += 1
                 continue
-            if name == "confidential_virt":
+            string_table_lookup = {
+                "confidential_virt": (
+                    "confidential_virtualization",
+                    "ConfidentialVirtualization",
+                ),
+                "locale_util": ("locale_variable", "LocaleVariable"),
+                "image_class": ("image_class", "ImageClass"),
+            }.get(name)
+            if string_table_lookup is not None:
+                table, table_type = string_table_lookup
                 if (
-                    "DEFINE_STRING_TABLE_LOOKUP(confidential_virtualization, ConfidentialVirtualization);"
-                    not in authority
-                    or "DECLARE_STRING_TABLE_LOOKUP(confidential_virtualization, ConfidentialVirtualization);"
-                    not in authority
-                    or "confidential_virtualization_table" not in authority
+                    f"DEFINE_STRING_TABLE_LOOKUP({table}, {table_type});" not in authority
+                    or f"DECLARE_STRING_TABLE_LOOKUP({table}, {table_type});" not in authority
+                    or f"{table}_table" not in authority
                 ):
                     return fail(
-                        "confidential_virt: current C string-table lookup authority changed"
+                        f"{name}: current C string-table lookup authority changed"
                     )
                 authority_curated += 1
                 continue

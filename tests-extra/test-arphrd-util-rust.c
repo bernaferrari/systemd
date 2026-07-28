@@ -11,6 +11,7 @@
 
 /* ── arphrd_from_name ─────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: arphrd-name-conversion */
 static void test_arphrd_from_name(void) {
         int cr, rr;
 
@@ -33,6 +34,28 @@ static void test_arphrd_from_name(void) {
         rr = rs_arphrd_from_name("IEEE802154");
         assert_se(cr == rr);
 
+        /* The generated gperf authority is case-insensitive. */
+        cr = arphrd_from_name("ether");
+        rr = rs_arphrd_from_name("ether");
+        assert_se(cr == rr);
+        assert_se(cr == ARPHRD_ETHER);
+
+        /* HDLC aliases CISCO in linux/if_arp.h and the from-name table. */
+        cr = arphrd_from_name("HDLC");
+        rr = rs_arphrd_from_name("HDLC");
+        assert_se(cr == rr);
+        assert_se(cr == ARPHRD_CISCO);
+
+        cr = arphrd_from_name("IPDDP");
+        rr = rs_arphrd_from_name("IPDDP");
+        assert_se(cr == rr);
+        assert_se(cr == ARPHRD_IPDDP);
+
+        cr = arphrd_from_name("PIMREG");
+        rr = rs_arphrd_from_name("PIMREG");
+        assert_se(cr == rr);
+        assert_se(cr == ARPHRD_PIMREG);
+
         cr = arphrd_from_name("VOID");
         rr = rs_arphrd_from_name("VOID");
         assert_se(cr == rr);
@@ -51,6 +74,7 @@ static void test_arphrd_from_name(void) {
 
 /* ── arphrd_to_name ───────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: arphrd-name-rendering */
 static void test_arphrd_to_name(void) {
         const char *cr, *rr;
 
@@ -69,6 +93,12 @@ static void test_arphrd_to_name(void) {
         assert_se(cr != NULL && rr != NULL);
         assert_se(streq(cr, rr));
 
+        cr = arphrd_to_name(ARPHRD_HDLC);
+        rr = rs_arphrd_to_name(ARPHRD_HDLC);
+        assert_se(cr != NULL && rr != NULL);
+        assert_se(streq(cr, "CISCO"));
+        assert_se(streq(cr, rr));
+
         /* Unknown value */
         cr = arphrd_to_name(999);
         rr = rs_arphrd_to_name(999);
@@ -78,6 +108,7 @@ static void test_arphrd_to_name(void) {
 
 /* ── arphrd_to_hw_addr_len ────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: arphrd-hardware-address-length */
 static void test_arphrd_to_hw_addr_len(void) {
         size_t cr, rr;
 

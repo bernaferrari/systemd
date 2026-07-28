@@ -553,6 +553,78 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "env_util": (
+            basic_rust / "env_util.h",
+            basic_rust / "env_util.rs",
+            frozenset(
+                {
+                    "rs_env_name_is_valid",
+                    "rs_env_value_is_valid",
+                    "rs_env_assignment_is_valid",
+                    "rs_strv_env_is_valid",
+                    "rs_strv_env_name_is_valid",
+                    "rs_strv_env_name_or_assignment_is_valid",
+                }
+            ),
+        ),
+        "credential_validators": (
+            basic_rust / "credential_validators.h",
+            basic_rust / "credential_validators.rs",
+            frozenset({"rs_credential_name_valid", "rs_credential_glob_valid"}),
+        ),
+        "locale_util": (
+            basic_rust / "locale_util.h",
+            basic_rust / "locale_util.rs",
+            frozenset(
+                {
+                    "rs_locale_variable_to_string",
+                    "rs_locale_variable_from_string",
+                    "rs_locale_is_valid",
+                }
+            ),
+        ),
+        "image_class": (
+            basic_rust / "image_class.h",
+            basic_rust / "image_class.rs",
+            frozenset({"rs_image_class_to_string", "rs_image_class_from_string"}),
+        ),
+        "arphrd_util": (
+            basic_rust / "arphrd_util.h",
+            basic_rust / "arphrd_util.rs",
+            frozenset(
+                {
+                    "rs_arphrd_from_name",
+                    "rs_arphrd_to_name",
+                    "rs_arphrd_to_hw_addr_len",
+                }
+            ),
+        ),
+        "bus_error_util": (
+            basic_rust / "bus_error_util.h",
+            basic_rust / "bus_error_util.rs",
+            frozenset(
+                {
+                    "rs_bus_error_is_dirty",
+                    "rs_sd_bus_error_is_set",
+                    "rs_sd_bus_error_has_name",
+                }
+            ),
+        ),
+        "fstype_util": (
+            basic_rust / "fstype_util.h",
+            basic_rust / "fstype_util.rs",
+            frozenset(
+                {
+                    "rs_fstype_is_ro",
+                    "rs_fstype_needs_quota",
+                    "rs_fstype_can_uid_gid",
+                    "rs_path_below_api_vfs",
+                    "rs_fstype_is_network",
+                    "rs_fstype_is_api_vfs",
+                    "rs_fstype_is_blockdev_backed",
+                }
+            ),
+        ),
     }
     partial_extra_sources = {
         "escape": (
@@ -702,6 +774,15 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "compare_operator": (tests_extra / "test-compare-operator-rust.c",),
         "confidential_virt": (tests_extra / "test-confidential-virt-rust.c",),
         "hexdecoct": (tests_extra / "test-hexdecoct-rust.c",),
+        "env_util": (tests_extra / "test-env-util-rust.c",),
+        "credential_validators": (
+            tests_extra / "test-credential-validators-rust.c",
+        ),
+        "locale_util": (tests_extra / "test-locale-util-rust.c",),
+        "image_class": (tests_extra / "test-image-class-rust.c",),
+        "arphrd_util": (tests_extra / "test-arphrd-util-rust.c",),
+        "bus_error_util": (tests_extra / "test-bus-error-rust.c",),
+        "fstype_util": (tests_extra / "test-fstype-util-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -929,6 +1010,29 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/confidential-virt.h",
         ),
         "hexdecoct": (root / "src/basic/hexdecoct.c", root / "src/basic/hexdecoct.h"),
+        "env_util": (root / "src/basic/env-util.c", root / "src/basic/env-util.h"),
+        "credential_validators": (
+            root / "src/shared/creds-util.c",
+            root / "src/shared/creds-util.h",
+        ),
+        "locale_util": (
+            root / "src/basic/locale-util.c",
+            root / "src/basic/locale-util.h",
+        ),
+        "image_class": (root / "src/basic/os-util.c", root / "src/basic/os-util.h"),
+        "arphrd_util": (
+            root / "src/basic/arphrd-util.c",
+            root / "src/basic/arphrd-util.h",
+        ),
+        "bus_error_util": (
+            root / "src/libsystemd/sd-bus/bus-error.c",
+            root / "src/libsystemd/sd-bus/bus-error.h",
+            root / "src/systemd/sd-bus-protocol.h",
+        ),
+        "fstype_util": (
+            root / "src/basic/mountpoint-util.c",
+            root / "src/basic/mountpoint-util.h",
+        ),
     }
     return BasicFfiReviewCatalog(
         surfaces=surfaces,

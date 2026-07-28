@@ -24,6 +24,13 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Scalar codecs | `test-hexdecoct-rust` | All decoder byte values plus masked and signed-remainder encoder boundaries |
 | Argv classification | `test-argv-util-rust` | Opaque bytes, secure environment override, trailing slash, and null-terminated argv semantics |
 | Confidential-virt table | `test-confidential-virt-rust` | NUL-backed borrowed strings and NULL/-EINVAL reverse lookup |
+| Environment validators | `test-env-util-rust` | `ARG_MAX`, opaque invalid UTF-8, C-string vectors, and duplicate handling |
+| Credential validators | `test-credential-validators-rust` | Filename/fd-name composition, glob grammar, NULL, and `NAME_MAX` boundaries |
+| Locale tables and validator | `test-locale-util-rust` | NUL-backed lookup strings plus `.`, `..`, and invalid UTF-8 locale rejection |
+| Image-class tables | `test-image-class-rust` | NUL-backed lookup strings, invalid enums, and NULL/-EINVAL reverse lookup |
+| ARPHRD name and length tables | `test-arphrd-util-rust` | Generated Linux-UAPI names, ASCII case folding, HDLC/CISCO alias, and native-width lengths |
+| Filesystem predicates | `test-fstype-util-rust` | Opaque bytes, generated filesystem sets, fuse aliases, and API-VFS path boundaries |
+| D-Bus error accessors | `test-bus-error-rust` | Public struct layout, NULL predicates, and opaque C-string name matching |
 | Session classification | `test-file-classify-rust` | ASCII-only session IDs, NULL/empty rejection, and opaque non-UTF-8 bytes |
 | Strv ownership / allocation | `test-strv-rust`, `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Includes base vector search/mutation plus registered push/consume/split/join/fnmatch surface |
 | Stat | `test-stat-util-rust`, `test-stat-util-extra2-rust`, `test-stat-util-inline-rust`, `test-stat-verify-rust` | Includes non-UTF-8 inode type string |

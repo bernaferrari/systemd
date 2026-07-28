@@ -8,11 +8,6 @@
       "rs_parse_systemd_colors",
       "rs_underline_enabled"
     ],
-    "src/basic/rust/arphrd_util.h": [
-      "rs_arphrd_from_name",
-      "rs_arphrd_to_hw_addr_len",
-      "rs_arphrd_to_name"
-    ],
     "src/basic/rust/bitmap.h": [
       "rs_bitmap_clear",
       "rs_bitmap_copy",
@@ -29,11 +24,6 @@
     "src/basic/rust/bootspec_util.h": [
       "rs_boot_filename_extract_tries",
       "rs_bootspec_pick_name_version_sort_key"
-    ],
-    "src/basic/rust/bus_error_util.h": [
-      "rs_bus_error_is_dirty",
-      "rs_sd_bus_error_has_name",
-      "rs_sd_bus_error_is_set"
     ],
     "src/basic/rust/bus_label.h": [
       "rs_bus_label_escape",
@@ -53,10 +43,6 @@
       "rs_compression_to_string_lowercase",
       "rs_get_compression_supported_mask"
     ],
-    "src/basic/rust/credential_validators.h": [
-      "rs_credential_glob_valid",
-      "rs_credential_name_valid"
-    ],
     "src/basic/rust/device_nodes.h": [
       "rs_allow_listed_char_for_devnode",
       "rs_encode_devnode_name"
@@ -75,14 +61,6 @@
       "rs_efi_id128_to_guid",
       "rs_efi_tilt_backslashes",
       "rs_secure_boot_mode_to_string"
-    ],
-    "src/basic/rust/env_util.h": [
-      "rs_env_assignment_is_valid",
-      "rs_env_name_is_valid",
-      "rs_env_value_is_valid",
-      "rs_strv_env_is_valid",
-      "rs_strv_env_name_is_valid",
-      "rs_strv_env_name_or_assignment_is_valid"
     ],
     "src/basic/rust/exec_util.h": [
       "rs_exec_command_flags_from_string",
@@ -106,14 +84,7 @@
       "rs_extract_first_word_and_warn"
     ],
     "src/basic/rust/fstype_util.h": [
-      "rs_file_handle_equal",
-      "rs_fstype_can_uid_gid",
-      "rs_fstype_is_api_vfs",
-      "rs_fstype_is_blockdev_backed",
-      "rs_fstype_is_network",
-      "rs_fstype_is_ro",
-      "rs_fstype_needs_quota",
-      "rs_path_below_api_vfs"
+      "rs_file_handle_equal"
     ],
     "src/basic/rust/glyph_util.h": [
       "rs_glyph_full"
@@ -158,10 +129,6 @@
       "rs_sd_id128_to_string",
       "rs_sd_id128_to_uuid_string"
     ],
-    "src/basic/rust/image_class.h": [
-      "rs_image_class_from_string",
-      "rs_image_class_to_string"
-    ],
     "src/basic/rust/image_policy_util.h": [
       "rs_image_policy_equal",
       "rs_image_policy_equiv_allow",
@@ -191,11 +158,6 @@
       "rs_iovw_put",
       "rs_iovw_rebase",
       "rs_iovw_size"
-    ],
-    "src/basic/rust/locale_util.h": [
-      "rs_locale_is_valid",
-      "rs_locale_variable_from_string",
-      "rs_locale_variable_to_string"
     ],
     "src/basic/rust/log_target.h": [
       "rs_log_target_from_string",
@@ -540,13 +502,6 @@
       "rs_exit_status_from_string",
       "rs_exit_status_to_string",
       "rs_secure_bit_to_string"
-    ],
-    "src/shared/rust/fstype_util.h": [
-      "rs_file_handle_equal",
-      "rs_fstype_can_uid_gid",
-      "rs_fstype_is_ro",
-      "rs_fstype_needs_quota",
-      "rs_path_below_api_vfs"
     ],
     "src/shared/rust/glob_util.h": [
       "rs_glob_non_glob_prefix",

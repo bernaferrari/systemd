@@ -1,53 +1,51 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/mountpoint-util.c (fstype_is_ro, fstype_needs_quota,
-//            fstype_has_internal_quota, fstype_can_ownership,
-//            fstype_can_uid_gid, file_handle_equal, path_below_api_vfs)
+// PORT-SYNC: scope=basic.fstype-util; authority=src/basic/mountpoint-util.c,src/basic/mountpoint-util.h,src/basic/filesystem-sets.py
 
-const NETWORK_FSTYPES: &[&str] = &[
-    "afs",
-    "ceph",
-    "cifs",
-    "gfs",
-    "gfs2",
-    "ncp",
-    "ncpfs",
-    "nfs",
-    "nfs4",
-    "ocfs2",
-    "orangefs",
-    "pvfs2",
-    "smb3",
-    "smbfs",
-    "davfs",
-    "glusterfs",
-    "lustre",
-    "sshfs",
+const NETWORK_FSTYPES: &[&[u8]] = &[
+    b"afs",
+    b"ceph",
+    b"cifs",
+    b"gfs",
+    b"gfs2",
+    b"ncp",
+    b"ncpfs",
+    b"nfs",
+    b"nfs4",
+    b"ocfs2",
+    b"orangefs",
+    b"pvfs2",
+    b"smb3",
+    b"smbfs",
+    b"davfs",
+    b"glusterfs",
+    b"lustre",
+    b"sshfs",
 ];
 
-const API_VFS_FSTYPES: &[&str] = &[
-    "cgroup",
-    "cgroup2",
-    "devpts",
-    "devtmpfs",
-    "mqueue",
-    "proc",
-    "sysfs",
-    "binfmt_misc",
-    "configfs",
-    "efivarfs",
-    "fusectl",
-    "hugetlbfs",
-    "rpc_pipefs",
-    "securityfs",
-    "bpf",
-    "debugfs",
-    "pstore",
-    "tracefs",
-    "ramfs",
-    "tmpfs",
-    "autofs",
-    "cpuset",
+const API_VFS_FSTYPES: &[&[u8]] = &[
+    b"cgroup",
+    b"cgroup2",
+    b"devpts",
+    b"devtmpfs",
+    b"mqueue",
+    b"proc",
+    b"sysfs",
+    b"binfmt_misc",
+    b"configfs",
+    b"efivarfs",
+    b"fusectl",
+    b"hugetlbfs",
+    b"rpc_pipefs",
+    b"securityfs",
+    b"bpf",
+    b"debugfs",
+    b"pstore",
+    b"tracefs",
+    b"ramfs",
+    b"tmpfs",
+    b"autofs",
+    b"cpuset",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,36 +60,29 @@ impl FileHandle {
     }
 }
 
-fn strip_fuse_prefix(fstype: &str) -> &str {
-    fstype.strip_prefix("fuse.").unwrap_or(fstype)
+#[inline]
+fn strip_fuse_prefix(fstype: &[u8]) -> &[u8] {
+    fstype.strip_prefix(b"fuse.").unwrap_or(fstype)
 }
 
 pub fn fstype_is_ro(fstype: &str) -> bool {
-    matches!(
-        fstype,
-        "DM_verity_hash" | "cramfs" | "erofs" | "iso9660" | "squashfs"
-    )
+    fstype_is_ro_bytes(fstype.as_bytes())
 }
 
 pub fn fstype_is_network(fstype: &str) -> bool {
-    let fstype = strip_fuse_prefix(fstype);
-    NETWORK_FSTYPES.contains(&fstype)
+    fstype_is_network_bytes(fstype.as_bytes())
 }
 
 pub fn fstype_is_api_vfs(fstype: &str) -> bool {
-    API_VFS_FSTYPES.contains(&fstype)
+    fstype_is_api_vfs_bytes(fstype.as_bytes())
 }
 
 pub fn fstype_is_blockdev_backed(fstype: &str) -> bool {
-    let fstype = strip_fuse_prefix(fstype);
-    !matches!(fstype, "9p" | "overlay") && !fstype_is_network(fstype) && !fstype_is_api_vfs(fstype)
+    fstype_is_blockdev_backed_bytes(fstype.as_bytes())
 }
 
 pub fn fstype_needs_quota(fstype: &str) -> bool {
-    matches!(
-        fstype,
-        "ext2" | "ext3" | "ext4" | "reiserfs" | "jfs" | "f2fs"
-    )
+    fstype_needs_quota_bytes(fstype.as_bytes())
 }
 
 /// Filesystems with built-in quota support that do not need quota services.
@@ -108,17 +99,176 @@ pub fn fstype_can_ownership(fstype: &str) -> bool {
 }
 
 pub fn fstype_can_uid_gid(fstype: &str) -> bool {
-    matches!(
-        fstype,
-        "adfs" | "exfat" | "fat" | "hfs" | "hpfs" | "iso9660" | "msdos" | "ntfs" | "vfat"
-    )
+    fstype_can_uid_gid_bytes(fstype.as_bytes())
 }
 
 pub fn path_below_api_vfs(path: &str) -> bool {
-    matches!(path, "/dev" | "/sys" | "/proc")
-        || path.starts_with("/dev/")
-        || path.starts_with("/sys/")
-        || path.starts_with("/proc/")
+    path_below_api_vfs_bytes(path.as_bytes())
+}
+
+#[inline]
+fn fstype_is_ro_bytes(fstype: &[u8]) -> bool {
+    fstype == b"DM_verity_hash"
+        || fstype == b"cramfs"
+        || fstype == b"erofs"
+        || fstype == b"iso9660"
+        || fstype == b"squashfs"
+}
+
+#[inline]
+fn fstype_is_network_bytes(fstype: &[u8]) -> bool {
+    let fstype = strip_fuse_prefix(fstype);
+    NETWORK_FSTYPES.iter().any(|candidate| *candidate == fstype)
+}
+
+#[inline]
+fn fstype_is_api_vfs_bytes(fstype: &[u8]) -> bool {
+    API_VFS_FSTYPES.iter().any(|candidate| *candidate == fstype)
+}
+
+#[inline]
+fn fstype_is_blockdev_backed_bytes(fstype: &[u8]) -> bool {
+    let fstype = strip_fuse_prefix(fstype);
+    fstype != b"9p"
+        && fstype != b"overlay"
+        && !fstype_is_network_bytes(fstype)
+        && !fstype_is_api_vfs_bytes(fstype)
+}
+
+#[inline]
+fn fstype_needs_quota_bytes(fstype: &[u8]) -> bool {
+    fstype == b"ext2"
+        || fstype == b"ext3"
+        || fstype == b"ext4"
+        || fstype == b"reiserfs"
+        || fstype == b"jfs"
+        || fstype == b"f2fs"
+}
+
+#[inline]
+fn fstype_can_uid_gid_bytes(fstype: &[u8]) -> bool {
+    fstype == b"adfs"
+        || fstype == b"exfat"
+        || fstype == b"fat"
+        || fstype == b"hfs"
+        || fstype == b"hpfs"
+        || fstype == b"iso9660"
+        || fstype == b"msdos"
+        || fstype == b"ntfs"
+        || fstype == b"vfat"
+}
+
+#[inline]
+fn path_below_api_vfs_bytes(path: &[u8]) -> bool {
+    path == b"/dev"
+        || path == b"/sys"
+        || path == b"/proc"
+        || path.starts_with(b"/dev/")
+        || path.starts_with(b"/sys/")
+        || path.starts_with(b"/proc/")
+}
+
+/// Apply a predicate to an optional borrowed C string's raw, non-NUL bytes.
+///
+/// # Safety
+///
+/// When non-NULL, `input` must point to a live NUL-terminated C string for
+/// the duration of the call. `predicate` must not retain the borrowed slice.
+#[inline]
+unsafe fn c_string_predicate(
+    input: *const libc::c_char,
+    predicate: impl FnOnce(&[u8]) -> bool,
+) -> bool {
+    if input.is_null() {
+        return false;
+    }
+
+    // SAFETY: required by this helper's contract after the NULL check.
+    predicate(unsafe { std::ffi::CStr::from_ptr(input) }.to_bytes())
+}
+
+/// C ABI facade for `fstype_is_ro()`.
+///
+/// # Safety
+///
+/// `fstype`, when non-NULL, must point to a live NUL-terminated C string.
+/// NULL is treated as invalid input and returns `false`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_fstype_is_ro(fstype: *const libc::c_char) -> bool {
+    // SAFETY: required by this entry point's contract.
+    unsafe { c_string_predicate(fstype, fstype_is_ro_bytes) }
+}
+
+/// C ABI facade for `fstype_needs_quota()`.
+///
+/// # Safety
+///
+/// `fstype`, when non-NULL, must point to a live NUL-terminated C string.
+/// NULL is treated as invalid input and returns `false`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_fstype_needs_quota(fstype: *const libc::c_char) -> bool {
+    // SAFETY: required by this entry point's contract.
+    unsafe { c_string_predicate(fstype, fstype_needs_quota_bytes) }
+}
+
+/// C ABI facade for `fstype_can_uid_gid()`.
+///
+/// # Safety
+///
+/// `fstype`, when non-NULL, must point to a live NUL-terminated C string.
+/// NULL is treated as invalid input and returns `false`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_fstype_can_uid_gid(fstype: *const libc::c_char) -> bool {
+    // SAFETY: required by this entry point's contract.
+    unsafe { c_string_predicate(fstype, fstype_can_uid_gid_bytes) }
+}
+
+/// C ABI facade for `path_below_api_vfs()`.
+///
+/// # Safety
+///
+/// `path`, when non-NULL, must point to a live NUL-terminated C string.
+/// NULL is treated as invalid input and returns `false`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_path_below_api_vfs(path: *const libc::c_char) -> bool {
+    // SAFETY: required by this entry point's contract.
+    unsafe { c_string_predicate(path, path_below_api_vfs_bytes) }
+}
+
+/// C ABI facade for `fstype_is_network()`.
+///
+/// # Safety
+///
+/// `fstype`, when non-NULL, must point to a live NUL-terminated C string.
+/// NULL is treated as invalid input and returns `false`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_fstype_is_network(fstype: *const libc::c_char) -> bool {
+    // SAFETY: required by this entry point's contract.
+    unsafe { c_string_predicate(fstype, fstype_is_network_bytes) }
+}
+
+/// C ABI facade for `fstype_is_api_vfs()`.
+///
+/// # Safety
+///
+/// `fstype`, when non-NULL, must point to a live NUL-terminated C string.
+/// NULL is treated as invalid input and returns `false`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_fstype_is_api_vfs(fstype: *const libc::c_char) -> bool {
+    // SAFETY: required by this entry point's contract.
+    unsafe { c_string_predicate(fstype, fstype_is_api_vfs_bytes) }
+}
+
+/// C ABI facade for `fstype_is_blockdev_backed()`.
+///
+/// # Safety
+///
+/// `fstype`, when non-NULL, must point to a live NUL-terminated C string.
+/// NULL is treated as invalid input and returns `false`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_fstype_is_blockdev_backed(fstype: *const libc::c_char) -> bool {
+    // SAFETY: required by this entry point's contract.
+    unsafe { c_string_predicate(fstype, fstype_is_blockdev_backed_bytes) }
 }
 
 pub fn file_handle_equal(a: Option<&FileHandle>, b: Option<&FileHandle>) -> bool {

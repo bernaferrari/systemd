@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+/* PORT-SYNC: scope=basic.image-class; authority=src/basic/os-util.c,src/basic/os-util.h */
+
 #include <stdbool.h>
 
 const char *rs_image_class_to_string(int c);

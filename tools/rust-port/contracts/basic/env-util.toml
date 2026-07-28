@@ -1,0 +1,48 @@
+schema = 1
+module = "env_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "replace_env_full",
+    "replace_env_argv",
+    "strv_env_clean_with_callback",
+    "_strv_env_merge",
+    "strv_env_delete",
+]
+
+[authority]
+c_headers = ["src/basic/env-util.h"]
+c_sources = ["src/basic/env-util.c"]
+rust_headers = ["src/basic/rust/env_util.h"]
+rust_sources = ["src/basic/rust/env_util.rs"]
+
+[[surface]]
+id = "env-util-validators"
+c_symbols = [
+    "env_name_is_valid",
+    "env_value_is_valid",
+    "env_assignment_is_valid",
+    "strv_env_is_valid",
+    "strv_env_name_is_valid",
+    "strv_env_name_or_assignment_is_valid",
+]
+rust_symbols = [
+    "rs_env_name_is_valid",
+    "rs_env_value_is_valid",
+    "rs_env_assignment_is_valid",
+    "rs_strv_env_is_valid",
+    "rs_strv_env_name_is_valid",
+    "rs_strv_env_name_or_assignment_is_valid",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "kernel"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-env-util-rust.c"
+meson_target = "test-env-util-rust"
+labels = ["env-util-validators"]

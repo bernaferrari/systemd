@@ -8,6 +8,7 @@
 #include "rust/image_class.h"
 
 /* ── image_class_to_string ─────────────────────────────────────────────── */
+/* RUST-CONTRACT: image-class-to-string */
 
 static void test_image_class_to_string_all(void) {
         static const struct {
@@ -40,6 +41,7 @@ static void test_image_class_to_string_invalid(void) {
 }
 
 /* ── image_class_from_string ───────────────────────────────────────────── */
+/* RUST-CONTRACT: image-class-from-string */
 
 static void test_image_class_from_string_all(void) {
         static const struct {
@@ -69,6 +71,11 @@ static void test_image_class_from_string_invalid(void) {
 
         r_c = image_class_from_string("Machine");
         r_r = rs_image_class_from_string("Machine");
+        assert_se(r_c == r_r);
+        assert_se(r_c < 0);
+
+        r_c = image_class_from_string(NULL);
+        r_r = rs_image_class_from_string(NULL);
         assert_se(r_c == r_r);
         assert_se(r_c < 0);
 }

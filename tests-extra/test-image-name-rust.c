@@ -10,6 +10,7 @@
 #include "string-util.h"
 
 /* -- os_release_pretty_name ------------------------------------------------ */
+/* RUST-CONTRACT: os-release-pretty-name */
 
 static void test_os_release_pretty_name(void) {
         const char *c_str, *rs_str;

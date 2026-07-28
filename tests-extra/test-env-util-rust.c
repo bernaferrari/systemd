@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C env-util validators vs Rust rs_env_util validators */
 
+/* RUST-CONTRACT: env-util-validators */
+
 #include <string.h>
 
 #include "env-util.h"
@@ -22,14 +24,19 @@ static void test_env_name_is_valid(void) {
 /* ── env_value_is_valid ───────────────────────────────────────────────── */
 
 static void test_env_value_is_valid(void) {
+        static const char invalid_utf8[] = { 'x', (char) 0xC0, (char) 0x80, 0 };
+
         assert_se(env_value_is_valid("hello") == rs_env_value_is_valid("hello"));
         assert_se(env_value_is_valid("") == rs_env_value_is_valid(""));
+        assert_se(env_value_is_valid(invalid_utf8) == rs_env_value_is_valid(invalid_utf8));
         assert_se(env_value_is_valid(NULL) == rs_env_value_is_valid(NULL));
 }
 
 /* ── env_assignment_is_valid ──────────────────────────────────────────── */
 
 static void test_env_assignment_is_valid(void) {
+        static const char invalid_utf8[] = { 'F', 'O', 'O', '=', (char) 0xF5, 0 };
+
         assert_se(env_assignment_is_valid("FOO=bar") == rs_env_assignment_is_valid("FOO=bar"));
         assert_se(env_assignment_is_valid("FOO=") == rs_env_assignment_is_valid("FOO="));
         assert_se(env_assignment_is_valid("FOO") == rs_env_assignment_is_valid("FOO"));
@@ -37,6 +44,8 @@ static void test_env_assignment_is_valid(void) {
         assert_se(env_assignment_is_valid("") == rs_env_assignment_is_valid(""));
         assert_se(env_assignment_is_valid("1FOO=bar") == rs_env_assignment_is_valid("1FOO=bar"));
         assert_se(env_assignment_is_valid("FOO_BAR=hello") == rs_env_assignment_is_valid("FOO_BAR=hello"));
+        assert_se(env_assignment_is_valid(invalid_utf8) == rs_env_assignment_is_valid(invalid_utf8));
+        assert_se(rs_env_assignment_is_valid(NULL) == false); /* C asserts for this invalid call. */
 }
 
 /* ── strv_env_is_valid ────────────────────────────────────────────────── */
@@ -51,6 +60,7 @@ static void test_strv_env_is_valid(void) {
         assert_se(strv_env_is_valid(dup) == rs_strv_env_is_valid(dup));
         assert_se(strv_env_is_valid(invalid) == rs_strv_env_is_valid(invalid));
         assert_se(strv_env_is_valid(empty) == rs_strv_env_is_valid(empty));
+        assert_se(strv_env_is_valid(NULL) == rs_strv_env_is_valid(NULL));
 }
 
 /* ── strv_env_name_is_valid ─────────────────────────────────────────────── */
@@ -65,6 +75,7 @@ static void test_strv_env_name_is_valid(void) {
         assert_se(strv_env_name_is_valid(dup) == rs_strv_env_name_is_valid(dup));
         assert_se(strv_env_name_is_valid(invalid) == rs_strv_env_name_is_valid(invalid));
         assert_se(strv_env_name_is_valid(empty) == rs_strv_env_name_is_valid(empty));
+        assert_se(strv_env_name_is_valid(NULL) == rs_strv_env_name_is_valid(NULL));
 }
 
 /* ── strv_env_name_or_assignment_is_valid ──────────────────────────────── */
@@ -79,6 +90,7 @@ static void test_strv_env_name_or_assignment_is_valid(void) {
         assert_se(strv_env_name_or_assignment_is_valid(dup) == rs_strv_env_name_or_assignment_is_valid(dup));
         assert_se(strv_env_name_or_assignment_is_valid(invalid) == rs_strv_env_name_or_assignment_is_valid(invalid));
         assert_se(strv_env_name_or_assignment_is_valid(empty) == rs_strv_env_name_or_assignment_is_valid(empty));
+        assert_se(strv_env_name_or_assignment_is_valid(NULL) == rs_strv_env_name_or_assignment_is_valid(NULL));
 }
 
 /* ── Main ──────────────────────────────────────────────────────────────── */
