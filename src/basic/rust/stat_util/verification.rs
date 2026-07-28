@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/stat-util.c (stat/statx verification helpers)
-// PORT-SYNC: src/basic/stat-util.h (inode_type_can_hardlink)
+// PORT-SYNC: scope=basic.stat-util; authority=src/basic/stat-util.c,src/basic/stat-util.h
+//
+// stat/statx value verification helpers and inode_type_can_hardlink.
 
 use super::{S_IFBLK, S_IFCHR, S_IFDIR, S_IFIFO, S_IFLNK, S_IFMT, S_IFREG, S_IFSOCK};
 

@@ -11,6 +11,7 @@
 
 /* ── stat_is_set ───────────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: stat-is-set */
 static void test_stat_is_set(void) {
         struct stat st;
 
@@ -58,6 +59,7 @@ static void test_statx_is_set(void) {
 
 /* ── statx_timestamp_load ──────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: statx-timestamp */
 static void test_statx_timestamp_load(void) {
         struct statx_timestamp ts;
 
@@ -100,6 +102,7 @@ static void test_statx_timestamp_load(void) {
 
 /* ── is_fs_type ────────────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: is-fs-type */
 static void test_is_fs_type(void) {
         struct statfs s;
 

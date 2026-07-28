@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/stat-util.c (xstatx_full)
-// PORT-SYNC: src/basic/stat-util.h (XStatXFlags and xstatx)
+// PORT-SYNC: scope=basic.stat-util; authority=src/basic/stat-util.c,src/basic/stat-util.h
 //
+// xstatx_full / xstatx wrappers around native statx.
 // The native libc type owns struct statx's target layout. The only raw
 // operation in this module is the libc statx call and its initialized output.
 

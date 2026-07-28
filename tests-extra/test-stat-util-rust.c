@@ -19,6 +19,7 @@
 
 /* -- inode_type_to_string ------------------------------------------------- */
 
+/* RUST-CONTRACT: inode-type-string */
 static void test_inode_type_to_string(void) {
         assert_se(streq(inode_type_to_string(S_IFREG), rs_inode_type_to_string(S_IFREG)));
         assert_se(streq(inode_type_to_string(S_IFREG), "reg"));
@@ -64,6 +65,7 @@ static void test_inode_type_from_string(void) {
 
 /* -- inode_compare_func -------------------------------------------------- */
 
+/* RUST-CONTRACT: inode-compare */
 static void test_inode_compare_func(void) {
         struct stat a = {}, b = {};
 
@@ -154,6 +156,7 @@ static void test_inode_unmodified_compare_func(void) {
 
 /* -- stat_inode_same ------------------------------------------------------ */
 
+/* RUST-CONTRACT: stat-inode-identity */
 static void test_stat_inode_same(void) {
         struct stat a = {}, b = {};
 
@@ -330,6 +333,7 @@ static void assert_statx_core_equal(const struct statx *a, const struct statx *b
         assert_se(a->stx_mnt_id == b->stx_mnt_id);
 }
 
+/* RUST-CONTRACT: xstatx */
 static void test_xstatx(void) {
         struct statx c_statx = {}, rust_statx = {}, sentinel;
         int c_result, fd, rust_result;
@@ -380,6 +384,7 @@ static void test_xstatx(void) {
 
 /* -- inode_same ---------------------------------------------------------- */
 
+/* RUST-CONTRACT: inode-same */
 static void test_inode_same_helpers(void) {
         char directory[] = "/tmp/test-inode-same-rust.XXXXXX";
         int fd_a, fd_b;
@@ -444,6 +449,7 @@ static uint64_t finish_inode_hash(const struct stat *st, bool rust, bool unmodif
         return siphash24_finalize(&state);
 }
 
+/* RUST-CONTRACT: inode-hash */
 static void test_inode_hash_functions(void) {
         struct stat a = {
                 .st_dev = (dev_t) -1,
@@ -486,6 +492,7 @@ static void test_inode_hash_functions(void) {
 
 /* -- vfs_free_bytes ------------------------------------------------------- */
 
+/* RUST-CONTRACT: vfs-free-bytes */
 static void test_vfs_free_bytes(void) {
         uint64_t c_value = UINT64_C(0xfeedfacecafebeef);
         uint64_t rust_value = c_value;
@@ -504,6 +511,7 @@ static void test_vfs_free_bytes(void) {
 
 /* -- statfs descriptor/path queries -------------------------------------- */
 
+/* RUST-CONTRACT: statfs-queries */
 static void test_statfs_queries(void) {
         struct statfs c_statfs = {}, rust_statfs = {}, synthetic = {};
         int c_result, rust_result;
@@ -552,6 +560,7 @@ static void test_statfs_queries(void) {
 
 /* -- moderate directory/null/proc helpers -------------------------------- */
 
+/* RUST-CONTRACT: moderate-helpers */
 static void test_moderate_stat_helpers(void) {
         char directory[] = "/tmp/test-stat-util-rust.XXXXXX";
         struct stat st = {};

@@ -10,6 +10,7 @@
 
 /* -- path_find_first_component ------------------------------------------- */
 
+/* RUST-CONTRACT: path-component-find */
 static void test_path_find_first_component(void) {
         const char *p, *c;
         int r;
@@ -158,6 +159,7 @@ static void test_path_find_last_component(void) {
 
 /* -- last_path_component ------------------------------------------------- */
 
+/* RUST-CONTRACT: last-path-component */
 static void test_last_path_component(void) {
         const char *c, *rs;
 
@@ -212,6 +214,7 @@ static void test_last_path_component(void) {
 
 /* -- path_compare -------------------------------------------------------- */
 
+/* RUST-CONTRACT: path-compare */
 static void test_path_compare(void) {
         int cr, rr;
 
@@ -276,6 +279,7 @@ static void test_path_compare(void) {
 
 /* -- path_simplify_alloc ------------------------------------------------- */
 
+/* RUST-CONTRACT: path-simplify-alloc */
 static void test_path_simplify_alloc(void) {
         _cleanup_free_ char *c_ret = NULL, *rs_ret = NULL;
         int cr, rr;
@@ -329,6 +333,7 @@ static void test_path_simplify_alloc(void) {
 
 /* -- path_simplify_full (in-place) --------------------------------------- */
 
+/* RUST-CONTRACT: path-simplify-full */
 static void test_path_simplify_full(void) {
         char c_buf[256], rs_buf[256];
 
@@ -377,6 +382,7 @@ static void test_path_simplify_full(void) {
 
 /* -- path_startswith_full ------------------------------------------------ */
 
+/* RUST-CONTRACT: path-startswith-full */
 static void test_path_startswith_full(void) {
         const char *c, *rs;
 
@@ -423,6 +429,7 @@ static void test_path_startswith_full(void) {
 
 /* -- path_make_relative --------------------------------------------------- */
 
+/* RUST-CONTRACT: path-make-relative */
 static void test_path_make_relative(void) {
         _cleanup_free_ char *c_ret = NULL, *rs_ret = NULL;
         int cr, rr;

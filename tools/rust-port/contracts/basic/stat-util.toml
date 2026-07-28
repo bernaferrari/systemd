@@ -1,0 +1,387 @@
+schema = 1
+module = "stat-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "inode_hash_ops",
+    "inode_unmodified_hash_ops",
+]
+
+[authority]
+c_headers = ["src/basic/stat-util.h"]
+c_sources = ["src/basic/stat-util.c"]
+rust_headers = ["src/basic/rust/stat_util.h"]
+rust_sources = [
+    "src/basic/rust/stat_util.rs",
+    "src/basic/rust/stat_util/descriptor.rs",
+    "src/basic/rust/stat_util/filesystem.rs",
+    "src/basic/rust/stat_util/hash.rs",
+    "src/basic/rust/stat_util/inode.rs",
+    "src/basic/rust/stat_util/inode_same.rs",
+    "src/basic/rust/stat_util/moderate.rs",
+    "src/basic/rust/stat_util/verification.rs",
+    "src/basic/rust/stat_util/xstatx.rs",
+]
+
+[[surface]]
+id = "inode-type-string"
+c_symbols = ["inode_type_to_string", "inode_type_from_string"]
+rust_symbols = ["rs_inode_type_to_string", "rs_inode_type_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["inode-type-string"]
+
+[[surface]]
+id = "inode-compare"
+c_symbols = ["inode_compare_func", "inode_unmodified_compare_func"]
+rust_symbols = ["rs_inode_compare_func", "rs_inode_unmodified_compare_func"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["inode-compare"]
+
+[[surface]]
+id = "stat-inode-identity"
+c_symbols = [
+    "stat_inode_same",
+    "stat_inode_unmodified",
+    "statx_inode_same",
+    "statx_mount_same",
+]
+rust_symbols = [
+    "rs_stat_inode_same",
+    "rs_stat_inode_unmodified",
+    "rs_statx_inode_same",
+    "rs_statx_mount_same",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["stat-inode-identity"]
+
+[[surface]]
+id = "xstatx"
+c_symbols = ["xstatx_full", "xstatx"]
+rust_symbols = ["rs_xstatx_full", "rs_xstatx"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "kernel"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["xstatx"]
+
+[[surface]]
+id = "inode-same"
+c_symbols = ["inode_same_at", "inode_same", "fd_inode_same"]
+rust_symbols = ["rs_inode_same_at", "rs_inode_same", "rs_fd_inode_same"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "kernel"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["inode-same"]
+
+[[surface]]
+id = "inode-hash"
+c_symbols = ["inode_hash_func", "inode_unmodified_hash_func"]
+rust_symbols = ["rs_inode_hash_func", "rs_inode_unmodified_hash_func"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "state"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["inode-hash"]
+
+[[surface]]
+id = "vfs-free-bytes"
+c_symbols = ["vfs_free_bytes"]
+rust_symbols = ["rs_vfs_free_bytes"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "kernel"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["vfs-free-bytes"]
+
+[[surface]]
+id = "statfs-queries"
+c_symbols = [
+    "xstatfsat",
+    "is_fs_type_at",
+    "fd_is_read_only_fs",
+    "path_is_read_only_fs",
+    "is_temporary_fs",
+    "is_network_fs",
+    "fd_is_temporary_fs",
+    "fd_is_network_fs",
+    "path_is_temporary_fs",
+    "path_is_network_fs",
+]
+rust_symbols = [
+    "rs_xstatfsat",
+    "rs_is_fs_type_at",
+    "rs_fd_is_read_only_fs",
+    "rs_path_is_read_only_fs",
+    "rs_is_temporary_fs",
+    "rs_is_network_fs",
+    "rs_fd_is_temporary_fs",
+    "rs_fd_is_network_fs",
+    "rs_path_is_temporary_fs",
+    "rs_path_is_network_fs",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "kernel"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["statfs-queries"]
+
+[[surface]]
+id = "moderate-helpers"
+c_symbols = [
+    "dir_is_empty_at",
+    "dir_is_empty",
+    "null_or_empty",
+    "null_or_empty_path_with_root",
+    "null_or_empty_path",
+    "fd_is_fs_type",
+    "path_is_fs_type",
+    "proc_mounted",
+]
+rust_symbols = [
+    "rs_dir_is_empty_at",
+    "rs_dir_is_empty",
+    "rs_null_or_empty",
+    "rs_null_or_empty_path_with_root",
+    "rs_null_or_empty_path",
+    "rs_fd_is_fs_type",
+    "rs_path_is_fs_type",
+    "rs_proc_mounted",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "kernel"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["moderate-helpers"]
+
+[[surface]]
+id = "stat-is-set"
+c_symbols = ["stat_is_set", "statx_is_set"]
+rust_symbols = ["rs_stat_is_set", "rs_statx_is_set"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-inline-rust.c"
+meson_target = "test-stat-util-inline-rust"
+labels = ["stat-is-set"]
+
+[[surface]]
+id = "statx-timestamp"
+c_symbols = ["statx_timestamp_load", "statx_timestamp_load_nsec"]
+rust_symbols = ["rs_statx_timestamp_load", "rs_statx_timestamp_load_nsec"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-inline-rust.c"
+meson_target = "test-stat-util-inline-rust"
+labels = ["statx-timestamp"]
+
+[[surface]]
+id = "is-fs-type"
+c_symbols = ["is_fs_type"]
+rust_symbols = ["rs_is_fs_type"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-inline-rust.c"
+meson_target = "test-stat-util-inline-rust"
+labels = ["is-fs-type"]
+
+[[surface]]
+id = "stat-value-verification"
+c_symbols = [
+    "stat_verify_regular",
+    "statx_verify_regular",
+    "stat_verify_directory",
+    "statx_verify_directory",
+    "stat_verify_symlink",
+    "stat_verify_socket",
+    "statx_verify_socket",
+    "stat_verify_linked",
+    "stat_verify_block",
+    "stat_verify_char",
+    "stat_verify_regular_or_block",
+    "stat_verify_device_node",
+    "stat_may_be_dev_null",
+    "stat_is_empty",
+    "inode_type_can_hardlink",
+]
+rust_symbols = [
+    "rs_stat_verify_regular",
+    "rs_statx_verify_regular",
+    "rs_stat_verify_directory",
+    "rs_statx_verify_directory",
+    "rs_stat_verify_symlink",
+    "rs_stat_verify_socket",
+    "rs_statx_verify_socket",
+    "rs_stat_verify_linked",
+    "rs_stat_verify_block",
+    "rs_stat_verify_char",
+    "rs_stat_verify_regular_or_block",
+    "rs_stat_verify_device_node",
+    "rs_stat_may_be_dev_null",
+    "rs_stat_is_empty",
+    "rs_inode_type_can_hardlink",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-verify-rust.c"
+meson_target = "test-stat-verify-rust"
+labels = ["stat-value-verification"]
+
+[[surface]]
+id = "descriptor-verification"
+c_symbols = [
+    "verify_regular_at",
+    "fd_verify_regular",
+    "fd_verify_directory",
+    "is_dir_at",
+    "is_dir",
+    "fd_verify_symlink",
+    "is_symlink",
+    "fd_verify_socket",
+    "is_socket",
+    "fd_verify_linked",
+    "fd_verify_block",
+    "is_device_node",
+    "fd_verify_regular_or_block",
+]
+rust_symbols = [
+    "rs_verify_regular_at",
+    "rs_fd_verify_regular",
+    "rs_fd_verify_directory",
+    "rs_is_dir_at",
+    "rs_is_dir",
+    "rs_fd_verify_symlink",
+    "rs_is_symlink",
+    "rs_fd_verify_socket",
+    "rs_is_socket",
+    "rs_fd_verify_linked",
+    "rs_fd_verify_block",
+    "rs_is_device_node",
+    "rs_fd_verify_regular_or_block",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "kernel"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-verify-rust.c"
+meson_target = "test-stat-verify-rust"
+labels = ["descriptor-verification"]

@@ -6,6 +6,7 @@
 #include "strv.h"
 #include "rust/strv.h"
 
+/* RUST-CONTRACT: strv-find-closest-and-affix */
 static void test_strv_find_closest(void) {
         char * const list[] = { (char*)"hello", (char*)"world", (char*)"help", (char*)"hallo", NULL };
 
@@ -29,19 +30,19 @@ static void test_strv_find_closest(void) {
 static void test_startswith_strv(void) {
         char * const prefixes[] = { (char*)"foo", (char*)"bar", (char*)"baz", NULL };
 
-        assert_se(startswith_strv("foobar", prefixes) == rs_startswith_strv_internal("foobar", prefixes));
-        assert_se(startswith_strv("bazqux", prefixes) == rs_startswith_strv_internal("bazqux", prefixes));
-        assert_se(startswith_strv("qux", prefixes) == rs_startswith_strv_internal("qux", prefixes));
-        assert_se(startswith_strv("foo", prefixes) == rs_startswith_strv_internal("foo", prefixes));
+        assert_se(startswith_strv_internal("foobar", prefixes) == rs_startswith_strv_internal("foobar", prefixes));
+        assert_se(startswith_strv_internal("bazqux", prefixes) == rs_startswith_strv_internal("bazqux", prefixes));
+        assert_se(startswith_strv_internal("qux", prefixes) == rs_startswith_strv_internal("qux", prefixes));
+        assert_se(startswith_strv_internal("foo", prefixes) == rs_startswith_strv_internal("foo", prefixes));
 }
 
 static void test_endswith_strv(void) {
         char * const suffixes[] = { (char*)".service", (char*)".socket", (char*)".target", NULL };
 
-        assert_se(endswith_strv("foo.service", suffixes) == rs_endswith_strv_internal("foo.service", suffixes));
-        assert_se(endswith_strv("bar.socket", suffixes) == rs_endswith_strv_internal("bar.socket", suffixes));
-        assert_se(endswith_strv("baz.path", suffixes) == rs_endswith_strv_internal("baz.path", suffixes));
-        assert_se(endswith_strv(".service", suffixes) == rs_endswith_strv_internal(".service", suffixes));
+        assert_se(endswith_strv_internal("foo.service", suffixes) == rs_endswith_strv_internal("foo.service", suffixes));
+        assert_se(endswith_strv_internal("bar.socket", suffixes) == rs_endswith_strv_internal("bar.socket", suffixes));
+        assert_se(endswith_strv_internal("baz.path", suffixes) == rs_endswith_strv_internal("baz.path", suffixes));
+        assert_se(endswith_strv_internal(".service", suffixes) == rs_endswith_strv_internal(".service", suffixes));
 }
 
 static void test_strv_join_full(void) {

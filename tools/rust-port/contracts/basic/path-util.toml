@@ -1,0 +1,404 @@
+schema = 1
+module = "path-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "path_make_absolute",
+    "path_make_absolute_cwd",
+    "path_split_and_make_absolute",
+    "path_make_relative_parent",
+    "path_strv_make_absolute_cwd",
+    "path_strv_resolve",
+    "path_strv_resolve_uniq",
+    "path_equal_or_inode_same_full",
+    "path_extend_internal",
+    "path_glob_can_match",
+    "find_executable_full",
+    "open_and_check_executable",
+    "fsck_exists",
+    "safe_getcwd",
+    "is_path",
+    "filename_is_valid",
+    "filename_part_is_valid",
+    "hidden_or_backup_file",
+    "empty_or_root",
+    "empty_to_root",
+    "path_implies_directory",
+    "path_is_normalized",
+    "path_is_absolute",
+    "dot_or_dot_dot",
+    "valid_device_node_path",
+    "valid_device_allow_pattern",
+    "file_in_same_dir",
+    "skip_dev_prefix",
+    "skip_leading_slash",
+]
+
+[authority]
+c_headers = ["src/basic/path-util.h"]
+c_sources = ["src/basic/path-util.c"]
+rust_headers = ["src/basic/rust/path_util.h"]
+rust_sources = [
+    "src/basic/rust/path_util.rs",
+    "src/basic/rust/path_util/byte_abi.rs",
+]
+
+[[surface]]
+id = "path-component-find"
+c_symbols = ["path_find_first_component", "path_find_last_component"]
+rust_symbols = ["rs_path_find_first_component", "rs_path_find_last_component"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "borrowed-interior"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+arg = "p"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[[surface.output]]
+arg = "next"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-path-funcs-rust.c"
+meson_target = "test-path-funcs-rust"
+labels = ["path-component-find"]
+
+[[surface]]
+id = "last-path-component"
+c_symbols = ["last_path_component"]
+rust_symbols = ["rs_last_path_component"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "path"
+ownership = "borrowed-interior"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-funcs-rust.c"
+meson_target = "test-path-funcs-rust"
+labels = ["last-path-component"]
+
+[[surface]]
+id = "path-compare"
+c_symbols = ["path_compare"]
+rust_symbols = ["rs_path_compare"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-path-funcs-rust.c"
+meson_target = "test-path-funcs-rust"
+labels = ["path-compare"]
+
+[[surface]]
+id = "path-simplify-full"
+c_symbols = ["path_simplify_full"]
+rust_symbols = ["rs_path_simplify_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "path"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-funcs-rust.c"
+meson_target = "test-path-funcs-rust"
+labels = ["path-simplify-full"]
+
+[[surface]]
+id = "path-simplify-alloc"
+c_symbols = ["path_simplify_alloc"]
+rust_symbols = ["rs_path_simplify_alloc"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-funcs-rust.c"
+meson_target = "test-path-funcs-rust"
+labels = ["path-simplify-alloc"]
+
+[[surface]]
+id = "path-startswith-full"
+c_symbols = ["path_startswith_full"]
+rust_symbols = ["rs_path_startswith_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "path"
+ownership = "borrowed-interior"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-funcs-rust.c"
+meson_target = "test-path-funcs-rust"
+labels = ["path-startswith-full"]
+
+[[surface]]
+id = "path-make-relative"
+c_symbols = ["path_make_relative"]
+rust_symbols = ["rs_path_make_relative"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-funcs-rust.c"
+meson_target = "test-path-funcs-rust"
+labels = ["path-make-relative"]
+
+[[surface]]
+id = "path-equal"
+c_symbols = ["path_equal"]
+rust_symbols = ["rs_path_equal"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-extra-rust.c"
+meson_target = "test-path-util-extra-rust"
+labels = ["path-equal"]
+
+[[surface]]
+id = "path-startswith"
+c_symbols = ["path_startswith"]
+rust_symbols = ["rs_path_startswith"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "path"
+ownership = "borrowed-interior"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-extra-rust.c"
+meson_target = "test-path-util-extra-rust"
+labels = ["path-startswith"]
+
+[[surface]]
+id = "path-validity"
+c_symbols = ["path_is_valid", "path_is_safe", "filename_or_absolute_path_is_valid"]
+rust_symbols = ["rs_path_is_valid", "rs_path_is_safe", "rs_filename_or_absolute_path_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-extra-rust.c"
+meson_target = "test-path-util-extra-rust"
+labels = ["path-validity"]
+
+[[surface]]
+id = "path-simplify"
+c_symbols = ["path_simplify"]
+rust_symbols = ["rs_path_simplify"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "path"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-extra-rust.c"
+meson_target = "test-path-util-extra-rust"
+labels = ["path-simplify"]
+
+[[surface]]
+id = "path-startswith-strv"
+c_symbols = ["path_startswith_strv"]
+rust_symbols = ["rs_path_startswith_strv"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "p"
+ownership = "borrowed-interior"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-extra-rust.c"
+meson_target = "test-path-util-extra-rust"
+labels = ["path-startswith-strv"]
+
+[[surface]]
+id = "path-strv-contains"
+c_symbols = ["path_strv_contains", "prefixed_path_strv_contains"]
+rust_symbols = ["rs_path_strv_contains", "rs_prefixed_path_strv_contains"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-extra-rust.c"
+meson_target = "test-path-util-extra-rust"
+labels = ["path-strv-contains"]
+
+[[surface]]
+id = "path-split-extract"
+c_symbols = ["path_split_prefix_filename", "path_extract_filename", "path_extract_directory"]
+rust_symbols = ["rs_path_split_prefix_filename", "rs_path_extract_filename", "rs_path_extract_directory"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[[surface.output]]
+arg = "ret_dir"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+arg = "ret_filename"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-extra-rust.c"
+meson_target = "test-path-util-extra-rust"
+labels = ["path-split-extract"]
+
+[[surface]]
+id = "path-filename-compare"
+c_symbols = ["path_compare_filename", "path_equal_filename"]
+rust_symbols = ["rs_path_compare_filename", "rs_path_equal_filename"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-extra-rust.c"
+meson_target = "test-path-util-extra-rust"
+labels = ["path-filename-compare"]
+
+[[surface]]
+id = "is-device-path"
+c_symbols = ["is_device_path"]
+rust_symbols = ["rs_is_device_path"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-verify-rust.c"
+meson_target = "test-stat-verify-rust"
+labels = ["is-device-path"]

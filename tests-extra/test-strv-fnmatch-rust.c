@@ -9,6 +9,7 @@
 #include "strv.h"
 #include "rust/strv.h"
 
+/* RUST-CONTRACT: strv-fnmatch-full */
 static void test_strv_fnmatch_full(void) {
         char * const patterns1[] = { (char*)"hello*", (char*)"world*", NULL };
         char * const patterns2[] = { (char*)"foo*", (char*)"bar*", NULL };

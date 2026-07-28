@@ -9,6 +9,7 @@
 #include "strv.h"
 #include "rust/strv.h"
 
+/* RUST-CONTRACT: strv-grow-and-consume */
 static void test_strv_extend_n(void) {
         char **c_r = NULL, **rs_r = NULL;
         int c_ret, rs_ret;

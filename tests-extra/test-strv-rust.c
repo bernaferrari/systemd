@@ -9,6 +9,7 @@
 /* Rust FFI */
 #include "rust/strv.h"
 
+/* RUST-CONTRACT: strv-length-and-find */
 /* ── strv_length ─────────────────────────────────────────────────────────── */
 
 TEST(strv_length_normal) {
@@ -88,6 +89,7 @@ TEST(strv_find_startswith_not_found) {
         assert_se(strv_find_startswith(a, "xyz") == NULL);
 }
 
+/* RUST-CONTRACT: strv-uniqueness-and-compare */
 /* ── strv_is_uniq ────────────────────────────────────────────────────────── */
 
 TEST(strv_is_uniq_yes) {
@@ -177,6 +179,7 @@ TEST(strv_equal_ignore_order_same_ptr) {
         assert_se(strv_equal_ignore_order(a, a) == true);
 }
 
+/* RUST-CONTRACT: strv-copy-n */
 /* ── strv_copy_n ─────────────────────────────────────────────────────────── */
 
 TEST(strv_copy_n_all) {
@@ -221,6 +224,7 @@ TEST(strv_copy_n_null) {
         strv_free(rr);
 }
 
+/* RUST-CONTRACT: strv-in-place-mutation */
 /* ── strv_remove ─────────────────────────────────────────────────────────── */
 
 TEST(strv_remove_found) {

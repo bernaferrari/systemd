@@ -18,6 +18,7 @@
 
 /* -- stat_verify_regular --------------------------------------------------- */
 
+/* RUST-CONTRACT: stat-value-verification */
 static void test_stat_verify_regular(void) {
         struct stat st;
 
@@ -311,6 +312,7 @@ static void test_stat_is_empty(void) {
 
 /* -- is_device_path ------------------------------------------------------- */
 
+/* RUST-CONTRACT: is-device-path */
 static void test_is_device_path(void) {
         static const char non_utf8_device[] = "/dev/\xff";
         char overlong[STRLEN("/dev/") + NAME_MAX + 2];
@@ -361,6 +363,7 @@ static void test_inode_type_can_hardlink(void) {
         assert_se(inode_type_can_hardlink(S_IFMT) == rs_inode_type_can_hardlink(S_IFMT));
 }
 
+/* RUST-CONTRACT: descriptor-verification */
 static void test_descriptor_verification(void) {
         int sockets[2];
 

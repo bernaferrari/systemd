@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/path-util.c (byte-only path manipulation subset)
+// PORT-SYNC: scope=basic.path-util; authority=src/basic/path-util.c,src/basic/path-util.h
 
 //! Exact C ABI facades for path operations that do not require filesystem I/O.
 //!

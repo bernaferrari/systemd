@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.path-util; authority=src/basic/path-util.c,src/basic/path-util.h */
 #pragma once
 
-/* Rust FFI declarations for path_util module.
- * PORT-SYNC: src/basic/path-util.c (pure string subset) */
+/* Rust FFI declarations for path_util module. */
 
 #include <stdbool.h>
 

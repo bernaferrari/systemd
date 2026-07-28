@@ -110,12 +110,33 @@ tier = 2
 notes = "Historical record: 23 shadow tests passed; not rerun in the 2026-07-27 storage-constrained audit. One FFI export: rs_extract_first_word. C strings now use target libc::c_char; returned storage remains C-allocator owned. Skipped and_warn (variadic log_syntax) and many_words_internal (variadic)."
 
 [strv]
-c_file = "src/basic/strv.c"
-rust_file = "src/basic/rust/strv.rs"
+c_paths = [
+    "src/basic/strv.c",
+    "src/basic/strv.h",
+    "src/fundamental/strv.h",
+]
+rust_paths = [
+    "src/basic/rust/strv.rs",
+    "src/basic/rust/strv/allocating_transforms.rs",
+    "src/basic/rust/strv/matching_escape.rs",
+    "src/basic/rust/strv.h",
+]
+scope = "basic.strv"
+rust_scope_paths = [
+    "src/basic/rust/strv.rs",
+    "src/basic/rust/strv",
+]
+rust_interface_paths = ["src/basic/rust/strv.h"]
+contract_file = "tools/rust-port/contracts/basic/strv.toml"
+test_file = "tests-extra/test-strv-rust.c"
 status = "in-progress"
 tier = 3
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: registered strv ABI coverage is narrower than the complete C vector/ownership surface and has no path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+symbols = 53
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/strv.c" = "eb3cd8d4b213f16d1d770b32d2c1f60b63acefd6", "src/basic/strv.h" = "2a0c2730d1ac46f2548996f04d15f7b120124795", "src/fundamental/strv.h" = "0ede9c3b796a1cac05e018c25fb9a94915531b8d" }
+last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "e8123536266586c210f896eaebf40692579c3fa2", "src/basic/rust/strv/allocating_transforms.rs" = "c6e937a561e2b285365962f3acedc678c6230298", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "19ff2e852070741f3723035d08e99face88d31cd" }
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.strv owns the decomposed Rust leaves (strv.rs plus allocating_transforms/matching_escape) and rust/strv.h. Machine-checked contract covers 53 dual-compared ABI surfaces across registered strv fixtures (length/find/compare/mutation/copy, closest/affix/join_full, sort_uniq/insert/push_pair, filter/extend_strv, grow/consume, split/rebreak, contains/consume_pair, inline join/fnmatch, fnmatch_full, shell_escape). Explicit exclusions cover free/print I/O, hashmap/set helpers, variadic constructors, and unreviewed static closest helpers. Partial provenance with static-only evidence; runtime parity unclaimed."
+
 
 [escape]
 c_file = "src/basic/escape.c"
@@ -140,14 +161,37 @@ tier = 4
 notes = "35 shadow tests pass. 30 FFI exports covering: null checks, link-local, multicast, localhost, equality, prefix_intersect, prefix_nth/next, netmask, default_prefixlen, mask, prefix_covers. Skipped: string conversion, hash functions, random functions."
 
 [stat-util]
-c_paths = ["src/basic/stat-util.c", "src/basic/stat-util.h", "src/basic/siphash24.c", "src/basic/siphash24.h", "src/basic/chattr-util.c", "src/basic/chattr-util.h", "src/basic/chase.c", "src/basic/chase.h", "src/basic/dirent-util.h", "src/basic/fd-util.c", "src/basic/fd-util.h", "src/basic/filesystem-sets.py", "src/basic/fs-util.c", "src/basic/fs-util.h", "src/basic/mountpoint-util.c", "src/basic/mountpoint-util.h", "src/basic/path-util.c", "src/basic/path-util.h", "src/include/uapi/linux/magic.h", "src/basic/time-util.c", "src/shared/btrfs-util.c", "src/shared/btrfs-util.h"]
-rust_file = "src/basic/rust/stat_util.rs"
-header_file = "src/basic/rust/stat_util.h"
+c_paths = [
+    "src/basic/stat-util.c",
+    "src/basic/stat-util.h",
+]
+rust_paths = [
+    "src/basic/rust/stat_util.rs",
+    "src/basic/rust/stat_util/descriptor.rs",
+    "src/basic/rust/stat_util/filesystem.rs",
+    "src/basic/rust/stat_util/hash.rs",
+    "src/basic/rust/stat_util/inode.rs",
+    "src/basic/rust/stat_util/inode_same.rs",
+    "src/basic/rust/stat_util/moderate.rs",
+    "src/basic/rust/stat_util/verification.rs",
+    "src/basic/rust/stat_util/xstatx.rs",
+    "src/basic/rust/stat_util.h",
+]
+scope = "basic.stat-util"
+rust_scope_paths = [
+    "src/basic/rust/stat_util.rs",
+    "src/basic/rust/stat_util",
+]
+rust_interface_paths = ["src/basic/rust/stat_util.h"]
+contract_file = "tools/rust-port/contracts/basic/stat-util.toml"
+test_file = "tests-extra/test-stat-util-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 69
-sync_status = "needs_review"
-notes = "Static implementation complete 2026-07-27; no Cargo/Meson/build/tests/VM. Sixty-nine canonical-header exports cover all 67 public stat-util function APIs plus btrfs_might_be_subvol and chattr-util's inode_type_can_chattr. Fifteen native stat/statx value verification exports live in stat_util/verification.rs; nine inode comparison/type exports live in stat_util/inode.rs; 13 descriptor/path adapters live in stat_util/descriptor.rs; 11 statvfs/statfs/filesystem exports live in stat_util/filesystem.rs; eight directory/null/fs/proc helpers live in stat_util/moderate.rs; xstatx_full/xstatx live in stat_util/xstatx.rs; inode identity lives in stat_util/inode_same.rs; and the two inode hashes live in stat_util/hash.rs. Hashing compresses exact target-native dev_t/ino_t/mode_t/time_t/nanosecond/off_t/dev_t objects in current-C order through the canonical C SipHash compressor and opaque state, with regular/device branches and typed sentinels matching inode_unmodified_compare. inode_same preserves O_PATH pinning, all at-flags, dynamically sized native libc file handles, AT_HANDLE_FID retry, unique/ordinary mount-ID fallback, fatal/contextual errors, RAII, and final native fstatat identity. xstatx preserves masks, attributes, mount-ID-best, XAT_FDROOT, errno, and output ordering. No guessed native stat/statx/statfs/statvfs/file-handle/SipHash layouts remain in the stat slice. Path-util owns is_device_path separately. Only runtime/kernel/cross-target differential validation remains in P2 children; no static stat API gap remains."
+symbols = 67
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/stat-util.c" = "72307fa7217822d3f930744bb3454d7bdf47f13a", "src/basic/stat-util.h" = "aa1c21ed90a91e0c03c2c4de833b29c5c4d67efa" }
+last_reviewed_rust_blobs = { "src/basic/rust/stat_util.rs" = "91e767ad74baae5b68ffa4b712d024704e022320", "src/basic/rust/stat_util.h" = "0d78cbfeebfd4fa278277fe8a59832fd4afb9d04", "src/basic/rust/stat_util/descriptor.rs" = "9f58270f7cffb3fc2404876754c51b256f0536d1", "src/basic/rust/stat_util/filesystem.rs" = "c4aa15ac88e4ddd10fc49301cf199d248a76fc12", "src/basic/rust/stat_util/hash.rs" = "a86f4392be107f22e9033defbf2e7f28ea000727", "src/basic/rust/stat_util/inode.rs" = "f0fc8f0ac4bc02a5cfc93097e334702fa347d205", "src/basic/rust/stat_util/inode_same.rs" = "d778bacee4587a79505be6125ced5d2f7e053bc0", "src/basic/rust/stat_util/moderate.rs" = "26ddda815321b3ced89645f4dd585e301a7a9196", "src/basic/rust/stat_util/verification.rs" = "82c658f9152f571734916a1d2a827cc4ed3bae93", "src/basic/rust/stat_util/xstatx.rs" = "d48f75ef546162e300a408f0c20eaacf7664227a" }
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.stat-util owns the decomposed stat_util facade. Contract authorities are narrowed to stat-util.c/h (chase/fs/mountpoint/siphash/btrfs/chattr paths are inventory dependencies, not this contract's reviewed authority). Fourteen machine-checked surfaces cover all 67 public stat-util function APIs (including header inlines and inode_type string-table lookup) with exact ABI, static fixture markers, and static-only evidence. inode_hash_ops and inode_unmodified_hash_ops remain excluded; rs_inode_type_can_chattr and rs_btrfs_might_be_subvol stay outside this authority slice. Runtime/kernel differential execution is unclaimed."
 
 [socket-util]
 c_file = "src/basic/socket-util.h"
@@ -282,17 +326,30 @@ tier = 1
 notes = "3 FFI exports: rs_sha256_is_valid, rs_parse_sha256, rs_hmac_sha256. Calls C sha256_init_ctx/process_bytes/finish_ctx/direct via extern. Skipped sha256_fd (file I/O)."
 
 [path-util]
-c_file = "src/basic/path-util.c, src/basic/path-util.h"
+c_paths = [
+    "src/basic/path-util.c",
+    "src/basic/path-util.h",
+]
 rust_paths = [
     "src/basic/rust/path_util.rs",
     "src/basic/rust/path_util/byte_abi.rs",
+    "src/basic/rust/path_util.h",
 ]
-header_file = "src/basic/rust/path_util.h"
+scope = "basic.path-util"
+rust_scope_paths = [
+    "src/basic/rust/path_util.rs",
+    "src/basic/rust/path_util/byte_abi.rs",
+]
+rust_interface_paths = ["src/basic/rust/path_util.h"]
+contract_file = "tools/rust-port/contracts/basic/path-util.toml"
+test_file = "tests-extra/test-path-funcs-rust.c"
 status = "in-progress"
 tier = 1
 symbols = 23
-sync_status = "needs_review"
-notes = "Static-only audit 2026-07-27; no Cargo/Meson/build/tests/VM. 23 reviewed explicit C ABI exports: rs_is_device_path plus the 22 registered pure path byte APIs exercised by test-path-funcs-rust and test-path-util-extra-rust. The 22 share one safe &[u8] component core with narrow CStr/borrowed-offset/libc-allocation facades; repeated slashes, dot/dot-dot, roots/relative paths, NULL/empty cases, in-place simplification, output-on-success, native O_DIRECTORY, pointer constness, and arbitrary non-UTF-8 bytes track current path-util.c/path-util.h. Canonical declarations live only in rust/path_util.h and generic current-C authority is registered. Remaining historical unreviewed declarations and filesystem-I/O path APIs are not counted."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44" }
+last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "eaa808e38598405245d202cd3e563707d6ddfafe", "src/basic/rust/path_util/byte_abi.rs" = "8adae62fb6f2e47b83b782d9af42ca12f81e2c06", "src/basic/rust/path_util.h" = "e06e6e62f9334cd4bad35eaea18ce2810a80218e" }
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Twenty-three pure path byte and is_device_path facades are covered by sixteen machine-checked contracts with exact ABI, opaque C-string bytes, NULL/empty/non-UTF-8 cases, borrowed-interior offsets, in-place simplification, libc-owned outputs, and success-only publication. Filesystem I/O path APIs, historical non-no_mangle validators, and skip_dev_prefix (header_inline ownership) remain excluded. Partial provenance with static-only evidence, not runtime parity."
 
 [bus-label]
 c_file = "src/basic/bus-label.c"

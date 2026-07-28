@@ -8,6 +8,7 @@
 #include "strv.h"
 #include "rust/strv.h"
 
+/* RUST-CONTRACT: strv-split-newlines-rebreak */
 static void test_strv_split_newlines(void) {
         char **c_r, **rs_r;
         size_t i;

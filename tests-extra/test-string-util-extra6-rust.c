@@ -10,6 +10,7 @@
 #include "escape.h"
 #include "rust/strv.h"
 
+/* RUST-CONTRACT: strv-shell-escape */
 static void test_strv_shell_escape(void) {
         /* SHELL_NEED_ESCAPE = "\"\\`$" — only these chars get escaped */
         char *c_arr[] = { strdup("hello"), strdup("foo\"bar"), strdup("it`s"), strdup("pay$"), strdup("back\\slash"), NULL };

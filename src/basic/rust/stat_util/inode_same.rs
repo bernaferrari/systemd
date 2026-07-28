@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/stat-util.c (inode_same_at)
-// PORT-SYNC: src/basic/stat-util.h (inode_same and fd_inode_same)
-// PORT-SYNC: src/basic/mountpoint-util.c (name_to_handle_at_loop,
-//           name_to_handle_at_try_fid, file_handle_equal)
+// PORT-SYNC: scope=basic.stat-util; authority=src/basic/stat-util.c,src/basic/stat-util.h
+//
+// inode_same_at and related identity helpers.
 
 use std::alloc::{Layout, alloc_zeroed, dealloc};
 use std::ffi::CStr;

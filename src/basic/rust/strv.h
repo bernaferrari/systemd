@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.strv; authority=src/basic/strv.c,src/basic/strv.h,src/fundamental/strv.h */
 #pragma once
 
 #include <stdbool.h>

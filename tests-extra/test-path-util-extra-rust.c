@@ -12,6 +12,7 @@
 #include "path-util.h"
 #include "rust/path_util.h"
 
+/* RUST-CONTRACT: path-equal */
 static void test_path_equal(void) {
         assert_se(path_equal("/foo/bar", "/foo/bar") == rs_path_equal("/foo/bar", "/foo/bar"));
         assert_se(path_equal("/foo/bar", "/foo/baz") == rs_path_equal("/foo/bar", "/foo/baz"));
@@ -23,6 +24,7 @@ static void test_path_equal(void) {
         assert_se(path_equal(NULL, "/a") == rs_path_equal(NULL, "/a"));
 }
 
+/* RUST-CONTRACT: path-startswith */
 static void test_path_startswith(void) {
         char *c_r, *rs_r;
 
@@ -47,6 +49,7 @@ static void test_path_startswith(void) {
         assert_se(c_r == NULL && rs_r == NULL);
 }
 
+/* RUST-CONTRACT: path-validity */
 static void test_path_is_valid(void) {
         assert_se(path_is_valid("/foo/bar") == rs_path_is_valid("/foo/bar"));
         assert_se(path_is_valid("/foo/../bar") == rs_path_is_valid("/foo/../bar"));
@@ -97,6 +100,7 @@ static void test_skip_dev_prefix(void) {
         assert_se(streq(c_r, rs_r));
 }
 
+/* RUST-CONTRACT: path-simplify */
 static void test_path_simplify(void) {
         char c_buf[256], rs_buf[256];
 
@@ -131,6 +135,7 @@ static void test_path_simplify(void) {
         assert_se(streq(c_buf, rs_buf));
 }
 
+/* RUST-CONTRACT: path-startswith-strv */
 static void test_path_startswith_strv(void) {
         char *arr[] = { (char*)"/foo", (char*)"/bar", NULL };
         char *c_r, *rs_r;
@@ -153,6 +158,7 @@ static void test_path_startswith_strv(void) {
         assert_se(c_r == NULL && rs_r == NULL);
 }
 
+/* RUST-CONTRACT: path-strv-contains */
 static void test_path_strv_contains(void) {
         char *arr[] = { (char*)"/foo", (char*)"/bar/baz", NULL };
 
@@ -172,6 +178,7 @@ static void test_prefixed_path_strv_contains(void) {
         assert_se(prefixed_path_strv_contains(NULL, "/foo") == rs_prefixed_path_strv_contains(NULL, "/foo"));
 }
 
+/* RUST-CONTRACT: path-split-extract */
 static void test_path_split_prefix_filename(void) {
         char *c_dir = NULL, *rs_dir = NULL;
         char *c_fn = NULL, *rs_fn = NULL;
@@ -318,6 +325,7 @@ static void test_path_extract_directory(void) {
         free(rs_dir); rs_dir = NULL;
 }
 
+/* RUST-CONTRACT: path-filename-compare */
 static void test_path_compare_filename(void) {
         assert_se(path_compare_filename("/foo/bar", "/baz/bar") == rs_path_compare_filename("/foo/bar", "/baz/bar"));
         assert_se(path_compare_filename("/foo", "/bar") == rs_path_compare_filename("/foo", "/bar"));

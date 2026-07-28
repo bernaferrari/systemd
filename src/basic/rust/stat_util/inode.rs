@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/chattr-util.c (inode_type_can_chattr)
-// PORT-SYNC: src/basic/stat-util.c (inode type names and inode comparisons)
+// PORT-SYNC: scope=basic.stat-util; authority=src/basic/stat-util.c,src/basic/stat-util.h
+//
+// Inode type names, chattr predicate, and inode comparisons.
 
 use std::cmp::Ordering;
 use std::ffi::{CStr, c_char};

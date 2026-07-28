@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/stat-util.c (directory/null/proc helpers)
-// PORT-SYNC: src/basic/stat-util.h (inline stat filesystem facades)
+// PORT-SYNC: scope=basic.stat-util; authority=src/basic/stat-util.c,src/basic/stat-util.h
+//
+// Directory emptiness, null/empty path helpers, and proc_mounted.
 
 use std::ffi::CStr;
 use std::mem::MaybeUninit;

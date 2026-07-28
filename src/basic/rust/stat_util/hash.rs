@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/stat-util.c (inode_hash_func and
-//           inode_unmodified_hash_func)
-// PORT-SYNC: src/basic/siphash24.h (canonical state/compress ABI)
+// PORT-SYNC: scope=basic.stat-util; authority=src/basic/stat-util.c,src/basic/stat-util.h
+//
+// inode_hash_func and inode_unmodified_hash_func via canonical SipHash.
 
 use std::marker::PhantomData;
 use std::ptr::NonNull;

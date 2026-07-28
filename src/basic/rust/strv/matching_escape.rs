@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/strv.c
+// PORT-SYNC: scope=basic.strv; authority=src/basic/strv.c,src/basic/strv.h,src/fundamental/strv.h
 //
 // C ABI boundary for the strv helpers that delegate matching to libc or
 // replace C-owned strings with byte-escaped copies.

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/stat-util.c (stat_verify_regular, statx_verify_regular,
-//           stat_verify_directory,
-//           statx_verify_directory, stat_verify_symlink, stat_verify_socket,
-//           statx_verify_socket, stat_verify_linked, stat_verify_device_node,
-//           stat_may_be_dev_null, stat_is_empty)
-// PORT-SYNC: src/basic/stat-util.h (inode_type_can_hardlink)
+// PORT-SYNC: scope=basic.stat-util; authority=src/basic/stat-util.c,src/basic/stat-util.h
 //
 // Inode type string conversion, comparison, and verification utilities.
 

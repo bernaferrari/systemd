@@ -8,6 +8,7 @@
 #include "strv.h"
 #include "rust/strv.h"
 
+/* RUST-CONTRACT: strv-sort-uniq-and-insert */
 static void test_strv_sort_uniq(void) {
         /* Copy for C, copy for Rust */
         char *c_arr[] = { strdup("banana"), strdup("apple"), strdup("apple"), strdup("cherry"), NULL };

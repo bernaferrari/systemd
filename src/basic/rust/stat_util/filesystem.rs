@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/stat-util.c (statfs/filesystem queries and vfs_free_bytes)
-// PORT-SYNC: src/basic/filesystem-sets.py (network and temporary groups)
+// PORT-SYNC: scope=basic.stat-util; authority=src/basic/stat-util.c,src/basic/stat-util.h
+//
+// statfs/filesystem queries and vfs_free_bytes.
 
 use std::ffi::CStr;
 use std::mem::MaybeUninit;

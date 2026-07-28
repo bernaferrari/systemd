@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/stat-util.c (verify_stat_at and fd/path verification)
+// PORT-SYNC: scope=basic.stat-util; authority=src/basic/stat-util.c,src/basic/stat-util.h
+//
+// Descriptor and path verification adapters (verify_* / is_* / fd_verify_*).
 
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};

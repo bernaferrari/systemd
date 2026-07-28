@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/path-util.c (pure string subset)
+// PORT-SYNC: scope=basic.path-util; authority=src/basic/path-util.c,src/basic/path-util.h
 //
 // Path and filename validation/comparison utilities.
 

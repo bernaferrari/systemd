@@ -7,6 +7,7 @@
 #include "strv.h"
 #include "rust/strv.h"
 
+/* RUST-CONTRACT: strv-inline-and-join */
 static void test_strv_copy(void) {
         char *input[] = { (char*)"hello", (char*)"world", NULL };
         char **c_r = strv_copy(input);
