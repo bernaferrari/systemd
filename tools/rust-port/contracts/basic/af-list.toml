@@ -1,0 +1,129 @@
+schema = 1
+module = "af_list"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["af_names"]
+
+[authority]
+c_headers = ["src/basic/af-list.h"]
+c_sources = ["src/basic/af-list.c"]
+rust_headers = ["src/basic/rust/af_list.h"]
+rust_sources = ["src/basic/rust/af_list.rs"]
+
+[[surface]]
+id = "af-name-rendering"
+c_symbols = ["af_to_name"]
+rust_symbols = ["rs_af_to_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-af-list-rust.c"
+meson_target = "test-af-list-rust"
+labels = ["af-name-rendering"]
+
+[[surface]]
+id = "af-name-short-rendering"
+c_symbols = ["af_to_name_short"]
+rust_symbols = ["rs_af_to_name_short"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-af-list-rust.c"
+meson_target = "test-af-list-rust"
+labels = ["af-name-short-rendering"]
+
+[[surface]]
+id = "af-name-parsing"
+c_symbols = ["af_from_name"]
+rust_symbols = ["rs_af_from_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-af-list-rust.c"
+meson_target = "test-af-list-rust"
+labels = ["af-name-parsing"]
+
+[[surface]]
+id = "af-ipv4-ipv6-rendering"
+c_symbols = ["af_to_ipv4_ipv6"]
+rust_symbols = ["rs_af_to_ipv4_ipv6"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-af-list-rust.c"
+meson_target = "test-af-list-rust"
+labels = ["af-ipv4-ipv6-rendering"]
+
+[[surface]]
+id = "af-ipv4-ipv6-parsing"
+c_symbols = ["af_from_ipv4_ipv6"]
+rust_symbols = ["rs_af_from_ipv4_ipv6"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-af-list-rust.c"
+meson_target = "test-af-list-rust"
+labels = ["af-ipv4-ipv6-parsing"]
+
+[[surface]]
+id = "af-max"
+c_symbols = ["af_max"]
+rust_symbols = ["rs_af_max"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-af-list-rust.c"
+meson_target = "test-af-list-rust"
+labels = ["af-max"]

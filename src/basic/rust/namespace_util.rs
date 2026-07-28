@@ -1,29 +1,30 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/namespace-util.c (clone_flag_to_namespace_type)
-// PORT-SYNC: src/basic/namespace-util.h (userns_shift_range_valid)
+// PORT-SYNC: scope=basic.namespace-util; authority=src/basic/namespace-util.c,src/basic/namespace-util.h,src/include/override/sched.h
 //
 // Namespace type lookup from clone flags and userns range validation.
 
 use crate::ffi::Errno;
+use libc::{c_int, c_ulong, uid_t};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-// CLONE_* flags from <linux/sched.h>
-const CLONE_NEWCGROUP: u64 = 0x02000000;
-const CLONE_NEWIPC: u64 = 0x08000000;
-const CLONE_NEWNET: u64 = 0x40000000;
-const CLONE_NEWNS: u64 = 0x00020000;
-const CLONE_NEWPID: u64 = 0x20000000;
-const CLONE_NEWUSER: u64 = 0x10000000;
-const CLONE_NEWUTS: u64 = 0x04000000;
-const CLONE_NEWTIME: u64 = 0x00000080;
+// Namespace clone flags from Linux UAPI <sched.h>. The project override
+// additionally pins CLONE_NEWTIME for older libc header sets.
+const CLONE_NEWCGROUP: c_ulong = 0x02000000;
+const CLONE_NEWIPC: c_ulong = 0x08000000;
+const CLONE_NEWNET: c_ulong = 0x40000000;
+const CLONE_NEWNS: c_ulong = 0x00020000;
+const CLONE_NEWPID: c_ulong = 0x20000000;
+const CLONE_NEWUSER: c_ulong = 0x10000000;
+const CLONE_NEWUTS: c_ulong = 0x04000000;
+const CLONE_NEWTIME: c_ulong = 0x00000080;
 
 const NAMESPACE_TYPE_MAX: usize = 8;
 const NAMESPACE_TYPE_INVALID: i32 = Errno::EINVAL.to_neg_errno();
 
 // Mask of all valid namespace clone flags
-const ALL_CLONE_NEW_FLAGS: u64 = CLONE_NEWCGROUP
+const ALL_CLONE_NEW_FLAGS: c_ulong = CLONE_NEWCGROUP
     | CLONE_NEWIPC
     | CLONE_NEWNET
     | CLONE_NEWNS
@@ -33,7 +34,7 @@ const ALL_CLONE_NEW_FLAGS: u64 = CLONE_NEWCGROUP
     | CLONE_NEWTIME;
 
 // clone_flag values indexed by NamespaceType enum (0-7)
-static CLONE_FLAGS: [u64; 8] = [
+static CLONE_FLAGS: [c_ulong; 8] = [
     CLONE_NEWCGROUP, // 0: NAMESPACE_CGROUP
     CLONE_NEWIPC,    // 1: NAMESPACE_IPC
     CLONE_NEWNET,    // 2: NAMESPACE_NET
@@ -63,11 +64,13 @@ pub enum NamespaceType {
 /// Look up NamespaceType from a clone flag value.
 ///
 /// Port of `clone_flag_to_namespace_type()` from namespace-util.c.
-/// Returns `Ok(NamespaceType)` on match, `Err(EINVAL)` if the flag
-/// is not a single valid namespace clone flag.
-pub fn clone_flag_to_namespace_type(clone_flag: u64) -> Result<NamespaceType, Errno> {
+/// Returns `Ok(NamespaceType)` when exactly one namespace-selection bit is
+/// set, ignoring unrelated clone(2) flags; otherwise returns `Err(EINVAL)`.
+pub fn clone_flag_to_namespace_type(clone_flag: c_ulong) -> Result<NamespaceType, Errno> {
     for i in 0..NAMESPACE_TYPE_MAX {
-        if CLONE_FLAGS[i] ^ clone_flag == 0 {
+        // Match the C implementation exactly: only namespace-selection bits
+        // participate in the comparison. Other clone(2) flags are ignored.
+        if (CLONE_FLAGS[i] ^ clone_flag) & ALL_CLONE_NEW_FLAGS == 0 {
             return Ok(match i {
                 0 => NamespaceType::Cgroup,
                 1 => NamespaceType::Ipc,
@@ -88,14 +91,31 @@ pub fn clone_flag_to_namespace_type(clone_flag: u64) -> Result<NamespaceType, Er
 /// and the end doesn't overflow uid_t.
 ///
 /// Port of `userns_shift_range_valid()` from namespace-util.h.
-pub fn userns_shift_range_valid(shift: u32, range: u32) -> bool {
+pub fn userns_shift_range_valid(shift: uid_t, range: uid_t) -> bool {
     if range == 0 {
         return false;
     }
-    if shift > u32::MAX - range {
+    if shift > uid_t::MAX - range {
         return false;
     }
     true
+}
+
+/// C ABI facade for `clone_flag_to_namespace_type()`.
+///
+/// `unsigned long` is represented by `c_ulong`, rather than assuming the
+/// LP64 width used by the supported Linux builds.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_clone_flag_to_namespace_type(clone_flag: c_ulong) -> c_int {
+    clone_flag_to_namespace_type(clone_flag)
+        .map(|namespace_type| namespace_type as c_int)
+        .unwrap_or(NAMESPACE_TYPE_INVALID)
+}
+
+/// C ABI facade for the inline `userns_shift_range_valid()` predicate.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_userns_shift_range_valid(shift: uid_t, range: uid_t) -> bool {
+    userns_shift_range_valid(shift, range)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -195,11 +215,11 @@ mod tests {
     }
 
     #[test]
-    fn test_clone_flag_with_extra_bits() {
-        // A valid flag with extra non-namespace bits set
+    fn test_clone_flag_with_non_namespace_bits() {
+        // C deliberately ignores clone bits that do not select a namespace.
         assert_eq!(
             clone_flag_to_namespace_type(CLONE_NEWNET | 0x01),
-            Err(Errno::EINVAL)
+            Ok(NamespaceType::Net)
         );
     }
 

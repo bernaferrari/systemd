@@ -736,15 +736,42 @@ sync_status = "needs_review"
 notes = "5 shadow tests pass. 2 FFI exports: rs_edid_parse_blob, rs_edid_get_panel_id. Parses EDID header (manufacturer_id byte-swapping, panel ID extraction). Uses repr(C, packed) EdidHeader struct. 2026-07-27 provenance audit re-anchored to current fundamental EDID source, header, and Rust comparator; runtime parity remains unclaimed."
 
 [af_list]
-c_file = "src/basic/af-list.c"
-rust_file = "src/basic/rust/af_list.rs"
-header_file = "src/basic/af-list.h"
+c_paths = [
+    "src/basic/af-list.c",
+    "src/basic/af-list.h",
+    "src/basic/generate-af-list.sh",
+    "src/basic/af-to-name.awk",
+    "src/basic/meson.build",
+    "src/include/meson.build",
+    "src/include/override/sys/socket.h",
+    "tools/generate-gperfs.py",
+]
+rust_paths = [
+    "src/basic/rust/af_list.rs",
+    "src/basic/rust/af_list.h",
+]
+scope = "basic.af-list"
+rust_scope_paths = ["src/basic/rust/af_list.rs"]
+rust_interface_paths = ["src/basic/rust/af_list.h"]
+contract_file = "tools/rust-port/contracts/basic/af-list.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/af-list.c", rust_paths = ["src/basic/rust/af_list.rs", "src/basic/rust/af_list.h"] },
+    { kind = "direct", path = "src/basic/af-list.h", rust_paths = ["src/basic/rust/af_list.rs", "src/basic/rust/af_list.h"] },
+    { kind = "direct", path = "src/basic/generate-af-list.sh", rust_paths = ["src/basic/rust/af_list.rs", "src/basic/rust/af_list.h"] },
+    { kind = "direct", path = "src/basic/af-to-name.awk", rust_paths = ["src/basic/rust/af_list.rs", "src/basic/rust/af_list.h"] },
+    { kind = "direct", path = "src/basic/meson.build", rust_paths = ["src/basic/rust/af_list.rs", "src/basic/rust/af_list.h"] },
+    { kind = "direct", path = "src/include/meson.build", rust_paths = ["src/basic/rust/af_list.rs", "src/basic/rust/af_list.h"] },
+    { kind = "direct", path = "src/include/override/sys/socket.h", rust_paths = ["src/basic/rust/af_list.rs", "src/basic/rust/af_list.h"] },
+    { kind = "direct", path = "tools/generate-gperfs.py", rust_paths = ["src/basic/rust/af_list.rs", "src/basic/rust/af_list.h"] },
+]
 test_file = "tests-extra/test-af-list-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 2
-sync_status = "needs_review"
-notes = "2026-07-27 source audit: Rust now covers all six visible conversion wrappers including af_max(), but still hard-codes the generated af-name tables without anchoring af-from-name.inc/af-to-name.inc. Complete generated-table source parity and exact header/fixture inventory before an anchored completion claim."
+symbols = 6
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "3b74e2bb1b89485bd0ff55c2fdb561a806d25c5e", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
+notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
 [argv_util]
 c_paths = [
@@ -809,14 +836,26 @@ last_reviewed_rust_blobs = { "src/basic/rust/arphrd_util.rs" = "ecab09b0791eea5d
 notes = "Reviewed static ARPHRD table slice 2026-07-28; no build/tests/VM. Three facades preserve generated Linux-UAPI name lookup, gperf ASCII case folding, the HDLC/CISCO alias, borrowed static output, uint16_t width, and address-length mapping. Generator inputs and Meson’s --ignore-case setting are pinned. C remains the production authority; runtime parity is unclaimed."
 
 [at_flags_util]
-c_file = "src/basic/fs-util.h"
-rust_file = "src/basic/rust/at_flags_util.rs"
-header_file = "src/basic/fs-util.h"
+c_paths = ["src/basic/fs-util.h"]
+rust_paths = [
+    "src/basic/rust/at_flags_util.rs",
+    "src/basic/rust/at_flags_util.h",
+]
+scope = "basic.at-flags-util"
+rust_scope_paths = ["src/basic/rust/at_flags_util.rs"]
+rust_interface_paths = ["src/basic/rust/at_flags_util.h"]
+contract_file = "tools/rust-port/contracts/basic/at-flags-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/fs-util.h", rust_paths = ["src/basic/rust/at_flags_util.rs", "src/basic/rust/at_flags_util.h"] },
+]
+test_file = "tests-extra/test-at-flags-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 4
-sync_status = "needs_review"
-notes = "The four exported normalizers are header-inline behavior from current fs-util.h. 2026-07-27 provenance audit removed the nonexistent synthetic .c/.h pair; runtime parity remains unclaimed."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/fs-util.h" = "bc33f2f8e95d51311d07d4950ffded5586a554db" }
+last_reviewed_rust_blobs = { "src/basic/rust/at_flags_util.rs" = "e23c35a30aff78c9e2db043f935a8d223073fbed", "src/basic/rust/at_flags_util.h" = "c95a811ebb25f21561ebdf9bcda32c83bca01ae9" }
+notes = "Reviewed static at-flags normalization ABI 2026-07-28; no build/tests/VM. Both inline normalizers preserve all valid scalar flag transformations. The contradictory C-assert domain is a documented -EINVAL fail-closed extension at the C ABI, avoiding unwinding. C remains the production authority; runtime parity is unclaimed."
 
 [basic_validators]
 c_file = "src/basic/cgroup-util.h"
@@ -1229,15 +1268,30 @@ sync_status = "needs_review"
 notes = "Static audit 2026-07-27; no build/tests/VM. The five registered C ABI exports (URL last-component/change-suffix, tar/raw suffix stripping, reboot parameter validation) are byte-oriented unsafe extern-C facades over safe range cores. Successful string results are fresh libc malloc allocations for C free(3); malformed/non-UTF-8 bytes remain opaque. Current C sources, canonical header, registered shadow test, and reviewed CI are pinned by check-basic-rust-ffi-abi.py. Other import-util APIs are not claimed by this slice; runtime differential/link validation remains pending."
 
 [ioprio_util]
-c_file = "src/shared/ioprio-util.h"
-rust_file = "src/basic/rust/ioprio_util.rs"
-header_file = "src/shared/ioprio-util.h"
+c_paths = [
+    "src/shared/ioprio-util.h",
+    "src/include/uapi/linux/ioprio.h",
+]
+rust_paths = [
+    "src/basic/rust/ioprio_util.rs",
+    "src/basic/rust/ioprio_util.h",
+]
+scope = "shared.ioprio-util"
+rust_scope_paths = ["src/basic/rust/ioprio_util.rs"]
+rust_interface_paths = ["src/basic/rust/ioprio_util.h"]
+contract_file = "tools/rust-port/contracts/basic/ioprio-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/ioprio-util.h", rust_paths = ["src/basic/rust/ioprio_util.rs", "src/basic/rust/ioprio_util.h"] },
+    { kind = "direct", path = "src/include/uapi/linux/ioprio.h", rust_paths = ["src/basic/rust/ioprio_util.rs", "src/basic/rust/ioprio_util.h"] },
+]
 test_file = "tests-extra/test-ioprio-util-rust.c"
 status = "in-progress"
 tier = 1
 symbols = 4
-sync_status = "needs_review"
-notes = "The registered I/O-priority helpers are current shared header-inline behavior. 2026-07-27 provenance audit removed the nonexistent synthetic basic .c/.h pair; runtime parity remains unclaimed."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/ioprio-util.h" = "5a637c8d17e18ff55f65ee0d493e49d4ebeb0763", "src/include/uapi/linux/ioprio.h" = "9a51dd0c9b51982ff4c1009d285c0bd6c1f2af25" }
+last_reviewed_rust_blobs = { "src/basic/rust/ioprio_util.rs" = "7b6dfab341a280c22df94eced284772828fe8039", "src/basic/rust/ioprio_util.h" = "9df0faca0637436f6032d5ba9fa61dec87edae8d" }
+notes = "Reviewed static I/O-priority ABI slice 2026-07-28; no build/tests/VM. Four scalar facades preserve UAPI bit masks, hints, reserved class handling, and normalization. Parsing and string-table APIs remain C-only. C remains the production authority; runtime parity is unclaimed."
 
 [mempool]
 c_file = "src/basic/mempool.c"
@@ -1278,13 +1332,32 @@ symbols = 5
 sync_status = "needs_review"
 
 [namespace_util]
-c_file = "src/basic/namespace-util.c"
-rust_file = "src/basic/rust/namespace_util.rs"
-header_file = "src/basic/namespace-util.h"
+c_paths = [
+    "src/basic/namespace-util.c",
+    "src/basic/namespace-util.h",
+    "src/include/override/sched.h",
+]
+rust_paths = [
+    "src/basic/rust/namespace_util.rs",
+    "src/basic/rust/namespace_util.h",
+]
+scope = "basic.namespace-util"
+rust_scope_paths = ["src/basic/rust/namespace_util.rs"]
+rust_interface_paths = ["src/basic/rust/namespace_util.h"]
+contract_file = "tools/rust-port/contracts/basic/namespace-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/namespace-util.c", rust_paths = ["src/basic/rust/namespace_util.rs", "src/basic/rust/namespace_util.h"] },
+    { kind = "direct", path = "src/basic/namespace-util.h", rust_paths = ["src/basic/rust/namespace_util.rs", "src/basic/rust/namespace_util.h"] },
+    { kind = "direct", path = "src/include/override/sched.h", rust_paths = ["src/basic/rust/namespace_util.rs", "src/basic/rust/namespace_util.h"] },
+]
+test_file = "tests-extra/test-namespace-mountpoint-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 3
-sync_status = "needs_review"
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/namespace-util.c" = "72e7005c946133b8e693fb8ac5817f8a8ed90ada", "src/basic/namespace-util.h" = "d0eff636a9d2b921da859e0f98cf449785b7be8a", "src/include/override/sched.h" = "3eed39311868ead35bdf71a18466e4a3f4e8b70e" }
+last_reviewed_rust_blobs = { "src/basic/rust/namespace_util.rs" = "c9041a41942fa195462aca6243dee6efb7587bcb", "src/basic/rust/namespace_util.h" = "a9c56463b4b4865afe21dfaa0519054a2719309e" }
+notes = "Reviewed static namespace scalar ABI slice 2026-07-28; no build/tests/VM. Two facades preserve the C namespace-bit mask (unrelated clone flags do not affect selection), native unsigned-long/uid_t widths, and overflow checks. Namespace FD, pidref, userns mapping, mount, and syscall operations remain C-only. C remains the production authority; runtime parity is unclaimed."
 
 [netdev_str_tables]
 c_file = "src/shared/bond-util.c"

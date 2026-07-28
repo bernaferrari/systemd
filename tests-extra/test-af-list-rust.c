@@ -11,6 +11,7 @@
 
 /* ── af_to_name ───────────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: af-name-rendering */
 static void test_af_to_name(void) {
         const char *cr, *rr;
 
@@ -68,6 +69,7 @@ static void test_af_to_name(void) {
 
 /* ── af_to_name_short ─────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: af-name-short-rendering */
 static void test_af_to_name_short(void) {
         const char *cr, *rr;
 
@@ -105,6 +107,7 @@ static void test_af_to_name_short(void) {
 
 /* ── af_from_name ─────────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: af-name-parsing */
 static void test_af_from_name(void) {
         const char invalid_bytes[] = { (char) 0xff, 0 };
         int cr, rr;
@@ -133,6 +136,27 @@ static void test_af_from_name(void) {
         rr = rs_af_from_name("AF_PACKET");
         assert_se(cr == rr);
 
+        /* The generated gperf authority accepts aliases and folds ASCII case. */
+        cr = af_from_name("AF_LOCAL");
+        rr = rs_af_from_name("AF_LOCAL");
+        assert_se(cr == rr);
+        assert_se(cr == AF_UNIX);
+
+        cr = af_from_name("AF_FILE");
+        rr = rs_af_from_name("AF_FILE");
+        assert_se(cr == rr);
+        assert_se(cr == AF_UNIX);
+
+        cr = af_from_name("AF_ROUTE");
+        rr = rs_af_from_name("AF_ROUTE");
+        assert_se(cr == rr);
+        assert_se(cr == AF_NETLINK);
+
+        cr = af_from_name("aF_iNeT6");
+        rr = rs_af_from_name("aF_iNeT6");
+        assert_se(cr == rr);
+        assert_se(cr == AF_INET6);
+
         /* Unknown */
         cr = af_from_name("invalid");
         rr = rs_af_from_name("invalid");
@@ -155,6 +179,7 @@ static void test_af_from_name(void) {
 
 /* ── af_to_ipv4_ipv6 / af_from_ipv4_ipv6 ─────────────────────────────── */
 
+/* RUST-CONTRACT: af-ipv4-ipv6-rendering */
 static void test_af_ipv4_ipv6(void) {
         const char *cr, *rr;
         int ir, rr2;
@@ -176,6 +201,7 @@ static void test_af_ipv4_ipv6(void) {
         assert_se(cr == NULL);
         assert_se(rr == NULL);
 
+        /* RUST-CONTRACT: af-ipv4-ipv6-parsing */
         ir = af_from_ipv4_ipv6("ipv4");
         rr2 = rs_af_from_ipv4_ipv6("ipv4");
         assert_se(ir == rr2);
@@ -211,6 +237,7 @@ static void test_af_name_roundtrip(void) {
         assert_se(rs_af_from_name(rs_af_to_name(AF_UNIX)) == AF_UNIX);
 }
 
+/* RUST-CONTRACT: af-max */
 static void test_af_max(void) {
         assert_se(af_max() == rs_af_max());
 }

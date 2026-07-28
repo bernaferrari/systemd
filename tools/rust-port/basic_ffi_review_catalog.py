@@ -625,6 +625,16 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "namespace_util": (
+            basic_rust / "namespace_util.h",
+            basic_rust / "namespace_util.rs",
+            frozenset(
+                {
+                    "rs_clone_flag_to_namespace_type",
+                    "rs_userns_shift_range_valid",
+                }
+            ),
+        ),
     }
     partial_extra_sources = {
         "escape": (
@@ -783,6 +793,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "arphrd_util": (tests_extra / "test-arphrd-util-rust.c",),
         "bus_error_util": (tests_extra / "test-bus-error-rust.c",),
         "fstype_util": (tests_extra / "test-fstype-util-rust.c",),
+        "namespace_util": (tests_extra / "test-namespace-mountpoint-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -1032,6 +1043,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "fstype_util": (
             root / "src/basic/mountpoint-util.c",
             root / "src/basic/mountpoint-util.h",
+        ),
+        "namespace_util": (
+            root / "src/basic/namespace-util.c",
+            root / "src/basic/namespace-util.h",
         ),
     }
     return BasicFfiReviewCatalog(

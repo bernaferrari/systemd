@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/af-list.c, src/basic/af-list.h
+// PORT-SYNC: scope=basic.af-list; authority=src/basic/af-list.c,src/basic/af-list.h,src/basic/generate-af-list.sh,src/basic/af-to-name.awk,src/basic/meson.build,src/include/meson.build,src/include/override/sys/socket.h,tools/generate-gperfs.py
 //
 // Address family name/value lookups.
 // Faithfully re-implements af_to_name, af_to_name_short, af_from_name,
 // af_to_ipv4_ipv6, and af_from_ipv4_ipv6 from af-list.c.
+//
+// `af_names` and the gperf parser are generated from the selected target's
+// <sys/socket.h>. The static Linux table below is deliberately kept separate
+// from that build-time authority: the C-vs-Rust fixture exhausts the target
+// table when it is available, but a target-generated-table parity claim must
+// not be inferred from this source-only port.
 
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::c_char;
@@ -102,6 +108,33 @@ address_family_table!(
     Xdp => "AF_XDP", Mctp => "AF_MCTP",
 );
 
+// `af-to-name.awk` intentionally removes these aliases so output has one
+// canonical spelling per numeric family. `af-from-name.gperf`, however, is
+// generated from the unfiltered macro list and accepts all three. Keep that
+// asymmetry explicit instead of adding duplicate output entries.
+static AF_FROM_NAME_ALIASES: &[FfiEntry] = &[
+    (AddressFamily::Unix as i32, b"AF_LOCAL\0"),
+    (AddressFamily::Unix as i32, b"AF_FILE\0"),
+    (AddressFamily::Netlink as i32, b"AF_ROUTE\0"),
+];
+
+/// Look up an address-family spelling with gperf's ASCII case folding.
+///
+/// The C generator passes `--ignore-case`; `eq_ignore_ascii_case` has the
+/// same byte-oriented behavior for the ASCII macro names and never attempts
+/// a Unicode conversion of FFI input.
+fn af_from_name_bytes(name: &[u8]) -> Option<AddressFamily> {
+    AF_TABLE
+        .iter()
+        .chain(AF_FROM_NAME_ALIASES)
+        .find_map(|&(value, bytes)| {
+            bytes[..bytes.len() - 1]
+                .eq_ignore_ascii_case(name)
+                .then_some(value)
+        })
+        .and_then(AddressFamily::from_raw)
+}
+
 // ── af_to_name ───────────────────────────────────────────────────────────
 
 /// Convert an address family ID to its name string.
@@ -132,9 +165,7 @@ pub fn af_to_name_short(id: i32) -> &'static str {
 /// Parse an AF_* name string into its address family value.
 /// Mirrors `af_from_name()` from af-list.c.
 pub fn af_from_name(name: &str) -> Result<AddressFamily, i32> {
-    ffi_string_table::from_str(AF_TABLE, name)
-        .and_then(AddressFamily::from_raw)
-        .ok_or(AF_INVALID)
+    af_from_name_bytes(name.as_bytes()).ok_or(AF_INVALID)
 }
 
 // ── af_to_ipv4_ipv6 ─────────────────────────────────────────────────────
@@ -206,8 +237,9 @@ pub unsafe extern "C" fn rs_af_from_name(name: *const c_char) -> i32 {
     }
 
     // SAFETY: required by this C ABI entry point's contract and checked for
-    // NULL above; the shared adapter borrows it only.
-    unsafe { ffi_string_table::from_ptr(AF_TABLE, name, AF_INVALID) }
+    // NULL above. This borrows opaque C bytes only for the lookup.
+    let name = unsafe { std::ffi::CStr::from_ptr(name) }.to_bytes();
+    af_from_name_bytes(name).map_or(AF_INVALID, |family| family as i32)
 }
 
 /// C ABI facade for `af_to_ipv4_ipv6()`.

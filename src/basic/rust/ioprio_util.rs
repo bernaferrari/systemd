@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/ioprio-util.h (ioprio_prio_class, ioprio_prio_data,
-//            ioprio_prio_value, ioprio_class_is_valid, ioprio_priority_is_valid,
-//            ioprio_normalize)
+// PORT-SYNC: scope=shared.ioprio-util; authority=src/shared/ioprio-util.h,src/include/uapi/linux/ioprio.h
 //
 // I/O priority bit manipulation helpers.
 // Constants from <linux/ioprio.h>.

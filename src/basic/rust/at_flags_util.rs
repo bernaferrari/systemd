@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/fs-util.h
+// PORT-SYNC: scope=basic.at-flags-util; authority=src/basic/fs-util.h
 //
 // openat() flag normalization utilities for consistent symlink-handling policy.
 //
 // Provides pure-Rust equivalents of the C inline functions
 // `at_flags_normalize_nofollow()` and `at_flags_normalize_follow()` from
 // fs-util.h. The C originals contain `assert()` guards against contradictory
-// flags; these Rust versions panic equivalently.
+// flags; the safe Rust API represents that invalid caller state explicitly.
 
 // ── Constants ─────────────────────────────────────────────────────────────
 

@@ -155,6 +155,7 @@ static void test_is_name_to_handle_at_fatal_error_einval(void) {
 
 /* ── clone_flag_to_namespace_type ───────────────────────────────────────── */
 
+/* RUST-CONTRACT: namespace-clone-flag-to-type */
 static void test_clone_flag_to_namespace_type_all(void) {
         static const struct {
                 unsigned long flag;
@@ -193,27 +194,54 @@ static void test_clone_flag_to_namespace_type_invalid(void) {
         r_r = rs_clone_flag_to_namespace_type(CLONE_NEWPID | CLONE_NEWNS);
         assert_se(r_c == r_r);
         assert_se(r_c < 0);
+
+        /* C intentionally ignores non-namespace clone flags. */
+        r_c = clone_flag_to_namespace_type(CLONE_NEWNET | 0x01);
+        r_r = rs_clone_flag_to_namespace_type(CLONE_NEWNET | 0x01);
+        assert_se(r_c == r_r);
+        assert_se(r_c == NAMESPACE_NET);
 }
 
 /* ── userns_shift_range_valid ───────────────────────────────────────────── */
 
+/* RUST-CONTRACT: namespace-userns-shift-range */
 static void test_userns_shift_range_valid_basic(void) {
-        assert_se(rs_userns_shift_range_valid(0, 1));
-        assert_se(rs_userns_shift_range_valid(100, 100));
-        assert_se(rs_userns_shift_range_valid(0, UINT32_MAX));
-        assert_se(rs_userns_shift_range_valid(1, 1));
+        static const struct {
+                uid_t shift;
+                uid_t range;
+        } cases[] = {
+                { 0, 1 },
+                { 100, 100 },
+                { 0, (uid_t) -1 },
+                { 1, 1 },
+        };
+
+        for (size_t i = 0; i < ELEMENTSOF(cases); i++)
+                assert_se(userns_shift_range_valid(cases[i].shift, cases[i].range) ==
+                          rs_userns_shift_range_valid(cases[i].shift, cases[i].range));
 }
 
 static void test_userns_shift_range_valid_invalid(void) {
-        assert_se(!rs_userns_shift_range_valid(0, 0));
-        assert_se(!rs_userns_shift_range_valid(UINT32_MAX, 1));
-        assert_se(!rs_userns_shift_range_valid(UINT32_MAX - 1, 2));
-        assert_se(!rs_userns_shift_range_valid(UINT32_MAX, UINT32_MAX));
+        static const struct {
+                uid_t shift;
+                uid_t range;
+        } cases[] = {
+                { 0, 0 },
+                { (uid_t) -1, 1 },
+                { (uid_t) -2, 2 },
+                { (uid_t) -1, (uid_t) -1 },
+        };
+
+        for (size_t i = 0; i < ELEMENTSOF(cases); i++)
+                assert_se(userns_shift_range_valid(cases[i].shift, cases[i].range) ==
+                          rs_userns_shift_range_valid(cases[i].shift, cases[i].range));
 }
 
 static void test_userns_shift_range_valid_edge(void) {
-        assert_se(rs_userns_shift_range_valid(UINT32_MAX - 1, 1));
-        assert_se(rs_userns_shift_range_valid(0, UINT32_MAX));
+        assert_se(userns_shift_range_valid((uid_t) -2, 1) ==
+                  rs_userns_shift_range_valid((uid_t) -2, 1));
+        assert_se(userns_shift_range_valid(0, (uid_t) -1) ==
+                  rs_userns_shift_range_valid(0, (uid_t) -1));
 }
 
 int main(int argc, char *argv[]) {

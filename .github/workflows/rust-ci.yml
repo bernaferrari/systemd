@@ -235,6 +235,7 @@ jobs:
           test-alloc-util-extra2-rust
           test-at-flags-rust
           test-ioprio-util-rust
+          test-namespace-mountpoint-rust
           test-time-util-extra2-rust
           test-str-tables-batch3-rust
           test-udev-util-rust
@@ -339,6 +340,7 @@ jobs:
           test-alloc-util-extra2-rust
           test-at-flags-rust
           test-ioprio-util-rust
+          test-namespace-mountpoint-rust
           test-time-util-extra2-rust
           test-str-tables-batch3-rust
           test-udev-util-rust

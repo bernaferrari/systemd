@@ -8,6 +8,7 @@
 #include "rust/ioprio_util.h"
 #include "tests.h"
 
+/* RUST-CONTRACT: ioprio-prio-class */
 static void test_ioprio_prio_class(void) {
         assert_se(ioprio_prio_class(0) == rs_ioprio_prio_class(0));
         assert_se(ioprio_prio_class(IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0)) == rs_ioprio_prio_class(IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0)));
@@ -19,6 +20,7 @@ static void test_ioprio_prio_class(void) {
         assert_se(ioprio_prio_class(-1) == rs_ioprio_prio_class(-1));
 }
 
+/* RUST-CONTRACT: ioprio-prio-data */
 static void test_ioprio_prio_data(void) {
         assert_se(ioprio_prio_data(0) == rs_ioprio_prio_data(0));
         assert_se(ioprio_prio_data(IOPRIO_PRIO_VALUE(IOPRIO_CLASS_BE, 4)) == rs_ioprio_prio_data(IOPRIO_PRIO_VALUE(IOPRIO_CLASS_BE, 4)));
@@ -28,6 +30,7 @@ static void test_ioprio_prio_data(void) {
         assert_se(ioprio_prio_data(INT_MAX) == rs_ioprio_prio_data(INT_MAX));
 }
 
+/* RUST-CONTRACT: ioprio-prio-value */
 static void test_ioprio_prio_value(void) {
         assert_se(ioprio_prio_value(IOPRIO_CLASS_BE, 4) == rs_ioprio_prio_value(IOPRIO_CLASS_BE, 4));
         assert_se(ioprio_prio_value(IOPRIO_CLASS_RT, 0) == rs_ioprio_prio_value(IOPRIO_CLASS_RT, 0));
@@ -41,8 +44,14 @@ static void test_ioprio_prio_value(void) {
         assert_se(ioprio_prio_value(IOPRIO_CLASS_BE, -1) == rs_ioprio_prio_value(IOPRIO_CLASS_BE, -1));
         assert_se(ioprio_prio_value(IOPRIO_CLASS_BE, 1 << IOPRIO_CLASS_SHIFT) == rs_ioprio_prio_value(IOPRIO_CLASS_BE, 1 << IOPRIO_CLASS_SHIFT));
         assert_se(ioprio_prio_value(IOPRIO_CLASS_BE, INT_MAX) == rs_ioprio_prio_value(IOPRIO_CLASS_BE, INT_MAX));
+        /* The kernel helper rejects an out-of-range class but permits its
+         * reserved INVALID value (which is still below NR_CLASSES). */
+        assert_se(ioprio_prio_value(-1, 0) == rs_ioprio_prio_value(-1, 0));
+        assert_se(ioprio_prio_value(IOPRIO_NR_CLASSES, 0) == rs_ioprio_prio_value(IOPRIO_NR_CLASSES, 0));
+        assert_se(ioprio_prio_value(IOPRIO_CLASS_INVALID, 0) == rs_ioprio_prio_value(IOPRIO_CLASS_INVALID, 0));
 }
 
+/* RUST-CONTRACT: ioprio-normalize */
 static void test_ioprio_normalize(void) {
         assert_se(ioprio_normalize(IOPRIO_PRIO_VALUE(IOPRIO_CLASS_BE, 4)) == rs_ioprio_normalize(IOPRIO_PRIO_VALUE(IOPRIO_CLASS_BE, 4)));
         assert_se(ioprio_normalize(IOPRIO_PRIO_VALUE(IOPRIO_CLASS_RT, 7)) == rs_ioprio_normalize(IOPRIO_PRIO_VALUE(IOPRIO_CLASS_RT, 7)));

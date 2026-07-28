@@ -190,10 +190,6 @@
       "rs_mount_propagation_flag_from_string",
       "rs_mount_propagation_flag_to_string"
     ],
-    "src/basic/rust/namespace_util.h": [
-      "rs_clone_flag_to_namespace_type",
-      "rs_userns_shift_range_valid"
-    ],
     "src/basic/rust/nulstr_util.h": [
       "rs_nulstr_get",
       "rs_strv_parse_nulstr_full"

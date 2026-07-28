@@ -1,0 +1,82 @@
+schema = 1
+module = "ioprio_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "ioprio_class_is_valid",
+    "ioprio_priority_is_valid",
+    "ioprio_parse_priority",
+]
+
+[authority]
+c_headers = ["src/shared/ioprio-util.h"]
+# Header-inline authority: repeat the implementation header because the
+# contract schema requires a non-empty implementation path list.
+c_sources = ["src/shared/ioprio-util.h"]
+rust_headers = ["src/basic/rust/ioprio_util.h"]
+rust_sources = ["src/basic/rust/ioprio_util.rs"]
+
+[[surface]]
+id = "ioprio-prio-class"
+c_symbols = ["ioprio_prio_class"]
+rust_symbols = ["rs_ioprio_prio_class"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ioprio-util-rust.c"
+meson_target = "test-ioprio-util-rust"
+labels = ["ioprio-prio-class"]
+
+[[surface]]
+id = "ioprio-prio-data"
+c_symbols = ["ioprio_prio_data"]
+rust_symbols = ["rs_ioprio_prio_data"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ioprio-util-rust.c"
+meson_target = "test-ioprio-util-rust"
+labels = ["ioprio-prio-data"]
+
+[[surface]]
+id = "ioprio-prio-value"
+c_symbols = ["ioprio_prio_value"]
+rust_symbols = ["rs_ioprio_prio_value"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ioprio-util-rust.c"
+meson_target = "test-ioprio-util-rust"
+labels = ["ioprio-prio-value"]
+
+[[surface]]
+id = "ioprio-normalize"
+c_symbols = ["ioprio_normalize"]
+rust_symbols = ["rs_ioprio_normalize"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ioprio-util-rust.c"
+meson_target = "test-ioprio-util-rust"
+labels = ["ioprio-normalize"]

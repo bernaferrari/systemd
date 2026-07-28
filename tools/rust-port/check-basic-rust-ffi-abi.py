@@ -67,6 +67,7 @@ C_TYPES = {
     "CompareOperator": "i32",
     "CompareOperatorParseFlags": "i32",
     "ConditionType": "i32",
+    "NamespaceType": "i32",
     "GptPartitionType": "GptPartitionType",
     "ShellEscapeFlags": "u32",
     "UnescapeFlags": "u32",

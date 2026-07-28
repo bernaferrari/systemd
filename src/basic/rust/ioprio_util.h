@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+/* PORT-SYNC: scope=shared.ioprio-util; authority=src/shared/ioprio-util.h,src/include/uapi/linux/ioprio.h */
+
 #ifdef __cplusplus
 extern "C" {
 #endif

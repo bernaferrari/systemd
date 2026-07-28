@@ -9,6 +9,7 @@
 #include "rust/at_flags_util.h"
 #include "tests.h"
 
+/* RUST-CONTRACT: at-flags-normalize-nofollow */
 static void test_at_flags_normalize_nofollow(void) {
         int cv, rv;
 
@@ -43,6 +44,7 @@ static void test_at_flags_normalize_nofollow(void) {
         assert_se(cv == rv);
 }
 
+/* RUST-CONTRACT: at-flags-normalize-follow */
 static void test_at_flags_normalize_follow(void) {
         int cv, rv;
 
