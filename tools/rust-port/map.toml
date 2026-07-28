@@ -279,14 +279,30 @@ sync_status = "needs_review"
 notes = "2026-07-27 source audit: the Rust file has no repr(C) state or rs_siphash24_* exports although the Rust header/fixture declares six. Current C also exposes iovec and typed helper paths that Rust lacks. State length uses checked Rust addition rather than documented C size_t wrapping, so an overflow can panic. Build a bounded repr(C) ABI facade and complete the streaming/helper audit before anchoring."
 
 [MurmurHash2]
-c_file = "src/basic/MurmurHash2.c"
-rust_file = "src/basic/rust/murmurhash2.rs"
-header_file = "src/basic/MurmurHash2.h"
+c_paths = [
+    "src/basic/MurmurHash2.c",
+    "src/basic/MurmurHash2.h",
+]
+rust_paths = [
+    "src/basic/rust/murmurhash2.rs",
+    "src/basic/rust/murmurhash2.h",
+]
+scope = "basic.murmurhash2"
+rust_scope_paths = ["src/basic/rust/murmurhash2.rs"]
+rust_interface_paths = ["src/basic/rust/murmurhash2.h"]
+contract_file = "tools/rust-port/contracts/basic/murmurhash2.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/MurmurHash2.c", rust_paths = ["src/basic/rust/murmurhash2.rs", "src/basic/rust/murmurhash2.h"] },
+    { kind = "direct", path = "src/basic/MurmurHash2.h", rust_paths = ["src/basic/rust/murmurhash2.rs", "src/basic/rust/murmurhash2.h"] },
+]
 test_file = "tests-extra/test-murmurhash2-rust.c"
 status = "in-progress"
 tier = 1
-sync_status = "needs_review"
-notes = "2026-07-27 source audit: no rs_MurmurHash2 export exists despite the Rust header/fixture declaration. The Rust API accepts a slice rather than C's signed int length/null contract and forces little-endian block loading while current C intentionally follows native unaligned uint32_t loads. Add a narrow checked C ABI and decide/document target-endian parity before any completion anchor."
+symbols = 1
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/MurmurHash2.c" = "bb4cd6b90675a21668a7265bf2b6fb8ba378b081", "src/basic/MurmurHash2.h" = "5758b860398dba7c1740ad86b76f709f299452e9" }
+last_reviewed_rust_blobs = { "src/basic/rust/murmurhash2.rs" = "25dd48cc4f7c62e4646b734744747d3d52321805", "src/basic/rust/murmurhash2.h" = "a22f14d03b89c2edd0557f4b1e053927dd420dc9" }
+notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. One exact C ABI export preserves C's signed-length/null behavior and native-endian word loading without C's unaligned or aliasing reads. The dual C fixture covers empty, NULL zero-length, negative-length, binary, tail, and seed cases. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 [format-util]
 c_file = "src/basic/format-util.c"

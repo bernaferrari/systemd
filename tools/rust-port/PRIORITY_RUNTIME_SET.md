@@ -19,6 +19,7 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Area | Fixtures configured for Linux CI execution | Notes |
 | --- | --- | --- |
 | Path / pure path / non-UTF-8 | `test-path-util-rust`, `test-path-funcs-rust`, `test-path-util-extra-rust` | Includes base predicates, `\\xff` path component, and split cases |
+| Pure hash | `test-murmurhash2-rust` | Native-endian block loading and zero/negative signed-length boundary |
 | Strv ownership / allocation | `test-strv-rust`, `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Includes base vector search/mutation plus registered push/consume/split/join/fnmatch surface |
 | Stat | `test-stat-util-rust`, `test-stat-util-extra2-rust`, `test-stat-util-inline-rust`, `test-stat-verify-rust` | Includes non-UTF-8 inode type string |
 | Shared facades | `test-shared-validators-rust`, `test-shared-validators2-rust`, `test-shared-validators3-rust` (+ related validator fixtures in the same job) | Policy/validation facades |

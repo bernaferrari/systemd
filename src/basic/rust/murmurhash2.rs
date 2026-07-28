@@ -1,33 +1,35 @@
 // SPDX-License-Identifier: LicenseRef-murmurhash2-public-domain
 //
-// PORT-SYNC: src/basic/MurmurHash2.c
+// PORT-SYNC: scope=basic.murmurhash2; authority=src/basic/MurmurHash2.c,src/basic/MurmurHash2.h
 //
 // MurmurHash2 was written by Austin Appleby, and is placed in the public domain.
 // The author hereby disclaims copyright to this source code.
 //
 // Pure Rust implementation of MurmurHash2 — a fast, non-cryptographic hash.
-// Produces identical results to the C version on little-endian platforms.
+// Produces identical results to the C version, including its native-endian
+// four-byte loads.
+
+use std::ffi::{c_int, c_void};
 
 // ── MurmurHash2 ──────────────────────────────────────────────────────────
 
 /// MurmurHash2 — a fast, non-cryptographic hash function.
 ///
-/// Produces identical results to the C MurmurHash2 on little-endian platforms.
-/// Note: This function reads memory in a platform-dependent manner and will
-/// produce different results on different endiannesses.
-pub fn murmur_hash2(data: &[u8], seed: u32) -> u32 {
+/// Produces identical results to the C MurmurHash2 for the current target's
+/// native endianness.
+fn murmur_hash2_with_len(data: &[u8], original_len: u32, seed: u32) -> u32 {
     let m: u32 = 0x5bd1e995;
     let r: u32 = 24;
     let len = data.len();
 
-    let mut h = seed ^ (len as u32);
+    let mut h = seed ^ original_len;
 
     let mut offset = 0usize;
     let mut remaining = len;
 
     // Mix 4 bytes at a time
     while remaining >= 4 {
-        let k = u32::from_le_bytes([
+        let k = u32::from_ne_bytes([
             data[offset],
             data[offset + 1],
             data[offset + 2],
@@ -70,11 +72,30 @@ pub fn murmur_hash2(data: &[u8], seed: u32) -> u32 {
     h = h.wrapping_mul(m);
     h ^= h >> 15;
 
-    if len == 0 {
-        return seed;
+    h
+}
+
+/// Hash `data` with MurmurHash2 using the target's native byte order.
+pub fn murmur_hash2(data: &[u8], seed: u32) -> u32 {
+    murmur_hash2_with_len(data, data.len() as u32, seed)
+}
+
+/// C ABI mirror of `MurmurHash2()`.
+///
+/// # Safety
+///
+/// When `len` is positive, `key` must be non-null and point to at least `len`
+/// readable bytes. A zero or negative `len` is handled without dereferencing
+/// `key`, exactly as the C implementation does.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_MurmurHash2(key: *const c_void, len: c_int, seed: u32) -> u32 {
+    if len <= 0 {
+        return murmur_hash2_with_len(&[], len as u32, seed);
     }
 
-    h
+    // SAFETY: the C ABI contract above guarantees `key` covers `len` bytes.
+    let data = unsafe { std::slice::from_raw_parts(key.cast::<u8>(), len as usize) };
+    murmur_hash2_with_len(data, len as u32, seed)
 }
 
 #[cfg(test)]
@@ -82,7 +103,11 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(target_endian = "little")]
     fn test_known_vectors() {
+        // These published vectors are little-endian; the C algorithm is
+        // intentionally native-endian and the C shadow fixture compares both
+        // target byte orders.
         assert_eq!(murmur_hash2(b"hello", 0), 0xe56129cb);
         assert_eq!(murmur_hash2(b"hello", 1234), 0x8e251908);
         assert_eq!(murmur_hash2(b"abc", 42), 0xda0d1400);
@@ -91,7 +116,7 @@ mod tests {
     #[test]
     fn test_empty_input() {
         assert_eq!(murmur_hash2(b"", 0), 0);
-        assert_eq!(murmur_hash2(b"", 1), 1);
+        assert_ne!(murmur_hash2(b"", 1), 1);
     }
 
     #[test]

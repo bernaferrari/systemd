@@ -180,6 +180,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 16
     },
+    "src/basic/rust/murmurhash2.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
     "src/basic/rust/netdev_str_tables.rs": {
       "missing_safety": 8,
       "missing_safety_sites": [

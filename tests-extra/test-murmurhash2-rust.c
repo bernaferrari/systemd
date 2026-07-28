@@ -9,6 +9,7 @@
 /* Rust FFI */
 #include "rust/murmurhash2.h"
 
+/* RUST-CONTRACT: murmurhash2-byte-hash */
 /* ── Known-answer tests ────────────────────────────────────────────────── */
 
 TEST(murmurhash2_empty) {
@@ -20,6 +21,18 @@ TEST(murmurhash2_empty) {
 TEST(murmurhash2_empty_with_seed) {
         uint32_t cr = MurmurHash2("", 0, 42);
         uint32_t rr = rs_MurmurHash2("", 0, 42);
+        assert_se(cr == rr);
+}
+
+TEST(murmurhash2_null_zero_length) {
+        uint32_t cr = MurmurHash2(NULL, 0, 42);
+        uint32_t rr = rs_MurmurHash2(NULL, 0, 42);
+        assert_se(cr == rr);
+}
+
+TEST(murmurhash2_negative_length) {
+        uint32_t cr = MurmurHash2(NULL, -1, 42);
+        uint32_t rr = rs_MurmurHash2(NULL, -1, 42);
         assert_se(cr == rr);
 }
 

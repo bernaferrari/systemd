@@ -175,6 +175,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "murmurhash2": (
+            basic_rust / "murmurhash2.h",
+            basic_rust / "murmurhash2.rs",
+            frozenset({"rs_MurmurHash2"}),
+        ),
         "path_base_predicates": (
             basic_rust / "path_util.h",
             basic_rust / "path_util.rs",
@@ -572,6 +577,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "os_release_pretty_name": (tests_extra / "test-image-name-rust.c",),
         "alloc_util": (tests_extra / "test-alloc-util-rust.c",),
         "alloc_util_multiply": (tests_extra / "test-alloc-util-extra2-rust.c",),
+        "murmurhash2": (tests_extra / "test-murmurhash2-rust.c",),
         "path_base_predicates": (tests_extra / "test-path-util-rust.c",),
         "escape": (
             tests_extra / "test-escape-rust.c",
@@ -739,6 +745,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/alloc-util.h",
         ),
         "alloc_util_multiply": (root / "src/basic/alloc-util.h",),
+        "murmurhash2": (
+            root / "src/basic/MurmurHash2.c",
+            root / "src/basic/MurmurHash2.h",
+        ),
         "path_base_predicates": (
             root / "src/basic/path-util.c",
             root / "src/basic/path-util.h",
