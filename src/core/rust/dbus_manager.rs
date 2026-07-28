@@ -8,7 +8,7 @@ mod model;
 mod protocol;
 
 pub use authorization::{
-    authorize_manager_method_request, handle_authorized_manager_method_call, ManagerMethodContext,
+    ManagerMethodContext, authorize_manager_method_request, handle_authorized_manager_method_call,
 };
 pub use model::*;
 pub use protocol::*;

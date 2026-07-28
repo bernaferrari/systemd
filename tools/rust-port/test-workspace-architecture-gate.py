@@ -105,6 +105,24 @@ class WorkspaceArchitectureGateTests(unittest.TestCase):
             ],
         )
 
+    def test_rust_2024_language_contract_is_required(self) -> None:
+        failures: list[str] = []
+        GATE.validate_language_contract(
+            {"workspace": {"resolver": "2"}},
+            {
+                "src/old/rust": {"package": {"edition": "2021"}},
+                "src/current/rust": {"package": {"edition": "2024"}},
+            },
+            failures,
+        )
+        self.assertEqual(
+            failures,
+            [
+                "workspace.resolver must be '3' for the Rust 2024 workspace, got '2'",
+                "src/old/rust: package.edition must be '2024', got '2021'",
+            ],
+        )
+
     def test_policy_rejects_duplicate_member_assignment(self) -> None:
         policy = self.root / "layers.toml"
         policy.write_text(

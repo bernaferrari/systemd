@@ -42,12 +42,16 @@ mod tests {
 pub const SOURCE_PATH: &str = "src/shared/varlink-idl-common.c";
 pub const SOURCE_TEXT: &str = include_str!("../varlink-idl-common.c");
 
-pub fn source_lines() -> usize { SOURCE_TEXT.lines().count() }
+pub fn source_lines() -> usize {
+    SOURCE_TEXT.lines().count()
+}
 
 #[cfg(test)]
 mod ffi_tests {
     use super::*;
 
     #[test]
-    fn source_is_embedded() { assert!(!super::SOURCE_TEXT.is_empty()); }
+    fn source_is_embedded() {
+        assert!(!super::SOURCE_TEXT.is_empty());
+    }
 }

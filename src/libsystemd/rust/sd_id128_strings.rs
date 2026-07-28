@@ -160,6 +160,9 @@ mod tests {
 
     #[test]
     fn compares_unequal_string() {
-        assert_eq!(sd_id128_string_equal("ffffffffffffffffffffffffffffffff", WALDI), Ok(false));
+        assert_eq!(
+            sd_id128_string_equal("ffffffffffffffffffffffffffffffff", WALDI),
+            Ok(false)
+        );
     }
 }

@@ -406,16 +406,18 @@ mod tests {
             .register_socket("listener.socket", "127.0.0.1:0")
             .unwrap();
 
-        assert!(manager
-            .register_listen_streams(
-                "listener.socket",
-                &[
-                    "127.0.0.1:0".to_string(),
-                    "not-a-socket-address".to_string()
-                ],
-                None,
-            )
-            .is_err());
+        assert!(
+            manager
+                .register_listen_streams(
+                    "listener.socket",
+                    &[
+                        "127.0.0.1:0".to_string(),
+                        "not-a-socket-address".to_string()
+                    ],
+                    None,
+                )
+                .is_err()
+        );
         assert_eq!(manager.get("listener.socket").unwrap().listener_count(), 1);
     }
 }

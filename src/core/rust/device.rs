@@ -83,7 +83,7 @@ pub fn device_found_node<R: DeviceRegistry>(
         let opened_device = match registry.open_device(node) {
             Ok(device) => device,
             Err(Errno::ENODEV | Errno::EINVAL) => {
-                return Ok(DeviceNodeOutcome::IgnoredBadDeviceNode)
+                return Ok(DeviceNodeOutcome::IgnoredBadDeviceNode);
             }
             Err(error) => return Err(error),
         };

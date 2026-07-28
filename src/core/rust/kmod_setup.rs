@@ -279,8 +279,10 @@ mod tests {
         };
 
         assert!(modules_to_load(&env).contains(&"tpm"));
-        assert!(!default_kmod_table(false)
-            .iter()
-            .any(|entry| entry.module == "tpm"));
+        assert!(
+            !default_kmod_table(false)
+                .iter()
+                .any(|entry| entry.module == "tpm")
+        );
     }
 }

@@ -5,7 +5,7 @@
 // Minimal safe helpers for OCI reference handling plus source sync checks.
 
 use crate::import_common::{
-    count_port_source_lines, read_port_source, verify_extracted_functions, PortError, PortMetadata,
+    PortError, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
 };
 use std::io;
 
@@ -99,7 +99,10 @@ mod tests {
 
     #[test]
     fn digest_parser_splits_algorithm_and_value() {
-        assert_eq!(oci_digest_from_string("sha256:abc").unwrap(), ("sha256", "abc"));
+        assert_eq!(
+            oci_digest_from_string("sha256:abc").unwrap(),
+            ("sha256", "abc")
+        );
     }
 
     #[test]
@@ -114,7 +117,10 @@ mod tests {
 
     #[test]
     fn host_parser_only_returns_registry_like_prefix() {
-        assert_eq!(oci_ref_parse_host("docker.io/library/alpine"), Some("docker.io"));
+        assert_eq!(
+            oci_ref_parse_host("docker.io/library/alpine"),
+            Some("docker.io")
+        );
     }
 
     #[test]

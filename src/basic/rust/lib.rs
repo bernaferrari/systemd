@@ -4,7 +4,9 @@
 // PORT-SYNC: N/A (crate root, not ported from a C file)
 //
 // This crate provides Rust implementations of leaf utility functions from
-// systemd's src/basic/. Each module has a 1:1 mapping to a C source file.
+// systemd's src/basic/. Most public modules map directly to one C source
+// domain. Modules that deliberately group or split C authorities declare their
+// exact provenance in their own PORT-SYNC or PORT-GAP header.
 
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -49,129 +51,133 @@ pub fn startswith<'a>(s: &'a str, prefix: &'a str) -> Option<&'a str> {
     s.strip_prefix(prefix)
 }
 
-pub mod alloc_util;
+// Public module surface. Keep this alphabetized so source-domain ownership is
+// easy to locate without conflating it with private ABI implementation pieces.
 pub mod af_list;
-pub mod bus_error_util;
-pub mod bus_type_util;
+pub mod alloc_util;
 pub mod ansi_color;
-pub mod arphrd_util;
-pub mod argv_util;
 pub mod architecture;
+pub mod argv_util;
+pub mod arphrd_util;
+pub mod at_flags_util;
+pub mod basic_validators;
+pub mod bitmap;
+pub mod bootspec_util;
+pub mod btrfs_util;
+pub mod bus_error_util;
 pub mod bus_label;
+pub mod bus_type_util;
 pub mod capability_list;
-pub mod devnum_util;
-pub mod xattr_util;
+pub mod capability_util;
+pub mod cgroup_util_str_tables;
+pub mod compare_operator;
+pub mod compress_util;
+pub mod confidential_virt;
+pub mod credential_validators;
 pub mod device_nodes;
+pub mod devnum_util;
+pub mod dirent_util;
+pub mod dns_domain_validators;
+pub mod dns_label;
+pub mod dns_type_predicates;
+pub mod edid;
+pub mod efivars_util;
 pub mod env_util;
+pub mod errno_classify;
 pub mod errno_util;
 pub mod escape;
 pub mod ether_addr_util;
+pub mod exec_util;
+pub mod exit_status;
 pub mod extract_word;
 pub mod ffi;
-mod ffi_string_table;
+pub mod file_classify;
 pub mod format_util;
-pub mod hexdecoct;
+pub mod fstype_util;
+pub mod glob_util;
 pub mod glyph_util;
+pub mod gpt_util;
 pub mod gunicode;
+pub mod hexdecoct;
+pub mod hostname_setup;
 pub mod hostname_util;
-mod header_inline_abi;
+pub mod id128_util;
+pub mod image_class;
+pub mod image_policy_util;
+pub mod import_util;
 pub mod in_addr_util;
+pub mod install_change;
+pub mod ioprio_util;
 pub mod iovec_util;
 pub mod iovec_wrapper;
+pub mod locale_util;
+pub mod log_target;
+pub mod memory_util;
+pub mod mempool;
+pub mod misc_validators;
+pub mod mount_setup;
+pub mod mountpoint_util;
 pub mod murmurhash2;
+pub mod namespace_util;
+pub mod netdev_str_tables;
+pub mod nsflags;
 pub mod nulstr_util;
 pub mod parse_util;
 pub mod path_util;
+pub mod pe_binary;
 pub mod percent_util;
 pub mod prioq;
 pub mod proc_cmdline;
+pub mod process_util_str_tables;
+pub mod procfs_util;
 pub mod ratelimit;
+pub mod recovery_key;
+pub mod replace_var;
+pub mod resize_fs_util;
 pub mod rlimit_util;
 pub mod runtime_scope;
+pub mod safe_math;
+pub mod seccomp_util;
+pub mod serialize;
+pub mod sha1;
 pub mod sha256_hmac;
-pub mod siphash24;
-pub mod sort_util;
-pub mod strbuf;
-pub mod strv;
-pub mod string_table;
-pub mod time_util;
-pub mod string_util;
-mod string_util_fundamental;
-mod string_util_ffi;
-pub mod uid_range;
-pub mod mempool;
-pub mod memory_util;
-pub mod replace_var;
+pub mod shared_facades;
 pub mod signal_util;
+pub mod siphash24;
+pub mod socket_util;
+pub mod sort_util;
+pub mod specifier_util;
+pub mod stat_util;
+pub mod strbuf;
+pub mod string_table;
+pub mod string_util;
+pub mod strv;
+pub mod strverscmp;
 pub mod strxcpyx;
-pub mod terminal_util;
-pub mod syslog_util;
 pub mod sysctl_util;
-pub mod compress_util;
-pub mod confidential_virt;
-pub mod cgroup_util_str_tables;
-pub mod image_class;
-pub mod locale_util;
-pub mod log_target;
-pub mod process_util_str_tables;
+pub mod syslog_util;
+pub mod terminal_util;
+pub mod time_util;
+pub mod udev_util;
+pub mod uid_classification;
+pub mod uid_range;
+pub mod unaligned;
 pub mod unit_def;
+pub mod unit_name;
+pub mod user_shell_util;
+pub mod user_util;
 pub mod utf8;
 pub mod virt;
-pub mod unit_name;
-mod unit_inline_abi;
-pub mod install_change;
-pub mod unaligned;
-pub mod uid_classification;
-pub mod safe_math;
-pub mod ioprio_util;
-pub mod at_flags_util;
-pub mod shared_facades;
-pub mod errno_classify;
-pub mod basic_validators;
-pub mod sha1;
-
-pub mod netdev_str_tables;
-pub mod dns_type_predicates;
-pub mod exit_status;
+pub mod xattr_util;
 pub mod xml_tokenizer;
-pub mod dns_domain_validators;
-pub mod dns_label;
-pub mod gpt_util;
-pub mod hostname_setup;
-pub mod bitmap;
-pub mod btrfs_util;
-pub mod mountpoint_util;
-pub mod credential_validators;
-pub mod glob_util;
-pub mod fstype_util;
-pub mod user_shell_util;
-pub mod file_classify;
-pub mod misc_validators;
-pub mod nsflags;
-pub mod udev_util;
-pub mod stat_util;
-pub mod user_util;
-pub mod seccomp_util;
-pub mod import_util;
-pub mod strverscmp;
-pub mod compare_operator;
-pub mod dirent_util;
-pub mod namespace_util;
-pub mod pe_binary;
-pub mod procfs_util;
-pub mod serialize;
-pub mod socket_util;
-pub mod specifier_util;
-pub mod bootspec_util;
-pub mod id128_util;
-pub mod image_policy_util;
-pub mod exec_util;
-pub mod efivars_util;
-pub mod capability_util;
-pub mod recovery_key;
-pub mod mount_setup;
-pub mod resize_fs_util;
-pub mod edid;
+
+// Private implementation fragments. Keep these separate from the public
+// module surface so a Rust consumer cannot accidentally depend on an ABI helper.
+mod ffi_string_table;
+mod header_inline_abi;
+mod string_util_ffi;
+mod string_util_fundamental;
+mod unit_inline_abi;
 
 pub use std::ffi::c_void;
 

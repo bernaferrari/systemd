@@ -167,11 +167,7 @@ pub const fn gid_is_valid(gid: u32) -> bool {
 #[inline]
 pub fn shift_uid(shift: u32, uid: u32) -> Option<u32> {
     let new = shift | (uid & UID_LOWER_MASK);
-    if uid_is_valid(new) {
-        Some(new)
-    } else {
-        None
-    }
+    if uid_is_valid(new) { Some(new) } else { None }
 }
 
 /// Apply a GID shift: replace the upper 16 bits with `shift`.
@@ -181,11 +177,7 @@ pub fn shift_uid(shift: u32, uid: u32) -> Option<u32> {
 #[inline]
 pub fn shift_gid(shift: u32, gid: u32) -> Option<u32> {
     let new = shift | (gid & UID_LOWER_MASK);
-    if gid_is_valid(new) {
-        Some(new)
-    } else {
-        None
-    }
+    if gid_is_valid(new) { Some(new) } else { None }
 }
 
 /// Extract the container ID (upper 16 bits) from a UID.

@@ -9,7 +9,7 @@
 // characters for compact display. The module gracefully degrades when
 // libqrencode is not available.
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};

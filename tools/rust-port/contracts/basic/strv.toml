@@ -349,7 +349,7 @@ arg = "a"
 ownership = "owned-libc"
 release = "free"
 publication_success = "write"
-publication_error = "unchanged"
+publication_error = "write"
 optional = false
 
 [surface.static_fixture]
@@ -358,9 +358,32 @@ meson_target = "test-strv-extra3-rust"
 labels = ["strv-extend-strv"]
 
 [[surface]]
+id = "strv-extend-n"
+c_symbols = ["strv_extend_n"]
+rust_symbols = ["rs_strv_extend_n"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "l"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "write"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-strv-extra4-rust.c"
+meson_target = "test-strv-extra4-rust"
+labels = ["strv-extend-n"]
+
+[[surface]]
 id = "strv-grow-and-consume"
 c_symbols = [
-    "strv_extend_n",
     "strv_extend_assignment",
     "strv_consume_prepend",
     "strv_prepend",
@@ -370,7 +393,6 @@ c_symbols = [
     "strv_extend",
 ]
 rust_symbols = [
-    "rs_strv_extend_n",
     "rs_strv_extend_assignment",
     "rs_strv_consume_prepend",
     "rs_strv_prepend",
@@ -388,7 +410,6 @@ verification = "static-only"
 
 [[surface.output]]
 symbols = [
-    "strv_extend_n",
     "strv_extend_assignment",
     "strv_consume_prepend",
     "strv_prepend",
@@ -559,17 +580,12 @@ labels = ["strv-extend-strv-consume"]
 id = "strv-contains"
 c_symbols = ["strv_contains"]
 rust_symbols = ["rs_strv_contains"]
-coverage = "exact"
+coverage = "partial"
 abi = "c-exact"
 bytes = "borrowed-cstr-opaque"
 errors = "none"
 runtime = "none"
 verification = "static-only"
-
-[surface.static_fixture]
-file = "tests-extra/test-strv-extra6-rust.c"
-meson_target = "test-strv-extra6-rust"
-labels = ["strv-contains"]
 
 [[surface]]
 id = "strv-copy-and-join"
@@ -685,7 +701,7 @@ verification = "static-only"
 arg = "ret_matched_pos"
 ownership = "caller-storage"
 publication_success = "write"
-publication_error = "unchanged"
+publication_error = "n/a"
 optional = true
 
 [surface.static_fixture]

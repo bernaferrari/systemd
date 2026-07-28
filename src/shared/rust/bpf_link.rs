@@ -12,7 +12,7 @@
 use std::io::{self, Write};
 use std::mem;
 
-use crate::bpf_dlopen::{bpf_get_error_translated, BpfError};
+use crate::bpf_dlopen::{BpfError, bpf_get_error_translated};
 use crate::ffi::Errno;
 
 // ── Error type ──────────────────────────────────────────────────────────────

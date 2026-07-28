@@ -538,10 +538,12 @@ mod tests {
     fn test_security_label_new_empty() {
         let result = SecurityLabel::new("");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("must not be empty"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("must not be empty")
+        );
     }
 
     #[test]

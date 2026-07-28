@@ -12,7 +12,6 @@ use crate::homed_conf::ManagerConfig;
 use crate::homed_home_bus::{Home, HomeState};
 use crate::homed_manager_bus::ManagerBus;
 
-
 pub const HOME_UID_MIN: u32 = 60000;
 pub const HOME_UID_MAX: u32 = 65533;
 pub const HOME_USERS_MAX: usize = 500;
@@ -205,7 +204,9 @@ mod extra_tests {
     #[test]
     fn test_parse_user_name_with_realm() {
         let manager = Manager::new(ManagerConfig::default());
-        let (user, realm) = manager.parse_user_name_with_realm("alice@example.com").unwrap();
+        let (user, realm) = manager
+            .parse_user_name_with_realm("alice@example.com")
+            .unwrap();
         assert_eq!(user, "alice");
         assert_eq!(realm.as_deref(), Some("example.com"));
     }

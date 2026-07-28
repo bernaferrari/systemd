@@ -11,7 +11,6 @@
 // This module provides safe Rust types and helpers; the heavy crypto work
 // is delegated to openssl_util.
 
-
 use crate::ffi::Errno;
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -516,11 +515,11 @@ mod tests {
     }
 
     // #[test]
-//     fn test_pkcs7_certificate_hash_empty() {
-//         let result = pkcs7_certificate_hash(&[]);
-//         assert!(result.is_err());
-//         assert!(result.unwrap_err().is_invalid_argument());
-//     }
+    //     fn test_pkcs7_certificate_hash_empty() {
+    //         let result = pkcs7_certificate_hash(&[]);
+    //         assert!(result.is_err());
+    //         assert!(result.unwrap_err().is_invalid_argument());
+    //     }
 
     #[test]
     fn test_pkcs7_certificate_hash_not_supported() {

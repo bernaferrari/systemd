@@ -7,7 +7,11 @@
 use std::collections::BTreeMap;
 
 pub fn dump_properties(properties: &BTreeMap<String, String>) -> String {
-    properties.iter().map(|(k, v)| format!("{k}={v}" )).collect::<Vec<_>>().join("\n")
+    properties
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn dump_section(name: &str, body: &str) -> String {
@@ -17,6 +21,13 @@ pub fn dump_section(name: &str, body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn dumps_sorted_properties() { let map = BTreeMap::from([("A".into(), "1".into()), ("B".into(), "2".into())]); assert_eq!(dump_properties(&map), "A=1\nB=2"); }
-    #[test] fn wraps_section() { assert_eq!(dump_section("device", "A=1"), "[device]\nA=1"); }
+    #[test]
+    fn dumps_sorted_properties() {
+        let map = BTreeMap::from([("A".into(), "1".into()), ("B".into(), "2".into())]);
+        assert_eq!(dump_properties(&map), "A=1\nB=2");
+    }
+    #[test]
+    fn wraps_section() {
+        assert_eq!(dump_section("device", "A=1"), "[device]\nA=1");
+    }
 }

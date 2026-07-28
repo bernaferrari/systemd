@@ -4,7 +4,9 @@
 //
 // Safe Rust synchronization metadata for the matching machine module.
 
-use crate::common::{count_port_source_lines, read_port_source, verify_extracted_functions, Errno, PortMetadata};
+use crate::common::{
+    Errno, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
+};
 
 pub const SOURCE_PATH: &str = "src/machine/image-dbus.c";
 pub const EXTRACTED_FUNCTIONS: &[&str] = &[
@@ -19,7 +21,7 @@ pub const EXTRACTED_FUNCTIONS: &[&str] = &[
     "bus_image_method_set_limit",
     "image_bus_path",
     "image_node_enumerator",
-    "image_object_find"
+    "image_object_find",
 ];
 
 pub fn metadata() -> Result<PortMetadata, Errno> {

@@ -4,7 +4,9 @@
 //
 // Safe Rust synchronization metadata for the matching import module.
 
-use crate::import_common::{count_port_source_lines, read_port_source, verify_extracted_functions, PortError, PortMetadata};
+use crate::import_common::{
+    PortError, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
+};
 
 pub const SOURCE_PATH: &str = "src/import/export.c";
 pub const EXTRACTED_FUNCTIONS: &[&str] = &[
@@ -17,7 +19,7 @@ pub const EXTRACTED_FUNCTIONS: &[&str] = &[
     "run",
     "verb_export_raw",
     "verb_export_tar",
-    "verb_help"
+    "verb_help",
 ];
 
 pub fn metadata() -> Result<PortMetadata, PortError> {

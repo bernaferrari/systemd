@@ -198,16 +198,18 @@ mod tests {
     #[test]
     fn test_user_record_synthesize_invalid_name() {
         let mut record = UserRecord::new();
-        assert!(user_record_synthesize(
-            &mut record,
-            "root",
-            None,
-            "/root.img",
-            UserStorage::Luks,
-            0,
-            0
-        )
-        .is_err());
+        assert!(
+            user_record_synthesize(
+                &mut record,
+                "root",
+                None,
+                "/root.img",
+                UserStorage::Luks,
+                0,
+                0
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -223,16 +225,18 @@ mod tests {
             60001,
         )
         .unwrap();
-        assert!(user_record_synthesize(
-            &mut record,
-            "bob",
-            None,
-            "/home/bob.img",
-            UserStorage::Luks,
-            60002,
-            60002
-        )
-        .is_err());
+        assert!(
+            user_record_synthesize(
+                &mut record,
+                "bob",
+                None,
+                "/home/bob.img",
+                UserStorage::Luks,
+                60002,
+                60002
+            )
+            .is_err()
+        );
     }
 
     #[test]

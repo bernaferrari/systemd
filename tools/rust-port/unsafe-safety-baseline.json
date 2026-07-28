@@ -2,776 +2,1907 @@
   "files": {
     "src/ask-password/rust/ask_password.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 2
+      "missing_safety_sites": [],
+      "unsafe_sites": 6
     },
     "src/backlight/rust/backlight.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 3
+      "missing_safety_sites": [],
+      "unsafe_sites": 21
+    },
+    "src/basic/rust/af_list.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
+    "src/basic/rust/alloc_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
+    },
+    "src/basic/rust/architecture.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/basic/rust/basic_validators.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "254:47:first == 0 || (first == b'-' as c_char && unsafe { *s.add(1) } == 0)"
+      ],
       "unsafe_sites": 20
     },
     "src/basic/rust/bus_type_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 7
+    },
+    "src/basic/rust/capability_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 7
+    },
+    "src/basic/rust/cgroup_util_str_tables.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 25
     },
     "src/basic/rust/devnum_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 28
     },
     "src/basic/rust/dns_domain_validators.rs": {
-      "missing_safety": 1,
-      "unsafe_sites": 1
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/basic/rust/dns_label.rs": {
-      "missing_safety": 39,
-      "unsafe_sites": 64
+      "missing_safety": 5,
+      "missing_safety_sites": [
+        "840:1:unsafe fn srv_type_label_is_valid(label: *const c_char, n: usize) -> bool {",
+        "1051:1:unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> i32 {",
+        "1394:1:unsafe fn ptr_sub1(p: *const c_char, base: *const c_char) -> *const c_char {",
+        "1929:1:unsafe fn alloc_strjoin(a: *const c_char, b: *const c_char) -> *mut c_char {",
+        "1948:1:unsafe fn alloc_strndup(s: *const c_char, n: usize) -> *mut c_char {"
+      ],
+      "unsafe_sites": 102
     },
     "src/basic/rust/errno_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 8
     },
-    "src/basic/rust/escape.rs": {
-      "missing_safety": 1,
-      "unsafe_sites": 2
+    "src/basic/rust/escape/allocating.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 11
+    },
+    "src/basic/rust/escape/core_abi.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 20
+    },
+    "src/basic/rust/escape/full_abi.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 13
+    },
+    "src/basic/rust/ether_addr_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 43
     },
     "src/basic/rust/extract_word.rs": {
-      "missing_safety": 1,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/basic/rust/ffi.rs": {
-      "missing_safety": 19,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 51
+    },
+    "src/basic/rust/ffi_string_table.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
+    "src/basic/rust/format_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/basic/rust/gpt_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 7
+    },
+    "src/basic/rust/header_inline_abi.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 11
+    },
+    "src/basic/rust/hexdecoct.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 22
+    },
+    "src/basic/rust/image_class.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
+    },
+    "src/basic/rust/import_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 17
     },
     "src/basic/rust/in_addr_util.rs": {
-      "missing_safety": 40,
-      "unsafe_sites": 79
+      "missing_safety": 6,
+      "missing_safety_sites": [
+        "40:1:unsafe fn eqzero(data: *const u32, nelem: usize) -> bool {",
+        "77:1:unsafe fn s6_addr32(a: *const In6Addr) -> *const [u32; 4] {",
+        "464:1:unsafe fn in6_addr_is_loopback(a: *const In6Addr) -> bool {",
+        "1377:1:unsafe fn parse_ip_string(family: i32, src: *const c_char, dst: *mut u8) -> Result<(), i32> {",
+        "1406:1:unsafe fn ip_to_string(family: i32, src: *const u8) -> Result<String, i32> {",
+        "1422:1:unsafe fn write_text_to_c_buf(buf: *mut c_char, buf_len: usize, text: &str) -> i32 {"
+      ],
+      "unsafe_sites": 145
+    },
+    "src/basic/rust/install_change.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/basic/rust/iovec_util.rs": {
-      "missing_safety": 4,
-      "unsafe_sites": 50
+      "missing_safety": 2,
+      "missing_safety_sites": [
+        "90:1:unsafe fn free_iov_base(iovec: &mut IoVec) {",
+        "155:1:unsafe fn memcmp_nn(a: *const c_void, a_len: usize, b: *const c_void, b_len: usize) -> i32 {"
+      ],
+      "unsafe_sites": 67
     },
     "src/basic/rust/memory_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/basic/rust/mempool.rs": {
       "missing_safety": 1,
-      "unsafe_sites": 6
+      "missing_safety_sites": [
+        "40:1:unsafe fn pool_ptr(p: *mut Pool) -> *mut u8 {"
+      ],
+      "unsafe_sites": 13
+    },
+    "src/basic/rust/misc_validators.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 16
     },
     "src/basic/rust/netdev_str_tables.rs": {
-      "missing_safety": 23,
-      "unsafe_sites": 35
+      "missing_safety": 8,
+      "missing_safety_sites": [
+        "22:1:unsafe fn cstr_eq_static(s: *const c_char, table_entry: &'static [u8]) -> bool {",
+        "29:1:unsafe fn cstr_eq_ignore_ascii_case_static(s: *const c_char, table_entry: &'static [u8]) -> bool {",
+        "569:1:unsafe fn parse_boolean(v: *const c_char) -> i32 {",
+        "573:5:unsafe fn is_true(s: *const c_char) -> bool {",
+        "584:5:unsafe fn is_false(s: *const c_char) -> bool {",
+        "606:1:unsafe fn parse_uint_result(s: *const c_char) -> Result<i32, i32> {",
+        "829:1:unsafe fn rust_strdup(s: *const c_char) -> *mut c_char {",
+        "854:1:unsafe fn parse_uint(s: *const c_char) -> i32 {"
+      ],
+      "unsafe_sites": 44
     },
     "src/basic/rust/netdev_str_tables/core.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/basic/rust/netdev_str_tables/dns_security.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 5
-    },
-    "src/basic/rust/netdev_str_tables/network_link.rs": {
-      "missing_safety": 0,
-      "unsafe_sites": 1
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/basic/rust/netdev_str_tables/tests.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 23
     },
     "src/basic/rust/netdev_str_tables/tpm_bpf_wifi.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 11
+      "missing_safety_sites": [],
+      "unsafe_sites": 20
     },
     "src/basic/rust/parse_util.rs": {
-      "missing_safety": 59,
-      "unsafe_sites": 83
+      "missing_safety": 18,
+      "missing_safety_sites": [
+        "60:1:unsafe fn skip_whitespace(s: *const c_char) -> *const c_char {",
+        "75:1:unsafe fn strcase_in_set(s: *const c_char, set: &[&CStr]) -> bool {",
+        "106:1:unsafe fn startswith_set(s: *const c_char, prefixes: &[&CStr]) -> *const c_char {",
+        "123:1:unsafe fn mangle_base(s: *const c_char, base: &mut u32) -> *const c_char {",
+        "165:1:unsafe fn parse_boolean_inner(v: *const c_char) -> i32 {",
+        "390:1:unsafe fn safe_atoi_inner(s: *const c_char, ret_i: *mut i32) -> i32 {",
+        "583:12:&& unsafe { *s.add(1) } != 0",
+        "953:1:unsafe fn startswith_cstr(s: *const c_char, suffix: &CStr) -> bool {",
+        "972:1:unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {",
+        "1113:1:unsafe fn parse_pid_inner(s: *const c_char, ret: *mut i32) -> i32 {",
+        "1165:1:unsafe fn parse_mode_inner(s: *const c_char, ret: *mut u32) -> i32 {",
+        "1205:1:unsafe fn parse_ifindex_inner(s: *const c_char) -> i32 {",
+        "1239:1:unsafe fn parse_fd_inner(s: *const c_char) -> i32 {",
+        "1273:1:unsafe fn parse_errno_inner(s: *const c_char) -> i32 {",
+        "1315:1:unsafe fn parse_nice_inner(s: *const c_char, ret: *mut i32) -> i32 {",
+        "1362:1:unsafe fn parse_oom_score_adjust_inner(s: *const c_char, ret: *mut i32) -> i32 {",
+        "1394:1:unsafe fn parse_ip_port_inner(s: *const c_char, ret: *mut u16) -> i32 {",
+        "1508:1:unsafe fn parse_ip_port_range_inner("
+      ],
+      "unsafe_sites": 224
     },
     "src/basic/rust/path_util.rs": {
-      "missing_safety": 50,
-      "unsafe_sites": 62
+      "missing_safety": 10,
+      "missing_safety_sites": [
+        "25:1:unsafe fn startswith(s: *const c_char, p: *const c_char) -> bool {",
+        "36:1:unsafe fn endswith(s: *const c_char, p: *const c_char) -> bool {",
+        "52:1:unsafe fn str_in_set(s: *const c_char, candidates: &[*const c_char]) -> bool {",
+        "67:1:unsafe fn endswith_set(s: *const c_char, suffixes: &[*const c_char]) -> bool {",
+        "81:1:unsafe fn streq(a: *const c_char, b: *const c_char) -> bool {",
+        "89:1:unsafe fn skip_slash_or_dot(mut p: *const c_char) -> *const c_char {",
+        "110:1:unsafe fn rs_path_is_valid_full(p: *const c_char, accept_dot_dot: bool) -> bool {",
+        "136:1:unsafe fn isempty(s: *const c_char) -> bool {",
+        "704:1:unsafe fn rs_path_find_first_component_inner(",
+        "762:1:unsafe fn skip_slash_or_dot_backward(path: *const c_char, mut q: *const c_char) -> *const c_char {"
+      ],
+      "unsafe_sites": 110
+    },
+    "src/basic/rust/path_util/byte_abi.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 79
     },
     "src/basic/rust/percent_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 16
+    },
+    "src/basic/rust/procfs_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 14
     },
     "src/basic/rust/rlimit_util.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 1
+      "missing_safety_sites": [],
+      "unsafe_sites": 20
     },
     "src/basic/rust/seccomp_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
     },
+    "src/basic/rust/shared_facades/lookups.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 26
+    },
+    "src/basic/rust/shared_facades/policy.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 28
+    },
+    "src/basic/rust/shared_facades/validation.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 26
+    },
+    "src/basic/rust/signal_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
     "src/basic/rust/stat_util.rs": {
-      "missing_safety": 33,
-      "unsafe_sites": 121
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 89
+    },
+    "src/basic/rust/stat_util/descriptor.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 16
+    },
+    "src/basic/rust/stat_util/filesystem.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 32
+    },
+    "src/basic/rust/stat_util/hash.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 9
+    },
+    "src/basic/rust/stat_util/inode.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 20
+    },
+    "src/basic/rust/stat_util/inode_same.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 18
+    },
+    "src/basic/rust/stat_util/moderate.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 23
+    },
+    "src/basic/rust/stat_util/verification.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 28
+    },
+    "src/basic/rust/stat_util/xstatx.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 9
     },
     "src/basic/rust/string_util.rs": {
-      "missing_safety": 32,
-      "unsafe_sites": 66
+      "missing_safety": 2,
+      "missing_safety_sites": [
+        "480:1:unsafe fn rs_empty_or_dash(str_: *const c_char) -> bool {",
+        "700:1:unsafe fn skip_leading_chars(s: *const u8, bad: *const u8) -> *const u8 {"
+      ],
+      "unsafe_sites": 136
     },
     "src/basic/rust/string_util_escape.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 21
+      "missing_safety_sites": [],
+      "unsafe_sites": 17
     },
     "src/basic/rust/string_util_ffi.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 42
+      "missing_safety_sites": [],
+      "unsafe_sites": 82
     },
     "src/basic/rust/string_util_json.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 11
     },
     "src/basic/rust/string_util_lines.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 46
     },
     "src/basic/rust/string_util_owned.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 37
     },
     "src/basic/rust/string_util_replace.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 38
+      "missing_safety_sites": [],
+      "unsafe_sites": 39
     },
     "src/basic/rust/string_util_scan.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 21
+      "missing_safety_sites": [],
+      "unsafe_sites": 17
     },
     "src/basic/rust/strv.rs": {
-      "missing_safety": 62,
-      "unsafe_sites": 90
+      "missing_safety": 7,
+      "missing_safety_sites": [
+        "48:1:unsafe fn strv_iter(l: *const *const c_char) -> StrvIter<'static> {",
+        "79:1:unsafe fn strcmp_ptr(a: *const c_char, b: *const c_char) -> i32 {",
+        "107:1:unsafe fn strv_isempty(l: *const *const c_char) -> bool {",
+        "608:1:unsafe fn startswith_internal(s: *const c_char, prefix: *const c_char) -> *const c_char {",
+        "627:1:unsafe fn endswith_internal(s: *const c_char, suffix: *const c_char) -> *const c_char {",
+        "928:1:unsafe fn streq_ptr(a: *const c_char, b: *const c_char) -> bool {",
+        "2299:5:unsafe fn free_strv(l: *mut *mut c_char) {"
+      ],
+      "unsafe_sites": 307
+    },
+    "src/basic/rust/strv/allocating_transforms.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 19
+    },
+    "src/basic/rust/strv/matching_escape.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 13
     },
     "src/basic/rust/time_util/arithmetic.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 6
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
     },
     "src/basic/rust/time_util/conversion.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 14
     },
     "src/basic/rust/time_util/formatting.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 7
+      "missing_safety_sites": [],
+      "unsafe_sites": 28
     },
     "src/basic/rust/time_util/parsing.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 10
+      "missing_safety_sites": [],
+      "unsafe_sites": 52
     },
     "src/basic/rust/time_util/tests.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 163
+    },
+    "src/basic/rust/udev_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 10
     },
     "src/basic/rust/unaligned.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 28
     },
+    "src/basic/rust/unit_def.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
     "src/basic/rust/unit_name.rs": {
-      "missing_safety": 38,
-      "unsafe_sites": 91
+      "missing_safety": 13,
+      "missing_safety_sites": [
+        "106:1:unsafe fn strndup_owned(s: *const c_char, n: usize) -> *mut c_char {",
+        "131:1:unsafe fn strdup_to(ret: *mut *mut c_char, s: *const c_char) -> i32 {",
+        "151:1:unsafe fn strjoin3(a: *const c_char, b: *const c_char, c: *const c_char) -> *mut c_char {",
+        "178:1:unsafe fn memcmp_nn(a: *const c_char, alen: usize, b: *const c_char, blen: usize) -> i32 {",
+        "216:1:unsafe fn unit_type_from_string(s: *const c_char) -> i32 {",
+        "246:1:unsafe fn unit_name_is_valid_internal(n: *const c_char, flags: i32) -> bool {",
+        "943:1:unsafe fn do_escape_char(c: u8, t: *mut u8) -> *mut u8 {",
+        "954:1:unsafe fn do_escape(f: *const c_char, t: *mut u8) -> *mut u8 {",
+        "1222:1:unsafe fn c_string_is_glob(s: *const c_char) -> bool {",
+        "1241:1:unsafe fn c_string_in_charset(s: *const c_char, charset: &[u8]) -> bool {",
+        "1260:1:unsafe fn do_escape_mangle(f: *const c_char, allow_globs: bool, t: *mut u8) -> bool {",
+        "1300:1:unsafe fn unit_name_path_escape_simple(path: *const c_char, ret: *mut *mut c_char) -> i32 {",
+        "1350:1:unsafe fn unit_name_from_path_simple("
+      ],
+      "unsafe_sites": 306
     },
     "src/basic/rust/user_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 17
     },
     "src/basic/rust/utf8.rs": {
-      "missing_safety": 25,
-      "unsafe_sites": 29
+      "missing_safety": 3,
+      "missing_safety_sites": [
+        "58:1:unsafe fn utf8_encoded_to_unichar_inner(str: *const c_char, ret_unichar: *mut u32) -> i32 {",
+        "112:1:unsafe fn utf8_encode_unichar_raw(out_utf8: *mut u8, g: u32) -> usize {",
+        "254:1:unsafe fn utf8_next_char(p: *const c_char) -> *const c_char {"
+      ],
+      "unsafe_sites": 48
+    },
+    "src/basic/rust/virt.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
+    "src/basic/rust/xattr_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
     },
     "src/battery-check/rust/battery_check.rs": {
-      "missing_safety": 1,
-      "unsafe_sites": 6
-    },
-    "src/boot/rust/ubsan.rs": {
-      "missing_safety": 1,
-      "unsafe_sites": 1
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 18
     },
     "src/core/rust/main.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 2
-    },
-    "src/core/rust/runtime_manager.rs": {
-      "missing_safety": 3,
+      "missing_safety_sites": [],
       "unsafe_sites": 3
     },
-    "src/core/rust/runtime_manager/cgroup_runtime.rs": {
-      "missing_safety": 5,
-      "unsafe_sites": 5
+    "src/core/rust/runtime_manager.rs": {
+      "missing_safety": 2,
+      "missing_safety_sites": [
+        "692:12:if unsafe { libc::geteuid() } != 0 {",
+        "700:17:let _ = unsafe { libc::chown(c_path.as_ptr(), raw_uid, raw_gid) };"
+      ],
+      "unsafe_sites": 2
+    },
+    "src/core/rust/runtime_manager/linux_cgroup.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 14
     },
     "src/core/rust/runtime_manager/service_runtime.rs": {
-      "missing_safety": 8,
-      "unsafe_sites": 8
+      "missing_safety": 4,
+      "missing_safety_sites": [
+        "436:25:let _ = unsafe { libc::write(fd.as_raw_fd(), b\"\\x1bc\\n\".as_ptr().cast(), 4) };",
+        "445:29:let _ = unsafe { libc::ioctl(fd.as_raw_fd(), TIOCVHANGUP_IOCTL, 0) };",
+        "454:25:let _ = unsafe { libc::ioctl(fd.as_raw_fd(), VT_DISALLOCATE, 0) };",
+        "491:21:unsafe { libc::waitpid(-1, &mut status as *mut libc::c_int, libc::WNOHANG) };"
+      ],
+      "unsafe_sites": 5
+    },
+    "src/core/rust/runtime_manager/tests.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 25
     },
     "src/core/rust/runtime_manager/unit_specifier.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 19
     },
-    "src/core/rust/socket_activation.rs": {
-      "missing_safety": 1,
-      "unsafe_sites": 1
+    "src/core/rust/unit/relationships.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
+    "src/core/rust/unit/tests.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/core/rust/unit_printf.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
-    },
-    "src/event-loop/rust/timerfd.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
     },
     "src/fundamental/rust/chid.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/fundamental/rust/cleanup.rs": {
-      "missing_safety": 1,
-      "unsafe_sites": 6
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
     },
     "src/fundamental/rust/iovec_util.rs": {
-      "missing_safety": 3,
-      "unsafe_sites": 3
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
     },
     "src/fundamental/rust/memory_util.rs": {
-      "missing_safety": 1,
-      "unsafe_sites": 6
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 7
     },
     "src/fundamental/rust/unaligned.rs": {
-      "missing_safety": 18,
-      "unsafe_sites": 26
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 44
     },
     "src/journal/rust/journalctl/argument_values.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 15
     },
     "src/journal/rust/journalctl/model.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
+    },
+    "src/journal/rust/journalctl_main.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 5
     },
     "src/journal/rust/journald_runtime_client_context.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/journal/rust/journald_runtime_daemon.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 4
+      "missing_safety_sites": [],
+      "unsafe_sites": 5
     },
     "src/journal/rust/journald_runtime_io.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 30
     },
     "src/journal/rust/journald_runtime_record.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/journal/rust/journald_runtime_tests.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 8
+      "missing_safety_sites": [],
+      "unsafe_sites": 60
     },
     "src/journal/rust/tests/live_daemon_e2e.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/libsystemd/rust/sd_daemon_checks.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 56
+      "missing_safety_sites": [],
+      "unsafe_sites": 88
     },
     "src/libsystemd/rust/sd_device_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
+    },
+    "src/libsystemd/rust/sd_id128_api.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/libsystemd/rust/sd_journal_send.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 33
-    },
-    "src/libsystemd/rust/sd_journal_test_journal.rs": {
-      "missing_safety": 0,
-      "unsafe_sites": 1
     },
     "src/libsystemd/rust/sd_journal_vacuum.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/libsystemd/rust/sd_resolve.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 11
+    },
+    "src/libsystemd/rust/test_support.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
     },
     "src/modules-load/rust/modules_load.rs": {
       "missing_safety": 2,
+      "missing_safety_sites": [
+        "163:15:let ret = unsafe {",
+        "174:17:let errno = unsafe { *libc::__errno_location() };"
+      ],
       "unsafe_sites": 2
     },
     "src/platform/rust/cgroup.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 3
+      "missing_safety_sites": [],
+      "unsafe_sites": 17
+    },
+    "src/platform/rust/io.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
     },
     "src/platform/rust/process.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "16:11:match unsafe { fork()? } {"
+      ],
       "unsafe_sites": 1
+    },
+    "src/platform/rust/signal.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/platform/rust/spawn.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 27
+      "missing_safety_sites": [],
+      "unsafe_sites": 7
+    },
+    "src/platform/rust/spawn/linux.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 40
+    },
+    "src/platform/rust/spawn/linux_cgroup.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/platform/rust/spawn/linux_process.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 10
+    },
+    "src/platform/rust/time.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
     },
     "src/ptyfwd/rust/main.rs": {
-      "missing_safety": 10,
-      "unsafe_sites": 10
+      "missing_safety": 11,
+      "missing_safety_sites": [
+        "91:22:let ptx_fd = unsafe {",
+        "102:12:if unsafe { libc::grantpt(ptx_fd) } != 0 || unsafe { libc::unlockpt(ptx_fd) } != 0 {",
+        "102:53:if unsafe { libc::grantpt(ptx_fd) } != 0 || unsafe { libc::unlockpt(ptx_fd) } != 0 {",
+        "104:13:unsafe { libc::close(ptx_fd) };",
+        "108:24:let pts_name = unsafe {",
+        "115:15:match unsafe { nix::unistd::fork() } {",
+        "117:17:unsafe { libc::close(libc::posix_openpt(libc::O_RDWR)) };",
+        "119:30:let pts_fd = unsafe {",
+        "134:25:unsafe {",
+        "152:17:unsafe {",
+        "178:17:unsafe {"
+      ],
+      "unsafe_sites": 11
     },
     "src/random-seed/rust/main.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/resolve/rust/ffi.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/resolve/rust/resolved.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 3
     },
     "src/shared/rust/acl_util.rs": {
       "missing_safety": 6,
+      "missing_safety_sites": [
+        "357:32:let mut stat: libc::stat = unsafe { std::mem::zeroed() };",
+        "358:8:if unsafe { libc::fstat(raw_fd, &mut stat) } < 0 {",
+        "367:8:if unsafe { libc::fchmod(raw_fd, mode_strip_write_bits(mode) as libc::mode_t) } < 0 {",
+        "388:32:let mut stat: libc::stat = unsafe { std::mem::zeroed() };",
+        "389:8:if unsafe { libc::fstat(raw_fd, &mut stat) } < 0 {",
+        "398:8:if unsafe { libc::fchmod(raw_fd, mode_add_owner_write(mode) as libc::mode_t) } < 0 {"
+      ],
       "unsafe_sites": 6
     },
     "src/shared/rust/ask_password_agent.rs": {
       "missing_safety": 1,
-      "unsafe_sites": 38
+      "missing_safety_sites": [
+        "1285:15:[0u8; unsafe { libc::CMSG_SPACE(mem::size_of::<crate::ffi::ucred>() as u32) } as usize];"
+      ],
+      "unsafe_sites": 40
     },
     "src/shared/rust/ask_password_api.rs": {
       "missing_safety": 2,
-      "unsafe_sites": 2
+      "missing_safety_sites": [
+        "121:13:let r = unsafe { libc::utimes(path_ptr, ptr::null()) };",
+        "377:13:let r = unsafe { libc::isatty(fd) };"
+      ],
+      "unsafe_sites": 3
     },
     "src/shared/rust/async.rs": {
       "missing_safety": 5,
-      "unsafe_sites": 16
+      "missing_safety_sites": [
+        "240:23:match unsafe { libc::fork() } {",
+        "243:25:unsafe {",
+        "252:13:unsafe {",
+        "288:23:match unsafe { libc::fork() } {",
+        "376:15:let pid = unsafe { libc::getpid() };"
+      ],
+      "unsafe_sites": 19
     },
     "src/shared/rust/barrier.rs": {
-      "missing_safety": 13,
+      "missing_safety": 7,
+      "missing_safety_sites": [
+        "272:13:unsafe {",
+        "281:17:unsafe {",
+        "999:19:match unsafe { libc::fork() } {",
+        "1023:19:match unsafe { libc::fork() } {",
+        "1049:19:match unsafe { libc::fork() } {",
+        "1068:19:match unsafe { libc::fork() } {",
+        "1093:19:match unsafe { libc::fork() } {"
+      ],
       "unsafe_sites": 20
     },
     "src/shared/rust/base_filesystem.rs": {
       "missing_safety": 7,
+      "missing_safety_sites": [
+        "254:14:let fd = unsafe { libc::open(root_c.as_ptr(), libc::O_DIRECTORY | libc::O_CLOEXEC) };",
+        "262:16:let file = unsafe { File::from_raw_fd(fd) };",
+        "361:5:unsafe { libc::faccessat(fd, path.as_ptr(), libc::F_OK, libc::AT_SYMLINK_NOFOLLOW) >= 0 }",
+        "365:8:if unsafe { libc::mkdirat(fd, path.as_ptr(), mode) } < 0 {",
+        "373:8:if unsafe { libc::fchmodat(fd, path.as_ptr(), mode, libc::AT_SYMLINK_NOFOLLOW) } < 0 {",
+        "381:8:if unsafe { libc::symlinkat(target.as_ptr(), fd, path.as_ptr()) } < 0 {",
+        "389:8:if unsafe { libc::fchownat(fd, path.as_ptr(), uid, gid, libc::AT_SYMLINK_NOFOLLOW) } < 0 {"
+      ],
       "unsafe_sites": 7
     },
     "src/shared/rust/binfmt_util.rs": {
       "missing_safety": 3,
+      "missing_safety_sites": [
+        "147:15:let ret = unsafe { libc::fstatfs(fd, buf.as_mut_ptr()) };",
+        "151:8:Ok(unsafe { buf.assume_init() }.f_type as u64)",
+        "157:15:let ret = unsafe { libc::faccessat(fd, std::ptr::null(), mode, libc::AT_EMPTY_PATH) };"
+      ],
       "unsafe_sites": 3
     },
     "src/shared/rust/blkid_util.rs": {
-      "missing_safety": 6,
-      "unsafe_sites": 6
+      "missing_safety": 5,
+      "missing_safety_sites": [
+        "123:18:let handle = unsafe { dlopen_wrapper(LIBBLKID_NAME) }?;",
+        "130:23:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
+        "160:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, BlkidError> {",
+        "183:1:unsafe fn dlsym_wrapper(handle: *mut c_void, name: &CStr) -> *const c_void {",
+        "293:13:let s = unsafe { CStr::from_ptr(ptr) }"
+      ],
+      "unsafe_sites": 8
     },
     "src/shared/rust/blockdev_util.rs": {
       "missing_safety": 3,
+      "missing_safety_sites": [
+        "326:32:let mut stat: libc::stat = unsafe { std::mem::zeroed() };",
+        "334:21:let major = unsafe { libc::major(stat.st_rdev) } as u32;",
+        "335:21:let minor = unsafe { libc::minor(stat.st_rdev) } as u32;"
+      ],
       "unsafe_sites": 6
     },
     "src/shared/rust/bpf_dlopen.rs": {
       "missing_safety": 5,
-      "unsafe_sites": 5
+      "missing_safety_sites": [
+        "176:18:let handle = unsafe { dlopen_library(lib_name) }?;",
+        "209:23:let ptr = unsafe { resolve_symbol(handle, &c_sym) };",
+        "225:1:unsafe fn dlopen_library(lib_name: &str) -> Result<*mut c_void, BpfError> {",
+        "241:1:unsafe fn resolve_symbol(handle: *mut c_void, symbol: &CStr) -> *mut c_void {",
+        "248:5:unsafe {"
+      ],
+      "unsafe_sites": 7
     },
     "src/shared/rust/bpf_program.rs": {
-      "missing_safety": 9,
-      "unsafe_sites": 13
+      "missing_safety": 5,
+      "missing_safety_sites": [
+        "294:13:unsafe {",
+        "459:25:let cgroup_fd = unsafe {",
+        "473:9:unsafe {",
+        "509:25:let cgroup_fd = unsafe {",
+        "528:9:unsafe {"
+      ],
+      "unsafe_sites": 11
     },
     "src/shared/rust/bus_print_properties.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
-    },
-    "src/shared/rust/cgroup_setup.rs": {
-      "missing_safety": 0,
-      "unsafe_sites": 16
     },
     "src/shared/rust/chown_recursive.rs": {
       "missing_safety": 2,
+      "missing_safety_sites": [
+        "142:19:let ret = unsafe {",
+        "278:36:let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };"
+      ],
       "unsafe_sites": 5
     },
     "src/shared/rust/clean_ipc.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 4
     },
     "src/shared/rust/clock_util.rs": {
       "missing_safety": 3,
+      "missing_safety_sites": [
+        "111:21:let now_epoch = unsafe { libc::time(std::ptr::null_mut()) };",
+        "116:18:let raw_tm = unsafe { libc::localtime(&now_epoch) };",
+        "130:15:let ret = unsafe { libc::settimeofday(std::ptr::null(), &tz) };"
+      ],
       "unsafe_sites": 4
     },
     "src/shared/rust/common_signal.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 3
     },
     "src/shared/rust/condition.rs": {
       "missing_safety": 6,
-      "unsafe_sites": 13
+      "missing_safety_sites": [
+        "413:16:if unsafe { libc::access(parent_cstr.as_ptr(), libc::F_OK) } < 0 {",
+        "463:41:let mut path_stat: libc::stat = unsafe { std::mem::zeroed() };",
+        "464:12:if unsafe { libc::stat(path_cstr.as_ptr(), &mut path_stat) } < 0 {",
+        "474:43:let mut parent_stat: libc::stat = unsafe { std::mem::zeroed() };",
+        "475:12:if unsafe { libc::stat(parent_cstr.as_ptr(), &mut parent_stat) } < 0 {",
+        "623:13:unsafe { std::ffi::CStr::from_ptr(utsname.machine.as_ptr()).to_string_lossy() };"
+      ],
+      "unsafe_sites": 15
     },
     "src/shared/rust/copy.rs": {
       "missing_safety": 38,
+      "missing_safety_sites": [
+        "108:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
+        "109:8:if unsafe { libc::fstat(fd, &mut st) } < 0 {",
+        "115:17:let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };",
+        "133:18:let offset = unsafe { libc::lseek(fd, 0, libc::SEEK_CUR) };",
+        "137:15:let end = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };",
+        "144:19:let ret = unsafe {",
+        "161:19:let ret = unsafe { libc::lseek(fd, offset + size, libc::SEEK_SET) };",
+        "169:8:if unsafe { libc::ftruncate(fd, end + remaining) } < 0 {",
+        "172:15:let ret = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };",
+        "331:17:let n = unsafe { libc::read(fd_in, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };",
+        "345:21:let k = unsafe {",
+        "365:12:if unsafe { libc::fsync(fd_out) } < 0 {",
+        "370:22:let offset = unsafe { libc::lseek(fd_out, 0, libc::SEEK_CUR) };",
+        "374:12:if unsafe { libc::ftruncate(fd_out, offset) } < 0 {",
+        "403:8:if unsafe { libc::futimens(fd, times.as_ptr()) } < 0 {",
+        "562:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
+        "563:8:if unsafe { libc::fstat(src_fd, &mut st) } < 0 {",
+        "566:8:if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {",
+        "575:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
+        "576:8:if unsafe { libc::fstat(src_fd, &mut st) } < 0 {",
+        "579:8:if unsafe { libc::fchown(dst_fd, st.st_uid, st.st_gid) } < 0 {",
+        "588:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
+        "589:8:if unsafe { libc::fstat(src_fd, &mut st) } < 0 {",
+        "593:8:if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {",
+        "596:8:if unsafe { libc::fchown(dst_fd, st.st_uid, st.st_gid) } < 0 {",
+        "605:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
+        "606:8:if unsafe { libc::fstat(src_fd, &mut st) } < 0 {",
+        "619:8:if unsafe { libc::futimens(dst_fd, times.as_ptr()) } < 0 {",
+        "644:15:let ret = unsafe { libc::ioctl(dst_fd, FICLONE, src_fd) };",
+        "704:13:unsafe { libc::open(store_cstr.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };",
+        "709:13:unsafe { libc::linkat(store_dir, key_cstr.as_ptr(), dst_dir, dst_name.as_ptr(), 0) };",
+        "710:9:unsafe { libc::close(store_dir) };",
+        "741:13:unsafe { libc::open(store_cstr.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };",
+        "746:13:unsafe { libc::linkat(dst_dir, dst_name.as_ptr(), store_dir, key_cstr.as_ptr(), 0) };",
+        "747:9:unsafe { libc::close(store_dir) };",
+        "1023:18:let fd = unsafe {",
+        "1034:9:unsafe { libc::lseek(fd, 1024, libc::SEEK_SET) };",
+        "1037:9:unsafe { libc::close(fd) };"
+      ],
       "unsafe_sites": 39
     },
     "src/shared/rust/coredump_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/shared/rust/cpu_set_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
+    },
+    "src/shared/rust/creds_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
+    },
+    "src/shared/rust/cryptsetup_tpm2.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 7
     },
     "src/shared/rust/daemon_util.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 3
+      "missing_safety_sites": [],
+      "unsafe_sites": 9
     },
     "src/shared/rust/data_fd_util.rs": {
       "missing_safety": 23,
+      "missing_safety_sites": [
+        "167:13:let r = unsafe { libc::fstat(fd, st.as_mut_ptr()) };",
+        "171:12:Ok(unsafe { st.assume_init() })",
+        "176:15:let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };",
+        "180:12:Ok(unsafe { OwnedFd::from_raw_fd(dup) })",
+        "191:21:let n = unsafe { libc::read(src, buffer.as_mut_ptr().cast(), request) };",
+        "215:17:let n = unsafe { libc::write(fd, buffer.as_ptr().cast(), buffer.len()) };",
+        "237:21:let n = unsafe { libc::read(src, buffer.as_mut_ptr().cast(), buffer.len()) };",
+        "257:18:let offset = unsafe { libc::lseek(fd, 0, libc::SEEK_SET) };",
+        "346:14:let fd = unsafe { libc::syscall(libc::SYS_memfd_create, c_name.as_ptr(), flags) };",
+        "350:12:Ok(unsafe { OwnedFd::from_raw_fd(fd as RawFd) })",
+        "397:24:let reopened = unsafe { libc::open(c_candidate.as_ptr(), flags) };",
+        "399:23:return Ok(unsafe { OwnedFd::from_raw_fd(reopened) });",
+        "408:19:let current = unsafe { libc::fcntl(fd, libc::F_GETFD) };",
+        "420:17:let r = unsafe { libc::fcntl(fd, libc::F_SETFD, desired) };",
+        "432:13:let r = unsafe { libc::fcntl(fd.as_raw_fd(), F_ADD_SEALS_CONST, seals) };",
+        "477:24:let mut file = unsafe { File::from_raw_fd(dup.into_raw_fd()) };",
+        "485:9:unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) }",
+        "491:17:let r = unsafe { libc::write(dup.as_raw_fd(), byte.as_ptr().cast(), byte.len()) };",
+        "574:20:assert_eq!(unsafe { libc::pipe(pipefds.as_mut_ptr()) }, 0);",
+        "575:22:let reader = unsafe { OwnedFd::from_raw_fd(pipefds[0]) };",
+        "576:26:let mut writer = unsafe { File::from_raw_fd(pipefds[1]) };",
+        "599:19:let pos = unsafe { libc::lseek(file.as_file().as_raw_fd(), 0, libc::SEEK_CUR) };",
+        "632:13:unsafe { File::from_raw_fd(dup_fd(cloned.as_raw_fd()).unwrap().into_raw_fd()) };"
+      ],
       "unsafe_sites": 23
     },
     "src/shared/rust/dev_setup.rs": {
       "missing_safety": 18,
+      "missing_safety_sites": [
+        "191:14:let rc = unsafe {",
+        "220:14:let rc = unsafe {",
+        "237:14:let fd = unsafe {",
+        "257:20:let mkdir_rc = unsafe {",
+        "268:14:let fd = unsafe {",
+        "293:9:unsafe {",
+        "298:9:unsafe {",
+        "321:14:let rc = unsafe {",
+        "346:14:let rc = unsafe {",
+        "365:14:let rc = unsafe {",
+        "413:13:unsafe {",
+        "425:19:let old = unsafe {",
+        "435:9:unsafe {",
+        "650:22:let before = unsafe {",
+        "661:27:let current = unsafe {",
+        "668:21:let after = unsafe {",
+        "699:36:assert_eq!(metadata.uid(), unsafe { libc::geteuid() });",
+        "700:36:assert_eq!(metadata.gid(), unsafe { libc::getegid() });"
+      ],
       "unsafe_sites": 20
     },
     "src/shared/rust/device_util.rs": {
       "missing_safety": 2,
+      "missing_safety_sites": [
+        "406:17:let major = unsafe { libc::major(devnum as libc::dev_t) };",
+        "407:17:let minor = unsafe { libc::minor(devnum as libc::dev_t) };"
+      ],
       "unsafe_sites": 4
     },
     "src/shared/rust/dm_util.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "93:19:let ret = unsafe {"
+      ],
       "unsafe_sites": 1
-    },
-    "src/shared/rust/efi_api.rs": {
-      "missing_safety": 0,
-      "unsafe_sites": 5
-    },
-    "src/shared/rust/efivars.rs": {
-      "missing_safety": 0,
-      "unsafe_sites": 8
     },
     "src/shared/rust/enable_mempool.rs": {
       "missing_safety": 2,
+      "missing_safety_sites": [
+        "139:19:let tid = unsafe { libc::gettid() };",
+        "145:16:return unsafe { libc::pthread_main_np() == 1 };"
+      ],
       "unsafe_sites": 2
     },
     "src/shared/rust/env_file_label.rs": {
       "missing_safety": 5,
+      "missing_safety_sites": [
+        "225:21:unsafe { libc::renameat(dir_fd, temp.as_ptr(), dir_fd, target.as_ptr()) };",
+        "247:14:let fd = unsafe {",
+        "260:8:Ok(unsafe { File::from_raw_fd(fd) })",
+        "264:13:let _ = unsafe { libc::unlinkat(dir_fd, path.as_ptr(), 0) };",
+        "272:18:let result = unsafe { libc::fcntl(dir_fd, libc::F_GETFD) };"
+      ],
       "unsafe_sites": 5
     },
     "src/shared/rust/exec_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/shared/rust/fdisk_util.rs": {
-      "missing_safety": 7,
-      "unsafe_sites": 7
+      "missing_safety": 6,
+      "missing_safety_sites": [
+        "120:18:let handle = unsafe { dlopen_wrapper(LIBFDISK_NAME) }?;",
+        "127:23:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
+        "157:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, FdiskError> {",
+        "190:1:unsafe fn dlsym_wrapper(handle: *mut c_void, name: &CStr) -> *const c_void {",
+        "196:1:unsafe fn dlsym_wrapper(_handle: *mut c_void, _name: &CStr) -> *const c_void {",
+        "347:13:let s = unsafe { CStr::from_ptr(ptr) }"
+      ],
+      "unsafe_sites": 13
     },
     "src/shared/rust/fdset.rs": {
       "missing_safety": 18,
+      "missing_safety_sites": [
+        "220:20:let copy = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, FDSET_MIN_FD) };",
+        "471:5:unsafe {",
+        "481:13:let _ = unsafe { libc::close(fd) };",
+        "486:17:let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };",
+        "502:15:let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, new_flags) };",
+        "520:9:unsafe { libc::pipe(pipes.as_mut_ptr()) };",
+        "521:9:unsafe { libc::close(pipes[1]) };",
+        "730:21:let owned = unsafe { OwnedFd::from_raw_fd(0) }; // stdin",
+        "752:20:assert_eq!(unsafe { libc::fcntl(d1, libc::F_GETFD) }, -1);",
+        "753:20:assert_eq!(unsafe { libc::fcntl(d2, libc::F_GETFD) }, -1);",
+        "896:21:let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };",
+        "901:21:let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };",
+        "905:9:unsafe {",
+        "916:9:unsafe { libc::pipe(pipes.as_mut_ptr()) };",
+        "918:9:unsafe {",
+        "929:26:let dup_result = unsafe { libc::dup(fd) };",
+        "945:21:let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };",
+        "947:9:unsafe {"
+      ],
       "unsafe_sites": 18
     },
     "src/shared/rust/ffi.rs": {
-      "missing_safety": 7,
+      "missing_safety": 1,
+      "missing_safety_sites": [
+        "22:1:unsafe extern \"C\" {"
+      ],
       "unsafe_sites": 12
     },
     "src/shared/rust/fido2_util.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "136:20:let read = unsafe { crate::ffi::getrandom(chunk.as_mut_ptr(), chunk.len(), 0) };"
+      ],
       "unsafe_sites": 1
     },
     "src/shared/rust/find_esp.rs": {
       "missing_safety": 2,
-      "unsafe_sites": 9
+      "missing_safety_sites": [
+        "381:40:let mut statfs_buf: libc::statfs = unsafe { std::mem::zeroed() };",
+        "500:9:unsafe { libc::close(fd) };"
+      ],
+      "unsafe_sites": 15
     },
     "src/shared/rust/fork_notify.rs": {
       "missing_safety": 2,
+      "missing_safety_sites": [
+        "344:15:let ret = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };",
+        "360:15:let ret = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };"
+      ],
       "unsafe_sites": 2
     },
     "src/shared/rust/hibernate_util.rs": {
       "missing_safety": 8,
+      "missing_safety_sites": [
+        "286:5:unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }",
+        "362:19:let ret = unsafe { libc::ioctl(raw_fd, FS_IOC_FIEMAP, &mut kfiemap) };",
+        "378:19:let ret = unsafe { libc::ioctl(raw_fd, FS_IOC_FIEMAP, &mut kfiemap) };",
+        "390:13:unsafe {",
+        "397:13:unsafe {",
+        "405:23:let ret = unsafe { libc::ioctl(raw_fd, FS_IOC_FIEMAP, buf.as_mut_ptr()) };",
+        "411:17:unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const KernelFiemap) };",
+        "419:48:let extent: FiemapExtent = unsafe {"
+      ],
       "unsafe_sites": 8
     },
     "src/shared/rust/hostname_setup.rs": {
       "missing_safety": 2,
+      "missing_safety_sites": [
+        "336:38:let mut utsname: libc::utsname = unsafe { std::mem::zeroed() };",
+        "342:20:let nodename = unsafe { CStr::from_ptr(utsname.nodename.as_ptr()) };"
+      ],
       "unsafe_sites": 4
+    },
+    "src/shared/rust/hwdb_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
     },
     "src/shared/rust/id128_print.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "211:20:let read = unsafe { crate::ffi::getrandom(chunk.as_mut_ptr(), chunk.len(), 0) };"
+      ],
       "unsafe_sites": 1
     },
     "src/shared/rust/idn_util.rs": {
       "missing_safety": 20,
-      "unsafe_sites": 20
+      "missing_safety_sites": [
+        "35:19:let _: Option<unsafe extern \"C\" fn(*const u8, *mut *mut u8, i32) -> i32> =",
+        "37:19:let _: Option<unsafe extern \"C\" fn(i32) -> *const libc::c_char> = None::<Idn2StrerrorFn>;",
+        "38:19:let _: Option<unsafe extern \"C\" fn(*const libc::c_char, *mut *mut libc::c_char, i32) -> i32> =",
+        "40:19:let _: Option<unsafe extern \"C\" fn(*mut c_void)> = None::<Idn2FreeFn>;",
+        "52:1:unsafe impl Send for LibIdn2 {}",
+        "53:1:unsafe impl Sync for LibIdn2 {}",
+        "229:18:let handle = unsafe { dlopen_wrapper(lib_name) }?;",
+        "231:21:let lookup_u8 = unsafe { resolve_symbol(handle, \"idn2_lookup_u8\") }?;",
+        "232:20:let strerror = unsafe { resolve_symbol(handle, \"idn2_strerror\") }?;",
+        "233:27:let to_unicode_8z8z = unsafe { resolve_symbol(handle, \"idn2_to_unicode_8z8z\") }?;",
+        "234:16:let free = unsafe { resolve_symbol(handle, \"idn2_free\") }?;",
+        "250:14:let rc = unsafe { (api.lookup_u8)(input.as_ptr().cast(), &mut output, flags) };",
+        "267:14:let rc = unsafe { (api.to_unicode_8z8z)(input.as_ptr(), &mut output, 0) };",
+        "284:17:let bytes = unsafe { CStr::from_ptr(output).to_bytes().to_vec() };",
+        "285:5:unsafe { (api.free)(output.cast()) };",
+        "291:19:let message = unsafe { (api.strerror)(code) };",
+        "296:5:unsafe { CStr::from_ptr(message) }",
+        "301:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, IdnError> {",
+        "315:1:unsafe fn resolve_symbol<T: Copy>(handle: *mut c_void, symbol: &str) -> Result<T, IdnError> {",
+        "330:5:unsafe {"
+      ],
+      "unsafe_sites": 23
     },
     "src/shared/rust/install_file.rs": {
       "missing_safety": 25,
+      "missing_safety_sites": [
+        "88:13:unsafe {",
+        "181:18:let new_fd = unsafe { libc::openat(libc::AT_FDCWD, c_path.as_ptr(), flags | libc::O_CLOEXEC) };",
+        "190:8:if unsafe { libc::fsync(fd) } < 0 {",
+        "199:8:if unsafe { crate::ffi::syncfs(fd) } < 0 {",
+        "211:18:let dir_fd = unsafe {",
+        "228:15:let pfd = unsafe {",
+        "257:13:let r = unsafe {",
+        "278:13:let r = unsafe {",
+        "301:8:if unsafe { libc::unlinkat(dirfd, c_path.as_ptr(), 0) } >= 0 {",
+        "307:12:if unsafe { libc::unlinkat(dirfd, c_path.as_ptr(), libc::AT_REMOVEDIR) } < 0 {",
+        "328:8:if unsafe { libc::fstat(fd, st.as_mut_ptr()) } < 0 {",
+        "331:14:let st = unsafe { st.assume_init() };",
+        "349:20:if unsafe { libc::fchmod(fd, new_mode as _) } < 0 {",
+        "357:16:if unsafe { libc::ioctl(fd, BLKROSET as u64, &ro) } < 0 {",
+        "382:8:if unsafe { libc::ioctl(fd, BTRFS_IOC_SUBVOL_SETFLAGS as _, &flags) } < 0 {",
+        "397:8:if unsafe { libc::ioctl(fd, FS_IOC_GETFLAGS as _, &mut flags) } < 0 {",
+        "406:8:if unsafe { libc::ioctl(fd, FS_IOC_SETFLAGS as _, &(new_flags as libc::c_long)) } < 0 {",
+        "484:23:let pfd_raw = unsafe {",
+        "497:12:if unsafe { libc::fstat(pfd.raw(), st.as_mut_ptr()) } < 0 {",
+        "500:18:let st = unsafe { st.assume_init() };",
+        "563:21:let r = unsafe {",
+        "584:31:let dfd_raw = unsafe {",
+        "605:29:unsafe { libc::close(dfd_raw) };",
+        "619:29:unsafe { libc::close(dfd_raw) };",
+        "624:34:let r2 = unsafe {"
+      ],
       "unsafe_sites": 25
     },
     "src/shared/rust/journal_file_util.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "406:31:let (_, aligned, _) = unsafe { buf.align_to::<Self>() };"
+      ],
       "unsafe_sites": 4
+    },
+    "src/shared/rust/kbd_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/shared/rust/libarchive_util.rs": {
       "missing_safety": 4,
-      "unsafe_sites": 5
+      "missing_safety_sites": [
+        "221:18:let handle = unsafe { dlopen_wrapper(lib_name) }?;",
+        "236:27:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
+        "266:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, ArchiveError> {",
+        "295:5:unsafe {"
+      ],
+      "unsafe_sites": 7
     },
     "src/shared/rust/libaudit_util.rs": {
-      "missing_safety": 14,
-      "unsafe_sites": 15
+      "missing_safety": 12,
+      "missing_safety_sites": [
+        "151:8:if unsafe { libc::sendmsg(fd, &mh, 0x4000) } < 0 {",
+        "172:13:let n = unsafe { libc::recvmsg(fd, &mut recv_mh, 0) };",
+        "185:9:unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(resp_msg.hdr.nlmsg_type)) };",
+        "193:9:unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(resp_msg.err.error)) };",
+        "269:14:let fd = unsafe {",
+        "287:18:let result = unsafe { try_audit_request(fd) };",
+        "288:5:unsafe { libc::close(fd) };",
+        "547:13:unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.hdr.nlmsg_type)) };",
+        "549:13:unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.hdr.nlmsg_flags)) };",
+        "551:13:unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.hdr.nlmsg_seq)) };",
+        "553:13:unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.hdr.nlmsg_pid)) };",
+        "554:30:let err_error: i32 = unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.err.error)) };"
+      ],
+      "unsafe_sites": 16
     },
     "src/shared/rust/libcrypt_util.rs": {
       "missing_safety": 17,
-      "unsafe_sites": 20
+      "missing_safety_sites": [
+        "88:1:unsafe impl Send for DlHandle {}",
+        "89:1:unsafe impl Sync for DlHandle {}",
+        "110:23:crypt_gensalt_ra: unsafe extern \"C\" fn(",
+        "116:29:crypt_preferred_method: unsafe extern \"C\" fn() -> *const libc::c_char,",
+        "117:15:crypt_ra: unsafe extern \"C\" fn(",
+        "203:22:let gensalt_fn = unsafe {",
+        "205:13:unsafe extern \"C\" fn(",
+        "215:24:let preferred_fn = unsafe {",
+        "216:26:resolve_symbol::<unsafe extern \"C\" fn() -> *const libc::c_char>(",
+        "223:23:let crypt_ra_fn = unsafe {",
+        "225:13:unsafe extern \"C\" fn(",
+        "279:15:let ptr = unsafe { libc::dlsym(handle.as_ptr(), c_sym.as_ptr()) };",
+        "290:5:unsafe {",
+        "314:9:unsafe {",
+        "330:5:unsafe {",
+        "364:5:unsafe {",
+        "414:5:unsafe {"
+      ],
+      "unsafe_sites": 21
     },
     "src/shared/rust/libfido2_util.rs": {
       "missing_safety": 5,
+      "missing_safety_sites": [
+        "419:18:let handle = unsafe {",
+        "425:23:let err = unsafe { CStr::from_ptr(libc::dlerror()) };",
+        "437:19:let ptr = unsafe {",
+        "443:23:let err = unsafe { CStr::from_ptr(libc::dlerror()) };",
+        "446:13:unsafe {"
+      ],
       "unsafe_sites": 5
     },
     "src/shared/rust/libmount_util.rs": {
       "missing_safety": 18,
-      "unsafe_sites": 36
+      "missing_safety_sites": [
+        "525:19:let func: unsafe extern \"C\" fn(*mut c_void) -> *const libc::c_char =",
+        "557:24:let new_table: unsafe extern \"C\" fn() -> *mut c_void =",
+        "559:23:let new_iter: unsafe extern \"C\" fn(i32) -> *mut c_void =",
+        "561:25:let free_table: unsafe extern \"C\" fn(*mut c_void) = self.resolve_fn(b\"mnt_free_table\\0\")?;",
+        "562:24:let free_iter: unsafe extern \"C\" fn(*mut c_void) = self.resolve_fn(b\"mnt_free_iter\\0\")?;",
+        "563:22:let next_fs: unsafe extern \"C\" fn(*mut c_void, *mut c_void, *mut *mut c_void) -> i32 =",
+        "571:24:let iter_ptr = unsafe { new_iter(direction.as_raw()) };",
+        "573:13:unsafe { free_table(table_ptr) };",
+        "581:29:let parse_file: unsafe extern \"C\" fn(*mut c_void, *const libc::c_char) -> i32 =",
+        "617:26:let source = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_source\\0\") }?;",
+        "618:26:let target = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_target\\0\") }?;",
+        "619:26:let fstype = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_fstype\\0\") }?;",
+        "620:27:let options = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_options\\0\") }?;",
+        "621:28:let vfs_opts = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_vfs_options\\0\") }?;",
+        "690:23:let new_iter: unsafe extern \"C\" fn(i32) -> *mut c_void =",
+        "692:24:let free_iter: unsafe extern \"C\" fn(*mut c_void) = self.resolve_fn(b\"mnt_free_iter\\0\")?;",
+        "693:25:let next_child: unsafe extern \"C\" fn(",
+        "741:1:unsafe impl Sync for LibmountLibrary {}"
+      ],
+      "unsafe_sites": 43
+    },
+    "src/shared/rust/log_assert_critical.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
     },
     "src/shared/rust/loop_util/allocate.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
     },
     "src/shared/rust/loop_util/device.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 6
     },
     "src/shared/rust/loop_util/linux.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 23
+    },
+    "src/shared/rust/loop_util/tests.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
     },
     "src/shared/rust/loopback_setup.rs": {
       "missing_safety": 22,
+      "missing_safety_sites": [
+        "269:21:let hdr_bytes = unsafe {",
+        "292:9:unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };",
+        "301:35:let error_code: i32 = unsafe {",
+        "322:22:let attr_bytes = unsafe {",
+        "338:22:let attr_bytes = unsafe {",
+        "359:21:let ifi_bytes = unsafe {",
+        "378:21:let ifa_bytes = unsafe {",
+        "402:21:let ifa_bytes = unsafe {",
+        "430:21:let ifi_bytes = unsafe {",
+        "447:21:let hdr_bytes = unsafe {",
+        "468:9:unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };",
+        "474:35:let error_code: i32 = unsafe {",
+        "488:22:let hdr2_bytes = unsafe {",
+        "505:9:unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };",
+        "512:9:unsafe { std::ptr::read_unaligned(recv_buf[offset_ifi..].as_ptr() as *const IfInfoMsg) };",
+        "613:21:let ifa_bytes = unsafe {",
+        "631:21:let ifa_bytes = unsafe {",
+        "653:21:let ifi_bytes = unsafe {",
+        "676:13:unsafe { std::ptr::read_unaligned(payload[offset..].as_ptr() as *const RtAttr) };",
+        "684:34:let flags: u32 = unsafe {",
+        "706:26:let ifi: IfInfoMsg = unsafe { std::ptr::read_unaligned(payload.as_ptr() as *const IfInfoMsg) };",
+        "736:26:let ifa: IfAddrMsg = unsafe { std::ptr::read_unaligned(payload.as_ptr() as *const IfAddrMsg) };"
+      ],
       "unsafe_sites": 22
     },
     "src/shared/rust/machine_id_setup.rs": {
       "missing_safety": 2,
+      "missing_safety_sites": [
+        "170:13:unsafe { crate::ffi::getrandom(bytes.as_mut_ptr().cast(), bytes.len(), GRND_NONBLOCK) };",
+        "574:14:let fd = unsafe {"
+      ],
       "unsafe_sites": 5
+    },
+    "src/shared/rust/mkfs_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/shared/rust/mount_setup.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/shared/rust/mount_util.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "722:15:let ret = unsafe {"
+      ],
       "unsafe_sites": 5
     },
     "src/shared/rust/netif_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/shared/rust/numa_util.rs": {
       "missing_safety": 2,
+      "missing_safety_sites": [
+        "339:15:let ret = unsafe {",
+        "380:15:let ret = unsafe {"
+      ],
       "unsafe_sites": 2
     },
     "src/shared/rust/osc_context.rs": {
       "missing_safety": 2,
+      "missing_safety_sites": [
+        "446:26:let status = unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) };",
+        "465:21:.or_else(|| unsafe {"
+      ],
       "unsafe_sites": 2
     },
     "src/shared/rust/pager.rs": {
-      "missing_safety": 3,
-      "unsafe_sites": 10
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 27
     },
     "src/shared/rust/pam_util.rs": {
       "missing_safety": 3,
-      "unsafe_sites": 5
+      "missing_safety_sites": [
+        "799:9:unsafe { cleanup_free(std::ptr::null_mut()) };",
+        "805:9:unsafe { cleanup_close(std::ptr::null_mut(), PamDataFlags::empty()) };",
+        "811:9:unsafe { cleanup_close(42 as *mut c_void, PamDataFlags::SILENT) };"
+      ],
+      "unsafe_sites": 7
     },
     "src/shared/rust/password_quality_util_passwdqc.rs": {
       "missing_safety": 19,
-      "unsafe_sites": 32
+      "missing_safety_sites": [
+        "186:28:passwdqc_params_reset: unsafe extern \"C\" fn(*mut PasswdqcParams),",
+        "188:9:unsafe extern \"C\" fn(*mut PasswdqcParams, *mut *mut c_char, *const c_char) -> c_int,",
+        "190:27:passwdqc_params_free: unsafe extern \"C\" fn(*mut PasswdqcParams),",
+        "191:21:passwdqc_check: unsafe extern \"C\" fn(",
+        "197:22:passwdqc_random: unsafe extern \"C\" fn(*const PasswdqcParamsQc) -> *mut c_char,",
+        "254:27:let params_reset_fn = unsafe {",
+        "255:26:resolve_symbol::<unsafe extern \"C\" fn(*mut PasswdqcParams)>(",
+        "262:26:let params_load_fn = unsafe {",
+        "264:13:unsafe extern \"C\" fn(*mut PasswdqcParams, *mut *mut c_char, *const c_char) -> c_int,",
+        "270:9:unsafe { resolve_symbol::<PasswdqcParamsParseFn>(&handle, \"passwdqc_params_parse\") }",
+        "273:26:let params_free_fn = unsafe {",
+        "274:26:resolve_symbol::<unsafe extern \"C\" fn(*mut PasswdqcParams)>(&handle, \"passwdqc_params_free\")",
+        "278:20:let check_fn = unsafe {",
+        "280:13:unsafe extern \"C\" fn(",
+        "290:21:let random_fn = unsafe {",
+        "291:26:resolve_symbol::<unsafe extern \"C\" fn(*const PasswdqcParamsQc) -> *mut c_char>(",
+        "354:15:let ptr = unsafe { libc::dlsym(handle.as_ptr(), c_sym.as_ptr()) };",
+        "367:9:unsafe {",
+        "443:13:let r = unsafe {"
+      ],
+      "unsafe_sites": 33
     },
     "src/shared/rust/password_quality_util_pwquality.rs": {
       "missing_safety": 30,
-      "unsafe_sites": 37
+      "missing_safety_sites": [
+        "134:1:unsafe impl Send for DlHandle {}",
+        "135:1:unsafe impl Sync for DlHandle {}",
+        "154:22:pwquality_check: unsafe extern \"C\" fn(",
+        "161:33:pwquality_default_settings: unsafe extern \"C\" fn() -> *mut c_void,",
+        "162:30:pwquality_free_settings: unsafe extern \"C\" fn(*mut c_void),",
+        "163:25:pwquality_generate: unsafe extern \"C\" fn(",
+        "168:30:pwquality_get_str_value: unsafe extern \"C\" fn(",
+        "173:28:pwquality_read_config: unsafe extern \"C\" fn(",
+        "178:30:pwquality_set_int_value: unsafe extern \"C\" fn(",
+        "183:25:pwquality_strerror: unsafe extern \"C\" fn(",
+        "241:20:let check_fn = unsafe {",
+        "243:13:unsafe extern \"C\" fn(",
+        "254:31:let default_settings_fn = unsafe {",
+        "255:26:resolve_symbol::<unsafe extern \"C\" fn() -> *mut c_void>(",
+        "262:28:let free_settings_fn = unsafe {",
+        "263:26:resolve_symbol::<unsafe extern \"C\" fn(*mut c_void)>(&handle, \"pwquality_free_settings\")",
+        "267:23:let generate_fn = unsafe {",
+        "268:26:resolve_symbol::<unsafe extern \"C\" fn(*mut c_void, i32, *mut *mut libc::c_char) -> i32>(",
+        "275:22:let get_str_fn = unsafe {",
+        "276:26:resolve_symbol::<unsafe extern \"C\" fn(*mut c_void, i32, *mut *const libc::c_char) -> i32>(",
+        "283:26:let read_config_fn = unsafe {",
+        "285:13:unsafe extern \"C\" fn(*mut c_void, *const libc::c_char, *mut *mut c_void) -> i32,",
+        "290:22:let set_int_fn = unsafe {",
+        "291:26:resolve_symbol::<unsafe extern \"C\" fn(*mut c_void, i32, i32) -> i32>(",
+        "298:23:let strerror_fn = unsafe {",
+        "300:13:unsafe extern \"C\" fn(*mut libc::c_char, usize, i32, *mut c_void) -> *mut libc::c_char,",
+        "361:15:let ptr = unsafe { libc::dlsym(handle.as_ptr(), c_sym.as_ptr()) };",
+        "374:9:unsafe {",
+        "392:1:unsafe fn pwq_strerror(error_code: i32, auxerror: *mut c_void) -> String {",
+        "423:1:unsafe fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {"
+      ],
+      "unsafe_sites": 47
     },
     "src/shared/rust/pcre2_util.rs": {
-      "missing_safety": 13,
-      "unsafe_sites": 18
+      "missing_safety": 14,
+      "missing_safety_sites": [
+        "158:13:unsafe {",
+        "304:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, Pcre2Error> {",
+        "331:5:unsafe {",
+        "363:18:let handle = unsafe { dlopen_wrapper(PCRE2_LIB_NAME) }?;",
+        "370:23:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
+        "385:16:let syms = unsafe {",
+        "424:14:let rc = unsafe { (lib.get_error_message())(errorcode, buf.as_mut_ptr(), buf.len()) };",
+        "474:20:let code_ptr = unsafe {",
+        "522:14:let md = unsafe { (lib.match_data_create())(1, std::ptr::null_mut()) };",
+        "534:13:unsafe {",
+        "547:14:let rc = unsafe {",
+        "572:20:let ovec = unsafe { (lib.get_ovector_pointer())(md) };",
+        "576:19:Some((unsafe { *ovec }, unsafe { *ovec.add(1) }))",
+        "576:37:Some((unsafe { *ovec }, unsafe { *ovec.add(1) }))"
+      ],
+      "unsafe_sites": 21
     },
     "src/shared/rust/pkcs11_util.rs": {
-      "missing_safety": 5,
-      "unsafe_sites": 5
+      "missing_safety": 4,
+      "missing_safety_sites": [
+        "667:18:let handle = unsafe { dlopen_wrapper(LIBP11KIT_NAME) }?;",
+        "674:23:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
+        "710:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, Pkcs11Error> {",
+        "733:1:unsafe fn dlsym_wrapper(handle: *mut c_void, name: &CStr) -> *const c_void {"
+      ],
+      "unsafe_sites": 7
+    },
+    "src/shared/rust/plymouth_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/shared/rust/polkit_agent.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/shared/rust/pretty_print.rs": {
       "missing_safety": 1,
-      "unsafe_sites": 1
+      "missing_safety_sites": [
+        "273:9:unsafe {"
+      ],
+      "unsafe_sites": 2
     },
     "src/shared/rust/qrcode_util.rs": {
-      "missing_safety": 15,
-      "unsafe_sites": 16
+      "missing_safety": 13,
+      "missing_safety_sites": [
+        "203:18:let handle = unsafe { dlopen_wrapper(lib_name) }?;",
+        "212:19:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
+        "227:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, QrCodeError> {",
+        "254:5:unsafe {",
+        "290:21:let encode_fn = unsafe {",
+        "299:13:unsafe extern \"C\" fn(*const libc::c_char, i32, i32, i32, i32) -> *mut QRcode,",
+        "304:19:let free_fn = unsafe {",
+        "309:44:std::mem::transmute::<*mut c_void, unsafe extern \"C\" fn(*mut QRcode)>(ptr)",
+        "313:14:let qr = unsafe {",
+        "329:17:let width = unsafe { (*qr).width } as usize;",
+        "330:20:let data_ptr = unsafe { (*qr).data };",
+        "335:20:let byte = unsafe { *data_ptr.add(i) };",
+        "340:5:unsafe {"
+      ],
+      "unsafe_sites": 17
     },
     "src/shared/rust/quota_util.rs": {
       "missing_safety": 1,
-      "unsafe_sites": 8
+      "missing_safety_sites": [
+        "361:11:match unsafe { quotactl_fd_syscall(fd, cmd, id, addr) } {"
+      ],
+      "unsafe_sites": 10
     },
     "src/shared/rust/reboot_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/shared/rust/recovery_key.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "152:20:let read = unsafe { crate::ffi::getrandom(chunk.as_mut_ptr(), chunk.len(), 0) };"
+      ],
       "unsafe_sites": 1
     },
     "src/shared/rust/reread_partition_table.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/shared/rust/resize_fs.rs": {
-      "missing_safety": 8,
-      "unsafe_sites": 12
+      "missing_safety": 4,
+      "missing_safety_sites": [
+        "134:26:let mut statfs_buf = unsafe { std::mem::zeroed::<libc::statfs>() };",
+        "135:14:let rc = unsafe { libc::fstatfs(fd, &mut statfs_buf) };",
+        "144:26:let mut statfs_buf = unsafe { std::mem::zeroed::<libc::statfs>() };",
+        "145:14:let rc = unsafe { libc::fstatfs(fd, &mut statfs_buf) };"
+      ],
+      "unsafe_sites": 8
     },
     "src/shared/rust/rm_rf.rs": {
       "missing_safety": 51,
-      "unsafe_sites": 51
+      "missing_safety_sites": [
+        "156:13:let r = unsafe { libc::fstatfs(fd, sfs.as_mut_ptr()) };",
+        "163:8:Ok(unsafe { sfs.assume_init() }.f_type as u64)",
+        "169:13:let r = unsafe { libc::fstat(fd, st.as_mut_ptr()) };",
+        "176:8:Ok(unsafe { st.assume_init() }.st_dev as u64)",
+        "196:13:let r = unsafe { libc::fstatat(dfd, c_path.as_ptr(), st.as_mut_ptr(), flags) };",
+        "200:8:Ok(unsafe { st.assume_init() })",
+        "238:13:let r = unsafe { libc::fstat(dfd, st.as_mut_ptr()) };",
+        "242:14:let st = unsafe { st.assume_init() };",
+        "262:21:if st.st_uid != unsafe { libc::geteuid() } {",
+        "269:13:let r = unsafe { libc::fchmod(dfd, new_mode) };",
+        "292:13:let r = unsafe { libc::unlinkat(dfd, c_name.as_ptr(), unlink_flags) };",
+        "304:13:let r = unsafe { libc::unlinkat(dfd, c_name.as_ptr(), unlink_flags) };",
+        "307:13:unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };",
+        "314:5:unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };",
+        "328:13:let r = unsafe { libc::fstatat(dfd, c_name.as_ptr(), st.as_mut_ptr(), fstatat_flags) };",
+        "330:19:return Ok(unsafe { st.assume_init() });",
+        "339:13:let r = unsafe { libc::fstatat(dfd, c_name.as_ptr(), st.as_mut_ptr(), fstatat_flags) };",
+        "342:13:unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };",
+        "344:19:return Ok(unsafe { st.assume_init() });",
+        "348:5:unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };",
+        "377:18:let fd = unsafe { libc::openat(dfd, c_path.as_ptr(), open_flags) };",
+        "386:15:let pfd = unsafe {",
+        "399:14:let fd = unsafe { libc::openat(pfd, c_path.as_ptr(), open_flags & !libc::O_NOFOLLOW) };",
+        "402:13:unsafe { libc::fchmod(pfd, patch.old_mode & 0o7777) };",
+        "404:9:unsafe { libc::close(pfd) };",
+        "408:5:unsafe { libc::close(pfd) };",
+        "415:13:let r = unsafe { libc::fstat(fd, st.as_mut_ptr()) };",
+        "419:8:Ok(unsafe { st.assume_init() })",
+        "520:5:unsafe fn close(&mut self) {",
+        "531:9:unsafe { self.close() };",
+        "557:29:let parent_fd = unsafe { libc::dirfd(parent.dir) };",
+        "571:25:unsafe {",
+        "589:26:current_fd = unsafe { libc::dirfd(current_dir) };",
+        "593:27:current_dir = unsafe { libc::fdopendir(current_fd) };",
+        "595:17:unsafe { libc::close(current_fd) };",
+        "598:26:current_fd = unsafe { libc::dirfd(current_dir) };",
+        "614:25:let entry = unsafe { libc::readdir(current_dir) };",
+        "618:24:let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };",
+        "627:26:let d_type = unsafe { (*entry).d_type };",
+        "675:21:let r = unsafe { crate::ffi::syncfs(current_fd) };",
+        "684:17:unsafe { libc::fchmod(current_fd, current_old_mode & 0o7777) };",
+        "687:13:unsafe { libc::closedir(current_dir) };",
+        "755:17:let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
+        "769:17:let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
+        "781:26:let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
+        "812:33:let r = unsafe {",
+        "824:38:let r2 = unsafe { libc::fstatfs(dir_fd, sfs2.as_mut_ptr()) };",
+        "826:51:&& is_physical_fs(unsafe { sfs2.assume_init() }.f_type as u64)",
+        "835:30:let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), 0) };",
+        "1141:13:unsafe { libc::open(tmp_path.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };",
+        "1146:9:unsafe { libc::close(parent_fd) };"
+      ],
+      "unsafe_sites": 52
     },
     "src/shared/rust/seccomp_util/architecture.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
+    },
+    "src/shared/rust/secret_bytes.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
     },
     "src/shared/rust/selinux_util.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 4
     },
     "src/shared/rust/shift_uid.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "312:44:let mut statfs_buf: libc::statfs = unsafe { std::mem::zeroed() };"
+      ],
       "unsafe_sites": 5
     },
     "src/shared/rust/smack_util.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "380:36:let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };"
+      ],
       "unsafe_sites": 14
     },
     "src/shared/rust/socket_forward.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 16
+      "missing_safety_sites": [],
+      "unsafe_sites": 20
     },
     "src/shared/rust/socket_label.rs": {
       "missing_safety": 24,
+      "missing_safety_sites": [
+        "294:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
+        "295:9:unsafe {",
+        "305:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
+        "306:9:unsafe {",
+        "316:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
+        "317:9:unsafe {",
+        "328:38:let mut raw: libc::sockaddr_in = unsafe { mem::zeroed() };",
+        "339:39:let mut raw: libc::sockaddr_in6 = unsafe { mem::zeroed() };",
+        "352:39:let mut addr: libc::sockaddr_un = unsafe { mem::zeroed() };",
+        "371:13:unsafe {",
+        "405:17:unsafe {",
+        "435:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
+        "436:9:unsafe {",
+        "466:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
+        "467:9:unsafe {",
+        "510:21:let fd = cvt_fd(unsafe {",
+        "573:13:cvt(unsafe { libc::listen(fd, backlog) })?;",
+        "580:8:Ok(unsafe { OwnedFd::from_raw_fd(fd) })",
+        "584:9:cvt(unsafe { libc::bind(fd, addr.as_ptr(), addr.len) }).map(|_| ())",
+        "629:13:cvt(unsafe {",
+        "710:9:cvt(unsafe {",
+        "725:9:cvt(unsafe { libc::utimensat(libc::AT_FDCWD, path.as_ptr(), ptr::null(), 0) }).map(|_| ())",
+        "748:19:let old = unsafe { libc::umask(mask as libc::mode_t) };",
+        "755:9:unsafe {"
+      ],
       "unsafe_sites": 24
     },
     "src/shared/rust/socket_netlink.rs": {
       "missing_safety": 9,
+      "missing_safety_sites": [
+        "858:14:let fd = unsafe { libc::socket(AF_NETLINK, SOCK_RAW, protocol) };",
+        "867:9:unsafe {",
+        "878:14:let fd = unsafe { libc::socket(AF_NETLINK, SOCK_RAW, protocol) };",
+        "891:15:let ret = unsafe {",
+        "910:15:let ret = unsafe {",
+        "930:15:let ret = unsafe { libc::recv(fd, buf.as_mut_ptr() as *mut c_void, buf.len(), 0) };",
+        "942:9:unsafe {",
+        "950:36:let mut stat_buf: libc::stat = unsafe { mem::zeroed() };",
+        "951:15:let ret = unsafe { libc::fstat(fd, &mut stat_buf) };"
+      ],
       "unsafe_sites": 9
     },
     "src/shared/rust/specifier.rs": {
       "missing_safety": 3,
+      "missing_safety_sites": [
+        "815:15:if uid == unsafe { libc::getuid() } {",
+        "833:15:if uid == unsafe { libc::getuid() } {",
+        "1161:18:Some(unsafe { libc::getuid() }.to_string())"
+      ],
       "unsafe_sites": 19
     },
     "src/shared/rust/switch_root.rs": {
       "missing_safety": 4,
+      "missing_safety_sites": [
+        "248:33:let mut buf: libc::statfs = unsafe { std::mem::zeroed() };",
+        "260:36:let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };",
+        "261:43:let mut parent_stat_buf: libc::stat = unsafe { std::mem::zeroed() };",
+        "321:21:let entry = unsafe { &*entry };"
+      ],
       "unsafe_sites": 28
     },
     "src/shared/rust/tar_util.rs": {
       "missing_safety": 13,
+      "missing_safety_sites": [
+        "216:17:unsafe {",
+        "248:24:if unsafe { libc::fchown(raw, uid, gid) } < 0 {",
+        "253:24:if unsafe { libc::fchmod(raw, (self.mode & 0o7777) as _) } < 0 {",
+        "270:20:if unsafe { libc::futimens(raw, ts.as_ptr()) } < 0 {",
+        "280:27:let ret = unsafe {",
+        "404:15:let ret = unsafe {",
+        "505:13:unsafe {",
+        "517:9:unsafe {",
+        "534:20:let hole = unsafe { libc::lseek(fd, cursor, libc::SEEK_HOLE) };",
+        "538:27:let end = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };",
+        "554:18:cursor = unsafe { libc::lseek(fd, hole, libc::SEEK_DATA) };",
+        "564:8:if unsafe { libc::lseek(fd, 0, libc::SEEK_SET) } < 0 {",
+        "1195:9:unsafe { libc::close(-1) };"
+      ],
       "unsafe_sites": 13
     },
     "src/shared/rust/tests.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 5
     },
     "src/shared/rust/tmpfile_util_label.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/shared/rust/utmp_wtmp.rs": {
       "missing_safety": 6,
-      "unsafe_sites": 13
+      "missing_safety_sites": [
+        "241:34:let mut uts: libc::utsname = unsafe { std::mem::zeroed() };",
+        "591:17:let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();",
+        "601:17:let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();",
+        "634:17:let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();",
+        "721:20:let line = unsafe { CStr::from_ptr(store.ut_line.as_ptr()) }",
+        "724:18:let id = unsafe { CStr::from_ptr(store.ut_id.as_ptr()) }"
+      ],
+      "unsafe_sites": 15
+    },
+    "src/shared/rust/vconsole_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
     },
     "src/shared/rust/wifi_util.rs": {
       "missing_safety": 6,
+      "missing_safety_sites": [
+        "436:18:let fd = unsafe { libc::socket(AF_NETLINK, libc::SOCK_RAW, NETLINK_GENERIC) };",
+        "461:17:let r = unsafe {",
+        "481:21:let r = unsafe {",
+        "548:17:let r = unsafe {",
+        "569:28:let received = unsafe {",
+        "616:9:unsafe {"
+      ],
       "unsafe_sites": 6
     },
     "src/socket-proxy/rust/runtime.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 20
+      "missing_safety_sites": [],
+      "unsafe_sites": 21
     },
     "src/stdio-bridge/rust/stdio_bridge.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 23
     },
     "src/sulogin-shell/rust/main.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "53:9:unsafe {"
+      ],
       "unsafe_sites": 1
     },
     "src/udev/rust/ata_id/ata_id.rs": {
-      "missing_safety": 10,
-      "unsafe_sites": 10
+      "missing_safety": 1,
+      "missing_safety_sites": [
+        "8:1:unsafe extern \"C\" {"
+      ],
+      "unsafe_sites": 19
     },
     "src/udev/rust/cdrom_id/cdrom_id.rs": {
-      "missing_safety": 15,
-      "unsafe_sites": 15
-    },
-    "src/udev/rust/dmi_memory_id/dmi_memory_id.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
+      "missing_safety": 1,
+      "missing_safety_sites": [
+        "13:1:unsafe extern \"C\" {"
+      ],
+      "unsafe_sites": 26
     },
     "src/udev/rust/fido_id/fido_id.rs": {
-      "missing_safety": 3,
-      "unsafe_sites": 3
+      "missing_safety": 1,
+      "missing_safety_sites": [
+        "8:1:unsafe extern \"C\" {"
+      ],
+      "unsafe_sites": 5
     },
     "src/udev/rust/fido_id/fido_id_desc.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
+      "missing_safety": 1,
+      "missing_safety_sites": [
+        "7:1:unsafe extern \"C\" {"
+      ],
+      "unsafe_sites": 3
     },
     "src/udev/rust/fido_id/fuzz-fido-id-desc.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
+      "missing_safety": 1,
+      "missing_safety_sites": [
+        "7:1:unsafe extern \"C\" {"
+      ],
+      "unsafe_sites": 3
     },
     "src/udev/rust/fido_id/test-fido-id-desc.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
-    },
-    "src/udev/rust/iocost/iocost.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
+      "missing_safety": 1,
+      "missing_safety_sites": [
+        "7:1:unsafe extern \"C\" {"
+      ],
+      "unsafe_sites": 3
     },
     "src/udev/rust/main.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 3
-    },
-    "src/udev/rust/mtd_probe/mtd_probe.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
-    },
-    "src/udev/rust/mtd_probe/probe_smartmedia.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
     },
     "src/udev/rust/net/fuzz-link-parser.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
-    },
-    "src/udev/rust/net/link-config.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
+      "missing_safety": 1,
+      "missing_safety_sites": [
+        "7:1:unsafe extern \"C\" {"
+      ],
+      "unsafe_sites": 3
     },
     "src/udev/rust/net/test-link-config-tables.rs": {
       "missing_safety": 1,
+      "missing_safety_sites": [
+        "25:1:unsafe extern \"C\" {"
+      ],
       "unsafe_sites": 1
-    },
-    "src/udev/rust/scsi_id/scsi_id.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
-    },
-    "src/udev/rust/scsi_id/scsi_serial.rs": {
-      "missing_safety": 2,
-      "unsafe_sites": 2
     },
     "src/udev/rust/udev-db-monitor.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 10
     },
     "src/udev/rust/udev-rule-engine.rs": {
       "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 18
     },
     "src/udev/rust/uevent-netlink.rs": {
       "missing_safety": 0,
-      "unsafe_sites": 2
-    },
-    "src/udev/rust/v4l_id/v4l_id.rs": {
-      "missing_safety": 2,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     }
   },
   "totals": {
-    "missing_safety": 1100,
-    "unsafe_sites": 2793
+    "missing_safety": 634,
+    "unsafe_sites": 4627
   },
+  "version": 2,
   "window": 3
 }

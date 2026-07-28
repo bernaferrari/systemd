@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-system-update-generator
 
-use systemd_system_update_generator_rs::{run as generator_run, GeneratorResult, UPDATE_PATHS};
+use systemd_system_update_generator_rs::{GeneratorResult, UPDATE_PATHS, run as generator_run};
 
 fn print_help() {
     eprintln!("Usage: systemd-system-update-generator [normal-dir early-dir late-dir]");

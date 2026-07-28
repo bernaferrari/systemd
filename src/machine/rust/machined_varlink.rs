@@ -4,7 +4,9 @@
 //
 // Safe Rust synchronization metadata for the matching machine module.
 
-use crate::common::{count_port_source_lines, read_port_source, verify_extracted_functions, Errno, PortMetadata};
+use crate::common::{
+    Errno, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
+};
 
 pub const SOURCE_PATH: &str = "src/machine/machined-varlink.c";
 pub const EXTRACTED_FUNCTIONS: &[&str] = &[
@@ -36,7 +38,7 @@ pub const EXTRACTED_FUNCTIONS: &[&str] = &[
     "vl_method_list_images",
     "vl_method_open_root_directory",
     "vl_method_terminate",
-    "vl_method_unregister"
+    "vl_method_unregister",
 ];
 
 pub fn metadata() -> Result<PortMetadata, Errno> {

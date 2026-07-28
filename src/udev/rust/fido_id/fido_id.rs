@@ -10,7 +10,7 @@ unsafe extern "C" {
     fn run(argc: i32, argv: *mut *mut libc::c_char) -> i32;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `argv` must reference an array of `argc` valid C-string pointers.
 pub unsafe extern "C" fn rs_fido_id_parse_argv(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
@@ -18,7 +18,7 @@ pub unsafe extern "C" fn rs_fido_id_parse_argv(argc: i32, argv: *mut *mut libc::
     unsafe { parse_argv(argc, argv) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `argv` must reference an array of `argc` valid C-string pointers.
 pub unsafe extern "C" fn rs_fido_id_run(argc: i32, argv: *mut *mut libc::c_char) -> i32 {

@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-reply-password
 
-use systemd_reply_password_rs::{parse_invocation, ReplyPacket};
+use systemd_reply_password_rs::{ReplyPacket, parse_invocation};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

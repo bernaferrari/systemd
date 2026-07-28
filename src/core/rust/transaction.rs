@@ -1022,14 +1022,18 @@ mod tests {
             .add_job_and_dependencies(JobType::Start, "a.service", None, true, false, false)
             .unwrap();
 
-        assert!(transaction
-            .jobs
-            .values()
-            .any(|job| job.unit == "b.service" && job.job_type == JobType::VerifyActive));
-        assert!(!transaction
-            .jobs
-            .values()
-            .any(|job| job.unit == "b.service" && job.job_type == JobType::Start));
+        assert!(
+            transaction
+                .jobs
+                .values()
+                .any(|job| job.unit == "b.service" && job.job_type == JobType::VerifyActive)
+        );
+        assert!(
+            !transaction
+                .jobs
+                .values()
+                .any(|job| job.unit == "b.service" && job.job_type == JobType::Start)
+        );
 
         let applied = transaction.activate(JobMode::Replace).unwrap();
         assert!(!applied.jobs.iter().any(|job| job.unit == "b.service"));
@@ -1064,10 +1068,12 @@ mod tests {
             .add_job_and_dependencies(JobType::Start, "a.service", None, false, false, false)
             .unwrap();
         transaction.add_isolate_jobs().unwrap();
-        assert!(transaction
-            .jobs
-            .values()
-            .any(|job| job.unit == "c.service" && job.job_type == JobType::Stop));
+        assert!(
+            transaction
+                .jobs
+                .values()
+                .any(|job| job.unit == "c.service" && job.job_type == JobType::Stop)
+        );
     }
 
     #[test]
@@ -1077,10 +1083,12 @@ mod tests {
             .add_job_and_dependencies(JobType::Start, "a.service", None, false, false, false)
             .unwrap();
         transaction.add_triggering_jobs("b.service").unwrap();
-        assert!(transaction
-            .jobs
-            .values()
-            .any(|job| job.unit == "c.service" && job.job_type == JobType::Stop));
+        assert!(
+            transaction
+                .jobs
+                .values()
+                .any(|job| job.unit == "c.service" && job.job_type == JobType::Stop)
+        );
     }
 
     #[test]
@@ -1367,10 +1375,12 @@ mod tests {
             .unwrap();
         let applied = transaction.activate(JobMode::Replace).unwrap();
 
-        assert!(applied
-            .jobs
-            .iter()
-            .any(|job| job.unit == "b.service" && job.job_type == JobType::Stop));
+        assert!(
+            applied
+                .jobs
+                .iter()
+                .any(|job| job.unit == "b.service" && job.job_type == JobType::Stop)
+        );
     }
 
     #[test]
@@ -1414,10 +1424,12 @@ mod tests {
             .add_job_and_dependencies(JobType::Stop, "b.service", None, true, false, false)
             .unwrap();
         let applied = transaction.activate(JobMode::Replace).unwrap();
-        assert!(applied
-            .jobs
-            .iter()
-            .any(|job| job.unit == "a.service" && job.job_type == JobType::Stop));
+        assert!(
+            applied
+                .jobs
+                .iter()
+                .any(|job| job.unit == "a.service" && job.job_type == JobType::Stop)
+        );
     }
 
     #[test]
@@ -1433,10 +1445,12 @@ mod tests {
             .unwrap();
         let applied = transaction.activate(JobMode::Replace).unwrap();
 
-        assert!(applied
-            .jobs
-            .iter()
-            .any(|job| job.unit == "a.service" && job.job_type == JobType::Restart));
+        assert!(
+            applied
+                .jobs
+                .iter()
+                .any(|job| job.unit == "a.service" && job.job_type == JobType::Restart)
+        );
     }
 
     #[test]
@@ -1457,14 +1471,18 @@ mod tests {
             .unwrap();
         let applied = transaction.activate(JobMode::Replace).unwrap();
 
-        assert!(applied
-            .jobs
-            .iter()
-            .any(|job| job.unit == "b.service" && job.job_type == JobType::Reload));
-        assert!(!applied
-            .jobs
-            .iter()
-            .any(|job| job.unit == "c.service" || job.unit == "missing.service"));
+        assert!(
+            applied
+                .jobs
+                .iter()
+                .any(|job| job.unit == "b.service" && job.job_type == JobType::Reload)
+        );
+        assert!(
+            !applied
+                .jobs
+                .iter()
+                .any(|job| job.unit == "c.service" || job.unit == "missing.service")
+        );
     }
 
     #[test]
@@ -1572,10 +1590,12 @@ mod tests {
             .unwrap();
 
         let applied = transaction.activate(JobMode::Replace).unwrap();
-        assert!(applied
-            .jobs
-            .iter()
-            .any(|job| job.unit == "a.service" && job.job_type == JobType::Start));
+        assert!(
+            applied
+                .jobs
+                .iter()
+                .any(|job| job.unit == "a.service" && job.job_type == JobType::Start)
+        );
         assert!(!applied.jobs.iter().any(|job| job.unit == "b.service"));
     }
 

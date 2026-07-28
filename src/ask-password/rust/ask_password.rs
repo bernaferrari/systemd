@@ -45,7 +45,9 @@ unsafe fn ask_password_auto(
     timeout: u64,
     flags: u32,
 ) -> i32 {
-    extern "C" {
+    // SAFETY: this declaration mirrors ask-password-api.h's request, flag, and
+    // malloc-owned strv output ABI; every call below upholds that C contract.
+    unsafe extern "C" {
         fn ask_password_auto(
             req: *const AskPasswordRequest,
             flags: u32,

@@ -436,7 +436,7 @@ pub fn image_policy_get(
             return Some(partition_policy_normalized_flags(
                 designator,
                 PartitionPolicyFlags::OPEN,
-            ))
+            ));
         }
         Some(p) => p,
     };

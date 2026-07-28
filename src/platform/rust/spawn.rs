@@ -8,11 +8,11 @@ use caps::{self, Capability, CapsHashSet};
 #[cfg(target_os = "linux")]
 use nix::sys::signal::{SigSet, Signal};
 #[cfg(target_os = "linux")]
-use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 #[cfg(target_os = "linux")]
 use nix::unistd::{Group, Pid, User};
 #[cfg(target_os = "linux")]
-use seccompiler::{compile_from_json, BpfProgram, SeccompAction, TargetArch};
+use seccompiler::{BpfProgram, SeccompAction, TargetArch, compile_from_json};
 #[cfg(target_os = "linux")]
 use std::collections::BTreeSet;
 #[cfg(not(target_os = "linux"))]

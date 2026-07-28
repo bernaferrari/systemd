@@ -11,7 +11,7 @@
 //! resumes unchanged. Every other objective remains terminal until its full
 //! state-transfer contract exists.
 
-use crate::pid1_lifecycle::{outer_loop_exit, OuterLoopExit};
+use crate::pid1_lifecycle::{OuterLoopExit, outer_loop_exit};
 use crate::pid1_manager_commands::PendingObjectiveRequest;
 use crate::runtime_manager::RuntimeManager;
 

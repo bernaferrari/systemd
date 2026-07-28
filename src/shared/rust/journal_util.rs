@@ -108,9 +108,7 @@ impl JournalFileProblem {
     pub fn warning_message(&self, path: &str) -> Option<String> {
         match self {
             Self::PermissionDenied => None,
-            Self::Truncated => Some(format!(
-                "Journal file {path} is truncated, ignoring file."
-            )),
+            Self::Truncated => Some(format!("Journal file {path} is truncated, ignoring file.")),
             Self::UnsupportedFeature => Some(format!(
                 "Journal file {path} uses an unsupported feature, ignoring file.\nUse SYSTEMD_LOG_LEVEL=debug journalctl --file={path} to see the details."
             )),
@@ -502,15 +500,19 @@ mod tests {
 
         assert_eq!(check.warnings.len(), 5);
         assert!(check.warnings.iter().any(|w| w.contains("truncated")));
-        assert!(check
-            .warnings
-            .iter()
-            .any(|w| w.contains("unsupported feature")));
+        assert!(
+            check
+                .warnings
+                .iter()
+                .any(|w| w.contains("unsupported feature"))
+        );
         assert!(check.warnings.iter().any(|w| w.contains("corrupted")));
-        assert!(check
-            .warnings
-            .iter()
-            .any(|w| w.contains("limit is at 7168")));
+        assert!(
+            check
+                .warnings
+                .iter()
+                .any(|w| w.contains("limit is at 7168"))
+        );
         assert!(check.warnings.iter().any(|w| w.contains("errno(5)")));
     }
 
@@ -555,9 +557,11 @@ mod tests {
         .unwrap();
 
         assert_eq!(options.namespace, Some("tenant".into()));
-        assert!(options
-            .flags
-            .contains(JournalOpenFlags::INCLUDE_DEFAULT_NAMESPACE));
+        assert!(
+            options
+                .flags
+                .contains(JournalOpenFlags::INCLUDE_DEFAULT_NAMESPACE)
+        );
         assert!(options.flags.contains(JournalOpenFlags::ASSUME_IMMUTABLE));
     }
 

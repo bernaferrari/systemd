@@ -396,11 +396,7 @@ pub fn mangle_path(field: &str, p: &str) -> BootResult<String> {
 /// path should be ignored (trailing slash, not normalized).
 pub fn parse_path_one(field: &str, p: &str) -> BootResult<Option<String>> {
     let c = mangle_path(field, p)?;
-    if c.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(c))
-    }
+    if c.is_empty() { Ok(None) } else { Ok(Some(c)) }
 }
 
 /// Parse multiple whitespace-separated paths and return all valid normalized paths.
@@ -445,7 +441,7 @@ pub fn boot_filename_extract_tries(fname: &str) -> TriesInfo {
                 stripped: fname.to_owned(),
                 tries_left: TRIES_NOT_SET,
                 tries_done: TRIES_NOT_SET,
-            }
+            };
         }
     };
 
@@ -460,7 +456,7 @@ pub fn boot_filename_extract_tries(fname: &str) -> TriesInfo {
                 stripped: fname.to_owned(),
                 tries_left: TRIES_NOT_SET,
                 tries_done: TRIES_NOT_SET,
-            }
+            };
         }
     };
 
@@ -486,7 +482,7 @@ pub fn boot_filename_extract_tries(fname: &str) -> TriesInfo {
                 stripped: fname.to_owned(),
                 tries_left: TRIES_NOT_SET,
                 tries_done: TRIES_NOT_SET,
-            }
+            };
         }
     };
 
@@ -513,7 +509,7 @@ pub fn boot_filename_extract_tries(fname: &str) -> TriesInfo {
                     stripped: fname.to_owned(),
                     tries_left: TRIES_NOT_SET,
                     tries_done: TRIES_NOT_SET,
-                }
+                };
             }
         }
     } else {
@@ -1705,10 +1701,10 @@ mod tests {
 
     #[test]
     fn test_bootspec_pick_name_version_sort_key_none() {
-        assert!(bootspec_pick_name_version_sort_key(
-            None, None, None, None, None, None, None, None,
-        )
-        .is_none());
+        assert!(
+            bootspec_pick_name_version_sort_key(None, None, None, None, None, None, None, None,)
+                .is_none()
+        );
     }
 
     #[test]

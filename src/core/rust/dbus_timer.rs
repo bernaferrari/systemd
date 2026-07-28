@@ -427,14 +427,16 @@ mod tests {
     #[test]
     fn rejects_calendar_base_for_monotonic_add() {
         let mut config = TimerConfig::default();
-        assert!(config
-            .add_one_monotonic_spec(
-                "TimersMonotonic",
-                TimerBase::OnCalendar,
-                UnitWriteFlags::default(),
-                1
-            )
-            .is_err());
+        assert!(
+            config
+                .add_one_monotonic_spec(
+                    "TimersMonotonic",
+                    TimerBase::OnCalendar,
+                    UnitWriteFlags::default(),
+                    1
+                )
+                .is_err()
+        );
     }
 
     #[test]

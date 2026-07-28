@@ -177,26 +177,30 @@ mod tests {
             previous_exists: false,
         };
 
-        assert!(evaluate_spec(
-            &mut spec,
-            true,
-            false,
-            &PathObservation {
-                exists: true,
-                ..Default::default()
-            }
-        )
-        .is_none());
-        assert!(evaluate_spec(
-            &mut spec,
-            false,
-            false,
-            &PathObservation {
-                exists: false,
-                ..Default::default()
-            }
-        )
-        .is_some());
+        assert!(
+            evaluate_spec(
+                &mut spec,
+                true,
+                false,
+                &PathObservation {
+                    exists: true,
+                    ..Default::default()
+                }
+            )
+            .is_none()
+        );
+        assert!(
+            evaluate_spec(
+                &mut spec,
+                false,
+                false,
+                &PathObservation {
+                    exists: false,
+                    ..Default::default()
+                }
+            )
+            .is_some()
+        );
     }
 
     #[test]

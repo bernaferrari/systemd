@@ -12,7 +12,11 @@ pub struct ManagerState {
 }
 
 pub fn make_test_manager() -> ManagerState {
-    ManagerState { children_max: 8, trace: false, log_level: 6 }
+    ManagerState {
+        children_max: 8,
+        trace: false,
+        log_level: 6,
+    }
 }
 
 pub fn reload_manager(state: &ManagerState) -> ManagerState {
@@ -22,6 +26,15 @@ pub fn reload_manager(state: &ManagerState) -> ManagerState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn manager_defaults_are_stable() { let state = make_test_manager(); assert_eq!(state.children_max, 8); assert_eq!(state.log_level, 6); }
-    #[test] fn reload_preserves_state() { let state = make_test_manager(); assert_eq!(reload_manager(&state), state); }
+    #[test]
+    fn manager_defaults_are_stable() {
+        let state = make_test_manager();
+        assert_eq!(state.children_max, 8);
+        assert_eq!(state.log_level, 6);
+    }
+    #[test]
+    fn reload_preserves_state() {
+        let state = make_test_manager();
+        assert_eq!(reload_manager(&state), state);
+    }
 }

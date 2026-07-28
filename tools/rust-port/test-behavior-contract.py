@@ -31,8 +31,8 @@ class BehaviorContractTests(unittest.TestCase):
             "src/basic/demo.h": "int demo(const char *s, int *ret);\nint demo_unported(void);\n",
             "src/basic/rust/demo.rs": "#[no_mangle] pub extern \"C\" fn rs_demo() {}\n",
             "src/basic/rust/demo.h": "int rs_demo(const char *s, int *ret);\n",
-            "tests-extra/test-demo-rust.c": "/* RUST-CONTRACT: demo */\nint demo(void); int rs_demo(void);\n",
-            "tests-extra/meson.build": "rust_test_exe = 1\nexecutable('test-demo-rust', files('test-demo-rust.c'), link_with : [libshared, rust_staticlib])\ntest('test-demo-rust', rust_test_exe)\n",
+            "tests-extra/test-demo-rust.c": "/* RUST-CONTRACT: demo */\nvoid compare(void) { demo(); rs_demo(); }\n",
+            "tests-extra/meson.build": "rust_test_exe = executable('test-demo-rust', files('test-demo-rust.c'), link_with : [libshared, rust_staticlib])\ntest('test-demo-rust', rust_test_exe)\n",
             "tools/rust-port/contracts/basic/demo.toml": self.contract(),
             "tools/rust-port/map.toml": "[demo]\nc_file = 'src/basic/demo.c'\nrust_paths = ['src/basic/rust/demo.rs', 'src/basic/rust/demo.h']\nheader_file = 'src/basic/demo.h'\ncontract_file = 'tools/rust-port/contracts/basic/demo.toml'\nsymbols = 1\n",
         }.items():
@@ -89,6 +89,20 @@ labels = ['demo']
             self.root,
             manifest["demo"],
             "demo",
+        )
+
+    def run_cli(self, *arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                "python3",
+                str(Path(__file__).with_name("check-behavior-contract.py")),
+                "--repo-root",
+                str(self.root),
+                *arguments,
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
         )
 
     def test_valid_contract_passes(self) -> None:
@@ -164,6 +178,101 @@ labels = ['demo']
             )
         )
 
+    def test_symbol_names_in_comments_and_strings_are_not_evidence(self) -> None:
+        rust_source = self.root / "src/basic/rust/demo.rs"
+        rust_source.write_text(
+            '// fn rs_demo() {}\nconst CLAIM: &str = r#"not " rs_demo"#;\n',
+            encoding="utf-8",
+        )
+        self.assertTrue(
+            any(
+                "Rust source does not contain rs_demo" in error
+                for error in self.validate()
+            )
+        )
+
+        rust_source.write_text(
+            '#[no_mangle] pub extern "C" fn rs_demo() {}\n',
+            encoding="utf-8",
+        )
+        fixture = self.root / "tests-extra/test-demo-rust.c"
+        fixture.write_text(
+            "/* RUST-CONTRACT: demo; demo() rs_demo() */\n"
+            'const char *claim = "demo() rs_demo()";\n',
+            encoding="utf-8",
+        )
+        errors = self.validate()
+        self.assertTrue(any("C symbol demo" in error for error in errors))
+        self.assertTrue(any("Rust symbol rs_demo" in error for error in errors))
+
+    def test_fixture_declarations_without_calls_are_not_evidence(self) -> None:
+        fixture = self.root / "tests-extra/test-demo-rust.c"
+        fixture.write_text(
+            "/* RUST-CONTRACT: demo */\n"
+            "int demo(void);\n"
+            "int rs_demo(void);\n",
+            encoding="utf-8",
+        )
+        errors = self.validate()
+        self.assertTrue(any("C symbol demo" in error for error in errors))
+        self.assertTrue(any("Rust symbol rs_demo" in error for error in errors))
+
+    def test_fixture_must_be_exact_registered_tests_extra_path(self) -> None:
+        evidence = self.root / "evidence/test-demo-rust.c"
+        evidence.parent.mkdir()
+        evidence.write_text(
+            "/* RUST-CONTRACT: demo */\n"
+            "void compare(void) { demo(); rs_demo(); }\n",
+            encoding="utf-8",
+        )
+        contract = self.root / "tools/rust-port/contracts/basic/demo.toml"
+        contract.write_text(
+            self.contract().replace(
+                "tests-extra/test-demo-rust.c",
+                "evidence/test-demo-rust.c",
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(
+            any(
+                "not a registered Rust-linked Meson target" in error
+                for error in self.validate()
+            )
+        )
+
+    def test_fixture_registration_tracks_executable_identity(self) -> None:
+        meson = self.root / "tests-extra/meson.build"
+        meson.write_text(
+            "wrong = executable('test-demo-rust', files('other.c'), "
+            "link_with : libshared)\n"
+            "test('test-demo-rust', wrong)\n"
+            "rust_test_exe = executable('test-demo-rust', "
+            "files('test-demo-rust.c'), link_with : rust_staticlib)\n",
+            encoding="utf-8",
+        )
+        self.assertTrue(
+            any(
+                "not a registered Rust-linked Meson target" in error
+                for error in self.validate()
+            )
+        )
+
+    def test_c_exact_symbols_require_positional_rs_pairing(self) -> None:
+        contract = self.root / "tools/rust-port/contracts/basic/demo.toml"
+        contract.write_text(
+            self.contract().replace(
+                "rust_symbols = ['rs_demo']",
+                "rust_symbols = ['different_demo']",
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(
+            any(
+                "must pair positionally" in error
+                for error in self.validate()
+            )
+        )
+
     def test_runtime_verified_requires_reproducible_evidence(self) -> None:
         contract = self.root / "tools/rust-port/contracts/basic/demo.toml"
         contract.write_text(
@@ -199,19 +308,42 @@ labels = ['demo']
         contract = self.root / "tools/rust-port/contracts/basic/demo.toml"
         fixture = self.root / "tests-extra/test-demo-rust.c"
         contract.write_text(self.contract().replace("id = 'demo'", "id = 'demo-edge'", 1).replace("labels = ['demo']", "labels = ['demo-edge']"))
-        fixture.write_text("/* RUST-CONTRACT: demo-edge */\nint demo(void); int rs_demo(void);\n")
+        fixture.write_text(
+            "/* RUST-CONTRACT: demo-edge */\n"
+            "void compare(void) { demo(); rs_demo(); }\n"
+        )
         self.assertEqual(self.validate(), [])
 
     def test_cli_focused_mode_uses_map_index(self) -> None:
-        result = subprocess.run(
-            [
-                "python3", str(Path(__file__).with_name("check-behavior-contract.py")),
-                "--repo-root", str(self.root),
-                "--contract", "tools/rust-port/contracts/basic/demo.toml",
-            ], text=True, capture_output=True, check=False,
+        result = self.run_cli(
+            "--contract",
+            "tools/rust-port/contracts/basic/demo.toml",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("contracts=1", result.stdout)
+
+    def test_cli_rejects_unindexed_contract_file(self) -> None:
+        orphan = self.root / "tools/rust-port/contracts/basic/orphan.toml"
+        orphan.write_text("schema = 1\n", encoding="utf-8")
+        result = self.run_cli()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("not map-indexed", result.stderr)
+        self.assertIn("orphan.toml", result.stderr)
+
+    def test_cli_rejects_silently_removed_contract_inventory(self) -> None:
+        contract = self.root / "tools/rust-port/contracts/basic/demo.toml"
+        contract.unlink()
+        map_path = self.root / "tools/rust-port/map.toml"
+        map_path.write_text(
+            map_path.read_text().replace(
+                "contract_file = 'tools/rust-port/contracts/basic/demo.toml'\n",
+                "",
+            ),
+            encoding="utf-8",
+        )
+        result = self.run_cli()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no map-indexed behavior contracts", result.stderr)
 
 
 if __name__ == "__main__":

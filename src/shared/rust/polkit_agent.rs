@@ -412,20 +412,18 @@ mod tests {
 
     #[test]
     // fn test_agent_spawn_and_close() {
-        // let agent = PolkitAgent::with_command(Command::new("true")).unwrap();
-        // assert!(agent.pid().is_some());
-        // agent.close_graceful();
+    // let agent = PolkitAgent::with_command(Command::new("true")).unwrap();
+    // assert!(agent.pid().is_some());
+    // agent.close_graceful();
     // }
-
     #[test]
     // fn test_agent_spawn_immediate_exit() {
-        // let agent = PolkitAgent::with_command(Command::new("false")).unwrap();
-        // let pid = agent.pid();
-        // assert!(pid.is_some());
-        // `false` exits with code 1 — close_graceful ignores it.
-        // agent.close_graceful();
+    // let agent = PolkitAgent::with_command(Command::new("false")).unwrap();
+    // let pid = agent.pid();
+    // assert!(pid.is_some());
+    // `false` exits with code 1 — close_graceful ignores it.
+    // agent.close_graceful();
     // }
-
     #[test]
     fn test_agent_is_running() {
         let mut cmd = Command::new("sleep");

@@ -269,11 +269,7 @@ pub fn bus_log_connect_full(
     }
 }
 
-pub fn bus_log_connect_error(
-    r: i32,
-    transport: BusTransport,
-    scope: RuntimeScope,
-) -> BusLogRecord {
+pub fn bus_log_connect_error(r: i32, transport: BusTransport, scope: RuntimeScope) -> BusLogRecord {
     bus_log_connect_full(BusLogLevel::Error, r, transport, scope)
 }
 

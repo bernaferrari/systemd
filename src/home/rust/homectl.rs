@@ -9,7 +9,6 @@ use std::io;
 use crate::home_util::suitable_user_name;
 use crate::homed_conf::UserStorage;
 
-
 #[derive(Debug, Clone)]
 pub struct HomectlOptions {
     pub identity: Option<String>,

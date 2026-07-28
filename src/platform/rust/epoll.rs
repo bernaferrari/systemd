@@ -49,7 +49,7 @@ impl AsRawFd for Epoll {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nix::sys::eventfd::{eventfd, EfdFlags};
+    use nix::sys::eventfd::{EfdFlags, EventFd};
 
     #[test]
     fn test_epoll_create() {
@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn test_epoll_add_and_wait() {
         let epoll = Epoll::new().unwrap();
-        let efd = eventfd(0, EfdFlags::EFD_NONBLOCK).unwrap();
+        let efd = EventFd::from_flags(EfdFlags::EFD_NONBLOCK).unwrap();
 
         epoll.add(&efd, EpollFlags::EPOLLIN, 42).unwrap();
 

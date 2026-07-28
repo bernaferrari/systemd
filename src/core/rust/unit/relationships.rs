@@ -5,8 +5,8 @@
 use std::sync::Mutex;
 
 use super::model::{
-    is_valid_unit_name, sanitize_bus_path_fragment, DependencyKind, DependencyMask, Result, Unit,
-    UnitError, UNIT_PATH,
+    DependencyKind, DependencyMask, Result, UNIT_PATH, Unit, UnitError, is_valid_unit_name,
+    sanitize_bus_path_fragment,
 };
 
 pub fn unit_add_dependency(
@@ -58,11 +58,18 @@ pub fn unit_add_two_dependencies_by_name(
     unit_add_two_dependencies(unit, first, second, name, add_reference, mask)
 }
 
-pub fn setenv_unit_path(path: &str) -> Result<()> {
+/// Set the process-wide unit search path and update the Rust-side cache.
+///
+/// # Safety
+///
+/// The caller must ensure that no other thread reads or mutates the process
+/// environment for the duration of this call.
+pub unsafe fn setenv_unit_path(path: &str) -> Result<()> {
     if path.trim().is_empty() {
         return Err(UnitError::Invalid);
     }
-    std::env::set_var("SYSTEMD_UNIT_PATH", path);
+    // SAFETY: upheld by the caller as required by this function's contract.
+    unsafe { std::env::set_var("SYSTEMD_UNIT_PATH", path) };
     *UNIT_PATH
         .get_or_init(|| Mutex::new(None))
         .lock()

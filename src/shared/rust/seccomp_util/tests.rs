@@ -5,19 +5,19 @@ use std::collections::HashSet;
 use crate::Errno;
 
 use super::{
-    arch_has_sysctl, arch_supports_socket_filter, build_syscall_filter_map, errno_is_seccomp_fatal,
-    expand_filter_set, filter_set_add_logic, foreach_local_arch, override_default_action,
-    parse_syscall_and_errno, parse_syscall_archs, scmp_act_errno, seccomp_arch_from_string,
-    seccomp_arch_to_string, seccomp_errno_or_action_is_valid, seccomp_errno_or_action_to_string,
-    seccomp_parse_errno_or_action, seccomp_parse_syscall_filter_spec, sync_syscall_needs_fd_check,
-    syscall_filter_set_find, ParsedSyscallEntry, SeccompParseFlags, SyscallFilterOperation,
-    SyscallFilterSet, SCMP_ACT_ALLOW, SCMP_ACT_ERRNO_BASE, SCMP_ACT_KILL_PROCESS, SCMP_ACT_LOG,
+    ParsedSyscallEntry, SCMP_ACT_ALLOW, SCMP_ACT_ERRNO_BASE, SCMP_ACT_KILL_PROCESS, SCMP_ACT_LOG,
     SCMP_ACT_TRAP, SCMP_ARCH_AARCH64, SCMP_ARCH_ARM, SCMP_ARCH_LOONGARCH64, SCMP_ARCH_MIPS,
     SCMP_ARCH_MIPS64, SCMP_ARCH_MIPS64N32, SCMP_ARCH_MIPSEL, SCMP_ARCH_MIPSEL64,
     SCMP_ARCH_MIPSEL64N32, SCMP_ARCH_NATIVE, SCMP_ARCH_PARISC, SCMP_ARCH_PARISC64, SCMP_ARCH_PPC,
     SCMP_ARCH_PPC64, SCMP_ARCH_PPC64LE, SCMP_ARCH_RISCV64, SCMP_ARCH_S390, SCMP_ARCH_S390X,
     SCMP_ARCH_X32, SCMP_ARCH_X86, SCMP_ARCH_X86_64, SECCOMP_ERROR_NUMBER_KILL,
-    SECCOMP_LOCAL_ARCH_BLOCKED, SECCOMP_LOCAL_ARCH_END,
+    SECCOMP_LOCAL_ARCH_BLOCKED, SECCOMP_LOCAL_ARCH_END, SeccompParseFlags, SyscallFilterOperation,
+    SyscallFilterSet, arch_has_sysctl, arch_supports_socket_filter, build_syscall_filter_map,
+    errno_is_seccomp_fatal, expand_filter_set, filter_set_add_logic, foreach_local_arch,
+    override_default_action, parse_syscall_and_errno, parse_syscall_archs, scmp_act_errno,
+    seccomp_arch_from_string, seccomp_arch_to_string, seccomp_errno_or_action_is_valid,
+    seccomp_errno_or_action_to_string, seccomp_parse_errno_or_action,
+    seccomp_parse_syscall_filter_spec, sync_syscall_needs_fd_check, syscall_filter_set_find,
 };
 
 #[test]
@@ -438,16 +438,18 @@ fn test_filter_set_add_logic() {
     // Add mode
     let map = filter_set_add_logic(SyscallFilterSet::Swap, true);
     assert!(!map.is_empty());
-    assert!(map
-        .values()
-        .all(|operation| *operation == SyscallFilterOperation::Insert(-1)));
+    assert!(
+        map.values()
+            .all(|operation| *operation == SyscallFilterOperation::Insert(-1))
+    );
 
     // Remove mode
     let map = filter_set_add_logic(SyscallFilterSet::Swap, false);
     assert!(!map.is_empty());
-    assert!(map
-        .values()
-        .all(|operation| *operation == SyscallFilterOperation::Remove));
+    assert!(
+        map.values()
+            .all(|operation| *operation == SyscallFilterOperation::Remove)
+    );
 }
 
 // Use EPERM from libc for clarity

@@ -7,12 +7,12 @@
 publish = false
 name = "systemd-libsystemd-rs"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-bitflags = "2"
+bitflags = { workspace = true }
 libc = { workspace = true }
-getrandom = "0.2"
+getrandom = "0.4"
 systemd-basic-rs = { path = "../../basic/rust" }
 
 [lib]

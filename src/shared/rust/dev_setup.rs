@@ -2,11 +2,11 @@
 //
 // PORT-SYNC: src/shared/dev-setup.c, src/shared/dev-setup.h
 
-use std::os::unix::fs::MetadataExt;
 use std::ffi::CString;
 use std::fmt;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_PARENT_DIR: &str = "/run/systemd";
@@ -315,11 +315,7 @@ fn create_inaccessible_node(
     }
 }
 
-fn fchmodat_nofollow(
-    dir_fd: i32,
-    file_name: &str,
-    mode: libc::mode_t,
-) -> Result<(), io::Error> {
+fn fchmodat_nofollow(dir_fd: i32, file_name: &str, mode: libc::mode_t) -> Result<(), io::Error> {
     let file_name_c =
         CString::new(file_name).map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
     let rc = unsafe {

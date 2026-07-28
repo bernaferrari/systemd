@@ -566,14 +566,20 @@ mod tests {
 
     #[test]
     fn test_error_display_messages() {
-        assert!(ServiceParseError::InvalidOption
-            .to_string()
-            .contains("Unrecognised"));
-        assert!(ServiceParseError::UnexpectedArgument
-            .to_string()
-            .contains("no positional"));
-        assert!(ServiceParseError::ScopeNotSupported
-            .to_string()
-            .contains("refusing"));
+        assert!(
+            ServiceParseError::InvalidOption
+                .to_string()
+                .contains("Unrecognised")
+        );
+        assert!(
+            ServiceParseError::UnexpectedArgument
+                .to_string()
+                .contains("no positional")
+        );
+        assert!(
+            ServiceParseError::ScopeNotSupported
+                .to_string()
+                .contains("refusing")
+        );
     }
 }

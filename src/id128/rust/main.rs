@@ -9,8 +9,8 @@
 use std::ffi::OsString;
 use std::process::ExitCode;
 use systemd_id128_rs::{
-    boot_id, derive_app_specific, format_id, from_string, invocation_id, is_null, machine_id,
-    pretty_sample, random_id, Id128, Id128Verb, PrettyPrintMode, Result,
+    Id128, Id128Verb, PrettyPrintMode, Result, boot_id, derive_app_specific, format_id,
+    from_string, invocation_id, is_null, machine_id, pretty_sample, random_id,
 };
 
 const SD_GPT_VAR: Id128 = [

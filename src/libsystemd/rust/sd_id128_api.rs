@@ -3,8 +3,7 @@
 // PORT-SYNC: src/libsystemd/sd-id128/sd-id128.c
 
 use crate::id128_util::{
-    id128_from_string_nonzero, id128_is_valid, id128_make_v4_uuid, SdId128, NEG_EINVAL,
-    NEG_ENXIO,
+    NEG_EINVAL, NEG_ENXIO, SdId128, id128_from_string_nonzero, id128_is_valid, id128_make_v4_uuid,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -41,7 +40,9 @@ pub fn sd_id128_randomize() -> Result<SdId128> {
 }
 
 pub fn sd_id128_get_machine() -> Result<SdId128> {
-    read_cached_id(&MACHINE_ID_CACHE, || read_id128_file(&machine_id_path(), false))
+    read_cached_id(&MACHINE_ID_CACHE, || {
+        read_id128_file(&machine_id_path(), false)
+    })
 }
 
 pub fn sd_id128_get_boot() -> Result<SdId128> {
@@ -53,13 +54,8 @@ pub fn sd_id128_get_boot() -> Result<SdId128> {
 
 pub fn sd_id128_get_invocation() -> Result<SdId128> {
     if let Ok(value) = std::env::var("INVOCATION_ID") {
-        return id128_from_string_nonzero(&value).map_err(|e| {
-            if e == NEG_EINVAL {
-                NEG_EUCLEAN
-            } else {
-                e
-            }
-        });
+        return id128_from_string_nonzero(&value)
+            .map_err(|e| if e == NEG_EINVAL { NEG_EUCLEAN } else { e });
     }
     Err(NEG_ENXIO)
 }
@@ -135,7 +131,7 @@ pub fn read_id128_file(path: &Path, allow_uuid: bool) -> Result<SdId128> {
 }
 
 fn fill_random(bytes: &mut [u8]) -> Result<()> {
-    getrandom::getrandom(bytes).map_err(getrandom_to_errno)
+    getrandom::fill(bytes).map_err(getrandom_to_errno)
 }
 
 fn io_to_errno(err: std::io::Error) -> i32 {
@@ -219,6 +215,7 @@ fn clear_sd_id128_caches() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TestEnvironment;
     use std::sync::{Mutex, OnceLock};
 
     static TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
@@ -276,8 +273,8 @@ mod tests {
         assert_eq!(
             id,
             SdId128([
-                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc,
-                0xdd, 0xee, 0xff,
+                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
+                0xee, 0xff,
             ])
         );
         fs::remove_file(&path).unwrap();
@@ -301,8 +298,7 @@ mod tests {
         let _guard = TestPathsGuard;
 
         set_test_machine_id_path(Some(
-            std::env::temp_dir()
-                .join(format!("systemd-missing-machine-id-{}", std::process::id())),
+            std::env::temp_dir().join(format!("systemd-missing-machine-id-{}", std::process::id())),
         ));
         clear_sd_id128_caches();
         assert_eq!(sd_id128_get_machine(), Err(-(libc::ENOENT as i32)));
@@ -347,18 +343,22 @@ mod tests {
     #[test]
     fn invocation_id_reads_environment() {
         let _lock = test_lock();
-        std::env::set_var("INVOCATION_ID", "00112233445566778899aabbccddeeff");
+        // SAFETY: this environment-dependent test target runs with
+        // --test-threads=1 and does not spawn environment readers.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set("INVOCATION_ID", "00112233445566778899aabbccddeeff");
         let id = sd_id128_get_invocation().unwrap();
-        std::env::remove_var("INVOCATION_ID");
         assert_eq!(id.0[0], 0x00);
     }
 
     #[test]
     fn invocation_id_rejects_invalid_environment() {
         let _lock = test_lock();
-        std::env::set_var("INVOCATION_ID", "not-an-id");
+        // SAFETY: this environment-dependent test target runs with
+        // --test-threads=1 and does not spawn environment readers.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set("INVOCATION_ID", "not-an-id");
         assert_eq!(sd_id128_get_invocation(), Err(NEG_EUCLEAN));
-        std::env::remove_var("INVOCATION_ID");
     }
 
     #[test]

@@ -1,10 +1,11 @@
 use super::*;
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::os::fd::IntoRawFd;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,16 +15,19 @@ struct TempDir {
 
 struct EnvVarGuard {
     key: &'static str,
-    previous: Option<String>,
+    previous: Option<OsString>,
 }
 
 impl EnvVarGuard {
-    fn set(key: &'static str, value: &str) -> Self {
-        let previous = env::var(key).ok();
-        // SAFETY: tests are executed with --test-threads=1 in this workspace.
-        unsafe {
-            env::set_var(key, value);
-        }
+    /// # Safety
+    ///
+    /// The caller must ensure that no other thread reads or mutates the process
+    /// environment until the returned guard is dropped.
+    unsafe fn set(key: &'static str, value: &str) -> Self {
+        let previous = env::var_os(key);
+        // SAFETY: this test-only guard scopes each mutation and the journald
+        // test target is run without concurrent environment access.
+        unsafe { env::set_var(key, value) };
         Self { key, previous }
     }
 }
@@ -31,15 +35,13 @@ impl EnvVarGuard {
 impl Drop for EnvVarGuard {
     fn drop(&mut self) {
         if let Some(value) = &self.previous {
-            // SAFETY: tests are executed with --test-threads=1 in this workspace.
-            unsafe {
-                env::set_var(self.key, value);
-            }
+            // SAFETY: dropping the guard restores the same test-scoped mutation
+            // while the test target has no concurrent environment access.
+            unsafe { env::set_var(self.key, value) };
         } else {
-            // SAFETY: tests are executed with --test-threads=1 in this workspace.
-            unsafe {
-                env::remove_var(self.key);
-            }
+            // SAFETY: dropping the guard restores the same test-scoped mutation
+            // while the test target has no concurrent environment access.
+            unsafe { env::remove_var(self.key) };
         }
     }
 }
@@ -265,23 +267,31 @@ fn context_rate_limit_requires_unit_context() {
     });
 
     let no_unit = ClientContext::default();
-    assert!(runtime
-        .apply_context_rate_limit(&mut limiter, Some(&no_unit), 6)
-        .unwrap());
-    assert!(runtime
-        .apply_context_rate_limit(&mut limiter, Some(&no_unit), 6)
-        .unwrap());
+    assert!(
+        runtime
+            .apply_context_rate_limit(&mut limiter, Some(&no_unit), 6)
+            .unwrap()
+    );
+    assert!(
+        runtime
+            .apply_context_rate_limit(&mut limiter, Some(&no_unit), 6)
+            .unwrap()
+    );
 
     let with_unit = ClientContext {
         unit: Some("demo.service".to_string()),
         ..ClientContext::default()
     };
-    assert!(runtime
-        .apply_context_rate_limit(&mut limiter, Some(&with_unit), 6)
-        .unwrap());
-    assert!(!runtime
-        .apply_context_rate_limit(&mut limiter, Some(&with_unit), 6)
-        .unwrap());
+    assert!(
+        runtime
+            .apply_context_rate_limit(&mut limiter, Some(&with_unit), 6)
+            .unwrap()
+    );
+    assert!(
+        !runtime
+            .apply_context_rate_limit(&mut limiter, Some(&with_unit), 6)
+            .unwrap()
+    );
 }
 
 #[test]
@@ -301,8 +311,12 @@ fn append_rate_limit_notice_writes_c_parity_fields() {
 
 #[test]
 fn rate_limit_config_defaults_match_c() {
-    let _interval = EnvVarGuard::set(RATE_LIMIT_INTERVAL_ENV, "invalid");
-    let _burst = EnvVarGuard::set(RATE_LIMIT_BURST_ENV, "invalid");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _interval = unsafe { EnvVarGuard::set(RATE_LIMIT_INTERVAL_ENV, "invalid") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _burst = unsafe { EnvVarGuard::set(RATE_LIMIT_BURST_ENV, "invalid") };
     let cfg = RateLimitConfig::from_env();
 
     assert_eq!(cfg.interval_usec, 30_000_000);
@@ -311,14 +325,22 @@ fn rate_limit_config_defaults_match_c() {
 
 #[test]
 fn rate_limit_config_zeroes_interval_and_burst_together_like_c() {
-    let _interval = EnvVarGuard::set(RATE_LIMIT_INTERVAL_ENV, "0");
-    let _burst = EnvVarGuard::set(RATE_LIMIT_BURST_ENV, "1");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _interval = unsafe { EnvVarGuard::set(RATE_LIMIT_INTERVAL_ENV, "0") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _burst = unsafe { EnvVarGuard::set(RATE_LIMIT_BURST_ENV, "1") };
     let cfg = RateLimitConfig::from_env();
     assert_eq!(cfg.interval_usec, 0);
     assert_eq!(cfg.burst, 0);
 
-    let _interval = EnvVarGuard::set(RATE_LIMIT_INTERVAL_ENV, "1");
-    let _burst = EnvVarGuard::set(RATE_LIMIT_BURST_ENV, "0");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _interval = unsafe { EnvVarGuard::set(RATE_LIMIT_INTERVAL_ENV, "1") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _burst = unsafe { EnvVarGuard::set(RATE_LIMIT_BURST_ENV, "0") };
     let cfg = RateLimitConfig::from_env();
     assert_eq!(cfg.interval_usec, 0);
     assert_eq!(cfg.burst, 0);
@@ -330,8 +352,13 @@ fn rate_limit_root_follows_active_storage_root() {
     let runtime = JournalRuntime::new(&temp.path);
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     assert_eq!(runtime.rate_limit_root(), temp.path);
     fs::write(runtime.marker_path(FLUSH_MARKER_NAME), b"ok\n").unwrap();
@@ -342,11 +369,17 @@ fn rate_limit_root_follows_active_storage_root() {
 fn storage_state_auto_defaults_to_runtime_root() {
     let temp = TempDir::new("journald-storage-auto-runtime");
     let runtime = JournalRuntime::new(&temp.path);
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(
-        STORAGE_PERSISTENT_ROOT_ENV,
-        temp.path.join("persistent").to_str().unwrap(),
-    );
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent = unsafe {
+        EnvVarGuard::set(
+            STORAGE_PERSISTENT_ROOT_ENV,
+            temp.path.join("persistent").to_str().unwrap(),
+        )
+    };
 
     let state = runtime.storage_state();
     assert_eq!(state.mode, StorageMode::Auto);
@@ -361,8 +394,13 @@ fn storage_state_auto_prefers_persistent_when_flushed_and_present() {
     fs::create_dir_all(&persistent).unwrap();
     fs::write(runtime.marker_path(FLUSH_MARKER_NAME), b"ok\n").unwrap();
 
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     let state = runtime.storage_state();
     assert_eq!(state.active_root(), Some(persistent.as_path()));
@@ -382,8 +420,13 @@ fn storage_state_persistent_mode_uses_persistent_root() {
     let runtime = JournalRuntime::new(&temp.path);
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "persistent");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "persistent") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     let state = runtime.storage_state();
     assert_eq!(state.mode, StorageMode::Persistent);
@@ -404,8 +447,13 @@ fn storage_state_namespaced_auto_prefers_persistent_without_flush_marker() {
         JournalRuntime::new_with_namespace(temp.path.join("runtime.ns"), Some("tenant".into()));
     let persistent = temp.path.join("persistent.ns");
     fs::create_dir_all(&persistent).unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     let state = runtime.storage_state();
     assert!(state.flushed);
@@ -419,8 +467,13 @@ fn namespaced_flush_is_noop() {
         JournalRuntime::new_with_namespace(temp.path.join("runtime.ns"), Some("tenant".into()));
     let persistent = temp.path.join("persistent.ns");
     fs::create_dir_all(&persistent).unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     runtime.ensure_root().unwrap();
     seed_journal_text_records(&runtime.log_path(), &["namespaced-message"]);
@@ -850,8 +903,13 @@ fn append_datagram_with_credentials_enriches_proc_and_cgroup_fields() {
     let run_systemd_root = temp.path.join("run-systemd");
     fs::create_dir_all(&proc_root).unwrap();
     fs::create_dir_all(&run_systemd_root).unwrap();
-    let _proc = EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap());
-    let _run_systemd = EnvVarGuard::set(RUN_SYSTEMD_ROOT_ENV, run_systemd_root.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _proc = unsafe { EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap()) };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _run_systemd =
+        unsafe { EnvVarGuard::set(RUN_SYSTEMD_ROOT_ENV, run_systemd_root.to_str().unwrap()) };
 
     let pid = 4242;
     let exe_target = write_fake_proc_context(
@@ -901,7 +959,9 @@ fn append_syslog_datagram_with_socket_metadata_refreshes_cached_selinux_label() 
     let temp = TempDir::new("journald-socket-label-refresh");
     let proc_root = temp.path.join("proc");
     fs::create_dir_all(&proc_root).unwrap();
-    let _proc = EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _proc = unsafe { EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap()) };
 
     let pid = 4242;
     write_fake_proc_context(
@@ -966,9 +1026,16 @@ fn append_datagram_with_credentials_parses_user_manager_cgroup_fields() {
     fs::create_dir_all(&proc_root).unwrap();
     fs::create_dir_all(&run_systemd_root).unwrap();
     fs::create_dir_all(&run_user_root).unwrap();
-    let _proc = EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap());
-    let _run_systemd = EnvVarGuard::set(RUN_SYSTEMD_ROOT_ENV, run_systemd_root.to_str().unwrap());
-    let _run_user = EnvVarGuard::set(RUN_USER_ROOT_ENV, run_user_root.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _proc = unsafe { EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap()) };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _run_systemd =
+        unsafe { EnvVarGuard::set(RUN_SYSTEMD_ROOT_ENV, run_systemd_root.to_str().unwrap()) };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _run_user = unsafe { EnvVarGuard::set(RUN_USER_ROOT_ENV, run_user_root.to_str().unwrap()) };
 
     let pid = 5252;
     write_fake_proc_context(
@@ -1015,8 +1082,13 @@ fn append_datagram_with_credentials_appends_unit_extra_fields() {
     let run_systemd_root = temp.path.join("run-systemd");
     fs::create_dir_all(&proc_root).unwrap();
     fs::create_dir_all(&run_systemd_root).unwrap();
-    let _proc = EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap());
-    let _run_systemd = EnvVarGuard::set(RUN_SYSTEMD_ROOT_ENV, run_systemd_root.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _proc = unsafe { EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap()) };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _run_systemd =
+        unsafe { EnvVarGuard::set(RUN_SYSTEMD_ROOT_ENV, run_systemd_root.to_str().unwrap()) };
 
     let pid = 4343;
     write_fake_proc_context(
@@ -1054,10 +1126,12 @@ fn append_datagram_with_credentials_appends_unit_extra_fields() {
     assert!(log.contains("MESSAGE_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
     assert!(log.contains("DEPLOYMENT=blue"));
     let records = read_journal_records(&runtime.log_path()).unwrap();
-    assert!(records[0]
-        .fields
-        .iter()
-        .any(|field| field.as_slice() == b"BINARY=\0line\n\xff"));
+    assert!(
+        records[0]
+            .fields
+            .iter()
+            .any(|field| field.as_slice() == b"BINARY=\0line\n\xff")
+    );
 }
 
 #[test]
@@ -1067,8 +1141,13 @@ fn append_datagram_with_credentials_honors_unit_log_level_max() {
     let run_systemd_root = temp.path.join("run-systemd");
     fs::create_dir_all(&proc_root).unwrap();
     fs::create_dir_all(&run_systemd_root).unwrap();
-    let _proc = EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap());
-    let _run_systemd = EnvVarGuard::set(RUN_SYSTEMD_ROOT_ENV, run_systemd_root.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _proc = unsafe { EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap()) };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _run_systemd =
+        unsafe { EnvVarGuard::set(RUN_SYSTEMD_ROOT_ENV, run_systemd_root.to_str().unwrap()) };
 
     let pid = 4444;
     write_fake_proc_context(
@@ -1117,16 +1196,12 @@ fn client_context_check_keep_log_honors_allow_and_deny_patterns() {
     }
 
     let context = ClientContext {
-        log_filter_allowed_patterns: Arc::new(vec![pattern_compile(
-            "keep",
-            PatternCompileCase::Sensitive,
-        )
-        .unwrap()]),
-        log_filter_denied_patterns: Arc::new(vec![pattern_compile(
-            "drop",
-            PatternCompileCase::Sensitive,
-        )
-        .unwrap()]),
+        log_filter_allowed_patterns: Arc::new(vec![
+            pattern_compile("keep", PatternCompileCase::Sensitive).unwrap(),
+        ]),
+        log_filter_denied_patterns: Arc::new(vec![
+            pattern_compile("drop", PatternCompileCase::Sensitive).unwrap(),
+        ]),
         ..Default::default()
     };
 
@@ -1135,11 +1210,9 @@ fn client_context_check_keep_log_honors_allow_and_deny_patterns() {
     assert!(!client_context_check_keep_log(Some(&context), "other"));
 
     let deny_only = ClientContext {
-        log_filter_denied_patterns: Arc::new(vec![pattern_compile(
-            "drop",
-            PatternCompileCase::Sensitive,
-        )
-        .unwrap()]),
+        log_filter_denied_patterns: Arc::new(vec![
+            pattern_compile("drop", PatternCompileCase::Sensitive).unwrap(),
+        ]),
         ..Default::default()
     };
     assert!(client_context_check_keep_log(Some(&deny_only), "other"));
@@ -1159,8 +1232,12 @@ fn append_datagram_with_credentials_applies_keep_log_filters() {
     let cgroup_root = temp.path.join("cgroup");
     fs::create_dir_all(&proc_root).unwrap();
     fs::create_dir_all(&cgroup_root).unwrap();
-    let _proc = EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap());
-    let _cgroup = EnvVarGuard::set(CGROUP_FS_ROOT_ENV, cgroup_root.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _proc = unsafe { EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap()) };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _cgroup = unsafe { EnvVarGuard::set(CGROUP_FS_ROOT_ENV, cgroup_root.to_str().unwrap()) };
 
     let pid = 4242;
     write_fake_proc_context(
@@ -1224,7 +1301,9 @@ fn append_stdout_stream_message_prefers_peer_selinux_label() {
     let temp = TempDir::new("journald-stdout-peer-label");
     let proc_root = temp.path.join("proc");
     fs::create_dir_all(&proc_root).unwrap();
-    let _proc = EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _proc = unsafe { EnvVarGuard::set(PROC_ROOT_ENV, proc_root.to_str().unwrap()) };
 
     let pid = 7777;
     write_fake_proc_context(
@@ -1302,10 +1381,12 @@ fn append_datagram_preserves_binary_native_field_bytes() {
     let records = read_journal_records(&runtime.log_path()).unwrap();
     let expected = [b"MESSAGE=".as_slice(), value].concat();
     assert_eq!(records.len(), 1);
-    assert!(records[0]
-        .fields
-        .iter()
-        .any(|field| field.as_slice() == expected.as_slice()));
+    assert!(
+        records[0]
+            .fields
+            .iter()
+            .any(|field| field.as_slice() == expected.as_slice())
+    );
 }
 
 #[test]
@@ -1327,31 +1408,43 @@ fn append_datagram_writes_multiple_native_entries_independently() {
 
     let records = read_journal_records(&runtime.log_path()).unwrap();
     assert_eq!(records.len(), 2);
-    assert!(records[0]
-        .fields
-        .iter()
-        .any(|field| field.as_slice() == b"MESSAGE=first"));
-    assert!(!records[0]
-        .fields
-        .iter()
-        .any(|field| field.as_slice() == b"MESSAGE=second"));
-    assert!(records[1]
-        .fields
-        .iter()
-        .any(|field| field.as_slice() == b"MESSAGE=second"));
-    assert!(!records[1]
-        .fields
-        .iter()
-        .any(|field| field.as_slice() == b"MESSAGE=first"));
+    assert!(
+        records[0]
+            .fields
+            .iter()
+            .any(|field| field.as_slice() == b"MESSAGE=first")
+    );
+    assert!(
+        !records[0]
+            .fields
+            .iter()
+            .any(|field| field.as_slice() == b"MESSAGE=second")
+    );
+    assert!(
+        records[1]
+            .fields
+            .iter()
+            .any(|field| field.as_slice() == b"MESSAGE=second")
+    );
+    assert!(
+        !records[1]
+            .fields
+            .iter()
+            .any(|field| field.as_slice() == b"MESSAGE=first")
+    );
     for record in &records {
-        assert!(record
-            .fields
-            .iter()
-            .any(|field| field.as_slice() == b"_PID=42"));
-        assert!(record
-            .fields
-            .iter()
-            .any(|field| field.as_slice() == b"_UID=1000"));
+        assert!(
+            record
+                .fields
+                .iter()
+                .any(|field| field.as_slice() == b"_PID=42")
+        );
+        assert!(
+            record
+                .fields
+                .iter()
+                .any(|field| field.as_slice() == b"_UID=1000")
+        );
     }
 }
 
@@ -1384,10 +1477,12 @@ fn native_datagram_rate_limits_each_entry() {
 
     let records = read_journal_records(&runtime.log_path()).unwrap();
     assert_eq!(records.len(), 1);
-    assert!(records[0]
-        .fields
-        .iter()
-        .any(|field| field.as_slice() == b"MESSAGE=first"));
+    assert!(
+        records[0]
+            .fields
+            .iter()
+            .any(|field| field.as_slice() == b"MESSAGE=first")
+    );
 }
 
 #[test]
@@ -1401,14 +1496,18 @@ fn append_datagram_keeps_earlier_native_entry_when_later_entry_is_malformed() {
 
     let records = read_journal_records(&runtime.log_path()).unwrap();
     assert_eq!(records.len(), 1);
-    assert!(records[0]
-        .fields
-        .iter()
-        .any(|field| field.as_slice() == b"MESSAGE=first"));
-    assert!(!records[0]
-        .fields
-        .iter()
-        .any(|field| field.as_slice() == b"MESSAGE=truncated"));
+    assert!(
+        records[0]
+            .fields
+            .iter()
+            .any(|field| field.as_slice() == b"MESSAGE=first")
+    );
+    assert!(
+        !records[0]
+            .fields
+            .iter()
+            .any(|field| field.as_slice() == b"MESSAGE=truncated")
+    );
 }
 
 #[test]
@@ -1651,8 +1750,13 @@ fn rotate_uses_persistent_root_when_flushed() {
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
     fs::write(runtime.marker_path(FLUSH_MARKER_NAME), b"ready\n").unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     let persistent_log = persistent.join(LOG_FILE_NAME);
     seed_journal_text_records(&persistent_log, &["before persistent rotate"]);
@@ -1661,21 +1765,25 @@ fn rotate_uses_persistent_root_when_flushed() {
     assert_eq!(report.previous_log, persistent_log);
     assert_eq!(report.new_log, persistent.join(LOG_FILE_NAME));
     assert!(persistent.join(LOG_FILE_NAME).exists());
-    assert!(fs::read_dir(&persistent)
-        .unwrap()
-        .filter_map(|entry| entry.ok().map(|value| value.path()))
-        .any(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| JournalRuntime::archived_rotation_metadata(name).is_some())
-        }));
+    assert!(
+        fs::read_dir(&persistent)
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|value| value.path()))
+            .any(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| JournalRuntime::archived_rotation_metadata(name).is_some())
+            })
+    );
 }
 
 #[test]
 fn rotate_applies_post_rotate_vacuum_limits() {
     let temp = TempDir::new("journald-rotate-vacuum");
     let runtime = JournalRuntime::new(&temp.path);
-    let _max_files = EnvVarGuard::set(SYSTEM_MAX_FILES_ENV, "1");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _max_files = unsafe { EnvVarGuard::set(SYSTEM_MAX_FILES_ENV, "1") };
 
     seed_journal_text_records(&runtime.log_path(), &["before rotate"]);
     fs::write(
@@ -1711,7 +1819,9 @@ fn rotate_applies_post_rotate_vacuum_limits() {
 fn append_proactively_rotates_when_max_file_size_reached() {
     let temp = TempDir::new("journald-prewrite-rotate");
     let runtime = JournalRuntime::new(&temp.path);
-    let _max_file_size = EnvVarGuard::set(SYSTEM_MAX_FILE_SIZE_ENV, "16");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _max_file_size = unsafe { EnvVarGuard::set(SYSTEM_MAX_FILE_SIZE_ENV, "16") };
 
     seed_journal_text_records(&runtime.log_path(), &["0123456789abcdef0123456789abcdef"]);
     runtime
@@ -1750,7 +1860,9 @@ fn new_journals_enable_keyed_hash_by_default() {
 fn keyed_hash_env_can_disable_new_journal_flag() {
     let temp = TempDir::new("journald-keyed-hash-disabled");
     let runtime = JournalRuntime::new(&temp.path);
-    let _keyed_hash = EnvVarGuard::set(SYSTEMD_JOURNAL_KEYED_HASH_ENV, "0");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _keyed_hash = unsafe { EnvVarGuard::set(SYSTEMD_JOURNAL_KEYED_HASH_ENV, "0") };
 
     let journal = runtime.active_or_create().unwrap();
 
@@ -1820,18 +1932,24 @@ fn vacuum_size_removes_old_rotations_first() {
     let report = runtime.vacuum_size(8).unwrap();
 
     assert_eq!(report.removed_files.len(), 3);
-    assert!(!runtime
-        .root()
-        .join(JournalRuntime::rotated_archive_name(1, 1))
-        .exists());
-    assert!(!runtime
-        .root()
-        .join(JournalRuntime::rotated_archive_name(2, 2))
-        .exists());
-    assert!(!runtime
-        .root()
-        .join(JournalRuntime::rotated_archive_name(3, 3))
-        .exists());
+    assert!(
+        !runtime
+            .root()
+            .join(JournalRuntime::rotated_archive_name(1, 1))
+            .exists()
+    );
+    assert!(
+        !runtime
+            .root()
+            .join(JournalRuntime::rotated_archive_name(2, 2))
+            .exists()
+    );
+    assert!(
+        !runtime
+            .root()
+            .join(JournalRuntime::rotated_archive_name(3, 3))
+            .exists()
+    );
     assert!(runtime.log_path().exists());
 }
 
@@ -1841,8 +1959,13 @@ fn vacuum_size_targets_active_persistent_root_when_flushed() {
     let runtime = JournalRuntime::new(&temp.path);
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
     fs::write(runtime.root().join(FLUSH_MARKER_NAME), b"ready\n").unwrap();
 
     let runtime_archived = runtime
@@ -1856,10 +1979,12 @@ fn vacuum_size_targets_active_persistent_root_when_flushed() {
 
     let report = runtime.vacuum_size(1).unwrap();
 
-    assert!(report
-        .removed_files
-        .iter()
-        .all(|path| path.starts_with(&persistent)));
+    assert!(
+        report
+            .removed_files
+            .iter()
+            .all(|path| path.starts_with(&persistent))
+    );
     assert!(runtime_archived.exists());
     assert!(!persistent_archived_1.exists());
     assert!(!persistent_archived_2.exists());
@@ -1894,8 +2019,13 @@ fn flush_moves_runtime_log_to_persistent_root() {
     let runtime = JournalRuntime::new(&temp.path);
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     seed_journal_text_records(&runtime.log_path(), &["runtime-entry"]);
     runtime.flush().unwrap();
@@ -1913,8 +2043,13 @@ fn flush_with_required_flag_skips_when_marker_missing() {
     let runtime = JournalRuntime::new(&temp.path);
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     seed_journal_text_records(&runtime.log_path(), &["runtime-entry"]);
     runtime.flush_to_persistent(true).unwrap();
@@ -1930,8 +2065,13 @@ fn startup_housekeeping_honors_flush_gate() {
     let runtime = JournalRuntime::new(&temp.path);
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     seed_journal_text_records(&runtime.log_path(), &["runtime-entry"]);
     runtime.run_startup_housekeeping().unwrap();
@@ -1950,9 +2090,16 @@ fn startup_housekeeping_enforces_max_files_on_persistent_root() {
     let runtime = JournalRuntime::new(&temp.path);
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
-    let _max_files = EnvVarGuard::set(SYSTEM_MAX_FILES_ENV, "1");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _max_files = unsafe { EnvVarGuard::set(SYSTEM_MAX_FILES_ENV, "1") };
 
     seed_journal_text_records(&runtime.log_path(), &["runtime-entry"]);
     fs::write(runtime.root().join(FLUSH_MARKER_NAME), b"ready\n").unwrap();
@@ -1974,8 +2121,13 @@ fn relinquish_var_forces_runtime_root_for_subsequent_writes() {
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
     fs::write(runtime.marker_path(FLUSH_MARKER_NAME), b"ready\n").unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     runtime
         .append_datagram(b"MESSAGE=persistent-entry", None)
@@ -1999,8 +2151,13 @@ fn reopen_clears_relinquish_and_restores_persistent_writes() {
     let persistent = temp.path.join("persistent");
     fs::create_dir_all(&persistent).unwrap();
     fs::write(runtime.marker_path(FLUSH_MARKER_NAME), b"ready\n").unwrap();
-    let _mode = EnvVarGuard::set(STORAGE_MODE_ENV, "auto");
-    let _persistent = EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap());
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _mode = unsafe { EnvVarGuard::set(STORAGE_MODE_ENV, "auto") };
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let _persistent =
+        unsafe { EnvVarGuard::set(STORAGE_PERSISTENT_ROOT_ENV, persistent.to_str().unwrap()) };
 
     runtime.relinquish_var().unwrap();
     runtime
@@ -2038,12 +2195,14 @@ fn append_with_rotate_retry_retries_once_on_retryable_error() {
     let active_log = journal_text_at(&runtime.log_path());
     assert!(active_log.contains("MESSAGE=retry-success"));
     assert!(runtime.root().join(ROTATE_MARKER_NAME).exists());
-    assert!(fs::read_dir(runtime.root())
-        .unwrap()
-        .filter_map(|entry| entry.ok().map(|value| value.path()))
-        .any(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| JournalRuntime::archived_rotation_metadata(name).is_some())
-        }));
+    assert!(
+        fs::read_dir(runtime.root())
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|value| value.path()))
+            .any(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| JournalRuntime::archived_rotation_metadata(name).is_some())
+            })
+    );
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-use nix::sys::wait::{waitpid, WaitStatus};
-use nix::unistd::{fork, getgid, getpid, getppid, getuid, Gid, Pid, Uid};
+use nix::sys::wait::{WaitStatus, waitpid};
+use nix::unistd::{Gid, Pid, Uid, fork, getgid, getpid, getppid, getuid};
 
 /// Fork a new child process and run the given closure in the child.
 ///

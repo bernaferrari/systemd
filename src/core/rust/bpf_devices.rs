@@ -411,10 +411,12 @@ mod tests {
             program.attached_cgroup.as_deref(),
             Some("/sys/fs/cgroup/test")
         );
-        assert!(program
-            .instructions
-            .iter()
-            .all(|insn| insn.off != PASS_JUMP_OFF));
+        assert!(
+            program
+                .instructions
+                .iter()
+                .all(|insn| insn.off != PASS_JUMP_OFF)
+        );
     }
 
     #[test]

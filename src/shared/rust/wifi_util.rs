@@ -733,11 +733,7 @@ fn parse_nlmsg_error(payload: &[u8]) -> i32 {
     }
 
     let error = i32::from_ne_bytes(payload[0..4].try_into().unwrap());
-    if error == 0 {
-        -libc::ENODATA
-    } else {
-        error
-    }
+    if error == 0 { -libc::ENODATA } else { error }
 }
 
 fn split_genl_payload(payload: &[u8]) -> Option<(GenlMsgHdr, &[u8])> {
@@ -984,15 +980,17 @@ mod tests {
     #[test]
     fn parse_interface_message_requires_iftype() {
         let payload = genl_payload(NL80211_CMD_GET_INTERFACE, &[(NL80211_ATTR_SSID, b"wifi")]);
-        assert!(parse_interface_message(
-            NetlinkMessage {
-                msg_type: 7,
-                flags: 0,
-                payload: &payload,
-            },
-            7,
-        )
-        .is_none());
+        assert!(
+            parse_interface_message(
+                NetlinkMessage {
+                    msg_type: 7,
+                    flags: 0,
+                    payload: &payload,
+                },
+                7,
+            )
+            .is_none()
+        );
     }
 
     #[test]

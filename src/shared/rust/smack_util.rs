@@ -827,12 +827,16 @@ mod tests {
     #[test]
     fn test_smack_error_display() {
         assert!(!SmackError::NotAvailable.to_string().is_empty());
-        assert!(SmackError::NotInDev(PathBuf::from("/tmp/foo"))
-            .to_string()
-            .contains("/tmp/foo"));
-        assert!(SmackError::NotFound(PathBuf::from("/dev/null2"))
-            .to_string()
-            .contains("/dev/null2"));
+        assert!(
+            SmackError::NotInDev(PathBuf::from("/tmp/foo"))
+                .to_string()
+                .contains("/tmp/foo")
+        );
+        assert!(
+            SmackError::NotFound(PathBuf::from("/dev/null2"))
+                .to_string()
+                .contains("/dev/null2")
+        );
         assert!(!SmackError::InvalidLabel.to_string().is_empty());
     }
 

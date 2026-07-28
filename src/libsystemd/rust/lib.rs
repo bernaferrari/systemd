@@ -97,4 +97,7 @@ pub mod sd_varlink_org_varlink_service;
 pub mod sd_varlink_util;
 pub mod varlink_state;
 
+#[cfg(test)]
+mod test_support;
+
 pub use ffi::Errno;

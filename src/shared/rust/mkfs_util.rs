@@ -133,11 +133,22 @@ impl SdId128 {
         let b = &self.0;
         format!(
             "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-            b[0], b[1], b[2], b[3],
-            b[4], b[5],
-            b[6], b[7],
-            b[8], b[9],
-            b[10], b[11], b[12], b[13], b[14], b[15],
+            b[0],
+            b[1],
+            b[2],
+            b[3],
+            b[4],
+            b[5],
+            b[6],
+            b[7],
+            b[8],
+            b[9],
+            b[10],
+            b[11],
+            b[12],
+            b[13],
+            b[14],
+            b[15],
         )
     }
 
@@ -935,6 +946,7 @@ pub fn label_max_len(fstype: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
 
     #[test]
     fn test_fstype_is_ro() {
@@ -1116,22 +1128,26 @@ mod tests {
 
     #[test]
     fn test_mkfs_options_from_env_set() {
-        std::env::set_var(
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(
             "SYSTEMD_TESTCOMP_MKFS_OPTIONS_EXT4",
             "-O ^has_journal -b 4096",
         );
         let result = mkfs_options_from_env("TESTCOMP", "ext4").unwrap();
         assert_eq!(result, vec!["-O", "^has_journal", "-b", "4096"]);
-        std::env::remove_var("SYSTEMD_TESTCOMP_MKFS_OPTIONS_EXT4");
     }
 
     #[test]
     fn test_mkfs_options_from_env_case_insensitive() {
         // The component/fstype are uppercased
-        std::env::set_var("SYSTEMD_TEST_MKFS_OPTIONS_XFS", "-f");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set("SYSTEMD_TEST_MKFS_OPTIONS_XFS", "-f");
         let result = mkfs_options_from_env("test", "xfs").unwrap();
         assert_eq!(result, vec!["-f"]);
-        std::env::remove_var("SYSTEMD_TEST_MKFS_OPTIONS_XFS");
     }
 
     #[test]

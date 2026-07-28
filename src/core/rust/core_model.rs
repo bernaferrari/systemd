@@ -637,9 +637,11 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error, DependencyError::UnknownToUnit(UnitId(999)));
-        assert!(!manager.units[&UnitId(1)]
-            .deps
-            .contains_key(&UnitDependency::Requires));
+        assert!(
+            !manager.units[&UnitId(1)]
+                .deps
+                .contains_key(&UnitDependency::Requires)
+        );
     }
 
     fn unique_temp_dir(prefix: &str) -> PathBuf {

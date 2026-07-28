@@ -494,15 +494,17 @@ mod tests {
         let dir = tmp.path().join("safe_dir");
 
         let mac = MockMac::new();
-        assert!(mkdir_safe_label_with(
-            &dir,
-            0o755,
-            UID_INVALID,
-            UID_INVALID,
-            MkdirFlags::empty(),
-            &mac
-        )
-        .is_ok());
+        assert!(
+            mkdir_safe_label_with(
+                &dir,
+                0o755,
+                UID_INVALID,
+                UID_INVALID,
+                MkdirFlags::empty(),
+                &mac
+            )
+            .is_ok()
+        );
         assert!(dir.is_dir());
     }
 
@@ -513,15 +515,17 @@ mod tests {
         std::fs::create_dir(&dir).unwrap();
 
         let mac = MockMac::new();
-        assert!(mkdir_safe_label_with(
-            &dir,
-            0o755,
-            UID_INVALID,
-            UID_INVALID,
-            MkdirFlags::IGNORE_EXIST,
-            &mac
-        )
-        .is_ok());
+        assert!(
+            mkdir_safe_label_with(
+                &dir,
+                0o755,
+                UID_INVALID,
+                UID_INVALID,
+                MkdirFlags::IGNORE_EXIST,
+                &mac
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -645,16 +649,18 @@ mod tests {
         let relative = Path::new("sub1").join("sub2").join("target");
 
         let mac = MockMac::new();
-        assert!(mkdir_parents_safe_label_with(
-            tmp.path(),
-            &relative,
-            0o755,
-            UID_INVALID,
-            UID_INVALID,
-            MkdirFlags::empty(),
-            &mac
-        )
-        .is_ok());
+        assert!(
+            mkdir_parents_safe_label_with(
+                tmp.path(),
+                &relative,
+                0o755,
+                UID_INVALID,
+                UID_INVALID,
+                MkdirFlags::empty(),
+                &mac
+            )
+            .is_ok()
+        );
         assert!(tmp.path().join("sub1").join("sub2").is_dir());
         // Final component should NOT be created
         assert!(!tmp.path().join(&relative).is_dir());
@@ -666,16 +672,18 @@ mod tests {
         let abs_path = tmp.path().join("abs1").join("abs2").join("target");
 
         let mac = MockMac::new();
-        assert!(mkdir_parents_safe_label_with(
-            Path::new("/ignored"),
-            &abs_path,
-            0o755,
-            UID_INVALID,
-            UID_INVALID,
-            MkdirFlags::empty(),
-            &mac
-        )
-        .is_ok());
+        assert!(
+            mkdir_parents_safe_label_with(
+                Path::new("/ignored"),
+                &abs_path,
+                0o755,
+                UID_INVALID,
+                UID_INVALID,
+                MkdirFlags::empty(),
+                &mac
+            )
+            .is_ok()
+        );
         assert!(abs_path.parent().unwrap().is_dir());
     }
 
@@ -720,15 +728,17 @@ mod tests {
     fn test_system_mac_mkdir_parents_safe_label() {
         let tmp = tempfile::tempdir().unwrap();
         let path = Path::new("ps1").join("ps2").join("target");
-        assert!(mkdir_parents_safe_label(
-            tmp.path(),
-            &path,
-            0o755,
-            UID_INVALID,
-            UID_INVALID,
-            MkdirFlags::empty()
-        )
-        .is_ok());
+        assert!(
+            mkdir_parents_safe_label(
+                tmp.path(),
+                &path,
+                0o755,
+                UID_INVALID,
+                UID_INVALID,
+                MkdirFlags::empty()
+            )
+            .is_ok()
+        );
         assert!(tmp.path().join("ps1").join("ps2").is_dir());
     }
 }

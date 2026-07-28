@@ -1231,6 +1231,7 @@ pub fn hwdb_should_reload(last_modified: Option<SystemTime>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
     use std::io::Cursor;
 
     // ── Trie basics ───────────────────────────────────────────────────
@@ -1587,16 +1588,17 @@ usb:v046DpC312d*
 
     #[test]
     fn test_hwdb_bypass_env() {
-        env::remove_var(HWDB_BYPASS_ENV);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(HWDB_BYPASS_ENV);
         assert!(!hwdb_bypass());
 
-        env::set_var(HWDB_BYPASS_ENV, "0");
+        environment.set(HWDB_BYPASS_ENV, "0");
         assert!(hwdb_bypass());
 
-        env::set_var(HWDB_BYPASS_ENV, "1");
+        environment.set(HWDB_BYPASS_ENV, "1");
         assert!(!hwdb_bypass());
-
-        env::remove_var(HWDB_BYPASS_ENV);
     }
 
     #[test]

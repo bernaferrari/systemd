@@ -20,15 +20,15 @@ mod tests {
         rs_parse_sec, rs_parse_sec_def_infinity, rs_parse_sec_fix_0, rs_parse_time,
     };
     use super::types::{
-        DualTimestamp, LibcTimespec, LibcTimeval, TripleTimestamp, CLOCK_BOOTTIME,
-        CLOCK_BOOTTIME_ALARM, CLOCK_MONOTONIC, CLOCK_REALTIME, CLOCK_REALTIME_ALARM, NSEC_INFINITY,
-        NSEC_PER_SEC, USEC_INFINITY, USEC_PER_DAY, USEC_PER_HOUR, USEC_PER_MINUTE, USEC_PER_MONTH,
-        USEC_PER_MSEC, USEC_PER_SEC, USEC_PER_WEEK, USEC_PER_YEAR,
+        CLOCK_BOOTTIME, CLOCK_BOOTTIME_ALARM, CLOCK_MONOTONIC, CLOCK_REALTIME,
+        CLOCK_REALTIME_ALARM, DualTimestamp, LibcTimespec, LibcTimeval, NSEC_INFINITY,
+        NSEC_PER_SEC, TripleTimestamp, USEC_INFINITY, USEC_PER_DAY, USEC_PER_HOUR, USEC_PER_MINUTE,
+        USEC_PER_MONTH, USEC_PER_MSEC, USEC_PER_SEC, USEC_PER_WEEK, USEC_PER_YEAR,
     };
     use libc::c_char;
 
     use crate::ffi::Errno;
-    use std::ffi::{c_long, CStr, CString};
+    use std::ffi::{CStr, CString, c_long};
 
     // ── rs_map_clock_usec_raw ───────────────────────────────────────────────
 

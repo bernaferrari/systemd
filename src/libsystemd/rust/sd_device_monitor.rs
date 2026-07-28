@@ -598,9 +598,10 @@ mod tests {
         m.borrow_mut().filter_update().unwrap();
 
         let sysattrs = HashMap::new();
-        assert!(m
-            .borrow()
-            .matches("net", None, &["uaccess", "seat"], &sysattrs, None));
+        assert!(
+            m.borrow()
+                .matches("net", None, &["uaccess", "seat"], &sysattrs, None)
+        );
         assert!(!m.borrow().matches("net", None, &["seat"], &sysattrs, None));
     }
 
@@ -629,12 +630,14 @@ mod tests {
         m.borrow_mut().filter_update().unwrap();
 
         let sysattrs = HashMap::new();
-        assert!(m
-            .borrow()
-            .matches("net", None, &[], &sysattrs, Some("/sys/devices/pci0000:00"),));
-        assert!(!m
-            .borrow()
-            .matches("net", None, &[], &sysattrs, Some("/sys/devices/other")));
+        assert!(
+            m.borrow()
+                .matches("net", None, &[], &sysattrs, Some("/sys/devices/pci0000:00"),)
+        );
+        assert!(
+            !m.borrow()
+                .matches("net", None, &[], &sysattrs, Some("/sys/devices/other"))
+        );
     }
 
     #[test]

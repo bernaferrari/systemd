@@ -258,11 +258,7 @@ pub fn bus_property_get_activation_details(
 }
 
 fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
-    }
+    if value { "yes" } else { "no" }
 }
 
 fn shell_escape_colon(value: &str) -> String {

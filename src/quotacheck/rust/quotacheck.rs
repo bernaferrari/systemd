@@ -5,7 +5,6 @@
 // Shadow port of src/quotacheck/quotacheck.c.
 // Runs quotacheck on filesystems after fsck detected errors.
 
-
 pub type Result<T> = std::result::Result<T, Errno>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

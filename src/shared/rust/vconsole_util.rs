@@ -455,6 +455,7 @@ pub fn vconsole_serialize(vc: &VCContext, xc: &X11Context) -> Vec<(String, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
 
     #[test]
     fn startswith_comma_basic() {
@@ -772,20 +773,21 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn find_language_fallback_with_test_map() {
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
         let dir = std::env::temp_dir().join("vconsole_test_lang");
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("lang.map");
         fs::write(&path, "pt_BR br-abnt2\nen_US us\n").unwrap();
 
-        std::env::set_var("SYSTEMD_LANGUAGE_FALLBACK_MAP", &path);
+        environment.set("SYSTEMD_LANGUAGE_FALLBACK_MAP", &path);
         assert_eq!(
             find_language_fallback("pt_BR"),
             Some("br-abnt2".to_string())
         );
         assert_eq!(find_language_fallback("en_US"), Some("us".to_string()));
         assert_eq!(find_language_fallback("xx_YY"), None);
-        std::env::remove_var("SYSTEMD_LANGUAGE_FALLBACK_MAP");
-
         fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -2,7 +2,7 @@
 publish = false
 name = "systemd-home"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "LGPL-2.1-or-later"
 description = "Rust port of systemd/src/home/"
 
@@ -11,13 +11,9 @@ path = "lib.rs"
 
 [dependencies]
 systemd-shared-rs = { path = "../../shared/rust" }
-bitflags = "2"
-nix = { workspace = true }
+bitflags = { workspace = true }
 systemd-platform-rs = { path = "../../platform/rust" }
 systemd-event-loop-rs = { path = "../../event-loop/rust" }
-
-[dev-dependencies]
-tempfile = "3"
 
 [[bin]]
 name = "systemd-homed"

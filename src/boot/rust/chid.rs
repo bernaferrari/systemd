@@ -181,11 +181,7 @@ pub fn smbios_info_populate(raw: &RawSmbiosInfo) -> SmbiosInfo {
 
     let hash_or_none = |s: Option<&str>| -> Option<String> {
         let h = smbios_to_hashable_string(s);
-        if h.is_empty() {
-            None
-        } else {
-            Some(h)
-        }
+        if h.is_empty() { None } else { Some(h) }
     };
 
     info.fields[CHID_SMBIOS_MANUFACTURER] = hash_or_none(raw.manufacturer.as_deref());

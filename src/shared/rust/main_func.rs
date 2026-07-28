@@ -167,11 +167,7 @@ pub const fn exit_failure_if_negative(result: i32) -> i32 {
 /// **Note:** "positive means failure" in the systemd convention.
 #[inline]
 pub const fn exit_failure_if_nonzero(result: i32) -> i32 {
-    if result < 0 {
-        EXIT_FAILURE
-    } else {
-        result
-    }
+    if result < 0 { EXIT_FAILURE } else { result }
 }
 
 // ── Accessors ────────────────────────────────────────────────────────────

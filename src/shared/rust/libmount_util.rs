@@ -6,7 +6,7 @@
 // mnt_table_find_target, mnt_table_next_fs, mount info from /proc/self/mountinfo.
 
 use crate::ffi::*;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};

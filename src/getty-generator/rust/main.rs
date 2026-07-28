@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-getty-generator
 
-use systemd_getty_generator_rs::getty_generator::{build_unit_name, valid_tty_name, GettyKind};
+use systemd_getty_generator_rs::getty_generator::{GettyKind, build_unit_name, valid_tty_name};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PROC_CMDLINE_PATH: &str = "/proc/cmdline";

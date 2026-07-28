@@ -212,11 +212,7 @@ impl CGroupForest {
 
 /// Convert an empty string to "/" (root cgroup), otherwise return the path unchanged.
 pub fn empty_to_root(path: &str) -> &str {
-    if path.is_empty() {
-        "/"
-    } else {
-        path
-    }
+    if path.is_empty() { "/" } else { path }
 }
 
 /// Compute the number of decimal digits needed to display `value`.

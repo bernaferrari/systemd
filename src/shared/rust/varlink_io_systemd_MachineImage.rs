@@ -382,12 +382,16 @@ mod tests {
     #[test]
     fn test_error_ids() {
         assert_eq!(ERROR_IDS.len(), 3);
-        assert!(MachineImageError::NoSuchImage
-            .error_id()
-            .contains("NoSuchImage"));
-        assert!(MachineImageError::TooManyOperations
-            .error_id()
-            .contains("TooManyOperations"));
+        assert!(
+            MachineImageError::NoSuchImage
+                .error_id()
+                .contains("NoSuchImage")
+        );
+        assert!(
+            MachineImageError::TooManyOperations
+                .error_id()
+                .contains("TooManyOperations")
+        );
     }
 
     #[test]

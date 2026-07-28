@@ -57,11 +57,7 @@ pub fn ifindex_to_scopeid(family: i32, address: &[u8], ifindex: i32) -> u32 {
     }
 
     let is_link_local = address[0] == 0xfe && (address[1] & 0xc0) == 0x80;
-    if is_link_local {
-        ifindex as u32
-    } else {
-        0
-    }
+    if is_link_local { ifindex as u32 } else { 0 }
 }
 
 fn query_flag(value: Option<bool>, flag: u64) -> u64 {

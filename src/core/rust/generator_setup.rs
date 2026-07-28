@@ -161,16 +161,20 @@ mod tests {
 
         assert_eq!(report.touched_paths.len(), 3);
         assert!(paths.generator.as_ref().expect("generator").is_dir());
-        assert!(paths
-            .generator_early
-            .as_ref()
-            .expect("generator_early")
-            .is_dir());
-        assert!(paths
-            .generator_late
-            .as_ref()
-            .expect("generator_late")
-            .is_dir());
+        assert!(
+            paths
+                .generator_early
+                .as_ref()
+                .expect("generator_early")
+                .is_dir()
+        );
+        assert!(
+            paths
+                .generator_late
+                .as_ref()
+                .expect("generator_late")
+                .is_dir()
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -189,11 +193,13 @@ mod tests {
             _ => panic!("unexpected error kind"),
         }
         assert!(paths.generator.as_ref().expect("generator").is_dir());
-        assert!(paths
-            .generator_late
-            .as_ref()
-            .expect("generator_late")
-            .is_dir());
+        assert!(
+            paths
+                .generator_late
+                .as_ref()
+                .expect("generator_late")
+                .is_dir()
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -207,16 +213,20 @@ mod tests {
 
         assert_eq!(report.touched_paths.len(), 3);
         assert!(!paths.generator.as_ref().expect("generator").exists());
-        assert!(!paths
-            .generator_early
-            .as_ref()
-            .expect("generator_early")
-            .exists());
-        assert!(!paths
-            .generator_late
-            .as_ref()
-            .expect("generator_late")
-            .exists());
+        assert!(
+            !paths
+                .generator_early
+                .as_ref()
+                .expect("generator_early")
+                .exists()
+        );
+        assert!(
+            !paths
+                .generator_late
+                .as_ref()
+                .expect("generator_late")
+                .exists()
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -238,16 +248,20 @@ mod tests {
         let _ = lookup_paths_trim_generator(&paths).expect("infallible");
 
         assert!(paths.generator.as_ref().expect("generator").exists());
-        assert!(!paths
-            .generator_early
-            .as_ref()
-            .expect("generator_early")
-            .exists());
-        assert!(!paths
-            .generator_late
-            .as_ref()
-            .expect("generator_late")
-            .exists());
+        assert!(
+            !paths
+                .generator_early
+                .as_ref()
+                .expect("generator_early")
+                .exists()
+        );
+        assert!(
+            !paths
+                .generator_late
+                .as_ref()
+                .expect("generator_late")
+                .exists()
+        );
         let _ = fs::remove_dir_all(root);
     }
 

@@ -5,8 +5,8 @@
 //           src/basic/compress.c,src/basic/compress.h,src/basic/socket-util.c,
 //           src/basic/socket-util.h,src/shared/output-mode.c,src/shared/output-mode.h
 
-use crate::ffi::{malloc, Errno};
-use std::ffi::{c_char, c_void, CStr};
+use crate::ffi::{Errno, malloc};
+use std::ffi::{CStr, c_char, c_void};
 use std::ptr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

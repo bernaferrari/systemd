@@ -15,7 +15,7 @@ use std::ptr;
 
 use crate::mkdir_label::mkdir_parents_label;
 use crate::selinux_util::{mac_selinux_create_socket_clear, mac_selinux_create_socket_prepare};
-use crate::smack_util::{mac_smack_apply, mac_smack_apply_fd, SmackAttr};
+use crate::smack_util::{SmackAttr, mac_smack_apply, mac_smack_apply_fd};
 
 pub const SOURCE_C_FILE: &str = "src/shared/socket-label.c";
 pub const EXPORTED_SYMBOLS: &[&str] = &[
@@ -656,7 +656,7 @@ fn socket_set_freebind(fd: RawFd, family: i32, enabled: bool) -> Result<()> {
             _ => {
                 return Err(SocketLabelError::Unsupported(
                     "freebind requires AF_INET/AF_INET6",
-                ))
+                ));
             }
         };
 

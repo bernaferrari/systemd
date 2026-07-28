@@ -59,17 +59,29 @@ fn send_datagram(payload: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-/// Send a notification via the sd_notify protocol.
-/// Returns `Ok(true)` if sent, `Ok(false)` if `NOTIFY_SOCKET` is not set.
-pub fn sd_notify(unset_environment: bool, state: &str) -> io::Result<bool> {
-    if unset_environment {
-        env::remove_var("NOTIFY_SOCKET");
-    }
+/// Send a notification without changing the process environment.
+pub fn sd_notify_preserve_environment(state: &str) -> io::Result<bool> {
     match send_datagram(state.as_bytes()) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(e),
     }
+}
+
+/// Send a notification via the sd_notify protocol.
+/// Returns `Ok(true)` if sent, `Ok(false)` if `NOTIFY_SOCKET` is not set.
+///
+/// # Safety
+///
+/// When `unset_environment` is true, the caller must ensure that no other
+/// thread reads or mutates the process environment until this function returns.
+pub unsafe fn sd_notify(unset_environment: bool, state: &str) -> io::Result<bool> {
+    let result = sd_notify_preserve_environment(state);
+    if unset_environment {
+        // SAFETY: required by this function's contract when unsetting.
+        unsafe { env::remove_var("NOTIFY_SOCKET") };
+    }
+    result
 }
 
 // ── FD store operations ───────────────────────────────────────────────────
@@ -133,7 +145,7 @@ pub fn notify_reloading_full(status: Option<&str>) -> io::Result<()> {
 /// Send a start notification and return the stop message for deferred sending.
 pub fn notify_start<'a>(start: Option<&str>, stop: Option<&'a str>) -> Option<&'a str> {
     if let Some(msg) = start {
-        let _ = sd_notify(false, msg);
+        let _ = sd_notify_preserve_environment(msg);
     }
     stop
 }
@@ -219,6 +231,7 @@ impl Drop for CloseGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
 
     #[test]
     fn test_notify_ready_message() {
@@ -349,14 +362,41 @@ mod tests {
 
     #[test]
     fn test_sd_notify_no_socket() {
-        let r = sd_notify(false, "READY=1");
+        let r = sd_notify_preserve_environment("READY=1");
         assert_eq!(r.unwrap(), false);
     }
 
     #[test]
     fn test_sd_notify_unset_env_no_socket() {
-        env::remove_var("NOTIFY_SOCKET");
-        let r = sd_notify(true, "READY=1");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove("NOTIFY_SOCKET");
+        // SAFETY: TestEnvironment serializes process-environment mutation for
+        // the full duration of this test.
+        let r = unsafe { sd_notify(true, "READY=1") };
         assert_eq!(r.unwrap(), false);
+    }
+
+    #[test]
+    fn test_sd_notify_sends_before_unsetting_environment() {
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        let socket_path =
+            std::env::temp_dir().join(format!("systemd-daemon-util-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket_path);
+        let socket = UnixDatagram::bind(&socket_path).unwrap();
+        environment.set("NOTIFY_SOCKET", &socket_path);
+
+        // SAFETY: TestEnvironment serializes process-environment mutation for
+        // the full duration of this test.
+        assert!(unsafe { sd_notify(true, "READY=1") }.unwrap());
+        assert!(env::var_os("NOTIFY_SOCKET").is_none());
+
+        let mut message = [0u8; 16];
+        let size = socket.recv(&mut message).unwrap();
+        assert_eq!(&message[..size], b"READY=1");
+        let _ = std::fs::remove_file(socket_path);
     }
 }

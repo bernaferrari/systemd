@@ -8,44 +8,28 @@
 /// PORT-SYNC: mirrors log2u64() / LOG2ULL()
 #[inline]
 pub fn log2u64(x: u64) -> u32 {
-    if x <= 1 {
-        0
-    } else {
-        63 - x.leading_zeros()
-    }
+    if x <= 1 { 0 } else { 63 - x.leading_zeros() }
 }
 
 /// log2 for u32. Returns 0 for x <= 1.
 /// PORT-SYNC: mirrors log2u() / LOG2U()
 #[inline]
 pub fn log2u(x: u32) -> u32 {
-    if x <= 1 {
-        0
-    } else {
-        31 - x.leading_zeros()
-    }
+    if x <= 1 { 0 } else { 31 - x.leading_zeros() }
 }
 
 /// log2 rounded up. Returns ceil(log2(x)).
 /// PORT-SYNC: mirrors log2u_round_up()
 #[inline]
 pub fn log2u_round_up(x: u32) -> u32 {
-    if x <= 1 {
-        0
-    } else {
-        log2u(x - 1) + 1
-    }
+    if x <= 1 { 0 } else { log2u(x - 1) + 1 }
 }
 
 /// Count trailing zeros for u32. Returns 32 for x == 0.
 /// PORT-SYNC: mirrors u32ctz()
 #[inline]
 pub fn u32ctz(n: u32) -> u32 {
-    if n == 0 {
-        32
-    } else {
-        n.trailing_zeros()
-    }
+    if n == 0 { 32 } else { n.trailing_zeros() }
 }
 
 /// Population count (number of set bits).

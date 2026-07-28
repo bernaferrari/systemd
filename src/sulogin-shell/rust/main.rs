@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-sulogin-shell
 
-use systemd_sulogin_shell_rs::{build_sulogin_cmdline, determine_target, SPECIAL_DEFAULT_TARGET};
+use systemd_sulogin_shell_rs::{SPECIAL_DEFAULT_TARGET, build_sulogin_cmdline, determine_target};
 
 fn print_help() {
     eprintln!("Usage: systemd-sulogin-shell [emergency|rescue]");

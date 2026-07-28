@@ -21,7 +21,7 @@ use std::io;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 
 #[cfg(target_os = "linux")]
-use nix::fcntl::{fcntl, splice, FcntlArg, OFlag, SpliceFFlags};
+use nix::fcntl::{FcntlArg, OFlag, SpliceFFlags, fcntl, splice};
 #[cfg(target_os = "linux")]
 use nix::unistd::{close, pipe2};
 
@@ -221,8 +221,8 @@ impl PipeBuffer {
             .map_err(|errno| SocketForwardError::Io(io::Error::from_raw_os_error(errno as i32)))?;
 
         // Best-effort: increase pipe buffer size (kernel may clamp or ignore).
-        let _ = fcntl(read.as_raw_fd(), FcntlArg::F_SETPIPE_SZ(requested_size));
-        let size = fcntl(read.as_raw_fd(), FcntlArg::F_GETPIPE_SZ)
+        let _ = fcntl(read.as_fd(), FcntlArg::F_SETPIPE_SZ(requested_size));
+        let size = fcntl(read.as_fd(), FcntlArg::F_GETPIPE_SZ)
             .map_err(|errno| SocketForwardError::Syscall(errno as i32))?;
         if size <= 0 {
             return Err(SocketForwardError::Syscall(libc::EINVAL));
@@ -459,9 +459,9 @@ impl SocketForward {
         if let Some(source_fd) = source_fd {
             if dest_fd.is_some() && state.has_capacity(capacity) {
                 match splice(
-                    source_fd.as_raw_fd(),
+                    source_fd,
                     None,
-                    pipe_write.as_raw_fd(),
+                    pipe_write,
                     None,
                     capacity - state.buffered,
                     SpliceFFlags::SPLICE_F_MOVE | SpliceFFlags::SPLICE_F_NONBLOCK,
@@ -486,9 +486,9 @@ impl SocketForward {
         if !state.is_empty() {
             if let Some(dest_fd) = dest_fd {
                 match splice(
-                    pipe_read.as_raw_fd(),
+                    pipe_read,
                     None,
-                    dest_fd.as_raw_fd(),
+                    dest_fd,
                     None,
                     state.buffered,
                     SpliceFFlags::SPLICE_F_MOVE | SpliceFFlags::SPLICE_F_NONBLOCK,
@@ -894,6 +894,7 @@ pub fn close_listen_fds(count: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
     use std::error::Error;
 
     // ── Constants ──
@@ -1234,35 +1235,44 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn test_listen_fds_count_unset() {
-        std::env::remove_var(LISTEN_FDS_ENV);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(LISTEN_FDS_ENV);
         assert_eq!(listen_fds_count(), 0);
     }
 
     #[cfg(target_os = "linux")]
     #[test]
     fn test_listen_fds_count_invalid() {
-        std::env::set_var(LISTEN_FDS_ENV, "not_a_number");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(LISTEN_FDS_ENV, "not_a_number");
         assert_eq!(listen_fds_count(), 0);
-        std::env::remove_var(LISTEN_FDS_ENV);
     }
 
     #[cfg(target_os = "linux")]
     #[test]
     fn test_listen_fds_count_valid() {
-        std::env::set_var(LISTEN_FDS_ENV, "5");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(LISTEN_FDS_ENV, "5");
         assert_eq!(listen_fds_count(), 5);
-        std::env::remove_var(LISTEN_FDS_ENV);
     }
 
     #[cfg(target_os = "linux")]
     #[test]
     fn test_is_socket_activated() {
-        std::env::remove_var(LISTEN_FDS_ENV);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(LISTEN_FDS_ENV);
         assert!(!is_socket_activated());
 
-        std::env::set_var(LISTEN_FDS_ENV, "3");
+        environment.set(LISTEN_FDS_ENV, "3");
         assert!(is_socket_activated());
-        std::env::remove_var(LISTEN_FDS_ENV);
     }
 
     #[test]

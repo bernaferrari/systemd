@@ -351,15 +351,21 @@ mod tests {
 
     #[test]
     fn test_error_ids() {
-        assert!(InstanceMetadataError::KeyNotFound
-            .error_id()
-            .contains("KeyNotFound"));
-        assert!(InstanceMetadataError::Timeout
-            .error_id()
-            .contains("Timeout"));
-        assert!(InstanceMetadataError::CommunicationFailure
-            .error_id()
-            .contains("CommunicationFailure"));
+        assert!(
+            InstanceMetadataError::KeyNotFound
+                .error_id()
+                .contains("KeyNotFound")
+        );
+        assert!(
+            InstanceMetadataError::Timeout
+                .error_id()
+                .contains("Timeout")
+        );
+        assert!(
+            InstanceMetadataError::CommunicationFailure
+                .error_id()
+                .contains("CommunicationFailure")
+        );
         assert_eq!(ERROR_IDS.len(), 6);
     }
 

@@ -536,11 +536,15 @@ mod tests {
     #[test]
     fn test_error_ids() {
         assert_eq!(ERROR_IDS.len(), 7);
-        assert!(MountFileSystemError::IncompatibleImage
-            .error_id()
-            .contains("IncompatibleImage"));
-        assert!(MountFileSystemError::VerityFailure
-            .error_id()
-            .contains("VerityFailure"));
+        assert!(
+            MountFileSystemError::IncompatibleImage
+                .error_id()
+                .contains("IncompatibleImage")
+        );
+        assert!(
+            MountFileSystemError::VerityFailure
+                .error_id()
+                .contains("VerityFailure")
+        );
     }
 }

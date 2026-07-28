@@ -448,9 +448,11 @@ mod tests {
             remote: "http://example.com".into(),
         };
         assert!(err.error_id().ends_with("AlreadyInProgress"));
-        assert!(ImportError::TransferCancelled
-            .error_id()
-            .contains("TransferCancelled"));
+        assert!(
+            ImportError::TransferCancelled
+                .error_id()
+                .contains("TransferCancelled")
+        );
         assert!(ImportError::NoTransfers.error_id().contains("NoTransfers"));
     }
 

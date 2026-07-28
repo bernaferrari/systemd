@@ -443,8 +443,12 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+      - name: Verify Rust safety gate fixtures
+        run: python3 tools/rust-port/test-unsafe-safety-gate.py
       - name: Run SAFETY baseline gate
         run: python3 tools/rust-port/unsafe-safety-gate.py --baseline tools/rust-port/unsafe-safety-baseline.json
+      - name: Verify Rust safety-lint policy fixtures
+        run: python3 tools/rust-port/test-rust-safety-lint-policy-gate.py
       - name: Reject growth in blanket Rust safety-lint allowances
         run: python3 tools/rust-port/rust-safety-lint-policy-gate.py
 
@@ -477,6 +481,8 @@ jobs:
         run: python3 tools/rust-port/test-rust-fixture-catalog.py && python3 tools/rust-port/check-rust-fixture-catalog.py --repo-root .
       - name: Verify Rust workspace layout fixtures
         run: python3 tools/rust-port/test-workspace-architecture-gate.py
+      - name: Reject stale Rust source inventory
+        run: python3 tools/rust-port/test-coverage-dashboard.py && python3 tools/rust-port/coverage-dashboard.py --check docs/rust-port-coverage.md
       - name: Require truthful Rust port ownership metadata
         run: python3 tools/rust-port/sync-metadata-gate.py --repo-root .
       - name: Validate reviewed C-to-Rust behavior contracts

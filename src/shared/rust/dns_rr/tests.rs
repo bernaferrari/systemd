@@ -2,8 +2,8 @@
 
 use super::*;
 use std::cmp::Ordering;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 
@@ -27,9 +27,11 @@ fn key_matching_helpers_work() {
     assert!(key.is_dnssd_ptr());
     assert!(key.is_dnssd_two_label_ptr());
     assert_eq!(dns_name_count_labels(&key.name), 3);
-    assert!(!DnsResourceKey::new(1, DnsType::A as u16, "host.local")
-        .unwrap()
-        .is_dnssd_ptr());
+    assert!(
+        !DnsResourceKey::new(1, DnsType::A as u16, "host.local")
+            .unwrap()
+            .is_dnssd_ptr()
+    );
 }
 
 #[test]

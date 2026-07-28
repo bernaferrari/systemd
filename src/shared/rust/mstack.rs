@@ -1211,15 +1211,18 @@ mod tests {
         m2.sort_key = Some("01-overlay".to_string());
         s.mounts.push(m2);
 
-        assert!(s
-            .find_by(MStackMountType::Layer, Some("00-base"), None)
-            .is_some());
-        assert!(s
-            .find_by(MStackMountType::Layer, Some("01-overlay"), None)
-            .is_some());
-        assert!(s
-            .find_by(MStackMountType::Layer, Some("02-missing"), None)
-            .is_none());
+        assert!(
+            s.find_by(MStackMountType::Layer, Some("00-base"), None)
+                .is_some()
+        );
+        assert!(
+            s.find_by(MStackMountType::Layer, Some("01-overlay"), None)
+                .is_some()
+        );
+        assert!(
+            s.find_by(MStackMountType::Layer, Some("02-missing"), None)
+                .is_none()
+        );
     }
 
     #[test]
@@ -1232,12 +1235,14 @@ mod tests {
         m2.where_path = Some("/etc".to_string());
         s.mounts.push(m2);
 
-        assert!(s
-            .find_by(MStackMountType::Bind, None, Some("/usr"))
-            .is_some());
-        assert!(s
-            .find_by(MStackMountType::Bind, None, Some("/var"))
-            .is_none());
+        assert!(
+            s.find_by(MStackMountType::Bind, None, Some("/usr"))
+                .is_some()
+        );
+        assert!(
+            s.find_by(MStackMountType::Bind, None, Some("/var"))
+                .is_none()
+        );
     }
 
     #[test]

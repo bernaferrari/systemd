@@ -89,18 +89,10 @@ pub fn expose_port_execute(
     }
 }
 pub fn expose_port_send_rtnl(fd: i32) -> Result<i32, Errno> {
-    if fd < 0 {
-        Err(Errno::new(-22))
-    } else {
-        Ok(fd)
-    }
+    if fd < 0 { Err(Errno::new(-22)) } else { Ok(fd) }
 }
 pub fn expose_port_watch_rtnl(fd: i32) -> Result<i32, Errno> {
-    if fd < 0 {
-        Err(Errno::new(-22))
-    } else {
-        Ok(fd)
-    }
+    if fd < 0 { Err(Errno::new(-22)) } else { Ok(fd) }
 }
 
 #[cfg(test)]

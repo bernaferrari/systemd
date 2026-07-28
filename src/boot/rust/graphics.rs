@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn test_graphics_mode_already_in_desired_mode() {
         let mut state = ConsoleState::new(); // starts in Text mode
-                                             // Requesting text mode when already in text mode → no-op
+        // Requesting text mode when already in text mode → no-op
         assert!(graphics_mode(false, &mut state).is_ok());
         assert!(!state.was_set_mode_called());
 
@@ -308,15 +308,21 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        assert!(GraphicsModeError::ProtocolNotFound
-            .to_string()
-            .contains("not found"));
-        assert!(GraphicsModeError::GetModeFailed
-            .to_string()
-            .contains("get current"));
-        assert!(GraphicsModeError::SetModeFailed
-            .to_string()
-            .contains("set console"));
+        assert!(
+            GraphicsModeError::ProtocolNotFound
+                .to_string()
+                .contains("not found")
+        );
+        assert!(
+            GraphicsModeError::GetModeFailed
+                .to_string()
+                .contains("get current")
+        );
+        assert!(
+            GraphicsModeError::SetModeFailed
+                .to_string()
+                .contains("set console")
+        );
         assert!(GraphicsModeError::Unexpected(42).to_string().contains("42"));
     }
 

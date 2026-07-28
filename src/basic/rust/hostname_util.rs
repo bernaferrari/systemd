@@ -53,11 +53,7 @@ fn ascii_isdigit(c: u8) -> bool {
 /// Case-insensitive ASCII comparison.
 #[inline]
 fn ascii_tolower(c: u8) -> u8 {
-    if c >= b'A' && c <= b'Z' {
-        c + 32
-    } else {
-        c
-    }
+    if c >= b'A' && c <= b'Z' { c + 32 } else { c }
 }
 
 /// Case-insensitive string equality.

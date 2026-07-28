@@ -402,11 +402,7 @@ pub fn sd_login_monitor_get_fd(monitor: &LoginMonitor) -> Result<i32> {
 }
 
 pub fn sd_login_monitor_get_events(monitor: &LoginMonitor) -> libc::c_short {
-    if monitor.closed {
-        0
-    } else {
-        monitor.events
-    }
+    if monitor.closed { 0 } else { monitor.events }
 }
 
 pub fn sd_login_monitor_get_timeout(monitor: &LoginMonitor) -> Result<u64> {

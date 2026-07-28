@@ -584,9 +584,11 @@ mod tests {
             on_disk.iter().map(|p| (p.nr, p.clone())).collect();
 
         let changes = compute_partition_diff(&on_disk, &kernel);
-        assert!(changes
-            .iter()
-            .all(|c| matches!(c, PartitionChange::Unchanged)));
+        assert!(
+            changes
+                .iter()
+                .all(|c| matches!(c, PartitionChange::Unchanged))
+        );
     }
 
     #[test]
@@ -597,9 +599,11 @@ mod tests {
 
         let changes = compute_partition_diff(&on_disk, &kernel);
         assert!(changes.iter().any(|c| matches!(c, PartitionChange::Add(_))));
-        assert!(changes
-            .iter()
-            .any(|c| matches!(c, PartitionChange::Remove { nr: 2 })));
+        assert!(
+            changes
+                .iter()
+                .any(|c| matches!(c, PartitionChange::Remove { nr: 2 }))
+        );
     }
 
     #[test]
@@ -609,9 +613,11 @@ mod tests {
         kernel.insert(1, PartitionInfo::from_sectors(1, 2048, 1024000));
 
         let changes = compute_partition_diff(&on_disk, &kernel);
-        assert!(changes
-            .iter()
-            .any(|c| matches!(c, PartitionChange::Resize(_))));
+        assert!(
+            changes
+                .iter()
+                .any(|c| matches!(c, PartitionChange::Resize(_)))
+        );
     }
 
     #[test]
@@ -621,9 +627,11 @@ mod tests {
         kernel.insert(1, PartitionInfo::from_sectors(1, 2048, 1024000));
 
         let changes = compute_partition_diff(&on_disk, &kernel);
-        assert!(changes
-            .iter()
-            .any(|c| matches!(c, PartitionChange::Recreate(_))));
+        assert!(
+            changes
+                .iter()
+                .any(|c| matches!(c, PartitionChange::Recreate(_)))
+        );
     }
 
     #[test]
@@ -643,9 +651,11 @@ mod tests {
 
         let changes = compute_partition_diff(&on_disk, &kernel);
         assert_eq!(changes.len(), 2);
-        assert!(changes
-            .iter()
-            .all(|c| matches!(c, PartitionChange::Remove { .. })));
+        assert!(
+            changes
+                .iter()
+                .all(|c| matches!(c, PartitionChange::Remove { .. }))
+        );
     }
 
     // ── diff_requires_changes ─────────────────────────────────────────

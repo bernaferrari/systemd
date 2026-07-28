@@ -14,10 +14,10 @@ use std::{ffi::CStr, fmt::Write as FmtWrite};
 use systemd_basic_rs::{
     capability_list::capability_to_string,
     capability_util::CAP_LIMIT,
-    mountpoint_util::{mount_propagation_flag_to_string, MountPropagationFlag},
+    mountpoint_util::{MountPropagationFlag, mount_propagation_flag_to_string},
 };
 
-use crate::nsflags::{namespace_flags_to_string, NamespaceFlags, NAMESPACE_FLAGS_ALL};
+use crate::nsflags::{NAMESPACE_FLAGS_ALL, NamespaceFlags, namespace_flags_to_string};
 
 // ── Flags ──────────────────────────────────────────────────────────────────
 
@@ -720,11 +720,7 @@ pub fn format_timespan(usec: u64) -> String {
 
 /// Convert a boolean to "yes" / "no" (systemd convention).
 pub fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
-    }
+    if value { "yes" } else { "no" }
 }
 
 /// Parse a string as a boolean in systemd convention.
@@ -948,9 +944,11 @@ mod tests {
             BusPrintPropertyFlags::empty(),
             1_700_000_000_000_000,
         );
-        assert!(result
-            .as_deref()
-            .is_some_and(|line| line.starts_with("ExecMainStartTimestamp=")));
+        assert!(
+            result
+                .as_deref()
+                .is_some_and(|line| line.starts_with("ExecMainStartTimestamp="))
+        );
     }
 
     #[test]

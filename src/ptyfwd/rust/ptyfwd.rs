@@ -5,7 +5,6 @@
 // Shadow port of src/ptyfwd/ptyfwd-tool.c.
 // Forwards data between a PTY and an event loop.
 
-
 pub type Result<T> = std::result::Result<T, Errno>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

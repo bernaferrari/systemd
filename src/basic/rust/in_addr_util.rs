@@ -1871,7 +1871,7 @@ pub unsafe fn rs_in_addr_prefix_from_string_auto_full(
  */
 macro_rules! ffi_forward {
     ($symbol:literal, $wrapper:ident, ($($argument:ident : $ty:ty),* $(,)?) -> $result:ty, $implementation:path) => {
-        #[export_name = $symbol]
+        #[unsafe(export_name = $symbol)]
         // SAFETY: the forwarding call has exactly the raw-pointer contract
         // documented for this audited C ABI macro.
         ///

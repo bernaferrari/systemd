@@ -6,11 +6,11 @@
  */
 use std::collections::VecDeque;
 
-use super::{active_state_to_job_state, Result, RuntimeManager};
+use super::{Result, RuntimeManager, active_state_to_job_state};
 use crate::ffi::Errno;
 use crate::job::{
-    job_compare, job_install, job_type_is_conflicting, InstallDisposition, Job, JobId,
-    UnitDependencyAtom,
+    InstallDisposition, Job, JobId, UnitDependencyAtom, job_compare, job_install,
+    job_type_is_conflicting,
 };
 use crate::job_tables::{
     JobResult as CanonicalJobResult, JobState as CanonicalJobState, JobType as CanonicalJobType,

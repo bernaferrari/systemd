@@ -5,13 +5,13 @@
 #![allow(dead_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-pub mod ffi;
 #[path = "ata_id/ata_id.rs"]
 pub mod ata_id_ata_id;
 #[path = "cdrom_id/cdrom_id.rs"]
 pub mod cdrom_id_cdrom_id;
 #[path = "dmi_memory_id/dmi_memory_id.rs"]
 pub mod dmi_memory_id_dmi_memory_id;
+pub mod ffi;
 #[path = "fido_id/fido_id.rs"]
 pub mod fido_id_fido_id;
 #[path = "fido_id/fido_id_desc.rs"]
@@ -54,6 +54,8 @@ pub mod test_udev_rule_runner;
 pub mod test_udev_rules;
 #[path = "test-udev-spawn.rs"]
 pub mod test_udev_spawn;
+#[path = "udev-builtin.rs"]
+pub mod udev_builtin;
 #[path = "udev-builtin-blkid.rs"]
 pub mod udev_builtin_blkid;
 #[path = "udev-builtin-btrfs.rs"]
@@ -84,14 +86,12 @@ pub mod udev_builtin_tpm2_id;
 pub mod udev_builtin_uaccess;
 #[path = "udev-builtin-usb_id.rs"]
 pub mod udev_builtin_usb_id;
-#[path = "udev-builtin.rs"]
-pub mod udev_builtin;
-#[path = "udev-db-monitor.rs"]
-pub mod udev_db_monitor;
 #[path = "udev-config.rs"]
 pub mod udev_config;
 #[path = "udev-ctrl.rs"]
 pub mod udev_ctrl;
+#[path = "udev-db-monitor.rs"]
+pub mod udev_db_monitor;
 #[path = "udev-dump.rs"]
 pub mod udev_dump;
 #[path = "udev-error.rs"]
@@ -100,16 +100,16 @@ pub mod udev_error;
 pub mod udev_event;
 #[path = "udev-format.rs"]
 pub mod udev_format;
-#[path = "udev-manager-ctrl.rs"]
-pub mod udev_manager_ctrl;
 #[path = "udev-manager.rs"]
 pub mod udev_manager;
+#[path = "udev-manager-ctrl.rs"]
+pub mod udev_manager_ctrl;
 #[path = "udev-node.rs"]
 pub mod udev_node;
-#[path = "udev-rules.rs"]
-pub mod udev_rules;
 #[path = "udev-rule-engine.rs"]
 pub mod udev_rule_engine;
+#[path = "udev-rules.rs"]
+pub mod udev_rules;
 #[path = "udev-spawn.rs"]
 pub mod udev_spawn;
 #[path = "udev-varlink.rs"]
@@ -118,8 +118,8 @@ pub mod udev_varlink;
 pub mod udev_watch;
 #[path = "udev-worker.rs"]
 pub mod udev_worker;
-#[path = "uevent-netlink.rs"]
-pub mod uevent_netlink;
+#[path = "udevadm.rs"]
+pub mod udevadm;
 #[path = "udevadm-cat.rs"]
 pub mod udevadm_cat;
 #[path = "udevadm-control.rs"]
@@ -134,10 +134,10 @@ pub mod udevadm_lock;
 pub mod udevadm_monitor;
 #[path = "udevadm-settle.rs"]
 pub mod udevadm_settle;
-#[path = "udevadm-test-builtin.rs"]
-pub mod udevadm_test_builtin;
 #[path = "udevadm-test.rs"]
 pub mod udevadm_test;
+#[path = "udevadm-test-builtin.rs"]
+pub mod udevadm_test_builtin;
 #[path = "udevadm-trigger.rs"]
 pub mod udevadm_trigger;
 #[path = "udevadm-util.rs"]
@@ -146,9 +146,9 @@ pub mod udevadm_util;
 pub mod udevadm_verify;
 #[path = "udevadm-wait.rs"]
 pub mod udevadm_wait;
-#[path = "udevadm.rs"]
-pub mod udevadm;
 #[path = "udevd.rs"]
 pub mod udevd;
+#[path = "uevent-netlink.rs"]
+pub mod uevent_netlink;
 #[path = "v4l_id/v4l_id.rs"]
 pub mod v4l_id_v4l_id;

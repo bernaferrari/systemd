@@ -552,9 +552,13 @@ mod tests {
     }
 
     impl EnvGuard {
-        fn set(key: &'static str, value: &Path) -> Self {
+        // SAFETY: callers must exclude concurrent process-environment access
+        // until the returned guard is dropped.
+        unsafe fn set(key: &'static str, value: &Path) -> Self {
             let previous = env::var_os(key);
-            env::set_var(key, value);
+            // SAFETY: with_temp_cgroup_root holds the test module's environment
+            // lock for this guard's complete lifetime.
+            unsafe { env::set_var(key, value) };
             Self { key, previous }
         }
     }
@@ -562,21 +566,31 @@ mod tests {
     impl Drop for EnvGuard {
         fn drop(&mut self) {
             if let Some(previous) = self.previous.take() {
-                env::set_var(self.key, previous);
+                // SAFETY: the environment lock is still held while this guard
+                // restores the value it changed.
+                unsafe { env::set_var(self.key, previous) };
             } else {
-                env::remove_var(self.key);
+                // SAFETY: the environment lock is still held while this guard
+                // restores the value it changed.
+                unsafe { env::remove_var(self.key) };
             }
         }
     }
 
-    fn with_temp_cgroup_root<T>(f: impl FnOnce(&Path) -> T) -> T {
+    /// # Safety
+    ///
+    /// The caller must ensure that no other thread reads or mutates the process
+    /// environment until the callback returns.
+    unsafe fn with_temp_cgroup_root<T>(f: impl FnOnce(&Path) -> T) -> T {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         let _guard = match LOCK.get_or_init(|| Mutex::new(())).lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
         let root = TempRoot::new();
-        let _env = EnvGuard::set(SYSTEMD_CGROUP_ROOT, root.path());
+        // SAFETY: this function's caller upholds the environment contract for
+        // the complete lifetime of the guard.
+        let _env = unsafe { EnvGuard::set(SYSTEMD_CGROUP_ROOT, root.path()) };
         f(root.path())
     }
 
@@ -593,33 +607,47 @@ mod tests {
     #[test]
     fn test_cgroup_controller_lookup() {
         assert_eq!(CgroupController::from_index(0), Some(CgroupController::Cpu));
-        assert_eq!(CgroupController::from_index(5), Some(CgroupController::Rdma));
+        assert_eq!(
+            CgroupController::from_index(5),
+            Some(CgroupController::Rdma)
+        );
         assert_eq!(CgroupController::from_index(7), None);
-        assert_eq!(CgroupController::from_name("memory"), Some(CgroupController::Memory));
+        assert_eq!(
+            CgroupController::from_name("memory"),
+            Some(CgroupController::Memory)
+        );
         assert_eq!(CgroupController::from_name("bogus"), None);
     }
 
     #[test]
     fn test_cg_get_path_normalizes_and_joins_root() {
-        with_temp_cgroup_root(|root| {
-            let root = fs::canonicalize(root).unwrap();
-            let path = cg_get_path("/foo/./bar//", Some("cgroup.procs")).unwrap();
-            assert_eq!(path, root.join("foo/bar/cgroup.procs"));
-        });
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        unsafe {
+            with_temp_cgroup_root(|root| {
+                let root = fs::canonicalize(root).unwrap();
+                let path = cg_get_path("/foo/./bar//", Some("cgroup.procs")).unwrap();
+                assert_eq!(path, root.join("foo/bar/cgroup.procs"));
+            })
+        };
     }
 
     #[test]
     fn test_cg_get_path_rejects_parent_and_nul() {
-        with_temp_cgroup_root(|_| {
-            assert_eq!(
-                cg_get_path("/foo/../bar", None).unwrap_err().kind(),
-                io::ErrorKind::InvalidInput
-            );
-            assert_eq!(
-                cg_get_path("foo\0bar", None).unwrap_err().kind(),
-                io::ErrorKind::InvalidInput
-            );
-        });
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        unsafe {
+            with_temp_cgroup_root(|_| {
+                assert_eq!(
+                    cg_get_path("/foo/../bar", None).unwrap_err().kind(),
+                    io::ErrorKind::InvalidInput
+                );
+                assert_eq!(
+                    cg_get_path("foo\0bar", None).unwrap_err().kind(),
+                    io::ErrorKind::InvalidInput
+                );
+            })
+        };
     }
 
     #[test]
@@ -642,79 +670,104 @@ mod tests {
 
     #[test]
     fn test_cg_mask_supported_parses_known_controllers() {
-        with_temp_cgroup_root(|root| {
-            fs::write(
-                root.join("cgroup.controllers"),
-                "cpu memory rdma freezer bogus\n",
-            )
-            .unwrap();
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        unsafe {
+            with_temp_cgroup_root(|root| {
+                fs::write(
+                    root.join("cgroup.controllers"),
+                    "cpu memory rdma freezer bogus\n",
+                )
+                .unwrap();
 
-            let mask = cg_mask_supported().unwrap();
-            assert!(mask & CgroupController::Cpu.mask() != 0);
-            assert!(mask & CgroupController::Memory.mask() != 0);
-            assert!(mask & CgroupController::Rdma.mask() != 0);
-            assert!(mask & CgroupController::Freezer.mask() == 0);
-        });
+                let mask = cg_mask_supported().unwrap();
+                assert!(mask & CgroupController::Cpu.mask() != 0);
+                assert!(mask & CgroupController::Memory.mask() != 0);
+                assert!(mask & CgroupController::Rdma.mask() != 0);
+                assert!(mask & CgroupController::Freezer.mask() == 0);
+            })
+        };
     }
 
     #[test]
     fn test_cg_enable_writes_expected_actions() {
-        with_temp_cgroup_root(|root| {
-            fs::create_dir_all(root.join("demo")).unwrap();
-            fs::write(root.join("demo/cgroup.controllers"), "cpu memory rdma\n").unwrap();
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        unsafe {
+            with_temp_cgroup_root(|root| {
+                fs::create_dir_all(root.join("demo")).unwrap();
+                fs::write(root.join("demo/cgroup.controllers"), "cpu memory rdma\n").unwrap();
 
-            let supported = cg_mask_supported_subtree("demo").unwrap();
-            let result = cg_enable(supported, CgroupController::Cpu.mask(), "demo").unwrap();
+                let supported = cg_mask_supported_subtree("demo").unwrap();
+                let result = cg_enable(supported, CgroupController::Cpu.mask(), "demo").unwrap();
 
-            assert_eq!(result, CgroupController::Cpu.mask());
-            let contents = fs::read_to_string(root.join("demo/cgroup.subtree_control")).unwrap();
-            assert_eq!(contents, "+cpu\n-memory\n-rdma\n");
-        });
+                assert_eq!(result, CgroupController::Cpu.mask());
+                let contents =
+                    fs::read_to_string(root.join("demo/cgroup.subtree_control")).unwrap();
+                assert_eq!(contents, "+cpu\n-memory\n-rdma\n");
+            })
+        };
     }
 
     #[test]
     fn test_cgroup_write_rejects_controller_name() {
-        with_temp_cgroup_root(|root| {
-            fs::create_dir_all(root.join("demo")).unwrap();
-            let err = cgroup_write("cpu", "demo", "cgroup.procs", "1");
-            assert_eq!(err.unwrap_err().kind(), io::ErrorKind::InvalidInput);
-        });
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        unsafe {
+            with_temp_cgroup_root(|root| {
+                fs::create_dir_all(root.join("demo")).unwrap();
+                let err = cgroup_write("cpu", "demo", "cgroup.procs", "1");
+                assert_eq!(err.unwrap_err().kind(), io::ErrorKind::InvalidInput);
+            })
+        };
     }
 
     #[test]
     fn test_cg_create_and_attach_writes_pid() {
-        with_temp_cgroup_root(|root| {
-            fs::create_dir_all(root.join("demo")).unwrap();
-            fs::File::create(root.join("demo/cgroup.procs")).unwrap();
-            cg_attach("demo", 42).unwrap();
-            let data = fs::read_to_string(root.join("demo/cgroup.procs")).unwrap();
-            assert_eq!(data, "42\n");
-        });
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        unsafe {
+            with_temp_cgroup_root(|root| {
+                fs::create_dir_all(root.join("demo")).unwrap();
+                fs::File::create(root.join("demo/cgroup.procs")).unwrap();
+                cg_attach("demo", 42).unwrap();
+                let data = fs::read_to_string(root.join("demo/cgroup.procs")).unwrap();
+                assert_eq!(data, "42\n");
+            })
+        };
     }
 
     #[test]
     fn test_cg_migrate_moves_pids() {
-        with_temp_cgroup_root(|root| {
-            fs::create_dir_all(root.join("from")).unwrap();
-            fs::create_dir_all(root.join("to")).unwrap();
-            fs::write(root.join("from/cgroup.procs"), "11\n12\n").unwrap();
-            fs::File::create(root.join("to/cgroup.procs")).unwrap();
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        unsafe {
+            with_temp_cgroup_root(|root| {
+                fs::create_dir_all(root.join("from")).unwrap();
+                fs::create_dir_all(root.join("to")).unwrap();
+                fs::write(root.join("from/cgroup.procs"), "11\n12\n").unwrap();
+                fs::File::create(root.join("to/cgroup.procs")).unwrap();
 
-            let changed = cg_migrate("from", "to", CGroupFlags::empty()).unwrap();
-            assert!(changed);
-            let data = fs::read_to_string(root.join("to/cgroup.procs")).unwrap();
-            assert_eq!(data, "11\n12\n");
-        });
+                let changed = cg_migrate("from", "to", CGroupFlags::empty()).unwrap();
+                assert!(changed);
+                let data = fs::read_to_string(root.join("to/cgroup.procs")).unwrap();
+                assert_eq!(data, "11\n12\n");
+            })
+        };
     }
 
     #[test]
     fn test_cg_trim_removes_empty_subdirs() {
-        with_temp_cgroup_root(|root| {
-            fs::create_dir_all(root.join("parent/child/grandchild")).unwrap();
-            fs::write(root.join("parent/leaf.txt"), "x").unwrap();
-            cg_trim("parent", false).unwrap();
-            assert!(!root.join("parent/child/grandchild").exists());
-            assert!(root.join("parent").exists());
-        });
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        unsafe {
+            with_temp_cgroup_root(|root| {
+                fs::create_dir_all(root.join("parent/child/grandchild")).unwrap();
+                fs::write(root.join("parent/leaf.txt"), "x").unwrap();
+                cg_trim("parent", false).unwrap();
+                assert!(!root.join("parent/child/grandchild").exists());
+                assert!(root.join("parent").exists());
+            })
+        };
     }
 }

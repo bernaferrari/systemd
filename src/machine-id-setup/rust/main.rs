@@ -32,7 +32,7 @@ fn machine_id_path(root: &Option<String>) -> String {
 
 fn generate_machine_id() -> Result<String, String> {
     let mut buf = [0u8; 16];
-    getrandom::getrandom(&mut buf).map_err(|e| format!("random read failed: {}", e))?;
+    getrandom::fill(&mut buf).map_err(|e| format!("random read failed: {}", e))?;
     let hex: String = buf.iter().map(|b| format!("{:02x}", b)).collect();
     Ok(hex)
 }

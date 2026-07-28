@@ -3,8 +3,8 @@
 #![cfg(unix)]
 
 use nix::libc;
-use nix::sys::signal::{kill, Signal};
-use nix::sys::socket::{recvmsg, ControlMessageOwned, MsgFlags, UnixAddr};
+use nix::sys::signal::{Signal, kill};
+use nix::sys::socket::{ControlMessageOwned, MsgFlags, UnixAddr, recvmsg};
 use nix::unistd::Pid;
 use std::fs;
 #[cfg(target_os = "linux")]
@@ -23,8 +23,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use systemd_libsystemd_rs::id128_util::SdId128;
 use systemd_libsystemd_rs::sd_id128_api::{sd_id128_get_machine, sd_id128_randomize};
 use systemd_libsystemd_rs::sd_journal_file::{
-    append_journal_record_unindexed, create_empty_journal_file_at, open_journal_file_at,
-    render_journal_file_as_text, HEADER_COMPATIBLE_TAIL_ENTRY_BOOT_ID, JOURNAL_FILE_SIZE_MIN,
+    HEADER_COMPATIBLE_TAIL_ENTRY_BOOT_ID, JOURNAL_FILE_SIZE_MIN, append_journal_record_unindexed,
+    create_empty_journal_file_at, open_journal_file_at, render_journal_file_as_text,
 };
 
 const RUNTIME_ROOT_ENV: &str = "SYSTEMD_JOURNAL_RUNTIME_ROOT";
@@ -446,13 +446,15 @@ fn live_journald_binary_handles_ingress_and_rotate() {
     assert!(combined.contains("transport=raw"));
     assert!(combined.contains("after-rotate"));
     assert!(root.join("rotated").exists());
-    assert!(fs::read_dir(&root)
-        .unwrap()
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .any(|path| path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.ends_with(".journal"))));
+    assert!(
+        fs::read_dir(&root)
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|e| e.path()))
+            .any(|path| path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(".journal")))
+    );
 }
 
 #[test]

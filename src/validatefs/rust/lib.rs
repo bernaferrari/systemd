@@ -62,11 +62,22 @@ impl ValidateFields {
 pub fn format_uuid(uuid: &Uuid) -> String {
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        uuid[0], uuid[1], uuid[2], uuid[3],
-        uuid[4], uuid[5],
-        uuid[6], uuid[7],
-        uuid[8], uuid[9],
-        uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]
+        uuid[0],
+        uuid[1],
+        uuid[2],
+        uuid[3],
+        uuid[4],
+        uuid[5],
+        uuid[6],
+        uuid[7],
+        uuid[8],
+        uuid[9],
+        uuid[10],
+        uuid[11],
+        uuid[12],
+        uuid[13],
+        uuid[14],
+        uuid[15]
     )
 }
 
@@ -209,11 +220,7 @@ impl ValidatefsArgs {
     pub fn effective_root(&self, in_initrd: bool) -> Option<&str> {
         if let Some(ref root) = self.root {
             if root == "auto" {
-                if in_initrd {
-                    Some("/sysroot")
-                } else {
-                    None
-                }
+                if in_initrd { Some("/sysroot") } else { None }
             } else {
                 Some(root.as_str())
             }

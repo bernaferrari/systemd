@@ -262,11 +262,7 @@ fn parse_numeric_log_level(value: &str) -> Result<i32, Errno> {
 }
 
 fn normalize_errno(errno: i32) -> i32 {
-    if errno > 0 {
-        -errno
-    } else {
-        errno
-    }
+    if errno > 0 { -errno } else { errno }
 }
 
 #[cfg(test)]

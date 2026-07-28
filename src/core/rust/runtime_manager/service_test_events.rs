@@ -5,9 +5,9 @@
 use std::time::Instant;
 
 use super::service_machine::{
-    pid_role_for_command, state_for_command, ServiceCommandSequence, ServiceOperationDeadline,
+    ServiceCommandSequence, ServiceOperationDeadline, pid_role_for_command, state_for_command,
 };
-use super::{infer_service_type, ExecCommandSpec, Result, RuntimeManager, TrackedPidRole};
+use super::{ExecCommandSpec, Result, RuntimeManager, TrackedPidRole, infer_service_type};
 use crate::ffi::Errno;
 use crate::service::ServiceState;
 use crate::service_tables::ServiceExecCommand;

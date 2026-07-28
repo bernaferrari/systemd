@@ -386,9 +386,11 @@ mod tests {
     #[test]
     fn test_error_ids() {
         assert_eq!(ERROR_IDS.len(), 1);
-        assert!(ManagerError::RateLimitReached
-            .error_id()
-            .contains("RateLimitReached"));
+        assert!(
+            ManagerError::RateLimitReached
+                .error_id()
+                .contains("RateLimitReached")
+        );
     }
 
     #[test]

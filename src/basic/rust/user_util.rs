@@ -180,7 +180,7 @@ fn id128_is_valid_str(text: &str) -> bool {
 ///
 /// # Safety
 /// `u` must be null or point to a readable NUL-terminated string.
-#[export_name = "rs_valid_user_group_name"]
+#[unsafe(export_name = "rs_valid_user_group_name")]
 pub unsafe extern "C" fn rs_valid_user_group_name(u: *const c_char, flags: u32) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
     unsafe { c_text(u) }
@@ -192,7 +192,7 @@ pub unsafe extern "C" fn rs_valid_user_group_name(u: *const c_char, flags: u32) 
 ///
 /// # Safety
 /// `name` must be null or point to a readable NUL-terminated string.
-#[export_name = "rs_capsule_name_is_valid"]
+#[unsafe(export_name = "rs_capsule_name_is_valid")]
 pub unsafe extern "C" fn rs_capsule_name_is_valid(name: *const c_char) -> i32 {
     // SAFETY: required by this C ABI entry point's contract.
     unsafe { c_text(name) }
@@ -200,7 +200,7 @@ pub unsafe extern "C" fn rs_capsule_name_is_valid(name: *const c_char) -> i32 {
         .unwrap_or(0)
 }
 
-#[export_name = "rs_uid_is_valid"]
+#[unsafe(export_name = "rs_uid_is_valid")]
 pub extern "C" fn rs_uid_is_valid(uid: u32) -> bool {
     uid_is_valid(uid)
 }
@@ -210,7 +210,7 @@ pub extern "C" fn rs_uid_is_valid(uid: u32) -> bool {
 /// # Safety
 /// `s` must be null or point to a readable NUL-terminated string. If non-null,
 /// `ret` must point to writable, properly aligned `uid_t` storage.
-#[export_name = "rs_parse_uid"]
+#[unsafe(export_name = "rs_parse_uid")]
 pub unsafe extern "C" fn rs_parse_uid(s: *const c_char, ret: *mut u32) -> i32 {
     // SAFETY: required by this C ABI entry point's contract.
     let Some(text) = (unsafe { c_text(s) }) else {
@@ -234,7 +234,7 @@ pub unsafe extern "C" fn rs_parse_uid(s: *const c_char, ret: *mut u32) -> i32 {
 /// # Safety
 /// `s` must point to a readable NUL-terminated string. Both output pointers
 /// must point to writable, properly aligned `uid_t` storage.
-#[export_name = "rs_parse_uid_range"]
+#[unsafe(export_name = "rs_parse_uid_range")]
 pub unsafe extern "C" fn rs_parse_uid_range(
     s: *const c_char,
     ret_lower: *mut u32,
@@ -267,7 +267,7 @@ pub unsafe extern "C" fn rs_parse_uid_range(
 ///
 /// # Safety
 /// `s` must be null or point to a readable NUL-terminated string.
-#[export_name = "rs_id128_is_valid"]
+#[unsafe(export_name = "rs_id128_is_valid")]
 pub unsafe extern "C" fn rs_id128_is_valid(s: *const c_char) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
     unsafe { c_text(s) }
@@ -279,7 +279,7 @@ pub unsafe extern "C" fn rs_id128_is_valid(s: *const c_char) -> bool {
 ///
 /// # Safety
 /// `password` must be null or point to at least one readable byte.
-#[export_name = "rs_hashed_password_is_locked_or_invalid"]
+#[unsafe(export_name = "rs_hashed_password_is_locked_or_invalid")]
 pub unsafe extern "C" fn rs_hashed_password_is_locked_or_invalid(password: *const c_char) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
     !password.is_null() && unsafe { *password != b'$' as c_char }

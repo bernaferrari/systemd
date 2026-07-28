@@ -315,12 +315,12 @@ fn procfs_cpu_get_usage_at(path: &Path) -> Result<u64, Errno> {
     // assignments and leaves both optional guest counters at zero.
     let mut guest_ticks = 0;
     let mut guest_nice_ticks = 0;
-    if fields.next().and_then(parse_cpu_field).is_some()
-        && let Some(value) = fields.next().and_then(parse_cpu_field)
-    {
-        guest_ticks = value;
+    if fields.next().and_then(parse_cpu_field).is_some() {
         if let Some(value) = fields.next().and_then(parse_cpu_field) {
-            guest_nice_ticks = value;
+            guest_ticks = value;
+            if let Some(value) = fields.next().and_then(parse_cpu_field) {
+                guest_nice_ticks = value;
+            }
         }
     }
 

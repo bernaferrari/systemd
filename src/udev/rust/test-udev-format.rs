@@ -5,7 +5,10 @@
 // Rust-side formatter checks mirroring the C tests.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FormatError { MissingClosingBrace, UnknownPlaceholder }
+pub enum FormatError {
+    MissingClosingBrace,
+    UnknownPlaceholder,
+}
 pub type Result<T> = std::result::Result<T, FormatError>;
 
 pub fn format_template(template: &str, lookup: &dyn Fn(&str) -> Option<&str>) -> Result<String> {
@@ -27,9 +30,33 @@ pub fn format_template(template: &str, lookup: &dyn Fn(&str) -> Option<&str>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn env(key: &str) -> Option<&str> { match key { "devnode" => Some("/dev/sda"), "id" => Some("disk0"), _ => None } }
-    #[test] fn expands_single_value() { assert_eq!(format_template("${devnode}", &env).unwrap(), "/dev/sda"); }
-    #[test] fn expands_multiple_values() { assert_eq!(format_template("${id}:${devnode}", &env).unwrap(), "disk0:/dev/sda"); }
-    #[test] fn leaves_plain_text() { assert_eq!(format_template("plain", &env).unwrap(), "plain"); }
-    #[test] fn rejects_unknown_placeholder() { assert_eq!(format_template("${missing}", &env), Err(FormatError::UnknownPlaceholder)); }
+    fn env(key: &str) -> Option<&str> {
+        match key {
+            "devnode" => Some("/dev/sda"),
+            "id" => Some("disk0"),
+            _ => None,
+        }
+    }
+    #[test]
+    fn expands_single_value() {
+        assert_eq!(format_template("${devnode}", &env).unwrap(), "/dev/sda");
+    }
+    #[test]
+    fn expands_multiple_values() {
+        assert_eq!(
+            format_template("${id}:${devnode}", &env).unwrap(),
+            "disk0:/dev/sda"
+        );
+    }
+    #[test]
+    fn leaves_plain_text() {
+        assert_eq!(format_template("plain", &env).unwrap(), "plain");
+    }
+    #[test]
+    fn rejects_unknown_placeholder() {
+        assert_eq!(
+            format_template("${missing}", &env),
+            Err(FormatError::UnknownPlaceholder)
+        );
+    }
 }

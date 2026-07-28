@@ -260,10 +260,11 @@ mod tests {
             false,
         );
         assert_eq!(outcome, ClockApplyEpochOutcome::NoAdjustment);
-        assert!(env
-            .logs
-            .iter()
-            .any(|(_, msg)| msg.contains("Clock epoch is 0")));
+        assert!(
+            env.logs
+                .iter()
+                .any(|(_, msg)| msg.contains("Clock epoch is 0"))
+        );
     }
 
     #[test]
@@ -357,10 +358,11 @@ mod tests {
         env.stat_results
             .insert(TIMESYNCD_CLOCK_FILE.into(), Err(-libc::EIO));
         let _ = clock_apply_epoch(&mut env, config(), false);
-        assert!(env
-            .logs
-            .iter()
-            .any(|(level, _)| *level == LogLevel::Warning));
+        assert!(
+            env.logs
+                .iter()
+                .any(|(level, _)| *level == LogLevel::Warning)
+        );
     }
 
     #[test]

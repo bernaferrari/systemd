@@ -4,8 +4,8 @@
 // Binary entry point for systemd-modules-load
 
 use systemd_modules_load_rs::{
-    is_module_name_valid, load_module_best_effort, load_modules_from_conf_dirs,
-    normalize_module_name, parse_proc_cmdline_modules, read_proc_cmdline, ModuleSet,
+    ModuleSet, is_module_name_valid, load_module_best_effort, load_modules_from_conf_dirs,
+    normalize_module_name, parse_proc_cmdline_modules, read_proc_cmdline,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

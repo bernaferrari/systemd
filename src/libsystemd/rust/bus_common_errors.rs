@@ -139,9 +139,11 @@ mod tests {
 
     #[test]
     fn map_contains_sysupdate_entry() {
-        assert!(BUS_COMMON_ERRORS
-            .iter()
-            .any(|entry| entry.name == "org.freedesktop.sysupdate1.NoCandidate"));
+        assert!(
+            BUS_COMMON_ERRORS
+                .iter()
+                .any(|entry| entry.name == "org.freedesktop.sysupdate1.NoCandidate")
+        );
     }
 
     #[test]
@@ -160,8 +162,10 @@ mod tests {
 
     #[test]
     fn map_contains_home_locked_entry() {
-        assert!(BUS_COMMON_ERRORS
-            .iter()
-            .any(|entry| entry.name == "org.freedesktop.home1.HomeLocked" && entry.errno == 8));
+        assert!(
+            BUS_COMMON_ERRORS
+                .iter()
+                .any(|entry| entry.name == "org.freedesktop.home1.HomeLocked" && entry.errno == 8)
+        );
     }
 }

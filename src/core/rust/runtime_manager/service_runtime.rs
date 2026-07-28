@@ -10,16 +10,15 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::time::{Duration, Instant};
 
 use super::unit_file::{ExecContextConfig, UnitFileInfo};
-use super::unit_load::{unit_condition_evaluation, UnitConditionEvaluation};
+use super::unit_load::{UnitConditionEvaluation, unit_condition_evaluation};
 use super::{
-    child_state_considered_clean_with_mode, infer_service_type, specs_or_single,
     ChildExitCleanMode, PreparedStdio, Result, RuntimeManager, StdioFd, StdioSpec, StdioTargetMode,
-    TrackedPidRole,
+    TrackedPidRole, child_state_considered_clean_with_mode, infer_service_type, specs_or_single,
 };
 use crate::ffi::Errno;
 use crate::service::{
-    service_record_reload_result, service_record_result, service_reset_reload_result,
-    service_reset_result, service_restart_usec_next, ServiceState, ServiceType,
+    ServiceState, ServiceType, service_record_reload_result, service_record_result,
+    service_reset_reload_result, service_reset_result, service_restart_usec_next,
 };
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use crate::transaction::{JobMode, JobType as TxJobType};
@@ -28,8 +27,8 @@ use systemd_libsystemd_rs::sd_journal_send::sd_journal_stream_fd;
 use systemd_platform_rs::spawn::{self, ChildProcess, ChildState};
 
 use super::service_machine::{
-    pid_role_for_command, start_post_after_fork, ServiceCommandSequence, ServiceOperationDeadline,
-    ServiceOperationOwner,
+    ServiceCommandSequence, ServiceOperationDeadline, ServiceOperationOwner, pid_role_for_command,
+    start_post_after_fork,
 };
 
 impl RuntimeManager {
@@ -1364,10 +1363,12 @@ impl RuntimeManager {
         // explicit: it is operationally important that a unit is rejected for
         // missing architecture, not diagnosed as an application crash.
         let readiness_rejection = match service_type {
-            ServiceType::Idle => Some("Type=idle requires the manager idle gate, which is not implemented"),
-            ServiceType::Notify | ServiceType::NotifyReload => {
-                Some("Type=notify requires an authenticated sd_notify transport, which is not implemented")
+            ServiceType::Idle => {
+                Some("Type=idle requires the manager idle gate, which is not implemented")
             }
+            ServiceType::Notify | ServiceType::NotifyReload => Some(
+                "Type=notify requires an authenticated sd_notify transport, which is not implemented",
+            ),
             ServiceType::Dbus
                 if info
                     .service

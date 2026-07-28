@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use super::key::{dns_name_is_root, normalize_name, DnsResourceKey};
+use super::key::{DnsResourceKey, dns_name_is_root, normalize_name};
 use super::model::{DnsSvcParam, DnsTxtItem, DnsType, ParseError, Rdata};
 use super::record::DnsResourceRecord;
 

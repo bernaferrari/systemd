@@ -8,7 +8,6 @@ use std::collections::HashMap;
 
 use crate::homed_operation::OperationType;
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HomeState {
     Absent,

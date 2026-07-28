@@ -11,7 +11,6 @@ use crate::homed_conf::UserStorage;
 use crate::homed_home_bus::{Home, HomeState};
 use crate::homed_operation::{Operation, OperationType};
 
-
 pub const RETRY_DEACTIVATE_USEC: u64 = 15_000_000;
 
 #[derive(Debug)]

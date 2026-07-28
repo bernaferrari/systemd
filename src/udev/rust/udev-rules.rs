@@ -180,27 +180,9 @@ pub fn parse_operator(input: &str) -> Result<UdevRuleOperatorType, RuleError> {
 
 pub fn token_class(name: &str) -> Result<UdevRuleTokenClass, RuleError> {
     match name {
-        "ACTION"
-        | "DEVPATH"
-        | "KERNEL"
-        | "SUBSYSTEM"
-        | "DRIVER"
-        | "ENV"
-        | "ATTR"
-        | "SYSCTL"
-        | "TAG"
-        | "PROGRAM"
-        | "RESULT"
-        | "TEST" => Ok(UdevRuleTokenClass::Match),
-        "NAME"
-        | "SYMLINK"
-        | "OWNER"
-        | "GROUP"
-        | "MODE"
-        | "RUN"
-        | "LABEL"
-        | "GOTO"
-        | "IMPORT"
+        "ACTION" | "DEVPATH" | "KERNEL" | "SUBSYSTEM" | "DRIVER" | "ENV" | "ATTR" | "SYSCTL"
+        | "TAG" | "PROGRAM" | "RESULT" | "TEST" => Ok(UdevRuleTokenClass::Match),
+        "NAME" | "SYMLINK" | "OWNER" | "GROUP" | "MODE" | "RUN" | "LABEL" | "GOTO" | "IMPORT"
         | "OPTIONS" => Ok(UdevRuleTokenClass::Assign),
         other => Err(RuleError::UnknownToken(other.to_string())),
     }
@@ -421,7 +403,10 @@ fn parse_scoped_key(raw: &str) -> Result<(&str, Option<&str>), RuleError> {
 }
 
 fn validate_token_operator(key: &RuleKey, operator: UdevRuleOperatorType) -> Result<(), RuleError> {
-    let is_match_op = matches!(operator, UdevRuleOperatorType::Match | UdevRuleOperatorType::NoMatch);
+    let is_match_op = matches!(
+        operator,
+        UdevRuleOperatorType::Match | UdevRuleOperatorType::NoMatch
+    );
     let is_assign_op = matches!(
         operator,
         UdevRuleOperatorType::Assign

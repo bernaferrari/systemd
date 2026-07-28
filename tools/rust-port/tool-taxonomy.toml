@@ -82,15 +82,14 @@ paths = [
 
 [[category]]
 id = "safety-security-and-lint"
-purpose = "Enforce Rust safety policy, critical lint scope, and dependency-audit policy."
+purpose = "Enforce Rust safety, lint, and dependency-audit policy."
 paths = [
     "tools/rust-port/cargo-audit-all.py",
     "tools/rust-port/cargo-audit-waivers.toml",
-    "tools/rust-port/critical-lint-gate.py",
-    "tools/rust-port/critical-lint-baseline.json",
-    "tools/rust-port/critical-lint-targets.toml",
     "tools/rust-port/rust-safety-lint-policy-gate.py",
     "tools/rust-port/rust-safety-lint-policy-baseline.json",
+    "tools/rust-port/test-rust-safety-lint-policy-gate.py",
+    "tools/rust-port/test-unsafe-safety-gate.py",
     "tools/rust-port/unsafe-safety-gate.py",
     "tools/rust-port/unsafe-safety-baseline.json",
 ]
@@ -101,5 +100,6 @@ purpose = "Verify generated Rust-port data and produce review-oriented coverage 
 paths = [
     "tools/rust-port/audit-port1.py",
     "tools/rust-port/coverage-dashboard.py",
+    "tools/rust-port/test-coverage-dashboard.py",
     "tools/rust-port/generate-gpt-table.py",
 ]

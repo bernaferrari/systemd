@@ -46,7 +46,10 @@ pub fn count_port_source_lines(source_path: &str) -> Result<usize, Errno> {
     Ok(read_port_source(source_path)?.lines().count())
 }
 
-pub fn verify_extracted_functions(source_path: &str, extracted_functions: &[&'static str]) -> Result<(), Errno> {
+pub fn verify_extracted_functions(
+    source_path: &str,
+    extracted_functions: &[&'static str],
+) -> Result<(), Errno> {
     let source = read_port_source(source_path)?;
     for function in extracted_functions {
         if !source.contains(function) {
@@ -67,6 +70,9 @@ mod tests {
 
     #[test]
     fn source_path_joins() {
-        assert!(port_source_path("src/shared/compare-operator.c").ends_with("src/shared/compare-operator.c"));
+        assert!(
+            port_source_path("src/shared/compare-operator.c")
+                .ends_with("src/shared/compare-operator.c")
+        );
     }
 }

@@ -50,6 +50,11 @@ RUST_ABI_NO_MANGLE_RE = re.compile(
     r"#\[(?:unsafe\()?no_mangle\)?\]\s*"
     r"(?:pub\s+)?(?:unsafe\s+)?fn\s+(rs_[A-Za-z0-9_]+)"
 )
+MACRO_C_EXPORT_ATTR_RE = re.compile(
+    r"#\[\s*(?:unsafe\s*\(\s*)?"
+    r"(?:no_mangle|export_name\s*=\s*\$symbol)"
+    r"\s*\)?\s*\]"
+)
 EXPORTED_TABLE_MACROS = (
     "string_table",
     "string_table_boolean",
@@ -626,6 +631,16 @@ def parser_self_check() -> None:
     conditional_line = c_code[: c_code.index("rs_conditional")].count("\n") + 1
     if conditional_line not in conditional:
         raise ValueError("C conditional parser self-check failed")
+    for attribute in (
+        "#[no_mangle]",
+        "#[unsafe(no_mangle)]",
+        "#[export_name = $symbol]",
+        "#[unsafe(export_name = $symbol)]",
+    ):
+        if not MACRO_C_EXPORT_ATTR_RE.fullmatch(attribute):
+            raise ValueError(f"macro C-export parser rejected {attribute}")
+    if MACRO_C_EXPORT_ATTR_RE.fullmatch('#[unsafe(export_name = "rs_literal")]'):
+        raise ValueError("macro C-export parser accepted a fixed symbol")
 
 
 def parse_args() -> argparse.Namespace:
@@ -728,7 +743,7 @@ def exported_macro_names(
         if not match:
             continue
         body = match.group(1)
-        has_c_symbol = "#[unsafe(no_mangle)]" in body or "#[export_name = $symbol]" in body
+        has_c_symbol = MACRO_C_EXPORT_ATTR_RE.search(body) is not None
         if not has_c_symbol or 'extern "C"' not in body:
             failures.append(
                 f"{macro}! invocations cannot count as exports: macro lacks explicit C ABI"

@@ -1,14 +1,15 @@
 use crate::ffi::{ENOANO, EUCLEAN};
 use crate::loop_util::device::simplify_path;
 use crate::loop_util::linux::{
-    fd_stat, is_block_device, is_regular_file, loop_flags_mangle, path_to_cstr, LoopConfig,
-    LoopInfo64,
+    LoopConfig, LoopInfo64, fd_stat, is_block_device, is_regular_file, loop_flags_mangle,
+    path_to_cstr,
 };
 use crate::loop_util::{
-    LockOp, LoopDeviceMakeOptions, LoopError, LoopFlags, AUTO_SECTOR_SIZE, DEFAULT_SECTOR_SIZE,
-    LOCK_EX, LOCK_NB, LO_FLAGS_AUTOCLEAR, LO_FLAGS_DIRECT_IO, LO_FLAGS_PARTSCAN,
-    LO_FLAGS_READ_ONLY, NO_CHANGE, O_RDWR,
+    AUTO_SECTOR_SIZE, DEFAULT_SECTOR_SIZE, LO_FLAGS_AUTOCLEAR, LO_FLAGS_DIRECT_IO,
+    LO_FLAGS_PARTSCAN, LO_FLAGS_READ_ONLY, LOCK_EX, LOCK_NB, LockOp, LoopDeviceMakeOptions,
+    LoopError, LoopFlags, NO_CHANGE, O_RDWR,
 };
+use crate::tests::TestEnvironment;
 use std::io;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -206,7 +207,10 @@ fn test_fd_stat_invalid_fd() {
 #[test]
 fn test_loop_flags_mangle_without_env() {
     // Without env var, DIRECT_IO should be enabled by default.
-    std::env::remove_var("SYSTEMD_LOOP_DIRECT_IO");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
+    environment.remove("SYSTEMD_LOOP_DIRECT_IO");
     let flags = LoopFlags::AUTOCLEAR;
     let mangled = loop_flags_mangle(flags);
     assert!(mangled.contains(LoopFlags::DIRECT_IO));
@@ -215,20 +219,24 @@ fn test_loop_flags_mangle_without_env() {
 
 #[test]
 fn test_loop_flags_mangle_with_env_off() {
-    std::env::set_var("SYSTEMD_LOOP_DIRECT_IO", "0");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
+    environment.set("SYSTEMD_LOOP_DIRECT_IO", "0");
     let flags = LoopFlags::AUTOCLEAR;
     let mangled = loop_flags_mangle(flags);
     assert!(!mangled.contains(LoopFlags::DIRECT_IO));
-    std::env::remove_var("SYSTEMD_LOOP_DIRECT_IO");
 }
 
 #[test]
 fn test_loop_flags_mangle_with_env_on() {
-    std::env::set_var("SYSTEMD_LOOP_DIRECT_IO", "1");
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
+    environment.set("SYSTEMD_LOOP_DIRECT_IO", "1");
     let flags = LoopFlags::empty();
     let mangled = loop_flags_mangle(flags);
     assert!(mangled.contains(LoopFlags::DIRECT_IO));
-    std::env::remove_var("SYSTEMD_LOOP_DIRECT_IO");
 }
 
 #[test]

@@ -53,6 +53,50 @@ def balanced_call(text: str, opening: int) -> tuple[str, int]:
     return text[opening + 1 : index - 1], index
 
 
+def _meson_lexical_mask(text: str, *, keep_strings: bool) -> str:
+    """Blank Meson comments and, optionally, string contents.
+
+    Regexes must not discover ``test()``/``executable()`` calls or assignments
+    in comments and string literals.  Positions and newlines are preserved so
+    matches in this mask can still index the original source.
+    """
+
+    result = list(text)
+    index = 0
+    quote: str | None = None
+    escaped = False
+    comment = False
+    while index < len(text):
+        char = text[index]
+        if comment:
+            if char == "\n":
+                comment = False
+            else:
+                result[index] = " "
+            index += 1
+            continue
+        if quote is not None:
+            if not keep_strings and char != "\n":
+                result[index] = " "
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char == "#":
+            result[index] = " "
+            comment = True
+        elif char in {"'", '"'}:
+            quote = char
+            if not keep_strings:
+                result[index] = " "
+        index += 1
+    return "".join(result)
+
+
 def _assignment_events(text: str) -> list[tuple[int, int, str]]:
     """Return direct Meson variable assignments in source order.
 
@@ -87,6 +131,85 @@ def _direct_assignment_name(
     return None
 
 
+def discover_rust_linked_fixtures(root: Path) -> list[tuple[str, str, bool]]:
+    """Return Rust-linked executable records with exact registration identity."""
+
+    meson = root / "tests-extra/meson.build"
+    text = meson.read_text(encoding="utf-8")
+    code = _meson_lexical_mask(text, keep_strings=False)
+    uncommented = _meson_lexical_mask(text, keep_strings=True)
+
+    assignments = _assignment_events(code)
+    events: list[tuple[int, str, str | re.Match[str]]] = [
+        (start, "assignment", name)
+        for start, _end, name in assignments
+    ]
+    for match in re.finditer(r"\bexecutable\s*\(", code):
+        events.append((match.start(), "executable", match))
+    for match in re.finditer(r"\btest\s*\(", code):
+        events.append((match.start(), "test", match))
+    events.sort(key=lambda item: item[0])
+
+    # Last assignment of each identifier → (target name, executable identity).
+    bindings: dict[str, tuple[str, int]] = {}
+    proven: set[int] = set()
+    records: list[tuple[str, str, int]] = []
+    executable_id = 0
+
+    for _pos, kind, event in events:
+        if kind == "assignment":
+            assert isinstance(event, str)
+            bindings.pop(event, None)
+            continue
+
+        assert isinstance(event, re.Match)
+        match = event
+        if kind == "executable":
+            body, _ = balanced_call(uncommented, match.end() - 1)
+            name_match = re.match(r"\s*['\"]([^'\"]+)['\"]\s*,", body)
+            if name_match is None:
+                executable_id += 1
+                continue
+            target = name_match.group(1)
+            assigned = _direct_assignment_name(code, match.start(), assignments)
+            if assigned is not None:
+                bindings[assigned] = (target, executable_id)
+
+            body_code = _meson_lexical_mask(body, keep_strings=False)
+            if target.startswith("test-") and re.search(
+                r"\blink_with\s*:\s*(?:\[[^]]*\brust_staticlib\b[^]]*\]|\brust_staticlib\b)",
+                body_code,
+            ):
+                sources = sorted(
+                    set(re.findall(r"['\"](test-[^'\"]+\.c)['\"]", body))
+                )
+                if len(sources) != 1:
+                    raise ValueError(
+                        f"{target}: expected exactly one literal test-*.c fixture, "
+                        f"got {sources}"
+                    )
+                records.append((target, sources[0], executable_id))
+            executable_id += 1
+            continue
+
+        body, _ = balanced_call(uncommented, match.end() - 1)
+        test_match = re.match(
+            r"\s*['\"](test-[^'\"]+)['\"]\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,|$)",
+            body,
+        )
+        if test_match is None:
+            continue
+        test_name = test_match.group(1)
+        resolved = bindings.get(test_match.group(2))
+        if resolved is not None and resolved[0] == test_name:
+            proven.add(resolved[1])
+
+    return [
+        (target, source, identity in proven)
+        for target, source, identity in records
+    ]
+
+
 def rust_linked_fixtures(root: Path) -> list[tuple[str, str]]:
     """Return ``(Meson target, tests-extra source)`` pairs at the Rust ABI boundary.
 
@@ -98,81 +221,8 @@ def rust_linked_fixtures(root: Path) -> list[tuple[str, str]]:
     an identifier.
     """
 
-    meson = root / "tests-extra/meson.build"
-    text = meson.read_text(encoding="utf-8")
-
-    assignments = _assignment_events(text)
-    events: list[tuple[int, str, str | re.Match[str]]] = [
-        (start, "assignment", name)
-        for start, _end, name in assignments
-    ]
-    for match in re.finditer(r"\bexecutable\s*\(", text):
-        events.append((match.start(), "executable", match))
-    for match in re.finditer(r"\btest\s*\(", text):
-        events.append((match.start(), "test", match))
-    events.sort(key=lambda item: item[0])
-
-    # Last assignment of each identifier → executable() target name.
-    bindings: dict[str, str] = {}
-    # Targets whose test() call resolved to that same executable object.
-    proven: set[str] = set()
-    records: list[tuple[str, str]] = []
-
-    for _pos, kind, event in events:
-        if kind == "assignment":
-            assert isinstance(event, str)
-            # Every assignment invalidates the old object. A directly assigned
-            # executable() event below may establish a new binding.
-            bindings.pop(event, None)
-            continue
-
-        assert isinstance(event, re.Match)
-        match = event
-        if kind == "executable":
-            body, _ = balanced_call(text, match.end() - 1)
-            # Track every assigned executable name so wrong-variable bindings fail.
-            name_match = re.match(r"\s*['\"]([^'\"]+)['\"]\s*,", body)
-            if name_match is None:
-                continue
-            target = name_match.group(1)
-            assigned = _direct_assignment_name(text, match.start(), assignments)
-            if assigned is not None:
-                bindings[assigned] = target
-
-            # The catalog owns the Rust ABI boundary, not a particular ordering of
-            # its support libraries. Requiring an exact two-item list let a Rust
-            # fixture disappear from review merely by reordering or extending it.
-            if not target.startswith("test-") or not re.search(
-                r"\blink_with\s*:\s*(?:\[[^]]*\brust_staticlib\b[^]]*\]|\brust_staticlib\b)",
-                body,
-            ):
-                continue
-            sources = sorted(set(re.findall(r"['\"](test-[^'\"]+\.c)['\"]", body)))
-            if len(sources) != 1:
-                raise ValueError(
-                    f"{target}: expected exactly one literal test-*.c fixture, got {sources}"
-                )
-            records.append((target, sources[0]))
-            continue
-
-        body, _ = balanced_call(text, match.end() - 1)
-        # Supported form: test('test-foo', some_identifier[, kwargs...]).
-        # balanced_call returns the interior, so the call ends at EOS or ','.
-        test_match = re.match(
-            r"\s*['\"](test-[^'\"]+)['\"]\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,|$)",
-            body,
-        )
-        if test_match is None:
-            # Unsupported second argument (non-identifier); cannot prove a binding.
-            continue
-        test_name = test_match.group(1)
-        resolved = bindings.get(test_match.group(2))
-        if resolved == test_name:
-            proven.add(test_name)
-
-    unproven = [
-        target for target, _source in records if target not in proven
-    ]
+    discovered = discover_rust_linked_fixtures(root)
+    unproven = [target for target, _source, registered in discovered if not registered]
     if unproven:
         # Deduplicate while preserving first-seen order (redefinition still fails later).
         seen: set[str] = set()
@@ -186,9 +236,9 @@ def rust_linked_fixtures(root: Path) -> list[tuple[str, str]]:
                 "bound to its executable"
             )
         raise ValueError("; ".join(messages))
-    if not records:
+    if not discovered:
         raise ValueError("no Rust-linked tests-extra fixtures found")
-    return sorted(records)
+    return sorted((target, source) for target, source, _registered in discovered)
 
 
 def load_catalog(path: Path) -> dict[str, str]:

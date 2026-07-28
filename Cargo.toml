@@ -7,7 +7,7 @@
 # See docs/rust-port-workspace.md before adding a crate or dependency edge.
 
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "src/dbus/rust",
     "src/event-loop/rust",
@@ -107,8 +107,8 @@ opt-level = 2
 # Shared workspace dependencies
 [workspace.dependencies]
 libc = "0.2"
-bitflags = "2.4"
-nix = { version = "0.29", features = ["event", "fs", "mount", "process", "signal", "socket", "uio", "poll", "net", "ioctl", "user", "time"] }
-zbus = { version = "4", default-features = false, features = ["tokio"] }
+bitflags = "2.13"
+nix = { version = "0.31", features = ["event", "fs", "mount", "process", "signal", "socket", "uio", "poll", "net", "ioctl", "user", "time"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net", "signal", "io-util", "time", "sync"] }
 serde = { version = "1", features = ["derive"] }

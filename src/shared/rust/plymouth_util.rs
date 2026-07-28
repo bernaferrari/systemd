@@ -354,6 +354,7 @@ pub fn plymouth_query(command: &[u8]) -> Result<String, PlymouthError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
     use std::error::Error;
 
     // ── PlymouthMode parsing ──────────────────────────────────────────
@@ -590,7 +591,10 @@ mod tests {
 
     #[test]
     fn test_plymouth_socket_path_default() {
-        env::remove_var("PLYMOUTH_SOCKET");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove("PLYMOUTH_SOCKET");
         let path = plymouth_socket_path();
         assert!(path.starts_with('\0'));
         assert!(path.contains("plymouthd"));
@@ -598,10 +602,12 @@ mod tests {
 
     #[test]
     fn test_plymouth_socket_path_env_override() {
-        env::set_var("PLYMOUTH_SOCKET", "/tmp/test-plymouth-sock");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set("PLYMOUTH_SOCKET", "/tmp/test-plymouth-sock");
         let path = plymouth_socket_path();
         assert_eq!(path, "/tmp/test-plymouth-sock");
-        env::remove_var("PLYMOUTH_SOCKET");
     }
 
     // ── Status queries (environment-dependent) ───────────────────────

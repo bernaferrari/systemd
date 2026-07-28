@@ -356,10 +356,10 @@ mod tests {
 
     #[test]
     fn test_pick_all_null() {
-        assert!(bootspec_pick_name_version_sort_key(
-            None, None, None, None, None, None, None, None
-        )
-        .is_err());
+        assert!(
+            bootspec_pick_name_version_sort_key(None, None, None, None, None, None, None, None)
+                .is_err()
+        );
     }
 
     #[test]

@@ -1232,7 +1232,10 @@ mod tests {
     fn test_in_addr_full_new_family_mismatch() {
         let result = InAddrFull::new(AF_INET6, InAddrUnion::V4(Ipv4Addr::LOCALHOST), 80, 0, None);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), SocketNetlinkError::InvalidFamily(AF_INET6)));
+        assert!(matches!(
+            result.unwrap_err(),
+            SocketNetlinkError::InvalidFamily(AF_INET6)
+        ));
     }
 
     #[test]
@@ -1665,9 +1668,15 @@ mod tests {
 
     #[test]
     fn test_netlink_error_equality() {
-        assert!(matches!(SocketNetlinkError::InvalidFamily(AF_INET), SocketNetlinkError::InvalidFamily(AF_INET)));
+        assert!(matches!(
+            SocketNetlinkError::InvalidFamily(AF_INET),
+            SocketNetlinkError::InvalidFamily(AF_INET)
+        ));
         // skipping: can't compare SocketNetlinkError variants with assert_ne
-        assert!(matches!(SocketNetlinkError::NoData, SocketNetlinkError::NoData));
+        assert!(matches!(
+            SocketNetlinkError::NoData,
+            SocketNetlinkError::NoData
+        ));
         // skipping: can't compare SocketNetlinkError with assert_ne
     }
 

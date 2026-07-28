@@ -856,16 +856,20 @@ mod tests {
             address: IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 0)),
             prefixlen: 32,
         };
-        assert!(in_addr_prefix_covers(
-            &prefix,
-            &IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 1, 0, 0, 0, 0))
-        )
-        .unwrap());
-        assert!(!in_addr_prefix_covers(
-            &prefix,
-            &IpAddr::V6(Ipv6Addr::new(0x2002, 0xdb8, 0, 0, 0, 0, 0, 0))
-        )
-        .unwrap());
+        assert!(
+            in_addr_prefix_covers(
+                &prefix,
+                &IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 1, 0, 0, 0, 0))
+            )
+            .unwrap()
+        );
+        assert!(
+            !in_addr_prefix_covers(
+                &prefix,
+                &IpAddr::V6(Ipv6Addr::new(0x2002, 0xdb8, 0, 0, 0, 0, 0, 0))
+            )
+            .unwrap()
+        );
     }
 
     #[test]

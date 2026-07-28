@@ -2,7 +2,7 @@
 //
 // PORT-SYNC: src/shared/idn-util.c, src/shared/idn-util.h
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::sync::OnceLock;
 

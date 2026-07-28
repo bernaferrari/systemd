@@ -4,7 +4,7 @@
 // Binary entry point for systemd-ac-power
 
 use systemd_ac_power_rs::{
-    compute_exit_code, parse_ac_power_args, run_ac_power, run_low_battery, yes_no, AcPowerAction,
+    AcPowerAction, compute_exit_code, parse_ac_power_args, run_ac_power, run_low_battery, yes_no,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

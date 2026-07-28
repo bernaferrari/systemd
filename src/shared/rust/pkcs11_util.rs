@@ -11,7 +11,7 @@
 // through dlopen so the module gracefully degrades when the library is
 // absent.
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -1199,12 +1199,16 @@ mod tests {
     #[test]
     fn test_error_display() {
         assert!(!Pkcs11Error::Unsupported.to_string().is_empty());
-        assert!(!Pkcs11Error::DlopenFailed("test".into())
-            .to_string()
-            .is_empty());
-        assert!(!Pkcs11Error::SymbolNotFound("sym".into())
-            .to_string()
-            .is_empty());
+        assert!(
+            !Pkcs11Error::DlopenFailed("test".into())
+                .to_string()
+                .is_empty()
+        );
+        assert!(
+            !Pkcs11Error::SymbolNotFound("sym".into())
+                .to_string()
+                .is_empty()
+        );
         assert!(!Pkcs11Error::NotFound.to_string().is_empty());
         assert!(!Pkcs11Error::NotUnique.to_string().is_empty());
         assert!(!Pkcs11Error::PinRequired.to_string().is_empty());

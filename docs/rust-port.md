@@ -349,20 +349,14 @@ python3 tools/rust-port/generate-gpt-table.py --check
 python3 tools/rust-port/check-gpt-basic-abi.py
 ```
 
-10. Enforce critical crate warning/unsafe debt budgets:
-
-```sh
-python3 tools/rust-port/critical-lint-gate.py --targets tools/rust-port/critical-lint-targets.toml --baseline tools/rust-port/critical-lint-baseline.json
-```
-
-11. Verify that every declared Rust string-table shadow is a unique,
+10. Verify that every declared Rust string-table shadow is a unique,
     unmangled C ABI export with the exact header signature:
 
 ```sh
 python3 tools/rust-port/check-string-table-abi.py
 ```
 
-12. Verify that reviewed Rust shadow headers are backed by unique explicit C
+11. Verify that reviewed Rust shadow headers are backed by unique explicit C
     exports with exact signatures and C-shadow coverage. Keep the unbuilt
     shared TPM2 shadow fail-closed until it has authoritative Meson
     configuration:
@@ -387,10 +381,15 @@ python3 tools/rust-port/check-tests-extra-header-includes.py
 ./test/test-rust-fuzz-smoke.sh
 ```
 
-15. Enforce SAFETY rationale baseline for unsafe sites:
+15. Enforce SAFETY rationale and safety-lint policy for unsafe Rust. The
+    SAFETY baseline is a location-specific ledger of accepted legacy debt, not
+    merely a global count: it also caps total unsafe sites per file. Do not
+    refresh it merely to admit a new site. Refresh it only as part of a
+    reviewed safety-boundary or rationale change.
 
 ```sh
 python3 tools/rust-port/unsafe-safety-gate.py --baseline tools/rust-port/unsafe-safety-baseline.json
+python3 tools/rust-port/rust-safety-lint-policy-gate.py
 ```
 
 16. Audit the committed Rust workspace lockfile with explicit waiver policy:

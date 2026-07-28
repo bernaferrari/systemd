@@ -7,8 +7,8 @@ use crate::Errno;
 use super::architecture::seccomp_arch_from_string;
 use super::filter_set::{expand_filter_set, syscall_filter_set_find};
 use super::model::{
-    scmp_act_errno, ParsedSyscallEntry, Result, SeccompError, SeccompParseFlags, SCMP_ACT_ALLOW,
-    SCMP_ACT_LOG, SECCOMP_ERROR_NUMBER_KILL,
+    ParsedSyscallEntry, Result, SCMP_ACT_ALLOW, SCMP_ACT_LOG, SECCOMP_ERROR_NUMBER_KILL,
+    SeccompError, SeccompParseFlags, scmp_act_errno,
 };
 
 // ── Errno / Action Helpers ───────────────────────────────────────────────

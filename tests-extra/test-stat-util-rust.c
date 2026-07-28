@@ -19,7 +19,8 @@
 
 /* -- inode_type_to_string ------------------------------------------------- */
 
-/* RUST-CONTRACT: inode-type-string */
+/* RUST-CONTRACT: inode-type-to-string */
+/* RUST-CONTRACT: inode-type-from-string */
 static void test_inode_type_to_string(void) {
         assert_se(streq(inode_type_to_string(S_IFREG), rs_inode_type_to_string(S_IFREG)));
         assert_se(streq(inode_type_to_string(S_IFREG), "reg"));

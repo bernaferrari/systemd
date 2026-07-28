@@ -475,9 +475,11 @@ mod tests {
             .position(|entry| entry.flags.contains(BaseFilesystemFlags::EMPTY_ONLY));
 
         if let Some(index) = first_empty_only {
-            assert!(table[..index]
-                .iter()
-                .any(|entry| entry.flags.contains(BaseFilesystemFlags::EMPTY_MARKER)));
+            assert!(
+                table[..index]
+                    .iter()
+                    .any(|entry| entry.flags.contains(BaseFilesystemFlags::EMPTY_MARKER))
+            );
         }
     }
 

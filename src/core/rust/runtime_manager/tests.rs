@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 /* Cross-domain regression coverage for the runtime manager remains test-only. */
-use super::service_shutdown::{service_timeout_action, ServiceTimeoutAction};
+use super::service_shutdown::{ServiceTimeoutAction, service_timeout_action};
 use super::service_test_events::ServiceTestEvent;
 use super::unit_file::*;
 use super::unit_load::*;
@@ -12,12 +12,13 @@ use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use std::os::fd::AsRawFd;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
+use systemd_shared_rs::tests::TestEnvironment;
 
 fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(|error| error.into_inner())
 }
 
 fn test_temp_dir(name: &str) -> PathBuf {
@@ -90,16 +91,19 @@ fn test_runtime_manager_new() {
 #[test]
 fn test_runtime_manager_production_root_ignores_cgroup_environment_override() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let previous = std::env::var_os("SYSTEMD_CGROUP_ROOT");
-    std::env::set_var("SYSTEMD_CGROUP_ROOT", test_temp_dir("ignored-cgroup-root"));
+    environment.set("SYSTEMD_CGROUP_ROOT", test_temp_dir("ignored-cgroup-root"));
 
     let mgr = RuntimeManager::new();
     assert_eq!(mgr.cgroup_root, PathBuf::from(CGROUP_V2_ROOT));
 
     if let Some(value) = previous {
-        std::env::set_var("SYSTEMD_CGROUP_ROOT", value);
+        environment.set("SYSTEMD_CGROUP_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_CGROUP_ROOT");
+        environment.remove("SYSTEMD_CGROUP_ROOT");
     }
 }
 
@@ -154,13 +158,16 @@ fn test_unit_parser_ignores_unknown_lvalues_but_rejects_syntax_errors() {
 #[test]
 fn test_load_unit_rejects_syntax_errors_in_fragments_and_dropins() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let root = test_temp_dir("unit-load-syntax-errors");
     fs::create_dir_all(&root).unwrap();
     let unit = root.join("broken.service");
     fs::write(&unit, "[Unit\nDescription=Broken\n").unwrap();
 
     let previous = std::env::var_os("SYSTEMD_UNIT_PATH");
-    std::env::set_var("SYSTEMD_UNIT_PATH", root.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", root.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     assert_eq!(mgr.load_unit("broken.service"), Err(Errno::ENOEXEC));
@@ -176,9 +183,9 @@ fn test_load_unit_rejects_syntax_errors_in_fragments_and_dropins() {
     assert_eq!(mgr.load_unit("broken.service"), Err(Errno::ENOEXEC));
 
     if let Some(value) = previous {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&root);
 }
@@ -572,6 +579,9 @@ fn test_parse_system_call_filter_line_inversion_applies_to_all_tokens() {
 #[test]
 fn test_parse_kill_and_cgroup_context_directives_shared_and_apply_to_unit() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-kill-cgroup-shared");
     fs::create_dir_all(&dir).unwrap();
     let service_path = dir.join("cg.service");
@@ -659,7 +669,7 @@ fn test_parse_kill_and_cgroup_context_directives_shared_and_apply_to_unit() {
     assert_eq!(info.cgroup.memory_pressure_watch.as_deref(), Some("auto"));
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
     let mut mgr = new_test_runtime_manager();
     mgr.load_unit("cg.service").unwrap();
     let unit = mgr.units.get("cg.service").unwrap();
@@ -674,9 +684,9 @@ fn test_parse_kill_and_cgroup_context_directives_shared_and_apply_to_unit() {
     assert!(cg_ctx.ip_accounting);
     assert_eq!(cg_ctx.tasks_max, 4096);
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
 
     let _ = fs::remove_dir_all(&dir);
@@ -918,6 +928,9 @@ fn test_parse_condition_and_on_failure() {
 #[test]
 fn test_parse_unit_section_directives_comprehensive() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-unit-section-comprehensive");
     fs::create_dir_all(&dir).unwrap();
     let service_path = dir.join("unitfull.service");
@@ -957,30 +970,35 @@ fn test_parse_unit_section_directives_comprehensive() {
     assert!(info.refuse_manual_stop);
     assert!(info.allow_isolate);
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
     let mut mgr = new_test_runtime_manager();
     mgr.load_unit("unitfull.service").unwrap();
     let unit = mgr.units.get("unitfull.service").unwrap();
-    assert!(unit
-        .dependencies
-        .get(&DependencyKind::Requisite)
-        .is_some_and(|deps| deps.contains("requisite-a.service")));
-    assert!(unit
-        .dependencies
-        .get(&DependencyKind::BindsTo)
-        .is_some_and(|deps| deps.contains("bind-a.service")));
-    assert!(unit
-        .dependencies
-        .get(&DependencyKind::Upholds)
-        .is_some_and(|deps| deps.contains("uphold-a.service")));
-    assert!(unit
-        .dependencies
-        .get(&DependencyKind::PartOf)
-        .is_some_and(|deps| deps.contains("parent.target")));
-    assert!(unit
-        .dependencies
-        .get(&DependencyKind::OnSuccess)
-        .is_some_and(|deps| deps.contains("success-handler.service")));
+    assert!(
+        unit.dependencies
+            .get(&DependencyKind::Requisite)
+            .is_some_and(|deps| deps.contains("requisite-a.service"))
+    );
+    assert!(
+        unit.dependencies
+            .get(&DependencyKind::BindsTo)
+            .is_some_and(|deps| deps.contains("bind-a.service"))
+    );
+    assert!(
+        unit.dependencies
+            .get(&DependencyKind::Upholds)
+            .is_some_and(|deps| deps.contains("uphold-a.service"))
+    );
+    assert!(
+        unit.dependencies
+            .get(&DependencyKind::PartOf)
+            .is_some_and(|deps| deps.contains("parent.target"))
+    );
+    assert!(
+        unit.dependencies
+            .get(&DependencyKind::OnSuccess)
+            .is_some_and(|deps| deps.contains("success-handler.service"))
+    );
     assert!(unit.markers.contains(&UnitMarker::RefuseManualStart));
     assert!(unit.markers.contains(&UnitMarker::RefuseManualStop));
     assert!(unit.markers.contains(&UnitMarker::AllowIsolate));
@@ -991,9 +1009,9 @@ fn test_parse_unit_section_directives_comprehensive() {
         vec!["reload-a.service", "reload-b.service"]
     );
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
 
     let _ = fs::remove_dir_all(&dir);
@@ -1158,6 +1176,9 @@ fn test_collect_dropin_files_precedence_and_sorting() {
 #[test]
 fn test_load_unit_merges_dropins_and_caches_merged_result() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let root = test_temp_dir("test-systemd-dropin-merge-load");
     let etc = root.join("etc");
     let usr = root.join("usr");
@@ -1194,7 +1215,7 @@ fn test_load_unit_merges_dropins_and_caches_merged_result() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var(
+    environment.set(
         "SYSTEMD_UNIT_PATH",
         format!("{}:{}", etc.display(), usr.display()),
     );
@@ -1208,9 +1229,9 @@ fn test_load_unit_merges_dropins_and_caches_merged_result() {
     assert_eq!(info.exec_start.as_deref(), Some("/usr/bin/override"));
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&root);
 }
@@ -1218,6 +1239,9 @@ fn test_load_unit_merges_dropins_and_caches_merged_result() {
 #[test]
 fn test_load_instance_unit_uses_template_and_instance_dropins() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let root = test_temp_dir("test-systemd-template-dropins");
     let etc = root.join("etc");
     let usr = root.join("usr");
@@ -1253,7 +1277,7 @@ fn test_load_instance_unit_uses_template_and_instance_dropins() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var(
+    environment.set(
         "SYSTEMD_UNIT_PATH",
         format!("{}:{}", etc.display(), usr.display()),
     );
@@ -1270,9 +1294,9 @@ fn test_load_instance_unit_uses_template_and_instance_dropins() {
     assert_eq!(info.exec_context.environment, vec!["ROLE=blue".to_string()]);
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&root);
 }
@@ -1292,9 +1316,11 @@ fn test_expand_unit_specifiers_for_instance_units() {
 
     let info = parse_unit_file(&path).unwrap().unwrap();
     assert_eq!(
-            info.description.as_deref(),
-            Some("%|baz-qux|baz/qux|foo-bar@baz-qux.service|foo-bar@baz-qux|foo-bar|foo/bar|bar|bar|/baz/qux|%/|%")
-        );
+        info.description.as_deref(),
+        Some(
+            "%|baz-qux|baz/qux|foo-bar@baz-qux.service|foo-bar@baz-qux|foo-bar|foo/bar|bar|bar|/baz/qux|%/|%"
+        )
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -1451,6 +1477,9 @@ fn test_expand_unit_specifiers_for_fragment_path_specifiers() {
 #[test]
 fn test_expand_unit_specifiers_for_tmp_and_runtime_env_overrides() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-specifiers-env-overrides");
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join("foo.service");
@@ -1461,10 +1490,10 @@ fn test_expand_unit_specifiers_for_tmp_and_runtime_env_overrides() {
     let prev_temp = std::env::var("TEMP").ok();
     let prev_tmp = std::env::var("TMP").ok();
 
-    std::env::set_var("XDG_RUNTIME_DIR", "/tmp/runtime-override");
-    std::env::set_var("TMPDIR", "/tmp/tmp-override");
-    std::env::remove_var("TEMP");
-    std::env::remove_var("TMP");
+    environment.set("XDG_RUNTIME_DIR", "/tmp/runtime-override");
+    environment.set("TMPDIR", "/tmp/tmp-override");
+    environment.remove("TEMP");
+    environment.remove("TMP");
 
     let info = parse_unit_file(&path).unwrap().unwrap();
     assert_eq!(
@@ -1473,24 +1502,24 @@ fn test_expand_unit_specifiers_for_tmp_and_runtime_env_overrides() {
     );
 
     if let Some(value) = prev_xdg {
-        std::env::set_var("XDG_RUNTIME_DIR", value);
+        environment.set("XDG_RUNTIME_DIR", value);
     } else {
-        std::env::remove_var("XDG_RUNTIME_DIR");
+        environment.remove("XDG_RUNTIME_DIR");
     }
     if let Some(value) = prev_tmpdir {
-        std::env::set_var("TMPDIR", value);
+        environment.set("TMPDIR", value);
     } else {
-        std::env::remove_var("TMPDIR");
+        environment.remove("TMPDIR");
     }
     if let Some(value) = prev_temp {
-        std::env::set_var("TEMP", value);
+        environment.set("TEMP", value);
     } else {
-        std::env::remove_var("TEMP");
+        environment.remove("TEMP");
     }
     if let Some(value) = prev_tmp {
-        std::env::set_var("TMP", value);
+        environment.set("TMP", value);
     } else {
-        std::env::remove_var("TMP");
+        environment.remove("TMP");
     }
 
     let _ = fs::remove_dir_all(&dir);
@@ -1588,6 +1617,9 @@ fn test_resolve_pretty_hostname_from_path_reads_machine_info() {
 #[test]
 fn test_load_unit_symlink_registers_alias_to_canonical_name() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     use std::os::unix::fs::symlink;
 
     let root = test_temp_dir("test-systemd-load-unit-symlink-alias");
@@ -1600,7 +1632,7 @@ fn test_load_unit_symlink_registers_alias_to_canonical_name() {
     symlink(root.join("real.service"), root.join("alias.service")).unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", root.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", root.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     mgr.load_unit("alias.service").unwrap();
@@ -1619,9 +1651,9 @@ fn test_load_unit_symlink_registers_alias_to_canonical_name() {
     assert_eq!(mgr.unit_count(), loaded_units);
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&root);
 }
@@ -1629,23 +1661,29 @@ fn test_load_unit_symlink_registers_alias_to_canonical_name() {
 #[test]
 fn test_systemd_unit_path_override() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", "/tmp/a:/tmp/b");
+    environment.set("SYSTEMD_UNIT_PATH", "/tmp/a:/tmp/b");
     let paths = unit_search_paths();
     assert_eq!(
         paths,
         vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")]
     );
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
 }
 
 #[test]
 fn test_start_unit_async_finishes_without_live_job() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-async-start");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -1655,7 +1693,7 @@ fn test_start_unit_async_finishes_without_live_job() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     let job_id = mgr
@@ -1674,9 +1712,9 @@ fn test_start_unit_async_finishes_without_live_job() {
     );
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -2366,10 +2404,11 @@ fn test_transaction_preflight_rejects_irreversible_conflict_without_partial_inst
             .and_then(|unit| unit.current_job_id),
         Some(protected_id)
     );
-    assert!(mgr
-        .installed_jobs
-        .get(&protected_id)
-        .is_some_and(|job| job.irreversible && job.kind == CanonicalJobType::Start));
+    assert!(
+        mgr.installed_jobs
+            .get(&protected_id)
+            .is_some_and(|job| job.irreversible && job.kind == CanonicalJobType::Start)
+    );
 }
 
 #[test]
@@ -2771,6 +2810,9 @@ fn test_running_reload_merged_with_restart_is_queued_for_redispatch() {
 #[test]
 fn test_isolate_stops_other_active_units() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-isolate-async");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -2781,7 +2823,7 @@ fn test_isolate_stops_other_active_units() {
     fs::write(dir.join("other.target"), "[Unit]\nDescription=Other\n").unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     mgr.start_unit("primary.target").unwrap();
@@ -2802,9 +2844,9 @@ fn test_isolate_stops_other_active_units() {
     );
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -2876,15 +2918,17 @@ fn test_start_post_reaches_running_only_after_its_exact_exit_event() {
 #[test]
 fn test_service_condition_failure_skips_start() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-service-condition-fail");
     fs::create_dir_all(&dir).unwrap();
     let marker = dir.join("condition.log");
-    let unit =
-        "[Unit]\nConditionPathExists=/definitely/missing/path\n[Service]\nType=simple\nExecStartPre=/not-run\nExecStart=/not-run\n";
+    let unit = "[Unit]\nConditionPathExists=/definitely/missing/path\n[Service]\nType=simple\nExecStartPre=/not-run\nExecStart=/not-run\n";
     fs::write(dir.join("cond.service"), unit).unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     mgr.start_unit("cond.service").unwrap();
@@ -2895,9 +2939,9 @@ fn test_service_condition_failure_skips_start() {
     assert!(!marker.exists());
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -2929,15 +2973,17 @@ fn test_parse_condition_trigger_prefix() {
 #[test]
 fn test_service_assert_failure_marks_unit_failed() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-service-assert-fail");
     fs::create_dir_all(&dir).unwrap();
     let marker = dir.join("assert.log");
-    let unit =
-        "[Unit]\nAssertPathExists=/definitely/missing/path\n[Service]\nType=simple\nExecStart=/not-run\n";
+    let unit = "[Unit]\nAssertPathExists=/definitely/missing/path\n[Service]\nType=simple\nExecStart=/not-run\n";
     fs::write(dir.join("assert.service"), unit).unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     mgr.start_unit("assert.service").unwrap();
@@ -2948,9 +2994,9 @@ fn test_service_assert_failure_marks_unit_failed() {
     assert!(!marker.exists());
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -2991,6 +3037,9 @@ fn test_stop_command_advances_only_after_its_exact_exit_event() {
 #[test]
 fn test_notify_service_fails_closed_without_authenticated_transport() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-notify-ready");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -3000,7 +3049,7 @@ fn test_notify_service_fails_closed_without_authenticated_transport() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     mgr.start_unit("notify.service").unwrap();
@@ -3010,9 +3059,9 @@ fn test_notify_service_fails_closed_without_authenticated_transport() {
     );
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -3020,6 +3069,9 @@ fn test_notify_service_fails_closed_without_authenticated_transport() {
 #[test]
 fn test_idle_service_fails_closed_without_manager_idle_gate() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-idle-without-gate");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -3029,7 +3081,7 @@ fn test_idle_service_fails_closed_without_manager_idle_gate() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     mgr.start_unit("idle.service").unwrap();
@@ -3039,9 +3091,9 @@ fn test_idle_service_fails_closed_without_manager_idle_gate() {
     );
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -3049,6 +3101,9 @@ fn test_idle_service_fails_closed_without_manager_idle_gate() {
 #[test]
 fn test_dbus_service_without_bus_name_fails_closed() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-dbus-without-name");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -3058,7 +3113,7 @@ fn test_dbus_service_without_bus_name_fails_closed() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     mgr.start_unit("missing-name.service").unwrap();
@@ -3068,9 +3123,9 @@ fn test_dbus_service_without_bus_name_fails_closed() {
     );
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -3110,9 +3165,10 @@ fn test_service_restart_policy_queues_after_exact_main_exit_event() {
             .map(|service| service.n_restarts),
         Some(1)
     );
-    assert!(mgr
-        .service_restart_deadlines
-        .contains_key("restart.service"));
+    assert!(
+        mgr.service_restart_deadlines
+            .contains_key("restart.service")
+    );
 }
 
 #[test]
@@ -3436,11 +3492,12 @@ fn test_forking_service_tracks_control_pid_separately_through_the_typed_fsm() {
             state: ChildState::ExitedCleanly,
         },
     ));
-    assert!(mgr
-        .units
-        .get("forking.service")
-        .and_then(|unit| unit.control_pid)
-        .is_none());
+    assert!(
+        mgr.units
+            .get("forking.service")
+            .and_then(|unit| unit.control_pid)
+            .is_none()
+    );
 }
 
 #[test]
@@ -3890,6 +3947,9 @@ fn test_cgroup_realization_rejects_shared_events_capability_atomically() {
 #[test]
 fn test_service_directories_are_created_and_runtime_removed_on_stop() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-service-directories");
     fs::create_dir_all(&dir).unwrap();
 
@@ -3907,18 +3967,18 @@ fn test_service_directories_are_created_and_runtime_removed_on_stop() {
     let prev_config = std::env::var("SYSTEMD_CONFIGURATION_DIR_ROOT").ok();
     let prev_dynamic = std::env::var("SYSTEMD_DYNAMIC_UID_ROOT").ok();
 
-    std::env::set_var(
+    environment.set(
         "SYSTEMD_RUNTIME_DIR_ROOT",
         runtime_root.display().to_string(),
     );
-    std::env::set_var("SYSTEMD_STATE_DIR_ROOT", state_root.display().to_string());
-    std::env::set_var("SYSTEMD_CACHE_DIR_ROOT", cache_root.display().to_string());
-    std::env::set_var("SYSTEMD_LOGS_DIR_ROOT", logs_root.display().to_string());
-    std::env::set_var(
+    environment.set("SYSTEMD_STATE_DIR_ROOT", state_root.display().to_string());
+    environment.set("SYSTEMD_CACHE_DIR_ROOT", cache_root.display().to_string());
+    environment.set("SYSTEMD_LOGS_DIR_ROOT", logs_root.display().to_string());
+    environment.set(
         "SYSTEMD_CONFIGURATION_DIR_ROOT",
         config_root.display().to_string(),
     );
-    std::env::set_var(
+    environment.set(
         "SYSTEMD_DYNAMIC_UID_ROOT",
         dynamic_root.display().to_string(),
     );
@@ -3958,34 +4018,34 @@ fn test_service_directories_are_created_and_runtime_removed_on_stop() {
     assert!(config_dir.exists());
 
     if let Some(value) = prev_runtime {
-        std::env::set_var("SYSTEMD_RUNTIME_DIR_ROOT", value);
+        environment.set("SYSTEMD_RUNTIME_DIR_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_RUNTIME_DIR_ROOT");
+        environment.remove("SYSTEMD_RUNTIME_DIR_ROOT");
     }
     if let Some(value) = prev_state {
-        std::env::set_var("SYSTEMD_STATE_DIR_ROOT", value);
+        environment.set("SYSTEMD_STATE_DIR_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_STATE_DIR_ROOT");
+        environment.remove("SYSTEMD_STATE_DIR_ROOT");
     }
     if let Some(value) = prev_cache {
-        std::env::set_var("SYSTEMD_CACHE_DIR_ROOT", value);
+        environment.set("SYSTEMD_CACHE_DIR_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_CACHE_DIR_ROOT");
+        environment.remove("SYSTEMD_CACHE_DIR_ROOT");
     }
     if let Some(value) = prev_logs {
-        std::env::set_var("SYSTEMD_LOGS_DIR_ROOT", value);
+        environment.set("SYSTEMD_LOGS_DIR_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_LOGS_DIR_ROOT");
+        environment.remove("SYSTEMD_LOGS_DIR_ROOT");
     }
     if let Some(value) = prev_config {
-        std::env::set_var("SYSTEMD_CONFIGURATION_DIR_ROOT", value);
+        environment.set("SYSTEMD_CONFIGURATION_DIR_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_CONFIGURATION_DIR_ROOT");
+        environment.remove("SYSTEMD_CONFIGURATION_DIR_ROOT");
     }
     if let Some(value) = prev_dynamic {
-        std::env::set_var("SYSTEMD_DYNAMIC_UID_ROOT", value);
+        environment.set("SYSTEMD_DYNAMIC_UID_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_DYNAMIC_UID_ROOT");
+        environment.remove("SYSTEMD_DYNAMIC_UID_ROOT");
     }
 
     let _ = fs::remove_dir_all(&dir);
@@ -3994,6 +4054,9 @@ fn test_service_directories_are_created_and_runtime_removed_on_stop() {
 #[test]
 fn test_runtime_directory_preserve_keeps_runtime_path() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-runtime-directory-preserve");
     fs::create_dir_all(&dir).unwrap();
 
@@ -4003,12 +4066,12 @@ fn test_runtime_directory_preserve_keeps_runtime_path() {
     let prev_units = std::env::var("SYSTEMD_UNIT_PATH").ok();
     let prev_runtime = std::env::var("SYSTEMD_RUNTIME_DIR_ROOT").ok();
     let prev_dynamic = std::env::var("SYSTEMD_DYNAMIC_UID_ROOT").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
-    std::env::set_var(
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set(
         "SYSTEMD_RUNTIME_DIR_ROOT",
         runtime_root.display().to_string(),
     );
-    std::env::set_var(
+    environment.set(
         "SYSTEMD_DYNAMIC_UID_ROOT",
         dynamic_root.display().to_string(),
     );
@@ -4027,19 +4090,19 @@ fn test_runtime_directory_preserve_keeps_runtime_path() {
     assert!(runtime_dir.exists());
 
     if let Some(value) = prev_units {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     if let Some(value) = prev_runtime {
-        std::env::set_var("SYSTEMD_RUNTIME_DIR_ROOT", value);
+        environment.set("SYSTEMD_RUNTIME_DIR_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_RUNTIME_DIR_ROOT");
+        environment.remove("SYSTEMD_RUNTIME_DIR_ROOT");
     }
     if let Some(value) = prev_dynamic {
-        std::env::set_var("SYSTEMD_DYNAMIC_UID_ROOT", value);
+        environment.set("SYSTEMD_DYNAMIC_UID_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_DYNAMIC_UID_ROOT");
+        environment.remove("SYSTEMD_DYNAMIC_UID_ROOT");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -4047,6 +4110,9 @@ fn test_runtime_directory_preserve_keeps_runtime_path() {
 #[test]
 fn test_dynamic_user_uid_assignment_is_stable_across_manager_restart() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-dynamic-user-stable");
     fs::create_dir_all(&dir).unwrap();
 
@@ -4056,12 +4122,12 @@ fn test_dynamic_user_uid_assignment_is_stable_across_manager_restart() {
     let prev_units = std::env::var("SYSTEMD_UNIT_PATH").ok();
     let prev_runtime = std::env::var("SYSTEMD_RUNTIME_DIR_ROOT").ok();
     let prev_dynamic = std::env::var("SYSTEMD_DYNAMIC_UID_ROOT").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
-    std::env::set_var(
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set(
         "SYSTEMD_RUNTIME_DIR_ROOT",
         runtime_root.display().to_string(),
     );
-    std::env::set_var(
+    environment.set(
         "SYSTEMD_DYNAMIC_UID_ROOT",
         dynamic_root.display().to_string(),
     );
@@ -4090,19 +4156,19 @@ fn test_dynamic_user_uid_assignment_is_stable_across_manager_restart() {
     assert!((DYNAMIC_UID_MIN..=DYNAMIC_UID_MAX).contains(&uid));
 
     if let Some(value) = prev_units {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     if let Some(value) = prev_runtime {
-        std::env::set_var("SYSTEMD_RUNTIME_DIR_ROOT", value);
+        environment.set("SYSTEMD_RUNTIME_DIR_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_RUNTIME_DIR_ROOT");
+        environment.remove("SYSTEMD_RUNTIME_DIR_ROOT");
     }
     if let Some(value) = prev_dynamic {
-        std::env::set_var("SYSTEMD_DYNAMIC_UID_ROOT", value);
+        environment.set("SYSTEMD_DYNAMIC_UID_ROOT", value);
     } else {
-        std::env::remove_var("SYSTEMD_DYNAMIC_UID_ROOT");
+        environment.remove("SYSTEMD_DYNAMIC_UID_ROOT");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -4110,6 +4176,9 @@ fn test_dynamic_user_uid_assignment_is_stable_across_manager_restart() {
 #[test]
 fn test_build_transaction_ignore_requirements_allows_missing_required_deps() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-ignore-requirements-mode");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4119,7 +4188,7 @@ fn test_build_transaction_ignore_requirements_allows_missing_required_deps() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     let strict = mgr.build_transaction("main.service", TxJobType::Start, JobMode::Replace);
@@ -4136,9 +4205,9 @@ fn test_build_transaction_ignore_requirements_allows_missing_required_deps() {
     assert_eq!(ignored.jobs[0].unit, "main.service");
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -4146,6 +4215,9 @@ fn test_build_transaction_ignore_requirements_allows_missing_required_deps() {
 #[test]
 fn test_build_transaction_ignore_dependencies_does_not_pull_in_requires() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-ignore-dependencies-mode");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4160,7 +4232,7 @@ fn test_build_transaction_ignore_dependencies_does_not_pull_in_requires() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     let strict = mgr
@@ -4179,9 +4251,9 @@ fn test_build_transaction_ignore_dependencies_does_not_pull_in_requires() {
     assert_eq!(ignored.jobs[0].unit, "main.service");
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -4189,6 +4261,9 @@ fn test_build_transaction_ignore_dependencies_does_not_pull_in_requires() {
 #[test]
 fn test_build_transaction_restart_dependencies_starts_forward_requirements() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-restart-dependencies-mode");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4203,7 +4278,7 @@ fn test_build_transaction_restart_dependencies_starts_forward_requirements() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     let applied = mgr
@@ -4214,19 +4289,23 @@ fn test_build_transaction_restart_dependencies_starts_forward_requirements() {
         )
         .unwrap();
 
-    assert!(applied
-        .jobs
-        .iter()
-        .any(|job| job.unit == "main.service" && job.job_type == TxJobType::Start));
-    assert!(applied
-        .jobs
-        .iter()
-        .any(|job| job.unit == "dep.service" && job.job_type == TxJobType::Start));
+    assert!(
+        applied
+            .jobs
+            .iter()
+            .any(|job| job.unit == "main.service" && job.job_type == TxJobType::Start)
+    );
+    assert!(
+        applied
+            .jobs
+            .iter()
+            .any(|job| job.unit == "dep.service" && job.job_type == TxJobType::Start)
+    );
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -4234,6 +4313,9 @@ fn test_build_transaction_restart_dependencies_starts_forward_requirements() {
 #[test]
 fn test_build_transaction_loads_direct_conflict_target() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-direct-conflict-loading");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4248,7 +4330,7 @@ fn test_build_transaction_loads_direct_conflict_target() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     mgr.build_transaction("main.service", TxJobType::Start, JobMode::Replace)
@@ -4256,9 +4338,9 @@ fn test_build_transaction_loads_direct_conflict_target() {
     assert!(mgr.units.contains_key("conflict.service"));
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -4266,6 +4348,9 @@ fn test_build_transaction_loads_direct_conflict_target() {
 #[test]
 fn test_build_transaction_honors_inverse_conflict_from_loaded_unit() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-inverse-conflict");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4280,7 +4365,7 @@ fn test_build_transaction_honors_inverse_conflict_from_loaded_unit() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     mgr.load_unit_recursive("conflict.service", &mut BTreeSet::new())
@@ -4289,15 +4374,17 @@ fn test_build_transaction_honors_inverse_conflict_from_loaded_unit() {
     let applied = mgr
         .build_transaction("main.service", TxJobType::Start, JobMode::Replace)
         .unwrap();
-    assert!(applied
-        .jobs
-        .iter()
-        .any(|job| job.unit == "conflict.service" && job.job_type == TxJobType::Stop));
+    assert!(
+        applied
+            .jobs
+            .iter()
+            .any(|job| job.unit == "conflict.service" && job.job_type == TxJobType::Stop)
+    );
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -4305,6 +4392,9 @@ fn test_build_transaction_honors_inverse_conflict_from_loaded_unit() {
 #[test]
 fn test_build_transaction_restart_dependencies_requires_start_job() {
     let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe { TestEnvironment::lock() };
     let dir = test_temp_dir("test-systemd-restart-dependencies-invalid-mode");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4314,7 +4404,7 @@ fn test_build_transaction_restart_dependencies_requires_start_job() {
     .unwrap();
 
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
-    std::env::set_var("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
 
     let mut mgr = new_test_runtime_manager();
     let err = mgr
@@ -4331,9 +4421,9 @@ fn test_build_transaction_restart_dependencies_requires_start_job() {
     ));
 
     if let Some(value) = prev {
-        std::env::set_var("SYSTEMD_UNIT_PATH", value);
+        environment.set("SYSTEMD_UNIT_PATH", value);
     } else {
-        std::env::remove_var("SYSTEMD_UNIT_PATH");
+        environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
 }

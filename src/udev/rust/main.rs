@@ -14,14 +14,16 @@ use std::time::{Duration, Instant};
 
 use systemd_libsystemd_rs::sd_daemon_checks::sd_listen_fds_with_names;
 use systemd_udev_rs::udev_db_monitor::{
-    default_rules_dirs, encode_uevent_properties, initialize_udev_runtime_with_fds, ControlCommand,
-    UdevRuntimeResources, UDEV_RUN_DIR,
+    ControlCommand, UDEV_RUN_DIR, UdevRuntimeResources, default_rules_dirs,
+    encode_uevent_properties, initialize_udev_runtime_with_fds,
 };
 use systemd_udev_rs::udev_rule_engine::{
-    is_safe_device_relative_path, process_device_event, AssignToken, DeviceEvent, DeviceNodeKind,
-    DeviceNodeSpec, EngineError, MatchToken, NodeApplyError, Rule,
+    AssignToken, DeviceEvent, DeviceNodeKind, DeviceNodeSpec, EngineError, MatchToken,
+    NodeApplyError, Rule, is_safe_device_relative_path, process_device_event,
 };
-use systemd_udev_rs::udev_rules::{parse_rules_from_dirs, RuleKey, RuleToken, UdevRuleOperatorType};
+use systemd_udev_rs::udev_rules::{
+    RuleKey, RuleToken, UdevRuleOperatorType, parse_rules_from_dirs,
+};
 use systemd_udev_rs::udev_worker::{parse_worker_notify_payload, try_again_message};
 use systemd_udev_rs::uevent_netlink::{KobjectUeventReceiver, UeventAction, UeventMessage};
 use tokio::runtime::Builder;
@@ -129,7 +131,11 @@ impl QueueFileLifecycle {
                 .truncate(true)
                 .open(&self.queue_path)
             {
-                eprintln!("systemd-udevd: failed to create queue file {}: {}", self.queue_path.display(), err);
+                eprintln!(
+                    "systemd-udevd: failed to create queue file {}: {}",
+                    self.queue_path.display(),
+                    err
+                );
             } else {
                 self.present = true;
             }
@@ -141,7 +147,11 @@ impl QueueFileLifecycle {
                 Ok(_) => self.present = false,
                 Err(err) if err.kind() == io::ErrorKind::NotFound => self.present = false,
                 Err(err) => {
-                    eprintln!("systemd-udevd: failed to remove queue file {}: {}", self.queue_path.display(), err)
+                    eprintln!(
+                        "systemd-udevd: failed to remove queue file {}: {}",
+                        self.queue_path.display(),
+                        err
+                    )
                 }
             }
         }
@@ -164,7 +174,9 @@ fn close_activation_fd(fd: i32) {
 
 fn collect_activation_sockets() -> ActivationSockets {
     let mut sockets = ActivationSockets::default();
-    let passed = match sd_listen_fds_with_names(true) {
+    // SAFETY: main() collects and consumes activation descriptors before
+    // constructing UdevRuntime or starting any worker threads.
+    let passed = match unsafe { sd_listen_fds_with_names(true) } {
         Ok(passed) => passed,
         Err(err) => {
             eprintln!("systemd-udevd: failed to parse socket activation fds: {err:?}");
@@ -202,7 +214,11 @@ fn spawn_kernel_uevent_receiver(
     std::thread::Builder::new()
         .name("rust-uevent-netlink".to_string())
         .spawn(move || {
-            let runtime = match Builder::new_current_thread().enable_io().enable_time().build() {
+            let runtime = match Builder::new_current_thread()
+                .enable_io()
+                .enable_time()
+                .build()
+            {
                 Ok(runtime) => runtime,
                 Err(err) => {
                     eprintln!("systemd-udevd: failed to build tokio runtime for uevents: {err}");
@@ -218,7 +234,9 @@ fn spawn_kernel_uevent_receiver(
                 let receiver = match receiver {
                     Ok(receiver) => receiver,
                     Err(err) => {
-                        eprintln!("systemd-udevd: failed to bind kernel uevent netlink socket: {err}");
+                        eprintln!(
+                            "systemd-udevd: failed to bind kernel uevent netlink socket: {err}"
+                        );
                         return;
                     }
                 };
@@ -287,7 +305,9 @@ fn compile_match_token(token: &RuleToken) -> Option<MatchToken> {
 fn compile_assign_token(token: &RuleToken) -> Option<AssignToken> {
     if !matches!(
         token.operator,
-        UdevRuleOperatorType::Add | UdevRuleOperatorType::Assign | UdevRuleOperatorType::AssignFinal
+        UdevRuleOperatorType::Add
+            | UdevRuleOperatorType::Assign
+            | UdevRuleOperatorType::AssignFinal
     ) {
         return None;
     }
@@ -333,7 +353,9 @@ fn load_supported_rules(rule_dirs: &[PathBuf]) -> Vec<Rule> {
     let parsed = match parse_rules_from_dirs(&dir_refs) {
         Ok(parsed) => parsed,
         Err(err) => {
-            eprintln!("systemd-udevd: failed to parse rules files, continuing with empty set: {err:?}");
+            eprintln!(
+                "systemd-udevd: failed to parse rules files, continuing with empty set: {err:?}"
+            );
             return Vec::new();
         }
     };
@@ -419,7 +441,9 @@ fn apply_static_dev_perms(rules: &[Rule]) {
         }
 
         if let Some(mode) = spec.mode {
-            if let Err(err) = std::fs::set_permissions(&spec.path, std::fs::Permissions::from_mode(mode)) {
+            if let Err(err) =
+                std::fs::set_permissions(&spec.path, std::fs::Permissions::from_mode(mode))
+            {
                 eprintln!(
                     "systemd-udevd: failed applying static mode on {}: {}",
                     spec.path.display(),
@@ -450,7 +474,10 @@ fn apply_static_dev_perms(rules: &[Rule]) {
     }
 
     if applied > 0 {
-        eprintln!("systemd-udevd: applied static permissions to {} existing devnodes", applied);
+        eprintln!(
+            "systemd-udevd: applied static permissions to {} existing devnodes",
+            applied
+        );
     }
 }
 
@@ -484,7 +511,11 @@ fn tags_from_uevent(event: &UeventMessage) -> BTreeSet<String> {
     let mut tags = BTreeSet::new();
     for key in ["TAGS", "TAG"] {
         if let Some(value) = event.properties.get(key) {
-            for tag in value.split(':').map(str::trim).filter(|tag| !tag.is_empty()) {
+            for tag in value
+                .split(':')
+                .map(str::trim)
+                .filter(|tag| !tag.is_empty())
+            {
                 tags.insert(tag.to_string());
             }
         }
@@ -871,7 +902,13 @@ mod tests {
             PathBuf::from("/dev/input/event0")
         );
 
-        for invalid in ["", "/etc/passwd", "../etc/passwd", "input/../event0", "./event0"] {
+        for invalid in [
+            "",
+            "/etc/passwd",
+            "../etc/passwd",
+            "input/../event0",
+            "./event0",
+        ] {
             assert_eq!(
                 device_path_from_devname(invalid),
                 Err(NodeApplyError::InvalidPath),
@@ -895,15 +932,15 @@ mod tests {
 
     #[test]
     fn locked_retry_classifier_catches_transient_node_errors() {
-        assert!(should_retry_locked_error(&EngineError::Node(NodeApplyError::Io(
-            -libc::EBUSY
-        ))));
-        assert!(should_retry_locked_error(&EngineError::Node(NodeApplyError::Io(
-            -libc::EAGAIN
-        ))));
-        assert!(!should_retry_locked_error(&EngineError::Node(NodeApplyError::Io(
-            -libc::ENOENT
-        ))));
+        assert!(should_retry_locked_error(&EngineError::Node(
+            NodeApplyError::Io(-libc::EBUSY)
+        )));
+        assert!(should_retry_locked_error(&EngineError::Node(
+            NodeApplyError::Io(-libc::EAGAIN)
+        )));
+        assert!(!should_retry_locked_error(&EngineError::Node(
+            NodeApplyError::Io(-libc::ENOENT)
+        )));
     }
 
     #[test]

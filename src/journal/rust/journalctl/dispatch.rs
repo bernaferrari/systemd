@@ -2,8 +2,8 @@
 
 use super::arguments::parse_argv;
 use super::filter::{
-    build_filter_plan, map_filter_apply_error, map_filter_build_error, replay_filter_plan,
-    FilterBackendOp, FilterPlan,
+    FilterBackendOp, FilterPlan, build_filter_plan, map_filter_apply_error, map_filter_build_error,
+    replay_filter_plan,
 };
 use super::model::{JournalctlAction, JournalctlArgs, ParseArgvError, ParseArgvResult};
 use std::os::unix::fs::MetadataExt;

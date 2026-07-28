@@ -4,8 +4,8 @@
 // Binary entry point for systemd-sysusers
 
 use systemd_sysusers_rs::{
-    backup_path, group_path, parse_config_line, passwd_path, Item, ItemType, GSHADOW_PATH,
-    PASSWORD_LOCKED_AND_INVALID, PASSWORD_SEE_SHADOW, SHADOW_PATH,
+    GSHADOW_PATH, Item, ItemType, PASSWORD_LOCKED_AND_INVALID, PASSWORD_SEE_SHADOW, SHADOW_PATH,
+    backup_path, group_path, parse_config_line, passwd_path,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

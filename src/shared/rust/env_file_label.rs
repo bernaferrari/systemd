@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::locale_setup::etc_vconsole_conf;
 use crate::selinux_util::{
-    mac_selinux_create_file_clear, mac_selinux_create_file_prepare, ContextError, AT_FDCWD, S_IFREG,
+    AT_FDCWD, ContextError, S_IFREG, mac_selinux_create_file_clear, mac_selinux_create_file_prepare,
 };
 
 const DEFAULT_FILE_MODE: libc::mode_t = 0o644;
@@ -399,9 +399,11 @@ mod tests {
         let a = temporary_name(Path::new("test.conf"), 0);
         let b = temporary_name(Path::new("test.conf"), 1);
         assert_ne!(a, b);
-        assert!(String::from_utf8(a)
-            .unwrap()
-            .starts_with(".#test.conf.tmp."));
+        assert!(
+            String::from_utf8(a)
+                .unwrap()
+                .starts_with(".#test.conf.tmp.")
+        );
     }
 
     #[test]

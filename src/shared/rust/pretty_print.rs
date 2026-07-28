@@ -426,6 +426,7 @@ pub fn clear_progress_bar_unbuffered(prefix: Option<&str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
 
     #[test]
     fn test_osc_char_is_valid() {
@@ -602,16 +603,17 @@ mod tests {
 
     #[test]
     fn test_shall_tint_background() {
-        std::env::remove_var("SYSTEMD_TINT_BACKGROUND");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove("SYSTEMD_TINT_BACKGROUND");
         assert!(shall_tint_background());
 
-        std::env::set_var("SYSTEMD_TINT_BACKGROUND", "0");
+        environment.set("SYSTEMD_TINT_BACKGROUND", "0");
         assert!(!shall_tint_background());
 
-        std::env::set_var("SYSTEMD_TINT_BACKGROUND", "1");
+        environment.set("SYSTEMD_TINT_BACKGROUND", "1");
         assert!(shall_tint_background());
-
-        std::env::remove_var("SYSTEMD_TINT_BACKGROUND");
     }
 
     #[test]

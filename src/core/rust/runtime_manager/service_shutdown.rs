@@ -12,8 +12,8 @@
 use std::collections::BTreeSet;
 
 use super::unit_file::{KillMode, ServiceRestartPolicy, ServiceTimeoutFailureMode, UnitFileInfo};
-use super::{status_list_matches, RuntimeManager};
-use crate::service::{service_record_result, ServiceExitStatus, ServiceState, ServiceType};
+use super::{RuntimeManager, status_list_matches};
+use crate::service::{ServiceExitStatus, ServiceState, ServiceType, service_record_result};
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use crate::unit::DependencyKind;
 use systemd_platform_rs::spawn::ChildState;

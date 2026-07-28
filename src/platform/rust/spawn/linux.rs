@@ -10,12 +10,12 @@
 //! identity changes use raw syscalls to avoid glibc's NPTL setxid machinery.
 
 use super::{
-    parse_command, ProcessIdentity, SpawnConfirmation, SpawnSecurity, SpawnStdio, SpawnedService,
+    ProcessIdentity, SpawnConfirmation, SpawnSecurity, SpawnStdio, SpawnedService, parse_command,
 };
 use caps::CapSet;
-use nix::fcntl::{fcntl, FcntlArg, OFlag};
+use nix::fcntl::{FcntlArg, OFlag, fcntl};
 use nix::sys::signal::SigSet;
-use nix::unistd::{close, dup3, pipe2, read, setsid, Pid};
+use nix::unistd::{Pid, close, dup2_stderr, dup2_stdin, dup2_stdout, pipe2, read, setsid};
 use seccompiler::BpfProgram;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
@@ -28,8 +28,8 @@ mod cgroup;
 #[path = "linux_process.rs"]
 mod process;
 use cgroup::delegate_cgroup_access;
+use process::{ServiceFork, spawn_process, terminate_unconfirmed_child};
 pub(super) use process::{acquire_process_identity, signal_process_identity};
-use process::{spawn_process, terminate_unconfirmed_child, ServiceFork};
 
 /// A socket-activation descriptor borrowed from the manager for the duration
 /// of a single spawn. The child duplicates it before changing any descriptor
@@ -269,7 +269,7 @@ fn prepare_activation_fds(
         }
 
         let source_fd = activation_fd.fd.as_raw_fd();
-        fcntl(source_fd, FcntlArg::F_GETFD).map_err(|error| {
+        fcntl(activation_fd.fd, FcntlArg::F_GETFD).map_err(|error| {
             format!(
                 "invalid socket-activation descriptor {} ({}): {error}",
                 activation_fd.name, source_fd
@@ -302,8 +302,17 @@ fn validate_stdio_fds(stdio: SpawnStdio) -> Result<(), String> {
         ("stderr", stdio.stderr_fd),
     ] {
         if let Some(fd) = fd {
-            fcntl(fd, FcntlArg::F_GETFD)
-                .map_err(|error| format!("invalid {label} descriptor {fd}: {error}"))?;
+            // SAFETY: F_GETFD accepts any integer descriptor and is the
+            // operation used here to determine whether the raw descriptor is
+            // valid; constructing BorrowedFd before that check would violate
+            // its validity contract.
+            // SAFETY: F_GETFD accepts the raw integer specifically to validate it.
+            if unsafe { libc::fcntl(fd, libc::F_GETFD) } < 0 {
+                return Err(format!(
+                    "invalid {label} descriptor {fd}: {}",
+                    nix::errno::Errno::last()
+                ));
+            }
         }
     }
     Ok(())
@@ -816,7 +825,7 @@ impl PreparedLaunch {
         let activation = prepare_activation_fds(activation_fds)?;
         let cgroup_delegate_root_fd = cgroup
             .filter(|placement| placement.delegated)
-            .map(|placement| placement.delegate_root.as_raw_fd())
+            .map(|placement| placement.delegate_root)
             .map(|fd| {
                 fcntl(fd, FcntlArg::F_DUPFD_CLOEXEC(3))
                     .map_err(|error| {
@@ -827,7 +836,7 @@ impl PreparedLaunch {
             })
             .transpose()?;
         let cgroup_directory_fd = cgroup
-            .map(|placement| placement.target_directory.as_raw_fd())
+            .map(|placement| placement.target_directory)
             .map(|fd| {
                 fcntl(fd, FcntlArg::F_DUPFD_CLOEXEC(3))
                     .map_err(|error| {
@@ -843,7 +852,7 @@ impl PreparedLaunch {
             .transpose()?
             .unwrap_or(false);
         let cgroup_procs_fd = cgroup
-            .map(|placement| placement.target_procs.as_raw_fd())
+            .map(|placement| placement.target_procs)
             .map(|fd| {
                 fcntl(fd, FcntlArg::F_DUPFD_CLOEXEC(3))
                     .map_err(|error| {
@@ -928,7 +937,7 @@ fn cgroup_is_threaded(directory: BorrowedFd<'_>) -> Result<bool, String> {
         if used == contents.len() {
             return Err("cgroup.type exceeded its bounded launch-time read".to_string());
         }
-        match read(fd.as_raw_fd(), &mut contents[used..]) {
+        match read(fd.as_fd(), &mut contents[used..]) {
             Ok(0) => break,
             Ok(size) => used += size,
             Err(nix::errno::Errno::EINTR) => continue,
@@ -946,11 +955,7 @@ fn child_errno_or_invalid_argument() -> i32 {
     // SAFETY: Linux exposes the calling thread's errno through this pointer.
     // The child reads it immediately after a failed libc operation.
     let errno = unsafe { *libc::__errno_location() };
-    if errno == 0 {
-        libc::EINVAL
-    } else {
-        errno
-    }
+    if errno == 0 { libc::EINVAL } else { errno }
 }
 
 fn child_report_failure(status_fd: RawFd, stage: ChildSpawnStage, errno: i32) -> ! {
@@ -1458,6 +1463,9 @@ fn child_apply_security(security: &PreparedSecurity) -> Result<(), i32> {
 }
 
 fn duplicate_child_fd_cloexec(fd: RawFd, minimum_fd: RawFd) -> Result<RawFd, nix::errno::Errno> {
+    // SAFETY: every caller passes a descriptor retained by PreparedLaunch or
+    // an OwnedFd that remains live for this post-fork operation.
+    let fd = unsafe { BorrowedFd::borrow_raw(fd) };
     fcntl(fd, FcntlArg::F_DUPFD_CLOEXEC(minimum_fd))
 }
 
@@ -1507,8 +1515,18 @@ fn install_activation_fds(
             let _ = close(duplicate);
             return Err((ChildSpawnStage::ActivationRemap, libc::EBUSY));
         }
-        dup3(duplicate, target, OFlag::empty())
-            .map_err(|error| (ChildSpawnStage::ActivationRemap, error as i32))?;
+        // SAFETY: `duplicate` was created by F_DUPFD_CLOEXEC above and the
+        // checked target is outside the temporary range. This raw descriptor
+        // remap intentionally replaces any descriptor at `target`; using the
+        // syscall directly avoids falsely claiming unique OwnedFd ownership
+        // for a target slot that exists only until execve or _exit.
+        // SAFETY: duplicate and target satisfy the descriptor invariants above.
+        if unsafe { libc::dup3(duplicate, target, OFlag::empty().bits()) } < 0 {
+            return Err((
+                ChildSpawnStage::ActivationRemap,
+                child_errno_or_invalid_argument(),
+            ));
+        }
         let _ = close(duplicate);
     }
 
@@ -1522,7 +1540,16 @@ fn redirect_child_stdio(
     status_fd: RawFd,
 ) {
     if let Some(source) = source {
-        if let Err(error) = nix::unistd::dup2(source, target) {
+        // SAFETY: stdio sources were validated before fork and remain open in
+        // PreparedLaunch throughout child setup.
+        let source = unsafe { BorrowedFd::borrow_raw(source) };
+        let result = match target {
+            libc::STDIN_FILENO => dup2_stdin(source),
+            libc::STDOUT_FILENO => dup2_stdout(source),
+            libc::STDERR_FILENO => dup2_stderr(source),
+            _ => Err(nix::errno::Errno::EINVAL),
+        };
+        if let Err(error) = result {
             child_report_failure(status_fd, stage, error as i32);
         }
     }
@@ -1584,7 +1611,7 @@ fn consume_exec_status_bytes(
                 *failure_received = 0;
             }
             _ => {
-                return Err("child exec-status pipe contained an invalid record marker".to_string())
+                return Err("child exec-status pipe contained an invalid record marker".to_string());
             }
         }
     }
@@ -1599,7 +1626,7 @@ impl ExecStatusHandle {
     pub fn poll(&mut self) -> Result<ExecStatus, String> {
         let mut input = [0u8; 32];
         loop {
-            match read(self.status_read.as_raw_fd(), &mut input) {
+            match read(self.status_read.as_fd(), &mut input) {
                 Ok(0) if self.failure_started => {
                     return Err(
                         "child exec-status pipe closed with a truncated failure record".to_string(),
@@ -1629,9 +1656,9 @@ impl ExecStatusHandle {
 }
 
 fn make_status_read_nonblocking(status_read: &OwnedFd) -> Result<(), nix::errno::Errno> {
-    let current = fcntl(status_read.as_raw_fd(), FcntlArg::F_GETFL)?;
+    let current = fcntl(status_read.as_fd(), FcntlArg::F_GETFL)?;
     let flags = OFlag::from_bits_truncate(current) | OFlag::O_NONBLOCK;
-    fcntl(status_read.as_raw_fd(), FcntlArg::F_SETFL(flags))?;
+    fcntl(status_read.as_fd(), FcntlArg::F_SETFL(flags))?;
     Ok(())
 }
 

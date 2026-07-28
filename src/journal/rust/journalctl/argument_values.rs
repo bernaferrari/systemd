@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 use super::model::{
-    IdDescriptor, JournalctlArgs, ParseArgvError, ParseIdDescriptorError, ParsedLines, PatternCase,
-    ARG_LINES_ALL, ID128_HEX_LEN, LOG_DEBUG, SD_JOURNAL_ALL_NAMESPACES,
+    ARG_LINES_ALL, ID128_HEX_LEN, IdDescriptor, JournalctlArgs, LOG_DEBUG, ParseArgvError,
+    ParseIdDescriptorError, ParsedLines, PatternCase, SD_JOURNAL_ALL_NAMESPACES,
     SD_JOURNAL_INCLUDE_DEFAULT_NAMESPACE, SD_JSON_FORMAT_COLOR_AUTO, SD_JSON_FORMAT_OFF,
 };
 use nix::libc;
@@ -10,9 +10,9 @@ use std::ffi::{CStr, CString};
 use std::str::FromStr;
 use std::sync::OnceLock;
 use systemd_shared_rs::image_policy::image_policy_from_string;
-use systemd_shared_rs::output_mode::{output_mode_to_json_format_flags, OutputMode};
+use systemd_shared_rs::output_mode::{OutputMode, output_mode_to_json_format_flags};
 use systemd_shared_rs::parse_argument::{parse_boolean_argument, parse_path_argument};
-use systemd_shared_rs::pcre2_util::{pattern_compile, PatternCompileCase, Pcre2Error};
+use systemd_shared_rs::pcre2_util::{PatternCompileCase, Pcre2Error, pattern_compile};
 
 fn parse_i32_lossless(text: &str) -> Option<i32> {
     if text.is_empty() {
@@ -95,7 +95,7 @@ pub fn parse_lines(
                 value: 10,
                 oldest_first: false,
                 explicit: false,
-            })
+            });
         }
     };
 
@@ -217,11 +217,7 @@ fn parse_facility(name: &str) -> Option<u8> {
         "local7" => Some(23),
         _ => {
             let parsed = name.parse::<u8>().ok()?;
-            if parsed <= 23 {
-                Some(parsed)
-            } else {
-                None
-            }
+            if parsed <= 23 { Some(parsed) } else { None }
         }
     }
 }

@@ -4,7 +4,9 @@
 //
 // Safe Rust synchronization metadata for the matching import module.
 
-use crate::import_common::{count_port_source_lines, read_port_source, verify_extracted_functions, PortError, PortMetadata};
+use crate::import_common::{
+    PortError, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
+};
 
 pub const SOURCE_PATH: &str = "src/import/pull-raw.c";
 pub const EXTRACTED_FUNCTIONS: &[&str] = &[
@@ -25,7 +27,7 @@ pub const EXTRACTED_FUNCTIONS: &[&str] = &[
     "raw_pull_rename_auxiliary_file",
     "raw_pull_report_progress",
     "raw_pull_start",
-    "raw_pull_unref"
+    "raw_pull_unref",
 ];
 
 pub fn metadata() -> Result<PortMetadata, PortError> {

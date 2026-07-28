@@ -1,6 +1,6 @@
 # Rust Port Completeness Audit
 
-Date: 2026-07-27
+Date: 2026-07-28
 Scope: `systemd/src` C-vs-Rust completeness and replacement readiness for Linux distro init use.
 
 ## Method
@@ -15,47 +15,47 @@ Scope: `systemd/src` C-vs-Rust completeness and replacement readiness for Linux 
 From `docs/rust-port-coverage.md`:
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1424**
-- Obvious metadata adapters: **28**
-- Test/fuzz support files: **89**
-- Crate scaffolding files: **163**
-- Unverified behavior candidates: **1144**
+- All `src` Rust files: **1464**
+- Obvious metadata adapters: **30**
+- Test/fuzz support files: **95**
+- Unverified behavior candidates: **1339**
 
 Interpretation: raw file ratios are not a coverage metric. Even the behavior-candidate
 count is only an inventory after excluding obvious non-implementations; it does not
 establish C behavior, ABI, build, installation, or executable parity.
 
-Also from beads status at audit time:
+The issue counts below use the repository's outer-workspace Beads database and
+were refreshed on 2026-07-28:
 
-- Open or in-progress issues: **81**
-- Open or in-progress P0 issues: **64**
-- Open or in-progress P1 issues: **13**
-- Open or in-progress P2 issues: **4**
+- Open or in-progress issues: **133**
+- Open or in-progress P0 issues: **0**
+- Open or in-progress P1 issues: **0**
+- Open or in-progress P2 issues: **133**
 
-The ABI inventories are similarly explicit: 111 Rust-owned headers currently
-declare **976** unique C symbols, of which **300** have explicit Rust C exports
-and **676** remain baseline debt. Separately, C tests linked to
-`libsystemd_basic_rs.a` still carry **269** unique manually declared `rs_*`
-symbols with no export from that artifact. These ratchets are release blockers,
-not waivers or evidence that those test targets link or run.
+The ABI inventories are similarly explicit: 122 Rust-owned headers currently
+declare **1269** unique C symbols, of which **811** have explicit Rust C exports
+and **458** remain baseline debt. The registered C-test inventory currently has
+194 Rust comparison sources and six sources with 24 manually declared `rs_*`
+symbols; all 24 have an artifact-local backing export. These static ratchets are
+not evidence that the targets link or run, and link parity remains unclaimed.
 
 ## Current Static Architecture And Safety Checkpoint
 
 This review also established several boundaries that were previously implicit:
 
-- the Cargo-declared experimental Rust PID1 reaches only **8** of the **104**
-  modules declared by `src/core/rust/lib.rs`; the other **96** compile-time
+- the Cargo-declared experimental Rust PID1 reaches only **15** of the **109**
+  modules classified by the core reachability gate; the other **94** compile-time
   modules are disconnected shadows. A CI ratchet now makes every classification
   explicit, but lexical reachability is not behavioral parity;
 - release-mode Meson configuration now rejects `rust-core-pid1`. Developer mode
   keeps it available only as a non-installed porting artifact; the installed
   and public PID1 remains the C implementation;
-- all 84 internal workspace packages now set `publish = false`, and the
+- all 85 internal workspace packages now set `publish = false`, and the
   architecture gate rejects newly publishable packages. The four smoke jobs
   that only exercise the CI runner's host systemd are explicitly classified as
   host behavior checks rather than Rust artifact parity evidence;
 - hard-coded signed Rust `i8` has been removed from the scanned C-character ABI
-  surface. The checked inventory contains **173** symbolic `libc::c_char`
+  surface. The checked inventory contains **436** symbolic `libc::c_char`
   signatures and zero baseline exceptions for raw `*const i8`/`*mut i8`
   spellings;
 - socket listeners are now owned by `OwnedFd` instead of leaked with

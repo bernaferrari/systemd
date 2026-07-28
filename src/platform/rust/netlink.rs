@@ -26,14 +26,14 @@ pub const NLM_F_DUMP: i32 = 0;
 
 #[cfg(target_os = "linux")]
 pub use libc::{
-    NLMSG_DONE, NLMSG_ERROR, NLMSG_NOOP, NLM_F_DUMP, NLM_F_REQUEST, RTM_GETADDR, RTM_GETLINK,
+    NLM_F_DUMP, NLM_F_REQUEST, NLMSG_DONE, NLMSG_ERROR, NLMSG_NOOP, RTM_GETADDR, RTM_GETLINK,
     RTM_NEWADDR, RTM_NEWLINK,
 };
 
 #[cfg(target_os = "linux")]
 use nix::sys::socket::{
-    bind, recv, send, socket, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol,
-    SockType,
+    AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType, bind, recv, send,
+    socket,
 };
 
 /// A netlink socket wrapper for communicating with the kernel.

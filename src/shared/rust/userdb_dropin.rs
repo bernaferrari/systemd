@@ -320,7 +320,7 @@ impl<'a> JsonParser<'a> {
                         None => {
                             return Err(DropinError::ParseError(
                                 "unterminated string escape".into(),
-                            ))
+                            ));
                         }
                     };
                     result.push(escaped);
@@ -393,7 +393,7 @@ impl<'a> JsonParser<'a> {
                     return Err(DropinError::ParseError(format!(
                         "expected ',' or ']' at position {}",
                         self.pos
-                    )))
+                    )));
                 }
             }
         }
@@ -439,7 +439,7 @@ impl<'a> JsonParser<'a> {
                     return Err(DropinError::ParseError(format!(
                         "expected ',' or '}}' at position {}",
                         self.pos
-                    )))
+                    )));
                 }
             }
         }
@@ -1459,12 +1459,16 @@ mod tests {
     #[test]
     fn test_dropin_error_display() {
         assert!(!DropinError::NotFound.to_string().is_empty());
-        assert!(!DropinError::ParseError("bad json".into())
-            .to_string()
-            .is_empty());
-        assert!(DropinError::ParseError("test".into())
-            .to_string()
-            .contains("test"));
+        assert!(
+            !DropinError::ParseError("bad json".into())
+                .to_string()
+                .is_empty()
+        );
+        assert!(
+            DropinError::ParseError("test".into())
+                .to_string()
+                .contains("test")
+        );
     }
 
     // ── Constants ──────────────────────────────────────────────────────

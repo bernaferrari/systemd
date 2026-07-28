@@ -4,7 +4,7 @@
 // Binary entry point for systemd-pstore
 
 use systemd_pstore_rs::{
-    classify_entry, parse_pstore_storage, sort_entries, PStoreEntry, PStoreStorage,
+    PStoreEntry, PStoreStorage, classify_entry, parse_pstore_storage, sort_entries,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

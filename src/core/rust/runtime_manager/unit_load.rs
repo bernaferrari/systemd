@@ -13,12 +13,12 @@ use std::path::{Path, PathBuf};
 use std::os::unix::fs::MetadataExt;
 
 use super::unit_file::{
-    parse_unit_content_into, UnitConditionConfig, UnitConditionExpression, UnitFileInfo,
+    UnitConditionConfig, UnitConditionExpression, UnitFileInfo, parse_unit_content_into,
 };
 use super::unit_specifier::template_unit_name;
 use systemd_shared_rs::condition::{
-    condition_test_list as shared_condition_test_list, Condition as SharedCondition,
-    ConditionType as SharedConditionType,
+    Condition as SharedCondition, ConditionType as SharedConditionType,
+    condition_test_list as shared_condition_test_list,
 };
 use systemd_shared_rs::unit_file::UnitFileParseError;
 

@@ -14,7 +14,7 @@ use super::unit_specifier::{
     is_instance_unit_name, is_template_unit_name,
 };
 use crate::service::{NotifyAccess, ServiceType};
-use crate::unit::{oom_policy_from_string, CgroupContext, KillContext, OomPolicy, Unit, UnitType};
+use crate::unit::{CgroupContext, KillContext, OomPolicy, Unit, UnitType, oom_policy_from_string};
 use systemd_shared_rs::unit_file::{UnitFile, UnitFileParseError};
 
 const VALID_SUFFIXES: &[&str] = &[

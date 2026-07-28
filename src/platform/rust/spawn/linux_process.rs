@@ -11,7 +11,7 @@
 
 use super::ProcessIdentity;
 use nix::sys::wait::waitpid;
-use nix::unistd::{fork, Pid};
+use nix::unistd::{Pid, fork};
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -62,11 +62,7 @@ pub(super) enum ServiceFork {
 fn errno_or_invalid_argument() -> i32 {
     // SAFETY: Linux exposes the calling thread's errno through this pointer.
     let errno = unsafe { *libc::__errno_location() };
-    if errno == 0 {
-        libc::EINVAL
-    } else {
-        errno
-    }
+    if errno == 0 { libc::EINVAL } else { errno }
 }
 
 fn clone_fallback_class(errno: i32) -> Option<u8> {

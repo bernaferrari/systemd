@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::dbus_util::{
-    bus_verify_manage_units_async_impl, POLKIT_ACTION_MANAGE_UNITS, POLKIT_ACTION_RELOAD_DAEMON,
+    POLKIT_ACTION_MANAGE_UNITS, POLKIT_ACTION_RELOAD_DAEMON, bus_verify_manage_units_async_impl,
 };
 use crate::job_tables::{JobState, JobType};
 use crate::runtime_manager::RuntimeManager;

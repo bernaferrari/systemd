@@ -14,11 +14,11 @@ pub use allocate::{
     loop_device_make, loop_device_make_by_path, loop_device_make_by_path_at,
     loop_device_make_by_path_memory,
 };
-pub use device::{loop_device_open_from_fd, loop_device_open_from_path, LoopDevice};
+pub use device::{LoopDevice, loop_device_open_from_fd, loop_device_open_from_path};
 pub use model::{
-    LockOp, LoopDeviceMakeOptions, LoopError, LoopFlags, AUTO_SECTOR_SIZE, DEFAULT_SECTOR_SIZE,
-    LOCK_EX, LOCK_NB, LOCK_SH, LOCK_UN, LO_FLAGS_AUTOCLEAR, LO_FLAGS_DIRECT_IO, LO_FLAGS_PARTSCAN,
-    LO_FLAGS_READ_ONLY, NO_CHANGE, O_RDONLY, O_RDWR,
+    AUTO_SECTOR_SIZE, DEFAULT_SECTOR_SIZE, LO_FLAGS_AUTOCLEAR, LO_FLAGS_DIRECT_IO,
+    LO_FLAGS_PARTSCAN, LO_FLAGS_READ_ONLY, LOCK_EX, LOCK_NB, LOCK_SH, LOCK_UN, LockOp,
+    LoopDeviceMakeOptions, LoopError, LoopFlags, NO_CHANGE, O_RDONLY, O_RDWR,
 };
 
 #[cfg(test)]

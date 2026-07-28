@@ -9,11 +9,7 @@ pub const USEC_INFINITY: u64 = u64::MAX;
 pub const WATCHDOG_TIMEOUT_MAX_SEC: u64 = {
     let a = u32::MAX as u64 / 1000;
     let b = i32::MAX as u64;
-    if a < b {
-        a
-    } else {
-        b
-    }
+    if a < b { a } else { b }
 };
 pub const WATCHDOG_PING_BURST: u32 = 3;
 pub const WATCHDOG_MAX_FAILED_PINGS: u32 = 15;

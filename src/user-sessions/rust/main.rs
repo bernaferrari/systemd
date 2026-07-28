@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-user-sessions
 
-use systemd_user_sessions_rs::{nologin_action, UserSessionsArgs, NOLOGIN_MESSAGE, NOLOGIN_PATH};
+use systemd_user_sessions_rs::{NOLOGIN_MESSAGE, NOLOGIN_PATH, UserSessionsArgs, nologin_action};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

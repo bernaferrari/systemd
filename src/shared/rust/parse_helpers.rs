@@ -446,11 +446,13 @@ mod tests {
             ),
             Err(ParseError::BelowApiVfs)
         );
-        assert!(path_simplify_and_warn(
-            "/home/user",
-            PathSimplifyWarnFlags::ABSOLUTE | PathSimplifyWarnFlags::NON_API_VFS
-        )
-        .is_ok());
+        assert!(
+            path_simplify_and_warn(
+                "/home/user",
+                PathSimplifyWarnFlags::ABSOLUTE | PathSimplifyWarnFlags::NON_API_VFS
+            )
+            .is_ok()
+        );
     }
 
     #[test]

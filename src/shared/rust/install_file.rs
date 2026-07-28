@@ -264,11 +264,7 @@ fn rename_noreplace(
             RENAME_NOREPLACE,
         )
     };
-    if r < 0 {
-        Err(last_io_error())
-    } else {
-        Ok(())
-    }
+    if r < 0 { Err(last_io_error()) } else { Ok(()) }
 }
 
 /// Atomically exchange two directory entries via `renameat2(2)` with
@@ -289,11 +285,7 @@ fn rename_exchange(
             RENAME_EXCHANGE,
         )
     };
-    if r < 0 {
-        Err(last_io_error())
-    } else {
-        Ok(())
-    }
+    if r < 0 { Err(last_io_error()) } else { Ok(()) }
 }
 
 // ── unlinkat_maybe_dir ────────────────────────────────────────────────────

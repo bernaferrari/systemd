@@ -18,7 +18,6 @@ use std::fmt;
 use std::fs::File;
 use std::io::{self, Write as _};
 use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
-use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 
 use bitflags::bitflags;
@@ -344,6 +343,7 @@ pub struct PagerSession {
 impl PagerSession {
     /// Returns `true` if the pager child process is still running.
     pub fn is_active(&self) -> bool {
+        // SAFETY: waitpid receives this live Child's PID and a valid status pointer.
         unsafe {
             let pid = self.child.id() as libc::pid_t;
             let mut status: i32 = 0;
@@ -453,15 +453,6 @@ fn spawn_pager_cmd(
         cmd.env("LESSSECURE", "1");
     }
 
-    // SAFETY: pre_exec runs in the forked child before exec; errors are
-    // propagated via the Err return of spawn().
-    unsafe {
-        cmd.pre_exec(|| {
-            // Reset signal handlers in the child (matches FORK_RESET_SIGNALS).
-            Ok(())
-        });
-    }
-
     cmd.spawn().map_err(PagerError::SpawnFailed)
 }
 
@@ -482,6 +473,8 @@ pub fn pager_close(mut session: PagerSession) -> Result<(), PagerError> {
         if let Some(ref fd) = session.stored_stdout {
             dup2_fd(fd.as_raw_fd(), libc::STDOUT_FILENO);
         } else {
+            // SAFETY: closing an already-closed stdout is harmless here; the
+            // return value is intentionally ignored during pager teardown.
             unsafe {
                 libc::close(libc::STDOUT_FILENO);
             }
@@ -494,6 +487,8 @@ pub fn pager_close(mut session: PagerSession) -> Result<(), PagerError> {
         if let Some(ref fd) = session.stored_stderr {
             dup2_fd(fd.as_raw_fd(), libc::STDERR_FILENO);
         } else {
+            // SAFETY: closing an already-closed stderr is harmless here; the
+            // return value is intentionally ignored during pager teardown.
             unsafe {
                 libc::close(libc::STDERR_FILENO);
             }
@@ -533,11 +528,6 @@ pub fn show_man_page(desc: &str, null_stdio: bool) -> Result<(), PagerError> {
             .stderr(Stdio::null());
     }
 
-    // SAFETY: pre_exec resets signals in the child (matches C behaviour).
-    unsafe {
-        cmd.pre_exec(|| Ok(()));
-    }
-
     cmd.status().map_err(PagerError::SpawnFailed)?;
     Ok(())
 }
@@ -547,6 +537,7 @@ pub fn show_man_page(desc: &str, null_stdio: bool) -> Result<(), PagerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
 
     // ── Constants ──────────────────────────────────────────────────────
 
@@ -594,13 +585,19 @@ mod tests {
 
     #[test]
     fn test_get_less_opts_default() {
-        env::remove_var(ENV_SYSTEMD_LESS);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_SYSTEMD_LESS);
         assert_eq!(get_less_opts(PagerFlags::empty()), DEFAULT_LESS_OPTS);
     }
 
     #[test]
     fn test_get_less_opts_jump_to_end() {
-        env::remove_var(ENV_SYSTEMD_LESS);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_SYSTEMD_LESS);
         let opts = get_less_opts(PagerFlags::JUMP_TO_END);
         assert!(opts.ends_with(" +G"));
         assert!(opts.starts_with(DEFAULT_LESS_OPTS));
@@ -610,44 +607,57 @@ mod tests {
 
     #[test]
     fn test_parse_pager_args_empty_string() {
-        env::set_var(ENV_SYSTEMD_PAGER, "");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGER, "");
         assert_eq!(parse_pager_args(), Some(Vec::new()));
-        env::remove_var(ENV_SYSTEMD_PAGER);
     }
 
     #[test]
     fn test_parse_pager_args_cat() {
-        env::set_var(ENV_SYSTEMD_PAGER, "cat");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGER, "cat");
         assert_eq!(parse_pager_args(), Some(Vec::new()));
-        env::remove_var(ENV_SYSTEMD_PAGER);
     }
 
     #[test]
     fn test_parse_pager_args_normal() {
-        env::set_var(ENV_SYSTEMD_PAGER, "less -R");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGER, "less -R");
         assert_eq!(parse_pager_args(), Some(vec!["less".into(), "-R".into()]));
-        env::remove_var(ENV_SYSTEMD_PAGER);
     }
 
     #[test]
     fn test_parse_pager_args_not_set() {
-        env::remove_var(ENV_SYSTEMD_PAGER);
-        env::remove_var(ENV_PAGER);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_SYSTEMD_PAGER);
+        environment.remove(ENV_PAGER);
         assert_eq!(parse_pager_args(), None);
     }
 
     #[test]
     fn test_is_pager_disabled_via_env_disabled() {
-        env::set_var(ENV_SYSTEMD_PAGER, "cat");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGER, "cat");
         assert!(is_pager_disabled_via_env());
-        env::remove_var(ENV_SYSTEMD_PAGER);
     }
 
     #[test]
     fn test_is_pager_disabled_via_env_active() {
-        env::set_var(ENV_SYSTEMD_PAGER, "less");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGER, "less");
         assert!(!is_pager_disabled_via_env());
-        env::remove_var(ENV_SYSTEMD_PAGER);
     }
 
     // ── no_quit_on_interrupt ──────────────────────────────────────────
@@ -748,54 +758,69 @@ mod tests {
 
     #[test]
     fn test_parse_secure_mode_env_enabled() {
-        env::set_var(ENV_SYSTEMD_PAGERSECURE, "1");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGERSECURE, "1");
         assert_eq!(parse_secure_mode_env().unwrap(), Some(SecureMode::Enabled));
-        env::remove_var(ENV_SYSTEMD_PAGERSECURE);
     }
 
     #[test]
     fn test_parse_secure_mode_env_true() {
-        env::set_var(ENV_SYSTEMD_PAGERSECURE, "true");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGERSECURE, "true");
         assert_eq!(parse_secure_mode_env().unwrap(), Some(SecureMode::Enabled));
-        env::remove_var(ENV_SYSTEMD_PAGERSECURE);
     }
 
     #[test]
     fn test_parse_secure_mode_env_disabled() {
-        env::set_var(ENV_SYSTEMD_PAGERSECURE, "0");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGERSECURE, "0");
         assert_eq!(parse_secure_mode_env().unwrap(), Some(SecureMode::Disabled));
-        env::remove_var(ENV_SYSTEMD_PAGERSECURE);
     }
 
     #[test]
     fn test_parse_secure_mode_env_not_set() {
-        env::remove_var(ENV_SYSTEMD_PAGERSECURE);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_SYSTEMD_PAGERSECURE);
         assert_eq!(parse_secure_mode_env().unwrap(), None);
     }
 
     #[test]
     fn test_parse_secure_mode_env_invalid() {
-        env::set_var(ENV_SYSTEMD_PAGERSECURE, "garbage");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGERSECURE, "garbage");
         assert!(parse_secure_mode_env().is_err());
-        env::remove_var(ENV_SYSTEMD_PAGERSECURE);
     }
 
     // ── resolve_secure_mode ───────────────────────────────────────────
 
     #[test]
     fn test_resolve_secure_mode_explicit() {
-        env::set_var(ENV_SYSTEMD_PAGERSECURE, "false");
-        env::remove_var(ENV_SUDO_UID);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_PAGERSECURE, "false");
+        environment.remove(ENV_SUDO_UID);
         assert_eq!(resolve_secure_mode(), SecureMode::Disabled);
-        env::remove_var(ENV_SYSTEMD_PAGERSECURE);
     }
 
     #[test]
     fn test_resolve_secure_mode_sudo_fallback() {
-        env::remove_var(ENV_SYSTEMD_PAGERSECURE);
-        env::set_var(ENV_SUDO_UID, "1000");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_SYSTEMD_PAGERSECURE);
+        environment.set(ENV_SUDO_UID, "1000");
         assert_eq!(resolve_secure_mode(), SecureMode::Enabled);
-        env::remove_var(ENV_SUDO_UID);
     }
 
     // ── PagerError ────────────────────────────────────────────────────
@@ -818,31 +843,40 @@ mod tests {
 
     #[test]
     fn test_get_less_charset_explicit() {
-        env::set_var(ENV_SYSTEMD_LESSCHARSET, "latin1");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SYSTEMD_LESSCHARSET, "latin1");
         assert_eq!(get_less_charset(), Some("latin1".into()));
-        env::remove_var(ENV_SYSTEMD_LESSCHARSET);
     }
 
     #[test]
     fn test_get_less_charset_utf8_locale() {
-        env::remove_var(ENV_SYSTEMD_LESSCHARSET);
-        env::set_var("LC_ALL", "en_US.UTF-8");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_SYSTEMD_LESSCHARSET);
+        environment.set("LC_ALL", "en_US.UTF-8");
         assert_eq!(get_less_charset(), Some("utf-8".into()));
-        env::remove_var("LC_ALL");
     }
 
     // ── has_sudo_uid ──────────────────────────────────────────────────
 
     #[test]
     fn test_has_sudo_uid_present() {
-        env::set_var(ENV_SUDO_UID, "1000");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_SUDO_UID, "1000");
         assert!(has_sudo_uid());
-        env::remove_var(ENV_SUDO_UID);
     }
 
     #[test]
     fn test_has_sudo_uid_absent() {
-        env::remove_var(ENV_SUDO_UID);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_SUDO_UID);
         assert!(!has_sudo_uid());
     }
 

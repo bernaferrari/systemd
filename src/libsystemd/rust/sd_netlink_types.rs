@@ -281,10 +281,12 @@ mod tests {
             family_keys: vec![],
         };
         let policy = NlaPolicy::nested_union_by_string(union);
-        assert!(policy_get_policy_set_union(&policy)
-            .unwrap()
-            .get_policy_set_by_string("bridge")
-            .is_some());
+        assert!(
+            policy_get_policy_set_union(&policy)
+                .unwrap()
+                .get_policy_set_by_string("bridge")
+                .is_some()
+        );
     }
 
     #[test]

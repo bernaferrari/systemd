@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
@@ -94,12 +95,20 @@ def git(repo_root: Path, args: Sequence[str]) -> str:
 
 def load_manifest(map_path: Path) -> Dict[str, Dict[str, Any]]:
     raw = tomllib.loads(map_path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
+    if not isinstance(raw, dict) or not raw:
         raise ValueError("manifest root must be a TOML table")
+    invalid = sorted(
+        module_name
+        for module_name, entry in raw.items()
+        if not isinstance(entry, dict)
+    )
+    if invalid:
+        raise ValueError(
+            "manifest entries must all be TOML tables: " + ", ".join(invalid)
+        )
     return {
         module_name: dict(entry)
         for module_name, entry in raw.items()
-        if isinstance(entry, dict)
     }
 
 
@@ -241,9 +250,15 @@ def scope_name(entry: Dict[str, Any], module_name: str) -> str | None:
     value = entry.get("scope")
     if value is None:
         return None
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{module_name}.scope must be a non-empty string")
-    return value.strip()
+    if (
+        not isinstance(value, str)
+        or value != value.strip()
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value)
+    ):
+        raise ValueError(
+            f"{module_name}.scope must be a normalized scope identifier"
+        )
+    return value
 
 
 def scoped_rust_inventory(
@@ -338,10 +353,12 @@ def validate_manifest(manifest: Mapping[str, Dict[str, Any]], repo_root: Path) -
     """
 
     scopes: Dict[str, str] = {}
-    owners: Dict[str, str] = {}
+    owners: Dict[str, List[tuple[str, bool]]] = {}
     for module_name, entry in sorted(manifest.items()):
         scope = scope_name(entry, module_name)
         inventory = scoped_rust_inventory(entry, module_name, repo_root)
+        for path in rust_file_paths(entry, module_name):
+            owners.setdefault(path, []).append((module_name, scope is not None))
         if scope is None:
             continue
         previous = scopes.get(scope)
@@ -351,14 +368,13 @@ def validate_manifest(manifest: Mapping[str, Dict[str, Any]], repo_root: Path) -
             )
         scopes[scope] = module_name
         assert inventory is not None
-        for path in inventory:
-            previous = owners.get(path)
-            if previous is not None:
-                raise ValueError(
-                    f"duplicate scoped Rust ownership for {path}: "
-                    f"{previous} and {module_name}"
-                )
-            owners[path] = module_name
+    for path, path_owners in sorted(owners.items()):
+        if len(path_owners) < 2 or not any(scoped for _module, scoped in path_owners):
+            continue
+        raise ValueError(
+            f"duplicate scoped Rust ownership for {path}: "
+            + ", ".join(module for module, _scoped in path_owners)
+        )
 
 
 def expected_blobs(

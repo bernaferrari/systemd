@@ -1056,15 +1056,17 @@ mod tests {
     fn test_add_match_parent() {
         let mut en = DeviceEnumerator::new();
         en.add_match_parent(Path::new("/sys/devices/pci0000:00"));
-        assert!(en
-            .match_parent
-            .contains(Path::new("/sys/devices/pci0000:00")));
+        assert!(
+            en.match_parent
+                .contains(Path::new("/sys/devices/pci0000:00"))
+        );
 
         // Adding another parent replaces the previous one.
         en.add_match_parent(Path::new("/sys/devices/platform"));
-        assert!(!en
-            .match_parent
-            .contains(Path::new("/sys/devices/pci0000:00")));
+        assert!(
+            !en.match_parent
+                .contains(Path::new("/sys/devices/pci0000:00"))
+        );
         assert!(en.match_parent.contains(Path::new("/sys/devices/platform")));
     }
 

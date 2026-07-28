@@ -217,6 +217,47 @@ class SyncMetadataGateTests(unittest.TestCase):
         )
         self.assertTrue(any("requires a contract_file" in item for item in failures))
 
+    def test_scoped_marker_authority_must_be_mapped(self) -> None:
+        entry = {
+            "status": "in-progress",
+            "sync_status": "needs_review",
+            "scope": "basic.scoped",
+            "contract_file": "tools/rust-port/contracts/basic/scoped.toml",
+            "c_file": "c/a.c",
+            "rust_scope_paths": ["rust/scoped.rs"],
+            "rust_paths": ["rust/scoped.rs"],
+        }
+        source = self.root / "rust/scoped.rs"
+        source.write_text(
+            "// PORT-SYNC: scope=basic.scoped; authority=c/not-mapped.c\n",
+            encoding="utf-8",
+        )
+        failures = self.audit({"fixture": entry})
+        self.assertTrue(
+            any(
+                "declares unmapped PORT-SYNC authority c/not-mapped.c" in item
+                for item in failures
+            )
+        )
+
+    def test_partial_sync_status_requires_scoped_review_provenance(self) -> None:
+        failures = self.audit(
+            {
+                "fixture": {
+                    "status": "in-progress",
+                    "sync_status": "partial",
+                    "c_file": "c/a.c",
+                    "rust_file": "rust/a.rs",
+                }
+            }
+        )
+        self.assertTrue(
+            any(
+                "requires scoped ownership and a behavior contract" in item
+                for item in failures
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

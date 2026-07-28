@@ -281,13 +281,8 @@ mod tests {
                 None
             }
         };
-        let rev = |id: &str| -> Option<String> {
-            if id == "c1:2" {
-                Some("5".into())
-            } else {
-                None
-            }
-        };
+        let rev =
+            |id: &str| -> Option<String> { if id == "c1:2" { Some("5".into()) } else { None } };
         let result = validate_watch_chain(WatchHandle(5), fwd, rev);
         assert_eq!(
             result,

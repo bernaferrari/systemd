@@ -2,8 +2,8 @@
 
 use super::model::{JournalctlArgs, ParseArgvError};
 use crate::journalctl_filter::{
-    excluded_syslog_identifier_set, facility_match_terms, priority_match_terms, split_match_terms,
-    syslog_identifier_terms, FilterBuildError,
+    FilterBuildError, excluded_syslog_identifier_set, facility_match_terms, priority_match_terms,
+    split_match_terms, syslog_identifier_terms,
 };
 use nix::libc;
 use std::collections::BTreeSet;
@@ -76,7 +76,7 @@ pub trait FilterBackend {
         offset: i32,
     ) -> Result<(), FilterApplyError>;
     fn add_scope_boot(&mut self, id: Option<[u8; 16]>, offset: i32)
-        -> Result<(), FilterApplyError>;
+    -> Result<(), FilterApplyError>;
     fn add_unit_matches(&mut self, units: &UnitMatchPlan) -> Result<(), FilterApplyError>;
     fn add_transport_kernel(&mut self) -> Result<(), FilterApplyError>;
     fn add_match(&mut self, term: &str) -> Result<(), FilterApplyError>;

@@ -1005,9 +1005,11 @@ mod tests {
             SleepError::NotConfigured.to_string(),
             "no sleep state configured"
         );
-        assert!(SleepError::Io("not found".into())
-            .to_string()
-            .contains("not found"));
+        assert!(
+            SleepError::Io("not found".into())
+                .to_string()
+                .contains("not found")
+        );
         assert!(SleepError::Parse("bad".into()).to_string().contains("bad"));
     }
 

@@ -8,14 +8,16 @@ import argparse
 import importlib.util
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 VALID_SYNC_STATUSES = {"needs_review", "partial", "synced", "out_of_date"}
 PORT_SYNC_RE = re.compile(r"^\s*(?://|/\*)\s*PORT-SYNC:", re.MULTILINE)
 PORT_GAP_RE = re.compile(r"^\s*(?://|/\*)\s*PORT-GAP:", re.MULTILINE)
 SCOPED_PORT_SYNC_RE = re.compile(
-    r"^\s*(?://|/\*)\s*PORT-SYNC:\s*scope=([A-Za-z0-9_.-]+)\b",
+    r"^\s*(?://|/\*)\s*PORT-SYNC:\s*"
+    r"scope=([A-Za-z0-9][A-Za-z0-9_.-]*)\s*;\s*"
+    r"authority=([^*\r\n]+?)(?:\s*\*/)?\s*$",
     re.MULTILINE,
 )
 
@@ -114,9 +116,14 @@ def audit_manifest(
                 )
             if sync_status == "partial" and not result["fully_reviewed"]:
                 failures.append(
-                    f"{module}: scoped sync_status=partial requires exact "
+                    f"{module}: sync_status=partial requires exact "
                     "last_reviewed upstream and Rust snapshots"
                 )
+        elif sync_status == "partial":
+            failures.append(
+                f"{module}: sync_status=partial requires scoped ownership "
+                "and a behavior contract"
+            )
 
         expected_marker = PORT_SYNC_RE if c_paths else PORT_GAP_RE
         expected_name = "PORT-SYNC" if c_paths else "PORT-GAP"
@@ -140,13 +147,54 @@ def audit_manifest(
                 if marker is None:
                     failures.append(
                         f"{module}: {rust_path} lacks a machine-checkable "
-                        f"PORT-SYNC: scope={scope} marker in its first 16 lines"
+                        f"PORT-SYNC: scope={scope}; authority=... marker "
+                        "in its first 16 lines"
                     )
                 elif marker.group(1) != scope:
                     failures.append(
                         f"{module}: {rust_path} declares scope={marker.group(1)} "
                         f"but its manifest owner is scope={scope}"
                     )
+                else:
+                    authorities = [
+                        item.strip()
+                        for item in marker.group(2).split(",")
+                        if item.strip()
+                    ]
+                    if not authorities:
+                        failures.append(
+                            f"{module}: {rust_path} has an empty PORT-SYNC authority"
+                        )
+                        continue
+                    duplicates = sorted(
+                        {
+                            path
+                            for path in authorities
+                            if authorities.count(path) > 1
+                        }
+                    )
+                    if duplicates:
+                        failures.append(
+                            f"{module}: {rust_path} repeats PORT-SYNC authority: "
+                            + ", ".join(duplicates)
+                        )
+                    for authority in authorities:
+                        normalized = PurePosixPath(authority)
+                        if (
+                            normalized.is_absolute()
+                            or ".." in normalized.parts
+                            or str(normalized) != authority
+                            or "\\" in authority
+                        ):
+                            failures.append(
+                                f"{module}: {rust_path} has non-normalized "
+                                f"PORT-SYNC authority {authority!r}"
+                            )
+                        elif authority not in c_paths:
+                            failures.append(
+                                f"{module}: {rust_path} declares unmapped "
+                                f"PORT-SYNC authority {authority}"
+                            )
     return failures, len(mapped_rust_paths), anchored, reviewed
 
 

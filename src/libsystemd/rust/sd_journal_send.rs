@@ -121,7 +121,11 @@ pub fn journal_stream_path(
     }
 }
 
-pub fn journal_stream_header(identifier: Option<&str>, priority: i32, level_prefix: i32) -> Result<Vec<u8>> {
+pub fn journal_stream_header(
+    identifier: Option<&str>,
+    priority: i32,
+    level_prefix: i32,
+) -> Result<Vec<u8>> {
     if !(0..=7).contains(&priority) {
         return Err(NEG_EINVAL);
     }
@@ -159,7 +163,11 @@ pub fn sd_journal_stream_fd_with_namespace(
     sd_journal_stream_fd_at_path(&path, identifier, priority, level_prefix)
 }
 
-pub fn sd_journal_stream_fd(identifier: Option<&str>, priority: i32, level_prefix: i32) -> Result<RawFd> {
+pub fn sd_journal_stream_fd(
+    identifier: Option<&str>,
+    priority: i32,
+    level_prefix: i32,
+) -> Result<RawFd> {
     sd_journal_stream_fd_with_namespace(None, identifier, priority, level_prefix)
 }
 
@@ -201,7 +209,8 @@ fn sd_journal_sendv_to_path(fields: &[JournalField], path: &str) -> Result<i32> 
     let payload = journal_send(fields, identifier.as_deref())?;
     match journal_send_internal(path, &payload) {
         Ok(()) => Ok(0),
-        Err(errno) if matches!(errno, x if x == -libc::ENOENT || x == -libc::ECONNREFUSED || x == -libc::ENOTDIR) => {
+        Err(errno) if matches!(errno, x if x == -libc::ENOENT || x == -libc::ECONNREFUSED || x == -libc::ENOTDIR) =>
+        {
             let _ = std::io::stderr().write_all(&payload);
             Ok(0)
         }
@@ -288,7 +297,10 @@ fn send_payload_via_fd(path: &str, payload: &[u8]) -> Result<()> {
         .duration_since(UNIX_EPOCH)
         .map_err(|_| -libc::EIO)?
         .as_nanos();
-    temp_path.push(format!("systemd-journal-data-{}-{nanos}.tmp", std::process::id()));
+    temp_path.push(format!(
+        "systemd-journal-data-{}-{nanos}.tmp",
+        std::process::id()
+    ));
 
     let mut file = OpenOptions::new()
         .read(true)
@@ -724,17 +736,29 @@ mod tests {
             },
         ];
 
-        let r = sd_journal_sendv_to_path(&fields, socket_path.as_os_str().to_string_lossy().as_ref()).unwrap();
+        let r =
+            sd_journal_sendv_to_path(&fields, socket_path.as_os_str().to_string_lossy().as_ref())
+                .unwrap();
         assert_eq!(r, 0);
 
         let mut buf = [0u8; 512];
         let n = socket.recv(&mut buf).unwrap();
         let payload = &buf[..n];
-        assert!(payload.windows("MESSAGE=hello\n".len()).any(|w| w == b"MESSAGE=hello\n"));
-        assert!(payload.windows("PRIORITY=6\n".len()).any(|w| w == b"PRIORITY=6\n"));
-        assert!(payload
-            .windows("SYSLOG_IDENTIFIER=".len())
-            .any(|w| w == b"SYSLOG_IDENTIFIER="));
+        assert!(
+            payload
+                .windows("MESSAGE=hello\n".len())
+                .any(|w| w == b"MESSAGE=hello\n")
+        );
+        assert!(
+            payload
+                .windows("PRIORITY=6\n".len())
+                .any(|w| w == b"PRIORITY=6\n")
+        );
+        assert!(
+            payload
+                .windows("SYSLOG_IDENTIFIER=".len())
+                .any(|w| w == b"SYSLOG_IDENTIFIER=")
+        );
 
         let _ = fs::remove_file(socket_path);
     }
@@ -749,14 +773,27 @@ mod tests {
         socket_path.push(format!("systemd-journal-print-{nanos}.sock"));
 
         let socket = std::os::unix::net::UnixDatagram::bind(&socket_path).unwrap();
-        let r = sd_journal_print_to_path(5, "hello world", socket_path.as_os_str().to_string_lossy().as_ref()).unwrap();
+        let r = sd_journal_print_to_path(
+            5,
+            "hello world",
+            socket_path.as_os_str().to_string_lossy().as_ref(),
+        )
+        .unwrap();
         assert_eq!(r, 0);
 
         let mut buf = [0u8; 512];
         let n = socket.recv(&mut buf).unwrap();
         let payload = &buf[..n];
-        assert!(payload.windows("MESSAGE=hello world\n".len()).any(|w| w == b"MESSAGE=hello world\n"));
-        assert!(payload.windows("PRIORITY=5\n".len()).any(|w| w == b"PRIORITY=5\n"));
+        assert!(
+            payload
+                .windows("MESSAGE=hello world\n".len())
+                .any(|w| w == b"MESSAGE=hello world\n")
+        );
+        assert!(
+            payload
+                .windows("PRIORITY=5\n".len())
+                .any(|w| w == b"PRIORITY=5\n")
+        );
 
         let _ = fs::remove_file(socket_path);
     }

@@ -73,14 +73,14 @@ impl EventLoop {
             return Err(Errno::EEXIST);
         }
 
-        let event = EpollEvent::new(events, data);
+        let mut event = EpollEvent::new(events, data);
         // The source descriptor remains externally owned. Use nix's raw-FD syscall wrapper here
         // rather than fabricating a BorrowedFd from unchecked caller input.
         nix::sys::epoll::epoll_ctl(
             self.epoll.as_raw_fd(),
             EpollOp::EpollCtlAdd,
             fd,
-            Some(event),
+            Some(&mut event),
         )?;
         self.sources.insert(data, Source { fd, callback: cb });
         Ok(())
@@ -93,12 +93,12 @@ impl EventLoop {
             return Err(Errno::EINVAL);
         }
 
-        let event = EpollEvent::new(events, data);
+        let mut event = EpollEvent::new(events, data);
         nix::sys::epoll::epoll_ctl(
             self.epoll.as_raw_fd(),
             EpollOp::EpollCtlMod,
             fd,
-            Some(event),
+            Some(&mut event),
         )
     }
 

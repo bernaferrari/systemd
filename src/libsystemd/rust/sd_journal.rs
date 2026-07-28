@@ -481,12 +481,16 @@ mod tests {
     #[test]
     fn open_helpers_capture_sources() {
         assert!(SdJournal::open(0).is_ok());
-        assert!(SdJournal::open_directory("/run/log/journal", 0)
-            .unwrap()
-            .has_runtime_files());
-        assert!(SdJournal::open_files(&["/var/log/journal/a.journal"], 0)
-            .unwrap()
-            .has_persistent_files());
+        assert!(
+            SdJournal::open_directory("/run/log/journal", 0)
+                .unwrap()
+                .has_runtime_files()
+        );
+        assert!(
+            SdJournal::open_files(&["/var/log/journal/a.journal"], 0)
+                .unwrap()
+                .has_persistent_files()
+        );
     }
 
     #[test]

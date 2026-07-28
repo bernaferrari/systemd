@@ -101,7 +101,9 @@ mod local_ffi {
 
     // ── External C functions ──────────────────────────────────────────────
 
-    extern "C" {
+    // SAFETY: these declarations mirror the target libc allocation, C-string,
+    // and byte-memory ABIs. Callers retain the individual pointer obligations.
+    unsafe extern "C" {
         pub fn malloc(size: usize) -> *mut c_void;
         pub fn calloc(nmemb: usize, size: usize) -> *mut c_void;
         pub fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void;

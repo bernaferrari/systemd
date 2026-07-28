@@ -9,12 +9,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{Result, RuntimeManager};
 use crate::ffi::Errno;
-use crate::job::{job_install, job_type_is_conflicting, Job, JobId};
+use crate::job::{Job, JobId, job_install, job_type_is_conflicting};
 use crate::job_tables::{
     JobResult as CanonicalJobResult, JobState as CanonicalJobState, JobType as CanonicalJobType,
 };
 use crate::service::{
-    service_state_translation, ServiceState, UnitActiveState as ServiceUnitActiveState,
+    ServiceState, UnitActiveState as ServiceUnitActiveState, service_state_translation,
 };
 use crate::service_tables::ServiceResult;
 use crate::transaction::{AppliedTransaction, JobType as TxJobType};

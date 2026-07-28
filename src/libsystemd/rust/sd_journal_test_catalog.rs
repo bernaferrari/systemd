@@ -145,7 +145,10 @@ mod tests {
     #[test]
     fn duplicate_ids_are_merged_like_c() {
         let db = catalog_import_file(MERGE).unwrap();
-        assert_eq!(catalog_get(&db, "0027229ca0644181a76c4e92458afaff").unwrap(), "Subject: override subject\nX-Header: hello\nSubject: message\nDefined-By: me\n\noverride payload\n");
+        assert_eq!(
+            catalog_get(&db, "0027229ca0644181a76c4e92458afaff").unwrap(),
+            "Subject: override subject\nX-Header: hello\nSubject: message\nDefined-By: me\n\noverride payload\n"
+        );
     }
 
     #[test]

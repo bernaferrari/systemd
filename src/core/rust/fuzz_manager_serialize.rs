@@ -304,8 +304,10 @@ mod tests {
             run.serialize_passes,
             [SerializePass::WithFds, SerializePass::WithoutFds]
         );
-        assert!(harness
-            .calls
-            .ends_with(&["manager_serialize_true", "manager_serialize_false"]));
+        assert!(
+            harness
+                .calls
+                .ends_with(&["manager_serialize_true", "manager_serialize_false"])
+        );
     }
 }

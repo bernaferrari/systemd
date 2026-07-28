@@ -1602,7 +1602,7 @@ mod tests {
         data[..6].copy_from_slice(LUKS2_MAGIC);
         data[6..8].copy_from_slice(&2u16.to_be_bytes());
         data[8..16].copy_from_slice(&0x2000u64.to_be_bytes()); // hdr_len = 0x2000
-                                                               // No JSON with integrity → returns false (LUKS2 but no integrity).
+        // No JSON with integrity → returns false (LUKS2 but no integrity).
         assert_eq!(partition_is_luks2_integrity(&data).unwrap(), false);
     }
 
@@ -1612,7 +1612,7 @@ mod tests {
         data[..6].copy_from_slice(LUKS2_MAGIC);
         data[6..8].copy_from_slice(&2u16.to_be_bytes());
         data[8..16].copy_from_slice(&0x2000u64.to_be_bytes()); // hdr_len
-                                                               // Write JSON with integrity section.
+        // Write JSON with integrity section.
         let json = r#"{"segments": {"0": {"integrity": {"type": "hmac"}}}}"#;
         let json_start = LUKS2_FIXED_HDR_SIZE as usize;
         let json_end = json_start + json.len().min(data.len() - json_start);

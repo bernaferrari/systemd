@@ -15,8 +15,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 use systemd_socket_proxy_rs::{
-    at_connection_limit, parse_remote_host, ProxyConfig, ProxyError, RemoteAddress,
-    DEFAULT_EXIT_IDLE_TIME,
+    DEFAULT_EXIT_IDLE_TIME, ProxyConfig, ProxyError, RemoteAddress, at_connection_limit,
+    parse_remote_host,
 };
 
 const SD_LISTEN_FDS_START: RawFd = 3;
@@ -354,9 +354,13 @@ fn configure_listener(fd: RawFd) -> io::Result<()> {
 fn activated_listeners() -> Result<Vec<OwnedFd>, ProxyError> {
     let listen_pid = env::var("LISTEN_PID").ok();
     let listen_fds = env::var("LISTEN_FDS").ok();
-    env::remove_var("LISTEN_PID");
-    env::remove_var("LISTEN_FDS");
-    env::remove_var("LISTEN_FDNAMES");
+    // SAFETY: run() calls this before it creates worker threads, and this
+    // executable does not expose activated_listeners() to concurrent callers.
+    unsafe {
+        env::remove_var("LISTEN_PID");
+        env::remove_var("LISTEN_FDS");
+        env::remove_var("LISTEN_FDNAMES");
+    }
 
     let pid_matches = listen_pid
         .as_deref()

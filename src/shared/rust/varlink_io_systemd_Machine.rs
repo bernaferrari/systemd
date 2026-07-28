@@ -431,11 +431,15 @@ mod tests {
     #[test]
     fn test_error_ids() {
         assert_eq!(ERROR_IDS.len(), 12);
-        assert!(MachineError::NoSuchMachine
-            .error_id()
-            .contains("NoSuchMachine"));
-        assert!(MachineError::GroupInHostRange
-            .error_id()
-            .contains("GroupInHostRange"));
+        assert!(
+            MachineError::NoSuchMachine
+                .error_id()
+                .contains("NoSuchMachine")
+        );
+        assert!(
+            MachineError::GroupInHostRange
+                .error_id()
+                .contains("GroupInHostRange")
+        );
     }
 }

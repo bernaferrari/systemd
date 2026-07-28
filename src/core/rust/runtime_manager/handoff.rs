@@ -12,8 +12,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 
-use super::cgroup_runtime::BorrowedCgroupFds;
 use super::RuntimeManager;
+use super::cgroup_runtime::BorrowedCgroupFds;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HandoffPurpose {
@@ -659,9 +659,11 @@ mod tests {
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        assert!(original_listeners
-            .values()
-            .all(|listener| listener.strong_count() == 1));
+        assert!(
+            original_listeners
+                .values()
+                .all(|listener| listener.strong_count() == 1)
+        );
         let before = open_fd_count();
         let mut duplicated = 0;
 

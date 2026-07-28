@@ -7,7 +7,7 @@ use crate::ffi::Errno;
 use crate::job::Job;
 use crate::runtime_manager::RuntimeManager;
 use crate::transaction::JobMode;
-use crate::unit::{unit_dbus_path, ActiveState, LoadState, PidRef, Unit};
+use crate::unit::{ActiveState, LoadState, PidRef, Unit, unit_dbus_path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Virtualization {

@@ -35,11 +35,7 @@ pub fn negative_errno() -> i32 {
 /// Wraps syscall return values: if ret < 0, returns -errno.
 /// Mirrors C `RET_NERRNO(ret)`.
 pub fn ret_nerrno(ret: i32) -> i32 {
-    if ret < 0 {
-        negative_errno()
-    } else {
-        ret
-    }
+    if ret < 0 { negative_errno() } else { ret }
 }
 
 /// Returns -errno if set, otherwise -|fallback|.

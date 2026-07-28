@@ -5,16 +5,13 @@ path = "lib.rs"
 publish = false
 name = "systemd-import"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "LGPL-2.1-or-later"
 description = "Rust port of systemd/src/import/"
 
 [dependencies]
 systemd-shared-rs = { path = "../../shared/rust" }
-bitflags = "2"
-
-[dev-dependencies]
-tempfile = "3"
+bitflags = { workspace = true }
 
 [[bin]]
 name = "systemd-importd"

@@ -4,7 +4,7 @@
 // Binary entry point for systemd-update-done
 
 use systemd_update_done_rs::{
-    generate_updated_content, Timespec, UpdateDoneArgs, UPDATE_DIRS, USR_PATH,
+    Timespec, UPDATE_DIRS, USR_PATH, UpdateDoneArgs, generate_updated_content,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

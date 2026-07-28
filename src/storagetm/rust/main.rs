@@ -6,9 +6,9 @@
 // PORT-SYNC: src/storagetm/storagetm.c
 
 use systemd_storagetm_rs::{
-    all_devices_allowed, build_subsystem_name, calculate_start_port, should_ignore_sysname,
-    truncate_for_nvme, IpFamily, NvmePortInfo, NvmeSubsystemInfo, NVME_PORTS_PATH, NVME_PORT_MAX,
-    NVME_PORT_MAX_ATTEMPTS, NVME_SUBSYSTEMS_PATH,
+    IpFamily, NVME_PORT_MAX, NVME_PORT_MAX_ATTEMPTS, NVME_PORTS_PATH, NVME_SUBSYSTEMS_PATH,
+    NvmePortInfo, NvmeSubsystemInfo, all_devices_allowed, build_subsystem_name,
+    calculate_start_port, should_ignore_sysname, truncate_for_nvme,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

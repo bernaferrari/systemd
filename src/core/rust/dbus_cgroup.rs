@@ -178,11 +178,7 @@ impl CpuSet {
             let bit = *cpu as usize % 8;
             bytes[idx] |= 1 << bit;
         }
-        if self.0.is_empty() {
-            Vec::new()
-        } else {
-            bytes
-        }
+        if self.0.is_empty() { Vec::new() } else { bytes }
     }
 
     pub fn from_dbus_bytes(bytes: &[u8]) -> Self {
@@ -1124,14 +1120,15 @@ mod tests {
     fn transient_delegate_requires_capability() {
         let mut ctx = CGroupContext::default();
         let mut unit = UnitState::default();
-        assert!(ctx
-            .bus_cgroup_set_transient_property(
+        assert!(
+            ctx.bus_cgroup_set_transient_property(
                 &mut unit,
                 "Delegate",
                 &CGroupMessage::Bool(true),
                 UnitWriteFlags::default()
             )
-            .is_err());
+            .is_err()
+        );
     }
 
     #[test]
@@ -1171,14 +1168,15 @@ mod tests {
     fn tasks_max_scale_rejects_full_scale() {
         let mut ctx = CGroupContext::default();
         let mut unit = UnitState::default();
-        assert!(ctx
-            .bus_cgroup_set_property(
+        assert!(
+            ctx.bus_cgroup_set_property(
                 &mut unit,
                 "TasksMaxScale",
                 &CGroupMessage::U32(u32::MAX),
                 UnitWriteFlags::default()
             )
-            .is_err());
+            .is_err()
+        );
     }
 
     #[test]
@@ -1238,13 +1236,14 @@ mod tests {
     fn device_allow_rejects_whitespace_path() {
         let mut ctx = CGroupContext::default();
         let mut unit = UnitState::default();
-        assert!(ctx
-            .bus_cgroup_set_property(
+        assert!(
+            ctx.bus_cgroup_set_property(
                 &mut unit,
                 "DeviceAllow",
                 &CGroupMessage::DeviceAllows(vec![("bad path".into(), "r".into())]),
                 UnitWriteFlags::default()
             )
-            .is_err());
+            .is_err()
+        );
     }
 }

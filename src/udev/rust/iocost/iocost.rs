@@ -24,7 +24,7 @@ pub const INCLUDED_HEADERS: &[&str] = &[
     "string-util.h",
     "strv.h",
     "udev-util.h",
-    "verbs.h"
+    "verbs.h",
 ];
 pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
     "parse_config",
@@ -38,7 +38,7 @@ pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
     "verb_query",
     "verb_apply",
     "iocost_main",
-    "run"
+    "run",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,7 +62,7 @@ pub fn port_status() -> Result<(), Errno> {
     Err(Errno::ENOSYS)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rs_iocost_iocost_port_stub() -> i32 {
     port_status().err().unwrap_or(Errno::EINVAL).to_neg_errno()
 }

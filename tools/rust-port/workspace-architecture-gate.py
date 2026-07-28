@@ -238,6 +238,27 @@ def validate_dependency_layers(
                 )
 
 
+def validate_language_contract(
+    workspace: dict[str, Any],
+    manifests: dict[str, dict[str, Any]],
+    failures: list[str],
+) -> None:
+    """Keep every crate on the workspace's Rust 2024 language contract."""
+
+    resolver = workspace.get("workspace", {}).get("resolver")
+    if resolver != "3":
+        failures.append(
+            f"workspace.resolver must be '3' for the Rust 2024 workspace, got {resolver!r}"
+        )
+
+    for member, manifest in sorted(manifests.items()):
+        edition = manifest.get("package", {}).get("edition")
+        if edition != "2024":
+            failures.append(
+                f"{member}: package.edition must be '2024', got {edition!r}"
+            )
+
+
 def validate_large_rust_files(
     root: Path, policy_path: Path, failures: list[str]
 ) -> tuple[int, int]:
@@ -430,6 +451,7 @@ def main() -> int:
         assigned_layers,
         failures,
     )
+    validate_language_contract(workspace, manifests, failures)
 
     for meson_path, text in meson_texts.items():
         if "rust/Cargo.lock" in text:

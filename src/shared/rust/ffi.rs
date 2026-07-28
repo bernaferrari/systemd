@@ -146,17 +146,18 @@ pub mod linux_compat {
 #[cfg(target_os = "linux")]
 pub mod linux_compat {
     pub use libc::{
-        explicit_bzero, fallocate, getrandom, pipe2, prctl, sockaddr_nl, syncfs, ucred, AF_NETLINK,
-        AT_EMPTY_PATH, EBADFD, EBADSLT, ENOANO, ENOKEY, ENOPKG, ERFKILL, EUCLEAN, EUNATCH,
-        FALLOC_FL_KEEP_SIZE, FALLOC_FL_PUNCH_HOLE, GRND_NONBLOCK, LINUX_REBOOT_CMD_RESTART2,
-        NLM_F_ACK, NLM_F_REQUEST, O_NOATIME, O_PATH, PR_GET_SECCOMP, PR_SET_SECCOMP, RB_AUTOBOOT,
-        SCM_CREDENTIALS, SECCOMP_MODE_FILTER, SI_QUEUE, SOCK_CLOEXEC, SOCK_NONBLOCK, SO_PASSCRED,
+        AF_NETLINK, AT_EMPTY_PATH, EBADFD, EBADSLT, ENOANO, ENOKEY, ENOPKG, ERFKILL, EUCLEAN,
+        EUNATCH, FALLOC_FL_KEEP_SIZE, FALLOC_FL_PUNCH_HOLE, GRND_NONBLOCK,
+        LINUX_REBOOT_CMD_RESTART2, NLM_F_ACK, NLM_F_REQUEST, O_NOATIME, O_PATH, PR_GET_SECCOMP,
+        PR_SET_SECCOMP, RB_AUTOBOOT, SCM_CREDENTIALS, SECCOMP_MODE_FILTER, SI_QUEUE, SO_PASSCRED,
+        SOCK_CLOEXEC, SOCK_NONBLOCK, explicit_bzero, fallocate, getrandom, pipe2, prctl,
+        sockaddr_nl, syncfs, ucred,
     };
-    pub use libc::{SYS_copy_file_range, SYS_renameat2};
     pub use libc::{
         BLKROSET, FS_DIRSYNC_FL, FS_NOATIME_FL, FS_NOCOW_FL, FS_NODUMP_FL, FS_PROJINHERIT_FL,
         FS_SYNC_FL,
     };
+    pub use libc::{SYS_copy_file_range, SYS_renameat2};
 }
 
 pub use linux_compat::*;

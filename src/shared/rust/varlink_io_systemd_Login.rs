@@ -401,12 +401,16 @@ mod tests {
     #[test]
     fn test_error_ids() {
         assert_eq!(ERROR_IDS.len(), 7);
-        assert!(LoginError::NoSuchSession
-            .error_id()
-            .contains("NoSuchSession"));
-        assert!(LoginError::TooManySessions
-            .error_id()
-            .contains("TooManySessions"));
+        assert!(
+            LoginError::NoSuchSession
+                .error_id()
+                .contains("NoSuchSession")
+        );
+        assert!(
+            LoginError::TooManySessions
+                .error_id()
+                .contains("TooManySessions")
+        );
     }
 
     #[test]

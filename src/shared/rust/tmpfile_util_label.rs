@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 
 use crate::label_util::FileMode;
 use crate::selinux_util::{
-    mac_selinux_create_file_clear, mac_selinux_create_file_prepare, ContextError, AT_FDCWD,
+    AT_FDCWD, ContextError, mac_selinux_create_file_clear, mac_selinux_create_file_prepare,
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -571,9 +571,11 @@ mod tests {
 
         assert!(name.starts_with(".#waldo"));
         assert_eq!(name.len(), 2 + "waldo".len() + RANDOM_SUFFIX_LEN);
-        assert!(name[2 + "waldo".len()..]
-            .chars()
-            .all(|c| c.is_ascii_hexdigit()));
+        assert!(
+            name[2 + "waldo".len()..]
+                .chars()
+                .all(|c| c.is_ascii_hexdigit())
+        );
     }
 
     #[test]
@@ -727,12 +729,14 @@ mod tests {
                 .unwrap();
 
         assert!(temporary.temp_path().starts_with(dir.path()));
-        assert!(temporary
-            .temp_path()
-            .file_name()
-            .unwrap()
-            .as_bytes()
-            .starts_with(HIDDEN_TMP_PREFIX));
+        assert!(
+            temporary
+                .temp_path()
+                .file_name()
+                .unwrap()
+                .as_bytes()
+                .starts_with(HIDDEN_TMP_PREFIX)
+        );
         assert!(temporary.temp_path().exists());
         assert_eq!(backend.clear_count(), 1);
         assert_eq!(backend.prepare_calls.borrow().len(), 1);
@@ -858,10 +862,12 @@ mod tests {
         .unwrap();
 
         let name = temporary.temp_path().file_name().unwrap().to_str().unwrap();
-        assert!(temporary
-            .temp_path()
-            .parent()
-            .map_or(true, |p| p.as_os_str().is_empty()));
+        assert!(
+            temporary
+                .temp_path()
+                .parent()
+                .map_or(true, |p| p.as_os_str().is_empty())
+        );
         assert!(name.starts_with(".#relative-name"));
         assert_eq!(name.len(), 2 + "relative-name".len() + RANDOM_SUFFIX_LEN);
     }

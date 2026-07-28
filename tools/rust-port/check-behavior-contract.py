@@ -11,6 +11,8 @@ test wiring; executing a fixture is separate runtime evidence.
 from __future__ import annotations
 
 import argparse
+import functools
+import importlib.util
 import re
 import sys
 import tomllib
@@ -107,10 +109,102 @@ def map_paths(entry: dict[str, Any], singular: str, plural: str) -> set[str]:
     return {item.strip() for item in value.split(separator) if item.strip()}
 
 
+def code_only(text: str) -> str:
+    """Blank comments and quoted literals while preserving token positions."""
+
+    result = list(text)
+    index = 0
+    state = "code"
+    quote = ""
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        following = text[index + 1] if index + 1 < len(text) else ""
+        if state == "line-comment":
+            if char == "\n":
+                state = "code"
+            else:
+                result[index] = " "
+        elif state == "block-comment":
+            result[index] = "\n" if char == "\n" else " "
+            if char == "*" and following == "/":
+                result[index + 1] = " "
+                index += 1
+                state = "code"
+        elif state == "quoted":
+            result[index] = "\n" if char == "\n" else " "
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                state = "code"
+        elif char == "/" and following == "/":
+            result[index] = result[index + 1] = " "
+            index += 1
+            state = "line-comment"
+        elif char == "/" and following == "*":
+            result[index] = result[index + 1] = " "
+            index += 1
+            state = "block-comment"
+        elif (
+            char == "r"
+            and (index == 0 or not (text[index - 1].isalnum() or text[index - 1] == "_"))
+            and (raw_start := re.match(r'r(#+)?"', text[index:])) is not None
+        ):
+            hashes = raw_start.group(1) or ""
+            closing = '"' + hashes
+            end = text.find(closing, index + raw_start.end())
+            end = len(text) if end < 0 else end + len(closing)
+            for raw_index in range(index, end):
+                result[raw_index] = (
+                    "\n" if text[raw_index] == "\n" else " "
+                )
+            index = end - 1
+        elif char == '"' or (
+            char == "'"
+            and (
+                (index + 2 < len(text) and text[index + 2] == "'")
+                or (
+                    following == "\\"
+                    and index + 3 < len(text)
+                    and text[index + 3] == "'"
+                )
+            )
+        ):
+            result[index] = " "
+            quote = char
+            state = "quoted"
+        index += 1
+    return "".join(result)
+
+
 def contains_symbol(paths: list[str], root: Path, symbol: str) -> bool:
+    """Return whether source code, rather than prose/literals, names a symbol."""
+
     pattern = re.compile(rf"\b{re.escape(symbol)}\b")
-    return any(pattern.search((root / path).read_text(encoding="utf-8", errors="ignore"))
-               for path in paths if (root / path).is_file())
+    return any(
+        pattern.search(
+            code_only(
+                (root / path).read_text(encoding="utf-8", errors="ignore")
+            )
+        )
+        for path in paths
+        if (root / path).is_file()
+    )
+
+
+def fixture_calls_symbol(text: str, symbol: str) -> bool:
+    """Require a call-shaped symbol occurrence inside C fixture function code."""
+
+    masked = code_only(text)
+    first_body = masked.find("{")
+    if first_body < 0:
+        return False
+    return re.search(
+        rf"\b{re.escape(symbol)}\s*\(",
+        masked[first_body + 1 :],
+    ) is not None
 
 
 def declaration_has_parameter(
@@ -127,7 +221,7 @@ def declaration_has_parameter(
         source = root / path
         if not source.is_file():
             continue
-        text = source.read_text(encoding="utf-8", errors="ignore")
+        text = code_only(source.read_text(encoding="utf-8", errors="ignore"))
         for match in symbol_pattern.finditer(text):
             try:
                 arguments, _end = balanced_call(text, match.end() - 1)
@@ -138,29 +232,46 @@ def declaration_has_parameter(
     return False
 
 
-def meson_target_links_fixture(root: Path, target: str, fixture: str) -> bool:
-    """Conservatively verify a registered Rust-linked tests-extra target."""
+@functools.cache
+def load_fixture_catalog_gate():
+    """Load the one authoritative Meson executable-identity parser."""
 
-    meson = root / "tests-extra/meson.build"
-    if not meson.is_file():
+    script = Path(__file__).with_name("check-rust-fixture-catalog.py")
+    spec = importlib.util.spec_from_file_location(
+        "rust_port_fixture_catalog_for_contracts",
+        script,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@functools.cache
+def registered_fixture_records(root: Path) -> tuple[tuple[str, str, bool], ...]:
+    """Parse the repository's Meson fixture graph once per validation run."""
+
+    records = load_fixture_catalog_gate().discover_rust_linked_fixtures(root)
+    return tuple(records)
+
+
+def meson_target_links_fixture(root: Path, target: str, fixture: str) -> bool:
+    """Verify exact fixture path and executable identity with the catalog parser."""
+
+    fixture_path = Path(fixture)
+    if fixture_path != Path("tests-extra") / fixture_path.name:
         return False
-    text = meson.read_text(encoding="utf-8", errors="ignore")
-    name = re.escape(target)
-    fixture_name = re.escape(Path(fixture).name)
-    for match in re.finditer(r"\bexecutable\s*\(", text):
-        block, end = balanced_call(text, match.end() - 1)
-        if not re.match(rf"\s*['\"]{name}['\"]\s*,", block):
-            continue
-        if not re.search(rf"['\"]{fixture_name}['\"]", block):
-            continue
-        if not re.search(
-            r"link_with\s*:\s*\[\s*libshared\s*,\s*rust_staticlib\s*\]", block
-        ):
-            continue
-        tail = text[end: end + 800]
-        if re.search(rf"test\(\s*['\"]{name}['\"]\s*,\s*rust_test_exe\s*\)", tail):
-            return True
-    return False
+    try:
+        records = registered_fixture_records(root)
+    except (OSError, ValueError):
+        return False
+    matches = [
+        registered
+        for record_target, source, registered in records
+        if record_target == target and source == fixture_path.name
+    ]
+    return matches == [True]
 
 
 def balanced_call(text: str, opening: int) -> tuple[str, int]:
@@ -226,11 +337,19 @@ def validate_fixture(
     if isinstance(target, str) and not meson_target_links_fixture(root, target, fixture_path):
         fail(errors, f"{contract_name}:{label}: fixture is not a registered Rust-linked Meson target")
     for symbol in surface.get("c_symbols", []):
-        if not re.search(rf"\b{re.escape(symbol)}\b", text):
-            fail(errors, f"{contract_name}:{label}: fixture does not reference C symbol {symbol}")
+        if not fixture_calls_symbol(text, symbol):
+            fail(
+                errors,
+                f"{contract_name}:{label}: fixture does not call/reference "
+                f"C symbol {symbol}",
+            )
     for symbol in surface.get("rust_symbols", []):
-        if not re.search(rf"\b{re.escape(symbol)}\b", text):
-            fail(errors, f"{contract_name}:{label}: fixture does not reference Rust symbol {symbol}")
+        if not fixture_calls_symbol(text, symbol):
+            fail(
+                errors,
+                f"{contract_name}:{label}: fixture does not call/reference "
+                f"Rust symbol {symbol}",
+            )
 
 
 def validate_contract(
@@ -332,6 +451,15 @@ def validate_contract(
         seen_ids.add(identity)
         c_symbols = symbol_list(surface.get("c_symbols"), f"{prefix}: c_symbols", errors)
         rust_symbols = symbol_list(surface.get("rust_symbols"), f"{prefix}: rust_symbols", errors)
+        if (
+            surface.get("abi") == "c-exact"
+            and rust_symbols != [f"rs_{symbol}" for symbol in c_symbols]
+        ):
+            fail(
+                errors,
+                f"{prefix}: c-exact symbols must pair positionally as "
+                "C symbol -> rs_<C symbol>",
+            )
         duplicate_c = seen_c.intersection(c_symbols)
         duplicate_rust = seen_rust.intersection(rust_symbols)
         if duplicate_c:
@@ -562,6 +690,7 @@ def main() -> int:
         print(f"behavior contract gate: cannot load map: {exc}", file=sys.stderr)
         return 2
     selected: list[tuple[str, dict[str, Any], Path]] = []
+    declared_contracts: dict[str, str] = {}
     requested: str | None = None
     if args.contract:
         requested = normalized_path(args.contract, "--contract", [])
@@ -569,7 +698,13 @@ def main() -> int:
             print("behavior contract gate: --contract must be a normalized relative path", file=sys.stderr)
             return 2
     for module, entry in manifest.items():
-        if not isinstance(entry, dict) or "contract_file" not in entry:
+        if not isinstance(entry, dict):
+            print(
+                f"behavior contract gate: map entry {module!r} must be a table",
+                file=sys.stderr,
+            )
+            return 1
+        if "contract_file" not in entry:
             continue
         contract = entry.get("contract_file")
         path_errors: list[str] = []
@@ -578,14 +713,54 @@ def main() -> int:
             print("behavior contract gate: " + "; ".join(path_errors), file=sys.stderr)
             return 1
         assert relative is not None
-        if requested is not None and relative != requested:
-            continue
         path = Path(relative)
         if not path.is_relative_to(CONTRACT_ROOT) or len(path.relative_to(CONTRACT_ROOT).parts) != 2:
             print(f"behavior contract gate: {module}: contract_file must be directory-local below {CONTRACT_ROOT}/", file=sys.stderr)
             return 1
+        previous = declared_contracts.get(relative)
+        if previous is not None:
+            print(
+                f"behavior contract gate: contract_file {relative!r} is declared "
+                f"by both {previous} and {module}",
+                file=sys.stderr,
+            )
+            return 1
+        declared_contracts[relative] = module
         selected.append((module, entry, root / path))
-    if requested is not None and not selected:
+    actual_contracts = {
+        path.relative_to(root).as_posix()
+        for path in (root / CONTRACT_ROOT).rglob("*.toml")
+        if path.is_file()
+    }
+    orphaned = sorted(actual_contracts - set(declared_contracts))
+    if orphaned:
+        print(
+            "behavior contract gate: contract files are not map-indexed: "
+            + ", ".join(orphaned),
+            file=sys.stderr,
+        )
+        return 1
+    missing = sorted(set(declared_contracts) - actual_contracts)
+    if missing:
+        print(
+            "behavior contract gate: map-indexed contract files are missing: "
+            + ", ".join(missing),
+            file=sys.stderr,
+        )
+        return 1
+    if not declared_contracts:
+        print(
+            "behavior contract gate: no map-indexed behavior contracts found",
+            file=sys.stderr,
+        )
+        return 1
+    if requested is not None:
+        selected = [
+            item
+            for item in selected
+            if item[2].relative_to(root).as_posix() == requested
+        ]
+    if requested is not None and requested not in declared_contracts:
         print(f"behavior contract gate: no map entry declares contract_file = {requested!r}", file=sys.stderr)
         return 1
     errors: list[str] = []

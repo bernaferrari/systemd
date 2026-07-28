@@ -18,18 +18,23 @@ crate::journal_port_module!(
     ]
 );
 
+#[path = "journalctl/argument_values.rs"]
 mod argument_values;
+#[path = "journalctl/arguments.rs"]
 mod arguments;
+#[path = "journalctl/dispatch.rs"]
 mod dispatch;
+#[path = "journalctl/filter.rs"]
 mod filter;
+#[path = "journalctl/model.rs"]
 mod model;
 
 pub use argument_values::{parse_id_descriptor, parse_lines};
 pub use arguments::parse_argv;
-pub use dispatch::{plan_dispatch, run, DispatchPlan, DispatchTarget, RunOutcome};
+pub use dispatch::{DispatchPlan, DispatchTarget, RunOutcome, plan_dispatch, run};
 pub use filter::{
-    build_filter_plan, FilterApplyError, FilterBackend, FilterBackendOp, FilterMatchTerm,
-    FilterPlan, RecordingFilterBackend, ScopePlan, TransportFilter, UnitMatchPlan,
+    FilterApplyError, FilterBackend, FilterBackendOp, FilterMatchTerm, FilterPlan,
+    RecordingFilterBackend, ScopePlan, TransportFilter, UnitMatchPlan, build_filter_plan,
 };
 pub use model::{
     IdDescriptor, JournalctlAction, JournalctlArgs, ParseArgvError, ParseArgvResult,
@@ -37,4 +42,5 @@ pub use model::{
 };
 
 #[cfg(test)]
+#[path = "journalctl/parsing_tests.rs"]
 mod parsing_tests;

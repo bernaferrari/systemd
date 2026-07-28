@@ -379,10 +379,11 @@ mod tests {
     fn system_lookup_contains_usr_lib() {
         let lp =
             lookup_paths_init(RuntimeScope::System, LookupPathsFlags(0), None, &env()).unwrap();
-        assert!(lp
-            .search_path
-            .iter()
-            .any(|path| path == "/usr/lib/systemd/system"));
+        assert!(
+            lp.search_path
+                .iter()
+                .any(|path| path == "/usr/lib/systemd/system")
+        );
     }
 
     #[test]
@@ -394,10 +395,11 @@ mod tests {
             &env(),
         )
         .unwrap();
-        assert!(lp
-            .search_path
-            .iter()
-            .all(|path| path.starts_with("/image/")));
+        assert!(
+            lp.search_path
+                .iter()
+                .all(|path| path.starts_with("/image/"))
+        );
     }
 
     #[test]

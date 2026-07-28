@@ -25,9 +25,9 @@ rust_sources = [
 ]
 
 [[surface]]
-id = "inode-type-string"
-c_symbols = ["inode_type_to_string", "inode_type_from_string"]
-rust_symbols = ["rs_inode_type_to_string", "rs_inode_type_from_string"]
+id = "inode-type-to-string"
+c_symbols = ["inode_type_to_string"]
+rust_symbols = ["rs_inode_type_to_string"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "borrowed-cstr-opaque"
@@ -38,7 +38,23 @@ verification = "static-only"
 [surface.static_fixture]
 file = "tests-extra/test-stat-util-rust.c"
 meson_target = "test-stat-util-rust"
-labels = ["inode-type-string"]
+labels = ["inode-type-to-string"]
+
+[[surface]]
+id = "inode-type-from-string"
+c_symbols = ["inode_type_from_string"]
+rust_symbols = ["rs_inode_type_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-stat-util-rust.c"
+meson_target = "test-stat-util-rust"
+labels = ["inode-type-from-string"]
 
 [[surface]]
 id = "inode-compare"
@@ -175,7 +191,7 @@ verification = "static-only"
 arg = "ret"
 ownership = "caller-storage"
 publication_success = "write"
-publication_error = "unchanged"
+publication_error = "write"
 optional = false
 
 [surface.static_fixture]

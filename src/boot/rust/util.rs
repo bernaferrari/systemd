@@ -157,11 +157,7 @@ pub fn url_replace_last_component(url: &str, filename: &str) -> Option<String> {
 /// Parse a decimal number at the start of *s*, returning its byte length.
 fn parse_number_len(s: &str) -> Option<usize> {
     let len = s.chars().take_while(|c| c.is_ascii_digit()).count();
-    if len == 0 {
-        None
-    } else {
-        Some(len)
-    }
+    if len == 0 { None } else { Some(len) }
 }
 
 /// Remove a boot-count suffix such as `+3` or `+3-1` from a path.

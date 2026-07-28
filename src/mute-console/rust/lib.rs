@@ -101,20 +101,12 @@ impl MuteContext {
     /// Determine the mute action for PID 1.
     /// Returns the value to pass to SetShowStatus.
     pub fn pid1_mute_value(&self) -> Option<&'static str> {
-        if self.mute_pid1 {
-            Some("no")
-        } else {
-            None
-        }
+        if self.mute_pid1 { Some("no") } else { None }
     }
 
     /// Determine the value to restore PID 1 show-status to.
     pub fn pid1_unmute_value(&self) -> Option<&'static str> {
-        if self.muted_pid1 {
-            Some("")
-        } else {
-            None
-        }
+        if self.muted_pid1 { Some("") } else { None }
     }
 }
 

@@ -16,7 +16,7 @@
 // - `check_password_quality()` → strength validation returning quality score
 // - `suggest_passwords()` → random password generation
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::path::Path;
 use std::sync::OnceLock;

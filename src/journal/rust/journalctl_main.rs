@@ -162,13 +162,8 @@ PATH lookup is disabled for privileged execution unless SYSTEMD_JOURNALCTL_ALLOW
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
+    use systemd_shared_rs::tests::TestEnvironment;
 
     #[cfg(unix)]
     fn make_exec(path: &Path) {
@@ -191,16 +186,17 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn resolve_prefers_explicit_env_backend() {
-        let _guard = env_lock().lock().unwrap();
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
         let dir = unique_tmp("journalctl-shim-env");
         let self_exe = dir.join("journalctl");
         let backend = dir.join("journalctl-c");
         make_exec(&self_exe);
         make_exec(&backend);
-        env::set_var("SYSTEMD_JOURNALCTL_BACKEND", &backend);
+        environment.set("SYSTEMD_JOURNALCTL_BACKEND", &backend);
 
         let resolved = resolve_backend(&self_exe);
-        env::remove_var("SYSTEMD_JOURNALCTL_BACKEND");
         fs::remove_dir_all(&dir).unwrap();
 
         assert_eq!(resolved, Some(backend));
@@ -209,13 +205,15 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn resolve_uses_sibling_backend() {
-        let _guard = env_lock().lock().unwrap();
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
         let dir = unique_tmp("journalctl-shim-sibling");
         let self_exe = dir.join("journalctl");
         let sibling = dir.join("journalctl-c");
         make_exec(&self_exe);
         make_exec(&sibling);
-        env::remove_var("SYSTEMD_JOURNALCTL_BACKEND");
+        environment.remove("SYSTEMD_JOURNALCTL_BACKEND");
 
         let resolved = resolve_backend(&self_exe);
         fs::remove_dir_all(&dir).unwrap();
@@ -226,14 +224,15 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn resolve_rejects_self_reference() {
-        let _guard = env_lock().lock().unwrap();
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
         let dir = unique_tmp("journalctl-shim-self");
         let self_exe = dir.join("journalctl");
         make_exec(&self_exe);
-        env::set_var("SYSTEMD_JOURNALCTL_BACKEND", &self_exe);
+        environment.set("SYSTEMD_JOURNALCTL_BACKEND", &self_exe);
 
         let resolved = resolve_backend(&self_exe);
-        env::remove_var("SYSTEMD_JOURNALCTL_BACKEND");
         fs::remove_dir_all(&dir).unwrap();
 
         assert!(resolved.is_none());
@@ -241,49 +240,46 @@ mod tests {
 
     #[test]
     fn env_flag_enabled_accepts_common_truthy_values() {
-        let _guard = env_lock().lock().unwrap();
-        env::set_var("SYSTEMD_JOURNALCTL_ALLOW_PATH", "1");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set("SYSTEMD_JOURNALCTL_ALLOW_PATH", "1");
         assert!(env_flag_enabled("SYSTEMD_JOURNALCTL_ALLOW_PATH"));
-        env::set_var("SYSTEMD_JOURNALCTL_ALLOW_PATH", "true");
+        environment.set("SYSTEMD_JOURNALCTL_ALLOW_PATH", "true");
         assert!(env_flag_enabled("SYSTEMD_JOURNALCTL_ALLOW_PATH"));
-        env::set_var("SYSTEMD_JOURNALCTL_ALLOW_PATH", "yes");
+        environment.set("SYSTEMD_JOURNALCTL_ALLOW_PATH", "yes");
         assert!(env_flag_enabled("SYSTEMD_JOURNALCTL_ALLOW_PATH"));
-        env::set_var("SYSTEMD_JOURNALCTL_ALLOW_PATH", "on");
+        environment.set("SYSTEMD_JOURNALCTL_ALLOW_PATH", "on");
         assert!(env_flag_enabled("SYSTEMD_JOURNALCTL_ALLOW_PATH"));
-        env::set_var("SYSTEMD_JOURNALCTL_ALLOW_PATH", "0");
+        environment.set("SYSTEMD_JOURNALCTL_ALLOW_PATH", "0");
         assert!(!env_flag_enabled("SYSTEMD_JOURNALCTL_ALLOW_PATH"));
-        env::remove_var("SYSTEMD_JOURNALCTL_ALLOW_PATH");
     }
 
     #[cfg(unix)]
     #[test]
     fn backend_candidates_path_visibility_matches_policy() {
-        let _guard = env_lock().lock().unwrap();
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
         let dir = unique_tmp("journalctl-shim-path");
         let self_exe = dir.join("journalctl");
         let path_dir = dir.join("path-bin");
         make_exec(&self_exe);
         fs::create_dir_all(&path_dir).unwrap();
 
-        let old_path = env::var_os("PATH");
-        env::set_var("PATH", &path_dir);
-        env::remove_var("SYSTEMD_JOURNALCTL_ALLOW_PATH");
+        environment.set("PATH", &path_dir);
+        environment.remove("SYSTEMD_JOURNALCTL_ALLOW_PATH");
         let path_backend = path_dir.join("journalctl-c");
 
         let candidates_default = backend_candidates(&self_exe);
         let has_path_default = candidates_default.iter().any(|p| p == &path_backend);
         assert_eq!(has_path_default, !is_privileged_process());
 
-        env::set_var("SYSTEMD_JOURNALCTL_ALLOW_PATH", "1");
+        environment.set("SYSTEMD_JOURNALCTL_ALLOW_PATH", "1");
         let candidates_forced = backend_candidates(&self_exe);
         let has_path_forced = candidates_forced.iter().any(|p| p == &path_backend);
         assert!(has_path_forced);
 
-        match old_path {
-            Some(path) => env::set_var("PATH", path),
-            None => env::remove_var("PATH"),
-        }
-        env::remove_var("SYSTEMD_JOURNALCTL_ALLOW_PATH");
         fs::remove_dir_all(&dir).unwrap();
     }
 }

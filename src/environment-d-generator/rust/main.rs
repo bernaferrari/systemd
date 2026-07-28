@@ -4,7 +4,7 @@
 // Binary entry point for 30-systemd-environment-d-generator
 
 use systemd_environment_d_generator_rs::environment_d_generator::{
-    format_env_output, parse_args, parse_env_line, ENVIRONMENT_D_PATHS,
+    ENVIRONMENT_D_PATHS, format_env_output, parse_args, parse_env_line,
 };
 
 fn print_help() {

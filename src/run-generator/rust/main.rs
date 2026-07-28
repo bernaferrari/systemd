@@ -4,8 +4,8 @@
 // Binary entry point for systemd-run-generator
 
 use systemd_run_generator_rs::{
-    generate_service_unit, generate_target_unit, has_work, parse_cmdline_item, GeneratorParams,
-    SERVICE_NAME, SPECIAL_DEFAULT_TARGET, TARGET_NAME,
+    GeneratorParams, SERVICE_NAME, SPECIAL_DEFAULT_TARGET, TARGET_NAME, generate_service_unit,
+    generate_target_unit, has_work, parse_cmdline_item,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

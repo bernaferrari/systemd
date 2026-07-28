@@ -5,7 +5,7 @@
 //
 // PORT-SYNC: src/ptyfwd/ptyfwd-tool.c
 
-use systemd_ptyfwd_rs::ptyfwd::{is_valid_pty_path, PtyForwardConfig};
+use systemd_ptyfwd_rs::ptyfwd::{PtyForwardConfig, is_valid_pty_path};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

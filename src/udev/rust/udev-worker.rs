@@ -9,7 +9,7 @@
 // when processing uevents in forked worker processes.
 
 use crate::udev_rule_engine::{
-    process_device_event, DeviceEvent, DeviceNodeSpec, EngineError, EngineOutput, Rule,
+    DeviceEvent, DeviceNodeSpec, EngineError, EngineOutput, Rule, process_device_event,
 };
 
 // ── Device exclusion lists ────────────────────────────────────────────────
@@ -170,7 +170,11 @@ pub struct WorkerNotifyPayload {
 pub fn parse_worker_notify_payload(payload: &str) -> WorkerNotifyPayload {
     let mut parsed = WorkerNotifyPayload::default();
 
-    for line in payload.lines().map(str::trim).filter(|line| !line.is_empty()) {
+    for line in payload
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
         let Some((key, value)) = line.split_once('=') else {
             continue;
         };

@@ -103,14 +103,16 @@ mod tests {
 
     #[test]
     fn nameinfo_handler_returns_error() {
-        assert!(getnameinfo_handler(
-            5,
-            &NameInfo {
-                host: None,
-                service: None
-            }
-        )
-        .is_err());
+        assert!(
+            getnameinfo_handler(
+                5,
+                &NameInfo {
+                    host: None,
+                    service: None
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]

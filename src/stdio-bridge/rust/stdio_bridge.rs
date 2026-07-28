@@ -12,12 +12,12 @@
 //! remains a release gate. The raw ABI is confined to this module in the
 //! meantime.
 
-use std::ffi::{c_char, c_int, CString};
+use std::ffi::{CString, c_char, c_int};
 use std::fmt;
 use std::os::fd::RawFd;
 use std::ptr::NonNull;
 
-use systemd_basic_rs::hostname_util::{hostname_is_valid, ValidHostnameFlags};
+use systemd_basic_rs::hostname_util::{ValidHostnameFlags, hostname_is_valid};
 
 pub const DEFAULT_SYSTEM_BUS_ADDRESS: &str = "unix:path=/run/dbus/system_bus_socket";
 pub const SD_LISTEN_FDS_START: RawFd = 3;
@@ -273,13 +273,13 @@ pub fn parse_args_detailed(args: &[String]) -> Result<ParsedArgs, ParseFailure> 
                 return Ok(ParsedArgs {
                     action: ParseAction::Help,
                     config,
-                })
+                });
             }
             "--version" => {
                 return Ok(ParsedArgs {
                     action: ParseAction::Version,
                     config,
-                })
+                });
             }
             "--user" => config.runtime_scope = RuntimeScope::User,
             "--system" => config.runtime_scope = RuntimeScope::System,
@@ -314,7 +314,7 @@ pub fn parse_args_detailed(args: &[String]) -> Result<ParsedArgs, ParseFailure> 
                 return Err(ParseFailure {
                     error: BridgeError::InvalidArgument(arg.clone()),
                     quiet: config.quiet,
-                })
+                });
             }
             "-p" => {
                 index += 1;
@@ -343,7 +343,7 @@ pub fn parse_args_detailed(args: &[String]) -> Result<ParsedArgs, ParseFailure> 
                     return Ok(ParsedArgs {
                         action: ParseAction::Help,
                         config,
-                    })
+                    });
                 }
                 Some(ParseAction::Version) | Some(ParseAction::Run) => unreachable!(),
                 None => {}

@@ -167,11 +167,7 @@ pub fn parse_number16(s: &[u16]) -> Option<u64> {
             break;
         }
     }
-    if found_digit {
-        Some(result)
-    } else {
-        None
-    }
+    if found_digit { Some(result) } else { None }
 }
 
 /// Default "OS indications supported" mask returned when the variable

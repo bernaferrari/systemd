@@ -12,9 +12,9 @@
 use std::fmt;
 use std::time::Duration;
 
-use crate::ask_password_api::{ask_password_auto, AskPasswordFlags, AskPasswordRequest};
+use crate::ask_password_api::{AskPasswordFlags, AskPasswordRequest, ask_password_auto};
 use crate::ffi::Errno;
-use crate::libfido2_util::{fido2_have_device, fido2_use_hmac_hash, Fido2EnrollFlags, Fido2Error};
+use crate::libfido2_util::{Fido2EnrollFlags, Fido2Error, fido2_have_device, fido2_use_hmac_hash};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 

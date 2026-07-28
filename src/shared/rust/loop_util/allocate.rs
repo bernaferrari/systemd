@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-use super::device::{loop_device_open_from_fd, simplify_path, LoopDevice};
+use super::device::{LoopDevice, loop_device_open_from_fd, simplify_path};
 use super::linux::{
-    blockdev_get_device_size, blockdev_get_sector_size, dev_from_st_dev, dev_from_stat, dup_fd,
-    fd_get_diskseq, fd_get_max_discard, fd_get_path, fd_reopen, fd_set_max_discard, fd_stat,
-    flock_fd, get_loop_status64, ioctl_loop_clr_fd, ioctl_loop_configure, ioctl_loop_ctl_get_free,
-    ioctl_loop_set_fd, is_block_device, is_regular_file, loop_configure_fallback,
-    loop_configure_verify, loop_flags_mangle, loop_is_bound, open_lock_fd, open_loop_control,
-    open_raw, path_to_cstr, remove_all_partitions_sysfs, set_loop_status64, LoopConfig, LoopInfo64,
+    LoopConfig, LoopInfo64, blockdev_get_device_size, blockdev_get_sector_size, dev_from_st_dev,
+    dev_from_stat, dup_fd, fd_get_diskseq, fd_get_max_discard, fd_get_path, fd_reopen,
+    fd_set_max_discard, fd_stat, flock_fd, get_loop_status64, ioctl_loop_clr_fd,
+    ioctl_loop_configure, ioctl_loop_ctl_get_free, ioctl_loop_set_fd, is_block_device,
+    is_regular_file, loop_configure_fallback, loop_configure_verify, loop_flags_mangle,
+    loop_is_bound, open_lock_fd, open_loop_control, open_raw, path_to_cstr,
+    remove_all_partitions_sysfs, set_loop_status64,
 };
 use super::model::{
-    lock_op_is_valid, LockOp, LoopDeviceMakeOptions, LoopError, LoopFlags, AUTO_SECTOR_SIZE,
-    DEFAULT_SECTOR_SIZE, LOCK_EX, LOCK_NB, LOCK_SH, LOCK_UN,
-    LOOP_DEVICE_MAY_POPULATE_PARTITION_TABLE, LO_FLAGS_AUTOCLEAR, LO_FLAGS_DIRECT_IO,
-    LO_FLAGS_PARTSCAN, LO_FLAGS_READ_ONLY, MAX_ATTEMPTS, NO_CHANGE, O_ACCMODE, O_CLOEXEC, O_DIRECT,
-    O_NOCTTY, O_NONBLOCK, O_PATH, O_RDONLY, O_RDWR,
+    AUTO_SECTOR_SIZE, DEFAULT_SECTOR_SIZE, LO_FLAGS_AUTOCLEAR, LO_FLAGS_DIRECT_IO,
+    LO_FLAGS_PARTSCAN, LO_FLAGS_READ_ONLY, LOCK_EX, LOCK_NB, LOCK_SH, LOCK_UN,
+    LOOP_DEVICE_MAY_POPULATE_PARTITION_TABLE, LockOp, LoopDeviceMakeOptions, LoopError, LoopFlags,
+    MAX_ATTEMPTS, NO_CHANGE, O_ACCMODE, O_CLOEXEC, O_DIRECT, O_NOCTTY, O_NONBLOCK, O_PATH,
+    O_RDONLY, O_RDWR, lock_op_is_valid,
 };
 use std::ffi::CString;
 use std::fs::File;

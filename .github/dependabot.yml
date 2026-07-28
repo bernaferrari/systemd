@@ -24,6 +24,17 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 2
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      rust-dependencies:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
   - package-ecosystem: "docker"
     directory: "/.clusterfuzzlite"
     schedule:

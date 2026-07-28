@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 use super::{
-    manager_dispatch, ManagerJobTuple, ManagerRecord, ManagerReply, ManagerRequest,
-    ManagerUnitTuple, Result,
+    ManagerJobTuple, ManagerRecord, ManagerReply, ManagerRequest, ManagerUnitTuple, Result,
+    manager_dispatch,
 };
 use crate::ffi::Errno;
 use crate::runtime_manager::RuntimeManager;

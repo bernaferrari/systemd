@@ -4,14 +4,16 @@
 //
 // Safe Rust synchronization metadata for the matching machine module.
 
-use crate::common::{count_port_source_lines, read_port_source, verify_extracted_functions, Errno, PortMetadata};
+use crate::common::{
+    Errno, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
+};
 
 pub const SOURCE_PATH: &str = "src/machine/machined-resolve-hook.c";
 pub const EXTRACTED_FUNCTIONS: &[&str] = &[
     "manager_make_machine_array",
     "manager_notify_hook_filters",
     "vl_method_query_filter",
-    "vl_method_resolve_record"
+    "vl_method_resolve_record",
 ];
 
 pub fn metadata() -> Result<PortMetadata, Errno> {

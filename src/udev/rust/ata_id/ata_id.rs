@@ -22,7 +22,7 @@ unsafe extern "C" {
     fn run(argc: i32, argv: *mut *mut libc::c_char) -> i32;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `buf` must be writable for `bufsize` bytes for the duration of the C call.
 pub unsafe extern "C" fn rs_ata_id_disk_scsi_inquiry_command(
@@ -34,7 +34,7 @@ pub unsafe extern "C" fn rs_ata_id_disk_scsi_inquiry_command(
     unsafe { disk_scsi_inquiry_command(fd, buf, bufsize) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `buf` must be writable for `bufsize` bytes for the duration of the C call.
 pub unsafe extern "C" fn rs_ata_id_disk_identify_command(
@@ -46,7 +46,7 @@ pub unsafe extern "C" fn rs_ata_id_disk_identify_command(
     unsafe { disk_identify_command(fd, buf, bufsize) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `buf` must be writable for `bufsize` bytes for the duration of the C call.
 pub unsafe extern "C" fn rs_ata_id_disk_identify_packet_device_command(
@@ -59,7 +59,7 @@ pub unsafe extern "C" fn rs_ata_id_disk_identify_packet_device_command(
     unsafe { disk_identify_packet_device_command(fd, buf, bufsize) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `identify` must reference the ATA identify data read by the C implementation,
 /// and `dest` must be writable for `dest_len` bytes.
@@ -73,7 +73,7 @@ pub unsafe extern "C" fn rs_ata_id_disk_identify_get_string(
     unsafe { disk_identify_get_string(identify, offset_words, dest, dest_len) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `identify` must reference writable ATA identify data large enough for `offset_words`.
 pub unsafe extern "C" fn rs_ata_id_disk_identify_fixup_string(
@@ -84,7 +84,7 @@ pub unsafe extern "C" fn rs_ata_id_disk_identify_fixup_string(
     unsafe { disk_identify_fixup_string(identify, offset_words) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `identify` must reference writable ATA identify data large enough for `offset_words`.
 pub unsafe extern "C" fn rs_ata_id_disk_identify_fixup_uint16(
@@ -95,7 +95,7 @@ pub unsafe extern "C" fn rs_ata_id_disk_identify_fixup_uint16(
     unsafe { disk_identify_fixup_uint16(identify, offset_words) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `identify` must reference a writable ATA identify buffer and
 /// `is_packet_device` must be a valid writable `bool`.
@@ -109,7 +109,7 @@ pub unsafe extern "C" fn rs_ata_id_disk_identify(
     unsafe { disk_identify(fd, identify, msn, is_packet_device) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `argv` must reference an array of `argc` valid C-string pointers.
 pub unsafe extern "C" fn rs_ata_id_parse_argv(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
@@ -117,7 +117,7 @@ pub unsafe extern "C" fn rs_ata_id_parse_argv(argc: i32, argv: *mut *mut libc::c
     unsafe { parse_argv(argc, argv) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `argv` must reference an array of `argc` valid C-string pointers.
 pub unsafe extern "C" fn rs_ata_id_run(argc: i32, argv: *mut *mut libc::c_char) -> i32 {

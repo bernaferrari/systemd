@@ -6,7 +6,6 @@
 
 use std::io;
 
-
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct AcquireHomeFlags: u32 {
@@ -154,6 +153,9 @@ mod extra_tests {
 
     #[test]
     fn test_pam_result_default_operations_succeed() {
-        assert_eq!(pam_sm_open_session("alice", AcquireHomeFlags::default()).unwrap(), PamResult::Success);
+        assert_eq!(
+            pam_sm_open_session("alice", AcquireHomeFlags::default()).unwrap(),
+            PamResult::Success
+        );
     }
 }

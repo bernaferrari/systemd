@@ -9,7 +9,7 @@
 // All libfdisk symbols are resolved through dlopen so the module
 // gracefully degrades when libfdisk is absent.
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -347,11 +347,7 @@ pub unsafe fn c_str_to_option(ptr: *const libc::c_char) -> Option<String> {
     let s = unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.is_empty() { None } else { Some(s) }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -584,16 +580,22 @@ mod tests {
     #[test]
     fn test_fdisk_error_display() {
         assert!(!FdiskError::Unsupported.to_string().is_empty());
-        assert!(!FdiskError::DlopenFailed("test".into())
-            .to_string()
-            .is_empty());
-        assert!(!FdiskError::SymbolNotFound("sym".into())
-            .to_string()
-            .is_empty());
+        assert!(
+            !FdiskError::DlopenFailed("test".into())
+                .to_string()
+                .is_empty()
+        );
+        assert!(
+            !FdiskError::SymbolNotFound("sym".into())
+                .to_string()
+                .is_empty()
+        );
         assert!(!FdiskError::NotFound.to_string().is_empty());
         assert!(!FdiskError::ParseError("err".into()).to_string().is_empty());
-        assert!(!FdiskError::InvalidArgument("bad".into())
-            .to_string()
-            .is_empty());
+        assert!(
+            !FdiskError::InvalidArgument("bad".into())
+                .to_string()
+                .is_empty()
+        );
     }
 }

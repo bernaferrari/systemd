@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-hwdb
 
-use systemd_hwdb_rs::{parse_cli, Command};
+use systemd_hwdb_rs::{Command, parse_cli};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const HWDB_BIN_PATHS: &[&str] = &[

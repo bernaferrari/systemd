@@ -4,8 +4,8 @@
 // Binary entry point for systemd-delta
 
 use systemd_delta_rs::delta::{
-    build_scan_paths, classify, enabled, label, Config, SHOW_DEFAULTS, SHOW_EQUIVALENT,
-    SHOW_EXTENDED, SHOW_MASKED, SHOW_OVERRIDDEN, SHOW_REDIRECTED, SHOW_UNCHANGED,
+    Config, SHOW_DEFAULTS, SHOW_EQUIVALENT, SHOW_EXTENDED, SHOW_MASKED, SHOW_OVERRIDDEN,
+    SHOW_REDIRECTED, SHOW_UNCHANGED, build_scan_paths, classify, enabled, label,
 };
 
 fn main() {

@@ -26,7 +26,7 @@ pub const INCLUDED_HEADERS: &[&str] = &[
     "sys/ioctl.h",
     "sys/stat.h",
     "time-util.h",
-    "unistd.h"
+    "unistd.h",
 ];
 pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
     "sg_err_category_new",
@@ -45,7 +45,7 @@ pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
     "do_scsi_page83_prespc3_inquiry",
     "do_scsi_page80_inquiry",
     "scsi_std_inquiry",
-    "scsi_get_serial"
+    "scsi_get_serial",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,7 +69,7 @@ pub fn port_status() -> Result<(), Errno> {
     Err(Errno::ENOSYS)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rs_scsi_id_scsi_serial_port_stub() -> i32 {
     port_status().err().unwrap_or(Errno::EINVAL).to_neg_errno()
 }
@@ -87,7 +87,10 @@ mod tests {
 
     #[test]
     fn ffi_stub_reports_enosys() {
-        assert_eq!(rs_scsi_id_scsi_serial_port_stub(), Errno::ENOSYS.to_neg_errno());
+        assert_eq!(
+            rs_scsi_id_scsi_serial_port_stub(),
+            Errno::ENOSYS.to_neg_errno()
+        );
     }
 
     #[test]

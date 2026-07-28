@@ -181,7 +181,7 @@ fn format_bytes_default_into(t: u64, output: &mut [u8; FORMAT_BYTES_MAX]) -> Opt
 ///
 /// # Safety
 /// `buf` must point to at least `l` writable bytes when `l` is non-zero.
-#[export_name = "rs_format_bytes"]
+#[unsafe(export_name = "rs_format_bytes")]
 pub unsafe extern "C" fn rs_format_bytes(buf: *mut c_char, l: usize, t: u64) -> *mut c_char {
     if buf.is_null() || l == 0 {
         return std::ptr::null_mut();

@@ -4,8 +4,8 @@
 // Binary entry point for systemd-quotacheck
 
 use systemd_quotacheck_rs::quotacheck::{
-    build_quotacheck_args, quota_check_mode_from_string, quota_check_mode_to_string,
-    should_run_quotacheck, QuotaCheckMode,
+    QuotaCheckMode, build_quotacheck_args, quota_check_mode_from_string,
+    quota_check_mode_to_string, should_run_quotacheck,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

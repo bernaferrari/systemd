@@ -314,11 +314,7 @@ pub fn compare_groups(a: &Group, b: &Group, order: Order) -> std::cmp::Ordering 
 /// Determine effective iteration count based on TTY presence.
 pub fn resolve_iterations(iterations: u64, on_tty: bool) -> u64 {
     if iterations == u64::MAX {
-        if on_tty {
-            0
-        } else {
-            1
-        }
+        if on_tty { 0 } else { 1 }
     } else {
         iterations
     }

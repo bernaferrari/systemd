@@ -6,7 +6,7 @@
 //! module centralizes the only raw C-string read needed by ordinary enum table
 //! facades, so adding a table does not duplicate unsafe lifetime machinery.
 
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 
 pub(crate) type Entry = (i32, &'static [u8]);
 

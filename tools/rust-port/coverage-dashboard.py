@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -16,16 +15,10 @@ class Counts:
     rust_files: int = 0
     rust_metadata: int = 0
     rust_test_support: int = 0
-    rust_scaffolding: int = 0
 
     @property
     def rust_behavior_candidates(self) -> int:
-        return (
-            self.rust_files
-            - self.rust_metadata
-            - self.rust_test_support
-            - self.rust_scaffolding
-        )
+        return self.rust_files - self.rust_metadata - self.rust_test_support
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,9 +41,14 @@ def parse_args() -> argparse.Namespace:
         default=["src/test"],
         help="Path prefix to exclude for the secondary total snapshot (repeatable).",
     )
-    parser.add_argument(
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument(
         "--write",
         help="Optional markdown output path. Prints to stdout if omitted.",
+    )
+    output.add_argument(
+        "--check",
+        help="Fail if the generated inventory differs from this markdown path.",
     )
     return parser.parse_args()
 
@@ -61,13 +59,14 @@ def is_excluded(rel: str, excluded: list[str]) -> bool:
 
 def classify_rust(path: Path) -> str:
     """Classify source inventory without claiming behavioral parity."""
-    name = path.name
+    stem = path.stem
     parts = set(path.parts)
-    if name.startswith(("test", "fuzz")) or "tests" in parts:
+    if (
+        stem.startswith(("test", "fuzz"))
+        or stem.endswith(("_test", "_tests"))
+        or "tests" in parts
+    ):
         return "test-support"
-    if name in {"lib.rs", "main.rs", "ffi.rs", "port_sync.rs"}:
-        return "scaffolding"
-
     text = path.read_text(encoding="utf-8", errors="ignore")
     metadata_markers = (
         "Safe Rust metadata port",
@@ -88,8 +87,6 @@ def add_rust(counts: Counts, category: str) -> None:
         counts.rust_metadata += 1
     elif category == "test-support":
         counts.rust_test_support += 1
-    elif category == "scaffolding":
-        counts.rust_scaffolding += 1
 
 
 def render_markdown(
@@ -101,19 +98,19 @@ def render_markdown(
     total: Counts,
     total_excluded: Counts,
 ) -> str:
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     excluded_label = ", ".join(excluded) if excluded else "(none)"
 
     lines = [
         "# Rust Port Source Inventory",
         "",
-        f"Generated: {now}",
         "Repository: repository root",
         f"Scope: `{src_root.relative_to(root).as_posix()}`",
         "",
         "> This is a source inventory, not a completion percentage. A Rust file is",
         "> counted as a behavior candidate only after excluding obvious metadata",
-        "> adapters, test/fuzz support, and crate scaffolding. Candidates are still",
+        "> adapters and test/fuzz support. Crate roots and FFI modules remain",
+        "> candidates because their filenames do not prove they lack behavior.",
+        "> Candidates are still",
         "> unverified until mapped behavior and executable tests pass.",
         "",
         "## Snapshot Totals",
@@ -122,7 +119,6 @@ def render_markdown(
         f"- All `src` Rust files: **{total.rust_files}**",
         f"- Rust metadata adapters: **{total.rust_metadata}**",
         f"- Rust test/fuzz support files: **{total.rust_test_support}**",
-        f"- Rust crate scaffolding files: **{total.rust_scaffolding}**",
         f"- Unverified Rust behavior candidates: **{total.rust_behavior_candidates}**",
         "",
         f"Excluding `{excluded_label}`:",
@@ -130,13 +126,12 @@ def render_markdown(
         f"- Rust files: **{total_excluded.rust_files}**",
         f"- Rust metadata adapters: **{total_excluded.rust_metadata}**",
         f"- Rust test/fuzz support files: **{total_excluded.rust_test_support}**",
-        f"- Rust crate scaffolding files: **{total_excluded.rust_scaffolding}**",
         f"- Unverified Rust behavior candidates: **{total_excluded.rust_behavior_candidates}**",
         "",
         "## Per-Subsystem Inventory",
         "",
-        "| Subsystem | C | Rust | Metadata | Test/fuzz | Scaffolding | Behavior candidates |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Subsystem | C | Rust | Metadata | Test/fuzz | Behavior candidates |",
+        "|---|---:|---:|---:|---:|---:|",
     ]
 
     for subsystem in sorted(per_subsystem):
@@ -144,7 +139,7 @@ def render_markdown(
         lines.append(
             f"| `{subsystem}` | {counts.c_files} | {counts.rust_files} | "
             f"{counts.rust_metadata} | {counts.rust_test_support} | "
-            f"{counts.rust_scaffolding} | {counts.rust_behavior_candidates} |"
+            f"{counts.rust_behavior_candidates} |"
         )
 
     lines += [
@@ -209,6 +204,17 @@ def main() -> int:
         output = root / args.write
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(markdown, encoding="utf-8")
+    elif args.check:
+        output = root / args.check
+        if not output.is_file():
+            raise SystemExit(f"inventory not found: {output}")
+        if output.read_text(encoding="utf-8") != markdown:
+            raise SystemExit(
+                f"{output.relative_to(root)} is stale; regenerate it with "
+                "tools/rust-port/coverage-dashboard.py --write "
+                f"{output.relative_to(root)}"
+            )
+        print(f"Rust source inventory is current: {output.relative_to(root)}")
     else:
         print(markdown)
 

@@ -210,23 +210,21 @@ pub fn journal_directory_vacuum(
         let name = entry.file_name().to_string_lossy().to_string();
         let usage = usage_from_stat(&meta);
         match parse_archived(&name, usage) {
-            FileKind::Archived(mut info) => {
-                match journal_file_empty(&path) {
-                    Ok(true) => match fs::remove_file(&path) {
-                        Ok(()) => {
-                            report.freed += usage;
-                            report.deleted.push(name);
-                        }
-                        Err(err) if err.raw_os_error() == Some(libc::ENOENT) => {}
-                        Err(err) => return Err(-(err.raw_os_error().unwrap_or(libc::EIO) as i32)),
-                    },
-                    Ok(false) => {
-                        info.realtime = patch_realtime(&meta, info.realtime);
-                        archived.push(info);
+            FileKind::Archived(mut info) => match journal_file_empty(&path) {
+                Ok(true) => match fs::remove_file(&path) {
+                    Ok(()) => {
+                        report.freed += usage;
+                        report.deleted.push(name);
                     }
-                    Err(_) => {}
+                    Err(err) if err.raw_os_error() == Some(libc::ENOENT) => {}
+                    Err(err) => return Err(-(err.raw_os_error().unwrap_or(libc::EIO) as i32)),
+                },
+                Ok(false) => {
+                    info.realtime = patch_realtime(&meta, info.realtime);
+                    archived.push(info);
                 }
-            }
+                Err(_) => {}
+            },
             FileKind::ActiveJournalLike => {
                 active_usage = active_usage.saturating_add(usage);
                 active_files = active_files.saturating_add(1);

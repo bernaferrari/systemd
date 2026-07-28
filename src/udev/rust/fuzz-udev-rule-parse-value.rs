@@ -47,7 +47,11 @@ pub fn parse_rule_value(input: &str) -> Result<ParsedValue<'_>> {
         return Err(ParseValueError::MissingBody);
     }
 
-    Ok(ParsedValue { value, end_offset: input.len() - trimmed.len() + consumed, case_sensitive })
+    Ok(ParsedValue {
+        value,
+        end_offset: input.len() - trimmed.len() + consumed,
+        case_sensitive,
+    })
 }
 
 pub fn fuzz_one_input(data: &[u8]) -> Result<ParsedValue<'_>> {
@@ -59,8 +63,27 @@ pub fn fuzz_one_input(data: &[u8]) -> Result<ParsedValue<'_>> {
 mod tests {
     use super::*;
 
-    #[test] fn parses_plain_token() { let parsed = parse_rule_value("value next").unwrap(); assert_eq!(parsed.value, "value"); assert_eq!(parsed.end_offset, 5); }
-    #[test] fn parses_quoted_token() { let parsed = parse_rule_value("\"value\" next").unwrap(); assert_eq!(parsed.value, "value"); assert!(parsed.case_sensitive); }
-    #[test] fn rejects_empty() { assert_eq!(parse_rule_value(""), Err(ParseValueError::Empty)); }
-    #[test] fn rejects_unterminated_quote() { assert_eq!(parse_rule_value("\"value"), Err(ParseValueError::UnterminatedQuote)); }
+    #[test]
+    fn parses_plain_token() {
+        let parsed = parse_rule_value("value next").unwrap();
+        assert_eq!(parsed.value, "value");
+        assert_eq!(parsed.end_offset, 5);
+    }
+    #[test]
+    fn parses_quoted_token() {
+        let parsed = parse_rule_value("\"value\" next").unwrap();
+        assert_eq!(parsed.value, "value");
+        assert!(parsed.case_sensitive);
+    }
+    #[test]
+    fn rejects_empty() {
+        assert_eq!(parse_rule_value(""), Err(ParseValueError::Empty));
+    }
+    #[test]
+    fn rejects_unterminated_quote() {
+        assert_eq!(
+            parse_rule_value("\"value"),
+            Err(ParseValueError::UnterminatedQuote)
+        );
+    }
 }

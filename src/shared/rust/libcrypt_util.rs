@@ -11,7 +11,7 @@
 // EOPNOTSUPP, matching the C #else path.
 
 use std::env;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::sync::OnceLock;
 

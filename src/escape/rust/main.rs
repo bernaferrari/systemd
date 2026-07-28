@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-escape
 
-use systemd_escape_rs::escape::{apply, validate, Action, Config};
+use systemd_escape_rs::escape::{Action, Config, apply, validate};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

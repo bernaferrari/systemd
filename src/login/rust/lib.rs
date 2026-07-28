@@ -3,6 +3,7 @@
 // Rust port of systemd/src/login/
 
 pub mod inhibit;
+pub mod loginctl;
 pub mod logind;
 pub mod logind_action;
 pub mod logind_brightness;
@@ -22,7 +23,6 @@ pub mod logind_user_dbus;
 pub mod logind_utmp;
 pub mod logind_varlink;
 pub mod logind_wall;
-pub mod loginctl;
 pub mod pam_systemd;
 pub mod pam_systemd_loadkey;
 pub mod sysfs_show;

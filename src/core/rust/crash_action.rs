@@ -220,10 +220,11 @@ mod tests {
             ..MockEnv::default()
         };
         let _ = freeze_or_exit_or_reboot(&mut env, CrashAction::Reboot);
-        assert!(env
-            .logs
-            .iter()
-            .any(|(_, msg)| msg.contains("Failed to reboot")));
+        assert!(
+            env.logs
+                .iter()
+                .any(|(_, msg)| msg.contains("Failed to reboot"))
+        );
     }
 
     #[test]
@@ -233,9 +234,10 @@ mod tests {
             ..MockEnv::default()
         };
         let _ = freeze_or_exit_or_reboot(&mut env, CrashAction::Poweroff);
-        assert!(env
-            .logs
-            .iter()
-            .any(|(_, msg)| msg.contains("Failed to power off")));
+        assert!(
+            env.logs
+                .iter()
+                .any(|(_, msg)| msg.contains("Failed to power off"))
+        );
     }
 }

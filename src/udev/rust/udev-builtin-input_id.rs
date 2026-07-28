@@ -39,7 +39,34 @@ pub fn classify_input(capabilities: &InputCapabilities) -> InputClassification {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn identifies_keyboard() { let caps = InputCapabilities { keys: BTreeSet::from(["KEY_A".into()]), relative_axes: BTreeSet::new(), absolute_axes: BTreeSet::new(), switches: BTreeSet::new() }; assert!(classify_input(&caps).is_keyboard); }
-    #[test] fn identifies_mouse() { let caps = InputCapabilities { keys: BTreeSet::from(["BTN_LEFT".into()]), relative_axes: BTreeSet::from(["REL_X".into(), "REL_Y".into()]), absolute_axes: BTreeSet::new(), switches: BTreeSet::new() }; assert!(classify_input(&caps).is_mouse); }
-    #[test] fn identifies_touchscreen() { let caps = InputCapabilities { keys: BTreeSet::new(), relative_axes: BTreeSet::new(), absolute_axes: BTreeSet::from(["ABS_MT_POSITION_X".into(), "ABS_MT_POSITION_Y".into()]), switches: BTreeSet::new() }; assert!(classify_input(&caps).is_touchscreen); }
+    #[test]
+    fn identifies_keyboard() {
+        let caps = InputCapabilities {
+            keys: BTreeSet::from(["KEY_A".into()]),
+            relative_axes: BTreeSet::new(),
+            absolute_axes: BTreeSet::new(),
+            switches: BTreeSet::new(),
+        };
+        assert!(classify_input(&caps).is_keyboard);
+    }
+    #[test]
+    fn identifies_mouse() {
+        let caps = InputCapabilities {
+            keys: BTreeSet::from(["BTN_LEFT".into()]),
+            relative_axes: BTreeSet::from(["REL_X".into(), "REL_Y".into()]),
+            absolute_axes: BTreeSet::new(),
+            switches: BTreeSet::new(),
+        };
+        assert!(classify_input(&caps).is_mouse);
+    }
+    #[test]
+    fn identifies_touchscreen() {
+        let caps = InputCapabilities {
+            keys: BTreeSet::new(),
+            relative_axes: BTreeSet::new(),
+            absolute_axes: BTreeSet::from(["ABS_MT_POSITION_X".into(), "ABS_MT_POSITION_Y".into()]),
+            switches: BTreeSet::new(),
+        };
+        assert!(classify_input(&caps).is_touchscreen);
+    }
 }

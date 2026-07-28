@@ -285,7 +285,7 @@ fn unsupported() -> io::Error {
 /// automount. `Ok(false)` is the normal, non-fatal unavailable state.
 #[cfg(target_os = "linux")]
 pub fn binfmt_mounted_and_writable() -> io::Result<bool> {
-    use rustix::fs::{accessat, fstatfs, open, Access, AtFlags, Mode, OFlags};
+    use rustix::fs::{Access, AtFlags, Mode, OFlags, accessat, fstatfs, open};
     use rustix::io::Errno;
 
     let file = match open(
@@ -477,9 +477,11 @@ mod tests {
         symlink("/dev/null", high.join("20-mask.conf")).unwrap();
         fs::write(low.join("20-mask.conf"), "low").unwrap();
 
-        assert!(config_files_from_dirs(&[high.clone(), low.clone()])
-            .unwrap()
-            .is_empty());
+        assert!(
+            config_files_from_dirs(&[high.clone(), low.clone()])
+                .unwrap()
+                .is_empty()
+        );
 
         fs::remove_dir_all(high).unwrap();
         fs::remove_dir_all(low).unwrap();

@@ -762,7 +762,10 @@ mod tests {
         let result = bus_message_map_all_properties(&props, &map, BusMapFlags::empty()).unwrap();
 
         let id = get_mapped_id128(&result, "InvocationID").unwrap();
-        assert_eq!(id, <[u8; 16]>::try_from((0u8..16u8).collect::<Vec<u8>>()).unwrap());
+        assert_eq!(
+            id,
+            <[u8; 16]>::try_from((0u8..16u8).collect::<Vec<u8>>()).unwrap()
+        );
     }
 
     #[test]

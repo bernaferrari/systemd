@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-sysctl
 
-use systemd_sysctl_rs::{parse_line, test_prefix, PROC_SYS_PREFIX};
+use systemd_sysctl_rs::{PROC_SYS_PREFIX, parse_line, test_prefix};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

@@ -9,7 +9,7 @@ use std::mem::{offset_of, size_of, zeroed};
 use std::os::fd::RawFd;
 use std::path::Path;
 #[cfg(target_os = "linux")]
-use systemd_basic_rs::socket_util::{socket_address_parse_vsock, SocketAddress, SocketType};
+use systemd_basic_rs::socket_util::{SocketAddress, SocketType, socket_address_parse_vsock};
 
 pub type Result<T> = std::result::Result<T, DaemonCheckError>;
 
@@ -40,7 +40,9 @@ struct MqAttr {
 type MqdT = libc::c_int;
 
 #[cfg(target_os = "linux")]
-extern "C" {
+// SAFETY: these declarations mirror Linux librt's mqueue ABI and use the local
+// repr(C) mq_attr layout; all call sites validate names, descriptors, and slots.
+unsafe extern "C" {
     fn mq_getattr(mqdes: MqdT, attr: *mut MqAttr) -> libc::c_int;
     fn mq_open(
         name: *const libc::c_char,
@@ -53,7 +55,12 @@ extern "C" {
 }
 
 pub const SD_LISTEN_FDS_START: RawFd = 3;
-const LISTEN_ENV_VARS: [&str; 4] = ["LISTEN_PID", "LISTEN_PIDFDID", "LISTEN_FDS", "LISTEN_FDNAMES"];
+const LISTEN_ENV_VARS: [&str; 4] = [
+    "LISTEN_PID",
+    "LISTEN_PIDFDID",
+    "LISTEN_FDS",
+    "LISTEN_FDNAMES",
+];
 const WATCHDOG_ENV_VARS: [&str; 2] = ["WATCHDOG_USEC", "WATCHDOG_PID"];
 const NOTIFY_ENV_VAR: &str = "NOTIFY_SOCKET";
 
@@ -64,9 +71,16 @@ fn collect_listen_env() -> BTreeMap<String, String> {
         .collect()
 }
 
-fn unsetenv_listen() {
+/// Remove socket-activation variables from the process environment.
+///
+/// # Safety
+///
+/// The caller must ensure that no other thread reads or mutates the process
+/// environment until this function returns.
+unsafe fn unsetenv_listen() {
     for key in LISTEN_ENV_VARS {
-        env::remove_var(key);
+        // SAFETY: upheld by the caller as required by this function's contract.
+        unsafe { env::remove_var(key) };
     }
 }
 
@@ -77,14 +91,28 @@ fn collect_watchdog_env() -> BTreeMap<String, String> {
         .collect()
 }
 
-fn unsetenv_watchdog() {
+/// Remove watchdog variables from the process environment.
+///
+/// # Safety
+///
+/// The caller must ensure that no other thread reads or mutates the process
+/// environment until this function returns.
+unsafe fn unsetenv_watchdog() {
     for key in WATCHDOG_ENV_VARS {
-        env::remove_var(key);
+        // SAFETY: upheld by the caller as required by this function's contract.
+        unsafe { env::remove_var(key) };
     }
 }
 
-fn unsetenv_notify() {
-    env::remove_var(NOTIFY_ENV_VAR);
+/// Remove the notify socket from the process environment.
+///
+/// # Safety
+///
+/// The caller must ensure that no other thread reads or mutates the process
+/// environment until this function returns.
+unsafe fn unsetenv_notify() {
+    // SAFETY: upheld by the caller as required by this function's contract.
+    unsafe { env::remove_var(NOTIFY_ENV_VAR) };
 }
 
 pub fn listen_fds_from_env(
@@ -132,7 +160,13 @@ pub fn listen_fds_from_env(
     Ok((SD_LISTEN_FDS_START..SD_LISTEN_FDS_START + n_fds).collect())
 }
 
-pub fn sd_listen_fds(unset_environment: bool) -> Result<i32> {
+/// Parse descriptors passed through the socket-activation environment.
+///
+/// # Safety
+///
+/// When `unset_environment` is true, the caller must ensure that no other
+/// thread reads or mutates the process environment until this function returns.
+pub unsafe fn sd_listen_fds(unset_environment: bool) -> Result<i32> {
     let result = (|| {
         let env = collect_listen_env();
         // SAFETY: `libc::getpid` has no preconditions and does not dereference pointers.
@@ -146,10 +180,17 @@ pub fn sd_listen_fds(unset_environment: bool) -> Result<i32> {
     })();
 
     if unset_environment {
-        unsetenv_listen();
+        // SAFETY: required by this function's contract when unsetting.
+        unsafe { unsetenv_listen() };
     }
 
     result
+}
+
+/// Parse descriptors without changing the process environment.
+pub fn sd_listen_fds_preserve_environment() -> Result<i32> {
+    // SAFETY: false disables the only process-environment mutation.
+    unsafe { sd_listen_fds(false) }
 }
 
 pub fn listen_fds_with_names_from_env(
@@ -174,7 +215,13 @@ pub fn listen_fds_with_names_from_env(
         .collect())
 }
 
-pub fn sd_listen_fds_with_names(unset_environment: bool) -> Result<Vec<PassedFd>> {
+/// Parse named descriptors passed through the socket-activation environment.
+///
+/// # Safety
+///
+/// When `unset_environment` is true, the caller must ensure that no other
+/// thread reads or mutates the process environment until this function returns.
+pub unsafe fn sd_listen_fds_with_names(unset_environment: bool) -> Result<Vec<PassedFd>> {
     let result = (|| {
         let env = collect_listen_env();
         // SAFETY: `libc::getpid` has no preconditions and does not dereference pointers.
@@ -188,10 +235,17 @@ pub fn sd_listen_fds_with_names(unset_environment: bool) -> Result<Vec<PassedFd>
     })();
 
     if unset_environment {
-        unsetenv_listen();
+        // SAFETY: required by this function's contract when unsetting.
+        unsafe { unsetenv_listen() };
     }
 
     result
+}
+
+/// Parse named descriptors without changing the process environment.
+pub fn sd_listen_fds_with_names_preserve_environment() -> Result<Vec<PassedFd>> {
+    // SAFETY: false disables the only process-environment mutation.
+    unsafe { sd_listen_fds_with_names(false) }
 }
 
 pub fn watchdog_enabled_from_env(
@@ -221,23 +275,44 @@ pub fn watchdog_enabled_from_env(
     Ok(Some(usec))
 }
 
-pub fn sd_watchdog_enabled(unset_environment: bool) -> Result<Option<u64>> {
+/// Read the watchdog interval from the process environment.
+///
+/// # Safety
+///
+/// When `unset_environment` is true, the caller must ensure that no other
+/// thread reads or mutates the process environment until this function returns.
+pub unsafe fn sd_watchdog_enabled(unset_environment: bool) -> Result<Option<u64>> {
     // SAFETY: `libc::getpid` has no preconditions and does not dereference pointers.
     let result = watchdog_enabled_from_env(&collect_watchdog_env(), unsafe { libc::getpid() });
 
     if unset_environment {
-        unsetenv_watchdog();
+        // SAFETY: required by this function's contract when unsetting.
+        unsafe { unsetenv_watchdog() };
     }
 
     result
 }
 
-pub fn sd_notify(unset_environment: bool, state: &str) -> Result<bool> {
+/// Read the watchdog interval without changing the process environment.
+pub fn sd_watchdog_enabled_preserve_environment() -> Result<Option<u64>> {
+    // SAFETY: false disables the only process-environment mutation.
+    unsafe { sd_watchdog_enabled(false) }
+}
+
+/// Send an sd_notify message to the service manager.
+///
+/// # Safety
+///
+/// When `unset_environment` is true, the caller must ensure that no other
+/// thread reads or mutates the process environment until this function returns.
+pub unsafe fn sd_notify(unset_environment: bool, state: &str) -> Result<bool> {
     let result = (|| {
         let notify_socket = match env::var(NOTIFY_ENV_VAR) {
             Ok(value) => value,
             Err(env::VarError::NotPresent) => return Ok(false),
-            Err(env::VarError::NotUnicode(_)) => return Err(DaemonCheckError::InvalidInput("NOTIFY_SOCKET")),
+            Err(env::VarError::NotUnicode(_)) => {
+                return Err(DaemonCheckError::InvalidInput("NOTIFY_SOCKET"));
+            }
         };
 
         send_notify_message(&notify_socket, state.as_bytes())?;
@@ -245,15 +320,29 @@ pub fn sd_notify(unset_environment: bool, state: &str) -> Result<bool> {
     })();
 
     if unset_environment {
-        unsetenv_notify();
+        // SAFETY: required by this function's contract when unsetting.
+        unsafe { unsetenv_notify() };
     }
 
     result
 }
 
-pub fn sd_notifyf(unset_environment: bool, args: std::fmt::Arguments<'_>) -> Result<bool> {
+/// Send an sd_notify message without changing the process environment.
+pub fn sd_notify_preserve_environment(state: &str) -> Result<bool> {
+    // SAFETY: false disables the only process-environment mutation.
+    unsafe { sd_notify(false, state) }
+}
+
+/// Format and send an sd_notify message to the service manager.
+///
+/// # Safety
+///
+/// When `unset_environment` is true, the caller must ensure that no other
+/// thread reads or mutates the process environment until this function returns.
+pub unsafe fn sd_notifyf(unset_environment: bool, args: std::fmt::Arguments<'_>) -> Result<bool> {
     let message = args.to_string();
-    sd_notify(unset_environment, &message)
+    // SAFETY: this function has the same environment-mutation contract.
+    unsafe { sd_notify(unset_environment, &message) }
 }
 
 pub fn booted_at(path: &Path) -> Result<bool> {
@@ -765,7 +854,8 @@ fn parse_notify_socket_unix(address: &str) -> Result<(libc::sockaddr_un, libc::s
         let len = path_offset + 1 + name_bytes.len();
         return Ok((
             sockaddr,
-            libc::socklen_t::try_from(len).map_err(|_| DaemonCheckError::InvalidInput("NOTIFY_SOCKET"))?,
+            libc::socklen_t::try_from(len)
+                .map_err(|_| DaemonCheckError::InvalidInput("NOTIFY_SOCKET"))?,
         ));
     }
 
@@ -781,7 +871,8 @@ fn parse_notify_socket_unix(address: &str) -> Result<(libc::sockaddr_un, libc::s
     let len = path_offset + path_bytes.len() + 1;
     Ok((
         sockaddr,
-        libc::socklen_t::try_from(len).map_err(|_| DaemonCheckError::InvalidInput("NOTIFY_SOCKET"))?,
+        libc::socklen_t::try_from(len)
+            .map_err(|_| DaemonCheckError::InvalidInput("NOTIFY_SOCKET"))?,
     ))
 }
 
@@ -908,6 +999,7 @@ fn last_errno() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TestEnvironment;
     use std::fs::{self, File};
     use std::net::{SocketAddr, TcpListener, UdpSocket};
     use std::os::fd::AsRawFd;
@@ -915,7 +1007,6 @@ mod tests {
     use std::os::unix::net::UnixDatagram;
     use std::os::unix::net::UnixListener;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_path(name: &str) -> std::path::PathBuf {
@@ -924,11 +1015,6 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("systemd-rs-{name}-{nanos}"))
-    }
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn save_fd_if_open(fd: RawFd) -> Option<RawFd> {
@@ -1017,8 +1103,12 @@ mod tests {
 
     #[test]
     fn sd_listen_fds_sets_cloexec_and_unsets_environment() {
-        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
-        unsetenv_listen();
+        // SAFETY: this environment-dependent test target runs with
+        // --test-threads=1 and does not spawn environment readers.
+        let environment = unsafe { TestEnvironment::lock() };
+        for key in LISTEN_ENV_VARS {
+            environment.remove(key);
+        }
 
         let mut pipe_a = [0; 2];
         let mut pipe_b = [0; 2];
@@ -1041,11 +1131,12 @@ mod tests {
         }
 
         // SAFETY: arguments satisfy the libc `getpid` contract and any passed pointers remain valid for the call.
-        env::set_var("LISTEN_PID", unsafe { libc::getpid() }.to_string());
-        env::set_var("LISTEN_FDS", "2");
-        env::set_var("LISTEN_FDNAMES", "alpha:beta");
+        environment.set("LISTEN_PID", unsafe { libc::getpid() }.to_string());
+        environment.set("LISTEN_FDS", "2");
+        environment.set("LISTEN_FDNAMES", "alpha:beta");
 
-        let n = sd_listen_fds(true).unwrap();
+        // SAFETY: TestEnvironment upholds the environment mutation contract.
+        let n = unsafe { sd_listen_fds(true) }.unwrap();
         assert_eq!(n, 2);
         assert!(fd_cloexec_set(SD_LISTEN_FDS_START));
         assert!(fd_cloexec_set(SD_LISTEN_FDS_START + 1));
@@ -1059,8 +1150,12 @@ mod tests {
 
     #[test]
     fn sd_listen_fds_with_names_reads_env_and_sets_cloexec() {
-        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
-        unsetenv_listen();
+        // SAFETY: this environment-dependent test target runs with
+        // --test-threads=1 and does not spawn environment readers.
+        let environment = unsafe { TestEnvironment::lock() };
+        for key in LISTEN_ENV_VARS {
+            environment.remove(key);
+        }
 
         let mut pipe_a = [0; 2];
         let mut pipe_b = [0; 2];
@@ -1082,11 +1177,11 @@ mod tests {
         }
 
         // SAFETY: arguments satisfy the libc `getpid` contract and any passed pointers remain valid for the call.
-        env::set_var("LISTEN_PID", unsafe { libc::getpid() }.to_string());
-        env::set_var("LISTEN_FDS", "2");
-        env::set_var("LISTEN_FDNAMES", "first:second");
+        environment.set("LISTEN_PID", unsafe { libc::getpid() }.to_string());
+        environment.set("LISTEN_FDS", "2");
+        environment.set("LISTEN_FDNAMES", "first:second");
 
-        let named = sd_listen_fds_with_names(false).unwrap();
+        let named = sd_listen_fds_with_names_preserve_environment().unwrap();
         assert_eq!(named.len(), 2);
         assert_eq!(named[0].fd, SD_LISTEN_FDS_START);
         assert_eq!(named[1].fd, SD_LISTEN_FDS_START + 1);
@@ -1097,7 +1192,9 @@ mod tests {
         assert!(env::var("LISTEN_PID").is_ok());
         assert!(env::var("LISTEN_FDS").is_ok());
 
-        unsetenv_listen();
+        for key in LISTEN_ENV_VARS {
+            environment.remove(key);
+        }
         restore_fd(SD_LISTEN_FDS_START, saved3);
         restore_fd(SD_LISTEN_FDS_START + 1, saved4);
     }
@@ -1117,14 +1214,19 @@ mod tests {
 
     #[test]
     fn sd_watchdog_enabled_reads_and_unsets_environment() {
-        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
-        unsetenv_watchdog();
+        // SAFETY: this environment-dependent test target runs with
+        // --test-threads=1 and does not spawn environment readers.
+        let environment = unsafe { TestEnvironment::lock() };
+        for key in WATCHDOG_ENV_VARS {
+            environment.remove(key);
+        }
 
-        env::set_var("WATCHDOG_USEC", "777000");
+        environment.set("WATCHDOG_USEC", "777000");
         // SAFETY: arguments satisfy the libc `getpid` contract and any passed pointers remain valid for the call.
-        env::set_var("WATCHDOG_PID", unsafe { libc::getpid() }.to_string());
+        environment.set("WATCHDOG_PID", unsafe { libc::getpid() }.to_string());
 
-        let enabled = sd_watchdog_enabled(true).unwrap();
+        // SAFETY: TestEnvironment upholds the environment mutation contract.
+        let enabled = unsafe { sd_watchdog_enabled(true) }.unwrap();
         assert_eq!(enabled, Some(777000));
         assert!(env::var("WATCHDOG_USEC").is_err());
         assert!(env::var("WATCHDOG_PID").is_err());
@@ -1132,28 +1234,40 @@ mod tests {
 
     #[test]
     fn sd_watchdog_enabled_missing_var_returns_none() {
-        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
-        unsetenv_watchdog();
-        assert_eq!(sd_watchdog_enabled(false).unwrap(), None);
+        // SAFETY: this environment-dependent test target runs with
+        // --test-threads=1 and does not spawn environment readers.
+        let environment = unsafe { TestEnvironment::lock() };
+        for key in WATCHDOG_ENV_VARS {
+            environment.remove(key);
+        }
+        assert_eq!(sd_watchdog_enabled_preserve_environment().unwrap(), None);
     }
 
     #[test]
     fn sd_notify_missing_socket_returns_zero_like_false() {
-        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
-        unsetenv_notify();
-        assert!(!sd_notify(false, "READY=1").unwrap());
+        // SAFETY: this environment-dependent test target runs with
+        // --test-threads=1 and does not spawn environment readers.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(NOTIFY_ENV_VAR);
+        assert!(!sd_notify_preserve_environment("READY=1").unwrap());
     }
 
     #[test]
     fn sd_notify_sends_to_unix_datagram_socket() {
-        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
-        unsetenv_notify();
+        // SAFETY: this environment-dependent test target runs with
+        // --test-threads=1 and does not spawn environment readers.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(NOTIFY_ENV_VAR);
 
         let socket_path = unique_path("notify.sock");
         let socket = UnixDatagram::bind(&socket_path).unwrap();
-        env::set_var("NOTIFY_SOCKET", socket_path.as_os_str().to_string_lossy().to_string());
+        environment.set(
+            "NOTIFY_SOCKET",
+            socket_path.as_os_str().to_string_lossy().to_string(),
+        );
 
-        let sent = sd_notify(true, "READY=1\nSTATUS=ok").unwrap();
+        // SAFETY: TestEnvironment upholds the environment mutation contract.
+        let sent = unsafe { sd_notify(true, "READY=1\nSTATUS=ok") }.unwrap();
         assert!(sent);
 
         let mut buf = [0u8; 128];
@@ -1166,14 +1280,20 @@ mod tests {
 
     #[test]
     fn sd_notifyf_formats_and_sends_message() {
-        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
-        unsetenv_notify();
+        // SAFETY: this environment-dependent test target runs with
+        // --test-threads=1 and does not spawn environment readers.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(NOTIFY_ENV_VAR);
 
         let socket_path = unique_path("notifyf.sock");
         let socket = UnixDatagram::bind(&socket_path).unwrap();
-        env::set_var("NOTIFY_SOCKET", socket_path.as_os_str().to_string_lossy().to_string());
+        environment.set(
+            "NOTIFY_SOCKET",
+            socket_path.as_os_str().to_string_lossy().to_string(),
+        );
 
-        let sent = sd_notifyf(true, format_args!("MAINPID={}", 1234)).unwrap();
+        // SAFETY: TestEnvironment upholds the environment mutation contract.
+        let sent = unsafe { sd_notifyf(true, format_args!("MAINPID={}", 1234)) }.unwrap();
         assert!(sent);
 
         let mut buf = [0u8; 64];
@@ -1246,14 +1366,16 @@ mod tests {
     fn inet_socket_check_validates_family_and_port() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        assert!(is_socket_inet(
-            listener.as_raw_fd(),
-            Some(libc::AF_INET),
-            Some(libc::SOCK_STREAM),
-            Some(true),
-            Some(port)
-        )
-        .unwrap());
+        assert!(
+            is_socket_inet(
+                listener.as_raw_fd(),
+                Some(libc::AF_INET),
+                Some(libc::SOCK_STREAM),
+                Some(true),
+                Some(port)
+            )
+            .unwrap()
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -1274,15 +1396,17 @@ mod tests {
             sin_zero: [0; 8],
         };
 
-        assert!(sd_is_socket_sockaddr(
-            listener.as_raw_fd(),
-            Some(libc::SOCK_STREAM),
-            // SAFETY: arguments satisfy the libc `sockaddr` contract and any passed pointers remain valid for the call.
-            Some(unsafe { &*(&addr as *const _ as *const libc::sockaddr) }),
-            std::mem::size_of::<libc::sockaddr_in>(),
-            Some(true),
-        )
-        .unwrap());
+        assert!(
+            sd_is_socket_sockaddr(
+                listener.as_raw_fd(),
+                Some(libc::SOCK_STREAM),
+                // SAFETY: arguments satisfy the libc `sockaddr` contract and any passed pointers remain valid for the call.
+                Some(unsafe { &*(&addr as *const _ as *const libc::sockaddr) }),
+                std::mem::size_of::<libc::sockaddr_in>(),
+                Some(true),
+            )
+            .unwrap()
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -1291,13 +1415,15 @@ mod tests {
         let path = unique_path("unix.sock");
         let listener = UnixListener::bind(&path).unwrap();
         let bytes = path.as_os_str().as_encoded_bytes();
-        assert!(is_socket_unix(
-            listener.as_raw_fd(),
-            Some(libc::SOCK_STREAM),
-            Some(true),
-            Some(bytes)
-        )
-        .unwrap());
+        assert!(
+            is_socket_unix(
+                listener.as_raw_fd(),
+                Some(libc::SOCK_STREAM),
+                Some(true),
+                Some(bytes)
+            )
+            .unwrap()
+        );
         let _ = fs::remove_file(path);
     }
 
@@ -1307,20 +1433,24 @@ mod tests {
         let path = unique_path("unix-exact.sock");
         let listener = UnixListener::bind(&path).unwrap();
         let bytes = path.as_os_str().as_encoded_bytes();
-        assert!(!sd_is_socket_unix(
-            listener.as_raw_fd(),
-            Some(libc::SOCK_STREAM),
-            Some(true),
-            Some(&[]),
-        )
-        .unwrap());
-        assert!(sd_is_socket_unix(
-            listener.as_raw_fd(),
-            Some(libc::SOCK_STREAM),
-            Some(true),
-            Some(bytes),
-        )
-        .unwrap());
+        assert!(
+            !sd_is_socket_unix(
+                listener.as_raw_fd(),
+                Some(libc::SOCK_STREAM),
+                Some(true),
+                Some(&[]),
+            )
+            .unwrap()
+        );
+        assert!(
+            sd_is_socket_unix(
+                listener.as_raw_fd(),
+                Some(libc::SOCK_STREAM),
+                Some(true),
+                Some(bytes),
+            )
+            .unwrap()
+        );
         let _ = fs::remove_file(path);
     }
 
@@ -1331,7 +1461,10 @@ mod tests {
             b"/run/demo.sock"
         ));
         assert!(unix_socket_path_matches(b"\0abstract", b"\0abstract"));
-        assert!(!unix_socket_path_matches(b"/run/demo.sock", b"/run/demo.sock"));
+        assert!(!unix_socket_path_matches(
+            b"/run/demo.sock",
+            b"/run/demo.sock"
+        ));
     }
 
     #[cfg(target_os = "linux")]
@@ -1352,28 +1485,32 @@ mod tests {
             sin_zero: [0; 8],
         };
 
-        assert!(sd_is_socket_sockaddr(
-            listener.as_raw_fd(),
-            Some(libc::SOCK_STREAM),
-            // SAFETY: arguments satisfy the libc `sockaddr` contract and any passed pointers remain valid for the call.
-            Some(unsafe { &*(&addr as *const _ as *const libc::sockaddr) }),
-            std::mem::size_of::<libc::sockaddr_in>(),
-            Some(true),
-        )
-        .unwrap());
+        assert!(
+            sd_is_socket_sockaddr(
+                listener.as_raw_fd(),
+                Some(libc::SOCK_STREAM),
+                // SAFETY: arguments satisfy the libc `sockaddr` contract and any passed pointers remain valid for the call.
+                Some(unsafe { &*(&addr as *const _ as *const libc::sockaddr) }),
+                std::mem::size_of::<libc::sockaddr_in>(),
+                Some(true),
+            )
+            .unwrap()
+        );
     }
 
     #[cfg(target_os = "linux")]
     #[test]
     fn datagram_socket_is_detected_as_socket() {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        assert!(sd_is_socket(
-            socket.as_raw_fd(),
-            Some(libc::AF_INET),
-            Some(libc::SOCK_DGRAM),
-            Some(false)
-        )
-        .unwrap());
+        assert!(
+            sd_is_socket(
+                socket.as_raw_fd(),
+                Some(libc::AF_INET),
+                Some(libc::SOCK_DGRAM),
+                Some(false)
+            )
+            .unwrap()
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -1430,7 +1567,10 @@ mod tests {
         assert_ne!(fd, -1);
 
         let result = sd_is_mq(fd, Some(Path::new("relative-name")));
-        assert!(matches!(result, Err(DaemonCheckError::InvalidInput("path"))));
+        assert!(matches!(
+            result,
+            Err(DaemonCheckError::InvalidInput("path"))
+        ));
 
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
         unsafe {

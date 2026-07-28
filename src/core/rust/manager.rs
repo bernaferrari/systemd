@@ -95,11 +95,7 @@ pub fn manager_get_progress(manager: &ManagerRecord) -> f64 {
 }
 
 pub fn manager_default_timeout(scope: i32) -> u64 {
-    if scope == 0 {
-        90_000_000
-    } else {
-        120_000_000
-    }
+    if scope == 0 { 90_000_000 } else { 120_000_000 }
 }
 
 pub fn manager_get_show_status_on(manager: &ManagerRecord) -> bool {

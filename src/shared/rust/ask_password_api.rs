@@ -3,7 +3,7 @@
 use crate::ffi::*;
 use std::collections::HashMap;
 use std::env;
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::mem::ManuallyDrop;
@@ -243,11 +243,7 @@ pub fn backspace_chars(buf: &mut [u8], count: usize) {
 
 pub fn backspace_string(s: &str) -> usize {
     let len = s.chars().count();
-    if len == 0 {
-        0
-    } else {
-        len
-    }
+    if len == 0 { 0 } else { len }
 }
 
 pub fn acquire_user_ask_password_directory() -> io::Result<PathBuf> {
@@ -396,6 +392,7 @@ pub fn parse_nulstr(data: &[u8]) -> Vec<String> {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
 
     #[test]
     fn source_is_embedded() {
@@ -612,7 +609,10 @@ mod tests {
 
     #[test]
     fn keyring_type_from_string() {
-        env::remove_var("SYSTEMD_ASK_PASSWORD_KEYRING_TYPE");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove("SYSTEMD_ASK_PASSWORD_KEYRING_TYPE");
         assert_eq!(keyring_cache_type(), KeyringType::User);
     }
 

@@ -59,6 +59,17 @@ class StaleCheckSchemaTests(unittest.TestCase):
             warn_missing=False,
         )
 
+    def test_manifest_loader_rejects_non_table_and_empty_roots(self) -> None:
+        manifest = self.root / "map.toml"
+        for contents, expected in (
+            ("", "manifest root"),
+            ("schema = 1\n", "must all be TOML tables"),
+        ):
+            with self.subTest(contents=contents):
+                manifest.write_text(contents, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, expected):
+                    STALE_CHECK.load_manifest(manifest)
+
     def scoped_entry(self) -> dict[str, object]:
         return {
             "status": "in-progress",
@@ -375,6 +386,33 @@ class StaleCheckSchemaTests(unittest.TestCase):
             STALE_CHECK.validate_manifest(
                 {"first": first, "second": second}, self.root
             )
+
+    def test_manifest_rejects_scoped_ownership_hidden_by_legacy_entry(self) -> None:
+        scoped = self.scoped_entry()
+        legacy = {
+            "status": "in-progress",
+            "c_file": "c/a.c",
+            "rust_file": "rust/scoped/child.rs",
+        }
+        with self.assertRaisesRegex(
+            ValueError,
+            "duplicate scoped Rust ownership for rust/scoped/child.rs",
+        ):
+            STALE_CHECK.validate_manifest(
+                {"scoped": scoped, "legacy": legacy},
+                self.root,
+            )
+
+    def test_scope_name_must_be_a_normalized_identifier(self) -> None:
+        for invalid in (" basic.scoped", "basic scoped", "basic/scoped"):
+            entry = self.scoped_entry()
+            entry["scope"] = invalid
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "normalized scope identifier",
+                ):
+                    self.evaluate(entry)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
 // Binary entry point for systemd-battery-check
 
 use systemd_battery_check_rs::{
-    parse_battery_check_args, run_battery_check, BatteryCheckResult, BATTERY_LOW_MESSAGE,
+    BATTERY_LOW_MESSAGE, BatteryCheckResult, parse_battery_check_args, run_battery_check,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -372,7 +372,7 @@ pub fn bus_wait_for_jobs_step(
         return Err(JobWaitError::Disconnected);
     }
 
-    if let (Some(ref name), Some(ref result)) = (&w.name, &w.result) {
+    if let (Some(name), Some(result)) = (&w.name, &w.result) {
         // Attempt to get the service-level result if this is a service unit
         let svc_result = if name.ends_with(".service") {
             service_result_fn(name)
@@ -438,7 +438,7 @@ pub fn bus_wait_for_jobs(
             return Err(JobWaitError::Disconnected);
         }
 
-        if let (Some(ref name), Some(ref result)) = (&w.name, &w.result) {
+        if let (Some(name), Some(result)) = (&w.name, &w.result) {
             let svc_result = if name.ends_with(".service") {
                 service_result_fn(name)
             } else {
@@ -484,11 +484,7 @@ pub fn bus_wait_for_jobs(
 
 /// Convert an empty string to `None`, pass through non-empty strings.
 fn empty_to_null(s: &str) -> Option<&str> {
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.is_empty() { None } else { Some(s) }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -887,9 +883,11 @@ mod tests {
         assert!(!JobWaitError::Timeout.to_string().is_empty());
         assert!(!JobWaitError::Failed.to_string().is_empty());
         assert!(!JobWaitError::Disconnected.to_string().is_empty());
-        assert!(!JobWaitError::InvalidPath("/bad".into())
-            .to_string()
-            .is_empty());
+        assert!(
+            !JobWaitError::InvalidPath("/bad".into())
+                .to_string()
+                .is_empty()
+        );
     }
 
     #[test]

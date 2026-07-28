@@ -431,11 +431,7 @@ pub fn entry_array_n_items(object_size: u64, compact: bool) -> u64 {
 
 /// Size in bytes of a single entry-array item.
 pub fn entry_array_item_size(compact: bool) -> usize {
-    if compact {
-        4
-    } else {
-        8
-    }
+    if compact { 4 } else { 8 }
 }
 
 /// Compute the unused tail region of the final entry array in a chain.
@@ -805,8 +801,7 @@ pub fn plan_open_reliably(
 ) -> Result<OpenReliablyPlan> {
     validate_open_reliably_inputs(fname_valid, ret_valid)?;
 
-    if !is_recoverable_open_error(original_result) || !can_rotate_on_corruption(fname, open_flags)
-    {
+    if !is_recoverable_open_error(original_result) || !can_rotate_on_corruption(fname, open_flags) {
         return Ok(OpenReliablyPlan::ReturnOriginalResult(original_result));
     }
 
@@ -1457,9 +1452,8 @@ mod tests {
 
     #[test]
     fn test_plan_open_reliably_returns_original_when_rotation_is_disallowed() {
-        let plan =
-            plan_open_reliably("system.journal", libc::O_RDONLY, -libc::EBADMSG, true, true)
-                .unwrap();
+        let plan = plan_open_reliably("system.journal", libc::O_RDONLY, -libc::EBADMSG, true, true)
+            .unwrap();
         assert_eq!(plan, OpenReliablyPlan::ReturnOriginalResult(-libc::EBADMSG));
     }
 

@@ -318,8 +318,7 @@ pub fn read_fiemap(fd: &impl AsRawFd) -> Result<Fiemap> {
     let file_size = metadata.len();
 
     let fiemap_header_size = std::mem::size_of::<FiemapExtent>();
-    let n_extra =
-        (std::mem::size_of::<u32>() * 2 + fiemap_header_size - 1) / fiemap_header_size;
+    let n_extra = (std::mem::size_of::<u32>() * 2 + fiemap_header_size - 1) / fiemap_header_size;
 
     let mut all_extents: Vec<FiemapExtent> = Vec::new();
     let mut fiemap_start: u64 = 0;

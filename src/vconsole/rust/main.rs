@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-vconsole-setup
 
-use systemd_vconsole_setup_rs::{effective_keymap, font_loading_needed, VconsoleContext};
+use systemd_vconsole_setup_rs::{VconsoleContext, effective_keymap, font_loading_needed};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const VC_KEYMAP_PATH: &str = "/etc/vconsole.keymap";

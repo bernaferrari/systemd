@@ -360,8 +360,9 @@ mod tests {
 
         assert_eq!(key.len(), RECOVERY_KEY_MODHEX_VISIBLE_LENGTH);
         assert_eq!(normalize_recovery_key(&key).unwrap(), key);
-        assert!(key
-            .bytes()
-            .all(|byte| byte == b'-' || decode_modhex_byte(byte).is_some()));
+        assert!(
+            key.bytes()
+                .all(|byte| byte == b'-' || decode_modhex_byte(byte).is_some())
+        );
     }
 }

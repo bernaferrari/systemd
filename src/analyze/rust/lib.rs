@@ -11,7 +11,7 @@
 use std::cmp::Ordering;
 
 use systemd_basic_rs::shared_facades::validation::{
-    parse_compare_operator, test_order, CompareOperator, COMPARE_ALLOW_TEXTUAL,
+    COMPARE_ALLOW_TEXTUAL, CompareOperator, parse_compare_operator, test_order,
 };
 use systemd_basic_rs::strverscmp::strverscmp_improved;
 
@@ -74,11 +74,7 @@ fn ordering_value(ordering: Ordering) -> i32 {
 }
 
 fn printable_version(value: &str) -> &str {
-    if value.is_empty() {
-        "''"
-    } else {
-        value
-    }
+    if value.is_empty() { "''" } else { value }
 }
 
 fn comparison_operator(ordering: Ordering) -> &'static str {

@@ -7,8 +7,8 @@
 // via the org.freedesktop.LogControl1 D-Bus interface.
 
 use std::fmt;
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 // ── Error type ────────────────────────────────────────────────────────────
 

@@ -22,16 +22,16 @@ pub use format::{
 };
 pub use key::DnsResourceKey;
 pub use model::{
-    DnsClass, DnsSvcParam, DnsSvcParamKey, DnsTxtItem, DnsType, DnssecAlgorithm, DnssecDigest,
-    Nsec3Algorithm, ParseError, Rdata, SshfpAlgorithm, SshfpKeyType, AF_INET, AF_INET6,
-    CAA_FLAG_CRITICAL, DNSKEY_FLAG_REVOKE, DNSKEY_FLAG_SEP, DNSKEY_FLAG_ZONE_KEY, DNS_HOSTNAME_MAX,
-    DNS_RESOURCE_KEY_STRING_MAX, MDNS_RR_CACHE_FLUSH_OR_QU,
+    AF_INET, AF_INET6, CAA_FLAG_CRITICAL, DNS_HOSTNAME_MAX, DNS_RESOURCE_KEY_STRING_MAX,
+    DNSKEY_FLAG_REVOKE, DNSKEY_FLAG_SEP, DNSKEY_FLAG_ZONE_KEY, DnsClass, DnsSvcParam,
+    DnsSvcParamKey, DnsTxtItem, DnsType, DnssecAlgorithm, DnssecDigest, MDNS_RR_CACHE_FLUSH_OR_QU,
+    Nsec3Algorithm, ParseError, Rdata, SshfpAlgorithm, SshfpKeyType,
 };
 pub use record::{
-    dns_resource_key_compare_func, dns_resource_key_hash_func, dns_resource_record_compare_func,
-    dns_resource_record_hash_func, dns_resource_record_payload, dns_svc_params_copy,
-    dns_svc_params_equal, dns_txt_item_copy, dns_txt_item_equal, dns_txt_item_new_empty,
-    dnssec_keytag, DnsResourceRecord,
+    DnsResourceRecord, dns_resource_key_compare_func, dns_resource_key_hash_func,
+    dns_resource_record_compare_func, dns_resource_record_hash_func, dns_resource_record_payload,
+    dns_svc_params_copy, dns_svc_params_equal, dns_txt_item_copy, dns_txt_item_equal,
+    dns_txt_item_new_empty, dnssec_keytag,
 };
 
 #[cfg(test)]

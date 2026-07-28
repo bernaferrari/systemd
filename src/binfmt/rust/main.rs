@@ -10,9 +10,9 @@ use std::{
 };
 
 use systemd_binfmt_rs::{
-    apply_rule_bytes, binfmt_mounted_and_writable, conf_paths, config_files_from_dirs,
-    disable_binfmt, flush_binfmt, is_comment_or_empty_bytes, parse_binfmt_os_args,
-    resolve_explicit_config_file, CatConfigMode, ParseBinfmtError,
+    CatConfigMode, ParseBinfmtError, apply_rule_bytes, binfmt_mounted_and_writable, conf_paths,
+    config_files_from_dirs, disable_binfmt, flush_binfmt, is_comment_or_empty_bytes,
+    parse_binfmt_os_args, resolve_explicit_config_file,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

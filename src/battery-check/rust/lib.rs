@@ -9,8 +9,7 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Message shown when battery is critically low.
-pub const BATTERY_LOW_MESSAGE: &str =
-    "Battery level critically low. Please connect your charger or the system will power off in 10 seconds.";
+pub const BATTERY_LOW_MESSAGE: &str = "Battery level critically low. Please connect your charger or the system will power off in 10 seconds.";
 
 /// Message shown when AC power is restored.
 pub const BATTERY_RESTORED_MESSAGE: &str = "A.C. power restored, continuing.";

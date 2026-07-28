@@ -8,10 +8,10 @@ use std::hash::{Hash, Hasher};
 
 use super::lifecycle::{unit_can_isolate, unit_kill, unit_release_resources};
 use super::model::{
-    current_unit_path, is_canonical_path, ActiveState, CgroupContext, CgroupRuntime,
-    DependencyKind, DependencyMask, ExecContext, ExecQuotaStats, ExecRuntime, FreezerState,
-    KillContext, LoadState, PidRef, Result, Unit, UnitError, UnitFileState, UnitMarker,
-    UnitMountDependencyType, UnitType,
+    ActiveState, CgroupContext, CgroupRuntime, DependencyKind, DependencyMask, ExecContext,
+    ExecQuotaStats, ExecRuntime, FreezerState, KillContext, LoadState, PidRef, Result, Unit,
+    UnitError, UnitFileState, UnitMarker, UnitMountDependencyType, UnitType, current_unit_path,
+    is_canonical_path,
 };
 use super::relationships::unit_add_dependency_by_name;
 

@@ -334,10 +334,11 @@ mod tests {
             mac_apparmor_setup(&mut env),
             AppArmorSetupOutcome::PolicyCacheUnavailable
         );
-        assert!(env
-            .logs
-            .iter()
-            .any(|l| l.message.contains("does not exist")));
+        assert!(
+            env.logs
+                .iter()
+                .any(|l| l.message.contains("does not exist"))
+        );
     }
 
     #[test]
@@ -368,9 +369,10 @@ mod tests {
             mac_apparmor_setup(&mut env),
             AppArmorSetupOutcome::ChangedToSystemd
         );
-        assert!(env
-            .logs
-            .iter()
-            .any(|l| l.message.contains("Changed to AppArmor profile systemd.")));
+        assert!(
+            env.logs
+                .iter()
+                .any(|l| l.message.contains("Changed to AppArmor profile systemd."))
+        );
     }
 }

@@ -8,11 +8,10 @@
 publish = false
 name = "systemd-udev-rs"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 libc = { workspace = true }
-nix = { workspace = true }
 tokio = { workspace = true }
 systemd-basic-rs = { path = "../../basic/rust" }
 systemd-shared-rs = { path = "../../shared/rust" }

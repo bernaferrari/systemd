@@ -35,7 +35,12 @@ impl JournalHeader {
         self.validate()?;
         Ok(format!(
             "File Path: {path}\nHeader Size: {}\nArena Size: {}\nState: {}\nObjects: {}\nEntries: {}\nSeqnum: {}\n",
-            self.header_size, self.arena_size, self.state, self.n_objects, self.n_entries, self.seqnum,
+            self.header_size,
+            self.arena_size,
+            self.state,
+            self.n_objects,
+            self.n_entries,
+            self.seqnum,
         ))
     }
 }

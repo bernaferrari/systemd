@@ -401,7 +401,7 @@ def rust_inventory(path: Path) -> list[tuple[str, Signature, bool, int]]:
     patterns = (
         (
             re.compile(
-                r"#\[export_name\s*=\s*\"(rs_[A-Za-z0-9_]+)\"\]\s*"
+                r"#\[(?:unsafe\()?export_name\s*=\s*\"(rs_[A-Za-z0-9_]+)\"\)?\]\s*"
                 r"pub\s+(unsafe\s+)?extern\s+\"C\"\s+fn\s+"
                 r"(rs_[A-Za-z0-9_]+)\s*\((.*?)\)\s*"
                 r"(?:->\s*([^\{]+?))?\s*\{",
@@ -483,11 +483,15 @@ def format_signature(signature: Signature) -> str:
 def allocator_boundary_is_c_compatible(path: Path) -> bool:
     text = path.read_text()
     try:
-        format_devnum = text.split('#[export_name = "rs_format_devnum"]', 1)[1].split(
-            '#[export_name = "rs_device_path_parse_major_minor"]', 1
+        format_devnum = text.split('#[unsafe(export_name = "rs_format_devnum")]', 1)[1].split(
+            '#[unsafe(export_name = "rs_device_path_parse_major_minor")]', 1
         )[0]
-        make_major_minor = text.split('#[export_name = "rs_device_path_make_major_minor"]', 1)[1].split(
-            '#[export_name = "rs_device_path_make_inaccessible"]', 1
+        make_major_minor = text.split(
+            '#[unsafe(export_name = "rs_device_path_make_major_minor")]',
+            1,
+        )[1].split(
+            '#[unsafe(export_name = "rs_device_path_make_inaccessible")]',
+            1,
         )[0]
     except IndexError:
         return False
@@ -528,18 +532,18 @@ def misc_inline_abi_boundary_is_reviewed() -> bool:
         "ssize_t rs_base64mem(const void *p, size_t l, char **ret);",
     )
     try:
-        unhex = hex_text.split('#[export_name = "rs_unhexmem"]', 1)[1].split(
-            '#[export_name = "rs_base64mem"]', 1
+        unhex = hex_text.split('#[unsafe(export_name = "rs_unhexmem")]', 1)[1].split(
+            '#[unsafe(export_name = "rs_base64mem")]', 1
         )[0]
-        base64 = hex_text.split('#[export_name = "rs_base64mem"]', 1)[1].split(
-            '#[export_name = "rs_unbase64mem"]', 1
+        base64 = hex_text.split('#[unsafe(export_name = "rs_base64mem")]', 1)[1].split(
+            '#[unsafe(export_name = "rs_unbase64mem")]', 1
         )[0]
-        unbase64 = hex_text.split('#[export_name = "rs_unbase64mem"]', 1)[1].split(
+        unbase64 = hex_text.split('#[unsafe(export_name = "rs_unbase64mem")]', 1)[1].split(
             "#[cfg(test)]", 1
         )[0]
-        format_bytes = format_text.split('#[export_name = "rs_format_bytes"]', 1)[1].split(
-            "#[cfg(test)]", 1
-        )[0]
+        format_bytes = format_text.split(
+            '#[unsafe(export_name = "rs_format_bytes")]', 1
+        )[1].split("#[cfg(test)]", 1)[0]
     except IndexError:
         return False
 
@@ -710,7 +714,7 @@ def in_addr_util_boundary_is_reviewed() -> bool:
     authority = "\n".join(path.read_text() for path in IN_ADDR_UTIL_C_AUTHORITIES)
     required_source = (
         "macro_rules! ffi_forward",
-        "#[export_name = $symbol]",
+        "#[unsafe(export_name = $symbol)]",
         'pub unsafe extern "C" fn',
         "allocates with the C allocator (`libc::malloc`)",
         "(*u).in6.s6_addr[j] &= 0xFF << shift;",

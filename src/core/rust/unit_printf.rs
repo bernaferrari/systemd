@@ -415,9 +415,11 @@ mod tests {
     #[test]
     fn fragment_specifiers_work() {
         let mut unit = sample_unit();
-        assert!(unit_full_printf(&mut unit, "%y %Y")
-            .unwrap()
-            .contains("/etc/systemd/system"));
+        assert!(
+            unit_full_printf(&mut unit, "%y %Y")
+                .unwrap()
+                .contains("/etc/systemd/system")
+        );
     }
 
     #[test]

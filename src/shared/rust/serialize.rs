@@ -500,11 +500,10 @@ mod tests {
 
     #[test]
     // fn serialize_item_format() {
-        // let mut buf = Vec::new();
-        // serialize_item_format(&mut buf, "num", format_args!("{}", 42)).unwrap();
-        // assert_eq!(String::from_utf8(buf).unwrap(), "num=42\n");
+    // let mut buf = Vec::new();
+    // serialize_item_format(&mut buf, "num", format_args!("{}", 42)).unwrap();
+    // assert_eq!(String::from_utf8(buf).unwrap(), "num=42\n");
     // }
-
     #[test]
     fn serialize_usec_normal() {
         let mut buf = Vec::new();
@@ -632,48 +631,42 @@ mod tests {
 
     #[test]
     // fn serialize_item_hexmem() {
-        // let mut buf = Vec::new();
-        // serialize_item_hexmem(&mut buf, "data", &[0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
-        // assert_eq!(String::from_utf8(buf).unwrap(), "data=deadbeef\n");
+    // let mut buf = Vec::new();
+    // serialize_item_hexmem(&mut buf, "data", &[0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
+    // assert_eq!(String::from_utf8(buf).unwrap(), "data=deadbeef\n");
     // }
-
     #[test]
     // fn serialize_item_hexmem_empty_skips() {
-        // let mut buf = Vec::new();
-        // let written = serialize_item_hexmem(&mut buf, "data", &[]).unwrap();
-        // assert!(!written);
+    // let mut buf = Vec::new();
+    // let written = serialize_item_hexmem(&mut buf, "data", &[]).unwrap();
+    // assert!(!written);
     // }
-
     #[test]
     // fn serialize_item_base64mem() {
-        // let mut buf = Vec::new();
-        // serialize_item_base64mem(&mut buf, "data", b"Hello").unwrap();
-        // assert_eq!(String::from_utf8(buf).unwrap(), "data=SGVsbG8=\n");
+    // let mut buf = Vec::new();
+    // serialize_item_base64mem(&mut buf, "data", b"Hello").unwrap();
+    // assert_eq!(String::from_utf8(buf).unwrap(), "data=SGVsbG8=\n");
     // }
-
     #[test]
     // fn serialize_item_base64mem_empty_skips() {
-        // let mut buf = Vec::new();
-        // let written = serialize_item_base64mem(&mut buf, "data", &[]).unwrap();
-        // assert!(!written);
+    // let mut buf = Vec::new();
+    // let written = serialize_item_base64mem(&mut buf, "data", &[]).unwrap();
+    // assert!(!written);
     // }
-
     #[test]
     // fn serialize_string_set() {
-        // let mut buf = Vec::new();
-        // let written = serialize_string_set(&mut buf, "item", &["a", "b"]).unwrap();
-        // assert!(written);
-        // let output = String::from_utf8(buf).unwrap();
-        // assert_eq!(output, "item=a\nitem=b\n");
+    // let mut buf = Vec::new();
+    // let written = serialize_string_set(&mut buf, "item", &["a", "b"]).unwrap();
+    // assert!(written);
+    // let output = String::from_utf8(buf).unwrap();
+    // assert_eq!(output, "item=a\nitem=b\n");
     // }
-
     #[test]
     // fn serialize_string_set_empty_skips() {
-        // let mut buf = Vec::new();
-        // let written = serialize_string_set(&mut buf, "item", &[]).unwrap();
-        // assert!(!written);
+    // let mut buf = Vec::new();
+    // let written = serialize_string_set(&mut buf, "item", &[]).unwrap();
+    // assert!(!written);
     // }
-
     #[test]
     fn serialize_ratelimit_roundtrip() {
         let rl = RateLimit {

@@ -33,20 +33,12 @@ pub const UPPERCASE_HEXDIGITS: &str = "0123456789ABCDEF";
 
 #[inline]
 pub fn max<T: Ord>(a: T, b: T) -> T {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 #[inline]
 pub fn min<T: Ord>(a: T, b: T) -> T {
-    if a < b {
-        a
-    } else {
-        b
-    }
+    if a < b { a } else { b }
 }
 
 #[inline]
@@ -86,11 +78,7 @@ pub const fn round_up(x: u64, y: u64) -> u64 {
 
 #[inline]
 pub const fn less_by(a: u64, b: u64) -> u64 {
-    if a > b {
-        a - b
-    } else {
-        0
-    }
+    if a > b { a - b } else { 0 }
 }
 
 #[inline]
@@ -137,11 +125,7 @@ pub fn take<T>(opt: &mut Option<T>) -> Option<T> {
 
 #[inline]
 pub const fn update_flag(orig: u64, flag: u64, b: bool) -> u64 {
-    if b {
-        orig | flag
-    } else {
-        orig & !flag
-    }
+    if b { orig | flag } else { orig & !flag }
 }
 
 #[inline]
@@ -174,20 +158,12 @@ pub fn in_set<T: PartialEq>(x: &T, set: &[T]) -> bool {
 
 #[inline]
 pub const fn yes_no(b: bool) -> &'static str {
-    if b {
-        "yes"
-    } else {
-        "no"
-    }
+    if b { "yes" } else { "no" }
 }
 
 #[inline]
 pub const fn on_off(b: bool) -> &'static str {
-    if b {
-        "on"
-    } else {
-        "off"
-    }
+    if b { "on" } else { "off" }
 }
 
 // ── comparison_operator ─────────────────────────────────────────────────

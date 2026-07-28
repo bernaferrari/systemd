@@ -8,10 +8,10 @@ use super::validation::{
     minimum_object_size_for_type, validate_journal_header, verify_object_shallow,
 };
 use super::wire::{
-    align64, read_object_header_at, read_object_payload_bytes, read_u64_le, JournalVerifyStats,
-    ObjectHeader, HEADER_COMPATIBLE_SEALED, HEADER_COMPATIBLE_SUPPORTED, OBJECT_DATA,
+    HEADER_COMPATIBLE_SEALED, HEADER_COMPATIBLE_SUPPORTED, JournalVerifyStats, OBJECT_DATA,
     OBJECT_DATA_HASH_TABLE, OBJECT_ENTRY, OBJECT_ENTRY_ARRAY, OBJECT_FIELD,
-    OBJECT_FIELD_HASH_TABLE, OBJECT_TAG,
+    OBJECT_FIELD_HASH_TABLE, OBJECT_TAG, ObjectHeader, align64, read_object_header_at,
+    read_object_payload_bytes, read_u64_le,
 };
 use std::io;
 use std::path::Path;

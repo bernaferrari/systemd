@@ -106,7 +106,7 @@ unsafe fn free_iov_base(iovec: &mut IoVec) {
 /// `ret` must point to writable, properly aligned `IoVec` storage. The caller
 /// becomes responsible for releasing a successful result with
 /// `rs_iovec_done`.
-#[export_name = "rs_iovec_alloc"]
+#[unsafe(export_name = "rs_iovec_alloc")]
 pub unsafe extern "C" fn rs_iovec_alloc(n: usize, ret: *mut IoVec) -> i32 {
     if ret.is_null() {
         return -libc::EINVAL;
@@ -134,7 +134,7 @@ pub unsafe extern "C" fn rs_iovec_alloc(n: usize, ret: *mut IoVec) -> i32 {
 /// # Safety
 /// `iovec` must point to one readable, properly aligned `IoVec`; its non-empty
 /// payload must be writable for `iov_len` bytes.
-#[export_name = "rs_iovec_erase"]
+#[unsafe(export_name = "rs_iovec_erase")]
 pub unsafe extern "C" fn rs_iovec_erase(iovec: *mut IoVec) {
     // SAFETY: required by this C ABI entry point's contract.
     let Some(iovec) = (unsafe { iovec.as_mut() }) else {
@@ -178,7 +178,7 @@ unsafe fn memcmp_nn(a: *const c_void, a_len: usize, b: *const c_void, b_len: usi
 /// # Safety
 /// If non-null, `iovec` must point to one readable, properly aligned C
 /// `struct rs_IoVec`.
-#[export_name = "rs_iovec_is_set"]
+#[unsafe(export_name = "rs_iovec_is_set")]
 pub unsafe extern "C" fn rs_iovec_is_set(iovec: *const IoVec) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
     !iovec.is_null() && unsafe { (*iovec).iov_len > 0 && !(*iovec).iov_base.is_null() }
@@ -189,7 +189,7 @@ pub unsafe extern "C" fn rs_iovec_is_set(iovec: *const IoVec) -> bool {
 /// # Safety
 /// If non-null, `iovec` must point to one readable, properly aligned C
 /// `struct rs_IoVec`.
-#[export_name = "rs_iovec_is_valid"]
+#[unsafe(export_name = "rs_iovec_is_valid")]
 pub unsafe extern "C" fn rs_iovec_is_valid(iovec: *const IoVec) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
     iovec.is_null() || unsafe { !(*iovec).iov_base.is_null() || (*iovec).iov_len == 0 }
@@ -200,7 +200,7 @@ pub unsafe extern "C" fn rs_iovec_is_valid(iovec: *const IoVec) -> bool {
 /// # Safety
 /// If non-null, `iovec` must be writable, properly aligned, and its payload
 /// must be either null or releasable by the C allocator.
-#[export_name = "rs_iovec_done"]
+#[unsafe(export_name = "rs_iovec_done")]
 pub unsafe extern "C" fn rs_iovec_done(iovec: *mut IoVec) {
     // SAFETY: required by this C ABI entry point's contract.
     if let Some(iovec) = unsafe { iovec.as_mut() } {
@@ -215,7 +215,7 @@ pub unsafe extern "C" fn rs_iovec_done(iovec: *mut IoVec) {
 /// If non-null, `iovec` must designate `n` writable, properly aligned entries
 /// in a C-allocator-owned array. Each non-null payload must be releasable by
 /// the C allocator.
-#[export_name = "rs_iovec_done_many_and_free"]
+#[unsafe(export_name = "rs_iovec_done_many_and_free")]
 pub unsafe extern "C" fn rs_iovec_done_many_and_free(iovec: *mut IoVec, n: usize) {
     if iovec.is_null() {
         return;
@@ -237,7 +237,7 @@ pub unsafe extern "C" fn rs_iovec_done_many_and_free(iovec: *mut IoVec, n: usize
 /// # Safety
 /// If `n` is non-zero, `iovec` must designate `n` readable, properly aligned
 /// C `struct rs_IoVec` entries.
-#[export_name = "rs_iovec_total_size"]
+#[unsafe(export_name = "rs_iovec_total_size")]
 pub unsafe extern "C" fn rs_iovec_total_size(iovec: *const IoVec, n: usize) -> usize {
     if n == 0 {
         return 0;
@@ -258,7 +258,7 @@ pub unsafe extern "C" fn rs_iovec_total_size(iovec: *const IoVec, n: usize) -> u
 ///
 /// Returns true only when no payload remains after the increment, matching
 /// `iovec_inc_many()` rather than merely reporting that `k` was consumed.
-#[export_name = "rs_iovec_inc_many"]
+#[unsafe(export_name = "rs_iovec_inc_many")]
 pub unsafe extern "C" fn rs_iovec_inc_many(iovec: *mut IoVec, n: usize, mut k: usize) -> bool {
     assert!(!iovec.is_null() || n == 0);
     if n == 0 {
@@ -294,7 +294,7 @@ pub unsafe extern "C" fn rs_iovec_inc_many(iovec: *mut IoVec, n: usize, mut k: u
 /// `iovec` must point to writable, properly aligned storage. If non-null,
 /// `s` must point to a readable NUL-terminated C string for the duration of
 /// the call and the resulting iovec's use.
-#[export_name = "rs_iovec_make_string"]
+#[unsafe(export_name = "rs_iovec_make_string")]
 pub unsafe extern "C" fn rs_iovec_make_string(iovec: *mut IoVec, s: *const c_char) -> *mut IoVec {
     // SAFETY: required by this C ABI entry point's contract.
     let Some(iovec) = (unsafe { iovec.as_mut() }) else {
@@ -318,7 +318,7 @@ pub unsafe extern "C" fn rs_iovec_make_string(iovec: *mut IoVec, s: *const c_cha
 /// # Safety
 /// Each non-null argument must point to a readable, properly aligned C iovec.
 /// Each non-empty payload must be readable for its declared length.
-#[export_name = "rs_iovec_memcmp"]
+#[unsafe(export_name = "rs_iovec_memcmp")]
 pub unsafe extern "C" fn rs_iovec_memcmp(a: *const IoVec, b: *const IoVec) -> i32 {
     if a == b {
         return 0;
@@ -351,7 +351,7 @@ pub unsafe extern "C" fn rs_iovec_memcmp(a: *const IoVec, b: *const IoVec) -> i3
 /// `ret` must point to writable, properly aligned C iovec storage. If
 /// non-null, `source` must point to a readable C iovec whose non-empty payload
 /// is readable for its declared length. `source` may equal `ret`.
-#[export_name = "rs_iovec_memdup"]
+#[unsafe(export_name = "rs_iovec_memdup")]
 pub unsafe extern "C" fn rs_iovec_memdup(source: *const IoVec, ret: *mut IoVec) -> *mut IoVec {
     if ret.is_null() {
         return ptr::null_mut();
@@ -405,7 +405,7 @@ pub unsafe extern "C" fn rs_iovec_memdup(source: *const IoVec, ret: *mut IoVec) 
 /// `iovec` must point to writable, properly aligned storage whose payload is
 /// null or C-allocator-owned. If non-null, `source` and its non-empty payload
 /// must be readable for the duration of the call.
-#[export_name = "rs_iovec_done_and_memdup"]
+#[unsafe(export_name = "rs_iovec_done_and_memdup")]
 pub unsafe extern "C" fn rs_iovec_done_and_memdup(iovec: *mut IoVec, source: *const IoVec) -> i32 {
     if iovec.is_null() {
         return -libc::EINVAL;

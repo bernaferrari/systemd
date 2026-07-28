@@ -40,7 +40,7 @@ const EFI_ATTR_SIZE: usize = 4;
 
 // ── Re-exports ────────────────────────────────────────────────────────────
 
-pub use crate::efi_api::{efi_guids, EfiError, EfiVariableAttributes};
+pub use crate::efi_api::{EfiError, EfiVariableAttributes, efi_guids};
 
 // ── Secure Boot Mode ──────────────────────────────────────────────────────
 
@@ -922,10 +922,11 @@ mod tests {
     #[test]
     fn test_make_variable_full_path() {
         let p = make_variable_full_path("SecureBoot", efi_guids::GLOBAL);
-        assert!(p
-            .to_str()
-            .unwrap()
-            .starts_with("/sys/firmware/efi/efivars/"));
+        assert!(
+            p.to_str()
+                .unwrap()
+                .starts_with("/sys/firmware/efi/efivars/")
+        );
         assert!(p.to_str().unwrap().contains("SecureBoot-"));
     }
 
@@ -933,18 +934,26 @@ mod tests {
 
     #[test]
     fn test_efi_vars_error_display() {
-        assert!(EfiVarsError::NotAvailable
-            .to_string()
-            .contains("not available"));
-        assert!(EfiVarsError::NotFound("x".into())
-            .to_string()
-            .contains("not found"));
-        assert!(EfiVarsError::PermissionDenied
-            .to_string()
-            .contains("Permission"));
-        assert!(EfiVarsError::Unsupported
-            .to_string()
-            .contains("not supported"));
+        assert!(
+            EfiVarsError::NotAvailable
+                .to_string()
+                .contains("not available")
+        );
+        assert!(
+            EfiVarsError::NotFound("x".into())
+                .to_string()
+                .contains("not found")
+        );
+        assert!(
+            EfiVarsError::PermissionDenied
+                .to_string()
+                .contains("Permission")
+        );
+        assert!(
+            EfiVarsError::Unsupported
+                .to_string()
+                .contains("not supported")
+        );
     }
 
     #[test]

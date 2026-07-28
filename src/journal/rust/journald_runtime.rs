@@ -3,7 +3,7 @@
 #[cfg(any(test, target_os = "linux"))]
 use crate::fuzz_journald_audit::parse_audit_string;
 use crate::fuzz_journald_kmsg::parse_kmsg_record;
-use crate::fuzz_journald_native::{parse_native_message, ENTRY_SIZE_MAX};
+use crate::fuzz_journald_native::{ENTRY_SIZE_MAX, parse_native_message};
 use crate::fuzz_journald_syslog::{parse_syslog_message, try_parse_rfc3164_timestamp};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::error::Error;
@@ -29,21 +29,21 @@ use systemd_libsystemd_rs::sd_id128_api::{
 #[cfg(any(test, target_os = "linux"))]
 use systemd_libsystemd_rs::sd_journal_audit_type::audit_type_name_alloc;
 use systemd_libsystemd_rs::sd_journal_file::{
-    append_journal_record_unindexed, create_empty_journal_file_at, journal_file_rotate_suggested,
-    open_journal_file_at, read_journal_records, render_journal_file_as_text, write_journal_header,
-    Header, JournalFileOnDisk, HEADER_COMPATIBLE_TAIL_ENTRY_BOOT_ID,
-    HEADER_INCOMPATIBLE_KEYED_HASH, JOURNAL_FILE_SIZE_MIN, STATE_ONLINE,
+    HEADER_COMPATIBLE_TAIL_ENTRY_BOOT_ID, HEADER_INCOMPATIBLE_KEYED_HASH, Header,
+    JOURNAL_FILE_SIZE_MIN, JournalFileOnDisk, STATE_ONLINE, append_journal_record_unindexed,
+    create_empty_journal_file_at, journal_file_rotate_suggested, open_journal_file_at,
+    read_journal_records, render_journal_file_as_text, write_journal_header,
 };
 use systemd_libsystemd_rs::sd_journal_vacuum::journal_directory_vacuum;
 use systemd_shared_rs::daemon_util::notify_store_fd;
 use systemd_shared_rs::journal_field::journal_field_valid;
 use systemd_shared_rs::libaudit_util::{parse_loginuid, parse_sessionid};
 use systemd_shared_rs::pcre2_util::{
-    dlopen_pcre2, pattern_compile, pattern_matches, CompiledPattern, PatternCompileCase,
+    CompiledPattern, PatternCompileCase, dlopen_pcre2, pattern_compile, pattern_matches,
 };
 
 use nix::libc;
-use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
+use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction};
 
 pub const DEFAULT_RUNTIME_ROOT: &str = "/run/systemd/journal";
 pub const DEFAULT_SOCKET_PATH: &str = "/run/systemd/journal/socket";
@@ -769,17 +769,17 @@ where
             "--vacuum-size" => {
                 return Err(JournaldError::InvalidArgument(
                     "missing value for --vacuum-size=SIZE".to_string(),
-                ))
+                ));
             }
             _ if arg.starts_with('-') => {
                 return Err(JournaldError::InvalidArgument(format!(
                     "unrecognized option: {arg}"
-                )))
+                )));
             }
             _ => {
                 return Err(JournaldError::InvalidArgument(format!(
                     "unexpected positional argument: {arg}"
-                )))
+                )));
             }
         };
 
@@ -878,7 +878,7 @@ pub fn parse_size(text: &str) -> Result<u64, JournaldError> {
         _ => {
             return Err(JournaldError::ParseSize(format!(
                 "unsupported vacuum size suffix: {trimmed}"
-            )))
+            )));
         }
     };
 

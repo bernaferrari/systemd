@@ -2,7 +2,7 @@
 publish = false
 name = "systemd-dbus-rs"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "LGPL-2.1-or-later"
 [lib]
 path = "lib.rs"

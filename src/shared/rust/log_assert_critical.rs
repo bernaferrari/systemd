@@ -170,6 +170,7 @@ fn reset_state() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
 
     // ── Getter / setter tests ──────────────────────────────────────────────
 
@@ -253,40 +254,41 @@ mod tests {
 
     #[test]
     fn test_from_env_all() {
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
         reset_state();
-        env::remove_var(ENV_VAR_ASSERT_RETURN_IS_CRITICAL);
+        environment.remove(ENV_VAR_ASSERT_RETURN_IS_CRITICAL);
         log_set_assert_return_is_critical_from_env();
         assert_eq!(log_get_assert_return_is_critical(), BUILD_MODE_DEVELOPER);
 
         reset_state();
-        env::set_var(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "1");
+        environment.set(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "1");
         log_set_assert_return_is_critical_from_env();
         assert!(log_get_assert_return_is_critical());
 
         reset_state();
-        env::set_var(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "no");
+        environment.set(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "no");
         log_set_assert_return_is_critical_from_env();
         assert!(!log_get_assert_return_is_critical());
 
         reset_state();
-        env::set_var(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "garbage");
+        environment.set(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "garbage");
         log_set_assert_return_is_critical_from_env();
         assert_eq!(log_get_assert_return_is_critical(), BUILD_MODE_DEVELOPER);
 
         reset_state();
-        env::set_var(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "true");
+        environment.set(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "true");
         log_set_assert_return_is_critical_from_env();
-        env::remove_var(ENV_VAR_ASSERT_RETURN_IS_CRITICAL);
+        environment.remove(ENV_VAR_ASSERT_RETURN_IS_CRITICAL);
         log_set_assert_return_is_critical_from_env();
         assert!(log_get_assert_return_is_critical());
 
         reset_state();
         log_set_assert_return_is_critical(false);
-        env::set_var(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "yes");
+        environment.set(ENV_VAR_ASSERT_RETURN_IS_CRITICAL, "yes");
         log_set_assert_return_is_critical_from_env();
         assert!(log_get_assert_return_is_critical());
-
-        env::remove_var(ENV_VAR_ASSERT_RETURN_IS_CRITICAL);
     }
 
     // ── Constants / type tests ─────────────────────────────────────────────

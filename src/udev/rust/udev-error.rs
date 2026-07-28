@@ -33,6 +33,13 @@ pub fn errno_message(error: UdevError) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn classifies_common_errno_values() { assert_eq!(classify_errno(-22), UdevError::InvalidArgument); assert_eq!(classify_errno(-2), UdevError::NotFound); }
-    #[test] fn formats_messages() { assert_eq!(errno_message(UdevError::Busy), "resource busy"); }
+    #[test]
+    fn classifies_common_errno_values() {
+        assert_eq!(classify_errno(-22), UdevError::InvalidArgument);
+        assert_eq!(classify_errno(-2), UdevError::NotFound);
+    }
+    #[test]
+    fn formats_messages() {
+        assert_eq!(errno_message(UdevError::Busy), "resource busy");
+    }
 }

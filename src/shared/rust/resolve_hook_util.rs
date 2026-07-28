@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::dns_question::{
-    dns_json_dispatch_question, DnsQuestion, DnsQuestionJsonEntry, DnsResourceKey,
+    DnsQuestion, DnsQuestionJsonEntry, DnsResourceKey, dns_json_dispatch_question,
 };
 use crate::ffi::Errno;
 

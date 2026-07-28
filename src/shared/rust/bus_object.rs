@@ -502,27 +502,29 @@ mod tests {
     // ── Fixtures ────────────────────────────────────────────────────────
 
     fn sample_implementations() -> Vec<BusObjectImplementation> {
-        vec![BusObjectImplementation::new(
-            "/org/freedesktop/systemd1",
-            "org.freedesktop.systemd1.Manager",
-        )
-        .with_vtable("vtable_manager")
-        .with_manager(true)
-        .with_node_enumerator("enum_units")
-        .with_child(
+        vec![
             BusObjectImplementation::new(
-                "/org/freedesktop/systemd1/unit",
-                "org.freedesktop.systemd1.Unit",
+                "/org/freedesktop/systemd1",
+                "org.freedesktop.systemd1.Manager",
             )
-            .with_vtable("vtable_unit"),
-        )
-        .with_child(
-            BusObjectImplementation::new(
-                "/org/freedesktop/systemd1/job",
-                "org.freedesktop.systemd1.Job",
+            .with_vtable("vtable_manager")
+            .with_manager(true)
+            .with_node_enumerator("enum_units")
+            .with_child(
+                BusObjectImplementation::new(
+                    "/org/freedesktop/systemd1/unit",
+                    "org.freedesktop.systemd1.Unit",
+                )
+                .with_vtable("vtable_unit"),
             )
-            .with_vtable("vtable_job"),
-        )]
+            .with_child(
+                BusObjectImplementation::new(
+                    "/org/freedesktop/systemd1/job",
+                    "org.freedesktop.systemd1.Job",
+                )
+                .with_vtable("vtable_job"),
+            ),
+        ]
     }
 
     fn fallback_implementations() -> Vec<BusObjectImplementation> {
@@ -796,9 +798,10 @@ mod tests {
                 // Main impl's vtable should appear first
                 assert!(data.interfaces.contains(&"vtable_unit".to_string()));
                 // Fallback interface should appear too
-                assert!(data
-                    .fallback_interfaces
-                    .contains(&"vtable_service".to_string()));
+                assert!(
+                    data.fallback_interfaces
+                        .contains(&"vtable_service".to_string())
+                );
                 assert_eq!(data.total_interfaces(), 2);
             }
             IntrospectionResult::PathList(_) => panic!("expected Introspection"),

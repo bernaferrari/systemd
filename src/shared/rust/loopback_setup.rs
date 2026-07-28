@@ -19,9 +19,9 @@ use std::time::Duration;
 
 use crate::ffi::Errno;
 use crate::socket_netlink::{
-    netlink_bind, netlink_recv, netlink_send, netlink_socket, safe_close_fd, NlMsgHdr, SockAddrNl,
-    SocketNetlinkError, AF_INET, AF_INET6, AF_NETLINK, NETLINK_ROUTE, NLMSG_DONE, NLMSG_ERROR,
-    NLMSG_NOOP, NLMSG_OVERRUN, NLM_F_ACK, NLM_F_REQUEST,
+    AF_INET, AF_INET6, AF_NETLINK, NETLINK_ROUTE, NLM_F_ACK, NLM_F_REQUEST, NLMSG_DONE,
+    NLMSG_ERROR, NLMSG_NOOP, NLMSG_OVERRUN, NlMsgHdr, SockAddrNl, SocketNetlinkError, netlink_bind,
+    netlink_recv, netlink_send, netlink_socket, safe_close_fd,
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────

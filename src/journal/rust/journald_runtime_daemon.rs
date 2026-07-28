@@ -100,7 +100,9 @@ impl JournalRuntime {
         let mut stdout_listener = None;
         let mut restored_stdout_fds = Vec::new();
 
-        for passed_fd in sd_listen_fds_with_names(true).map_err(|err| {
+        // SAFETY: daemon socket preparation runs during single-threaded startup,
+        // before the journald event loop or any stream handling begins.
+        for passed_fd in unsafe { sd_listen_fds_with_names(true) }.map_err(|err| {
             JournaldError::InvalidArgument(format!("socket activation parse failed: {err:?}"))
         })? {
             if parse_stream_state_file_name(&passed_fd.name).is_some() {
@@ -284,7 +286,7 @@ impl JournalRuntime {
                             | io::ErrorKind::TimedOut
                     ) =>
                 {
-                    return Ok(handled_any)
+                    return Ok(handled_any);
                 }
                 Err(err) => return Err(err.into()),
             };

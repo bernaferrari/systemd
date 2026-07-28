@@ -5,7 +5,7 @@
 //
 // PORT-SYNC: src/report/report.c
 
-use systemd_report_rs::{metrics_name_valid, sort_metrics, validate_metric_batch, Action, Metric};
+use systemd_report_rs::{Action, Metric, metrics_name_valid, sort_metrics, validate_metric_batch};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

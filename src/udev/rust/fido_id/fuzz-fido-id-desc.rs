@@ -8,7 +8,7 @@ unsafe extern "C" {
     fn LLVMFuzzerTestOneInput(data: *const u8, size: usize) -> i32;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `data` must be readable for `size` bytes.
 pub unsafe extern "C" fn rs_fido_id_fuzz_fido_id_desc(data: *const u8, size: usize) -> i32 {

@@ -1116,15 +1116,19 @@ mod tests {
         assert!(!UnitWaitError::InvalidFlags.to_string().is_empty());
         assert!(!UnitWaitError::Disconnected.to_string().is_empty());
         assert!(!UnitWaitError::OutOfMemory.to_string().is_empty());
-        assert!(!UnitWaitError::InvalidUnit("x".into())
+        assert!(
+            !UnitWaitError::InvalidUnit("x".into())
+                .to_string()
+                .is_empty()
+        );
+        assert!(
+            !UnitWaitError::GetAllFailed {
+                bus_path: "/p".into(),
+                message: "err".into(),
+            }
             .to_string()
-            .is_empty());
-        assert!(!UnitWaitError::GetAllFailed {
-            bus_path: "/p".into(),
-            message: "err".into(),
-        }
-        .to_string()
-        .is_empty());
+            .is_empty()
+        );
     }
 
     #[test]

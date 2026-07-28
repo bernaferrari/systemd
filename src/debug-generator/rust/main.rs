@@ -4,7 +4,7 @@
 // Binary entry point for systemd-debug-generator
 
 use systemd_debug_generator_rs::debug_generator::{
-    bit, parse_cmdline_item, unit, Breakpoint, Config,
+    Breakpoint, Config, bit, parse_cmdline_item, unit,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

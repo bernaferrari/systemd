@@ -13,8 +13,8 @@ mod table;
 mod table_data;
 
 pub use header::{
-    gpt_header_has_signature, gpt_partition_label_valid, GPT_HEADER_BASE_SIZE, GPT_HEADER_REVISION,
-    GPT_HEADER_SIGNATURE, GPT_LABEL_MAX,
+    GPT_HEADER_BASE_SIZE, GPT_HEADER_REVISION, GPT_HEADER_SIGNATURE, GPT_LABEL_MAX,
+    gpt_header_has_signature, gpt_partition_label_valid,
 };
 pub use lookup::{
     gpt_partition_type_from_string, gpt_partition_type_from_uuid,

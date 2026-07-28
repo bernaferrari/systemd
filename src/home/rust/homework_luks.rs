@@ -9,7 +9,6 @@ use std::io;
 use crate::homework::{HomeSetup, HomeSetupFlags, HomeworkError};
 use crate::user_record_util::UserRecord;
 
-
 #[derive(Debug)]
 pub enum LuksError {
     CryptSetupFailed(String),

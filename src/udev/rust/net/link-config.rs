@@ -51,7 +51,7 @@ pub const INCLUDED_HEADERS: &[&str] = &[
     "strv.h",
     "udev-builtin.h",
     "unistd.h",
-    "utf8.h"
+    "utf8.h",
 ];
 pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
     "link_config_free",
@@ -89,7 +89,7 @@ pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
     "config_parse_rx_tx_queues",
     "config_parse_txqueuelen",
     "config_parse_wol_password",
-    "config_parse_rps_cpu_mask"
+    "config_parse_rps_cpu_mask",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,7 +113,7 @@ pub fn port_status() -> Result<(), Errno> {
     Err(Errno::ENOSYS)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rs_net_link_config_port_stub() -> i32 {
     port_status().err().unwrap_or(Errno::EINVAL).to_neg_errno()
 }

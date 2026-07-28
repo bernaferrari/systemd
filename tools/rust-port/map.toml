@@ -7,7 +7,7 @@
 # tier:   1 = pure computation, 2 = parsing with alloc, 3 = string ops, 4 = header inline
 # test_file: corresponding test file path
 # symbols: FFI exported functions count
-# sync_status: "synced" | "needs_review" | "out_of_date"
+# sync_status: "synced" | "partial" | "needs_review" | "out_of_date"
 # header_file: associated C header file
 #
 # Source authority may be one-to-one (`c_file`, `rust_file`) or many-to-many
@@ -22,9 +22,10 @@
 # never C behavior authority. `rust_paths` remains the exact materialized
 # inventory and `rust_interface_paths` adds ABI headers or similar interfaces.
 #
-# Partial, static review uses `last_reviewed_*` snapshots and a machine-checked
-# `contract_file`. These hashes detect future drift without claiming full
-# parity. Reserve `last_synced_*` and sync_status="synced" for completed parity.
+# `sync_status="partial"` is reserved for scoped static review with exact
+# `last_reviewed_*` snapshots and a machine-checked `contract_file`. These
+# hashes detect future drift without claiming full parity. Reserve
+# `last_synced_*` and sync_status="synced" for completed parity.
 
 [analyze-compare-versions]
 c_file = "src/analyze/analyze-compare-versions.c"
@@ -293,7 +294,7 @@ tier = 2
 symbols = 7
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/devnum-util.c" = "e7d7b652281aefe052efe762f7fb9dec911c0a4e", "src/basic/devnum-util.h" = "a23dfcacb484807a7c783c65a450d5c933a56939" }
-last_reviewed_rust_blobs = { "src/basic/rust/devnum_util.rs" = "2b5f9710a546ced5a056189f1f5eba7c0403e0c4", "src/basic/rust/devnum_util.h" = "9e57d9e55a146e6ffef62a2280d090f36a7995e9" }
+last_reviewed_rust_blobs = { "src/basic/rust/devnum_util.rs" = "9995b6259a31d92d1198787d7280c87690405236", "src/basic/rust/devnum_util.h" = "9e57d9e55a146e6ffef62a2280d090f36a7995e9" }
 notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. The machine-checked contract covers five non-inline operations plus the two inline predicates, with exact ABI, byte grammar, errno, libc allocation, ownership, and success-only output publication evidence. device_path_make_canonical remains explicitly excluded, so this is partial reviewed provenance rather than synced or runtime parity."
 
 [hostname-util]
@@ -409,7 +410,7 @@ tier = 1
 symbols = 12
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/iovec-util.c" = "0be326a18364e75ed4e1e919a360b1f0cb9c8a5b", "src/basic/iovec-util.h" = "ab6178d653a884d0848ec928bb8c2911c4ed805c", "src/fundamental/iovec-util.h" = "7d8f65db43d2ba81fa9f5b4b0e00336af040a20b" }
-last_reviewed_rust_blobs = { "src/basic/rust/iovec_util.rs" = "5be02da73330a58ec5fb58e8854fb0c82139dd56", "src/basic/rust/iovec_util.h" = "1e8f097b202d4169632a022787bfac20a68cec0d" }
+last_reviewed_rust_blobs = { "src/basic/rust/iovec_util.rs" = "43edb4ef47ef22abe7ec2f6a689a40404df0c2c1", "src/basic/rust/iovec_util.h" = "1e8f097b202d4169632a022787bfac20a68cec0d" }
 notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. Twelve selected allocation, release, erase, increment, borrowed-string, comparison, and copy/aliasing facades are covered by eleven machine-checked contracts. The exact basic and fundamental C headers are authority; eight public C callables remain excluded. This is partial provenance with static-only evidence, not runtime parity."
 
 [architecture]
@@ -916,7 +917,7 @@ header_file = "src/basic/rust/import_util.h"
 status = "in-progress"
 tier = 2
 symbols = 5
-sync_status = "partial"
+sync_status = "needs_review"
 notes = "Static audit 2026-07-27; no build/tests/VM. The five registered C ABI exports (URL last-component/change-suffix, tar/raw suffix stripping, reboot parameter validation) are byte-oriented unsafe extern-C facades over safe range cores. Successful string results are fresh libc malloc allocations for C free(3); malformed/non-UTF-8 bytes remain opaque. Current C sources, canonical header, registered shadow test, and reviewed CI are pinned by check-basic-rust-ffi-abi.py. Other import-util APIs are not claimed by this slice; runtime differential/link validation remains pending."
 
 [ioprio_util]

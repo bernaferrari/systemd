@@ -4,14 +4,17 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-UNSAFE_SITE_RE = re.compile(r"\bunsafe\s*(\{|fn\b|impl\b|trait\b|extern\b)")
-UNSAFE_DECL_RE = re.compile(r"\bunsafe\s*(fn\b|impl\b|trait\b|extern\b)")
+UNSAFE_SITE_RE = re.compile(r"unsafe\s*(\{|fn\b|impl\b|trait\b|extern\b)")
+UNSAFE_DECL_RE = re.compile(r"unsafe\s*(fn\b|impl\b|trait\b|extern\b)")
+UNSAFE_TOKEN_RE = re.compile(r"\bunsafe\b")
+TYPE_ALIAS_RE = re.compile(r"(?:pub(?:\([^)]*\))?\s+)?type\b")
 SAFETY_RATIONALE_MARKERS = ("SAFETY:", "# Safety")
 
 
@@ -19,11 +22,13 @@ SAFETY_RATIONALE_MARKERS = ("SAFETY:", "# Safety")
 class FileMetrics:
     unsafe_sites: int = 0
     missing_safety: int = 0
+    missing_safety_sites: tuple[str, ...] = ()
 
-    def to_dict(self) -> dict[str, int]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "unsafe_sites": self.unsafe_sites,
             "missing_safety": self.missing_safety,
+            "missing_safety_sites": list(self.missing_safety_sites),
         }
 
 
@@ -83,12 +88,36 @@ def has_safety_rationale(
     return False
 
 
+def unsafe_site_context(lines: list[str], index: int, column: int) -> str:
+    """Return enough following source to recognize legal multiline unsafe syntax.
+
+    Rust permits whitespace between `unsafe` and the construct it qualifies.
+    Looking ahead a bounded number of physical lines keeps the gate conservative
+    without pretending to parse the whole language.
+    """
+
+    return "\n".join([lines[index][column:], *lines[index + 1 : index + 4]])
+
+
+def missing_site_key(line: str, index: int, column: int) -> str:
+    """Make baseline debt location-specific and reviewable.
+
+    A count-only baseline lets a new undocumented unsafe site replace an old
+    one without failing the gate. Including the line number and source line
+    makes such substitutions fail closed; intentional movement of accepted
+    legacy debt requires an explicit, reviewable baseline refresh.
+    """
+
+    return f"{index + 1}:{column + 1}:{line.strip()}"
+
+
 def collect_metrics(root: Path, window: int) -> dict[str, FileMetrics]:
     out: dict[str, FileMetrics] = {}
     for path in iter_rust_sources(root):
         text = path.read_text(encoding="utf-8", errors="ignore")
         lines = text.splitlines()
         metrics = FileMetrics()
+        missing_safety_sites: list[str] = []
         in_type_alias = False
 
         for idx, line in enumerate(lines):
@@ -105,19 +134,27 @@ def collect_metrics(root: Path, window: int) -> dict[str, FileMetrics]:
             if not stripped or stripped.startswith("//"):
                 continue
 
-            if stripped.startswith("type "):
+            if TYPE_ALIAS_RE.match(stripped):
                 in_type_alias = ";" not in line
                 continue
 
-            if UNSAFE_SITE_RE.search(line):
+            for unsafe_token in UNSAFE_TOKEN_RE.finditer(line):
+                context = unsafe_site_context(lines, idx, unsafe_token.start())
+                if not UNSAFE_SITE_RE.match(context):
+                    continue
                 metrics.unsafe_sites += 1
                 if not has_safety_rationale(
                     lines,
                     idx,
                     window,
-                    declaration=bool(UNSAFE_DECL_RE.search(line)),
+                    declaration=bool(UNSAFE_DECL_RE.match(context)),
                 ):
                     metrics.missing_safety += 1
+                    missing_safety_sites.append(
+                        missing_site_key(line, idx, unsafe_token.start())
+                    )
+
+        metrics.missing_safety_sites = tuple(missing_safety_sites)
 
         rel = path.relative_to(root).as_posix()
         if metrics.unsafe_sites > 0:
@@ -135,7 +172,27 @@ def summarize(metrics: dict[str, FileMetrics]) -> dict[str, int]:
 def load_baseline(path: Path) -> dict[str, object]:
     if not path.exists():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if raw.get("version") != 2:
+        raise SystemExit(
+            f"unsupported safety baseline version in {path}; regenerate it with --write-baseline"
+        )
+    files = raw.get("files")
+    if not isinstance(files, dict):
+        raise SystemExit(f"malformed safety baseline files table: {path}")
+    for relative, metrics in files.items():
+        if not isinstance(relative, str) or not isinstance(metrics, dict):
+            raise SystemExit(f"malformed safety baseline file entry in {path}: {relative!r}")
+        sites = metrics.get("missing_safety_sites")
+        if not isinstance(sites, list) or not all(isinstance(site, str) for site in sites):
+            raise SystemExit(f"malformed missing safety site ledger for {relative} in {path}")
+        if len(sites) != len(set(sites)):
+            raise SystemExit(f"duplicate missing safety site in {relative} in {path}")
+        if metrics.get("missing_safety") != len(sites):
+            raise SystemExit(
+                f"missing safety count does not match site ledger for {relative} in {path}"
+            )
+    return raw
 
 
 def main() -> int:
@@ -146,6 +203,7 @@ def main() -> int:
     totals = summarize(current)
 
     payload = {
+        "version": 2,
         "window": args.window,
         "totals": totals,
         "files": {k: v.to_dict() for k, v in sorted(current.items())},
@@ -164,25 +222,42 @@ def main() -> int:
             f"baseline not found: {baseline_path}. Run with --write-baseline first."
         )
 
-    base_files: dict[str, dict[str, int]] = baseline.get("files", {})  # type: ignore[assignment]
+    base_files: dict[str, dict[str, object]] = baseline["files"]  # type: ignore[assignment]
     failed = False
 
     print("file,unsafe_sites,missing_safety,baseline_missing_safety,status")
     for file_path, metrics in sorted(current.items()):
-        base_missing = int(base_files.get(file_path, {}).get("missing_safety", 0))
+        base_metrics = base_files.get(file_path, {})
+        base_unsafe = int(base_metrics.get("unsafe_sites", 0))
+        base_missing = int(base_metrics.get("missing_safety", 0))
+        base_sites = Counter(base_metrics.get("missing_safety_sites", []))
+        current_sites = Counter(metrics.missing_safety_sites)
+        new_sites = sorted((current_sites - base_sites).elements())
         status = "OK"
-        if metrics.missing_safety > base_missing:
+        if metrics.unsafe_sites > base_unsafe:
             status = "FAIL"
             failed = True
+            print(
+                f"FAIL unsafe-site growth: {file_path}: "
+                f"{base_unsafe} -> {metrics.unsafe_sites}",
+                file=sys.stderr,
+            )
+        if new_sites:
+            status = "FAIL"
+            failed = True
+            for site in new_sites:
+                print(
+                    f"FAIL new undocumented unsafe site: {file_path}:{site}",
+                    file=sys.stderr,
+                )
         print(
             f"{file_path},{metrics.unsafe_sites},{metrics.missing_safety},{base_missing},{status}"
         )
 
-    # New files with missing SAFETY comments are automatically caught above
-    # because baseline value defaults to 0.
     if failed:
         print(
-            "\nSAFETY gate failed: missing SAFETY rationale increased in one or more files.",
+            "\nSAFETY gate failed: unsafe-site growth or a missing SAFETY rationale "
+            "is not in the reviewed baseline ledger.",
             file=sys.stderr,
         )
         return 1

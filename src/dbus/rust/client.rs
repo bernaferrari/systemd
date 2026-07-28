@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 use crate::constants::{SD_INTERFACE, SD_PATH, SD_SERVICE};
-use crate::proxy::UnitStatus;
+use crate::proxy::{UnitStatus, UnitStatusWire};
+
+use zbus::zvariant::OwnedObjectPath;
 
 /// `org.freedesktop.systemd1`'s system manager is only available on Linux.
 ///
@@ -15,53 +17,19 @@ fn system_manager_unsupported<T>() -> zbus::Result<T> {
 #[cfg(target_os = "linux")]
 pub async fn list_units_system() -> zbus::Result<Vec<UnitStatus>> {
     let conn = zbus::Connection::system().await?;
-    let reply: Vec<(
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        u32,
-        String,
-        String,
-    )> = conn
-        .call_method(Some(SD_SERVICE), SD_PATH, SD_INTERFACE, "ListUnits", &())
+    let reply: Vec<UnitStatusWire> = conn
+        .call_method(
+            Some(SD_SERVICE),
+            SD_PATH,
+            Some(SD_INTERFACE),
+            "ListUnits",
+            &(),
+        )
         .await?
         .body()
         .deserialize()?;
 
-    Ok(reply
-        .into_iter()
-        .map(
-            |(
-                name,
-                description,
-                load_state,
-                active_state,
-                sub_state,
-                followed,
-                path,
-                job_id,
-                job_type,
-                job_path,
-            )| {
-                UnitStatus {
-                    name,
-                    description,
-                    load_state,
-                    active_state,
-                    sub_state,
-                    followed,
-                    path,
-                    job_id,
-                    job_type,
-                    job_path,
-                }
-            },
-        )
-        .collect())
+    Ok(reply.into_iter().map(UnitStatus::from).collect())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -72,18 +40,18 @@ pub async fn list_units_system() -> zbus::Result<Vec<UnitStatus>> {
 #[cfg(target_os = "linux")]
 pub async fn start_unit_system(name: &str, mode: &str) -> zbus::Result<String> {
     let conn = zbus::Connection::system().await?;
-    let reply: String = conn
+    let reply: OwnedObjectPath = conn
         .call_method(
             Some(SD_SERVICE),
             SD_PATH,
-            SD_INTERFACE,
+            Some(SD_INTERFACE),
             "StartUnit",
             &(name, mode),
         )
         .await?
         .body()
         .deserialize()?;
-    Ok(reply)
+    Ok(reply.to_string())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -94,18 +62,18 @@ pub async fn start_unit_system(_name: &str, _mode: &str) -> zbus::Result<String>
 #[cfg(target_os = "linux")]
 pub async fn stop_unit_system(name: &str, mode: &str) -> zbus::Result<String> {
     let conn = zbus::Connection::system().await?;
-    let reply: String = conn
+    let reply: OwnedObjectPath = conn
         .call_method(
             Some(SD_SERVICE),
             SD_PATH,
-            SD_INTERFACE,
+            Some(SD_INTERFACE),
             "StopUnit",
             &(name, mode),
         )
         .await?
         .body()
         .deserialize()?;
-    Ok(reply)
+    Ok(reply.to_string())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -116,18 +84,18 @@ pub async fn stop_unit_system(_name: &str, _mode: &str) -> zbus::Result<String> 
 #[cfg(target_os = "linux")]
 pub async fn restart_unit_system(name: &str, mode: &str) -> zbus::Result<String> {
     let conn = zbus::Connection::system().await?;
-    let reply: String = conn
+    let reply: OwnedObjectPath = conn
         .call_method(
             Some(SD_SERVICE),
             SD_PATH,
-            SD_INTERFACE,
+            Some(SD_INTERFACE),
             "RestartUnit",
             &(name, mode),
         )
         .await?
         .body()
         .deserialize()?;
-    Ok(reply)
+    Ok(reply.to_string())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -138,18 +106,18 @@ pub async fn restart_unit_system(_name: &str, _mode: &str) -> zbus::Result<Strin
 #[cfg(target_os = "linux")]
 pub async fn try_restart_unit_system(name: &str, mode: &str) -> zbus::Result<String> {
     let conn = zbus::Connection::system().await?;
-    let reply: String = conn
+    let reply: OwnedObjectPath = conn
         .call_method(
             Some(SD_SERVICE),
             SD_PATH,
-            SD_INTERFACE,
+            Some(SD_INTERFACE),
             "TryRestartUnit",
             &(name, mode),
         )
         .await?
         .body()
         .deserialize()?;
-    Ok(reply)
+    Ok(reply.to_string())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -160,18 +128,18 @@ pub async fn try_restart_unit_system(_name: &str, _mode: &str) -> zbus::Result<S
 #[cfg(target_os = "linux")]
 pub async fn reload_or_restart_unit_system(name: &str, mode: &str) -> zbus::Result<String> {
     let conn = zbus::Connection::system().await?;
-    let reply: String = conn
+    let reply: OwnedObjectPath = conn
         .call_method(
             Some(SD_SERVICE),
             SD_PATH,
-            SD_INTERFACE,
+            Some(SD_INTERFACE),
             "ReloadOrRestartUnit",
             &(name, mode),
         )
         .await?
         .body()
         .deserialize()?;
-    Ok(reply)
+    Ok(reply.to_string())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -182,18 +150,18 @@ pub async fn reload_or_restart_unit_system(_name: &str, _mode: &str) -> zbus::Re
 #[cfg(target_os = "linux")]
 pub async fn reload_or_try_restart_unit_system(name: &str, mode: &str) -> zbus::Result<String> {
     let conn = zbus::Connection::system().await?;
-    let reply: String = conn
+    let reply: OwnedObjectPath = conn
         .call_method(
             Some(SD_SERVICE),
             SD_PATH,
-            SD_INTERFACE,
+            Some(SD_INTERFACE),
             "ReloadOrTryRestartUnit",
             &(name, mode),
         )
         .await?
         .body()
         .deserialize()?;
-    Ok(reply)
+    Ok(reply.to_string())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -204,12 +172,18 @@ pub async fn reload_or_try_restart_unit_system(_name: &str, _mode: &str) -> zbus
 #[cfg(target_os = "linux")]
 pub async fn get_job_system(id: u32) -> zbus::Result<String> {
     let conn = zbus::Connection::system().await?;
-    let reply: String = conn
-        .call_method(Some(SD_SERVICE), SD_PATH, SD_INTERFACE, "GetJob", &(id,))
+    let reply: OwnedObjectPath = conn
+        .call_method(
+            Some(SD_SERVICE),
+            SD_PATH,
+            Some(SD_INTERFACE),
+            "GetJob",
+            &(id,),
+        )
         .await?
         .body()
         .deserialize()?;
-    Ok(reply)
+    Ok(reply.to_string())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -220,8 +194,14 @@ pub async fn get_job_system(_id: u32) -> zbus::Result<String> {
 #[cfg(target_os = "linux")]
 pub async fn cancel_job_system(id: u32) -> zbus::Result<()> {
     let conn = zbus::Connection::system().await?;
-    conn.call_method(Some(SD_SERVICE), SD_PATH, SD_INTERFACE, "CancelJob", &(id,))
-        .await?;
+    conn.call_method(
+        Some(SD_SERVICE),
+        SD_PATH,
+        Some(SD_INTERFACE),
+        "CancelJob",
+        &(id,),
+    )
+    .await?;
     Ok(())
 }
 
@@ -235,18 +215,20 @@ pub async fn enable_unit_files_system(
     units: &[&str],
 ) -> zbus::Result<Vec<(String, String, String)>> {
     let conn = zbus::Connection::system().await?;
-    let reply: Vec<(String, String, String)> = conn
+    let (_carries_install_info, changes): (bool, Vec<(String, String, String)>) = conn
         .call_method(
             Some(SD_SERVICE),
             SD_PATH,
-            SD_INTERFACE,
+            Some(SD_INTERFACE),
             "EnableUnitFiles",
             &(units, false, false),
         )
         .await?
         .body()
         .deserialize()?;
-    Ok(reply)
+
+    // Preserve the established Rust API: callers only consume the change list.
+    Ok(changes)
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -265,7 +247,7 @@ pub async fn disable_unit_files_system(
         .call_method(
             Some(SD_SERVICE),
             SD_PATH,
-            SD_INTERFACE,
+            Some(SD_INTERFACE),
             "DisableUnitFiles",
             &(units, false),
         )
@@ -285,7 +267,7 @@ pub async fn disable_unit_files_system(
 #[cfg(target_os = "linux")]
 pub async fn reload_system() -> zbus::Result<()> {
     let conn = zbus::Connection::system().await?;
-    conn.call_method(Some(SD_SERVICE), SD_PATH, SD_INTERFACE, "Reload", &())
+    conn.call_method(Some(SD_SERVICE), SD_PATH, Some(SD_INTERFACE), "Reload", &())
         .await?;
     Ok(())
 }

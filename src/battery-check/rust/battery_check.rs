@@ -19,7 +19,8 @@ const BATTERY_CHECK_DELAY_USEC: u64 = 10_000_000;
 /// Returns >0 if low, 0 if not, negative on error.
 ///
 fn check_battery_low() -> i32 {
-    extern "C" {
+    // SAFETY: this no-argument declaration exactly matches battery-check.h.
+    unsafe extern "C" {
         fn battery_is_discharging_and_low() -> i32;
     }
     // SAFETY: this C query takes no pointers and has no caller-side safety
@@ -30,7 +31,8 @@ fn check_battery_low() -> i32 {
 /// Sleep safely for the specified duration in microseconds.
 ///
 fn sleep_safe(usec: u64) {
-    extern "C" {
+    // SAFETY: this declaration exactly matches time-util.h's usec_t ABI.
+    unsafe extern "C" {
         fn usleep_safe(usec: u64) -> i32;
     }
     // SAFETY: `usleep_safe` accepts every `u64` duration and retains no Rust
@@ -43,7 +45,9 @@ fn sleep_safe(usec: u64) {
 /// Send a message to Plymouth.
 ///
 fn plymouth_send_message(mode: &str, message: &str) -> i32 {
-    extern "C" {
+    // SAFETY: this declaration exactly matches the synchronous byte-buffer
+    // interface in plymouth-util.h.
+    unsafe extern "C" {
         fn plymouth_send_raw(buf: *const libc::c_void, len: usize, flags: i32) -> i32;
     }
 
@@ -80,7 +84,8 @@ fn plymouth_send_message(mode: &str, message: &str) -> i32 {
 /// Open the console for writing.
 ///
 fn open_console() -> i32 {
-    extern "C" {
+    // SAFETY: this declaration exactly matches terminal-util.h.
+    unsafe extern "C" {
         fn open_terminal(path: *const libc::c_char, flags: i32) -> i32;
     }
     // SAFETY: the path is a static NUL-terminated string and the flags are
@@ -109,7 +114,9 @@ fn close_fd(fd: i32) {
 /// Returns 0 on success (battery OK or restored), negative on error.
 ///
 pub extern "C" fn rs_battery_check_run() -> i32 {
-    extern "C" {
+    // SAFETY: these declarations match the logging ABI, including log_internal's
+    // C variadic tail; every format string below is static and type-matched.
+    unsafe extern "C" {
         fn log_setup();
         fn log_internal(
             level: i32,

@@ -2,10 +2,10 @@
 //
 // PORT-SYNC: src/shared/mount-util.c, src/shared/mount-util.h
 
-use std::os::unix::fs::MetadataExt;
 use crate::ffi::*;
 use std::ffi::CString;
 use std::io;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 pub const MS_RDONLY: u64 = 1;

@@ -2,7 +2,7 @@
 //
 // PORT-SYNC: src/core/dynamic-user.c
 //
-use std::collections::{hash_map::DefaultHasher, BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 
 pub const SOURCE_PATH: &str = "src/core/dynamic-user.c";

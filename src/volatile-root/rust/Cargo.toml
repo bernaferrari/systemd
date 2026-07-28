@@ -11,12 +11,12 @@
 publish = false
 name = "systemd-volatile-root-rs"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 systemd-shared-rs = { path = "../../shared/rust" }
 systemd-platform-rs = { path = "../../platform/rust" }
-libc = "0.2"
+libc = { workspace = true }
 
 [lib]
 crate-type = ["lib"]

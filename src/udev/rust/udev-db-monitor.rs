@@ -14,7 +14,7 @@ use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use systemd_shared_rs::ffi::{sockaddr_nl, AF_NETLINK, SOCK_CLOEXEC, SOCK_NONBLOCK};
+use systemd_shared_rs::ffi::{AF_NETLINK, SOCK_CLOEXEC, SOCK_NONBLOCK, sockaddr_nl};
 use systemd_shared_rs::socket_netlink::NETLINK_KOBJECT_UEVENT;
 
 pub const UDEV_RUN_DIR: &str = "/run/udev";
@@ -72,7 +72,9 @@ fn validate_property(key: &str, value: &str) -> Result<(), DeviceDatabaseError> 
     Ok(())
 }
 
-pub fn serialize_properties(properties: &[(String, String)]) -> Result<Vec<u8>, DeviceDatabaseError> {
+pub fn serialize_properties(
+    properties: &[(String, String)],
+) -> Result<Vec<u8>, DeviceDatabaseError> {
     let mut out = Vec::new();
     for (key, value) in properties {
         validate_property(key, value)?;
@@ -102,7 +104,9 @@ pub fn write_device_database_entry(
     Ok(destination)
 }
 
-pub fn read_device_database_entry(path: &Path) -> Result<Vec<(String, String)>, DeviceDatabaseError> {
+pub fn read_device_database_entry(
+    path: &Path,
+) -> Result<Vec<(String, String)>, DeviceDatabaseError> {
     let text = fs::read_to_string(path)?;
     let mut out = Vec::new();
     for line in text.lines() {
@@ -357,7 +361,9 @@ pub fn create_kobject_uevent_multicast_socket(groups: u32) -> io::Result<OwnedFd
     Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
-pub fn encode_uevent_properties(properties: &[(String, String)]) -> Result<Vec<u8>, DeviceDatabaseError> {
+pub fn encode_uevent_properties(
+    properties: &[(String, String)],
+) -> Result<Vec<u8>, DeviceDatabaseError> {
     let mut out = Vec::new();
     for (key, value) in properties {
         validate_property(key, value)?;
@@ -475,13 +481,17 @@ impl RulesInotifyWatcher {
     }
 }
 
-fn parse_inotify_events(bytes: &[u8], watched_dirs: &BTreeMap<i32, PathBuf>) -> Vec<RulesReloadEvent> {
+fn parse_inotify_events(
+    bytes: &[u8],
+    watched_dirs: &BTreeMap<i32, PathBuf>,
+) -> Vec<RulesReloadEvent> {
     let mut out = Vec::new();
     let mut offset = 0usize;
     while offset + size_of::<LinuxInotifyEvent>() <= bytes.len() {
         // SAFETY: bounds checked above; read_unaligned handles alignment.
-        let event =
-            unsafe { std::ptr::read_unaligned(bytes[offset..].as_ptr().cast::<LinuxInotifyEvent>()) };
+        let event = unsafe {
+            std::ptr::read_unaligned(bytes[offset..].as_ptr().cast::<LinuxInotifyEvent>())
+        };
         offset += size_of::<LinuxInotifyEvent>();
 
         let name_len = event.len as usize;
@@ -638,8 +648,12 @@ mod tests {
         let runtime = initialize_udev_runtime(&run_dir, &[rules_dir]).unwrap();
 
         assert!(run_dir.join("data").is_dir());
-        assert!(monitor_socket_exists(&runtime.control.local_path().unwrap()));
-        assert!(monitor_socket_exists(&runtime.monitor.local_path().unwrap()));
+        assert!(monitor_socket_exists(
+            &runtime.control.local_path().unwrap()
+        ));
+        assert!(monitor_socket_exists(
+            &runtime.monitor.local_path().unwrap()
+        ));
 
         let _ = fs::remove_dir_all(&run_dir);
     }

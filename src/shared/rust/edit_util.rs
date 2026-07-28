@@ -239,11 +239,10 @@ fn select_source_file(
     target_exists: bool,
     original_exists: bool,
 ) -> Option<&str> {
-    let has_original =
-        record
-            .original_path
-            .as_deref()
-            .and_then(|p| if original_exists { Some(p) } else { None });
+    let has_original = record
+        .original_path
+        .as_deref()
+        .and_then(|p| if original_exists { Some(p) } else { None });
 
     if has_original.is_some() && (!target_exists || overwrite_with_origin) {
         record.original_path.as_deref()
@@ -327,11 +326,7 @@ fn build_populated_contents(
 /// When markers are used, editing starts at line 4 (inside the content
 /// area). Otherwise, it starts at line 1.
 fn population_start_line(has_markers: bool) -> u32 {
-    if has_markers {
-        4
-    } else {
-        1
-    }
+    if has_markers { 4 } else { 1 }
 }
 
 // ── Marker stripping ─────────────────────────────────────────────────────
@@ -623,13 +618,14 @@ mod tests {
     #[test]
     fn test_add_with_original_path_and_comments() {
         let mut ctx = EditFileContext::default();
-        assert!(ctx
-            .add(
+        assert!(
+            ctx.add(
                 "/etc/systemd/system/foo.service.d/override.conf",
                 Some("/usr/lib/systemd/system/foo.service"),
                 &["/etc/systemd/system/foo.service.d/10-prev.conf"],
             )
-            .unwrap());
+            .unwrap()
+        );
         assert_eq!(ctx.len(), 1);
         let rec = &ctx.files[0];
         assert_eq!(rec.path, "/etc/systemd/system/foo.service.d/override.conf");

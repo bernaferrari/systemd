@@ -4,7 +4,9 @@
 //
 // Safe Rust synchronization metadata for the matching import module.
 
-use crate::import_common::{count_port_source_lines, read_port_source, verify_extracted_functions, PortError, PortMetadata};
+use crate::import_common::{
+    PortError, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
+};
 
 pub const SOURCE_PATH: &str = "src/import/pull-oci.c";
 pub const EXTRACTED_FUNCTIONS: &[&str] = &[
@@ -46,7 +48,7 @@ pub const EXTRACTED_FUNCTIONS: &[&str] = &[
     "oci_pull_unref",
     "oci_pull_work",
     "print_pair_escaped",
-    "pull_job_payload_as_json_object"
+    "pull_job_payload_as_json_object",
 ];
 
 pub fn metadata() -> Result<PortMetadata, PortError> {

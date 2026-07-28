@@ -10,7 +10,7 @@
 // arbitrary byte buffers with optional ovector output.
 
 use std::collections::HashSet;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 

@@ -91,20 +91,12 @@ pub enum PowerStatus {
 ///
 /// Returns the exit code (0 = success/on AC, 1 = not on AC).
 pub fn compute_exit_code(on_ac: bool) -> i32 {
-    if on_ac {
-        0
-    } else {
-        1
-    }
+    if on_ac { 0 } else { 1 }
 }
 
 /// Determine the result text for verbose output.
 pub fn yes_no(flag: bool) -> &'static str {
-    if flag {
-        "yes"
-    } else {
-        "no"
-    }
+    if flag { "yes" } else { "no" }
 }
 
 /// Run the ac-power check given the parsed arguments.

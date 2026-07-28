@@ -141,7 +141,7 @@ impl Strbuf {
                     return SearchOutcome::NotFound {
                         parent_idx: node_idx,
                         child_char: c,
-                    }
+                    };
                 }
             }
         }

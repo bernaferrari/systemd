@@ -10,8 +10,8 @@
 // format that can be exercised with arbitrary byte streams.
 
 use crate::fuzz_journald_native::{
-    parse_native_message as parse_canonical_message, parse_one_entry, NativeError,
-    NATIVE_FIELD_NAME_MAX,
+    NATIVE_FIELD_NAME_MAX, NativeError, parse_native_message as parse_canonical_message,
+    parse_one_entry,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

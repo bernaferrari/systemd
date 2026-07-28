@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-rfkill
 
-use systemd_rfkill_rs::{RfkillType, EXIT_USEC};
+use systemd_rfkill_rs::{EXIT_USEC, RfkillType};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

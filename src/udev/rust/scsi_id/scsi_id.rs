@@ -26,7 +26,7 @@ pub const INCLUDED_HEADERS: &[&str] = &[
     "strv.h",
     "strxcpyx.h",
     "udev-util.h",
-    "utf8.h"
+    "utf8.h",
 ];
 pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
     "set_type",
@@ -37,7 +37,7 @@ pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
     "per_dev_options",
     "set_inq_values",
     "scsi_id",
-    "main"
+    "main",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,7 +61,7 @@ pub fn port_status() -> Result<(), Errno> {
     Err(Errno::ENOSYS)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rs_scsi_id_scsi_id_port_stub() -> i32 {
     port_status().err().unwrap_or(Errno::EINVAL).to_neg_errno()
 }

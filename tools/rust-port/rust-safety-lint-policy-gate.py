@@ -210,8 +210,6 @@ def inner_denied_lints(text: str) -> frozenset[str]:
 
 def weakens_unsafe_op_policy(text: str) -> bool:
     for match in ANY_ATTRIBUTE_RE.finditer(text):
-        if match.group("inner") != "#!":
-            continue
         body = match.group("body")
         if UNSAFE_OP_LINT in body and WEAKEN_CALL_RE.search(body):
             return True
@@ -247,6 +245,8 @@ def validate_unsafe_fn_parser() -> None:
         "#![cfg_attr(test, warn(unsafe_op_in_unsafe_fn))]"
     ):
         raise SystemExit("internal conditional unsafe-op parser self-check failed")
+    if not weakens_unsafe_op_policy("#[allow(unsafe_op_in_unsafe_fn)]"):
+        raise SystemExit("internal scoped unsafe-op weakening parser self-check failed")
     if weakens_unsafe_op_policy("#![deny(unsafe_op_in_unsafe_fn)]"):
         raise SystemExit("internal unsafe-op deny parser self-check failed")
 
@@ -338,9 +338,9 @@ def collect_inventory(root: Path) -> WorkspaceInventory:
         if not has_unsafe_op_deny((root / target).read_text(encoding="utf-8"))
     )
     unsafe_op_weakening_errors = tuple(
-        target
-        for target in targets
-        if weakens_unsafe_op_policy((root / target).read_text(encoding="utf-8"))
+        path.relative_to(root).as_posix()
+        for path in sorted(source_paths)
+        if weakens_unsafe_op_policy(path.read_text(encoding="utf-8"))
     )
     safe_targets_missing_deny = missing_deny & statically_safe_targets
     unsafe_op_migration = frozenset(

@@ -4,8 +4,8 @@ The repository has one authoritative Rust dependency graph:
 
 - workspace manifest: `Cargo.toml`
 - workspace lockfile: `Cargo.lock`
-- workspace members: **84**
-- locked packages: **233**
+- workspace members: **85**
+- locked packages: **180**
 
 Per-crate `Cargo.lock` files under `src/**/rust` are intentionally ignored.
 Cargo resolves those crates as members of the repository workspace, so auditing
@@ -20,16 +20,17 @@ The last audit of the root lockfile recorded:
 |---|---:|---:|---|
 | `Cargo.lock` | 0 | 1 | Historical result |
 
-The warning was:
+The warning was tied to the superseded dependency graph:
 
 - `RUSTSEC-2026-0097`, reached through `rand 0.8.5` and `zbus 4.x`.
-  The previous review recorded a temporary waiver through 2026-10-01 because
-  the known trigger requires custom-logger re-entry into `rand`, which the
-  current tree does not intentionally use. The waiver must still be revalidated
-  against the current advisory text and dependency graph.
+  The workspace now resolves `zbus 5.18.0` without `rand 0.8.5`, so its
+  temporary waiver was removed rather than carried into an unrelated graph.
 
-This result was not reproduced after the 2026-07-27 rebase because this review
-was explicitly restricted to static work. It is not release evidence.
+The refreshed lockfile resolves all direct requirements to their latest stable
+releases as of 2026-07-28, but the advisory audit itself was not rerun because
+`cargo-audit` was not already installed and this storage-constrained review did
+not install new tools. The historical result above is not current release
+evidence.
 
 ## Required Release Gate
 

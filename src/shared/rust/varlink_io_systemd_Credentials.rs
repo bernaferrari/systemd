@@ -257,7 +257,7 @@ pub fn decrypt(
 ) -> Result<DecryptOutput, CredentialsError> {
     validate_decrypt_input(input)?;
 
-    if let (Some(ref name), Some(expected)) = (&input.name, expected_name) {
+    if let (Some(name), Some(expected)) = (&input.name, expected_name) {
         if name != expected {
             return Err(CredentialsError::NameMismatch);
         }

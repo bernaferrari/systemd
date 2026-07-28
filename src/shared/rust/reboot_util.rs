@@ -46,8 +46,7 @@ const SYS_REBOOT: i32 = 142;
 const SYS_REBOOT: i32 = 104;
 
 /// Message written to `/run/nologin` when the system is going down.
-const NOLOGIN_MESSAGE: &str =
-    "System is going down. Unprivileged users are not permitted to log in anymore. \
+const NOLOGIN_MESSAGE: &str = "System is going down. Unprivileged users are not permitted to log in anymore. \
      For technical details, see pam_nologin(8).";
 
 // ── Error type ────────────────────────────────────────────────────────────

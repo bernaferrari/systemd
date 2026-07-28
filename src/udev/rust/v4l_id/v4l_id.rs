@@ -22,12 +22,9 @@ pub const INCLUDED_HEADERS: &[&str] = &[
     "stdio.h",
     "string-util.h",
     "sys/ioctl.h",
-    "utf8.h"
+    "utf8.h",
 ];
-pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
-    "parse_argv",
-    "run"
-];
+pub const EXPORTED_C_FUNCTIONS: &[&str] = &["parse_argv", "run"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortSummary {
@@ -50,7 +47,7 @@ pub fn port_status() -> Result<(), Errno> {
     Err(Errno::ENOSYS)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rs_v4l_id_v4l_id_port_stub() -> i32 {
     port_status().err().unwrap_or(Errno::EINVAL).to_neg_errno()
 }

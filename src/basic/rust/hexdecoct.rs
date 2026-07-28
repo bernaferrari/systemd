@@ -548,7 +548,7 @@ fn base64_encode_into(input: &[u8], output: &mut [u8]) {
 /// # Safety
 /// `p` must be either null or a readable NUL-terminated C string. Every
 /// non-null output pointer must be valid writable storage for its C type.
-#[export_name = "rs_unhexmem"]
+#[unsafe(export_name = "rs_unhexmem")]
 pub unsafe extern "C" fn rs_unhexmem(
     p: *const c_char,
     ret_data: *mut *mut c_void,
@@ -610,7 +610,7 @@ pub unsafe extern "C" fn rs_unhexmem(
 /// # Safety
 /// `p` must point to `l` readable bytes when `l` is non-zero, and `ret` must
 /// point to writable `char *` storage.
-#[export_name = "rs_base64mem"]
+#[unsafe(export_name = "rs_base64mem")]
 pub unsafe extern "C" fn rs_base64mem(p: *const c_void, l: usize, ret: *mut *mut c_char) -> isize {
     if (p.is_null() && l != 0) || ret.is_null() {
         return Errno::EINVAL.to_neg_errno() as isize;
@@ -653,7 +653,7 @@ pub unsafe extern "C" fn rs_base64mem(p: *const c_void, l: usize, ret: *mut *mut
 /// # Safety
 /// `p` must be either null or a readable NUL-terminated C string. Every
 /// non-null output pointer must be valid writable storage for its C type.
-#[export_name = "rs_unbase64mem"]
+#[unsafe(export_name = "rs_unbase64mem")]
 pub unsafe extern "C" fn rs_unbase64mem(
     p: *const c_char,
     ret_data: *mut *mut c_void,

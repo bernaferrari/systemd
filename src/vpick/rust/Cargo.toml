@@ -11,12 +11,12 @@
 publish = false
 name = "systemd-vpick-rs"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 systemd-shared-rs = { path = "../../shared/rust" }
-bitflags = "2"
-libc = "0.2"
+bitflags = { workspace = true }
+libc = { workspace = true }
 
 [lib]
 crate-type = ["staticlib", "lib"]

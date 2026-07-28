@@ -119,35 +119,19 @@ pub fn sysattr_compare(a: &SysAttr, b: &SysAttr) -> std::cmp::Ordering {
 
 /// Prefix used for parent vs. current device attributes in attribute walk.
 pub fn attr_key_prefix(is_parent: bool) -> &'static str {
-    if is_parent {
-        "ATTRS"
-    } else {
-        "ATTR"
-    }
+    if is_parent { "ATTRS" } else { "ATTR" }
 }
 
 pub fn kernel_key_prefix(is_parent: bool) -> &'static str {
-    if is_parent {
-        "KERNELS"
-    } else {
-        "KERNEL"
-    }
+    if is_parent { "KERNELS" } else { "KERNEL" }
 }
 
 pub fn subsystem_key_prefix(is_parent: bool) -> &'static str {
-    if is_parent {
-        "SUBSYSTEMS"
-    } else {
-        "SUBSYSTEM"
-    }
+    if is_parent { "SUBSYSTEMS" } else { "SUBSYSTEM" }
 }
 
 pub fn driver_key_prefix(is_parent: bool) -> &'static str {
-    if is_parent {
-        "DRIVERS"
-    } else {
-        "DRIVER"
-    }
+    if is_parent { "DRIVERS" } else { "DRIVER" }
 }
 
 // ── Record field formatting ───────────────────────────────────────────────

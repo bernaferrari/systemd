@@ -2,25 +2,25 @@
 
 use super::dispatch::{mount_id_from_mountinfo, should_relinquish_var_from_dev_ids};
 use super::filter::{
-    current_boot_id_match_term, replay_filter_plan, truncate_task_comm, BOOT_ID_NULL_MATCH,
-    TASK_COMM_LEN,
+    BOOT_ID_NULL_MATCH, TASK_COMM_LEN, current_boot_id_match_term, replay_filter_plan,
+    truncate_task_comm,
 };
 use super::model::{
     ARG_LINES_ALL, SD_JOURNAL_INCLUDE_DEFAULT_NAMESPACE, SD_JSON_FORMAT_COLOR_AUTO,
     SD_JSON_FORMAT_OFF,
 };
 use super::{
-    build_filter_plan, parse_argv, parse_id_descriptor, parse_lines, plan_dispatch, run,
     DispatchPlan, DispatchTarget, FilterApplyError, FilterBackendOp, FilterMatchTerm, FilterPlan,
     IdDescriptor, JournalctlAction, JournalctlArgs, ParseArgvError, ParseArgvResult,
     ParseIdDescriptorError, ParsedLines, PatternCase, RunOutcome, ScopePlan, SecretString,
-    TransportFilter, UnitMatchPlan,
+    TransportFilter, UnitMatchPlan, build_filter_plan, parse_argv, parse_id_descriptor,
+    parse_lines, plan_dispatch, run,
 };
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use systemd_shared_rs::output_mode::{output_mode_to_json_format_flags, OutputMode};
-use systemd_shared_rs::pcre2_util::{pattern_compile, PatternCompileCase, Pcre2Error};
+use systemd_shared_rs::output_mode::{OutputMode, output_mode_to_json_format_flags};
+use systemd_shared_rs::pcre2_util::{PatternCompileCase, Pcre2Error, pattern_compile};
 
 fn expect_parsed(result: Result<ParseArgvResult, ParseArgvError>) -> JournalctlArgs {
     match result.unwrap() {
@@ -916,9 +916,11 @@ fn build_filter_plan_expands_device_absolute_path() {
             t,
             FilterMatchTerm::Field(v) if v.starts_with("_KERNEL_DEVICE=c") || v.starts_with("_KERNEL_DEVICE=b")
         )));
-    assert!(terms
-        .iter()
-        .any(|t| *t == FilterMatchTerm::Field(expected_boot_id.clone())));
+    assert!(
+        terms
+            .iter()
+            .any(|t| *t == FilterMatchTerm::Field(expected_boot_id.clone()))
+    );
 }
 
 #[test]
@@ -950,11 +952,11 @@ fn run_show_rejects_non_device_non_executable_absolute_path() {
 #[test]
 fn run_show_rejects_absolute_path_matches_with_external_sources() {
     assert_eq!(
-            run(&["journalctl", "--machine=demo", "/bin/sh"]),
-            Err(ParseArgvError::Invalid(
-                "an extra path in match filter is currently not supported with --root, --image, or -M/--machine"
-            ))
-        );
+        run(&["journalctl", "--machine=demo", "/bin/sh"]),
+        Err(ParseArgvError::Invalid(
+            "an extra path in match filter is currently not supported with --root, --image, or -M/--machine"
+        ))
+    );
 }
 
 #[test]

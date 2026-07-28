@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::notify_recv::{notify_recv, NotificationMessage, NotifyError};
+use crate::notify_recv::{NotificationMessage, NotifyError, notify_recv};
 
 // ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -636,9 +636,10 @@ mod tests {
         let p2 = make_socket_path();
         // Two rapid calls *might* collide in theory, but in practice they
         // should differ. This is a weak sanity check.
-        assert!(p1
-            .to_string_lossy()
-            .starts_with("/run/systemd/fork-notify-"));
+        assert!(
+            p1.to_string_lossy()
+                .starts_with("/run/systemd/fork-notify-")
+        );
     }
 
     // ── fork_notify_terminate_many empty ──────────────────────────────

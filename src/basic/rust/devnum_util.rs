@@ -292,7 +292,7 @@ fn parse_device_path(path: &[u8]) -> Result<(u32, u64), Errno> {
 /// # Safety
 /// `s` must point to a readable NUL-terminated C string and `ret` must point
 /// to writable, properly aligned `dev_t` storage for the duration of the call.
-#[export_name = "rs_parse_devnum"]
+#[unsafe(export_name = "rs_parse_devnum")]
 pub unsafe extern "C" fn rs_parse_devnum(s: *const c_char, ret: *mut u64) -> i32 {
     if s.is_null() || ret.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -316,7 +316,7 @@ pub unsafe extern "C" fn rs_parse_devnum(s: *const c_char, ret: *mut u64) -> i32
 /// # Safety
 /// If non-null, `buf` must designate writable storage large enough for the
 /// formatted value and its trailing NUL byte.
-#[export_name = "rs_format_devnum"]
+#[unsafe(export_name = "rs_format_devnum")]
 pub unsafe extern "C" fn rs_format_devnum(d: u64, buf: *mut c_char) -> *mut c_char {
     if buf.is_null() {
         return ptr::null_mut();
@@ -333,12 +333,12 @@ pub unsafe extern "C" fn rs_format_devnum(d: u64, buf: *mut c_char) -> *mut c_ch
     buf
 }
 
-#[export_name = "rs_devnum_is_zero"]
+#[unsafe(export_name = "rs_devnum_is_zero")]
 pub extern "C" fn rs_devnum_is_zero(d: u64) -> bool {
     dev_major(d) == 0 && dev_minor(d) == 0
 }
 
-#[export_name = "rs_devnum_set_and_equal"]
+#[unsafe(export_name = "rs_devnum_set_and_equal")]
 pub extern "C" fn rs_devnum_set_and_equal(a: u64, b: u64) -> bool {
     a == b && a != 0
 }
@@ -349,7 +349,7 @@ pub extern "C" fn rs_devnum_set_and_equal(a: u64, b: u64) -> bool {
 /// `path` must point to a readable NUL-terminated C string. Each non-null
 /// output pointer must point to writable, properly aligned storage for its C
 /// type for the duration of the call.
-#[export_name = "rs_device_path_parse_major_minor"]
+#[unsafe(export_name = "rs_device_path_parse_major_minor")]
 pub unsafe extern "C" fn rs_device_path_parse_major_minor(
     path: *const c_char,
     ret_mode: *mut u32,
@@ -382,7 +382,7 @@ pub unsafe extern "C" fn rs_device_path_parse_major_minor(
 /// `ret` must point to writable, properly aligned `char *` storage. On
 /// success it receives a NUL-terminated allocation that the C allocator can
 /// release.
-#[export_name = "rs_device_path_make_major_minor"]
+#[unsafe(export_name = "rs_device_path_make_major_minor")]
 pub unsafe extern "C" fn rs_device_path_make_major_minor(
     mode: u32,
     devnum: u64,
@@ -437,7 +437,7 @@ pub unsafe extern "C" fn rs_device_path_make_major_minor(
 /// `ret` must point to writable, properly aligned `char *` storage. On
 /// success it receives a NUL-terminated allocation that the C allocator can
 /// release.
-#[export_name = "rs_device_path_make_inaccessible"]
+#[unsafe(export_name = "rs_device_path_make_inaccessible")]
 pub unsafe extern "C" fn rs_device_path_make_inaccessible(mode: u32, ret: *mut *mut c_char) -> i32 {
     if ret.is_null() {
         return Errno::EINVAL.to_neg_errno();

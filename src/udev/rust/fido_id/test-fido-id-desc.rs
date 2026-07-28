@@ -8,7 +8,7 @@ unsafe extern "C" {
     fn is_fido_security_token_desc(desc: *const u8, size: usize) -> i32;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `desc` must be readable for `size` bytes.
 pub unsafe extern "C" fn rs_fido_id_test_is_fido_security_token_desc(

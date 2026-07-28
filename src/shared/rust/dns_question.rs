@@ -5,7 +5,7 @@
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use crate::dns_type::{dns_type_is_valid_query, dns_type_may_redirect, DnsClass, DnsType};
+use crate::dns_type::{DnsClass, DnsType, dns_type_is_valid_query, dns_type_may_redirect};
 use crate::ffi::Errno;
 
 pub const SOURCE_PATH: &str = "src/shared/dns-question.c";
@@ -326,7 +326,7 @@ impl DnsQuestion {
                 DnsRecordData::Dname { name } => {
                     return dns_name_change_suffix(item.key.name(), cname.key.name(), name)
                         .map(|n| dns_name_equal(item.key.name(), &n))
-                        .unwrap_or(true)
+                        .unwrap_or(true);
                 }
                 DnsRecordData::Empty => return true,
             };
@@ -846,9 +846,11 @@ mod tests {
         let cname = DnsResourceRecord::cname("www.example.com", "alias.example.com");
         let redirected = q.cname_redirect(&cname).unwrap().unwrap();
         assert_eq!(redirected.first_name(), Some("alias.example.com"));
-        assert!(redirected
-            .iter()
-            .all(|item| item.flags == DnsQuestionFlags::empty()));
+        assert!(
+            redirected
+                .iter()
+                .all(|item| item.flags == DnsQuestionFlags::empty())
+        );
     }
 
     #[test]

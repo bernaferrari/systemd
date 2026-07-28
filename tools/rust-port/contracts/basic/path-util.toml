@@ -4,6 +4,8 @@ semantic_coverage = "partial"
 source_structure = "independent"
 deviation_policy = "explicit-only"
 excluded_c_symbols = [
+    "default_PATH",
+    "default_user_PATH",
     "path_make_absolute",
     "path_make_absolute_cwd",
     "path_split_and_make_absolute",
@@ -12,11 +14,14 @@ excluded_c_symbols = [
     "path_strv_resolve",
     "path_strv_resolve_uniq",
     "path_equal_or_inode_same_full",
+    "path_equal_or_inode_same",
     "path_extend_internal",
     "path_glob_can_match",
     "find_executable_full",
+    "find_executable",
     "open_and_check_executable",
     "fsck_exists",
+    "fsck_exists_for_fstype",
     "safe_getcwd",
     "is_path",
     "filename_is_valid",
@@ -24,8 +29,10 @@ excluded_c_symbols = [
     "hidden_or_backup_file",
     "empty_or_root",
     "empty_to_root",
+    "empty_or_root_harder_to_null",
     "path_implies_directory",
     "path_is_normalized",
+    "path_is_valid_full",
     "path_is_absolute",
     "dot_or_dot_dot",
     "valid_device_node_path",
@@ -66,7 +73,7 @@ optional = true
 [[surface.output]]
 symbols = ["path_find_first_component"]
 arg = "p"
-ownership = "caller-storage"
+ownership = "borrowed-interior"
 publication_success = "write"
 publication_error = "unchanged"
 optional = false
@@ -74,7 +81,7 @@ optional = false
 [[surface.output]]
 symbols = ["path_find_last_component"]
 arg = "next"
-ownership = "caller-storage"
+ownership = "borrowed-interior"
 publication_success = "write"
 publication_error = "unchanged"
 optional = true
@@ -96,7 +103,7 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
-arg = "path"
+arg = "return"
 ownership = "borrowed-interior"
 publication_success = "return"
 publication_error = "n/a"
@@ -139,6 +146,13 @@ arg = "path"
 ownership = "caller-storage"
 publication_success = "write"
 publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
 optional = false
 
 [surface.static_fixture]
@@ -182,7 +196,7 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
-arg = "path"
+arg = "return"
 ownership = "borrowed-interior"
 publication_success = "return"
 publication_error = "n/a"
@@ -245,7 +259,7 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
-arg = "path"
+arg = "return"
 ownership = "borrowed-interior"
 publication_success = "return"
 publication_error = "n/a"
@@ -288,6 +302,13 @@ arg = "path"
 ownership = "caller-storage"
 publication_success = "write"
 publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
 optional = false
 
 [surface.static_fixture]
@@ -307,7 +328,7 @@ runtime = "none"
 verification = "static-only"
 
 [[surface.output]]
-arg = "p"
+arg = "return"
 ownership = "borrowed-interior"
 publication_success = "return"
 publication_error = "n/a"
@@ -352,7 +373,7 @@ ownership = "owned-libc"
 release = "free"
 publication_success = "write"
 publication_error = "unchanged"
-optional = false
+optional = true
 
 [[surface.output]]
 symbols = ["path_split_prefix_filename"]

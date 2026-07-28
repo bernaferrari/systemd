@@ -17,6 +17,21 @@ nested Cargo crate below `rust/`. A new crate is added by creating
 `src/<subsystem>/rust/Cargo.toml`, adding that directory to the root workspace,
 and keeping every explicit Cargo target inside that same `rust/` directory.
 
+## Language and dependency baseline
+
+Every member uses Rust edition 2024, and the virtual workspace explicitly uses
+Cargo resolver 3. The workspace architecture gate rejects an older edition or
+resolver so a newly added crate cannot silently weaken the language contract.
+The current dependency graph requires Rust 1.87 or newer; CI installs the
+current stable toolchain.
+
+The root `Cargo.lock` is the reproducible dependency authority. Direct
+requirements may live in a member manifest when their feature/API needs are
+crate-local, but they must resolve through that one lockfile. The repository's
+monthly Cargo Dependabot group keeps stable releases visible; major upgrades
+still require source review because Cargo metadata resolution does not prove
+API compatibility.
+
 ## Dependency direction
 
 `tools/rust-port/workspace-layers.toml` is the checked-in dependency policy.

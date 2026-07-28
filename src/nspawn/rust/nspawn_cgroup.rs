@@ -84,10 +84,12 @@ mod tests {
     }
     #[test]
     fn chown_list_contains_payload_files() {
-        assert!(chown_cgroup_path("/x", 1)
-            .unwrap()
-            .iter()
-            .any(|s| s.contains("cgroup.procs")));
+        assert!(
+            chown_cgroup_path("/x", 1)
+                .unwrap()
+                .iter()
+                .any(|s| s.contains("cgroup.procs"))
+        );
     }
     #[test]
     fn create_subcgroup_payload() {

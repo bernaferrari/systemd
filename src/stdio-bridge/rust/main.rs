@@ -5,10 +5,11 @@
 // PORT-SYNC: src/stdio-bridge/stdio-bridge.c
 
 use systemd_libsystemd_rs::sd_daemon_checks::{
-    sd_is_socket_unix, sd_listen_fds, sd_notify, DaemonCheckError,
+    DaemonCheckError, sd_is_socket_unix, sd_listen_fds_preserve_environment,
+    sd_notify_preserve_environment,
 };
 use systemd_stdio_bridge_rs::{
-    parse_args_detailed, print_version, run_bridge, BridgeError, BridgeFds, ParseAction,
+    BridgeError, BridgeFds, ParseAction, parse_args_detailed, print_version, run_bridge,
 };
 
 fn print_help() {
@@ -16,7 +17,9 @@ fn print_help() {
     println!("Forward messages between a pipe or socket and a D-Bus bus.\n");
     println!("  -h --help              Show this help");
     println!("     --version           Show package version");
-    println!("  -p --bus-path=PATH     Path to the bus address (default: unix:path=/run/dbus/system_bus_socket)");
+    println!(
+        "  -p --bus-path=PATH     Path to the bus address (default: unix:path=/run/dbus/system_bus_socket)"
+    );
     println!("     --system            Connect to system bus");
     println!("     --user              Connect to user bus");
     println!("  -M --machine=CONTAINER Name of local container to connect to");
@@ -43,9 +46,9 @@ fn activation_error(error: DaemonCheckError) -> BridgeError {
 
 fn notify_exit(error: Option<&BridgeError>, status: i32) {
     if let Some(error) = error {
-        let _ = sd_notify(false, &format!("ERRNO={}", error.errno()));
+        let _ = sd_notify_preserve_environment(&format!("ERRNO={}", error.errno()));
     }
-    let _ = sd_notify(false, &format!("EXIT_STATUS={status}"));
+    let _ = sd_notify_preserve_environment(&format!("EXIT_STATUS={status}"));
 }
 
 fn run() -> Result<(), (BridgeError, bool)> {
@@ -72,8 +75,8 @@ fn run() -> Result<(), (BridgeError, bool)> {
     }
 
     // Mirrors sd_listen_fds(0): do not consume the activation environment.
-    let passed =
-        sd_listen_fds(false).map_err(|error| (activation_error(error), parsed.config.quiet))?;
+    let passed = sd_listen_fds_preserve_environment()
+        .map_err(|error| (activation_error(error), parsed.config.quiet))?;
     let fds =
         BridgeFds::from_listen_fd_count(passed).map_err(|error| (error, parsed.config.quiet))?;
     // The C implementation intentionally treats errors from sd_is_socket() as

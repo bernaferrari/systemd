@@ -307,7 +307,7 @@ impl AuditNetlinkReceiver {
     }
 
     pub(super) fn recv_message(&mut self) -> io::Result<Option<(u16, Vec<u8>)>> {
-        use nix::sys::socket::{recvmsg, ControlMessageOwned, MsgFlags, NetlinkAddr};
+        use nix::sys::socket::{ControlMessageOwned, MsgFlags, NetlinkAddr, recvmsg};
 
         let mut iov = [io::IoSliceMut::new(&mut self.buffer)];
         let mut cmsg_space = nix::cmsg_space!(libc::ucred);
@@ -326,7 +326,7 @@ impl AuditNetlinkReceiver {
                     io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
                 ) =>
             {
-                return Ok(None)
+                return Ok(None);
             }
             Err(err) => return Err(err),
         };
@@ -367,11 +367,7 @@ pub(super) fn parse_stream_boolean(text: &str) -> Option<bool> {
 }
 
 pub(super) fn boolean_digit(value: bool) -> u8 {
-    if value {
-        1
-    } else {
-        0
-    }
+    if value { 1 } else { 0 }
 }
 
 pub(super) fn parse_stream_state_file_name(name: &str) -> Option<(u64, u64)> {
@@ -538,7 +534,7 @@ pub(super) fn enable_stream_passcred(fd: libc::c_int) -> io::Result<()> {
 pub(super) fn recv_stdout_stream_message(
     stream: &UnixStream,
 ) -> io::Result<Option<StdoutStreamRead>> {
-    use nix::sys::socket::{recvmsg, ControlMessageOwned, MsgFlags, UnixAddr};
+    use nix::sys::socket::{ControlMessageOwned, MsgFlags, UnixAddr, recvmsg};
 
     let mut buf = [0_u8; 8192];
     let mut iov = [io::IoSliceMut::new(&mut buf)];
@@ -558,7 +554,7 @@ pub(super) fn recv_stdout_stream_message(
                 io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
             ) =>
         {
-            return Ok(None)
+            return Ok(None);
         }
         Err(err) => return Err(err),
     };

@@ -484,7 +484,7 @@ pub fn parse_profiles_json(text: &str) -> Result<Vec<SwtpmProfile>, SwtpmError> 
             Some(_) => {
                 return Err(SwtpmError::InvalidProfileFormat(
                     "Profile 'Name' field is not a string".into(),
-                ))
+                ));
             }
             None => {
                 // No "Name" key – skip silently (matches C behaviour).

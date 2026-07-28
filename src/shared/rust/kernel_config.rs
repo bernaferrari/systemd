@@ -394,12 +394,15 @@ BOOT_ROOT=/boot
 
     #[test]
     fn test_load_conf_valid_file() {
-
         let conf_path = std::env::temp_dir().join("systemd_kc_test_install.conf");
-        std::fs::write(&conf_path, "MACHINE_ID=abc123
+        std::fs::write(
+            &conf_path,
+            "MACHINE_ID=abc123
 BOOT_ROOT=/boot
 layout=bls
-").unwrap();
+",
+        )
+        .unwrap();
 
         let config = load_kernel_install_conf(&conf_path).unwrap();
         assert_eq!(config.machine_id.as_deref(), Some("abc123"));

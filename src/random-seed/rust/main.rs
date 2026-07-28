@@ -4,10 +4,10 @@
 //
 // Binary entry point for systemd-random-seed
 
-use systemd_random_seed_rs::{seed_file_path, SeedAction};
+use systemd_random_seed_rs::{SeedAction, seed_file_path};
 
 #[cfg(target_os = "linux")]
-use systemd_random_seed_rs::{may_credit, CreditContext, CreditEntropy};
+use systemd_random_seed_rs::{CreditContext, CreditEntropy, may_credit};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg(target_os = "linux")]
@@ -194,8 +194,7 @@ fn save_seed(seed_path: &str) -> std::io::Result<()> {
 #[cfg(target_os = "linux")]
 fn write_new_seed(seed_path: &str) -> std::io::Result<()> {
     let mut buf = vec![0u8; POOL_SIZE];
-    getrandom::getrandom(&mut buf)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    getrandom::fill(&mut buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
     if let Some(parent) = std::path::Path::new(seed_path).parent() {
         std::fs::create_dir_all(parent)?;

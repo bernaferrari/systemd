@@ -31,9 +31,9 @@ use crate::transaction::{
     UnitState,
 };
 use crate::unit::{
-    unit_add_default_target_dependency, unit_add_slice_dependencies, unit_reset_failed,
-    unit_set_default_slice, ActiveState, DependencyKind, KillContext, LoadState,
-    ManagerRecord as UnitManagerRecord, PidRef, Unit, UnitMarker, UnitType,
+    ActiveState, DependencyKind, KillContext, LoadState, ManagerRecord as UnitManagerRecord,
+    PidRef, Unit, UnitMarker, UnitType, unit_add_default_target_dependency,
+    unit_add_slice_dependencies, unit_reset_failed, unit_set_default_slice,
 };
 use systemd_platform_rs::spawn::{self, ChildState, ProcessTracker};
 
@@ -69,15 +69,15 @@ mod service_test_events;
 #[cfg(test)]
 mod tests;
 
-use unit_file::{
-    apply_cgroup_config, apply_exec_context_config, apply_kill_config, parse_unit_file,
-    unit_search_paths,
-};
 pub use unit_file::{
     AutomountConfig, CgroupConfig, ExecCommandSpec, ExecContextConfig, FileDescriptorStorePreserve,
     InstallConfig, KillConfig, KillMode, MountConfig, PathConfig, ScopeConfig, ServiceConfig,
     ServiceRestartPolicy, SliceConfig, SocketConfig, SwapConfig, TimerConfig, UnitConditionConfig,
     UnitConditionExpression, UnitFileInfo,
+};
+use unit_file::{
+    apply_cgroup_config, apply_exec_context_config, apply_kill_config, parse_unit_file,
+    unit_search_paths,
 };
 use unit_load::load_unit_file_with_dropins;
 

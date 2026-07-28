@@ -187,11 +187,7 @@ pub fn should_ignore_sysname(sysname: &str) -> bool {
 
 /// Truncate a string to a maximum length for NVMe spec compliance.
 pub fn truncate_for_nvme(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len {
-        s
-    } else {
-        &s[..max_len]
-    }
+    if s.len() <= max_len { s } else { &s[..max_len] }
 }
 
 /// Build a subsystem name from NQN and device filename.

@@ -27,7 +27,7 @@ unsafe extern "C" {
     fn run(argc: i32, argv: *mut *mut libc::c_char) -> i32;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `c` must be null or point to a live C `Context` accepted by `context_clear`.
 pub unsafe extern "C" fn rs_cdrom_id_context_clear(c: *mut Context) {
@@ -35,7 +35,7 @@ pub unsafe extern "C" fn rs_cdrom_id_context_clear(c: *mut Context) {
     unsafe { context_clear(c) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `c` must point to a live C `Context`.
 pub unsafe extern "C" fn rs_cdrom_id_drive_has_feature(c: *const Context, f: i32) -> bool {
@@ -43,7 +43,7 @@ pub unsafe extern "C" fn rs_cdrom_id_drive_has_feature(c: *const Context, f: i32
     unsafe { drive_has_feature(c, f) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `c` must point to a live, uniquely borrowed C `Context`.
 pub unsafe extern "C" fn rs_cdrom_id_set_drive_feature(c: *mut Context, f: i32) -> i32 {
@@ -51,19 +51,19 @@ pub unsafe extern "C" fn rs_cdrom_id_set_drive_feature(c: *mut Context, f: i32) 
     unsafe { set_drive_feature(c, f) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rs_cdrom_id_media_lock(fd: i32, lock: bool) -> i32 {
     // SAFETY: media_lock() only consumes value arguments and reports invalid descriptors as errno.
     unsafe { media_lock(fd, lock) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rs_cdrom_id_media_eject(fd: i32) -> i32 {
     // SAFETY: media_eject() only consumes a descriptor value and reports invalid descriptors as errno.
     unsafe { media_eject(fd) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `c` must point to a live, uniquely borrowed C `Context`.
 pub unsafe extern "C" fn rs_cdrom_id_cd_media_compat(c: *mut Context) -> i32 {
@@ -71,7 +71,7 @@ pub unsafe extern "C" fn rs_cdrom_id_cd_media_compat(c: *mut Context) -> i32 {
     unsafe { cd_media_compat(c) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `c` must point to a live, uniquely borrowed C `Context`.
 pub unsafe extern "C" fn rs_cdrom_id_cd_inquiry(c: *mut Context) -> i32 {
@@ -79,7 +79,7 @@ pub unsafe extern "C" fn rs_cdrom_id_cd_inquiry(c: *mut Context) -> i32 {
     unsafe { cd_inquiry(c) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `c` must point to a live, uniquely borrowed C `Context`.
 pub unsafe extern "C" fn rs_cdrom_id_cd_profiles(c: *mut Context) -> i32 {
@@ -87,7 +87,7 @@ pub unsafe extern "C" fn rs_cdrom_id_cd_profiles(c: *mut Context) -> i32 {
     unsafe { cd_profiles(c) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `c` must point to a live, uniquely borrowed C `Context`.
 pub unsafe extern "C" fn rs_cdrom_id_cd_media_info(c: *mut Context) -> i32 {
@@ -95,7 +95,7 @@ pub unsafe extern "C" fn rs_cdrom_id_cd_media_info(c: *mut Context) -> i32 {
     unsafe { cd_media_info(c) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `c` must point to a live, uniquely borrowed C `Context`.
 pub unsafe extern "C" fn rs_cdrom_id_cd_media_toc(c: *mut Context) -> i32 {
@@ -103,7 +103,7 @@ pub unsafe extern "C" fn rs_cdrom_id_cd_media_toc(c: *mut Context) -> i32 {
     unsafe { cd_media_toc(c) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `c` must point to a live, uniquely borrowed C `Context`.
 pub unsafe extern "C" fn rs_cdrom_id_open_drive(c: *mut Context) -> i32 {
@@ -111,13 +111,13 @@ pub unsafe extern "C" fn rs_cdrom_id_open_drive(c: *mut Context) -> i32 {
     unsafe { open_drive(c) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rs_cdrom_id_help() -> i32 {
     // SAFETY: help() takes no arguments and has no Rust-visible memory preconditions.
     unsafe { help() }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `argv` must reference an array of `argc` valid C-string pointers.
 pub unsafe extern "C" fn rs_cdrom_id_parse_argv(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
@@ -125,7 +125,7 @@ pub unsafe extern "C" fn rs_cdrom_id_parse_argv(argc: i32, argv: *mut *mut libc:
     unsafe { parse_argv(argc, argv) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// # Safety
 /// `argv` must reference an array of `argc` valid C-string pointers.
 pub unsafe extern "C" fn rs_cdrom_id_run(argc: i32, argv: *mut *mut libc::c_char) -> i32 {

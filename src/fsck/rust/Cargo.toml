@@ -5,10 +5,9 @@
 publish = false
 name = "systemd-fsck-rs"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 [dependencies]
 systemd-shared-rs = { path = "../../shared/rust" }
-libc = "0.2"
 [lib]
 crate-type = ["lib"]
 name = "systemd_fsck_rs"

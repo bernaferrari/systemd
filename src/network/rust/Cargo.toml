@@ -2,7 +2,7 @@
 publish = false
 name = "systemd-network"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "LGPL-2.1-or-later"
 description = "Rust port of systemd network management"
 
@@ -11,9 +11,7 @@ name = "systemd_network"
 path = "lib.rs"
 
 [dependencies]
-libc = { workspace = true }
-nix = { workspace = true }
-thiserror = "1.0"
+thiserror = "2.0"
 systemd-shared-rs = { path = "../../shared/rust" }
 libsystemd-network-rust = { path = "../../libsystemd-network/rust" }
 systemd-platform-rs = { path = "../../platform/rust" }

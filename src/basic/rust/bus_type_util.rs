@@ -45,22 +45,22 @@ fn gnu_dev_minor(dev: u64) -> u32 {
     ((dev & 0x0000_0000_0000_00ff) | ((dev & 0x0000_0fff_fff0_0000) >> 12)) as u32
 }
 
-#[export_name = "rs_bus_type_is_valid"]
+#[unsafe(export_name = "rs_bus_type_is_valid")]
 pub extern "C" fn rs_bus_type_is_valid(c: c_char) -> bool {
     contains(VALID_TYPES, c)
 }
 
-#[export_name = "rs_bus_type_is_basic"]
+#[unsafe(export_name = "rs_bus_type_is_basic")]
 pub extern "C" fn rs_bus_type_is_basic(c: c_char) -> bool {
     contains(BASIC_TYPES, c)
 }
 
-#[export_name = "rs_bus_type_is_trivial"]
+#[unsafe(export_name = "rs_bus_type_is_trivial")]
 pub extern "C" fn rs_bus_type_is_trivial(c: c_char) -> bool {
     contains(TRIVIAL_TYPES, c)
 }
 
-#[export_name = "rs_bus_type_is_container"]
+#[unsafe(export_name = "rs_bus_type_is_container")]
 pub extern "C" fn rs_bus_type_is_container(c: c_char) -> bool {
     contains(CONTAINER_TYPES, c)
 }
@@ -75,7 +75,7 @@ fn bus_type_alignment(c: c_char) -> Result<i32, Errno> {
     }
 }
 
-#[export_name = "rs_bus_type_get_alignment"]
+#[unsafe(export_name = "rs_bus_type_get_alignment")]
 pub extern "C" fn rs_bus_type_get_alignment(c: c_char) -> i32 {
     bus_type_alignment(c).unwrap_or_else(Errno::to_neg_errno)
 }
@@ -90,12 +90,12 @@ fn bus_type_size(c: c_char) -> Result<i32, Errno> {
     }
 }
 
-#[export_name = "rs_bus_type_get_size"]
+#[unsafe(export_name = "rs_bus_type_get_size")]
 pub extern "C" fn rs_bus_type_get_size(c: c_char) -> i32 {
     bus_type_size(c).unwrap_or_else(Errno::to_neg_errno)
 }
 
-#[export_name = "rs_trivial_compare_func"]
+#[unsafe(export_name = "rs_trivial_compare_func")]
 pub extern "C" fn rs_trivial_compare_func(a: *const c_void, b: *const c_void) -> i32 {
     cmp_ord(a as usize, b as usize)
 }
@@ -104,7 +104,7 @@ pub extern "C" fn rs_trivial_compare_func(a: *const c_void, b: *const c_void) ->
 ///
 /// # Safety
 /// `a` and `b` must each point to one readable, properly aligned `uint64_t`.
-#[export_name = "rs_uint64_compare_func"]
+#[unsafe(export_name = "rs_uint64_compare_func")]
 pub unsafe extern "C" fn rs_uint64_compare_func(a: *const u64, b: *const u64) -> i32 {
     // SAFETY: required by this C ABI entry point's contract.
     unsafe { cmp_ord(*a, *b) }
@@ -114,7 +114,7 @@ pub unsafe extern "C" fn rs_uint64_compare_func(a: *const u64, b: *const u64) ->
 ///
 /// # Safety
 /// `a` and `b` must each point to one readable, properly aligned `dev_t`.
-#[export_name = "rs_devt_compare_func"]
+#[unsafe(export_name = "rs_devt_compare_func")]
 pub unsafe extern "C" fn rs_devt_compare_func(a: *const u64, b: *const u64) -> i32 {
     // SAFETY: required by this C ABI entry point's contract.
     let (a, b) = unsafe { (*a, *b) };

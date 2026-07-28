@@ -253,7 +253,11 @@ pub fn devpath_conflict(a: &str, b: &str) -> bool {
     // /dev/sda1 and /dev/sda2 conflict because the base path /dev/sda matches.
     // /dev/sda1 and /dev/sdb1 do NOT conflict because /dev/sda != /dev/sdb.
     let strip_trailing_digits = |s: &str| -> String {
-        let end = s.char_indices().rev().take_while(|(_, c)| c.is_ascii_digit()).last();
+        let end = s
+            .char_indices()
+            .rev()
+            .take_while(|(_, c)| c.is_ascii_digit())
+            .last();
         match end {
             Some((i, _)) => s[..i].to_string(),
             None => s.to_string(),

@@ -99,7 +99,10 @@ impl InstallError {
             InstallError::Masked => format!("Unit {} is masked", path),
             InstallError::Generated => format!("Unit {} is transient or generated", path),
             InstallError::BadPath => {
-                format!("File '{}' is under the systemd unit hierarchy already", path)
+                format!(
+                    "File '{}' is under the systemd unit hierarchy already",
+                    path
+                )
             }
             InstallError::BadUnitSetting => format!("Invalid specifier in unit {}", path),
             InstallError::TemplateMismatch => format!(
@@ -473,11 +476,7 @@ fn simplify_path(p: &str) -> String {
         out.push('/');
     }
     out.push_str(&components.join("/"));
-    if out.is_empty() {
-        ".".to_string()
-    } else {
-        out
-    }
+    if out.is_empty() { ".".to_string() } else { out }
 }
 
 /// Strip a root directory prefix from `path`.

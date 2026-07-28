@@ -343,22 +343,14 @@ pub fn parse_strv(value: &str) -> Vec<String> {
 /// Parse an unsigned integer bounded between `min` and `max`.
 pub fn parse_uint_bounded(value: &str, min: u64, max: u64) -> Option<u64> {
     let v = parse_uint(value)?;
-    if v >= min && v <= max {
-        Some(v)
-    } else {
-        None
-    }
+    if v >= min && v <= max { Some(v) } else { None }
 }
 
 /// Parse a permille value (0–1000, or with `%` suffix).
 pub fn parse_permille(value: &str) -> Option<u32> {
     let v = value.trim().trim_end_matches('%');
     let n: u32 = v.trim().parse().ok()?;
-    if n <= 1000 {
-        Some(n)
-    } else {
-        None
-    }
+    if n <= 1000 { Some(n) } else { None }
 }
 
 /// Parse an unsigned integer with optional `infinity` keyword.

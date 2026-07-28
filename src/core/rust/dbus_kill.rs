@@ -296,13 +296,15 @@ mod tests {
     #[test]
     fn transient_setter_ignores_unknown_property() {
         let mut context = context();
-        assert!(!bus_kill_context_set_transient_property(
-            &mut context,
-            "NoSuchProperty",
-            PropertyValue::Int(1),
-            0
-        )
-        .unwrap());
+        assert!(
+            !bus_kill_context_set_transient_property(
+                &mut context,
+                "NoSuchProperty",
+                PropertyValue::Int(1),
+                0
+            )
+            .unwrap()
+        );
     }
 
     #[test]

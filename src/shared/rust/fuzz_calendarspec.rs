@@ -50,7 +50,10 @@ mod tests {
 
     #[test]
     fn parses_known_expression() {
-        assert_eq!(fuzz_calendarspec(b"Mon..Fri 10:15"), CalendarFuzzOutcome::Parsed);
+        assert_eq!(
+            fuzz_calendarspec(b"Mon..Fri 10:15"),
+            CalendarFuzzOutcome::Parsed
+        );
     }
 
     #[test]

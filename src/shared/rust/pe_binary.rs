@@ -1141,7 +1141,7 @@ mod tests {
         file.extend_from_slice(&0u32.to_le_bytes()); // TimeDateStamp
         file.extend_from_slice(&0u32.to_le_bytes()); // PointerToSymbolTable
         file.extend_from_slice(&0u32.to_le_bytes()); // NumberOfSymbols
-                                                     // PE32 fixed = 96 bytes, 16 data dirs * 8 = 128, total opt = 224
+        // PE32 fixed = 96 bytes, 16 data dirs * 8 = 128, total opt = 224
         let size_of_opt: u16 = 96 + 16 * 8;
         file.extend_from_slice(&size_of_opt.to_le_bytes());
         file.extend_from_slice(&0u16.to_le_bytes()); // Characteristics
@@ -1171,7 +1171,7 @@ mod tests {
         file.extend_from_slice(&0u32.to_le_bytes()); // CheckSum
         file.extend_from_slice(&IMAGE_SUBSYSTEM_EFI_APPLICATION.to_le_bytes()); // Subsystem
         file.extend_from_slice(&0u16.to_le_bytes()); // DllCharacteristics
-                                                     // PE32: stack/heap sizes are 4 bytes each
+        // PE32: stack/heap sizes are 4 bytes each
         file.extend_from_slice(&0x100000u32.to_le_bytes()); // SizeOfStackReserve
         file.extend_from_slice(&0x1000u32.to_le_bytes()); // SizeOfStackCommit
         file.extend_from_slice(&0x100000u32.to_le_bytes()); // SizeOfHeapReserve
@@ -1208,7 +1208,7 @@ mod tests {
         file.extend_from_slice(&0u32.to_le_bytes()); // TimeDateStamp
         file.extend_from_slice(&0u32.to_le_bytes()); // PointerToSymbolTable
         file.extend_from_slice(&0u32.to_le_bytes()); // NumberOfSymbols
-                                                     // PE32+ fixed = 112 bytes, 16 data dirs * 8 = 128, total opt = 240
+        // PE32+ fixed = 112 bytes, 16 data dirs * 8 = 128, total opt = 240
         let size_of_opt: u16 = 112 + 16 * 8;
         file.extend_from_slice(&size_of_opt.to_le_bytes());
         file.extend_from_slice(&0u16.to_le_bytes()); // Characteristics
@@ -1237,7 +1237,7 @@ mod tests {
         file.extend_from_slice(&0u32.to_le_bytes()); // CheckSum
         file.extend_from_slice(&IMAGE_SUBSYSTEM_EFI_APPLICATION.to_le_bytes()); // Subsystem
         file.extend_from_slice(&0u16.to_le_bytes()); // DllCharacteristics
-                                                     // PE32+: stack/heap sizes are 8 bytes each
+        // PE32+: stack/heap sizes are 8 bytes each
         file.extend_from_slice(&0x100000u64.to_le_bytes()); // SizeOfStackReserve
         file.extend_from_slice(&0x1000u64.to_le_bytes()); // SizeOfStackCommit
         file.extend_from_slice(&0x100000u64.to_le_bytes()); // SizeOfHeapReserve

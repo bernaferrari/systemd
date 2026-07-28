@@ -116,8 +116,8 @@ mod tests {
     const STR_WALDI: &str = "0102030405060708090a0b0c0d0e0f10";
     const UUID_WALDI: &str = "01020304-0506-0708-090a-0b0c0d0e0f10";
     const WALDI: SdId128 = SdId128([
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
-        0x0f, 0x10,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10,
     ]);
     #[test]
     fn detects_plain_id128() {
@@ -194,7 +194,13 @@ mod tests {
 
     #[test]
     fn from_str_rejects_unbalanced_braces() {
-        assert_eq!(SdId128::from_str("{0102030405060708090a0b0c0d0e0f10"), Err(NEG_EINVAL));
-        assert_eq!(SdId128::from_str("0102030405060708090a0b0c0d0e0f10}"), Err(NEG_EINVAL));
+        assert_eq!(
+            SdId128::from_str("{0102030405060708090a0b0c0d0e0f10"),
+            Err(NEG_EINVAL)
+        );
+        assert_eq!(
+            SdId128::from_str("0102030405060708090a0b0c0d0e0f10}"),
+            Err(NEG_EINVAL)
+        );
     }
 }

@@ -9,14 +9,14 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 use systemd_core_rs::pid1_exec_sources::ExecStatusSourceOwner;
 use systemd_core_rs::pid1_lifecycle::{
-    decode_system_signal, outer_loop_exit, OuterLoopExit, SignalAction, SignalRecord,
-    SpecialTargetMode,
+    OuterLoopExit, SignalAction, SignalRecord, SpecialTargetMode, decode_system_signal,
+    outer_loop_exit,
 };
 use systemd_core_rs::pid1_manager_commands::{
-    pid1_manager_command_channel, DenyAllPid1CommandAuthorizer, Pid1CommandError, Pid1CommandInbox,
+    DenyAllPid1CommandAuthorizer, Pid1CommandError, Pid1CommandInbox, pid1_manager_command_channel,
 };
 use systemd_core_rs::pid1_manager_runtime::{
-    prepare_outer_lifecycle, ManagerLoopExit, OuterLifecycleDisposition, ReloadPreparationResult,
+    ManagerLoopExit, OuterLifecycleDisposition, ReloadPreparationResult, prepare_outer_lifecycle,
 };
 use systemd_core_rs::pid1_socket_sources::SocketSourceOwner;
 use systemd_core_rs::runtime_manager::RuntimeManager;
@@ -211,10 +211,14 @@ fn kernel_cmdline_override_target() -> Option<String> {
 
 fn configure_unit_search_paths() {
     if std::env::var_os("SYSTEMD_UNIT_PATH").is_none() {
-        std::env::set_var(
-            "SYSTEMD_UNIT_PATH",
-            "/etc/systemd/system:/run/systemd/system:/usr/lib/systemd/system:/lib/systemd/system",
-        );
+        // SAFETY: main() invokes this during single-threaded PID 1 startup,
+        // before RuntimeManager or the event loop can create concurrent work.
+        unsafe {
+            std::env::set_var(
+                "SYSTEMD_UNIT_PATH",
+                "/etc/systemd/system:/run/systemd/system:/usr/lib/systemd/system:/lib/systemd/system",
+            );
+        }
     }
 }
 
@@ -947,6 +951,7 @@ fn main() {
 mod tests {
     use super::*;
     use std::fs;
+    use systemd_shared_rs::tests::TestEnvironment;
 
     #[test]
     fn parse_cli_options_defaults_to_run() {
@@ -1020,6 +1025,9 @@ mod tests {
 
     #[test]
     fn cgroup_bootstrap_creates_init_scope_and_enables_controllers() {
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
         let dir = std::env::temp_dir().join("test-systemd-main-cgroup-bootstrap");
         fs::create_dir_all(&dir).unwrap();
         fs::write(
@@ -1029,8 +1037,7 @@ mod tests {
         .unwrap();
         fs::write(dir.join("cgroup.subtree_control"), "").unwrap();
 
-        let prev = std::env::var("SYSTEMD_CGROUP_ROOT").ok();
-        std::env::set_var("SYSTEMD_CGROUP_ROOT", dir.display().to_string());
+        environment.set("SYSTEMD_CGROUP_ROOT", dir.display().to_string());
 
         bootstrap_cgroup_v2_for_pid(777).unwrap();
 
@@ -1047,11 +1054,6 @@ mod tests {
         let init_procs = fs::read_to_string(dir.join("init.scope").join("cgroup.procs")).unwrap();
         assert!(init_procs.contains("777"));
 
-        if let Some(value) = prev {
-            std::env::set_var("SYSTEMD_CGROUP_ROOT", value);
-        } else {
-            std::env::remove_var("SYSTEMD_CGROUP_ROOT");
-        }
         let _ = fs::remove_dir_all(&dir);
     }
 }

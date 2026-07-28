@@ -4,7 +4,9 @@
 //
 // Safe Rust synchronization metadata for the matching import module.
 
-use crate::import_common::{count_port_source_lines, read_port_source, verify_extracted_functions, PortError, PortMetadata};
+use crate::import_common::{
+    PortError, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
+};
 
 pub const SOURCE_PATH: &str = "src/import/pull-tar.c";
 pub const EXTRACTED_FUNCTIONS: &[&str] = &[
@@ -18,7 +20,7 @@ pub const EXTRACTED_FUNCTIONS: &[&str] = &[
     "tar_pull_new",
     "tar_pull_report_progress",
     "tar_pull_start",
-    "tar_pull_unref"
+    "tar_pull_unref",
 ];
 
 pub fn metadata() -> Result<PortMetadata, PortError> {

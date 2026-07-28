@@ -5,7 +5,7 @@
 // Minimal safe QCOW2 helpers plus source sync checks.
 
 use crate::import_common::{
-    count_port_source_lines, read_port_source, verify_extracted_functions, PortError, PortMetadata,
+    PortError, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
 };
 use std::io;
 
@@ -101,7 +101,9 @@ pub fn qcow2_detect(path: &str) -> bool {
 
 pub fn convert_qcow2_to_raw(input: &str, output: &str) -> Result<(), Qcow2Error> {
     if input.is_empty() || output.is_empty() {
-        return Err(Qcow2Error::ReadFailed("input and output paths must be non-empty".into()));
+        return Err(Qcow2Error::ReadFailed(
+            "input and output paths must be non-empty".into(),
+        ));
     }
     Ok(())
 }

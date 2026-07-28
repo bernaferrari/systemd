@@ -128,17 +128,21 @@ mod tests {
     }
     #[test]
     fn properties_include_device_policy() {
-        assert!(append_machine_properties(0, false)
-            .unwrap()
-            .iter()
-            .any(|p| p.0 == "DevicePolicy"));
+        assert!(
+            append_machine_properties(0, false)
+                .unwrap()
+                .iter()
+                .any(|p| p.0 == "DevicePolicy")
+        );
     }
     #[test]
     fn properties_include_kill_signal() {
-        assert!(append_machine_properties(9, false)
-            .unwrap()
-            .iter()
-            .any(|p| p.0 == "KillSignal"));
+        assert!(
+            append_machine_properties(9, false)
+                .unwrap()
+                .iter()
+                .any(|p| p.0 == "KillSignal")
+        );
     }
     #[test]
     fn controller_property_requires_name() {
@@ -174,10 +178,12 @@ mod tests {
     }
     #[test]
     fn allocate_scope_adds_slice() {
-        assert!(allocate_scope("m", Some("custom.slice"), 0, false, "u")
-            .unwrap()
-            .properties
-            .iter()
-            .any(|p| p.1 == "custom.slice"));
+        assert!(
+            allocate_scope("m", Some("custom.slice"), 0, false, "u")
+                .unwrap()
+                .properties
+                .iter()
+                .any(|p| p.1 == "custom.slice")
+        );
     }
 }

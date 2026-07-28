@@ -4,7 +4,9 @@
 //
 // Safe Rust synchronization metadata for the matching import module.
 
-use crate::import_common::{count_port_source_lines, read_port_source, verify_extracted_functions, PortError, PortMetadata};
+use crate::import_common::{
+    PortError, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
+};
 
 pub const SOURCE_PATH: &str = "src/import/importd.c";
 pub const EXTRACTED_FUNCTIONS: &[&str] = &[
@@ -41,7 +43,7 @@ pub const EXTRACTED_FUNCTIONS: &[&str] = &[
     "transfer_start",
     "transfer_unref",
     "vl_method_list_transfers",
-    "vl_method_pull"
+    "vl_method_pull",
 ];
 
 pub fn metadata() -> Result<PortMetadata, PortError> {

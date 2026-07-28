@@ -332,11 +332,7 @@ fn strv_find_closest(list: &[String], input: &str) -> Option<String> {
         }
     }
 
-    if best_len == 0 {
-        None
-    } else {
-        best
-    }
+    if best_len == 0 { None } else { best }
 }
 
 pub fn verb_help_rows<'a, T, U>(verbs: &[Verb<'a, T, U>]) -> Vec<(String, Vec<String>)> {

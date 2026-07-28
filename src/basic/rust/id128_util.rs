@@ -59,11 +59,7 @@ impl std::error::Error for Id128Error {}
 
 #[inline]
 fn hexchar(x: u8) -> u8 {
-    if x < 10 {
-        b'0' + x
-    } else {
-        b'a' + (x - 10)
-    }
+    if x < 10 { b'0' + x } else { b'a' + (x - 10) }
 }
 
 #[inline]

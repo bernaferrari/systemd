@@ -220,11 +220,7 @@ pub fn cmdline_to_ascii(cmdline: &[u16], max_len: usize) -> Vec<u8> {
 /// Build the setup_sects value, defaulting to 4 if the field is 0
 /// (per spec: "if the setup_sects field contains 0, the real value is 4").
 pub fn effective_setup_sects(raw: u8) -> u8 {
-    if raw == 0 {
-        4
-    } else {
-        raw
-    }
+    if raw == 0 { 4 } else { raw }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────

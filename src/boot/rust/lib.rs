@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 #![deny(unsafe_op_in_unsafe_fn)]
 
-pub mod common;
 pub mod addon;
 pub mod bcd;
-pub mod boot_secret;
 pub mod boot;
+pub mod boot_secret;
 pub mod chid;
+pub mod common;
 pub mod console;
 pub mod cpio;
 pub mod device_path_util;

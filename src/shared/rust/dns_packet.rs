@@ -1259,13 +1259,12 @@ mod tests {
 
         // TC set should fail for DNS
         let mut pkt2 = DnsPacket::new(DnsProtocol::Dns);
-        pkt2
-            .update_header(|hdr| {
-                hdr.flags = 0x0200; // TC=1
-                hdr.qdcount = 1;
-                Ok(())
-            })
-            .unwrap();
+        pkt2.update_header(|hdr| {
+            hdr.flags = 0x0200; // TC=1
+            hdr.qdcount = 1;
+            Ok(())
+        })
+        .unwrap();
         assert!(pkt2.validate_query().is_err());
     }
 
@@ -1331,7 +1330,7 @@ mod tests {
         pkt.append_label(b"example", false).unwrap();
         pkt.append_label(b"com", false).unwrap();
         pkt.append_u8(0).unwrap(); // root terminator
-                                   // Each label is prefixed with its length byte: \x03www\x07example\x03com\x00
+        // Each label is prefixed with its length byte: \x03www\x07example\x03com\x00
         assert_eq!(
             pkt.data().len(),
             DNS_PACKET_HEADER_SIZE + (1 + 3) + (1 + 7) + (1 + 3) + 1
@@ -1424,7 +1423,7 @@ mod tests {
         assert!(loc_size_ok(0x00)); // 0 cm
         assert!(loc_size_ok(0x11)); // 1 * 10^1 = 10 cm
         assert!(loc_size_ok(0x19)); // 1 * 10^9
-                                    // Invalid: mantissa all 1s
+        // Invalid: mantissa all 1s
         assert!(!loc_size_ok(0xF0));
         assert!(!loc_size_ok(0xFF));
     }

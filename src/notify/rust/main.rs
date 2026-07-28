@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-notify
 
-use systemd_notify_rs::{determine_action, parse_notify_message, NotifyAction};
+use systemd_notify_rs::{NotifyAction, determine_action, parse_notify_message};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

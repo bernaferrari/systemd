@@ -1,6 +1,8 @@
 mod tests {
     use super::{
-        activation_details_append_env, activation_details_append_pair,
+        ActiveState, CollectMode, DependencyKind, FUNCTION_INVENTORY, FreezerState, ManagerRecord,
+        OomPolicy, QueueKind, RateLimit, SOURCE_PATH, Unit, UnitError, UnitMountDependencyType,
+        UnitType, activation_details_append_env, activation_details_append_pair,
         activation_details_deserialize, activation_details_new, activation_details_serialize,
         collect_mode_from_string, collect_mode_to_string, oom_policy_from_string,
         oom_policy_to_string, port_status, setenv_unit_path, unit_acquire_invocation_id,
@@ -10,10 +12,9 @@ mod tests {
         unit_has_dependency, unit_has_name, unit_invocation_log_field, unit_log_field,
         unit_mount_dependency_type_from_string, unit_mount_dependency_type_to_string,
         unit_new_for_name, unit_remove_from_stop_notify_queue, unit_start, unit_stop,
-        unit_test_start_limit, unit_unlink_state_files, ActiveState, CollectMode, DependencyKind,
-        FreezerState, ManagerRecord, OomPolicy, QueueKind, RateLimit, Unit, UnitError,
-        UnitMountDependencyType, UnitType, FUNCTION_INVENTORY, SOURCE_PATH,
+        unit_test_start_limit, unit_unlink_state_files,
     };
+    use systemd_shared_rs::tests::TestEnvironment;
 
     fn sample_manager() -> ManagerRecord {
         ManagerRecord::default()
@@ -104,9 +105,14 @@ mod tests {
 
     #[test]
     fn invocation_id_is_deterministic_for_same_input() {
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let _environment = unsafe { TestEnvironment::lock() };
         let mut a = sample_unit();
         let mut b = sample_unit();
-        setenv_unit_path("/etc/systemd/system").unwrap();
+        // SAFETY: TestEnvironment serializes process-environment mutation for
+        // the full duration of this test.
+        unsafe { setenv_unit_path("/etc/systemd/system") }.unwrap();
         assert_eq!(
             unit_acquire_invocation_id(&mut a).unwrap(),
             unit_acquire_invocation_id(&mut b).unwrap()
@@ -186,9 +192,11 @@ mod tests {
         let mut unit = sample_unit();
         unit_acquire_invocation_id(&mut unit).unwrap();
         assert!(unit_log_field(&unit).contains("demo.service"));
-        assert!(unit_invocation_log_field(&unit)
-            .unwrap()
-            .contains("INVOCATION_ID"));
+        assert!(
+            unit_invocation_log_field(&unit)
+                .unwrap()
+                .contains("INVOCATION_ID")
+        );
     }
 
     #[test]

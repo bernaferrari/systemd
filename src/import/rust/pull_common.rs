@@ -5,8 +5,8 @@
 // Shared pull context and validation helpers.
 
 use crate::import_common::{
-    count_port_source_lines, read_port_source, verify_extracted_functions, ImageClass, ImportFlags,
-    PortError, PortMetadata,
+    ImageClass, ImportFlags, PortError, PortMetadata, count_port_source_lines, read_port_source,
+    verify_extracted_functions,
 };
 use std::io;
 
@@ -85,7 +85,11 @@ impl std::fmt::Display for PullCommonError {
 impl std::error::Error for PullCommonError {}
 
 pub fn make_local(url: &str, default: &str) -> String {
-    url.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(default).to_string()
+    url.rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(default)
+        .to_string()
 }
 
 pub fn make_tmpdir(root: &str) -> Result<String, PullCommonError> {
@@ -122,7 +126,11 @@ mod tests {
 
     #[test]
     fn pull_context_progress_is_clamped() {
-        let mut ctx = PullContext::new("/var/lib/machines".into(), ImageClass::Machine, "demo".into());
+        let mut ctx = PullContext::new(
+            "/var/lib/machines".into(),
+            ImageClass::Machine,
+            "demo".into(),
+        );
         ctx.set_progress(120.0);
         assert_eq!(ctx.progress_percent, 100.0);
     }
@@ -135,7 +143,10 @@ mod tests {
 
     #[test]
     fn make_local_uses_last_path_segment() {
-        assert_eq!(make_local("https://example.com/images/demo.raw", "fallback"), "demo.raw");
+        assert_eq!(
+            make_local("https://example.com/images/demo.raw", "fallback"),
+            "demo.raw"
+        );
     }
 
     #[test]

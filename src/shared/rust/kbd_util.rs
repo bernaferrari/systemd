@@ -222,6 +222,7 @@ fn keymap_exists_in_dir(dir: &Path, name: &str) -> io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
 
     // -- keymap_is_valid --
 
@@ -302,14 +303,20 @@ mod tests {
 
     #[test]
     fn test_keymap_directories_default_count() {
-        env::remove_var(KEYMAP_DIRS_ENV);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(KEYMAP_DIRS_ENV);
         let dirs = keymap_directories();
         assert_eq!(dirs.len(), 3);
     }
 
     #[test]
     fn test_keymap_directories_default_paths() {
-        env::remove_var(KEYMAP_DIRS_ENV);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(KEYMAP_DIRS_ENV);
         let dirs = keymap_directories();
         let strs: Vec<&str> = dirs.iter().map(|d| d.to_str().unwrap()).collect();
         assert!(strs.contains(&"/usr/share/keymaps/"));

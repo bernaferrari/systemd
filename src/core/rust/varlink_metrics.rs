@@ -368,12 +368,16 @@ mod tests {
     #[test]
     fn list_metrics_concatenates_all_families() {
         let samples = list_metrics(&manager()).unwrap();
-        assert!(samples
-            .iter()
-            .any(|sample| sample.family_name == "io.systemd.Manager.UnitLoadState"));
-        assert!(samples
-            .iter()
-            .any(|sample| sample.family_name == "io.systemd.Manager.UnitsByTypeTotal"));
+        assert!(
+            samples
+                .iter()
+                .any(|sample| sample.family_name == "io.systemd.Manager.UnitLoadState")
+        );
+        assert!(
+            samples
+                .iter()
+                .any(|sample| sample.family_name == "io.systemd.Manager.UnitsByTypeTotal")
+        );
     }
 
     #[test]

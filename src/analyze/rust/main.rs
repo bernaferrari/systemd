@@ -4,7 +4,7 @@
 //
 //! Experimental Rust command-line boundary for one real systemd-analyze verb.
 
-use systemd_analyze_rust_port::{compare_versions, EXIT_FAILURE};
+use systemd_analyze_rust_port::{EXIT_FAILURE, compare_versions};
 
 const IMPLEMENTED_VERB: &str = "compare-versions";
 

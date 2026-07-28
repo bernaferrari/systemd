@@ -430,12 +430,16 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert!(program
-            .instructions
-            .contains(&BpfInstruction::AccountPackets { map_fd: 9 }));
-        assert!(program
-            .instructions
-            .contains(&BpfInstruction::AccountBytes { map_fd: 9 }));
+        assert!(
+            program
+                .instructions
+                .contains(&BpfInstruction::AccountPackets { map_fd: 9 })
+        );
+        assert!(
+            program
+                .instructions
+                .contains(&BpfInstruction::AccountBytes { map_fd: 9 })
+        );
     }
 
     #[test]

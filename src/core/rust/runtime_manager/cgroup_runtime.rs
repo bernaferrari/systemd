@@ -16,9 +16,9 @@ use std::io::ErrorKind;
 #[cfg(target_os = "linux")]
 use std::os::fd::OwnedFd;
 
+use super::RuntimeManager;
 use super::linux_cgroup::{self, CgroupDirectory};
 use super::unit_file::{CgroupIoLimitKind, UnitFileInfo};
-use super::RuntimeManager;
 use crate::service_tables::ServiceExecCommand;
 use crate::unit::ActiveState;
 use systemd_shared_rs::cpu_set_util::CpuSet;

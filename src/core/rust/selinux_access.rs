@@ -463,15 +463,17 @@ mod tests {
             "start",
         );
 
-        assert!(mac_selinux_access_check_bus_internal(
-            &mut state,
-            &policy,
-            &creds,
-            None,
-            "start",
-            "StartUnit",
-        )
-        .unwrap());
+        assert!(
+            mac_selinux_access_check_bus_internal(
+                &mut state,
+                &policy,
+                &creds,
+                None,
+                "start",
+                "StartUnit",
+            )
+            .unwrap()
+        );
     }
 
     #[test]
@@ -536,14 +538,16 @@ mod tests {
             "reload",
         );
 
-        assert!(mac_selinux_access_check_varlink_internal(
-            &mut state,
-            &policy,
-            &link,
-            Some(&unit),
-            "reload",
-            "ReloadUnit",
-        )
-        .unwrap());
+        assert!(
+            mac_selinux_access_check_varlink_internal(
+                &mut state,
+                &policy,
+                &link,
+                Some(&unit),
+                "reload",
+                "ReloadUnit",
+            )
+            .unwrap()
+        );
     }
 }

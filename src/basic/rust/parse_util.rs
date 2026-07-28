@@ -1385,7 +1385,7 @@ unsafe fn parse_oom_score_adjust_inner(s: *const c_char, ret: *mut i32) -> i32 {
 /// # Safety
 /// `s` must be a non-null readable NUL-terminated string and `ret` must point
 /// to writable, properly aligned `int` storage.
-#[export_name = "rs_parse_oom_score_adjust"]
+#[unsafe(export_name = "rs_parse_oom_score_adjust")]
 pub unsafe extern "C" fn rs_parse_oom_score_adjust(s: *const c_char, ret: *mut i32) -> i32 {
     // SAFETY: the C ABI contract above implies the inner pointer contract.
     unsafe { parse_oom_score_adjust_inner(s, ret) }
@@ -1549,7 +1549,7 @@ unsafe fn parse_ip_port_range_inner(
 /// # Safety
 /// `s` must be a non-null readable NUL-terminated string. `low` and `high`
 /// must point to writable, properly aligned `uint16_t` storage.
-#[export_name = "rs_parse_ip_port_range"]
+#[unsafe(export_name = "rs_parse_ip_port_range")]
 pub unsafe extern "C" fn rs_parse_ip_port_range(
     s: *const c_char,
     low: *mut u16,

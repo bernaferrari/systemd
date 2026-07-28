@@ -7,7 +7,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 
-use crate::id128_util::{id128_from_string_nonzero, id128_is_valid, SdId128};
+use crate::id128_util::{SdId128, id128_from_string_nonzero, id128_is_valid};
 
 pub type Result<T> = std::result::Result<T, i32>;
 

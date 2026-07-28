@@ -12,7 +12,7 @@
 
 use std::ffi::{CStr, CString};
 use std::fmt;
-use std::os::raw::{c_void};
+use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ffi::Errno;
@@ -746,7 +746,7 @@ mod tests {
     fn test_required_symbols_not_empty() {
         assert!(!REQUIRED_SYMBOLS.is_empty());
         assert!(REQUIRED_SYMBOLS.len() > 40); // 48 symbols from C
-                                              // Spot-check a few
+        // Spot-check a few
         assert!(REQUIRED_SYMBOLS.contains(&"fido_init"));
         assert!(REQUIRED_SYMBOLS.contains(&"fido_dev_open"));
         assert!(REQUIRED_SYMBOLS.contains(&"fido_strerr"));

@@ -41,7 +41,7 @@ rust_symbols = ["rs_format_devnum"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "scalar"
-errors = "nullable"
+errors = "none"
 runtime = "none"
 verification = "static-only"
 
@@ -49,7 +49,14 @@ verification = "static-only"
 arg = "buf"
 ownership = "caller-storage"
 publication_success = "write"
-publication_error = "unchanged"
+publication_error = "n/a"
+optional = false
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
 optional = false
 
 [surface.static_fixture]

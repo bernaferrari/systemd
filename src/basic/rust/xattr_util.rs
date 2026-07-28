@@ -53,7 +53,7 @@ pub fn xattr_is_selinux(name: &str) -> bool {
 /// `name` must be either null or point to a readable NUL-terminated C string.
 /// A null pointer is treated as non-matching, keeping the ABI boundary defined
 /// even though the C helper asserts its non-null precondition.
-#[export_name = "rs_xattr_is_acl"]
+#[unsafe(export_name = "rs_xattr_is_acl")]
 pub unsafe extern "C" fn rs_xattr_is_acl(name: *const c_char) -> bool {
     if name.is_null() {
         return false;
@@ -70,7 +70,7 @@ pub unsafe extern "C" fn rs_xattr_is_acl(name: *const c_char) -> bool {
 /// `name` must be either null or point to a readable NUL-terminated C string.
 /// A null pointer is treated as non-matching, keeping the ABI boundary defined
 /// even though the C helper asserts its non-null precondition.
-#[export_name = "rs_xattr_is_selinux"]
+#[unsafe(export_name = "rs_xattr_is_selinux")]
 pub unsafe extern "C" fn rs_xattr_is_selinux(name: *const c_char) -> bool {
     if name.is_null() {
         return false;

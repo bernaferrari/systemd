@@ -63,11 +63,7 @@ pub fn log_kill(unit: &mut Unit, pid: PidRef, signal: i32) {
     unit.push_status(format!("kill-log:{}:{}", pid.0, signal));
 }
 pub fn operation_to_signal(operation: &str) -> i32 {
-    if operation == "reload" {
-        1
-    } else {
-        15
-    }
+    if operation == "reload" { 1 } else { 15 }
 }
 pub fn unit_kill_context_one(unit: &mut Unit, pid: PidRef, signal: i32) {
     log_kill(unit, pid, signal);

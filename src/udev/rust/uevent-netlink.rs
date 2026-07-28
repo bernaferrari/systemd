@@ -161,7 +161,8 @@ impl KobjectUeventReceiver {
             }
 
             let mut guard = self.socket.readable().await?;
-            let recv_result = guard.try_io(|inner| recv_datagram(inner.get_ref(), &mut self.recv_buf));
+            let recv_result =
+                guard.try_io(|inner| recv_datagram(inner.get_ref(), &mut self.recv_buf));
 
             match recv_result {
                 Ok(Ok(n)) => {
@@ -345,7 +346,8 @@ mod tests {
     fn queue_handles_events_without_seqnum() {
         let mut queue = OrderedUeventQueue::new();
 
-        let mut no_seq = parse_uevent_datagram(&uevent_bytes(1, "change", "/devices/no-seq")).unwrap();
+        let mut no_seq =
+            parse_uevent_datagram(&uevent_bytes(1, "change", "/devices/no-seq")).unwrap();
         no_seq.seqnum = None;
 
         assert_eq!(queue.push(no_seq.clone()), QueueInsertResult::Inserted);
@@ -356,8 +358,7 @@ mod tests {
     fn queue_rejects_duplicate_seqnum() {
         let mut queue = OrderedUeventQueue::new();
         let first = parse_uevent_datagram(&uevent_bytes(12, "add", "/devices/first")).unwrap();
-        let second =
-            parse_uevent_datagram(&uevent_bytes(12, "change", "/devices/second")).unwrap();
+        let second = parse_uevent_datagram(&uevent_bytes(12, "change", "/devices/second")).unwrap();
 
         assert_eq!(queue.push(first.clone()), QueueInsertResult::Inserted);
         assert_eq!(queue.push(second), QueueInsertResult::Duplicate);

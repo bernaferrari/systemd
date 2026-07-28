@@ -334,9 +334,11 @@ mod tests {
     #[test]
     fn test_error_ids() {
         assert_eq!(ERROR_IDS.len(), 1);
-        assert!(ManagedOOMError::SubscriptionTaken
-            .error_id()
-            .contains("SubscriptionTaken"));
+        assert!(
+            ManagedOOMError::SubscriptionTaken
+                .error_id()
+                .contains("SubscriptionTaken")
+        );
     }
 
     #[test]

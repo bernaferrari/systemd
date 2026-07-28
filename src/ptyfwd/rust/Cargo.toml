@@ -8,12 +8,12 @@
 publish = false
 name = "systemd-ptyfwd-rs"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 systemd-shared-rs = { path = "../../shared/rust" }
-nix = { version = "0.29", features = ["process", "signal", "fs"] }
-libc = "0.2"
+nix = { version = "0.31", features = ["process", "signal", "fs"] }
+libc = { workspace = true }
 
 [lib]
 crate-type = ["lib"]

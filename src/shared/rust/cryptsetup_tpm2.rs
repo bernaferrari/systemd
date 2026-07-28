@@ -11,14 +11,15 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use openssl::hash::MessageDigest;
 use openssl::pkcs5;
 
-use crate::ask_password_api::{ask_password_auto, AskPasswordFlags, AskPasswordRequest};
+use crate::ask_password_api::{AskPasswordFlags, AskPasswordRequest, ask_password_auto};
 use crate::tpm2_util::{
-    tpm2_asym_alg_from_string, tpm2_hash_alg_from_string, Tpm2Flags, TPM2_ALG_ECC, TPM2_PCRS_MAX,
+    TPM2_ALG_ECC, TPM2_PCRS_MAX, Tpm2Flags, tpm2_asym_alg_from_string, tpm2_hash_alg_from_string,
 };
 
 const PBKDF2_HMAC_SHA256_ITERATIONS: usize = 10_000;
@@ -206,8 +207,25 @@ pub trait PinProvider {
     ) -> Result<String>;
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct SystemPinProvider;
+#[derive(Debug, Default)]
+pub struct SystemPinProvider {
+    pin: Mutex<Option<String>>,
+}
+
+impl SystemPinProvider {
+    /// Capture and erase `$PIN` before concurrent process work begins.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that no other thread reads or mutates the process
+    /// environment until this function returns.
+    pub unsafe fn from_process_environment() -> Self {
+        Self {
+            // SAFETY: this constructor has the same environment contract.
+            pin: Mutex::new(unsafe { getenv_steal_erase("PIN") }),
+        }
+    }
+}
 
 impl PinProvider for SystemPinProvider {
     fn get_pin(
@@ -216,7 +234,12 @@ impl PinProvider for SystemPinProvider {
         askpw_credential: Option<&str>,
         askpw_flags: AskPasswordFlags,
     ) -> Result<String> {
-        if let Some(pin) = getenv_steal_erase("PIN") {
+        if let Some(pin) = self
+            .pin
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+        {
             return Ok(pin);
         }
 
@@ -737,10 +760,17 @@ fn read_blob_from_path(
     Ok(data)
 }
 
-fn getenv_steal_erase(name: &str) -> Option<String> {
+/// Read and erase a sensitive value from the process environment.
+///
+/// # Safety
+///
+/// The caller must ensure that no other thread reads or mutates the process
+/// environment until this function returns.
+unsafe fn getenv_steal_erase(name: &str) -> Option<String> {
     let value = env::var(name).ok();
     if value.is_some() {
-        env::remove_var(name);
+        // SAFETY: upheld by the caller as required by this function's contract.
+        unsafe { env::remove_var(name) };
     }
     value
 }
@@ -1143,6 +1173,7 @@ fn decode_hex_nibble(byte: u8) -> std::result::Result<u8, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
     use std::cell::RefCell;
     use std::fs;
     use std::os::unix::net::UnixListener;
@@ -1583,8 +1614,13 @@ mod tests {
 
     #[test]
     fn system_pin_provider_steals_pin_from_environment() {
-        env::set_var("PIN", "9999");
-        let pin = SystemPinProvider
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set("PIN", "9999");
+        // SAFETY: TestEnvironment upholds the no-concurrent-access contract.
+        let provider = unsafe { SystemPinProvider::from_process_environment() };
+        let pin = provider
             .get_pin(None, None, AskPasswordFlags::empty())
             .unwrap();
         assert_eq!(pin, "9999");
@@ -1593,8 +1629,11 @@ mod tests {
 
     #[test]
     fn system_pin_provider_rejects_headless_without_env_pin() {
-        env::remove_var("PIN");
-        let error = SystemPinProvider
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove("PIN");
+        let error = SystemPinProvider::default()
             .get_pin(None, None, AskPasswordFlags::HEADLESS)
             .unwrap_err();
         assert_eq!(error.errno(), ENOPKG);

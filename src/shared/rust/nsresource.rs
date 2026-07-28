@@ -299,9 +299,9 @@ pub const METHOD_ADD_NETWORK_TO_USER_NAMESPACE: &str =
 /// # Example
 ///
 /// ```
-/// let mut gen = NameGenerator::new();
-/// assert_eq!(gen.generate("myapp", 1234), "myapp1234");
-/// assert_eq!(gen.generate("myapp", 1234), "myapp1231");
+/// let mut generator = NameGenerator::new();
+/// assert_eq!(generator.generate("myapp", 1234), "myapp1234");
+/// assert_eq!(generator.generate("myapp", 1234), "myapp1231");
 /// ```
 #[derive(Debug)]
 pub struct NameGenerator {
@@ -866,63 +866,63 @@ mod tests {
 
     #[test]
     fn test_name_generator_first_call_no_counter() {
-        let mut gen = NameGenerator::new();
-        let name = gen.generate("myapp", 1234);
+        let mut generator = NameGenerator::new();
+        let name = generator.generate("myapp", 1234);
         assert_eq!(name, "myapp1234");
-        assert_eq!(gen.counter(), 1);
+        assert_eq!(generator.counter(), 1);
     }
 
     #[test]
     fn test_name_generator_subsequent_calls_have_counter() {
-        let mut gen = NameGenerator::new();
-        assert_eq!(gen.generate("myapp", 1234), "myapp1234");
-        assert_eq!(gen.generate("myapp", 1234), "myapp1231");
-        assert_eq!(gen.generate("myapp", 1234), "myapp1232");
+        let mut generator = NameGenerator::new();
+        assert_eq!(generator.generate("myapp", 1234), "myapp1234");
+        assert_eq!(generator.generate("myapp", 1234), "myapp1231");
+        assert_eq!(generator.generate("myapp", 1234), "myapp1232");
     }
 
     #[test]
     fn test_name_generator_truncation() {
-        let mut gen = NameGenerator::new();
+        let mut generator = NameGenerator::new();
         // comm = 16 chars, pid = 5 chars → 11 chars of comm fit
-        let name = gen.generate("abcdefghijklmnop", 99999);
+        let name = generator.generate("abcdefghijklmnop", 99999);
         assert_eq!(name, "abcdefghijk99999");
         assert_eq!(name.len(), NAMESPACE_NAME_MAX);
     }
 
     #[test]
     fn test_name_generator_with_counter_truncation() {
-        let mut gen = NameGenerator::with_counter(1);
+        let mut generator = NameGenerator::with_counter(1);
         // comm = 16 chars, pid = 5 chars, counter "1" = 1 char → 10 chars of comm
-        let name = gen.generate("abcdefghijklmnop", 99999);
+        let name = generator.generate("abcdefghijklmnop", 99999);
         assert_eq!(name, "abcdefghij999991");
         assert_eq!(name.len(), NAMESPACE_NAME_MAX);
     }
 
     #[test]
     fn test_name_generator_default() {
-        let mut gen = NameGenerator::default();
-        assert_eq!(gen.generate("test", 1), "test1");
+        let mut generator = NameGenerator::default();
+        assert_eq!(generator.generate("test", 1), "test1");
     }
 
     #[test]
     fn test_name_generator_empty_comm() {
-        let mut gen = NameGenerator::new();
-        assert_eq!(gen.generate("", 42), "42");
+        let mut generator = NameGenerator::new();
+        assert_eq!(generator.generate("", 42), "42");
     }
 
     #[test]
     fn test_name_generator_exact_fit() {
-        let mut gen = NameGenerator::new();
+        let mut generator = NameGenerator::new();
         // "ab" (2) + "1234" (4) = 6 chars — well under limit
-        let name = gen.generate("ab", 1234);
+        let name = generator.generate("ab", 1234);
         assert_eq!(name, "ab1234");
     }
 
     #[test]
     fn test_name_generator_large_counter_hex() {
-        let mut gen = NameGenerator::with_counter(255);
+        let mut generator = NameGenerator::with_counter(255);
         // counter = 255 → "ff" (2 chars)
-        let name = gen.generate("svc", 1);
+        let name = generator.generate("svc", 1);
         assert_eq!(name, "svc1ff");
     }
 
@@ -1000,7 +1000,9 @@ mod tests {
         assert!(format!("{}", NsResourceError::UnsupportedInterface).contains("not supported"));
         assert!(format!("{}", NsResourceError::NamespaceNotRegistered).contains("not registered"));
         assert!(format!("{}", NsResourceError::NameTooLong("x".into())).contains("too long"));
-        assert!(format!("{}", NsResourceError::ConnectionFailed("e".into())).contains("connection"));
+        assert!(
+            format!("{}", NsResourceError::ConnectionFailed("e".into())).contains("connection")
+        );
         assert!(format!("{}", NsResourceError::FdPushFailed("e".into())).contains("push"));
         assert!(format!("{}", NsResourceError::FdTakeFailed("e".into())).contains("take"));
         assert!(format!("{}", NsResourceError::ResponseParseFailed("e".into())).contains("parse"));
@@ -1064,9 +1066,11 @@ mod tests {
     fn test_register_userns_success() {
         let mock = MockBackend::with_reply(METHOD_REGISTER_USER_NAMESPACE, VarlinkReply::ok());
         let mut client = NsResourceClient::new(mock);
-        assert!(client
-            .register_userns(Some("testns"), 10, "comm", 42)
-            .is_ok());
+        assert!(
+            client
+                .register_userns(Some("testns"), 10, "comm", 42)
+                .is_ok()
+        );
     }
 
     #[test]

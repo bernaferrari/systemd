@@ -15,7 +15,7 @@
 // - `check_password_quality()` → strength validation with username awareness
 // - `suggest_passwords()` → random password generation
 
-use std::ffi::{c_char, c_int, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::fmt;
 use std::ptr::NonNull;
 use std::sync::OnceLock;

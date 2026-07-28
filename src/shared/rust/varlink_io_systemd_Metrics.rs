@@ -354,9 +354,11 @@ mod tests {
     #[test]
     fn test_error_ids() {
         assert_eq!(ERROR_IDS.len(), 1);
-        assert!(MetricsError::NoSuchMetric
-            .error_id()
-            .contains("NoSuchMetric"));
+        assert!(
+            MetricsError::NoSuchMetric
+                .error_id()
+                .contains("NoSuchMetric")
+        );
     }
 
     #[test]

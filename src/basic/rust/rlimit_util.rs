@@ -2,7 +2,7 @@
 //
 // PORT-SYNC: src/basic/rlimit-util.c
 
-use crate::ffi::{malloc, Errno};
+use crate::ffi::{Errno, malloc};
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::{c_char, c_int, rlim_t, rlimit};
 use std::ffi::{CStr, CString};

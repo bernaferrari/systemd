@@ -220,6 +220,46 @@ test('test-old-extra2-rust', other_exe)
         self.assertEqual(errors, [])
         self.assertEqual(len(records), 2)
 
+    def test_same_name_non_rust_executable_cannot_prove_rust_object(self) -> None:
+        """Registration follows executable identity, not just its target string."""
+
+        (self.root / "tests-extra/meson.build").write_text(
+            """wrong_exe = executable('test-alpha-behavior-rust', files('not-rust.c'), link_with : libshared)
+test('test-alpha-behavior-rust', wrong_exe)
+rust_exe = executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : rust_staticlib)
+other_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : [libshared, rust_staticlib])
+test('test-old-extra2-rust', other_exe)
+"""
+        )
+        errors, _ = GATE.audit(self.root, self.catalog())
+        self.assertTrue(
+            any(
+                "test-alpha-behavior-rust" in error
+                and "bound to its executable" in error
+                for error in errors
+            )
+        )
+
+    def test_comments_and_strings_cannot_forge_registration(self) -> None:
+        """Lexically inert Meson text must not create parser events."""
+
+        (self.root / "tests-extra/meson.build").write_text(
+            """rust_exe = executable('test-alpha-behavior-rust', files('test-alpha-behavior-rust.c'), link_with : rust_staticlib)
+# test('test-alpha-behavior-rust', rust_exe)
+message("test('test-alpha-behavior-rust', rust_exe)")
+other_exe = executable('test-old-extra2-rust', files('test-old-extra2-rust.c'), link_with : rust_staticlib)
+test('test-old-extra2-rust', other_exe)
+"""
+        )
+        errors, _ = GATE.audit(self.root, self.catalog())
+        self.assertTrue(
+            any(
+                "test-alpha-behavior-rust" in error
+                and "bound to its executable" in error
+                for error in errors
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -110,7 +110,10 @@ pub fn count_port_source_lines(source_path: &str) -> Result<usize, PortError> {
     Ok(read_port_source(source_path)?.lines().count())
 }
 
-pub fn verify_extracted_functions(source_path: &str, extracted_functions: &[&'static str]) -> Result<(), PortError> {
+pub fn verify_extracted_functions(
+    source_path: &str,
+    extracted_functions: &[&'static str],
+) -> Result<(), PortError> {
     let source = read_port_source(source_path)?;
     for function in extracted_functions {
         if !source.contains(function) {
@@ -177,9 +180,18 @@ mod tests {
 
     #[test]
     fn determine_compression_matches_suffixes() {
-        assert_eq!(determine_compression_from_filename("image.raw.xz"), ImportCompressType::Xz);
-        assert_eq!(determine_compression_from_filename("image.raw.gz"), ImportCompressType::Gzip);
-        assert_eq!(determine_compression_from_filename("image.raw"), ImportCompressType::Uncompressed);
+        assert_eq!(
+            determine_compression_from_filename("image.raw.xz"),
+            ImportCompressType::Xz
+        );
+        assert_eq!(
+            determine_compression_from_filename("image.raw.gz"),
+            ImportCompressType::Gzip
+        );
+        assert_eq!(
+            determine_compression_from_filename("image.raw"),
+            ImportCompressType::Uncompressed
+        );
     }
 
     #[test]

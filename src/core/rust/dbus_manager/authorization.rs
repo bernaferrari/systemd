@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 use super::{
-    manager_dispatch, map_method_call_to_request, map_reply_to_method_result, ManagerMethodCall,
-    ManagerMethodResultPayload, ManagerRecord, ManagerRequest, Result,
+    ManagerMethodCall, ManagerMethodResultPayload, ManagerRecord, ManagerRequest, Result,
+    manager_dispatch, map_method_call_to_request, map_reply_to_method_result,
 };
 use crate::dbus_util::{
-    bus_verify_manage_units_authorization, bus_verify_polkit_action_authorization,
     POLKIT_ACTION_RELOAD_DAEMON, POLKIT_ACTION_SET_ENVIRONMENT,
+    bus_verify_manage_units_authorization, bus_verify_polkit_action_authorization,
 };
 use crate::ffi::Errno;
 use crate::runtime_manager::RuntimeManager;

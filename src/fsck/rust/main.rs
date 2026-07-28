@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-fsck
 
-use systemd_fsck_rs::fsck::{parse_mode, parse_repair, repair_option, Mode, Repair};
+use systemd_fsck_rs::fsck::{Mode, Repair, parse_mode, parse_repair, repair_option};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const FSCK_PATH: &str = "/sbin/fsck";

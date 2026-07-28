@@ -22,7 +22,9 @@ const BACKLIGHT_SAVE_DIR: &std::ffi::CStr = c"/var/lib/systemd/backlight/";
 /// `device` must reference a live `sd_device` accepted by the linked C
 /// implementation, and `ret_max` must be valid for one `u32` write.
 unsafe fn read_max_brightness(device: *mut libc::c_void, ret_max: *mut u32) -> i32 {
-    extern "C" {
+    // SAFETY: this is the exact device_get_sysattr_unsigned_full declaration
+    // from sd-device; the call below supplies its documented pointer types.
+    unsafe extern "C" {
         fn device_get_sysattr_unsigned_full(
             device: *mut libc::c_void,
             attr: *const libc::c_char,
@@ -58,7 +60,9 @@ unsafe fn read_brightness(
     max_brightness: u32,
     ret_brightness: *mut u32,
 ) -> i32 {
-    extern "C" {
+    // SAFETY: this is the exact device_get_sysattr_unsigned_full declaration
+    // from sd-device; the call below supplies its documented pointer types.
+    unsafe extern "C" {
         fn device_get_sysattr_unsigned_full(
             device: *mut libc::c_void,
             attr: *const libc::c_char,
@@ -121,7 +125,9 @@ pub fn clamp_brightness(
 /// for one pointer write. The C allocation functions must use storage that is
 /// compatible with `libc::free`.
 unsafe fn build_save_file_path(device: *mut libc::c_void, ret_path: *mut *mut libc::c_char) -> i32 {
-    extern "C" {
+    // SAFETY: these declarations mirror the sd-device and basic string helper
+    // ABIs; calls below validate inputs and preserve C allocator ownership.
+    unsafe extern "C" {
         fn sd_device_get_subsystem(dev: *mut libc::c_void, ret: *mut *const libc::c_char) -> i32;
         fn sd_device_get_sysname(dev: *mut libc::c_void, ret: *mut *const libc::c_char) -> i32;
         fn sd_device_get_property_value(

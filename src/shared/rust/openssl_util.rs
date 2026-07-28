@@ -139,7 +139,7 @@ pub fn hex_encode(data: &[u8]) -> String {
 }
 
 pub fn compute_hash(data: &[u8], alg: &str) -> Result<Vec<u8>> {
-    use openssl::hash::{hash, MessageDigest};
+    use openssl::hash::{MessageDigest, hash};
 
     let md = match alg.to_uppercase().as_str() {
         "SHA256" | "SHA-256" => MessageDigest::sha256(),

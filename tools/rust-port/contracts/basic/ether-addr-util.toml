@@ -25,7 +25,7 @@ rust_symbols = ["rs_hw_addr_to_string_full"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "scalar"
-errors = "nullable"
+errors = "none"
 runtime = "none"
 verification = "static-only"
 
@@ -33,7 +33,14 @@ verification = "static-only"
 arg = "buffer"
 ownership = "caller-storage"
 publication_success = "write"
-publication_error = "unchanged"
+publication_error = "n/a"
+optional = false
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
 optional = false
 
 [surface.static_fixture]
@@ -48,7 +55,7 @@ rust_symbols = ["rs_ether_addr_to_string"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "scalar"
-errors = "nullable"
+errors = "none"
 runtime = "none"
 verification = "static-only"
 
@@ -56,7 +63,14 @@ verification = "static-only"
 arg = "buffer"
 ownership = "caller-storage"
 publication_success = "write"
-publication_error = "unchanged"
+publication_error = "n/a"
+optional = false
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
 optional = false
 
 [surface.static_fixture]
@@ -143,7 +157,7 @@ verification = "static-only"
 arg = "addr"
 ownership = "caller-storage"
 publication_success = "write"
-publication_error = "unchanged"
+publication_error = "n/a"
 optional = false
 
 [surface.static_fixture]
@@ -158,7 +172,7 @@ rust_symbols = ["rs_hw_addr_set"]
 coverage = "exact"
 abi = "c-exact"
 bytes = "ptr-len-opaque"
-errors = "nullable"
+errors = "none"
 runtime = "none"
 verification = "static-only"
 
@@ -167,6 +181,13 @@ arg = "addr"
 ownership = "caller-storage"
 publication_success = "write"
 publication_error = "unchanged"
+optional = false
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
 optional = false
 
 [surface.static_fixture]

@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-mute-console
 
-use systemd_mute_console_rs::{format_startup_notify, format_stopping_notify, MuteContext};
+use systemd_mute_console_rs::{MuteContext, format_startup_notify, format_stopping_notify};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

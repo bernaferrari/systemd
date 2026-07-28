@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use crate::home_util::{suitable_blob_filename, BlobFdMap};
+use crate::home_util::{BlobFdMap, suitable_blob_filename};
 use crate::user_record_util::UserRecord;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

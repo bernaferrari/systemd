@@ -17,11 +17,9 @@ pub const INCLUDED_HEADERS: &[&str] = &[
     "mtd_probe.h",
     "stdio.h",
     "string.h",
-    "unistd.h"
+    "unistd.h",
 ];
-pub const EXPORTED_C_FUNCTIONS: &[&str] = &[
-    "probe_smart_media"
-];
+pub const EXPORTED_C_FUNCTIONS: &[&str] = &["probe_smart_media"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortSummary {
@@ -44,7 +42,7 @@ pub fn port_status() -> Result<(), Errno> {
     Err(Errno::ENOSYS)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rs_mtd_probe_probe_smartmedia_port_stub() -> i32 {
     port_status().err().unwrap_or(Errno::EINVAL).to_neg_errno()
 }
@@ -62,7 +60,10 @@ mod tests {
 
     #[test]
     fn ffi_stub_reports_enosys() {
-        assert_eq!(rs_mtd_probe_probe_smartmedia_port_stub(), Errno::ENOSYS.to_neg_errno());
+        assert_eq!(
+            rs_mtd_probe_probe_smartmedia_port_stub(),
+            Errno::ENOSYS.to_neg_errno()
+        );
     }
 
     #[test]

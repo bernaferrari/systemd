@@ -10,18 +10,17 @@ use super::index::{
 };
 use super::validation::validate_journal_header;
 use super::wire::{
-    align64, build_empty_journal_file, jenkins_hash64, journal_hash_data, journal_uses_compact,
-    read_array, read_journal_header, read_object_header_at, read_object_payload_bytes, read_u32_le,
-    read_u64_le, Header, JournalAppendResult, JournalEntryItem, JournalFileOnDisk, JournalRecord,
-    ObjectHeader, COMPACT_DATA_OBJECT_STATIC_SIZE, COMPACT_ENTRY_ITEM_SIZE,
-    DATA_OBJECT_STATIC_SIZE, ENTRY_OBJECT_STATIC_SIZE, HEADER_COMPATIBLE_SEALED,
-    HEADER_COMPATIBLE_SEALED_CONTINUOUS, HEADER_COMPATIBLE_SUPPORTED,
-    HEADER_COMPATIBLE_TAIL_ENTRY_BOOT_ID, HEADER_INCOMPATIBLE_COMPACT,
-    HEADER_INCOMPATIBLE_SUPPORTED, JOURNAL_COMPACT_SIZE_MAX, OBJECT_DATA, OBJECT_ENTRY,
-    REGULAR_ENTRY_ITEM_SIZE,
+    COMPACT_DATA_OBJECT_STATIC_SIZE, COMPACT_ENTRY_ITEM_SIZE, DATA_OBJECT_STATIC_SIZE,
+    ENTRY_OBJECT_STATIC_SIZE, HEADER_COMPATIBLE_SEALED, HEADER_COMPATIBLE_SEALED_CONTINUOUS,
+    HEADER_COMPATIBLE_SUPPORTED, HEADER_COMPATIBLE_TAIL_ENTRY_BOOT_ID, HEADER_INCOMPATIBLE_COMPACT,
+    HEADER_INCOMPATIBLE_SUPPORTED, Header, JOURNAL_COMPACT_SIZE_MAX, JournalAppendResult,
+    JournalEntryItem, JournalFileOnDisk, JournalRecord, OBJECT_DATA, OBJECT_ENTRY, ObjectHeader,
+    REGULAR_ENTRY_ITEM_SIZE, align64, build_empty_journal_file, jenkins_hash64, journal_hash_data,
+    journal_uses_compact, read_array, read_journal_header, read_object_header_at,
+    read_object_payload_bytes, read_u32_le, read_u64_le,
 };
 use crate::id128_util::SdId128;
-use crate::sd_id128_api::{sd_id128_get_machine, NEG_ENOMEDIUM, NEG_ENOPKG};
+use crate::sd_id128_api::{NEG_ENOMEDIUM, NEG_ENOPKG, sd_id128_get_machine};
 use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};

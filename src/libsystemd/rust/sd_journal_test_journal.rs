@@ -2,6 +2,7 @@
 //
 // PORT-SYNC: src/libsystemd/sd-journal/test-journal.c
 //
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -15,6 +16,9 @@ pub const JOURNAL_COMPRESS: u32 = 1;
 pub const JOURNAL_SEAL: u32 = 2;
 pub const DIRECTION_DOWN: i32 = 1;
 pub const DIRECTION_UP: i32 = -1;
+thread_local! {
+    static COMPACT_MODE: Cell<bool> = const { Cell::new(false) };
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DualTimestamp {
@@ -174,12 +178,11 @@ pub fn has_machine_id() -> bool {
 }
 
 pub fn is_compact_mode() -> bool {
-    std::env::var("SYSTEMD_JOURNAL_COMPACT").is_ok_and(|v| v == "1")
+    COMPACT_MODE.get()
 }
 
 pub fn set_compact_mode(enabled: bool) {
-    // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-    unsafe { std::env::set_var("SYSTEMD_JOURNAL_COMPACT", if enabled { "1" } else { "0" }) };
+    COMPACT_MODE.set(enabled);
 }
 
 pub fn is_valid_secpar(secpar: u32) -> bool {

@@ -548,21 +548,31 @@ mod tests {
 
     #[test]
     fn naming_scheme_flags_match_c_transitions() {
-        assert!(NamingScheme::V239
-            .flags()
-            .contains(NamingSchemeFlags::NAMING_SR_IOV_V | NamingSchemeFlags::NAMING_NPAR_ARI));
-        assert!(NamingScheme::V254
-            .flags()
-            .contains(NamingSchemeFlags::NAMING_SR_IOV_R));
-        assert!(NamingScheme::V254
-            .flags()
-            .contains(NamingSchemeFlags::NAMING_BRIDGE_MULTIFUNCTION_SLOT));
-        assert!(!NamingScheme::V255
-            .flags()
-            .contains(NamingSchemeFlags::NAMING_BRIDGE_MULTIFUNCTION_SLOT));
-        assert!(NamingScheme::V260
-            .flags()
-            .contains(NamingSchemeFlags::NAMING_MCTP));
+        assert!(
+            NamingScheme::V239
+                .flags()
+                .contains(NamingSchemeFlags::NAMING_SR_IOV_V | NamingSchemeFlags::NAMING_NPAR_ARI)
+        );
+        assert!(
+            NamingScheme::V254
+                .flags()
+                .contains(NamingSchemeFlags::NAMING_SR_IOV_R)
+        );
+        assert!(
+            NamingScheme::V254
+                .flags()
+                .contains(NamingSchemeFlags::NAMING_BRIDGE_MULTIFUNCTION_SLOT)
+        );
+        assert!(
+            !NamingScheme::V255
+                .flags()
+                .contains(NamingSchemeFlags::NAMING_BRIDGE_MULTIFUNCTION_SLOT)
+        );
+        assert!(
+            NamingScheme::V260
+                .flags()
+                .contains(NamingSchemeFlags::NAMING_MCTP)
+        );
     }
 
     #[test]

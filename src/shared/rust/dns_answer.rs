@@ -709,9 +709,11 @@ mod tests {
         let merged = DnsAnswer::merge(&a, &b);
         // Both items from a (raw) and b (dedup) → 1 item with merged flags.
         assert_eq!(merged.size(), 1);
-        assert!(merged.items[0]
-            .flags
-            .contains(DnsAnswerFlags::AUTHENTICATED));
+        assert!(
+            merged.items[0]
+                .flags
+                .contains(DnsAnswerFlags::AUTHENTICATED)
+        );
         assert!(merged.items[0].flags.contains(DnsAnswerFlags::CACHEABLE));
     }
 

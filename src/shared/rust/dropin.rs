@@ -921,9 +921,11 @@ mod tests {
         // Only the dir that exists in the cache should be present
         assert!(paths.contains(&"/etc/systemd/system/foo.service.d".to_owned()));
         // The type-level "service.d" is NOT in the cache, so it should be excluded
-        assert!(!paths
-            .iter()
-            .any(|p| p.contains("service.d") && !p.contains("foo.service")));
+        assert!(
+            !paths
+                .iter()
+                .any(|p| p.contains("service.d") && !p.contains("foo.service"))
+        );
     }
 
     // ── write_drop_in tests (uses tempdir) ─────────────────────────────

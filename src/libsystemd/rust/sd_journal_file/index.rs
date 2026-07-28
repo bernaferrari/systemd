@@ -4,18 +4,17 @@
 //
 
 use super::wire::{
-    append_raw_object, entry_array_item_size, journal_uses_compact, read_object_header_at,
-    read_object_payload_bytes, read_object_size, read_u32_at, read_u64_at, valid_monotonic,
-    valid_realtime, write_journal_header, write_u32_at, write_u64_at, HashItem, Header,
-    JournalEntryItem, COMPACT_DATA_OBJECT_STATIC_SIZE,
-    COMPACT_DATA_TAIL_ENTRY_ARRAY_N_ENTRIES_OFFSET_OFFSET,
+    COMPACT_DATA_OBJECT_STATIC_SIZE, COMPACT_DATA_TAIL_ENTRY_ARRAY_N_ENTRIES_OFFSET_OFFSET,
     COMPACT_DATA_TAIL_ENTRY_ARRAY_OFFSET_OFFSET, COMPACT_ENTRY_ITEM_SIZE,
-    DATA_ENTRY_ARRAY_OFFSET_OFFSET, DATA_ENTRY_OFFSET_OFFSET, DATA_NEXT_FIELD_OFFSET_OFFSET,
-    DATA_NEXT_HASH_OFFSET_OFFSET, DATA_N_ENTRIES_OFFSET_OFFSET, DATA_OBJECT_STATIC_SIZE,
+    DATA_ENTRY_ARRAY_OFFSET_OFFSET, DATA_ENTRY_OFFSET_OFFSET, DATA_N_ENTRIES_OFFSET_OFFSET,
+    DATA_NEXT_FIELD_OFFSET_OFFSET, DATA_NEXT_HASH_OFFSET_OFFSET, DATA_OBJECT_STATIC_SIZE,
     ENTRY_ARRAY_ITEMS_OFFSET, ENTRY_ARRAY_NEXT_OFFSET_OFFSET, ENTRY_ARRAY_OBJECT_STATIC_SIZE,
     ENTRY_OBJECT_STATIC_SIZE, FIELD_HEAD_DATA_OFFSET_OFFSET, FIELD_NEXT_HASH_OFFSET_OFFSET,
-    FIELD_OBJECT_STATIC_SIZE, OBJECT_DATA, OBJECT_ENTRY, OBJECT_ENTRY_ARRAY, OBJECT_FIELD,
-    REGULAR_ENTRY_ITEM_SIZE,
+    FIELD_OBJECT_STATIC_SIZE, HashItem, Header, JournalEntryItem, OBJECT_DATA, OBJECT_ENTRY,
+    OBJECT_ENTRY_ARRAY, OBJECT_FIELD, REGULAR_ENTRY_ITEM_SIZE, append_raw_object,
+    entry_array_item_size, journal_uses_compact, read_object_header_at, read_object_payload_bytes,
+    read_object_size, read_u32_at, read_u64_at, valid_monotonic, valid_realtime,
+    write_journal_header, write_u32_at, write_u64_at,
 };
 use crate::id128_util::SdId128;
 use std::fs::File;

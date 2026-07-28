@@ -15,7 +15,9 @@ exact executable object (the common `rust_test_exe = executable(...); test(...,
 rust_test_exe)` reassignment pattern in `tests-extra/meson.build`). A
 same-name `test()` that references an unbound or stale variable fails. Any
 intervening assignment invalidates the binding unless it directly assigns a
-new `executable()` object.
+new `executable()` object. A different executable object with the same target
+name cannot prove the Rust-linked object was registered, and calls written
+only in Meson comments or string literals are ignored.
 
 New fixtures must use `test-<semantic-subject>-<behavior>-rust.c`. Historical
 chronological names such as `extraN` and `rustN` are retained only in

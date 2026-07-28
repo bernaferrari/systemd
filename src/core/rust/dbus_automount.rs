@@ -288,19 +288,23 @@ mod tests {
             ..AutomountUnit::default()
         };
 
-        assert!(!bus_automount_set_property(
-            &mut loaded,
-            "Where",
-            PropertyValue::Path("/srv".into()),
-            UnitWriteFlags::NONE,
-        )
-        .unwrap());
-        assert!(!bus_automount_set_property(
-            &mut non_transient,
-            "Where",
-            PropertyValue::Path("/srv".into()),
-            UnitWriteFlags::NONE,
-        )
-        .unwrap());
+        assert!(
+            !bus_automount_set_property(
+                &mut loaded,
+                "Where",
+                PropertyValue::Path("/srv".into()),
+                UnitWriteFlags::NONE,
+            )
+            .unwrap()
+        );
+        assert!(
+            !bus_automount_set_property(
+                &mut non_transient,
+                "Where",
+                PropertyValue::Path("/srv".into()),
+                UnitWriteFlags::NONE,
+            )
+            .unwrap()
+        );
     }
 }

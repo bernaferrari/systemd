@@ -159,7 +159,10 @@ impl fmt::Display for DnsConfigurationError {
                     f,
                     "field '{field}' has wrong type: expected {expected}, got {actual}"
                 ),
-                None => write!(f, "JSON value has wrong type: expected {expected}, got {actual}"),
+                None => write!(
+                    f,
+                    "JSON value has wrong type: expected {expected}, got {actual}"
+                ),
             },
             Self::IntegerOutOfRange { field, value } => {
                 write!(f, "field '{field}' is out of range: {value}")

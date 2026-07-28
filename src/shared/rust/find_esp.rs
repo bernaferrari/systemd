@@ -848,6 +848,7 @@ use std::ffi::CString;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
 
     // ── Error display ──
 
@@ -929,7 +930,10 @@ mod tests {
     #[test]
     fn test_verify_esp_flags_init_no_relax() {
         // Without the env var set, SKIP flags should be clear.
-        std::env::remove_var(ENV_RELAX_ESP_CHECKS);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_RELAX_ESP_CHECKS);
         let flags = verify_esp_flags_init(Some(false), ENV_RELAX_ESP_CHECKS);
         assert!(!flags.contains(VerifyEspFlags::SKIP_FSTYPE_CHECK));
         assert!(!flags.contains(VerifyEspFlags::SKIP_DEVICE_CHECK));
@@ -938,7 +942,10 @@ mod tests {
 
     #[test]
     fn test_verify_esp_flags_init_unprivileged() {
-        std::env::remove_var(ENV_RELAX_ESP_CHECKS);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_RELAX_ESP_CHECKS);
         let flags = verify_esp_flags_init(Some(true), ENV_RELAX_ESP_CHECKS);
         assert!(flags.contains(VerifyEspFlags::UNPRIVILEGED_MODE));
     }
@@ -972,40 +979,41 @@ mod tests {
 
     #[test]
     fn test_parse_env_bool() {
-        std::env::set_var("TEST_FIND_ESP_BOOL", "1");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set("TEST_FIND_ESP_BOOL", "1");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(true));
 
-        std::env::set_var("TEST_FIND_ESP_BOOL", "yes");
+        environment.set("TEST_FIND_ESP_BOOL", "yes");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(true));
 
-        std::env::set_var("TEST_FIND_ESP_BOOL", "true");
+        environment.set("TEST_FIND_ESP_BOOL", "true");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(true));
 
-        std::env::set_var("TEST_FIND_ESP_BOOL", "on");
+        environment.set("TEST_FIND_ESP_BOOL", "on");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(true));
 
-        std::env::set_var("TEST_FIND_ESP_BOOL", "0");
+        environment.set("TEST_FIND_ESP_BOOL", "0");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(false));
 
-        std::env::set_var("TEST_FIND_ESP_BOOL", "no");
+        environment.set("TEST_FIND_ESP_BOOL", "no");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(false));
 
-        std::env::set_var("TEST_FIND_ESP_BOOL", "false");
+        environment.set("TEST_FIND_ESP_BOOL", "false");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(false));
 
-        std::env::set_var("TEST_FIND_ESP_BOOL", "off");
+        environment.set("TEST_FIND_ESP_BOOL", "off");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(false));
 
-        std::env::set_var("TEST_FIND_ESP_BOOL", "");
+        environment.set("TEST_FIND_ESP_BOOL", "");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), None);
 
-        std::env::remove_var("TEST_FIND_ESP_BOOL");
+        environment.remove("TEST_FIND_ESP_BOOL");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), None);
 
-        std::env::set_var("TEST_FIND_ESP_BOOL", "invalid");
+        environment.set("TEST_FIND_ESP_BOOL", "invalid");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), None);
-
-        std::env::remove_var("TEST_FIND_ESP_BOOL");
     }
 
     // ── EspInfo ──
@@ -1099,7 +1107,10 @@ mod tests {
     fn test_find_esp_not_found() {
         // In a test environment, none of the standard paths should be a valid
         // ESP (no FAT filesystem, no GPT partition, etc.)
-        std::env::remove_var(ENV_ESP_PATH);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_ESP_PATH);
         let result = find_esp_and_warn(None, Some(false));
         // We expect either NotFound or some other verification error.
         // The exact error depends on the test environment.
@@ -1113,7 +1124,10 @@ mod tests {
 
     #[test]
     fn test_find_xbootldr_not_found() {
-        std::env::remove_var(ENV_XBOOTLDR_PATH);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_XBOOTLDR_PATH);
         let result = find_xbootldr_and_warn(None, Some(false));
         assert!(
             result.is_err(),
@@ -1163,7 +1177,10 @@ mod tests {
 
     #[test]
     fn test_take_esp_mount_point_not_found() {
-        std::env::remove_var(ENV_ESP_PATH);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.remove(ENV_ESP_PATH);
         let result = take_esp_mount_point(None, Some(false));
         assert!(result.is_err());
     }

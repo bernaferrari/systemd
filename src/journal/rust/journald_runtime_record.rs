@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 use super::*;
-use crate::fuzz_journald_native::{parse_native_datagram, NativeError, NativeMessage};
+use crate::fuzz_journald_native::{NativeError, NativeMessage, parse_native_datagram};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct RateLimitConfig {

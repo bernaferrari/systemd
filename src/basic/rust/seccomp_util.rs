@@ -6,7 +6,7 @@
 // deliberately does not pretend to implement the libseccomp filter runtime;
 // that larger boundary remains owned by src/shared/seccomp-util.c.
 
-use std::ffi::{c_char, c_int, CStr};
+use std::ffi::{CStr, c_char, c_int};
 use std::ptr;
 
 use crate::ffi::Errno;

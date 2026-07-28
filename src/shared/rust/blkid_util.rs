@@ -7,7 +7,7 @@
 // type string lookup.  All libblkid symbols are resolved through dlopen
 // so the module gracefully degrades when libblkid is absent.
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -255,11 +255,22 @@ impl SdId128 {
         let b = &self.0;
         format!(
             "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-            b[0], b[1], b[2], b[3],
-            b[4], b[5],
-            b[6], b[7],
-            b[8], b[9],
-            b[10], b[11], b[12], b[13], b[14], b[15],
+            b[0],
+            b[1],
+            b[2],
+            b[3],
+            b[4],
+            b[5],
+            b[6],
+            b[7],
+            b[8],
+            b[9],
+            b[10],
+            b[11],
+            b[12],
+            b[13],
+            b[14],
+            b[15],
         )
     }
 
@@ -282,11 +293,7 @@ fn c_str_to_option(ptr: *const libc::c_char) -> Option<String> {
     let s = unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.is_empty() { None } else { Some(s) }
 }
 
 // ── Partition UUID / type helpers ───────────────────────────────────────────
@@ -650,12 +657,16 @@ mod tests {
     #[test]
     fn test_blkid_error_display() {
         assert!(!BlkidError::Unsupported.to_string().is_empty());
-        assert!(!BlkidError::DlopenFailed("test".into())
-            .to_string()
-            .is_empty());
-        assert!(!BlkidError::SymbolNotFound("sym".into())
-            .to_string()
-            .is_empty());
+        assert!(
+            !BlkidError::DlopenFailed("test".into())
+                .to_string()
+                .is_empty()
+        );
+        assert!(
+            !BlkidError::SymbolNotFound("sym".into())
+                .to_string()
+                .is_empty()
+        );
         assert!(!BlkidError::NotFound.to_string().is_empty());
         assert!(!BlkidError::ParseError("err".into()).to_string().is_empty());
     }

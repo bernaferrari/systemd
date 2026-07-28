@@ -19,14 +19,40 @@ pub struct LinkSetupResult {
 
 pub fn choose_link_setup(policy: &LinkPolicy, stable_name: Option<&str>) -> LinkSetupResult {
     LinkSetupResult {
-        chosen_name: stable_name.map(str::to_string).or_else(|| policy.alternative_names.first().cloned()),
-        applied_policies: std::iter::once(policy.mac_policy.clone()).chain(policy.name_policy.iter().cloned()).collect(),
+        chosen_name: stable_name
+            .map(str::to_string)
+            .or_else(|| policy.alternative_names.first().cloned()),
+        applied_policies: std::iter::once(policy.mac_policy.clone())
+            .chain(policy.name_policy.iter().cloned())
+            .collect(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn prefers_stable_name() { let result = choose_link_setup(&LinkPolicy { mac_policy: "persistent".into(), name_policy: vec!["kernel".into()], alternative_names: vec!["enp0s1".into()] }, Some("eno1")); assert_eq!(result.chosen_name.as_deref(), Some("eno1")); }
-    #[test] fn falls_back_to_alternative_name() { let result = choose_link_setup(&LinkPolicy { mac_policy: "none".into(), name_policy: vec![], alternative_names: vec!["enp0s1".into()] }, None); assert_eq!(result.chosen_name.as_deref(), Some("enp0s1")); }
+    #[test]
+    fn prefers_stable_name() {
+        let result = choose_link_setup(
+            &LinkPolicy {
+                mac_policy: "persistent".into(),
+                name_policy: vec!["kernel".into()],
+                alternative_names: vec!["enp0s1".into()],
+            },
+            Some("eno1"),
+        );
+        assert_eq!(result.chosen_name.as_deref(), Some("eno1"));
+    }
+    #[test]
+    fn falls_back_to_alternative_name() {
+        let result = choose_link_setup(
+            &LinkPolicy {
+                mac_policy: "none".into(),
+                name_policy: vec![],
+                alternative_names: vec!["enp0s1".into()],
+            },
+            None,
+        );
+        assert_eq!(result.chosen_name.as_deref(), Some("enp0s1"));
+    }
 }

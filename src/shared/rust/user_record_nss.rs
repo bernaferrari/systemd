@@ -258,11 +258,7 @@ pub fn looks_like_hashed_password(s: &str) -> bool {
 
 /// Convert an empty string to `None`, pass non-empty through.
 pub fn empty_to_none(s: &str) -> Option<&str> {
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.is_empty() { None } else { Some(s) }
 }
 
 // ── Shadow time conversion ───────────────────────────────────────────────

@@ -141,11 +141,7 @@ pub fn signal_to_string(signal: i32) -> String {
 }
 
 pub fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
-    }
+    if value { "yes" } else { "no" }
 }
 
 pub fn kill_context_dump(context: &KillContext, prefix: Option<&str>) -> String {

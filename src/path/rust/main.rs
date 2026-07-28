@@ -3,7 +3,7 @@
 //
 // Binary entry point for systemd-path
 
-use systemd_path_rs::{sorted_path_names, PATH_TABLE};
+use systemd_path_rs::{PATH_TABLE, sorted_path_names};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

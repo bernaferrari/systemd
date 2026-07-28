@@ -241,15 +241,19 @@ mod tests {
 
     #[test]
     fn wireguard_policy_contains_nested_peers() {
-        assert!(GENL_WIREGUARD_POLICIES
-            .iter()
-            .any(|p| p.kind == PolicyType::Nested("genl_wireguard_peer")));
+        assert!(
+            GENL_WIREGUARD_POLICIES
+                .iter()
+                .any(|p| p.kind == PolicyType::Nested("genl_wireguard_peer"))
+        );
     }
 
     #[test]
     fn batadv_contains_fixed_size_ether_addr() {
-        assert!(GENL_BATADV_POLICIES
-            .iter()
-            .any(|p| p.kind == PolicyType::EtherAddr && p.size == 6));
+        assert!(
+            GENL_BATADV_POLICIES
+                .iter()
+                .any(|p| p.kind == PolicyType::EtherAddr && p.size == 6)
+        );
     }
 }

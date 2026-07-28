@@ -145,10 +145,12 @@ mod tests {
 
     #[test]
     fn disconnected_has_no_payload() {
-        assert!(local_error(VL_ERROR_DISCONNECTED)
-            .unwrap()
-            .fields
-            .is_empty());
+        assert!(
+            local_error(VL_ERROR_DISCONNECTED)
+                .unwrap()
+                .fields
+                .is_empty()
+        );
     }
 
     #[test]

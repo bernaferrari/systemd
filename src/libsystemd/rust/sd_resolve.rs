@@ -14,7 +14,7 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::net::UnixDatagram;
 use std::ptr;
 use std::rc::Rc;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 

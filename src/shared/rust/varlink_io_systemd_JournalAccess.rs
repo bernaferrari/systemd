@@ -308,11 +308,15 @@ mod tests {
     #[test]
     fn test_error_ids() {
         assert_eq!(ERROR_IDS.len(), 2);
-        assert!(JournalAccessError::NoMatches
-            .error_id()
-            .contains("NoMatches"));
-        assert!(JournalAccessError::NoEntries
-            .error_id()
-            .contains("NoEntries"));
+        assert!(
+            JournalAccessError::NoMatches
+                .error_id()
+                .contains("NoMatches")
+        );
+        assert!(
+            JournalAccessError::NoEntries
+                .error_id()
+                .contains("NoEntries")
+        );
     }
 }

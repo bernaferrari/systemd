@@ -35,3 +35,15 @@ name the C `symbols` it describes; this prevents one function's ownership or
 publication rules from being attributed to unrelated functions in the group.
 Its `arg` must name a parameter in each affected C declaration, or use
 `return` for the function return value.
+
+Every contract file below `contracts/` must have one unique `map.toml`
+`contract_file` owner. A `c-exact` surface pairs each C symbol positionally
+with `rs_<C symbol>`. Static fixture evidence must be the exact registered
+`tests-extra/` source and must contain call/reference-shaped C and Rust tokens
+in code; comments and string literals are not evidence.
+
+For a scoped port, each Rust leaf's preamble names its direct local authority
+as `PORT-SYNC: scope=<scope>; authority=<path>[,<path>...]`. Those paths must
+be normalized members of the map's `c_paths`. The map may additionally pin
+the reviewed transitive authority closure so changes below a direct helper
+also invalidate the scope's review snapshot.

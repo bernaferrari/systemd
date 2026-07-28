@@ -120,7 +120,7 @@ verification = "static-only"
 
 [[surface.output]]
 arg = "iovec"
-ownership = "borrowed"
+ownership = "caller-storage"
 publication_success = "write"
 publication_error = "n/a"
 optional = false
@@ -187,6 +187,13 @@ publication_success = "write"
 publication_error = "n/a"
 optional = false
 
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
 [surface.static_fixture]
 file = "tests-extra/test-iovec-util-rust.c"
 meson_target = "test-iovec-util-rust"
@@ -224,6 +231,13 @@ arg = "ret"
 ownership = "caller-storage"
 publication_success = "write"
 publication_error = "unchanged"
+optional = false
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
 optional = false
 
 [surface.static_fixture]

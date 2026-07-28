@@ -8,12 +8,12 @@ use std::hash::{Hash, Hasher};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use super::key::{
-    dns_name_change_suffix, dns_name_startswith, dns_type_may_redirect, eq_name, skip_labels,
-    DnsResourceKey,
+    DnsResourceKey, dns_name_change_suffix, dns_name_startswith, dns_type_may_redirect, eq_name,
+    skip_labels,
 };
 use super::model::{
-    DnsClass, DnsSvcParam, DnsTxtItem, DnsType, ParseError, Rdata, AF_INET, AF_INET6,
-    DNSKEY_FLAG_REVOKE,
+    AF_INET, AF_INET6, DNSKEY_FLAG_REVOKE, DnsClass, DnsSvcParam, DnsTxtItem, DnsType, ParseError,
+    Rdata,
 };
 
 #[derive(Debug, Clone)]

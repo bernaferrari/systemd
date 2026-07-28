@@ -291,9 +291,10 @@ mod tests {
     #[test]
     fn seek_monotonic_is_boot_specific() {
         let mut j = journal();
-        assert!(j
-            .seek_monotonic_usec(SdId128::from_byte(2), 15, true)
-            .unwrap());
+        assert!(
+            j.seek_monotonic_usec(SdId128::from_byte(2), 15, true)
+                .unwrap()
+        );
         assert_eq!(j.current().unwrap().number, 5);
     }
 

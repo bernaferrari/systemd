@@ -9,8 +9,8 @@ use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::pe_binary::{
-    pe_load_headers, pe_load_sections, pe_read_section_data_by_name, ImageSectionHeader, PeError,
-    PeHeader,
+    ImageSectionHeader, PeError, PeHeader, pe_load_headers, pe_load_sections,
+    pe_read_section_data_by_name,
 };
 
 pub const SOURCE_C_FILE: &str = "src/shared/kernel-image.c";

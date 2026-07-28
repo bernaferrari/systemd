@@ -6,6 +6,6 @@
 pub mod stdio_bridge;
 
 pub use stdio_bridge::{
-    parse_args, parse_args_detailed, print_version, run_bridge, BridgeConfig, BridgeError,
-    BridgeFds, ParseAction, ParseFailure, ParsedArgs,
+    BridgeConfig, BridgeError, BridgeFds, ParseAction, ParseFailure, ParsedArgs, parse_args,
+    parse_args_detailed, print_version, run_bridge,
 };

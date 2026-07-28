@@ -6,9 +6,9 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use super::model::{
-    is_valid_unit_name, ActiveState, DependencyKind, JobKind, LoadState, ManagerRecord, PidRef,
-    PresetAction, QueueKind, Result, Unit, UnitError, UnitFileState, UnitMarker, UnitRef,
-    UnitStatusType, UnitType,
+    ActiveState, DependencyKind, JobKind, LoadState, ManagerRecord, PidRef, PresetAction,
+    QueueKind, Result, Unit, UnitError, UnitFileState, UnitMarker, UnitRef, UnitStatusType,
+    UnitType, is_valid_unit_name,
 };
 use super::relationships::{unit_add_dependency_by_name, unit_add_two_dependencies_by_name};
 

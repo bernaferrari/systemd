@@ -459,8 +459,9 @@ mod tests {
             certificate: None,
             ..Default::default()
         };
-        assert!(args
-            .validate_private_key_source_needs_certificate()
-            .is_err());
+        assert!(
+            args.validate_private_key_source_needs_certificate()
+                .is_err()
+        );
     }
 }

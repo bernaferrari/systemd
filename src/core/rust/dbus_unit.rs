@@ -1018,9 +1018,11 @@ mod tests {
             property_get_dependencies(&sample_unit(), "Requires").unwrap(),
             vec!["a.service", "b.service"]
         );
-        assert!(property_get_dependencies(&sample_unit(), "Wants")
-            .unwrap()
-            .is_empty());
+        assert!(
+            property_get_dependencies(&sample_unit(), "Wants")
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

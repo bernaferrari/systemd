@@ -9,7 +9,7 @@
 // skeletons), and error-code translation for kernel-internal BPF errors.
 
 use std::collections::HashSet;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 

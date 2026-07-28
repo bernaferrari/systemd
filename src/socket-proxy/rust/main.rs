@@ -6,8 +6,8 @@
 // PORT-SYNC: src/socket-proxy/socket-proxyd.c
 
 use systemd_socket_proxy_rs::{
-    parse_time_span_usec, validate_connections_max, ProxyConfig, ProxyError,
-    DEFAULT_CONNECTIONS_MAX, DEFAULT_EXIT_IDLE_TIME,
+    DEFAULT_CONNECTIONS_MAX, DEFAULT_EXIT_IDLE_TIME, ProxyConfig, ProxyError, parse_time_span_usec,
+    validate_connections_max,
 };
 
 #[cfg(target_os = "linux")]

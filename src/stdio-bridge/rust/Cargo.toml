@@ -11,12 +11,12 @@
 publish = false
 name = "systemd-stdio-bridge-rs"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 systemd-basic-rs = { path = "../../basic/rust" }
 systemd-libsystemd-rs = { path = "../../libsystemd/rust" }
-libc = "0.2"
+libc = { workspace = true }
 
 [lib]
 crate-type = ["lib"]

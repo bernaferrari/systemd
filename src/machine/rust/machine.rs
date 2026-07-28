@@ -4,7 +4,9 @@
 //
 // Safe Rust synchronization metadata for the matching machine module.
 
-use crate::common::{count_port_source_lines, read_port_source, verify_extracted_functions, Errno, PortMetadata};
+use crate::common::{
+    Errno, PortMetadata, count_port_source_lines, read_port_source, verify_extracted_functions,
+};
 
 pub const SOURCE_PATH: &str = "src/machine/machine.c";
 pub const EXTRACTED_FUNCTIONS: &[&str] = &[
@@ -43,7 +45,7 @@ pub const EXTRACTED_FUNCTIONS: &[&str] = &[
     "machine_unlink",
     "machine_watch_cgroup",
     "machine_watch_pidfd",
-    "parse_pid_and_pidfdid"
+    "parse_pid_and_pidfdid",
 ];
 
 pub fn metadata() -> Result<PortMetadata, Errno> {

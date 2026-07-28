@@ -2,7 +2,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use systemd_journal_rust_port::journald_runtime::{
-    execute, help_text, parse_args, JournalRuntime, JournaldError, Mode,
+    JournalRuntime, JournaldError, Mode, execute, help_text, parse_args,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -215,7 +215,7 @@ impl CpuSet {
                         return Err(CpuSetError::InvalidFormat(format!(
                             "invalid CPU number: {}",
                             start_str
-                        )))
+                        )));
                     }
                 };
                 let end: u32 = match end_str.parse() {
@@ -225,7 +225,7 @@ impl CpuSet {
                         return Err(CpuSetError::InvalidFormat(format!(
                             "invalid CPU number: {}",
                             end_str
-                        )))
+                        )));
                     }
                 };
 
@@ -249,7 +249,7 @@ impl CpuSet {
                         return Err(CpuSetError::InvalidFormat(format!(
                             "invalid CPU number: {}",
                             token
-                        )))
+                        )));
                     }
                 };
 
@@ -1002,12 +1002,16 @@ mod tests {
     #[test]
     fn test_error_display() {
         assert!(!CpuSetError::CpuTooLarge(9999).to_string().is_empty());
-        assert!(!CpuSetError::InvalidRange { start: 5, end: 3 }
-            .to_string()
-            .is_empty());
-        assert!(!CpuSetError::InvalidFormat("bad".into())
-            .to_string()
-            .is_empty());
+        assert!(
+            !CpuSetError::InvalidRange { start: 5, end: 3 }
+                .to_string()
+                .is_empty()
+        );
+        assert!(
+            !CpuSetError::InvalidFormat("bad".into())
+                .to_string()
+                .is_empty()
+        );
         assert!(!CpuSetError::EmptySet.to_string().is_empty());
         assert!(!CpuSetError::OsError(22).to_string().is_empty());
     }

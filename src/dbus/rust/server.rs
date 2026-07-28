@@ -4,15 +4,41 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use zbus::interface;
+use zbus::zvariant::OwnedObjectPath;
 
 use crate::constants::DBUS_PATH;
-use crate::proxy::UnitStatus;
+use crate::proxy::{JobStatusWire, UnitStatus, UnitStatusWire};
 
 fn encode_unit_name(name: &str) -> String {
-    name.replace('.', "_2e")
-        .replace('-', "_2d")
-        .replace('/', "_2f")
-        .replace('\\', "_5c")
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    if name.is_empty() {
+        return "_".to_string();
+    }
+
+    let mut encoded = String::with_capacity(name.len().saturating_mul(3));
+    for (index, byte) in name.bytes().enumerate() {
+        if byte.is_ascii_alphabetic() || (index > 0 && byte.is_ascii_digit()) {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('_');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+    }
+    encoded
+}
+
+fn object_path(path: &str) -> zbus::fdo::Result<OwnedObjectPath> {
+    OwnedObjectPath::try_from(path).map_err(|error| {
+        zbus::fdo::Error::Failed(format!(
+            "invalid object path in runtime state {path:?}: {error}"
+        ))
+    })
+}
+
+fn wire_error(error: zbus::zvariant::Error) -> zbus::fdo::Error {
+    zbus::fdo::Error::Failed(format!("invalid D-Bus value in runtime state: {error}"))
 }
 
 #[derive(Debug, Clone)]
@@ -251,46 +277,19 @@ struct ManagerState {
 #[interface(name = "org.freedesktop.systemd1.Manager")]
 impl ManagerState {
     #[zbus(name = "ListUnits")]
-    async fn list_units(
-        &self,
-    ) -> Vec<(
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        u32,
-        String,
-        String,
-    )> {
+    async fn list_units(&self) -> zbus::fdo::Result<Vec<UnitStatusWire>> {
         let state = self.state.lock().expect("runtime state poisoned");
         state
             .units
             .values()
             .map(UnitRecord::to_status)
-            .map(
-                |status| {
-                    (
-                        status.name,
-                        status.description,
-                        status.load_state,
-                        status.active_state,
-                        status.sub_state,
-                        status.followed,
-                        status.path,
-                        status.job_id,
-                        status.job_type,
-                        status.job_path,
-                    )
-                },
-            )
+            .map(UnitStatusWire::from_status)
             .collect()
+            .map_err(wire_error)
     }
 
     #[zbus(name = "GetUnit")]
-    async fn get_unit(&self, name: &str) -> zbus::fdo::Result<String> {
+    async fn get_unit(&self, name: &str) -> zbus::fdo::Result<OwnedObjectPath> {
         if name.trim().is_empty() {
             return Err(zbus::fdo::Error::InvalidArgs(
                 "unit name must not be empty".to_string(),
@@ -305,29 +304,29 @@ impl ManagerState {
         }
 
         let encoded = encode_unit_name(name);
-        Ok(format!("/org/freedesktop/systemd1/unit/{encoded}"))
+        object_path(&format!("/org/freedesktop/systemd1/unit/{encoded}"))
     }
 
     #[zbus(name = "StartUnit")]
-    async fn start_unit(&self, name: &str, mode: &str) -> zbus::fdo::Result<String> {
+    async fn start_unit(&self, name: &str, mode: &str) -> zbus::fdo::Result<OwnedObjectPath> {
         ManagerState::require_mode(mode)?;
-        self.transition_unit(name, "active", "running", "start")
+        object_path(&self.transition_unit(name, "active", "running", "start")?)
     }
 
     #[zbus(name = "StopUnit")]
-    async fn stop_unit(&self, name: &str, mode: &str) -> zbus::fdo::Result<String> {
+    async fn stop_unit(&self, name: &str, mode: &str) -> zbus::fdo::Result<OwnedObjectPath> {
         ManagerState::require_mode(mode)?;
-        self.transition_unit(name, "inactive", "dead", "stop")
+        object_path(&self.transition_unit(name, "inactive", "dead", "stop")?)
     }
 
     #[zbus(name = "RestartUnit")]
-    async fn restart_unit(&self, name: &str, mode: &str) -> zbus::fdo::Result<String> {
+    async fn restart_unit(&self, name: &str, mode: &str) -> zbus::fdo::Result<OwnedObjectPath> {
         ManagerState::require_mode(mode)?;
-        self.transition_unit(name, "active", "running", "restart")
+        object_path(&self.transition_unit(name, "active", "running", "restart")?)
     }
 
     #[zbus(name = "TryRestartUnit")]
-    async fn try_restart_unit(&self, name: &str, mode: &str) -> zbus::fdo::Result<String> {
+    async fn try_restart_unit(&self, name: &str, mode: &str) -> zbus::fdo::Result<OwnedObjectPath> {
         ManagerState::require_mode(mode)?;
         let mut state = self.state.lock().expect("runtime state poisoned");
         let active = state
@@ -336,11 +335,12 @@ impl ManagerState {
             .active_state
             == "active";
 
-        if active {
+        let path = if active {
             state.update_unit_state(name, "active", "running", "try-restart")
         } else {
             state.enqueue_job_without_state_change(name, "try-restart", "done")
-        }
+        }?;
+        object_path(&path)
     }
 
     #[zbus(name = "ReloadOrRestartUnit")]
@@ -348,7 +348,7 @@ impl ManagerState {
         &self,
         name: &str,
         mode: &str,
-    ) -> zbus::fdo::Result<String> {
+    ) -> zbus::fdo::Result<OwnedObjectPath> {
         ManagerState::require_mode(mode)?;
         let mut state = self.state.lock().expect("runtime state poisoned");
         let active = state
@@ -357,11 +357,12 @@ impl ManagerState {
             .active_state
             == "active";
 
-        if active {
+        let path = if active {
             state.update_unit_state(name, "active", "reloading", "reload")
         } else {
             state.update_unit_state(name, "active", "running", "restart")
-        }
+        }?;
+        object_path(&path)
     }
 
     #[zbus(name = "ReloadOrTryRestartUnit")]
@@ -369,7 +370,7 @@ impl ManagerState {
         &self,
         name: &str,
         mode: &str,
-    ) -> zbus::fdo::Result<String> {
+    ) -> zbus::fdo::Result<OwnedObjectPath> {
         ManagerState::require_mode(mode)?;
         let mut state = self.state.lock().expect("runtime state poisoned");
         let active = state
@@ -378,11 +379,12 @@ impl ManagerState {
             .active_state
             == "active";
 
-        if active {
+        let path = if active {
             state.update_unit_state(name, "active", "reloading", "reload")
         } else {
             state.enqueue_job_without_state_change(name, "reload-or-try-restart", "done")
-        }
+        }?;
+        object_path(&path)
     }
 
     #[zbus(name = "Reload")]
@@ -391,13 +393,13 @@ impl ManagerState {
     }
 
     #[zbus(name = "ListJobs")]
-    async fn list_jobs(&self) -> Vec<(u32, String, String, String, String, String)> {
+    async fn list_jobs(&self) -> zbus::fdo::Result<Vec<JobStatusWire>> {
         let state = self.state.lock().expect("runtime state poisoned");
         state
             .jobs
             .iter()
             .map(|job| {
-                (
+                JobStatusWire::new(
                     job.id,
                     job.unit_name.clone(),
                     job.job_type.clone(),
@@ -407,12 +409,13 @@ impl ManagerState {
                 )
             })
             .collect()
+            .map_err(wire_error)
     }
 
     #[zbus(name = "GetJob")]
-    async fn get_job(&self, id: u32) -> zbus::fdo::Result<String> {
+    async fn get_job(&self, id: u32) -> zbus::fdo::Result<OwnedObjectPath> {
         let state = self.state.lock().expect("runtime state poisoned");
-        state.get_job_path(id)
+        object_path(&state.get_job_path(id)?)
     }
 
     #[zbus(name = "CancelJob")]
@@ -439,8 +442,12 @@ impl ManagerState {
         units: Vec<&str>,
         _runtime: bool,
         _force: bool,
-    ) -> zbus::fdo::Result<Vec<(String, String, String)>> {
-        self.change_unit_files(units, true)
+    ) -> zbus::fdo::Result<(bool, Vec<(String, String, String)>)> {
+        let changes = self.change_unit_files(units, true)?;
+
+        // This simplified state model only accepts units it can enable, so all
+        // successful requests carry install information.
+        Ok((true, changes))
     }
 
     #[zbus(name = "DisableUnitFiles")]
@@ -668,25 +675,25 @@ impl UnitIface {
     }
 
     #[zbus(name = "Start")]
-    async fn start(&self, mode: &str) -> zbus::fdo::Result<String> {
+    async fn start(&self, mode: &str) -> zbus::fdo::Result<OwnedObjectPath> {
         Self::require_mode(mode)?;
         self.transition("active", "running", "start")
     }
 
     #[zbus(name = "Stop")]
-    async fn stop(&self, mode: &str) -> zbus::fdo::Result<String> {
+    async fn stop(&self, mode: &str) -> zbus::fdo::Result<OwnedObjectPath> {
         Self::require_mode(mode)?;
         self.transition("inactive", "dead", "stop")
     }
 
     #[zbus(name = "Restart")]
-    async fn restart(&self, mode: &str) -> zbus::fdo::Result<String> {
+    async fn restart(&self, mode: &str) -> zbus::fdo::Result<OwnedObjectPath> {
         Self::require_mode(mode)?;
         self.transition("active", "running", "restart")
     }
 
     #[zbus(name = "Reload")]
-    async fn reload(&self, mode: &str) -> zbus::fdo::Result<String> {
+    async fn reload(&self, mode: &str) -> zbus::fdo::Result<OwnedObjectPath> {
         Self::require_mode(mode)?;
         self.transition("active", "reloading", "reload")
     }
@@ -702,14 +709,14 @@ impl UnitIface {
         active_state: &str,
         sub_state: &str,
         job_type: &str,
-    ) -> zbus::fdo::Result<String> {
+    ) -> zbus::fdo::Result<OwnedObjectPath> {
         let manager = ManagerState {
             version: String::new(),
             state: self.state.clone(),
             tainted: String::new(),
             subscribed: Arc::new(Mutex::new(false)),
         };
-        manager.transition_unit(&self.name, active_state, sub_state, job_type)
+        object_path(&manager.transition_unit(&self.name, active_state, sub_state, job_type)?)
     }
 }
 
@@ -728,7 +735,11 @@ pub async fn start_systemd_dbus_server(
 
     let conn = zbus::Connection::system().await?;
 
-    conn.object_server().at(DBUS_PATH, manager).await?;
+    if !conn.object_server().at(DBUS_PATH, manager).await? {
+        return Err(zbus::Error::Failure(format!(
+            "manager interface is already registered at {DBUS_PATH}"
+        )));
+    }
 
     for unit in &units {
         let encoded = encode_unit_name(&unit.name);
@@ -741,7 +752,11 @@ pub async fn start_systemd_dbus_server(
             unit_path: path.clone(),
         };
 
-        let _ = conn.object_server().at(path, iface).await;
+        if !conn.object_server().at(path.as_str(), iface).await? {
+            return Err(zbus::Error::Failure(format!(
+                "unit interface is already registered at {path}"
+            )));
+        }
     }
 
     Ok(())
@@ -806,11 +821,22 @@ mod tests {
     }
 
     #[test]
+    fn unit_name_encoding_matches_bus_label_escape() {
+        assert_eq!(encode_unit_name("alpha.service"), "alpha_2eservice");
+        assert_eq!(encode_unit_name("demo@one.service"), "demo_40one_2eservice");
+        assert_eq!(
+            encode_unit_name("with_under.service"),
+            "with_5funder_2eservice"
+        );
+        assert_eq!(encode_unit_name("123.service"), "_3123_2eservice");
+    }
+
+    #[test]
     fn start_stop_restart_update_unit_state_and_jobs() {
         let manager = manager_with_units();
 
         let start_job = block_on(manager.start_unit("alpha.service", "replace")).unwrap();
-        assert_eq!(start_job, "/org/freedesktop/systemd1/job/1");
+        assert_eq!(start_job.as_str(), "/org/freedesktop/systemd1/job/1");
         assert_eq!(
             block_on(manager.get_unit_file_state("alpha.service")).unwrap(),
             "disabled"
@@ -831,19 +857,19 @@ mod tests {
         }
 
         let stop_job = block_on(manager.stop_unit("alpha.service", "replace")).unwrap();
-        assert_eq!(stop_job, "/org/freedesktop/systemd1/job/2");
+        assert_eq!(stop_job.as_str(), "/org/freedesktop/systemd1/job/2");
 
         let restart_job = block_on(manager.restart_unit("alpha.service", "replace")).unwrap();
-        assert_eq!(restart_job, "/org/freedesktop/systemd1/job/3");
+        assert_eq!(restart_job.as_str(), "/org/freedesktop/systemd1/job/3");
 
-        let jobs = block_on(manager.list_jobs());
+        let jobs = block_on(manager.list_jobs()).unwrap();
         assert_eq!(jobs.len(), 3);
-        assert_eq!(jobs[0].1, "alpha.service");
-        assert_eq!(jobs[0].2, "start");
-        assert_eq!(jobs[0].3, "running");
-        assert_eq!(jobs[1].2, "stop");
-        assert_eq!(jobs[2].2, "restart");
-        assert_eq!(jobs[2].4, "/org/freedesktop/systemd1/job/3");
+        assert_eq!(jobs[0].unit_name, "alpha.service");
+        assert_eq!(jobs[0].job_type, "start");
+        assert_eq!(jobs[0].job_state, "running");
+        assert_eq!(jobs[1].job_type, "stop");
+        assert_eq!(jobs[2].job_type, "restart");
+        assert_eq!(jobs[2].job_path.as_str(), "/org/freedesktop/systemd1/job/3");
     }
 
     #[test]
@@ -876,8 +902,9 @@ mod tests {
     fn enable_disable_and_list_unit_files_track_state() {
         let manager = manager_with_units();
 
-        let changes =
+        let (carries_install_info, changes) =
             block_on(manager.enable_unit_files(vec!["alpha.service"], false, false)).unwrap();
+        assert!(carries_install_info);
         assert_eq!(
             changes,
             vec![(
@@ -943,18 +970,28 @@ mod tests {
         let manager = manager_with_units();
 
         let path = block_on(manager.start_unit("alpha.service", "replace")).unwrap();
-        assert_eq!(path, "/org/freedesktop/systemd1/job/1");
+        assert_eq!(path.as_str(), "/org/freedesktop/systemd1/job/1");
         assert_eq!(block_on(manager.get_job(1)).unwrap(), path);
 
         block_on(manager.subscribe()).unwrap();
-        assert!(*manager.subscribed.lock().expect("subscription state poisoned"));
+        assert!(
+            *manager
+                .subscribed
+                .lock()
+                .expect("subscription state poisoned")
+        );
 
         block_on(manager.cancel_job(1)).unwrap();
         let err = block_on(manager.get_job(1)).unwrap_err();
         assert!(matches!(err, zbus::fdo::Error::FileNotFound(_)));
 
         block_on(manager.unsubscribe()).unwrap();
-        assert!(!*manager.subscribed.lock().expect("subscription state poisoned"));
+        assert!(
+            !*manager
+                .subscribed
+                .lock()
+                .expect("subscription state poisoned")
+        );
     }
 
     #[test]
@@ -963,14 +1000,23 @@ mod tests {
 
         let try_restart_inactive = block_on(manager.try_restart_unit("alpha.service", "replace"))
             .expect("try restart on inactive should be accepted");
-        assert_eq!(try_restart_inactive, "/org/freedesktop/systemd1/job/1");
+        assert_eq!(
+            try_restart_inactive.as_str(),
+            "/org/freedesktop/systemd1/job/1"
+        );
 
         let reload_or_restart =
             block_on(manager.reload_or_restart_unit("alpha.service", "replace")).unwrap();
-        assert_eq!(reload_or_restart, "/org/freedesktop/systemd1/job/2");
+        assert_eq!(
+            reload_or_restart.as_str(),
+            "/org/freedesktop/systemd1/job/2"
+        );
 
         let reload_or_try_restart_active =
             block_on(manager.reload_or_try_restart_unit("beta.service", "replace")).unwrap();
-        assert_eq!(reload_or_try_restart_active, "/org/freedesktop/systemd1/job/3");
+        assert_eq!(
+            reload_or_try_restart_active.as_str(),
+            "/org/freedesktop/systemd1/job/3"
+        );
     }
 }

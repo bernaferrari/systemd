@@ -6,7 +6,7 @@ use std::fmt::Write;
 
 use crate::group_record::GroupRecord;
 use crate::user_record::{
-    AutoResizeMode, UserDisposition, UserStorage, REBALANCE_WEIGHT_OFF, REBALANCE_WEIGHT_UNSET,
+    AutoResizeMode, REBALANCE_WEIGHT_OFF, REBALANCE_WEIGHT_UNSET, UserDisposition, UserStorage,
 };
 
 const ANSI_NORMAL: &str = "\x1b[0m";
@@ -1101,11 +1101,7 @@ fn push_optional_line(out: &mut String, label: &str, value: Option<&str>) {
 }
 
 fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
-    }
+    if value { "yes" } else { "no" }
 }
 
 fn user_disposition_to_string(disposition: UserDisposition) -> &'static str {
@@ -1187,11 +1183,22 @@ fn is_null_uuid(uuid: &[u8; 16]) -> bool {
 fn format_uuid(uuid: &[u8; 16]) -> String {
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        uuid[0], uuid[1], uuid[2], uuid[3],
-        uuid[4], uuid[5],
-        uuid[6], uuid[7],
-        uuid[8], uuid[9],
-        uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15],
+        uuid[0],
+        uuid[1],
+        uuid[2],
+        uuid[3],
+        uuid[4],
+        uuid[5],
+        uuid[6],
+        uuid[7],
+        uuid[8],
+        uuid[9],
+        uuid[10],
+        uuid[11],
+        uuid[12],
+        uuid[13],
+        uuid[14],
+        uuid[15],
     )
 }
 
@@ -1326,7 +1333,7 @@ impl<'a> JsonParser<'a> {
                     return Err(JsonFormatError::new(
                         self.pos,
                         "control character in string",
-                    ))
+                    ));
                 }
                 None => return Err(JsonFormatError::new(self.pos, "unterminated string")),
             }

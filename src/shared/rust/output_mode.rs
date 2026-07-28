@@ -7,10 +7,10 @@
 use std::fmt;
 use std::str::FromStr;
 use systemd_basic_rs::shared_facades::lookups::{
-    output_mode_to_json_format_flags as basic_output_mode_to_json_format_flags,
     OutputMode as BasicOutputMode, SD_JSON_FORMAT_NEWLINE as BASIC_SD_JSON_FORMAT_NEWLINE,
     SD_JSON_FORMAT_PRETTY as BASIC_SD_JSON_FORMAT_PRETTY,
     SD_JSON_FORMAT_SEQ as BASIC_SD_JSON_FORMAT_SEQ, SD_JSON_FORMAT_SSE as BASIC_SD_JSON_FORMAT_SSE,
+    output_mode_to_json_format_flags as basic_output_mode_to_json_format_flags,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -325,11 +325,7 @@ fn validate_non_empty(value: &str) -> Result<(), CredentialError> {
 }
 
 fn empty_to_none(value: String) -> Option<String> {
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    if value.is_empty() { None } else { Some(value) }
 }
 
 fn normalize_path(path: &str) -> PathBuf {
@@ -385,9 +381,11 @@ mod tests {
     #[test]
     fn import_credentials_deduplicate_after_empty_rename_normalization() {
         let mut context = ExecContext::default();
-        assert!(context
-            .put_import_credential("foo*", Some(String::new()))
-            .unwrap());
+        assert!(
+            context
+                .put_import_credential("foo*", Some(String::new()))
+                .unwrap()
+        );
         assert!(!context.put_import_credential("foo*", None).unwrap());
     }
 

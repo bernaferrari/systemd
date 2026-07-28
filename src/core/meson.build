@@ -438,16 +438,4 @@ if get_option('rust-init-milestones').enabled()
                      '--test-threads=1',
              ])
 
-        test('rust-init-critical-lint-budget',
-             python,
-             suite : 'integration-tests',
-             workdir : meson.project_source_root(),
-             timeout : 900,
-             args : [
-                     'tools/rust-port/critical-lint-gate.py',
-                     '--targets',
-                     'tools/rust-port/critical-lint-targets.toml',
-                     '--baseline',
-                     'tools/rust-port/critical-lint-baseline.json',
-             ])
 endif

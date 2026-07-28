@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // PORT-SYNC: src/libsystemd-network/dhcp-message.c, src/libsystemd-network/dhcp-protocol.c
 
-use crate::{Errno, EINVAL};
+use crate::{EINVAL, Errno};
 use std::fmt;
 use std::sync::Arc;
 

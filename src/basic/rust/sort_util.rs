@@ -136,11 +136,7 @@ mod tests {
         let mut values = [1, 4, 2, 3];
         let mut descending = true;
         qsort_r_safe(&mut values, &mut descending, |a, b, descending| {
-            if *descending {
-                b.cmp(a)
-            } else {
-                a.cmp(b)
-            }
+            if *descending { b.cmp(a) } else { a.cmp(b) }
         });
         assert_eq!(values, [4, 3, 2, 1]);
     }

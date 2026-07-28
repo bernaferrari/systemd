@@ -4,7 +4,7 @@
 use crate::ffi::*;
 use std::collections::BTreeSet;
 use std::env;
-use std::ffi::{c_void, CString};
+use std::ffi::{CString, c_void};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::mem::{self, MaybeUninit};
@@ -1458,7 +1458,7 @@ pub fn ask_password_credential(
     let data = match fs::read(PathBuf::from(directory).join(name)) {
         Ok(bytes) => bytes,
         Err(error) if matches!(error.kind(), io::ErrorKind::NotFound) => {
-            return Err(AskPasswordError::NoKey)
+            return Err(AskPasswordError::NoKey);
         }
         Err(error) => return Err(error.into()),
     };
@@ -1514,12 +1514,11 @@ pub fn ask_password_auto(
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+    use crate::tests::TestEnvironment;
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::os::unix::net::{UnixDatagram, UnixListener};
     use std::thread;
     use tempfile::TempDir;
-
-    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn make_pipe() -> (OwnedFd, OwnedFd) {
         let mut fds = [0; 2];
@@ -1534,18 +1533,14 @@ mod tests {
     }
 
     fn with_env_var<T>(key: &str, value: Option<&Path>, f: impl FnOnce() -> T) -> T {
-        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
-        let old = env::var_os(key);
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
         match value {
-            Some(path) => env::set_var(key, path),
-            None => env::remove_var(key),
+            Some(path) => environment.set(key, path),
+            None => environment.remove(key),
         }
-        let result = f();
-        match old {
-            Some(value) => env::set_var(key, value),
-            None => env::remove_var(key),
-        }
-        result
+        f()
     }
 
     #[test]
@@ -1588,14 +1583,11 @@ mod tests {
 
     #[test]
     fn keyring_timeout_reads_environment() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let old = env::var_os("SYSTEMD_ASK_PASSWORD_KEYRING_TIMEOUT_SEC");
-        env::set_var("SYSTEMD_ASK_PASSWORD_KEYRING_TIMEOUT_SEC", "5");
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set("SYSTEMD_ASK_PASSWORD_KEYRING_TIMEOUT_SEC", "5");
         assert_eq!(keyring_cache_timeout(), Duration::from_secs(5));
-        match old {
-            Some(value) => env::set_var("SYSTEMD_ASK_PASSWORD_KEYRING_TIMEOUT_SEC", value),
-            None => env::remove_var("SYSTEMD_ASK_PASSWORD_KEYRING_TIMEOUT_SEC"),
-        }
     }
 
     #[test]
@@ -1848,27 +1840,29 @@ mod tests {
         fs::create_dir_all(&ask_dir).unwrap();
 
         let worker_dir = ask_dir.clone();
-        let handle = thread::spawn(move || loop {
-            let entries: Vec<_> = fs::read_dir(&worker_dir)
-                .unwrap()
-                .filter_map(Result::ok)
-                .collect();
+        let handle = thread::spawn(move || {
+            loop {
+                let entries: Vec<_> = fs::read_dir(&worker_dir)
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .collect();
 
-            if let Some(ask) = entries
-                .iter()
-                .find(|entry| entry.file_name().to_string_lossy().starts_with("ask."))
-            {
-                let text = fs::read_to_string(ask.path()).unwrap();
-                let socket = text
-                    .lines()
-                    .find_map(|line| line.strip_prefix("Socket="))
-                    .unwrap();
-                let client = UnixDatagram::unbound().unwrap();
-                client.send_to(b"+secret", socket).unwrap();
-                break;
+                if let Some(ask) = entries
+                    .iter()
+                    .find(|entry| entry.file_name().to_string_lossy().starts_with("ask."))
+                {
+                    let text = fs::read_to_string(ask.path()).unwrap();
+                    let socket = text
+                        .lines()
+                        .find_map(|line| line.strip_prefix("Socket="))
+                        .unwrap();
+                    let client = UnixDatagram::unbound().unwrap();
+                    client.send_to(b"+secret", socket).unwrap();
+                    break;
+                }
+
+                thread::sleep(Duration::from_millis(10));
             }
-
-            thread::sleep(Duration::from_millis(10));
         });
 
         with_env_var("XDG_RUNTIME_DIR", Some(runtime.path()), || {

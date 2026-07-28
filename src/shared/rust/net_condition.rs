@@ -221,11 +221,7 @@ fn net_condition_test_strv(patterns: &[String], string: Option<&str>) -> bool {
         }
     }
 
-    if has_positive_rule {
-        matched
-    } else {
-        true
-    }
+    if has_positive_rule { matched } else { true }
 }
 
 fn net_condition_test_ifname(
@@ -390,11 +386,7 @@ pub fn config_parse_match_property(target: &mut Vec<String>, value: &str) {
 }
 
 fn with_optional_invert(invert: bool, word: String) -> String {
-    if invert {
-        format!("!{word}")
-    } else {
-        word
-    }
+    if invert { format!("!{word}") } else { word }
 }
 
 pub fn ifname_valid_char(character: char) -> bool {

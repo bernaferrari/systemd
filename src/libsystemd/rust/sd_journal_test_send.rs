@@ -5,7 +5,7 @@
 
 use crate::id128_util::SdId128;
 use crate::sd_journal_send::{
-    journal_perror, journal_print, journal_send, JournalField, LONG_LINE_MAX,
+    JournalField, LONG_LINE_MAX, journal_perror, journal_print, journal_send,
 };
 
 pub type Result<T> = std::result::Result<T, i32>;
