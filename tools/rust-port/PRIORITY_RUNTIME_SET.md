@@ -30,6 +30,10 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Image-class tables | `test-image-class-rust` | NUL-backed lookup strings, invalid enums, and NULL/-EINVAL reverse lookup |
 | ARPHRD name and length tables | `test-arphrd-util-rust` | Generated Linux-UAPI names, ASCII case folding, HDLC/CISCO alias, and native-width lengths |
 | Filesystem predicates | `test-fstype-util-rust` | Opaque bytes, generated filesystem sets, fuse aliases, and API-VFS path boundaries |
+| Directory-entry classification | `test-dirent-util-rust` | Opaque entry-name bytes, file-like d_type values, backup filtering, and optional suffixes |
+| Glyph selection | `test-glyph-util-rust` | Static borrowed glyphs, locale/default selection, secure `SYSTEMD_UTF8`, ordinary `SYSTEMD_EMOJI`, and forced UTF-8 |
+| Hostname shortening | `test-hostname-setup-rust` | Raw-byte hostname validation, first-label/64-byte shortening, libc ownership, and errno publication |
+| NUL-string parsing | `test-nulstr-util-rust` | Borrowed interior list lookup and C-owned NULL-terminated `strv` construction |
 | D-Bus error accessors | `test-bus-error-rust` | Public struct layout, NULL predicates, and opaque C-string name matching |
 | Namespace scalar helpers | `test-namespace-mountpoint-rust` | Namespace-bit masking, Linux clone-flag values, and native uid_t overflow boundaries |
 | Namespace flag conversions | `test-nsflags-rust` | Native-width flags, C whitespace/backslash parsing, ordered names, and C-owned string/strv release |
@@ -41,6 +45,8 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | ID128 conversion | `test-id128-rust` | Union ABI, caller buffers, opaque string parsing, exact comparison, and SHA-256 UUID digesting |
 | Kernel-command-line key matching | `test-proc-cmdline-rust` | Raw byte keys, dash/underscore-only relaxation, and borrowed interior prefix results |
 | Process string tables | `test-process-util-str-tables-rust` | Borrowed static SIGCHLD names, safe_atou-compatible scheduler parsing, and C-owned decimal fallback strings |
+| Generic string tables | `test-string-table-rust` | Borrowed table entries, C boolean and numeric fallbacks, libc allocation, and transactional output publication |
+| Signal-origin classification | `test-signal-inline-rust` | C inline `si_code` rule, including all negative codes plus `SI_USER` and `SI_QUEUE` |
 | Bounded string copying | `test-strxcpyx-rust` | Explicit byte lengths, C-string lengths, cursor advancement, zero-size no-ops, and truncation publication |
 | Terminal predicates | `test-terminal-util-rust` | Component-aware /dev paths, safe_atou base-zero grammar, VT range errors, and OSC8 byte policy |
 | Session classification | `test-file-classify-rust` | ASCII-only session IDs, NULL/empty rejection, and opaque non-UTF-8 bytes |

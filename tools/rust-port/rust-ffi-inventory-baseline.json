@@ -41,10 +41,6 @@
       "rs_allow_listed_char_for_devnode",
       "rs_encode_devnode_name"
     ],
-    "src/basic/rust/dirent_util.h": [
-      "rs_dirent_is_file",
-      "rs_dirent_is_file_with_suffix"
-    ],
     "src/basic/rust/efivars_util.h": [
       "rs_decode_secure_boot_mode",
       "rs_efi_guid_to_id128",
@@ -73,12 +69,6 @@
       "rs_extract_first_word",
       "rs_extract_first_word_and_warn"
     ],
-    "src/basic/rust/fstype_util.h": [
-      "rs_file_handle_equal"
-    ],
-    "src/basic/rust/glyph_util.h": [
-      "rs_glyph_full"
-    ],
     "src/basic/rust/gunicode.h": [
       "rs_unichar_iswide",
       "rs_utf8_prev_char"
@@ -91,9 +81,6 @@
       "rs_unbase32hexmem",
       "rs_unbase64mem_full",
       "rs_unhexmem_full"
-    ],
-    "src/basic/rust/hostname_setup.h": [
-      "rs_shorten_overlong"
     ],
     "src/basic/rust/image_policy_util.h": [
       "rs_image_policy_equal",
@@ -143,10 +130,6 @@
       "rs_is_name_to_handle_at_fatal_error",
       "rs_mount_propagation_flag_from_string",
       "rs_mount_propagation_flag_to_string"
-    ],
-    "src/basic/rust/nulstr_util.h": [
-      "rs_nulstr_get",
-      "rs_strv_parse_nulstr_full"
     ],
     "src/basic/rust/parse_util.h": [
       "rs_parse_boolean",
@@ -242,7 +225,6 @@
       "rs_get_sigrtmax",
       "rs_get_sigrtmin",
       "rs_parse_signo",
-      "rs_si_code_from_process",
       "rs_signal_from_string",
       "rs_signal_to_string"
     ],
@@ -293,13 +275,6 @@
       "rs_strbuf_complete",
       "rs_strbuf_free",
       "rs_strbuf_new"
-    ],
-    "src/basic/rust/string_table.h": [
-      "rs_string_table_lookup_from_string",
-      "rs_string_table_lookup_from_string_fallback",
-      "rs_string_table_lookup_from_string_with_boolean",
-      "rs_string_table_lookup_to_string",
-      "rs_string_table_lookup_to_string_fallback"
     ],
     "src/basic/rust/strv.h": [
       "rs_strv_find_closest_by_levenshtein",

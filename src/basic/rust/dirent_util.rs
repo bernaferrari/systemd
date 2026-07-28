@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/dirent-util.c (dirent_is_file, dirent_is_file_with_suffix)
+// PORT-SYNC: scope=basic.dirent-util; authority=src/basic/dirent-util.c,src/basic/dirent-util.h,src/basic/path-util.c,src/basic/path-util.h
 //
 // Dirent classification utilities.
 
@@ -20,59 +20,50 @@ pub const DT_DIR: u8 = 4;
 /// Check if a filename is hidden (starts with '.') or is a backup file.
 /// Port of C `hidden_or_backup_file()` from `src/basic/path-util.c`.
 fn hidden_or_backup_file(name: &str) -> bool {
-    if name.is_empty() {
-        return false;
-    }
-
-    // Hidden files start with '.'
-    if name.as_bytes()[0] == b'.' {
-        return true;
-    }
-
-    // Special filenames
-    if name == "lost+found" || name == "aquota.user" || name == "aquota.group" {
-        return true;
-    }
-
-    // Backup suffix: trailing '~'
-    if name.as_bytes().last() == Some(&b'~') {
-        return true;
-    }
-
-    // Check suffix after last '.'
-    let dot_pos = match name.rfind('.') {
-        Some(p) => p,
-        None => return false,
-    };
-    let suffix = &name[dot_pos + 1..];
-
-    const BACKUP_SUFFIXES: &[&str] = &[
-        "ignore",
-        "rpmnew",
-        "rpmsave",
-        "rpmorig",
-        "dpkg-old",
-        "dpkg-new",
-        "dpkg-tmp",
-        "dpkg-dist",
-        "dpkg-bak",
-        "dpkg-backup",
-        "dpkg-remove",
-        "ucf-new",
-        "ucf-old",
-        "ucf-dist",
-        "swp",
-        "bak",
-        "old",
-        "new",
-    ];
-
-    BACKUP_SUFFIXES.contains(&suffix)
+    hidden_or_backup_file_bytes(name.as_bytes())
 }
 
 /// Check if d_type indicates a file-like entry (regular file, symlink, or unknown).
 fn is_file_like_type(d_type: u8) -> bool {
     d_type == DT_REG || d_type == DT_LNK || d_type == DT_UNKNOWN
+}
+
+/// Byte-preserving implementation of C's `hidden_or_backup_file()`.
+///
+/// Directory entry names are native C byte strings; they are not necessarily
+/// UTF-8. Keep the FFI path byte-oriented so a non-UTF-8 entry cannot change
+/// the classification merely because Rust attempted to decode it.
+fn hidden_or_backup_file_bytes(name: &[u8]) -> bool {
+    name.starts_with(b".")
+        || matches!(name, b"lost+found" | b"aquota.user" | b"aquota.group")
+        || name.ends_with(b"~")
+        || name
+            .iter()
+            .rposition(|byte| *byte == b'.')
+            .is_some_and(|dot| {
+                let suffix = &name[dot + 1..];
+                matches!(
+                    suffix,
+                    b"ignore"
+                        | b"rpmnew"
+                        | b"rpmsave"
+                        | b"rpmorig"
+                        | b"dpkg-old"
+                        | b"dpkg-new"
+                        | b"dpkg-tmp"
+                        | b"dpkg-dist"
+                        | b"dpkg-bak"
+                        | b"dpkg-backup"
+                        | b"dpkg-remove"
+                        | b"ucf-new"
+                        | b"ucf-old"
+                        | b"ucf-dist"
+                        | b"swp"
+                        | b"bak"
+                        | b"old"
+                        | b"new"
+                )
+            })
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -114,6 +105,63 @@ pub fn dirent_is_file_with_suffix(name: &str, d_type: u8, suffix: Option<&str>) 
         None => true,
         Some(suf) => name.ends_with(suf),
     }
+}
+
+/// C ABI mirror of `dirent_is_file()`.
+///
+/// # Safety
+///
+/// `de` must be null or point to a readable `struct dirent` whose `d_name`
+/// field contains a NUL-terminated name within its native array. The pointer
+/// and its name are borrowed for this call only. C asserts a non-null input;
+/// this facade instead fails closed for null so it never unwinds across C.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dirent_is_file(de: *const libc::dirent) -> bool {
+    if de.is_null() {
+        return false;
+    }
+
+    // SAFETY: the entry-point contract guarantees a readable dirent with a
+    // NUL-terminated d_name array for this call.
+    let entry = unsafe { &*de };
+    // SAFETY: d_name is a C NUL-terminated byte string by the entry contract.
+    let name = unsafe { std::ffi::CStr::from_ptr(entry.d_name.as_ptr()) }.to_bytes();
+    is_file_like_type(entry.d_type) && !hidden_or_backup_file_bytes(name)
+}
+
+/// C ABI mirror of `dirent_is_file_with_suffix()`.
+///
+/// # Safety
+///
+/// `de` has the same borrowed `struct dirent` contract as
+/// [`rs_dirent_is_file`]. `suffix`, when non-null, must point to a live
+/// NUL-terminated byte string. C asserts a non-null directory entry; this
+/// facade returns false for null instead of unwinding across C.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dirent_is_file_with_suffix(
+    de: *const libc::dirent,
+    suffix: *const libc::c_char,
+) -> bool {
+    if de.is_null() {
+        return false;
+    }
+
+    // SAFETY: the entry-point contract guarantees a readable dirent with a
+    // NUL-terminated d_name array for this call.
+    let entry = unsafe { &*de };
+    // SAFETY: d_name is a C NUL-terminated byte string by the entry contract.
+    let name = unsafe { std::ffi::CStr::from_ptr(entry.d_name.as_ptr()) }.to_bytes();
+    if !is_file_like_type(entry.d_type) || name.starts_with(b".") {
+        return false;
+    }
+
+    if suffix.is_null() {
+        return true;
+    }
+    // SAFETY: the entry-point contract guarantees a live C string when the
+    // optional suffix pointer is non-null.
+    let suffix = unsafe { std::ffi::CStr::from_ptr(suffix) }.to_bytes();
+    name.ends_with(suffix)
 }
 
 #[cfg(test)]

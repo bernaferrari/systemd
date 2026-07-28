@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+/* PORT-SYNC: scope=basic.string-table; authority=src/basic/string-table.c,src/basic/string-table.h */
+
 /*
  * Rust FFI declarations for shadow testing.
  * These mirror the C functions in string-table.h with rs_ prefix.

@@ -271,6 +271,56 @@ pub unsafe extern "C" fn rs_fstype_is_blockdev_backed(fstype: *const libc::c_cha
     unsafe { c_string_predicate(fstype, fstype_is_blockdev_backed_bytes) }
 }
 
+/// C ABI facade for `file_handle_equal()`.
+///
+/// # Safety
+///
+/// Each non-NULL pointer must point to a live, properly aligned native
+/// `struct file_handle`, followed by at least `handle_bytes` readable payload
+/// bytes. The pointed-to storage must remain live for the duration of the
+/// call. NULL is supported and follows the C function's pointer semantics.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_file_handle_equal(
+    a: *const libc::file_handle,
+    b: *const libc::file_handle,
+) -> bool {
+    if std::ptr::eq(a, b) {
+        return true;
+    }
+    if a.is_null() || b.is_null() {
+        return false;
+    }
+
+    // SAFETY: the entry point contract guarantees that both non-NULL pointers
+    // reference initialized native file_handle headers for this call.
+    let a = unsafe { &*a };
+    // SAFETY: the entry point contract guarantees that both non-NULL pointers
+    // reference initialized native file_handle headers for this call.
+    let b = unsafe { &*b };
+
+    if a.handle_type != b.handle_type {
+        return false;
+    }
+
+    let a_len = a.handle_bytes as usize;
+    let b_len = b.handle_bytes as usize;
+    let shared_len = a_len.min(b_len);
+    if shared_len > 0 {
+        // SAFETY: the entry point contract guarantees that each flexible-array
+        // payload contains its advertised number of readable bytes.
+        let a_bytes = unsafe { std::slice::from_raw_parts(a.f_handle.as_ptr(), shared_len) };
+        // SAFETY: the entry point contract guarantees that each flexible-array
+        // payload contains its advertised number of readable bytes.
+        let b_bytes = unsafe { std::slice::from_raw_parts(b.f_handle.as_ptr(), shared_len) };
+
+        if a_bytes != b_bytes {
+            return false;
+        }
+    }
+
+    a_len == b_len
+}
+
 pub fn file_handle_equal(a: Option<&FileHandle>, b: Option<&FileHandle>) -> bool {
     match (a, b) {
         (None, None) => true,

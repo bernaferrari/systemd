@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/hostname-setup.c (shorten_overlong)
+// PORT-SYNC: scope=shared.hostname-setup; authority=src/shared/hostname-setup.c,src/shared/hostname-setup.h,src/basic/hostname-util.c,src/basic/hostname-util.h
 //
-// Hostname setup pure functions.
+// Hostname setup pure functions and the narrow C ABI used by shadow tests.
+
+use std::ffi::CStr;
+
+use libc::c_char;
+
+use crate::ffi::Errno;
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -120,6 +126,103 @@ pub fn shorten_overlong(s: &str) -> Result<ShortenResult, HostnameSetupError> {
     }
 
     Ok(ShortenResult::Shortened(truncated.to_string()))
+}
+
+/// Byte-oriented `hostname_is_valid(s, 0)` for the C ABI facade.
+///
+/// Host names admitted with zero flags are ASCII-only, so a byte core both
+/// avoids lossy UTF-8 conversion and matches the C parser's rejection of any
+/// non-ASCII byte before an allocation can be published.
+fn hostname_is_valid_zero_flags(bytes: &[u8]) -> bool {
+    if bytes.is_empty() || bytes == b".host" {
+        return false;
+    }
+
+    let mut dot = true;
+    let mut hyphen = true;
+    for &byte in bytes {
+        match byte {
+            b'.' => {
+                if dot || hyphen {
+                    return false;
+                }
+                dot = true;
+                hyphen = false;
+            }
+            b'-' => {
+                if dot {
+                    return false;
+                }
+                dot = false;
+                hyphen = true;
+            }
+            _ if valid_ldh_char(byte) => {
+                dot = false;
+                hyphen = false;
+            }
+            _ => return false,
+        }
+    }
+
+    !hyphen && !dot && bytes.len() <= LINUX_HOST_NAME_MAX
+}
+
+/// C ABI facade for `shorten_overlong()`.
+///
+/// A successful result is allocated with the process C allocator and written
+/// to `*ret` only after both hostname validation and allocation succeed. The
+/// return is `0` for an already-valid hostname, `1` when shortening occurred,
+/// or a negative errno on failure.
+///
+/// # Safety
+///
+/// `s` must point to a readable NUL-terminated C string and `ret` must point
+/// to writable pointer storage for the duration of the call. On success the
+/// caller owns `*ret` and releases it with `free(3)`; on error it is unchanged.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_shorten_overlong(s: *const c_char, ret: *mut *mut c_char) -> i32 {
+    if s.is_null() || ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // C allocates first, before deciding whether the original is valid. Keep
+    // that order so an allocator failure remains `-ENOMEM`, even for malformed
+    // input, and so both successful paths publish the same C-owned allocation.
+    // SAFETY: `s` satisfies the documented live NUL-terminated input contract.
+    let allocated = unsafe { libc::strdup(s) };
+    if allocated.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
+
+    // SAFETY: `strdup()` returned a live NUL-terminated C allocation.
+    let bytes = unsafe { CStr::from_ptr(allocated) }.to_bytes();
+    if hostname_is_valid_zero_flags(bytes) {
+        // SAFETY: `ret` was validated non-null and the caller guarantees
+        // writable pointer storage; publication follows C's successful path.
+        unsafe { *ret = allocated };
+        return 0;
+    }
+
+    let first_label = bytes
+        .iter()
+        .position(|&byte| byte == b'.')
+        .map_or(bytes, |offset| &bytes[..offset]);
+    let shortened = &first_label[..first_label.len().min(LINUX_HOST_NAME_MAX)];
+    let shortened_len = shortened.len();
+    if !hostname_is_valid_zero_flags(shortened) {
+        // SAFETY: `allocated` is exactly the live C allocation returned by
+        // strdup() above and has not been published.
+        unsafe { libc::free(allocated.cast()) };
+        return Errno::EDOM.to_neg_errno();
+    }
+
+    // SAFETY: `shortened_len` is inside the allocated C string (or at its
+    // original NUL terminator), so this is C's in-place dot/truncation write.
+    unsafe { *allocated.cast::<u8>().add(shortened_len) = 0 };
+    // SAFETY: `ret` was validated non-null and the caller guarantees writable
+    // pointer storage; publication happens only after a successful allocation.
+    unsafe { *ret = allocated };
+    1
 }
 
 #[cfg(test)]

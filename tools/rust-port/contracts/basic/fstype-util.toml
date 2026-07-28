@@ -4,7 +4,6 @@ semantic_coverage = "partial"
 source_structure = "independent"
 deviation_policy = "explicit-only"
 excluded_c_symbols = [
-    "file_handle_equal",
     "file_handle_dup",
     "path_get_mnt_id_at",
     "is_mount_point_at",
@@ -62,3 +61,19 @@ verification = "static-only"
 file = "tests-extra/test-fstype-util-rust.c"
 meson_target = "test-fstype-util-rust"
 labels = ["path-below-api-vfs"]
+
+[[surface]]
+id = "fstype-file-handle-equal"
+c_symbols = ["file_handle_equal"]
+rust_symbols = ["rs_file_handle_equal"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-fstype-util-rust.c"
+meson_target = "test-fstype-util-rust"
+labels = ["fstype-file-handle-equal"]

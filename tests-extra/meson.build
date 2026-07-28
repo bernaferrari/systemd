@@ -1224,6 +1224,20 @@ if get_option('rust').enabled()
         test('test-signal-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
+                'test-signal-inline-rust',
+                files('test-signal-inline-rust.c'),
+                include_directories : includes,
+                link_with : [libshared, rust_staticlib],
+                dependencies : userspace,
+                c_args : test_cflags,
+                link_depends : runtest_env,
+                build_by_default : want_tests != 'false',
+                install : install_tests,
+                install_dir : unittestsdir,
+        )
+        test('test-signal-inline-rust', rust_test_exe)
+
+        rust_test_exe = executable(
                 'test-proc-cmdline-rust',
                 files('test-proc-cmdline-rust.c'),
                 include_directories : includes,

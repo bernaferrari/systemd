@@ -1,0 +1,48 @@
+schema = 1
+module = "dirent_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "dirent_ensure_type",
+    "readdir_ensure_type",
+    "readdir_no_dot",
+]
+
+[authority]
+c_headers = ["src/basic/dirent-util.h", "src/basic/path-util.h"]
+c_sources = ["src/basic/dirent-util.c", "src/basic/path-util.c"]
+rust_headers = ["src/basic/rust/dirent_util.h"]
+rust_sources = ["src/basic/rust/dirent_util.rs"]
+
+[[surface]]
+id = "dirent-is-file"
+c_symbols = ["dirent_is_file"]
+rust_symbols = ["rs_dirent_is_file"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-dirent-util-rust.c"
+meson_target = "test-dirent-util-rust"
+labels = ["dirent-is-file"]
+
+[[surface]]
+id = "dirent-is-file-with-suffix"
+c_symbols = ["dirent_is_file_with_suffix"]
+rust_symbols = ["rs_dirent_is_file_with_suffix"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-dirent-util-rust.c"
+meson_target = "test-dirent-util-rust"
+labels = ["dirent-is-file-with-suffix"]

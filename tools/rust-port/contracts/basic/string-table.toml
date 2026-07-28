@@ -1,0 +1,107 @@
+schema = 1
+module = "string-table"
+semantic_coverage = "complete"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = []
+
+[authority]
+c_headers = ["src/basic/string-table.h"]
+c_sources = ["src/basic/string-table.c", "src/basic/parse-util.c"]
+rust_headers = ["src/basic/rust/string_table.h"]
+rust_sources = ["src/basic/rust/string_table.rs"]
+
+[[surface]]
+id = "string-table-to-string"
+c_symbols = ["string_table_lookup_to_string"]
+rust_symbols = ["rs_string_table_lookup_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-string-table-rust.c"
+meson_target = "test-string-table-rust"
+labels = ["string-table-to-string"]
+
+[[surface]]
+id = "string-table-from-string"
+c_symbols = ["string_table_lookup_from_string"]
+rust_symbols = ["rs_string_table_lookup_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-string-table-rust.c"
+meson_target = "test-string-table-rust"
+labels = ["string-table-from-string"]
+
+[[surface]]
+id = "string-table-from-string-with-boolean"
+c_symbols = ["string_table_lookup_from_string_with_boolean"]
+rust_symbols = ["rs_string_table_lookup_from_string_with_boolean"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-string-table-rust.c"
+meson_target = "test-string-table-rust"
+labels = ["string-table-from-string-with-boolean"]
+
+[[surface]]
+id = "string-table-to-string-fallback"
+c_symbols = ["string_table_lookup_to_string_fallback"]
+rust_symbols = ["rs_string_table_lookup_to_string_fallback"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-string-table-rust.c"
+meson_target = "test-string-table-rust"
+labels = ["string-table-to-string-fallback"]
+
+[[surface]]
+id = "string-table-from-string-fallback"
+c_symbols = ["string_table_lookup_from_string_fallback"]
+rust_symbols = ["rs_string_table_lookup_from_string_fallback"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-string-table-rust.c"
+meson_target = "test-string-table-rust"
+labels = ["string-table-from-string-fallback"]

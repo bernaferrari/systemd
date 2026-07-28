@@ -1,0 +1,36 @@
+schema = 1
+module = "hostname_setup"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["sethostname_idempotent", "hostname_setup", "read_etc_hostname"]
+
+[authority]
+c_headers = ["src/shared/hostname-setup.h", "src/basic/hostname-util.h"]
+c_sources = ["src/shared/hostname-setup.c", "src/basic/hostname-util.c"]
+rust_headers = ["src/basic/rust/hostname_setup.h"]
+rust_sources = ["src/basic/rust/hostname_setup.rs"]
+
+[[surface]]
+id = "hostname-setup-shorten-overlong"
+c_symbols = ["shorten_overlong"]
+rust_symbols = ["rs_shorten_overlong"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-hostname-setup-rust.c"
+meson_target = "test-hostname-setup-rust"
+labels = ["hostname-setup-shorten-overlong"]

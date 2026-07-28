@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/nulstr-util.c, src/basic/nulstr-util.h
+// PORT-SYNC: scope=basic.nulstr-util; authority=src/basic/nulstr-util.c,src/basic/nulstr-util.h
 //
 // NUL-terminated string list utilities.
-// Pure Rust — no FFI.
+// Safe Rust core with narrow C-allocator ABI facades.
+
+use std::ffi::{CStr, c_void};
+use std::ptr;
+
+use libc::c_char;
+
+use crate::ffi::{calloc, free, malloc};
 
 // ── nulstr_get ────────────────────────────────────────────────────────────
 
@@ -34,6 +41,50 @@ pub fn nulstr_get(nulstr: &[u8], needle: &[u8]) -> Option<usize> {
     }
 
     None
+}
+
+/// Exact C ABI facade for `nulstr_get()`.
+///
+/// The result, when non-null, is a borrowed pointer into `nulstr`; ownership
+/// remains with the caller. `nulstr == NULL` is the one nullable input case
+/// accepted by the C implementation. Like C's `streq()`, `needle` is otherwise
+/// a required NUL-terminated string; this facade fails closed for a null
+/// `needle` instead of dereferencing it.
+///
+/// # Safety
+///
+/// When non-null, `nulstr` must point to a readable NULSTR: a sequence of
+/// readable NUL-terminated strings followed by an empty string. `needle` must
+/// point to a readable NUL-terminated C string. Both inputs and the returned
+/// borrowed pointer must remain live for the duration required by the caller.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_nulstr_get(
+    nulstr: *const c_char,
+    needle: *const c_char,
+) -> *const c_char {
+    if nulstr.is_null() || needle.is_null() {
+        return ptr::null();
+    }
+
+    // SAFETY: the entry-point contract guarantees that `needle` is a live C
+    // string and that every entry reached through `nulstr` is one too.
+    let needle = unsafe { CStr::from_ptr(needle) };
+    let mut entry = nulstr;
+    loop {
+        // SAFETY: the NULSTR contract guarantees a NUL terminator for each
+        // entry, including the final empty terminator entry.
+        let candidate = unsafe { CStr::from_ptr(entry) };
+        if candidate.to_bytes().is_empty() {
+            return ptr::null();
+        }
+        if candidate == needle {
+            return entry;
+        }
+
+        // SAFETY: `candidate` includes the terminator of the current entry,
+        // so this advances exactly to the next live NULSTR entry.
+        entry = unsafe { entry.add(candidate.to_bytes_with_nul().len()) };
+    }
 }
 
 // ── nulstr_contains ───────────────────────────────────────────────────────
@@ -95,6 +146,158 @@ pub fn strv_parse_nulstr_full(s: &[u8], drop_trailing_nuls: bool) -> Vec<&[u8]> 
             break;
         }
         p = e + 1;
+    }
+
+    result
+}
+
+/// Free a partially-built C-owned strv after an allocation failure.
+///
+/// # Safety
+///
+/// `strv` must be null or a C-allocator-owned, NULL-terminated array whose
+/// populated entries are each unique C-allocator-owned strings.
+unsafe fn free_c_strv(strv: *mut *mut c_char) {
+    if strv.is_null() {
+        return;
+    }
+
+    let mut index = 0;
+    // SAFETY: the caller guarantees the allocation has a NULL terminator and
+    // all preceding entries are owned C allocations.
+    while !unsafe { (*strv.add(index)).is_null() } {
+        // SAFETY: this is one of the owned entries described above.
+        unsafe { free((*strv.add(index)).cast::<c_void>()) };
+        index += 1;
+    }
+    // SAFETY: `strv` itself is the C allocation described above.
+    unsafe { free(strv.cast::<c_void>()) };
+}
+
+/// Copy raw, non-NUL bytes into a C-owned NUL-terminated string.
+///
+/// # Safety
+///
+/// `bytes` must designate `length` readable bytes for this call.
+unsafe fn malloc_suffix0(bytes: *const u8, length: usize) -> *mut c_char {
+    let Some(allocation_size) = length.checked_add(1) else {
+        return ptr::null_mut();
+    };
+    let allocation = malloc(allocation_size).cast::<c_char>();
+    if allocation.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: `allocation` has `length + 1` writable bytes. The caller gives
+    // us `length` readable source bytes, and the two allocations are disjoint.
+    unsafe {
+        ptr::copy_nonoverlapping(bytes, allocation.cast::<u8>(), length);
+        *allocation.cast::<u8>().add(length) = 0;
+    }
+    allocation
+}
+
+/// Exact C ABI facade for `strv_parse_nulstr_full()`.
+///
+/// It preserves the C ownership boundary: the returned NULL-terminated vector
+/// and each entry are allocated by the C allocator and must be freed with
+/// `strv_free()` (or equivalent per-entry `free()` followed by `free()` of the
+/// vector). Allocation failure returns NULL after freeing every temporary
+/// allocation. `s == NULL, l == 0` produces the C API's allocated empty strv;
+/// a null `s` with a nonzero length violates C's assertion and fails closed.
+///
+/// # Safety
+///
+/// `s` may be null only when `l` is zero. Otherwise it must designate `l`
+/// readable bytes for this call. The non-null return is an owned C-allocator
+/// strv with individually owned C-allocator NUL-terminated entries, released
+/// by the caller exactly once with `strv_free()` or the equivalent sequence of
+/// `free()` calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strv_parse_nulstr_full(
+    s: *const c_char,
+    l: usize,
+    drop_trailing_nuls: bool,
+) -> *mut *mut c_char {
+    if s.is_null() && l != 0 {
+        return ptr::null_mut();
+    }
+
+    let mut length = l;
+    if drop_trailing_nuls {
+        while length > 0 {
+            // SAFETY: for nonzero length the entry-point contract guarantees
+            // `s` points to all `l` readable bytes.
+            if unsafe { *s.cast::<u8>().add(length - 1) } != 0 {
+                break;
+            }
+            length -= 1;
+        }
+    }
+
+    if length == 0 {
+        // `new0(char*, 1)` in C: an allocated, one-element NULL vector.
+        return calloc(1, std::mem::size_of::<*mut c_char>()).cast::<*mut c_char>();
+    }
+
+    let mut count = 0usize;
+    for index in 0..length {
+        // SAFETY: the entry-point contract guarantees this byte is readable.
+        if unsafe { *s.cast::<u8>().add(index) } == 0 {
+            let Some(next) = count.checked_add(1) else {
+                return ptr::null_mut();
+            };
+            count = next;
+        }
+    }
+    // A final non-NUL byte starts the final nonempty-terminated entry.
+    // SAFETY: `length > 0`, and the entry-point contract covers this byte.
+    if unsafe { *s.cast::<u8>().add(length - 1) } != 0 {
+        let Some(next) = count.checked_add(1) else {
+            return ptr::null_mut();
+        };
+        count = next;
+    }
+
+    let Some(slots) = count.checked_add(1) else {
+        return ptr::null_mut();
+    };
+    let result = calloc(slots, std::mem::size_of::<*mut c_char>()).cast::<*mut c_char>();
+    if result.is_null() {
+        return ptr::null_mut();
+    }
+
+    let mut begin = 0usize;
+    let mut slot = 0usize;
+    while begin < length {
+        let mut end = begin;
+        while end < length {
+            // SAFETY: the entry-point contract guarantees this byte is readable.
+            if unsafe { *s.cast::<u8>().add(end) } == 0 {
+                break;
+            }
+            end += 1;
+        }
+
+        // SAFETY: `begin..end` is a subrange of the `length` readable bytes
+        // guaranteed by the entry-point contract.
+        let entry = unsafe { malloc_suffix0(s.cast::<u8>().wrapping_add(begin), end - begin) };
+        if entry.is_null() {
+            // SAFETY: all slots below `slot` contain exactly the owned C
+            // allocations installed by this function, and calloc supplied the
+            // NULL terminator immediately after them.
+            unsafe { free_c_strv(result) };
+            return ptr::null_mut();
+        }
+        // SAFETY: `slot < count`, because the count pass uses exactly the same
+        // split rule, and `result` has `count + 1` zeroed slots.
+        unsafe { *result.add(slot) = entry };
+        slot += 1;
+
+        if end == length {
+            break;
+        }
+        begin = end + 1;
     }
 
     result

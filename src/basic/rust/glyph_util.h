@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.glyph-util; authority=src/basic/glyph-util.c,src/basic/glyph-util.h,src/basic/locale-util.c,src/basic/locale-util.h */
 #pragma once
 
 #include <stdbool.h>

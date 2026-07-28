@@ -1,0 +1,59 @@
+schema = 1
+module = "nulstr-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["strv_split_nulstr", "strv_make_nulstr", "set_make_nulstr"]
+
+[authority]
+c_headers = ["src/basic/nulstr-util.h"]
+c_sources = ["src/basic/nulstr-util.c"]
+rust_headers = ["src/basic/rust/nulstr_util.h"]
+rust_sources = ["src/basic/rust/nulstr_util.rs"]
+
+[[surface]]
+id = "nulstr-get"
+c_symbols = ["nulstr_get"]
+rust_symbols = ["rs_nulstr_get"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed-interior"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-nulstr-util-rust.c"
+meson_target = "test-nulstr-util-rust"
+labels = ["nulstr-get"]
+
+[[surface]]
+id = "strv-parse-nulstr-full"
+c_symbols = ["strv_parse_nulstr_full"]
+rust_symbols = ["rs_strv_parse_nulstr_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "owned-libc"
+release = "free"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-nulstr-util-rust.c"
+meson_target = "test-nulstr-util-rust"
+labels = ["strv-parse-nulstr-full"]

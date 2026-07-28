@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C dirent_is_file vs Rust rs_dirent_is_file */
+/* RUST-CONTRACT: dirent-is-file */
+/* RUST-CONTRACT: dirent-is-file-with-suffix */
 
 #include <dirent.h>
 #include <string.h>
@@ -114,6 +116,15 @@ static void test_dirent_is_file_lost_found(void) {
         assert_se(c == false);
 }
 
+static void test_dirent_is_file_opaque_bytes(void) {
+        char name[] = { 'f', (char) 0xff, '.', 'b', 'a', 'k', 0 };
+        struct dirent de = make_dirent(name, DT_REG);
+        bool c = dirent_is_file(&de);
+        bool r = rs_dirent_is_file(&de);
+        assert_se(c == r);
+        assert_se(c == false);
+}
+
 static void test_dirent_is_file_normal_names(void) {
         const char *names[] = { "file.conf", "data.txt", "script.sh", "README" };
         for (int i = 0; i < (int)ELEMENTSOF(names); i++) {
@@ -210,6 +221,7 @@ int main(int argc, char *argv[]) {
         test_dirent_is_file_hidden();
         test_dirent_is_file_backup_tilde();
         test_dirent_is_file_lost_found();
+        test_dirent_is_file_opaque_bytes();
         test_dirent_is_file_normal_names();
         test_dirent_is_file_with_suffix_null_de();
         test_dirent_is_file_with_suffix_null_suffix();

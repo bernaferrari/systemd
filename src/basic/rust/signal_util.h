@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.signal-util; authority=src/basic/signal-util.c,src/basic/signal-util.h */
 #pragma once
 
 #include <stdbool.h>

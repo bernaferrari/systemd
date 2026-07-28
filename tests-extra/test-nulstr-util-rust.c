@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: nulstr-get */
+/* RUST-CONTRACT: strv-parse-nulstr-full */
 
 #include <string.h>
 

@@ -342,7 +342,13 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "signal_inline_registered": (
             basic_rust / "signal_util.h",
             basic_rust / "signal_util.rs",
-            frozenset({"rs_signal_is_valid", "rs_signal_to_string_with_check"}),
+            frozenset(
+                {
+                    "rs_signal_is_valid",
+                    "rs_signal_to_string_with_check",
+                    "rs_si_code_from_process",
+                }
+            ),
         ),
         "udev_util": (
             basic_rust / "udev_util.h",
@@ -622,6 +628,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_fstype_is_network",
                     "rs_fstype_is_api_vfs",
                     "rs_fstype_is_blockdev_backed",
+                    "rs_file_handle_equal",
                 }
             ),
         ),
@@ -751,6 +758,19 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "string_table": (
+            basic_rust / "string_table.h",
+            basic_rust / "string_table.rs",
+            frozenset(
+                {
+                    "rs_string_table_lookup_to_string",
+                    "rs_string_table_lookup_from_string",
+                    "rs_string_table_lookup_from_string_with_boolean",
+                    "rs_string_table_lookup_to_string_fallback",
+                    "rs_string_table_lookup_from_string_fallback",
+                }
+            ),
+        ),
         "strxcpyx": (
             basic_rust / "strxcpyx.h",
             basic_rust / "strxcpyx.rs",
@@ -774,6 +794,26 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_url_suitable_for_osc8",
                 }
             ),
+        ),
+        "glyph_util": (
+            basic_rust / "glyph_util.h",
+            basic_rust / "glyph_util.rs",
+            frozenset({"rs_glyph_full"}),
+        ),
+        "nulstr_util": (
+            basic_rust / "nulstr_util.h",
+            basic_rust / "nulstr_util.rs",
+            frozenset({"rs_nulstr_get", "rs_strv_parse_nulstr_full"}),
+        ),
+        "hostname_setup": (
+            basic_rust / "hostname_setup.h",
+            basic_rust / "hostname_setup.rs",
+            frozenset({"rs_shorten_overlong"}),
+        ),
+        "dirent_util": (
+            basic_rust / "dirent_util.h",
+            basic_rust / "dirent_util.rs",
+            frozenset({"rs_dirent_is_file", "rs_dirent_is_file_with_suffix"}),
         ),
     }
     partial_extra_sources = {
@@ -892,7 +932,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-string-mutation-rust.c",
             tests_extra / "test-string-util-inline2-rust.c",
         ),
-        "signal_inline_registered": (tests_extra / "test-string-util-inline2-rust.c",),
+        "signal_inline_registered": (
+            tests_extra / "test-string-util-inline2-rust.c",
+            tests_extra / "test-signal-inline-rust.c",
+        ),
         "udev_util": (tests_extra / "test-udev-util-rust.c",),
         "shared_validation_facades": (
             tests_extra / "test-shared-validators-rust.c",
@@ -945,8 +988,13 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "process_util_str_tables": (
             tests_extra / "test-process-util-str-tables-rust.c",
         ),
+        "string_table": (tests_extra / "test-string-table-rust.c",),
         "strxcpyx": (tests_extra / "test-strxcpyx-rust.c",),
         "terminal_util": (tests_extra / "test-terminal-util-rust.c",),
+        "glyph_util": (tests_extra / "test-glyph-util-rust.c",),
+        "nulstr_util": (tests_extra / "test-nulstr-util-rust.c",),
+        "hostname_setup": (tests_extra / "test-hostname-setup-rust.c",),
+        "dirent_util": (tests_extra / "test-dirent-util-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -1253,11 +1301,39 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/parse-util.c",
             root / "src/basic/parse-util.h",
         ),
+        "string_table": (
+            root / "src/basic/string-table.c",
+            root / "src/basic/string-table.h",
+            root / "src/basic/parse-util.c",
+            root / "src/basic/parse-util.h",
+        ),
         "strxcpyx": (root / "src/basic/strxcpyx.c", root / "src/basic/strxcpyx.h"),
         "terminal_util": (
             root / "src/basic/terminal-util.c",
             root / "src/basic/terminal-util.h",
             root / "src/shared/pretty-print.c",
+        ),
+        "glyph_util": (
+            root / "src/basic/glyph-util.c",
+            root / "src/basic/glyph-util.h",
+            root / "src/basic/locale-util.c",
+            root / "src/basic/locale-util.h",
+        ),
+        "nulstr_util": (
+            root / "src/basic/nulstr-util.c",
+            root / "src/basic/nulstr-util.h",
+        ),
+        "hostname_setup": (
+            root / "src/shared/hostname-setup.c",
+            root / "src/shared/hostname-setup.h",
+            root / "src/basic/hostname-util.c",
+            root / "src/basic/hostname-util.h",
+        ),
+        "dirent_util": (
+            root / "src/basic/dirent-util.c",
+            root / "src/basic/dirent-util.h",
+            root / "src/basic/path-util.c",
+            root / "src/basic/path-util.h",
         ),
     }
     return BasicFfiReviewCatalog(

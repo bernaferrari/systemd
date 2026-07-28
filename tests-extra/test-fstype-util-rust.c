@@ -14,6 +14,12 @@
 /* Rust FFI */
 #include "rust/fstype_util.h"
 
+/* Guarantees native file_handle alignment while reserving flexible payload. */
+union file_handle_buffer {
+        struct file_handle handle;
+        unsigned char storage[sizeof(struct file_handle) + 8];
+};
+
 /* -- fstype_is_ro ---------------------------------------------------------- */
 
 static void test_fstype_is_ro(void) {
@@ -351,6 +357,38 @@ static void test_non_utf8_inputs(void) {
         assert_se(fstype_is_blockdev_backed(invalid_utf8) == rs_fstype_is_blockdev_backed(invalid_utf8));
 }
 
+/* -- file_handle_equal ----------------------------------------------------- */
+/* RUST-CONTRACT: fstype-file-handle-equal */
+
+static void test_file_handle_equal(void) {
+        union file_handle_buffer storage_a = {}, storage_b = {};
+        struct file_handle *a = &storage_a.handle;
+        struct file_handle *b = &storage_b.handle;
+
+        a->handle_bytes = 4;
+        a->handle_type = 1;
+        memcpy(a->f_handle, "abcd", 4);
+        b->handle_bytes = 4;
+        b->handle_type = 1;
+        memcpy(b->f_handle, "abcd", 4);
+
+        assert_se(file_handle_equal(a, a) == rs_file_handle_equal(a, a));
+        assert_se(file_handle_equal(a, b) == rs_file_handle_equal(a, b));
+
+        b->handle_type = 2;
+        assert_se(file_handle_equal(a, b) == rs_file_handle_equal(a, b));
+        b->handle_type = 1;
+        b->f_handle[0] = 'z';
+        assert_se(file_handle_equal(a, b) == rs_file_handle_equal(a, b));
+        memcpy(b->f_handle, "abcd", 4);
+        b->handle_bytes = 3;
+        assert_se(file_handle_equal(a, b) == rs_file_handle_equal(a, b));
+
+        assert_se(file_handle_equal(NULL, a) == rs_file_handle_equal(NULL, a));
+        assert_se(file_handle_equal(a, NULL) == rs_file_handle_equal(a, NULL));
+        assert_se(file_handle_equal(NULL, NULL) == rs_file_handle_equal(NULL, NULL));
+}
+
 int main(int argc, char **argv) {
         test_fstype_is_ro();
         test_fstype_needs_quota();
@@ -360,5 +398,6 @@ int main(int argc, char **argv) {
         test_fstype_is_api_vfs();
         test_fstype_is_blockdev_backed();
         test_non_utf8_inputs();
+        test_file_handle_equal();
         return 0;
 }

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: glyph-full */
 
 /*
  * Shadow test: verify Rust glyph-util port matches C behavior exactly.
@@ -11,10 +12,10 @@
 #include "rust/glyph_util.h"
 #include "tests.h"
 
-/* ── glyph_full with force_utf=false ──────────────────────────────────── */
+/* ── glyph_full with C's default locale/emoji selection ───────────────── */
 
-TEST(glyph_full_ascii_c_vs_rs) {
-        /* Test every non-emoji glyph with force_utf=false (ASCII mode) */
+TEST(glyph_full_default_non_emoji_c_vs_rs) {
+        /* force_utf=false still selects UTF-8 when C's locale policy permits it. */
         for (int i = 0; i < _GLYPH_FIRST_EMOJI; i++) {
                 const char *c_str = glyph_full(i, false);
                 const char *rs_str = rs_glyph_full(i, false);
@@ -26,6 +27,18 @@ TEST(glyph_full_ascii_c_vs_rs) {
 
                 if (c_str && rs_str)
                         ASSERT_STREQ(c_str, rs_str);
+        }
+}
+
+TEST(glyph_full_default_emoji_c_vs_rs) {
+        /* Emoji glyphs use C's separately cached SYSTEMD_EMOJI/TERM policy. */
+        for (int i = _GLYPH_FIRST_EMOJI; i < _GLYPH_MAX; i++) {
+                const char *c_str = glyph_full(i, false);
+                const char *rs_str = rs_glyph_full(i, false);
+
+                ASSERT_NOT_NULL(c_str);
+                ASSERT_NOT_NULL(rs_str);
+                ASSERT_STREQ(c_str, rs_str);
         }
 }
 

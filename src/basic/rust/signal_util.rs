@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/signal-util.c
+// PORT-SYNC: scope=basic.signal-util; authority=src/basic/signal-util.c,src/basic/signal-util.h
 
 use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char};
@@ -173,6 +173,16 @@ pub extern "C" fn rs_signal_to_string_with_check(signo: i32) -> *const c_char {
     static_signal_to_c_string(signo)
         .map(CStr::as_ptr)
         .unwrap_or_else(|| dynamic_signal_to_c_string(signo))
+}
+
+/// C ABI for the inline `si_code_from_process()` predicate.
+///
+/// This has the same scalar domain as the C inline: every negative `si_code`
+/// is process-originated, as are the `SI_USER` and `SI_QUEUE` values. No
+/// pointer, allocation, or ownership boundary is involved.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_si_code_from_process(si_code: i32) -> bool {
+    si_code_from_process(si_code)
 }
 
 fn static_signal_from_string(name: &str) -> Option<i32> {

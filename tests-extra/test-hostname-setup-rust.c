@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C hostname-setup vs Rust rs_shorten_overlong */
+/* RUST-CONTRACT: hostname-setup-shorten-overlong */
 
 #include <stdlib.h>
 #include <string.h>
@@ -112,6 +113,18 @@ static void test_shorten_overlong(void) {
         cr = shorten_overlong(".", &c_ret);
         rr = rs_shorten_overlong(".", &r_ret);
         assert_se(cr == rr);
+
+        /* C validates raw ASCII hostname bytes before publishing an output. */
+        {
+                static const char invalid_bytes[] = { 'a', (char) 0xff, 0 };
+                char *unchanged = (char*) 1;
+
+                cr = shorten_overlong(invalid_bytes, &c_ret);
+                rr = rs_shorten_overlong(invalid_bytes, &unchanged);
+                assert_se(cr == rr);
+                assert_se(cr == -EDOM);
+                assert_se(unchanged == (char*) 1);
+        }
 }
 
 static void test_shorten_overlong_null_rust_only(void) {

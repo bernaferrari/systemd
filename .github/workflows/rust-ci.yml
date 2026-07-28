@@ -216,6 +216,7 @@ jobs:
           test-btrfs-util-rust
           test-argv-util-rust
           test-compare-operator-rust
+          test-signal-inline-rust
           test-confidential-virt-rust
           test-hexdecoct-rust
           test-env-util-rust
@@ -226,6 +227,7 @@ jobs:
           test-id128-rust
           test-proc-cmdline-rust
           test-process-util-str-tables-rust
+          test-string-table-rust
           test-strxcpyx-rust
           test-terminal-util-rust
           test-credential-validators-rust
@@ -234,6 +236,10 @@ jobs:
           test-arphrd-util-rust
           test-bus-error-rust
           test-fstype-util-rust
+          test-dirent-util-rust
+          test-glyph-util-rust
+          test-hostname-setup-rust
+          test-nulstr-util-rust
           test-boot-entry-rust
           test-pkcs11-rust
           test-misc-rust2
@@ -332,6 +338,7 @@ jobs:
           test-btrfs-util-rust
           test-argv-util-rust
           test-compare-operator-rust
+          test-signal-inline-rust
           test-confidential-virt-rust
           test-hexdecoct-rust
           test-env-util-rust
@@ -342,6 +349,7 @@ jobs:
           test-id128-rust
           test-proc-cmdline-rust
           test-process-util-str-tables-rust
+          test-string-table-rust
           test-strxcpyx-rust
           test-terminal-util-rust
           test-credential-validators-rust
@@ -350,6 +358,10 @@ jobs:
           test-arphrd-util-rust
           test-bus-error-rust
           test-fstype-util-rust
+          test-dirent-util-rust
+          test-glyph-util-rust
+          test-hostname-setup-rust
+          test-nulstr-util-rust
           test-boot-entry-rust
           test-pkcs11-rust
           test-misc-rust2

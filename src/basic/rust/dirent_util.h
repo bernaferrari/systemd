@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.dirent-util; authority=src/basic/dirent-util.c,src/basic/dirent-util.h,src/basic/path-util.c,src/basic/path-util.h */
 #pragma once
 
 #include <dirent.h>

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.nulstr-util; authority=src/basic/nulstr-util.c,src/basic/nulstr-util.h */
 #pragma once
 
 #include <stddef.h>

@@ -13,6 +13,12 @@
 #include "rust/string_table.h"
 #include "tests.h"
 
+/* RUST-CONTRACT: string-table-to-string */
+/* RUST-CONTRACT: string-table-from-string */
+/* RUST-CONTRACT: string-table-from-string-with-boolean */
+/* RUST-CONTRACT: string-table-to-string-fallback */
+/* RUST-CONTRACT: string-table-from-string-fallback */
+
 /* ── Test table ───────────────────────────────────────────────────────── */
 
 static const char *const test_table[] = {

@@ -1,0 +1,46 @@
+schema = 1
+module = "signal-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "SIGNAL_VALID",
+    "reset_all_signal_handlers",
+    "reset_signal_mask",
+    "sigaction_many_internal",
+    "sigset_add_many_internal",
+    "sigprocmask_many_internal",
+    "signal_to_string",
+    "signal_to_string_with_check",
+    "signal_from_string",
+    "signal_code_to_string",
+    "nop_signal_handler",
+    "signal_is_blocked",
+    "autoreaping_enabled",
+    "pop_pending_signal_internal",
+    "propagate_signal",
+    "parse_signo",
+    "sigterm_process_group_handler",
+]
+
+[authority]
+c_headers = ["src/basic/signal-util.h"]
+c_sources = ["src/basic/signal-util.c"]
+rust_headers = ["src/basic/rust/signal_util.h"]
+rust_sources = ["src/basic/rust/signal_util.rs"]
+
+[[surface]]
+id = "signal-si-code-from-process"
+c_symbols = ["si_code_from_process"]
+rust_symbols = ["rs_si_code_from_process"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-signal-inline-rust.c"
+meson_target = "test-signal-inline-rust"
+labels = ["signal-si-code-from-process"]
