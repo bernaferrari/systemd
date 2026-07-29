@@ -327,7 +327,6 @@ if get_option('rust').enabled()
                 'rust/serialize.rs',
                 'rust/procfs_util.rs',
                 'rust/unaligned.rs',
-                'rust/safe_math.rs',
                 'rust/errno_classify.rs',
                 'rust/basic_validators.rs',
                 'rust/sha1.rs',

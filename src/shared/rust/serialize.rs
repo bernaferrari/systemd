@@ -7,6 +7,7 @@
 use crate::fdset::FdSetError;
 use crate::ffi::*;
 use std::io::{self, BufRead, Write};
+use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd};
 
 pub use crate::fdset::FdSet as FDSet;
 
@@ -346,11 +347,15 @@ pub fn deserialize_fd_many(fds: &mut FDSet, value: &str, n: usize) -> io::Result
             format!("fd count mismatch: expected {n}, got {}", words.len()),
         ));
     }
-    let mut result = Vec::with_capacity(n);
+    let mut result = Vec::<OwnedFd>::with_capacity(n);
     for word in &words {
-        result.push(deserialize_fd(fds, word)?);
+        let fd = deserialize_fd(fds, word)?;
+        // SAFETY: `deserialize_fd()` just removed `fd` from the owning
+        // `FdSet`, transferring its sole ownership to this function. Wrapping
+        // it immediately ensures a later parse/removal error closes it.
+        result.push(unsafe { OwnedFd::from_raw_fd(fd) });
     }
-    Ok(result)
+    Ok(result.into_iter().map(IntoRawFd::into_raw_fd).collect())
 }
 
 /// Deserialize a microsecond value from a string.

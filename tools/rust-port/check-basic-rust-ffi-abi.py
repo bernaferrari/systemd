@@ -1147,24 +1147,6 @@ def unaligned_boundary_is_reviewed() -> bool:
     )
 
 
-def safe_math_boundary_is_reviewed() -> bool:
-    source = SURFACES["safe_math"][1].read_text()
-    header = SURFACES["safe_math"][0].read_text()
-    test = SHADOW_TESTS["safe_math"][0].read_text()
-    return (
-        "pub fn align_power2(u: libc::c_ulong) -> libc::c_ulong" in source
-        and "libc::c_ulong::BITS - leading_zeros" in source
-        and "a != 0 && b > (u64::MAX / a)" in source
-        and "x.saturating_add(y)" in source
-        and "unsigned long rs_ALIGN_POWER2(unsigned long u);" in header
-        and '#include "rust/safe_math.h"' in test
-        and "uint64_t rs_u64_multiply_safe(" not in test
-        and "UINT64_MAX / 3 + 1" in test
-        and "ALIGN_POWER2(ULONG_MAX)" in test
-        and "size_add(SIZE_MAX, SIZE_MAX)" in test
-    )
-
-
 def time_arithmetic_boundary_is_reviewed() -> bool:
     header, source, _ = PARTIAL_SURFACES["time_util_arithmetic"]
     source_text = source.read_text()
@@ -3210,10 +3192,6 @@ def main() -> int:
     if not unaligned_boundary_is_reviewed():
         return fail(
             "unaligned must expose exact void-pointer ABI with alignment-one fixed-byte copies"
-        )
-    if not safe_math_boundary_is_reviewed():
-        return fail(
-            "safe_math must preserve target-width unsigned-long alignment and current C overflow sentinels"
         )
     if not time_arithmetic_boundary_is_reviewed():
         return fail(

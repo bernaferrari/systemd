@@ -1981,20 +1981,6 @@ if get_option('rust').enabled()
         test('test-unaligned-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-safe-math-rust',
-                'test-safe-math-rust.c',
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-safe-math-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-percent-scale-rust',
                 'test-percent-scale-rust.c',
                 include_directories : includes,

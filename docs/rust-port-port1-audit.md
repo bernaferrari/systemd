@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 14:02 UTC
+Generated: 2026-07-29 14:11 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **281**
-- `genuine-rust`: **195**
-- `ffi-backed-rust`: **86**
+- Total modules audited: **277**
+- `genuine-rust`: **192**
+- `ffi-backed-rust`: **85**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -80,7 +80,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/procfs_util.rs` | 7 | 35 | 0 | 60 |
 | `src/basic/rust/ratelimit.rs` | 6 | 37 | 0 | 13 |
 | `src/basic/rust/rlimit_util.rs` | 7 | 25 | 0 | 25 |
-| `src/basic/rust/safe_math.rs` | 3 | 22 | 0 | 8 |
 | `src/basic/rust/seccomp_util.rs` | 5 | 23 | 0 | 25 |
 | `src/basic/rust/serialize.rs` | 2 | 36 | 0 | 27 |
 | `src/basic/rust/sha1.rs` | 3 | 23 | 2 | 21 |

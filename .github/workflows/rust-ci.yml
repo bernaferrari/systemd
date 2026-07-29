@@ -245,7 +245,6 @@ jobs:
           test-misc-rust3
           test-misc-untested2-rust
           test-unaligned-rust
-          test-safe-math-rust
           test-alloc-util-rust
           test-alloc-util-extra2-rust
           test-mount-setup-rust
@@ -370,7 +369,6 @@ jobs:
           test-misc-rust3
           test-misc-untested2-rust
           test-unaligned-rust
-          test-safe-math-rust
           test-alloc-util-rust
           test-alloc-util-extra2-rust
           test-mount-setup-rust

@@ -49,7 +49,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "procfs_util": (basic_rust / "procfs_util.h", basic_rust / "procfs_util.rs"),
         "rlimit_util": (basic_rust / "rlimit_util.h", basic_rust / "rlimit_util.rs"),
         "stat_util": (basic_rust / "stat_util.h", basic_rust / "stat_util.rs"),
-        "safe_math": (basic_rust / "safe_math.h", basic_rust / "safe_math.rs"),
         "unaligned": (basic_rust / "unaligned.h", basic_rust / "unaligned.rs"),
         "user_util": (basic_rust / "user_util.h", basic_rust / "user_util.rs"),
         "virt": (basic_rust / "virt.h", basic_rust / "virt.rs"),
@@ -1104,7 +1103,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-stat-verify-rust.c",
             tests_extra / "test-stat-util-rust.c",
         ),
-        "safe_math": (tests_extra / "test-safe-math-rust.c",),
         "unaligned": (tests_extra / "test-unaligned-rust.c",),
         "user_util": (tests_extra / "test-user-util-rust.c",),
         "virt": (
@@ -1309,7 +1307,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/btrfs-util.c",
             root / "src/shared/btrfs-util.h",
         ),
-        "safe_math": (root / "src/basic/macro.h",),
         "unaligned": (root / "src/basic/unaligned.h",),
         "user_util": (
             root / "src/basic/user-util.c",

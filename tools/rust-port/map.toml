@@ -965,7 +965,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "2b75c766dcbad1eab8ff7d1be8643656e774f352", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "03ff1daa923efd66ac0b7359379be2d52a587d55", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
@@ -1455,17 +1455,6 @@ tier = 1
 symbols = 7
 sync_status = "needs_review"
 notes = "All seven current C surfaces (the six procfs runtime APIs plus meminfo conversion) now have ABI-complete Rust shadow implementations with bounded byte parsing and output-on-success wrappers. The Meson topology deliberately leaves C as production authority and links Rust only into shadow tests; differential runtime validation on real /proc and sysctl write failures remains tracked separately."
-
-[safe_math]
-c_file = "src/basic/macro.h"
-rust_file = "src/basic/rust/safe_math.rs"
-header_file = "src/basic/macro.h"
-test_file = "tests-extra/test-safe-math-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 22
-sync_status = "needs_review"
-notes = "The registered arithmetic helpers are macro/header-inline behavior from current macro.h. 2026-07-27 provenance audit removes the nonexistent synthetic .c/.h pair; runtime parity remains unclaimed."
 
 [seccomp_util]
 c_file = "src/shared/seccomp-util.c"

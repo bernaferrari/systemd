@@ -103,7 +103,6 @@ pub mod process_util_str_tables;
 pub mod procfs_util;
 pub mod ratelimit;
 pub mod rlimit_util;
-pub mod safe_math;
 pub mod seccomp_util;
 pub mod serialize;
 pub mod sha1;
