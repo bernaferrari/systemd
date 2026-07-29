@@ -15,6 +15,10 @@ Scope: `systemd/src` C-vs-Rust completeness and replacement readiness for Linux 
    141 passed, 0 failed.
 5. Ran the behavior-contract, FFI ABI, registered-fixture, GPT ABI, fixture
    catalog, and synchronization-metadata gates.
+6. Configured the two explicit experimental init milestones with
+   `-Drust=enabled -Drust-init-milestones=enabled`, then exercised them both
+   directly and through Meson: core runtime-manager **129 passed, 0 failed**;
+   platform/cgroup **24 passed, 0 failed**; Meson **2 passed, 0 failed**.
 
 ## Source Inventory Snapshot
 
@@ -84,10 +88,11 @@ This review also established several boundaries that were previously implicit:
   fail safely.
 
 The current Linux evidence is no longer static-only: the full Cargo workspace
-target graph compiles and the 141 reviewed C/R shadow fixtures execute cleanly
-in Lima. That evidence is intentionally limited to the selected, link-closed
-shadow surface. It does not exercise an installed Rust PID1, privileged boot
-paths, cross-target ABIs, fault injection, or full daemon integration.
+target graph compiles, the 141 reviewed C/R shadow fixtures execute cleanly,
+and both explicitly scoped Rust init milestones execute through Meson in Lima.
+That evidence is intentionally limited to the selected, link-closed shadow
+surface. It does not exercise an installed Rust PID1, privileged boot paths,
+cross-target ABIs, fault injection, or full daemon integration.
 
 ## Representative Completeness Findings
 
@@ -210,4 +215,9 @@ python3 tools/rust-port/sync-metadata-gate.py --repo-root .
 cargo check --locked --workspace --all-targets
 mapfile -t rust_tests < <(meson test -C /home/bernardoferrari.guest/build-rust-reviewed --list | awk '/-rust$/')
 meson test -C /home/bernardoferrari.guest/build-rust-reviewed -j1 "${rust_tests[@]}"
+
+# Experimental Rust init scope only; this does not install or boot Rust PID1.
+meson setup /tmp/systemd-rust-milestones-build . -Drust=enabled -Drust-init-milestones=enabled
+meson test -C /tmp/systemd-rust-milestones-build --setup=rust_init_milestones -j1 \
+  rust-init-core-runtime-manager rust-init-platform-cgroup
 ```
