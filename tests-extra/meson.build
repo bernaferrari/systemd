@@ -1437,7 +1437,7 @@ if get_option('rust').enabled()
                         files('test-seccomp-util-rust.c'),
                         include_directories : includes,
                         link_with : [libshared, rust_staticlib],
-                        dependencies : userspace,
+                        dependencies : [userspace, libseccomp_cflags],
                         c_args : test_cflags,
                         link_depends : runtest_env,
                         build_by_default : want_tests != 'false',

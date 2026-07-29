@@ -1518,7 +1518,7 @@ status = "in-progress"
 tier = 3
 symbols = 0
 sync_status = "needs_review"
-notes = "Rust-native prototype only: it is not Meson-built and exports no rs_ C ABI, so C remains the sole runtime authority. Before a shadow harness can make a parity claim, preserve raw pathname bytes and exact negative errno, match C's tmpfs/ramfs/cgroup2 physical-filesystem policy, and implement REMOVE_SUBVOLUME via the current btrfs authority."
+notes = "Rust-native prototype only: it is not Meson-built and exports no rs_ C ABI, so C remains the sole runtime authority. docs/rust-rm-rf-shadow-plan.md records the required byte/errno, tmpfs/ramfs/cgroup2, btrfs, ownership, and differential-fixture gates before any shadow parity claim."
 
 [strverscmp]
 c_paths = ["src/fundamental/string-util.c", "src/fundamental/string-util.h"]

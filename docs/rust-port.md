@@ -6,6 +6,8 @@ This document captures the practical workflow for an upstream-tracking Rust shad
 
 - `docs/rust-port-workspace.md` defines the only supported crate placement and
   internal dependency direction.
+- `docs/rust-rm-rf-shadow-plan.md` records the staged safety and parity gates
+  for the currently unselected shared `rm_rf` prototype.
 - `tools/rust-port/README.md` indexes synchronization, ABI, architecture,
   safety, and reporting tools without moving their stable CI entry points.
 - `tools/rust-port/RUST_FIXTURE_CATALOG.md` explains how to query Rust-linked
