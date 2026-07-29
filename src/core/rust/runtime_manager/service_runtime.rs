@@ -832,7 +832,7 @@ impl RuntimeManager {
         (configured > 0).then(|| Duration::from_secs(configured))
     }
 
-    fn arm_operation_deadline(
+    pub(super) fn arm_operation_deadline(
         &mut self,
         name: &str,
         phase: ServiceExecCommand,
@@ -1171,7 +1171,7 @@ impl RuntimeManager {
         );
     }
 
-    fn enter_start_post(&mut self, name: &str) {
+    pub(super) fn enter_start_post(&mut self, name: &str) {
         let Some(info) = self.unit_files.get(name).cloned() else {
             self.enter_dead(name, ServiceResult::FailureResources, true);
             return;

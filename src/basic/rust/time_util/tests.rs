@@ -6,22 +6,22 @@
 
 #[cfg(test)]
 mod tests {
-    use super::arithmetic::{
+    use crate::time_util::arithmetic::{
         rs_dual_timestamp_is_set, rs_timestamp_is_set, rs_triple_timestamp_is_set, rs_usec_add,
         rs_usec_sub_signed, rs_usec_sub_unsigned,
     };
-    use super::conversion::{
+    use crate::time_util::conversion::{
         rs_map_clock_usec_raw, rs_timespec_load, rs_timespec_load_nsec, rs_timespec_store,
         rs_timespec_store_nsec, rs_timeval_load, rs_timeval_store, rs_triple_timestamp_by_clock,
     };
-    use super::formatting::{
+    use crate::time_util::formatting::{
         rs_format_timespan, rs_parse_gmtoff, rs_timestamp_style_from_string,
         rs_timestamp_style_to_string,
     };
-    use super::parsing::{
+    use crate::time_util::parsing::{
         rs_parse_sec, rs_parse_sec_def_infinity, rs_parse_sec_fix_0, rs_parse_time,
     };
-    use super::types::{
+    use crate::time_util::types::{
         CLOCK_BOOTTIME, CLOCK_BOOTTIME_ALARM, CLOCK_MONOTONIC, CLOCK_REALTIME,
         CLOCK_REALTIME_ALARM, DualTimestamp, LibcTimespec, LibcTimeval, NSEC_INFINITY,
         NSEC_PER_SEC, TripleTimestamp, USEC_INFINITY, USEC_PER_DAY, USEC_PER_HOUR, USEC_PER_MINUTE,
@@ -306,7 +306,7 @@ mod tests {
     #[test]
     fn test_triple_timestamp_by_clock_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(std::ptr::null(), CLOCK_REALTIME) };
+        let result = unsafe { rs_triple_timestamp_by_clock(std::ptr::null_mut(), CLOCK_REALTIME) };
         assert_eq!(result, 0);
     }
 

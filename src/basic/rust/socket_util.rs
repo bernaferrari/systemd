@@ -1246,14 +1246,14 @@ mod tests {
 
     #[test]
     fn sockaddr_un_bytes_rejects_embedded_nul_and_relative_names() {
-        assert_eq!(
+        assert!(matches!(
             sockaddr_un_from_path_bytes(b"/run\0notify"),
-            Err(Errno::EINVAL.to_neg_errno())
-        );
-        assert_eq!(
+            Err(error) if error == Errno::EINVAL.to_neg_errno()
+        ));
+        assert!(matches!(
             sockaddr_un_from_path_bytes(b"notify"),
-            Err(Errno::EINVAL.to_neg_errno())
-        );
+            Err(error) if error == Errno::EINVAL.to_neg_errno()
+        ));
     }
 
     #[test]

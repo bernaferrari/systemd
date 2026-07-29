@@ -341,7 +341,7 @@ mod tests {
         let data = b"A=1\nB=2\nC=3\n";
         let msg = parse_native_message(data).unwrap();
         assert_eq!(msg.entries.len(), 3);
-        assert_eq!(msg.entries[0].name, "A");
+        assert_eq!(msg.entries[0].name, b"A");
         assert_eq!(msg.entries[2].payload, b"3");
     }
 

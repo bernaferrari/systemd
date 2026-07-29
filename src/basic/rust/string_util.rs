@@ -1002,6 +1002,7 @@ mod tests {
         rs_str_common_prefix, rs_strdup_to_full, rs_strdupcspn, rs_strdupspn,
         rs_streq_skip_trailing_chars, rs_string_replace_char, rs_strreplace, rs_strspn_from_end,
     };
+    use libc::c_char;
     use std::ffi::{CStr, CString, c_void};
 
     fn c(s: &str) -> *const c_char {
@@ -1379,7 +1380,7 @@ mod tests {
         // SAFETY: `empty` is readable for its declared length and all owned
         // output is released with the C allocator.
         unsafe {
-            let empty = [0_i8, 1, 2, 3];
+            let empty = [0 as c_char, 1, 2, 3];
             let mut p = std::ptr::null_mut();
             assert_eq!(rs_free_and_strndup(&mut p, empty.as_ptr(), empty.len()), 1);
             assert_eq!(CStr::from_ptr(p).to_bytes(), b"");

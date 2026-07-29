@@ -226,10 +226,14 @@ mod tests {
             Err(())
         );
         assert!(!mount_point_is_api(
-            &[b"/sys/fs/cgroup/", &oversized_component].concat()
+            &[
+                b"/sys/fs/cgroup/".as_slice(),
+                oversized_component.as_slice(),
+            ]
+            .concat()
         ));
         assert!(!mount_point_ignore(
-            &[b"/run/host/", &oversized_component].concat()
+            &[b"/run/host/".as_slice(), oversized_component.as_slice()].concat()
         ));
     }
 }

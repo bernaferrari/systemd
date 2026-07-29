@@ -877,12 +877,19 @@ mod tests {
 
     #[test]
     fn test_pattern_compile_case_auto_flags_logic() {
+        // PCRE2 is an optional runtime dependency, so this behavioural probe
+        // applies only when the C-authorized loader makes it available.
+        if dlopen_pcre2().is_err() {
+            return;
+        }
+        let lib = Pcre2Lib::current().unwrap();
+
         // Auto with lowercase → caseless
-        let has_upper = pattern_has_uppercase("lowercase");
+        let has_upper = pattern_has_uppercase(&lib, c"lowercase").unwrap();
         assert!(!has_upper);
 
         // Auto with uppercase → case-sensitive
-        let has_upper = pattern_has_uppercase("MixedCase");
+        let has_upper = pattern_has_uppercase(&lib, c"MixedCase").unwrap();
         assert!(has_upper);
     }
 }

@@ -166,9 +166,9 @@ mod tests {
 
     #[test]
     fn cescape_char_handles_signed_c_char_as_an_unsigned_byte() {
-        let mut output = [0_i8; 4];
+        let mut output = [0 as c_char; 4];
         // SAFETY: output owns four writable C-char slots.
-        let length = unsafe { rs_cescape_char(-1, output.as_mut_ptr()) };
+        let length = unsafe { rs_cescape_char(u8::MAX as c_char, output.as_mut_ptr()) };
         assert_eq!(length, 4);
         assert_eq!(output.map(|byte| byte as u8), *b"\\377");
     }

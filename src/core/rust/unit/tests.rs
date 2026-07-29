@@ -1,5 +1,5 @@
 mod tests {
-    use super::{
+    use crate::unit::{
         ActiveState, CollectMode, DependencyKind, FUNCTION_INVENTORY, FreezerState, ManagerRecord,
         OomPolicy, QueueKind, RateLimit, SOURCE_PATH, Unit, UnitError, UnitMountDependencyType,
         UnitType, activation_details_append_env, activation_details_append_pair,

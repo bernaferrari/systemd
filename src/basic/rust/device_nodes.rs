@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn ffi_rejects_null_pointers() {
-        let mut output = [0i8; 1];
+        let mut output = [0 as c_char; 1];
 
         // SAFETY: null inputs are explicitly accepted and rejected before dereference.
         assert_eq!(

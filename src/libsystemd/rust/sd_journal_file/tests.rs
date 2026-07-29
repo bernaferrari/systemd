@@ -8,7 +8,7 @@ use super::*;
 use crate::id128_util::SdId128;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use systemd_basic_rs::siphash24::siphash24;
 

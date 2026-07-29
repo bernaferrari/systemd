@@ -888,24 +888,24 @@ mod tests {
 
     #[test]
     fn test_path_is_normalized_basic() {
-        assert!(path_is_normalized("/"));
-        assert!(path_is_normalized("/foo/bar"));
-        assert!(path_is_normalized("/foo/bar/"));
+        assert!(path_is_normalized(OsStr::new("/")));
+        assert!(path_is_normalized(OsStr::new("/foo/bar")));
+        assert!(path_is_normalized(OsStr::new("/foo/bar/")));
     }
 
     #[test]
     fn test_path_is_normalized_rejects_relative() {
-        assert!(!path_is_normalized(""));
-        assert!(!path_is_normalized("foo/bar"));
+        assert!(!path_is_normalized(OsStr::new("")));
+        assert!(!path_is_normalized(OsStr::new("foo/bar")));
     }
 
     #[test]
     fn test_path_is_normalized_rejects_escaping() {
-        assert!(!path_is_normalized("/foo/../bar"));
-        assert!(!path_is_normalized("/.."));
-        assert!(!path_is_normalized("/foo/./bar"));
-        assert!(!path_is_normalized("/foo//bar"));
-        assert!(!path_is_normalized("/foo\0bar"));
+        assert!(!path_is_normalized(OsStr::new("/foo/../bar")));
+        assert!(!path_is_normalized(OsStr::new("/..")));
+        assert!(!path_is_normalized(OsStr::new("/foo/./bar")));
+        assert!(!path_is_normalized(OsStr::new("/foo//bar")));
+        assert!(!path_is_normalized(OsStr::new("/foo\0bar")));
     }
 
     // -- parse_boolean --
@@ -946,19 +946,22 @@ mod tests {
     fn test_encrypted_credential_fallback_fails_closed() {
         let directory = tempfile::tempdir().unwrap();
         let missing = directory.path().join("missing");
-        assert_eq!(reject_unported_encrypted_credential(&missing), Ok(None));
+        assert!(matches!(
+            reject_unported_encrypted_credential(&missing),
+            Ok(None)
+        ));
 
         let encrypted = directory.path().join("encrypted");
         fs::write(&encrypted, b"ciphertext").unwrap();
-        assert_eq!(
+        assert!(matches!(
             reject_unported_encrypted_credential(&encrypted),
-            Err(Errno::EOPNOTSUPP.to_neg_errno())
-        );
+            Err(error) if error == Errno::EOPNOTSUPP.to_neg_errno()
+        ));
 
-        assert_eq!(
+        assert!(matches!(
             reject_unported_encrypted_credential(directory.path()),
-            Err(Errno::EISDIR.to_neg_errno())
-        );
+            Err(error) if error == Errno::EISDIR.to_neg_errno()
+        ));
     }
 
     // -- pick_up_credentials --
@@ -1103,13 +1106,13 @@ mod tests {
     fn test_system_credentials_dir_default() {
         // When env var is unset, falls back to default
         let dir = get_system_credentials_dir().unwrap();
-        assert_eq!(dir, SYSTEM_CREDENTIALS_DIRECTORY);
+        assert_eq!(dir, Path::new(SYSTEM_CREDENTIALS_DIRECTORY));
     }
 
     #[test]
     fn test_encrypted_system_credentials_dir_default() {
         let dir = get_encrypted_system_credentials_dir().unwrap();
-        assert_eq!(dir, ENCRYPTED_SYSTEM_CREDENTIALS_DIRECTORY);
+        assert_eq!(dir, Path::new(ENCRYPTED_SYSTEM_CREDENTIALS_DIRECTORY));
     }
 
     #[cfg(unix)]

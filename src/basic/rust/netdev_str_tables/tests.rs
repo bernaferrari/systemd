@@ -4,6 +4,12 @@ use super::*;
 use crate::ffi::Errno;
 use std::ffi::{CStr, CString};
 
+// TPM2_ALG_* values are C header constants rather than part of this Rust
+// module's public ABI. Keep the FFI tests typed to the ABI's uint16_t input.
+const TPM2_ALG_SHA1: u16 = 0x4;
+const TPM2_ALG_SHA256: u16 = 0xB;
+const TPM2_ALG_SHA512: u16 = 0xD;
+
 #[test]
 fn bond_mode_roundtrip_and_invalid_lookup() {
     // SAFETY: This test controls all input and output lifetimes; returned pointers are validated before dereference and C allocations are released exactly once.

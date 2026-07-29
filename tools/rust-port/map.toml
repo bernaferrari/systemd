@@ -191,7 +191,7 @@ tier = 2
 symbols = 16
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/time-util.c" = "44c53067411741027580f465c9873e673db03028", "src/basic/time-util.h" = "3b341911a364c7901dda704467af8426621edc09" }
-last_reviewed_rust_blobs = { "src/basic/rust/time_util.rs" = "093b3e7708263912c2a760990b8452257a239406", "src/basic/rust/time_util/arithmetic.rs" = "2fdc47042ea8b0d259412ee6ca4041255bdba5c4", "src/basic/rust/time_util/conversion.rs" = "009ccd51ea6ffad5b68c4a9c10a378e123ee936c", "src/basic/rust/time_util/formatting.rs" = "000c9f73aca0f1812e37e04d6bfa943bf1179784", "src/basic/rust/time_util/parsing.rs" = "15e10ac412477a4360af247f31e2893e6bedd60d", "src/basic/rust/time_util/tests.rs" = "f6f2cf361147313847a5e3f87aa87453e1a69117", "src/basic/rust/time_util/types.rs" = "4435e137117480d65bece8965a267b77da3fd6d8", "src/basic/rust/time_util.h" = "56680ad07ec9167195d38fa8297a4c0d107477a2" }
+last_reviewed_rust_blobs = { "src/basic/rust/time_util.rs" = "093b3e7708263912c2a760990b8452257a239406", "src/basic/rust/time_util/arithmetic.rs" = "2fdc47042ea8b0d259412ee6ca4041255bdba5c4", "src/basic/rust/time_util/conversion.rs" = "009ccd51ea6ffad5b68c4a9c10a378e123ee936c", "src/basic/rust/time_util/formatting.rs" = "000c9f73aca0f1812e37e04d6bfa943bf1179784", "src/basic/rust/time_util/parsing.rs" = "15e10ac412477a4360af247f31e2893e6bedd60d", "src/basic/rust/time_util/tests.rs" = "707100ac0c0bd6638d0ea9d9fc4493529ef2ce95", "src/basic/rust/time_util/types.rs" = "4435e137117480d65bece8965a267b77da3fd6d8", "src/basic/rust/time_util.h" = "56680ad07ec9167195d38fa8297a4c0d107477a2" }
 notes = "Reviewed static time-utility directory slice 2026-07-29; no build/tests/VM. One scoped owner retains the shared C ABI header while 16 contract-backed facades cover clock conversion, duration parsing, timestamp styles, timezone offsets, and bounded timespan formatting. The remaining arithmetic shadow facades are catalog-reviewed but not yet behavior-contract-backed. C-only clock acquisition, timestamp constructors, calendar/timezone state, parse_nsec, sleep, and runtime differential execution remain P2."
 
 [extract-word]
@@ -370,7 +370,7 @@ tier = 3
 symbols = 19
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/socket-util.c" = "79eabcf32077895d7ef592a5c0fc6d458522ab48", "src/basic/socket-util.h" = "81e5bf1d4b5c95a57f3da57b3d9d6015a9a74a7b", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
-last_reviewed_rust_blobs = { "src/basic/rust/socket_util.rs" = "1c9e5687a58f30ce40166cab8bfc65135712280f", "src/basic/rust/socket_util.h" = "a3d64d37adebc83702db79881fe3adbe91e25bdc" }
+last_reviewed_rust_blobs = { "src/basic/rust/socket_util.rs" = "88f55fbcdbd8b1dabff377a7f19b43128d8bdf3a", "src/basic/rust/socket_util.h" = "a3d64d37adebc83702db79881fe3adbe91e25bdc" }
 notes = "Reviewed static socket ABI slice 2026-07-29; no build/tests/VM. Nineteen C facades preserve byte-oriented name predicates, VSOCK numeric and named-CID parsing, C sockaddr union and SocketAddress layout, AF-specific lengths, Unix path ownership, strict verification, and success-only output publication. The reviewed safe byte-address constructor now lets Rust notification senders retain C's exact filesystem and abstract AF_UNIX address semantics instead of duplicating raw sockaddr assembly. Invalid outer pointers and impossible asserted layouts fail closed by explicit policy. C remains production authority; runtime parity remains P2."
 
 [percent-util]
@@ -724,7 +724,7 @@ tier = 1
 symbols = 2
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/device-nodes.c" = "15abe31236968aa29dd50c687e84388b98f0ddb8", "src/basic/device-nodes.h" = "f57378c0f6133f08256c617375cd82f253512cba", "src/basic/utf8.c" = "0fccc4711cb9eb8e3817eff421e41b2f2f951be3", "src/basic/utf8.h" = "fde72a0d5422c9800125484ac619decf7ac93ffb" }
-last_reviewed_rust_blobs = { "src/basic/rust/device_nodes.rs" = "8643e4710e85ccb20c148a94bff7231892184316", "src/basic/rust/device_nodes.h" = "cb30c913521d7fce1162a4c9c4803b89b1a56f7c" }
+last_reviewed_rust_blobs = { "src/basic/rust/device_nodes.rs" = "00b7b4ce290f252a000c4153cd8bc711e1d8d2d2", "src/basic/rust/device_nodes.h" = "cb30c913521d7fce1162a4c9c4803b89b1a56f7c" }
 notes = "Reviewed static device-node encoding ABI slice 2026-07-28; no build/tests/VM. Exact C byte acceptance, legacy UTF-8 scalar validation, -EINVAL capacity behavior, partial writes, and snprintf's transient NUL are covered by a Rust-linked C/R fixture. devnode_same() filesystem I/O remains excluded. C remains production authority; runtime parity is unclaimed."
 
 [iovec-wrapper]
@@ -1337,7 +1337,7 @@ tier = 3
 symbols = 2
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/mount-setup.c" = "f402990cf747c3aeb326345c28f7bdc04ebde219", "src/shared/mount-setup.h" = "9e1787b2c5ac996c649b6c1c56ed6c4066e5f255" }
-last_reviewed_rust_blobs = { "src/basic/rust/mount_setup.rs" = "7772df23b079238924fc851225c981d00fb945eb", "src/basic/rust/mount_setup.h" = "c8fe5b4e7c6bc58b44dd5250d4f9c22cc1b8077b" }
+last_reviewed_rust_blobs = { "src/basic/rust/mount_setup.rs" = "525538127b46ddee4f2bd29be4be7f6479bce460", "src/basic/rust/mount_setup.h" = "c8fe5b4e7c6bc58b44dd5250d4f9c22cc1b8077b" }
 notes = "Reviewed static mount-classification ABI slice 2026-07-28; no build/tests/VM. Component-aware raw-byte paths preserve C path_equal()/path_startswith() normalization, NAME_MAX rejection, all current mount-table paths, cgroup descendants, and /run/host descendants. NULL input is an explicit fail-closed Rust extension; mounting remains excluded. C remains production authority; runtime parity is unclaimed."
 
 [mountpoint_util]

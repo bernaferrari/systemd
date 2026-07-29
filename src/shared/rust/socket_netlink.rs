@@ -1651,7 +1651,7 @@ mod tests {
     fn test_sockaddr_nl_as_sockaddr_roundtrip() {
         let original = SockAddrNl::new(100, 5);
         let libc_sa = original.as_sockaddr();
-        assert_eq!(libc_sa.nl_family, AF_NETLINK as i32);
+        assert_eq!(libc_sa.nl_family, AF_NETLINK as u16);
         assert_eq!(libc_sa.nl_pid, 100);
         assert_eq!(libc_sa.nl_groups, 5);
 

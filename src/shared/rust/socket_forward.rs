@@ -1332,7 +1332,7 @@ mod tests {
         use std::os::unix::net::UnixDatagram;
 
         let (a, b) = UnixDatagram::pair().unwrap();
-        let (reader, writer) = std::os::unix::net::UnixStream::pair().unwrap();
+        let (mut reader, writer) = std::os::unix::net::UnixStream::pair().unwrap();
 
         // Send the writer fd over the datagram socket
         send_fds(a.as_raw_fd(), &[writer.as_raw_fd()]).unwrap();
