@@ -1056,17 +1056,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "credential_validators.rs",
             frozenset({"rs_credential_name_valid", "rs_credential_glob_valid"}),
         ),
-        "arphrd_util": (
-            basic_rust / "arphrd_util.h",
-            basic_rust / "arphrd_util.rs",
-            frozenset(
-                {
-                    "rs_arphrd_from_name",
-                    "rs_arphrd_to_name",
-                    "rs_arphrd_to_hw_addr_len",
-                }
-            ),
-        ),
         "fstype_util": (
             basic_rust / "fstype_util.h",
             basic_rust / "fstype_util.rs",
@@ -1221,16 +1210,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "nulstr_util.h",
             basic_rust / "nulstr_util.rs",
             frozenset({"rs_nulstr_get", "rs_strv_parse_nulstr_full"}),
-        ),
-        "bootspec_util": (
-            basic_rust / "bootspec_util.h",
-            basic_rust / "bootspec_util.rs",
-            frozenset(
-                {
-                    "rs_boot_filename_extract_tries",
-                    "rs_bootspec_pick_name_version_sort_key",
-                }
-            ),
         ),
         "recovery_key": (
             basic_rust / "recovery_key.h",
@@ -1423,7 +1402,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "credential_validators": (
             tests_extra / "test-credential-validators-rust.c",
         ),
-        "arphrd_util": (tests_extra / "test-arphrd-util-rust.c",),
         "fstype_util": (tests_extra / "test-fstype-util-rust.c",),
         "namespace_util": (tests_extra / "test-namespace-mountpoint-rust.c",),
         "edid": (tests_extra / "test-edid-rust.c",),
@@ -1439,7 +1417,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "terminal_util": (tests_extra / "test-terminal-util-rust.c",),
         "glyph_util": (tests_extra / "test-glyph-util-rust.c",),
         "nulstr_util": (tests_extra / "test-nulstr-util-rust.c",),
-        "bootspec_util": (tests_extra / "test-bootspec-rust.c",),
         "recovery_key": (tests_extra / "test-recovery-key-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
@@ -1788,10 +1765,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/creds-util.c",
             root / "src/shared/creds-util.h",
         ),
-        "arphrd_util": (
-            root / "src/basic/arphrd-util.c",
-            root / "src/basic/arphrd-util.h",
-        ),
         "fstype_util": (
             root / "src/basic/mountpoint-util.c",
             root / "src/basic/mountpoint-util.h",
@@ -1861,12 +1834,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "nulstr_util": (
             root / "src/basic/nulstr-util.c",
             root / "src/basic/nulstr-util.h",
-        ),
-        "bootspec_util": (
-            root / "src/shared/bootspec.c",
-            root / "src/shared/bootspec.h",
-            root / "src/fundamental/bootspec.c",
-            root / "src/fundamental/bootspec.h",
         ),
         "recovery_key": (
             root / "src/shared/recovery-key.c",

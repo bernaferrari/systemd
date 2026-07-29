@@ -1070,20 +1070,6 @@ if get_option('rust').enabled()
         test('test-af-list-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-arphrd-util-rust',
-                files('test-arphrd-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-arphrd-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-env-util-rust',
                 files('test-env-util-rust.c'),
                 include_directories : includes,
@@ -2091,20 +2077,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-strreplace-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-bootspec-rust',
-                files('test-bootspec-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-bootspec-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-image-policy-rust',

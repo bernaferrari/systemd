@@ -26,7 +26,6 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Environment validators | `test-env-util-rust` | `ARG_MAX`, opaque invalid UTF-8, C-string vectors, and duplicate handling |
 | Credential validators | `test-credential-validators-rust` | Filename/fd-name composition, glob grammar, NULL, and `NAME_MAX` boundaries |
 | Image-class tables | `test-image-class-rust` | NUL-backed lookup strings, invalid enums, and NULL/-EINVAL reverse lookup |
-| ARPHRD name and length tables | `test-arphrd-util-rust` | Generated Linux-UAPI names, ASCII case folding, HDLC/CISCO alias, and native-width lengths |
 | Filesystem predicates | `test-fstype-util-rust` | Opaque bytes, generated filesystem sets, fuse aliases, and API-VFS path boundaries |
 | Glyph selection | `test-glyph-util-rust` | Static borrowed glyphs, locale/default selection, secure `SYSTEMD_UTF8`, ordinary `SYSTEMD_EMOJI`, and forced UTF-8 |
 | NUL-string parsing | `test-nulstr-util-rust` | Borrowed interior list lookup and C-owned NULL-terminated `strv` construction |

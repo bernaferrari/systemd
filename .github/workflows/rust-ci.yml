@@ -238,7 +238,6 @@ jobs:
           test-btrfs-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
-          test-bootspec-rust
           test-recovery-key-rust
           test-hexdecoct-rust
           test-env-util-rust
@@ -251,7 +250,6 @@ jobs:
           test-strxcpyx-rust
           test-terminal-util-rust
           test-credential-validators-rust
-          test-arphrd-util-rust
           test-fstype-util-rust
           test-glyph-util-rust
           test-nulstr-util-rust
@@ -380,7 +378,6 @@ jobs:
           test-btrfs-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
-          test-bootspec-rust
           test-recovery-key-rust
           test-hexdecoct-rust
           test-env-util-rust
@@ -393,7 +390,6 @@ jobs:
           test-strxcpyx-rust
           test-terminal-util-rust
           test-credential-validators-rust
-          test-arphrd-util-rust
           test-fstype-util-rust
           test-glyph-util-rust
           test-nulstr-util-rust

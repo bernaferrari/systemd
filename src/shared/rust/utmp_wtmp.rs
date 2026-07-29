@@ -238,9 +238,12 @@ fn init_timestamp(store: &mut Utmpx, t: Option<u64>) {
 fn init_entry(store: &mut Utmpx, t: Option<u64>) {
     init_timestamp(store, t);
 
-    let mut uts: libc::utsname = unsafe { std::mem::zeroed() };
-    // SAFETY: uname initializes uts on success; we check the return value.
-    if unsafe { libc::uname(&mut uts) } >= 0 {
+    let mut uts = MaybeUninit::<libc::utsname>::uninit();
+    // SAFETY: `uts` is correctly aligned writable storage for one `utsname`.
+    if unsafe { libc::uname(uts.as_mut_ptr()) } >= 0 {
+        // SAFETY: a successful uname call initializes the complete utsname
+        // record before this success-only read.
+        let uts = unsafe { uts.assume_init() };
         copy_cstr_to_fixed(&mut store.ut_host, uts.release.as_ptr());
     }
 
@@ -588,9 +591,17 @@ mod tests {
     fn test_copy_str_to_fixed_short() {
         let mut buf = [0 as libc::c_char; 32];
         copy_str_to_fixed(&mut buf, "hello");
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();
-        assert_eq!(s, "hello");
-        assert_eq!(buf[5], 0);
+        assert_eq!(
+            &buf[..6],
+            &[
+                b'h' as libc::c_char,
+                b'e' as libc::c_char,
+                b'l' as libc::c_char,
+                b'l' as libc::c_char,
+                b'o' as libc::c_char,
+                0,
+            ]
+        );
     }
 
     #[test]
@@ -598,8 +609,17 @@ mod tests {
         // "hello" = 5 bytes + 1 NUL = exactly 6
         let mut buf = [0 as libc::c_char; 6];
         copy_str_to_fixed(&mut buf, "hello");
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();
-        assert_eq!(s, "hello");
+        assert_eq!(
+            &buf[..],
+            &[
+                b'h' as libc::c_char,
+                b'e' as libc::c_char,
+                b'l' as libc::c_char,
+                b'l' as libc::c_char,
+                b'o' as libc::c_char,
+                0,
+            ]
+        );
     }
 
     #[test]
@@ -631,8 +651,15 @@ mod tests {
     fn test_copy_suffix_to_fixed_short() {
         let mut buf = [0 as libc::c_char; 32];
         copy_suffix_to_fixed(&mut buf, "abc");
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();
-        assert_eq!(s, "abc");
+        assert_eq!(
+            &buf[..4],
+            &[
+                b'a' as libc::c_char,
+                b'b' as libc::c_char,
+                b'c' as libc::c_char,
+                0,
+            ]
+        );
     }
 
     #[test]
@@ -718,14 +745,11 @@ mod tests {
     fn test_init_entry_populates_line_and_id() {
         let mut store = zeroed_utmpx();
         init_entry(&mut store, Some(0));
-        let line = unsafe { CStr::from_ptr(store.ut_line.as_ptr()) }
-            .to_str()
-            .unwrap();
-        let id = unsafe { CStr::from_ptr(store.ut_id.as_ptr()) }
-            .to_str()
-            .unwrap();
-        assert_eq!(line, "~");
-        assert_eq!(id, "~~");
+        assert_eq!(&store.ut_line[..2], &[b'~' as libc::c_char, 0]);
+        assert_eq!(
+            &store.ut_id[..3],
+            &[b'~' as libc::c_char, b'~' as libc::c_char, 0]
+        );
     }
 
     // ── UtmpError ────────────────────────────────────────────────────────

@@ -25,11 +25,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 7
     },
-    "src/basic/rust/arphrd_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
     "src/basic/rust/basic_validators.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -39,11 +34,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 43
-    },
-    "src/basic/rust/bootspec_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 14
     },
     "src/basic/rust/btrfs_util.rs": {
       "missing_safety": 0,
@@ -1427,16 +1417,9 @@
       "unsafe_sites": 2
     },
     "src/shared/rust/utmp_wtmp.rs": {
-      "missing_safety": 6,
-      "missing_safety_sites": [
-        "241:34:let mut uts: libc::utsname = unsafe { std::mem::zeroed() };",
-        "591:17:let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();",
-        "601:17:let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();",
-        "634:17:let s = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();",
-        "721:20:let line = unsafe { CStr::from_ptr(store.ut_line.as_ptr()) }",
-        "724:18:let id = unsafe { CStr::from_ptr(store.ut_id.as_ptr()) }"
-      ],
-      "unsafe_sites": 15
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 10
     },
     "src/shared/rust/vconsole_util.rs": {
       "missing_safety": 0,
@@ -1548,8 +1531,8 @@
     }
   },
   "totals": {
-    "missing_safety": 249,
-    "unsafe_sites": 5283
+    "missing_safety": 243,
+    "unsafe_sites": 5262
   },
   "version": 2,
   "window": 3

@@ -1106,45 +1106,9 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "a8047240049db1134c5a217135b1b30a4aee0d16", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "9b30679373c83e27b7fa594a6c927c06c7045c4c", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
-
-[arphrd_util]
-c_paths = [
-    "src/basic/arphrd-util.c",
-    "src/basic/arphrd-util.h",
-    "src/basic/arphrd-to-name.awk",
-    "src/basic/generate-arphrd-list.sh",
-    "src/basic/meson.build",
-    "src/include/uapi/linux/if_arp.h",
-    "tools/generate-gperfs.py",
-]
-rust_paths = [
-    "src/basic/rust/arphrd_util.rs",
-    "src/basic/rust/arphrd_util.h",
-]
-scope = "basic.arphrd-util"
-rust_scope_paths = ["src/basic/rust/arphrd_util.rs"]
-rust_interface_paths = ["src/basic/rust/arphrd_util.h"]
-contract_file = "tools/rust-port/contracts/basic/arphrd-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/arphrd-util.c", rust_paths = ["src/basic/rust/arphrd_util.rs", "src/basic/rust/arphrd_util.h"] },
-    { kind = "direct", path = "src/basic/arphrd-util.h", rust_paths = ["src/basic/rust/arphrd_util.rs", "src/basic/rust/arphrd_util.h"] },
-    { kind = "direct", path = "src/basic/arphrd-to-name.awk", rust_paths = ["src/basic/rust/arphrd_util.rs", "src/basic/rust/arphrd_util.h"] },
-    { kind = "direct", path = "src/basic/generate-arphrd-list.sh", rust_paths = ["src/basic/rust/arphrd_util.rs", "src/basic/rust/arphrd_util.h"] },
-    { kind = "direct", path = "src/basic/meson.build", rust_paths = ["src/basic/rust/arphrd_util.rs", "src/basic/rust/arphrd_util.h"] },
-    { kind = "direct", path = "src/include/uapi/linux/if_arp.h", rust_paths = ["src/basic/rust/arphrd_util.rs", "src/basic/rust/arphrd_util.h"] },
-    { kind = "direct", path = "tools/generate-gperfs.py", rust_paths = ["src/basic/rust/arphrd_util.rs", "src/basic/rust/arphrd_util.h"] },
-]
-test_file = "tests-extra/test-arphrd-util-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 3
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/arphrd-util.c" = "0c5a85edaa577ca45176c816d6de0f6e76f694eb", "src/basic/arphrd-util.h" = "97a1c0b248c5fed47e218f5fe703d779322c4b0f", "src/basic/arphrd-to-name.awk" = "302504b6510ddd7e2b90ae2097656b8d0ba86cb9", "src/basic/generate-arphrd-list.sh" = "be4c75d7e0b9a85c2ba4e12356888cbbd45466a2", "src/basic/meson.build" = "a8047240049db1134c5a217135b1b30a4aee0d16", "src/include/uapi/linux/if_arp.h" = "12d06bb6d87d995d9f85449a64a3009ce43ca957", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
-last_reviewed_rust_blobs = { "src/basic/rust/arphrd_util.rs" = "ecab09b0791eea5d40480688fe54479adb94cbc4", "src/basic/rust/arphrd_util.h" = "0698e817471435bb4fda2dc612bcc708bbb45964" }
-notes = "Reviewed static ARPHRD table slice 2026-07-28; no build/tests/VM. Three facades preserve generated Linux-UAPI name lookup, gperf ASCII case folding, the HDLC/CISCO alias, borrowed static output, uint16_t width, and address-length mapping. Generator inputs and Meson’s --ignore-case setting are pinned. C remains the production authority; runtime parity is unclaimed."
 
 [basic_validators]
 c_file = "src/basic/cgroup-util.h"
@@ -1176,28 +1140,6 @@ sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/bitmap.c" = "7c985a0956f93247b5f813699221792f0be38ea8", "src/shared/bitmap.h" = "a12451ca0e7c5d4d4147c59bea208798231447a8", "src/basic/iterator.h" = "be9e1a9b6bd1777f87474b41d941ce709500052d" }
 last_reviewed_rust_blobs = { "src/basic/rust/bitmap.rs" = "447c6b3952598f8ae8a452a37e9630e17fe5f8a6", "src/basic/rust/bitmap.h" = "24472b290cdfc7ea6623de24516c171120b846a1" }
 notes = "Reviewed static bitmap ABI slice 2026-07-29; no build/tests/VM. Eleven facades use a dedicated libc-owned repr(C) Bitmap and iterator prefix rather than exposing the Vec-based Rust model. C remains production authority; runtime parity remains P2."
-
-[bootspec_util]
-c_paths = ["src/shared/bootspec.c", "src/shared/bootspec.h", "src/fundamental/bootspec.c", "src/fundamental/bootspec.h"]
-rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"]
-scope = "basic.bootspec-util"
-rust_scope_paths = ["src/basic/rust/bootspec_util.rs"]
-rust_interface_paths = ["src/basic/rust/bootspec_util.h"]
-contract_file = "tools/rust-port/contracts/basic/bootspec-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/shared/bootspec.c", rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"] },
-    { kind = "direct", path = "src/shared/bootspec.h", rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"] },
-    { kind = "direct", path = "src/fundamental/bootspec.c", rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"] },
-    { kind = "direct", path = "src/fundamental/bootspec.h", rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"] },
-]
-test_file = "tests-extra/test-bootspec-rust.c"
-status = "in-progress"
-tier = 2
-symbols = 2
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/shared/bootspec.c" = "17a3b826d88054d6237b3301cfecd8a1f51bf3b1", "src/shared/bootspec.h" = "3f62726b25d803640325524fa58e01f6836dfc72", "src/fundamental/bootspec.c" = "6daf48479deb7236a8c388a683dfce62447c17ff", "src/fundamental/bootspec.h" = "50722d2b345349835121239e4ad1955dd9a0297a" }
-last_reviewed_rust_blobs = { "src/basic/rust/bootspec_util.rs" = "bf0d37f3916dc73512e269c848af821c0a5ad43b", "src/basic/rust/bootspec_util.h" = "da25b79a7677685094dbe384ac822423d58ee5d9" }
-notes = "Reviewed static bootspec ABI slice 2026-07-28; no build/tests/VM. Two facades preserve raw filename-byte parsing, C-owned stripped-name allocation, output-on-success, and borrowed os-release selection pointers. Boot-config parsing, file I/O, EFI handling, and JSON remain C-only. C remains the production authority; runtime parity is unclaimed."
 
 [btrfs_util]
 c_paths = ["src/basic/btrfs-util.c", "src/basic/btrfs-util.h"]
@@ -2801,56 +2743,6 @@ tier = 3
 symbols = 2
 sync_status = "needs_review"
 notes = "2026-07-27 provenance audit re-anchored SELinux-aware temporary-file creation to current shared tmpfile-util source/header; behavioral completion remains unclaimed."
-
-[varlink_journal]
-c_paths = ["src/shared/varlink-io.systemd.Journal.c", "src/shared/varlink-io.systemd.Journal.h"]
-rust_file = "src/shared/rust/varlink_journal.rs"
-header_file = "src/shared/varlink-io.systemd.Journal.h"
-status = "in-progress"
-tier = 3
-symbols = 4
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored Journal Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
-
-[varlink_journal_access]
-c_paths = ["src/shared/varlink-io.systemd.JournalAccess.c", "src/shared/varlink-io.systemd.JournalAccess.h"]
-rust_file = "src/shared/rust/varlink_journal_access.rs"
-header_file = "src/shared/varlink-io.systemd.JournalAccess.h"
-status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored JournalAccess Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
-
-[varlink_managed_oom]
-c_paths = ["src/shared/varlink-io.systemd.ManagedOOM.c", "src/shared/varlink-io.systemd.ManagedOOM.h"]
-rust_file = "src/shared/rust/varlink_managed_oom.rs"
-header_file = "src/shared/varlink-io.systemd.ManagedOOM.h"
-status = "in-progress"
-tier = 3
-symbols = 2
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored ManagedOOM Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
-
-[varlink_mute_console]
-c_paths = ["src/shared/varlink-io.systemd.MuteConsole.c", "src/shared/varlink-io.systemd.MuteConsole.h"]
-rust_file = "src/shared/rust/varlink_mute_console.rs"
-header_file = "src/shared/varlink-io.systemd.MuteConsole.h"
-status = "in-progress"
-tier = 3
-symbols = 2
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored MuteConsole Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
-
-[varlink_oom]
-c_paths = ["src/shared/varlink-io.systemd.oom.c", "src/shared/varlink-io.systemd.oom.h"]
-rust_file = "src/shared/rust/varlink_oom.rs"
-header_file = "src/shared/varlink-io.systemd.oom.h"
-status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored oom Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
 
 [varlink_oom_prekill]
 c_paths = ["src/shared/varlink-io.systemd.oom.Prekill.c", "src/shared/varlink-io.systemd.oom.Prekill.h"]

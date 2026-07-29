@@ -341,7 +341,6 @@ if get_option('rust').enabled()
                 'rust/sha1.rs',
                 'rust/pe_binary.rs',
                 'rust/bitmap.rs',
-                'rust/bootspec_util.rs',
                 'rust/id128_util.rs',
                 'rust/image_policy_util.rs',
                 'rust/exec_util.rs',
@@ -357,7 +356,6 @@ if get_option('rust').enabled()
                 'rust/credential_validators.rs',
                 'rust/edid.rs',
                 'rust/af_list.rs',
-                'rust/arphrd_util.rs',
                 'rust/xattr_util.rs',
         )
         rust_sources += rust_workspace_inputs + [errno_to_name_rust]
