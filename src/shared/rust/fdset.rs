@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, Write as IoWrite};
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ impl From<io::Error> for FdSetError {
 /// C's `fdset_free()`. Use [`FdSet::new_shallow`] to create a set
 /// that does **not** close fds on drop (equivalent to
 /// `fdset_shallow_freep()`).
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FdSet {
     fds: BTreeSet<RawFd>,
     close_on_drop: bool,
@@ -115,10 +115,14 @@ impl FdSet {
     ///
     /// Equivalent to C's `fdset_new_array()`.
     pub fn from_array(fds: &[RawFd]) -> Result<Self, FdSetError> {
-        let mut set = Self::new();
+        // The caller retains ownership until the complete input has been
+        // accepted. This is the same shallow-on-error cleanup used by C's
+        // `fdset_new_array()`.
+        let mut set = Self::new_shallow();
         for &fd in fds {
             set.put(fd)?;
         }
+        set.close_on_drop = true;
         Ok(set)
     }
 
@@ -134,10 +138,14 @@ impl FdSet {
     ///
     /// Equivalent to C's `fdset_new_fill()`.
     pub fn new_fill(filter_cloexec: Option<bool>) -> Result<Self, FdSetError> {
-        let mut set = Self::new();
-        let dir = fs::read_dir("/proc/self/fd").map_err(|e| FdSetError::Io(e))?;
+        // As in C, these are borrowed descriptors until the entire scan has
+        // succeeded. An error must not close descriptors which the caller
+        // still owns.
+        let mut set = Self::new_shallow();
+        let mut dir = fs::read_dir("/proc/self/fd").map_err(FdSetError::Io)?;
+        let dir_fd = dir.as_raw_fd();
 
-        for entry in dir {
+        for entry in &mut dir {
             let entry = entry.map_err(FdSetError::Io)?;
             let fd: RawFd = match entry.file_name().to_str().and_then(|s| s.parse().ok()) {
                 Some(v) => v,
@@ -148,13 +156,11 @@ impl FdSet {
                 continue;
             }
 
-            // Skip the directory fd itself
-            if let Ok(dir_fd) = entry.metadata().and_then(|_| {
-                // dirfd is not directly available through Rust's fs API,
-                // so we skip by trying to open the dir entry and compare.
-                Ok(0) // placeholder; we skip this check safely
-            }) {
-                let _ = dir_fd;
+            // `ReadDir` owns the descriptor used for the `/proc` scan. It
+            // must remain live until iteration completes and must never be
+            // transferred into the resulting set.
+            if fd == dir_fd {
+                continue;
             }
 
             // Filter by CLOEXEC if requested
@@ -174,6 +180,7 @@ impl FdSet {
             set.put(fd)?;
         }
 
+        set.close_on_drop = true;
         Ok(set)
     }
 }
@@ -217,12 +224,20 @@ impl FdSet {
     /// Equivalent to C's `fdset_put_dup()`.
     pub fn put_dup(&mut self, fd: RawFd) -> Result<RawFd, FdSetError> {
         validate_fd(fd)?;
+        // SAFETY: `fd` passed validation and `F_DUPFD_CLOEXEC` takes only
+        // scalar arguments. The returned descriptor is handled below on every
+        // path, matching C's `_cleanup_close_` ownership discipline.
         let copy = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, FDSET_MIN_FD) };
         if copy < 0 {
             return Err(FdSetError::Io(io::Error::last_os_error()));
         }
-        self.put(copy)?;
-        Ok(copy)
+        match self.put(copy) {
+            Ok(_) => Ok(copy),
+            Err(error) => {
+                close_fd(copy);
+                Err(error)
+            }
+        }
     }
 
     /// Remove an fd from the set and return it.
@@ -269,21 +284,12 @@ impl FdSet {
     ///
     /// Equivalent to C's `fdset_close_others()`.
     pub fn close_others(&self) -> Result<(), FdSetError> {
-        let dir = fs::read_dir("/proc/self/fd").map_err(FdSetError::Io)?;
-        for entry in dir {
-            let entry = entry.map_err(FdSetError::Io)?;
-            let fd: RawFd = match entry.file_name().to_str().and_then(|s| s.parse().ok()) {
-                Some(v) => v,
-                None => continue,
-            };
-            if fd < FDSET_MIN_FD {
-                continue;
-            }
-            if !self.fds.contains(&fd) {
-                let _ = close_fd(fd);
-            }
-        }
-        Ok(())
+        let mut except = Vec::new();
+        except
+            .try_reserve_exact(self.fds.len())
+            .map_err(|_| FdSetError::Io(io::Error::from_raw_os_error(libc::ENOMEM)))?;
+        except.extend(self.fds.iter().copied());
+        close_all_except(&except)
     }
 
     /// Set or clear `FD_CLOEXEC` on all fds in the set.
@@ -468,6 +474,8 @@ fn validate_fd(fd: RawFd) -> Result<(), FdSetError> {
 
 /// Close a single fd, ignoring errors (like C's `(void) close(fd)`).
 fn close_fd(fd: RawFd) {
+    // SAFETY: `close` accepts any integer descriptor. This helper deliberately
+    // ignores errors, exactly like the C fd-set destruction paths.
     unsafe {
         libc::close(fd);
     }
@@ -478,11 +486,14 @@ fn async_close_fd(fd: RawFd) {
     // On Linux, a simple close() is the pragmatic default.
     // A full async close would use a threadpool or MSG_OOB trick,
     // which is out of scope for this pure-Rust rewrite.
+    // SAFETY: see `close_fd`; asynchronous-close fallback is best effort.
     let _ = unsafe { libc::close(fd) };
 }
 
 /// Get the fd flags via `fcntl(F_GETFD)`.
 fn get_fd_flags(fd: RawFd) -> Result<i32, FdSetError> {
+    // SAFETY: `F_GETFD` takes a scalar descriptor and has no pointer or
+    // ownership preconditions. A negative result is translated below.
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
     if flags < 0 {
         Err(FdSetError::Io(io::Error::last_os_error()))
@@ -499,9 +510,32 @@ fn set_cloexec_fd(fd: RawFd, value: bool) -> Result<(), FdSetError> {
     } else {
         flags & !libc::FD_CLOEXEC
     };
+    // SAFETY: `F_SETFD` takes the scalar flag word computed above and does not
+    // retain memory. Failure is reported before this helper returns.
     let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, new_flags) };
     if ret < 0 {
         Err(FdSetError::Io(io::Error::last_os_error()))
+    } else {
+        Ok(())
+    }
+}
+
+// SAFETY: `close_all_fds` reads a live slice (or `n_except == 0`) only for the
+// call and retains neither the pointer nor descriptor ownership.
+unsafe extern "C" {
+    fn close_all_fds(except: *const libc::c_int, n_except: usize) -> libc::c_int;
+}
+
+/// Close every descriptor other than `except`, preserving C's close-range and
+/// fallback policy without opening an iterator descriptor that could be closed
+/// during the operation.
+fn close_all_except(except: &[RawFd]) -> Result<(), FdSetError> {
+    // SAFETY: `except` is a contiguous `c_int` buffer that remains alive for
+    // the synchronous C call. `close_all_fds` only reads it and returns a
+    // negative errno-style value on failure.
+    let result = unsafe { close_all_fds(except.as_ptr(), except.len()) };
+    if result < 0 {
+        Err(FdSetError::Io(io::Error::from_raw_os_error(-result)))
     } else {
         Ok(())
     }
@@ -512,14 +546,46 @@ fn set_cloexec_fd(fd: RawFd, value: bool) -> Result<(), FdSetError> {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
-    use std::io::Seek;
+    use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
 
-    /// Get a fresh fd via pipe() to avoid Rust I/O safety tracking.
-    fn fresh_fd() -> i32 {
-        let mut pipes = [0i32; 2];
-        unsafe { libc::pipe(pipes.as_mut_ptr()) };
-        unsafe { libc::close(pipes[1]) };
-        pipes[0]
+    /// Return a private descriptor that is never one of the standard streams.
+    fn fresh_fd() -> OwnedFd {
+        let mut pipes = [-1; 2];
+        // SAFETY: `pipes` is a valid, writable two-element `int` array. On
+        // success `pipe2` initializes both entries with new descriptors.
+        assert_eq!(
+            unsafe { libc::pipe2(pipes.as_mut_ptr(), libc::O_CLOEXEC) },
+            0
+        );
+
+        // SAFETY: the successful `pipe2` call above created two distinct,
+        // exclusively owned descriptors in `pipes`.
+        let read = unsafe { OwnedFd::from_raw_fd(pipes[0]) };
+        // SAFETY: see the preceding ownership argument for the other pipe end.
+        let write = unsafe { OwnedFd::from_raw_fd(pipes[1]) };
+
+        // `F_DUPFD_CLOEXEC` gives tests a descriptor outside the standard
+        // streams even if the test process started with one of them closed.
+        // SAFETY: `read` is a live descriptor and all arguments are scalars.
+        let fd = unsafe { libc::fcntl(read.as_raw_fd(), libc::F_DUPFD_CLOEXEC, FDSET_MIN_FD) };
+        assert!(
+            fd >= FDSET_MIN_FD,
+            "failed to duplicate test pipe: {}",
+            io::Error::last_os_error()
+        );
+        drop(read);
+        drop(write);
+
+        // SAFETY: `fcntl(F_DUPFD_CLOEXEC)` succeeded and returned a new,
+        // exclusively owned descriptor not managed by another Rust object.
+        unsafe { OwnedFd::from_raw_fd(fd) }
+    }
+
+    /// Transfer a private descriptor to an owning set through `put`.
+    fn put_owned(set: &mut FdSet, fd: OwnedFd) -> RawFd {
+        let raw = fd.as_raw_fd();
+        assert!(set.put(raw).unwrap());
+        fd.into_raw_fd()
     }
 
     // ── Constructors ───────────────────────────────────────────────────
@@ -546,11 +612,12 @@ mod tests {
 
     #[test]
     fn test_from_array() {
-        let set = FdSet::from_array(&[10, 20, 30]).unwrap();
+        let owned = [fresh_fd(), fresh_fd(), fresh_fd()];
+        let fds = owned.each_ref().map(|fd| fd.as_raw_fd());
+        let set = FdSet::from_array(&fds).unwrap();
+        let _ = owned.map(OwnedFd::into_raw_fd);
         assert_eq!(set.len(), 3);
-        assert!(set.contains(10));
-        assert!(set.contains(20));
-        assert!(set.contains(30));
+        assert!(fds.iter().all(|&fd| set.contains(fd)));
     }
 
     #[test]
@@ -569,7 +636,7 @@ mod tests {
 
     #[test]
     fn test_put_and_contains() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         assert!(set.put(42).unwrap());
         assert!(!set.put(42).unwrap()); // duplicate
         assert!(set.contains(42));
@@ -578,7 +645,7 @@ mod tests {
 
     #[test]
     fn test_put_invalid_fd() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         assert!(matches!(set.put(-1), Err(FdSetError::InvalidFd(-1))));
         assert!(matches!(
             set.put(i32::MAX as RawFd),
@@ -588,7 +655,7 @@ mod tests {
 
     #[test]
     fn test_contains_invalid_fd() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         set.put(5).unwrap();
         assert!(!set.contains(-1));
         assert!(!set.contains(i32::MAX as RawFd));
@@ -598,7 +665,7 @@ mod tests {
 
     #[test]
     fn test_remove_present() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         set.put(7).unwrap();
         assert_eq!(set.remove(7).unwrap(), 7);
         assert!(!set.contains(7));
@@ -607,13 +674,13 @@ mod tests {
 
     #[test]
     fn test_remove_absent() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         assert!(matches!(set.remove(99), Err(FdSetError::NotFound(99))));
     }
 
     #[test]
     fn test_remove_invalid() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         assert!(matches!(set.remove(-1), Err(FdSetError::InvalidFd(-1))));
     }
 
@@ -621,7 +688,7 @@ mod tests {
 
     #[test]
     fn test_steal_first() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         set.put(30).unwrap();
         set.put(10).unwrap();
         set.put(20).unwrap();
@@ -633,7 +700,7 @@ mod tests {
 
     #[test]
     fn test_steal_first_empty() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         assert_eq!(set.steal_first(), None);
     }
 
@@ -641,7 +708,7 @@ mod tests {
 
     #[test]
     fn test_next_above() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         set.put(5).unwrap();
         set.put(15).unwrap();
         set.put(25).unwrap();
@@ -655,13 +722,13 @@ mod tests {
 
     #[test]
     fn test_next_above_empty() {
-        let set = FdSet::new();
+        let set = FdSet::new_shallow();
         assert_eq!(set.next_above(FDSET_FD_NONE), None);
     }
 
     #[test]
     fn test_full_iteration() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         set.put(3).unwrap();
         set.put(1).unwrap();
         set.put(2).unwrap();
@@ -679,7 +746,7 @@ mod tests {
 
     #[test]
     fn test_first() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         assert!(set.first().is_none());
         set.put(42).unwrap();
         set.put(7).unwrap();
@@ -690,7 +757,7 @@ mod tests {
 
     #[test]
     fn test_to_vec_sorted() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         set.put(50).unwrap();
         set.put(10).unwrap();
         set.put(30).unwrap();
@@ -699,7 +766,7 @@ mod tests {
 
     #[test]
     fn test_to_vec_empty() {
-        let set = FdSet::new();
+        let set = FdSet::new_shallow();
         assert!(set.to_vec().is_empty());
     }
 
@@ -708,17 +775,15 @@ mod tests {
     #[test]
     fn test_put_dup_valid_fd() {
         let mut set = FdSet::new();
-        // stdin (fd 0) is always open in test context
-        let duped = set.put_dup(0).unwrap();
+        let source = fresh_fd();
+        let duped = set.put_dup(source.as_raw_fd()).unwrap();
         assert!(duped >= FDSET_MIN_FD);
         assert!(set.contains(duped));
-        // Clean up the duped fd so it doesn't leak
-        close_fd(duped);
     }
 
     #[test]
     fn test_put_dup_invalid_fd() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         assert!(set.put_dup(-1).is_err());
     }
 
@@ -727,11 +792,10 @@ mod tests {
     #[test]
     fn test_consume_owned_fd() {
         let mut set = FdSet::new();
-        let owned = unsafe { OwnedFd::from_raw_fd(0) }; // stdin
+        let owned = fresh_fd();
+        let raw = owned.as_raw_fd();
         set.consume(owned).unwrap();
-        assert!(set.contains(0));
-        // Don't drop the set with close_on_drop since fd 0 is stdin
-        set.fds.remove(&0);
+        assert!(set.contains(raw));
     }
 
     // ── close_all / close_all_async ────────────────────────────────────
@@ -739,17 +803,16 @@ mod tests {
     #[test]
     fn test_close_all() {
         let mut set = FdSet::new();
-        let d1 = fresh_fd();
-        let d2 = fresh_fd();
-        assert!(d1 >= 0);
-        assert!(d2 >= 0);
-        set.put(d1).unwrap();
-        set.put(d2).unwrap();
+        let d1 = put_owned(&mut set, fresh_fd());
+        let d2 = put_owned(&mut set, fresh_fd());
         assert_eq!(set.len(), 2);
         set.close_all();
         assert!(set.is_empty());
         // fds should now be closed
+        // SAFETY: `fcntl` accepts scalar arguments. `d1` and `d2` were
+        // closed by `close_all`, so querying them must fail with `EBADF`.
         assert_eq!(unsafe { libc::fcntl(d1, libc::F_GETFD) }, -1);
+        // SAFETY: same reasoning as for `d1` above.
         assert_eq!(unsafe { libc::fcntl(d2, libc::F_GETFD) }, -1);
     }
 
@@ -757,23 +820,21 @@ mod tests {
 
     #[test]
     fn test_dup_all() {
-        let mut set = FdSet::new();
-        set.put(0).unwrap(); // stdin
+        let mut set = FdSet::new_shallow();
+        let source = fresh_fd();
+        let source_fd = source.as_raw_fd();
+        set.put(source_fd).unwrap();
         let duped = set.dup_all().unwrap();
         assert_eq!(duped.len(), 1);
-        // The duped set should contain a new fd, not fd 0
-        assert!(!duped.contains(0));
-        for fd in &duped.fds {
-            assert!(*fd >= FDSET_MIN_FD);
-            close_fd(*fd);
-        }
+        assert!(!duped.contains(source_fd));
+        assert!(duped.first().is_some_and(|fd| fd >= FDSET_MIN_FD));
     }
 
     // ── shallow_copy ───────────────────────────────────────────────────
 
     #[test]
     fn test_shallow_copy() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         set.put(10).unwrap();
         set.put(20).unwrap();
         let copy = set.shallow_copy();
@@ -789,8 +850,8 @@ mod tests {
 
     #[test]
     fn test_equality() {
-        let mut a = FdSet::new();
-        let mut b = FdSet::new();
+        let mut a = FdSet::new_shallow();
+        let mut b = FdSet::new_shallow();
         assert_eq!(a, b);
         a.put(5).unwrap();
         b.put(5).unwrap();
@@ -803,12 +864,10 @@ mod tests {
 
     #[test]
     fn test_into_iter() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         set.put(3).unwrap();
         set.put(1).unwrap();
         set.put(2).unwrap();
-        // Drain via into_iter; prevent close_on_drop from closing stdin
-        set.close_on_drop = false;
         let mut v: Vec<RawFd> = set.into_iter().collect();
         v.sort();
         assert_eq!(v, vec![1, 2, 3]);
@@ -816,7 +875,7 @@ mod tests {
 
     #[test]
     fn test_iter_ref() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         set.put(3).unwrap();
         set.put(1).unwrap();
         set.put(2).unwrap();
@@ -828,10 +887,12 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize_roundtrip() {
-        let mut set = FdSet::new();
-        set.put(10).unwrap();
-        set.put(20).unwrap();
-        set.put(30).unwrap();
+        let owned = [fresh_fd(), fresh_fd(), fresh_fd()];
+        let fds = owned.each_ref().map(|fd| fd.as_raw_fd());
+        let mut set = FdSet::new_shallow();
+        for fd in fds {
+            set.put(fd).unwrap();
+        }
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("fdset.txt");
@@ -846,6 +907,7 @@ mod tests {
         {
             let mut file = File::open(&path).unwrap();
             let restored = FdSet::deserialize(&mut file).unwrap();
+            let _ = owned.map(OwnedFd::into_raw_fd);
             assert_eq!(restored, set);
         }
     }
@@ -865,19 +927,21 @@ mod tests {
     fn test_deserialize_invalid_line() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("bad.txt");
+        let owned = fresh_fd();
+        let fd = owned.as_raw_fd();
         {
             let mut file = File::create(&path).unwrap();
-            writeln!(file, "42").unwrap();
+            writeln!(file, "{fd}").unwrap();
             writeln!(file, "not_a_number").unwrap();
         }
 
+        let _ = owned.into_raw_fd();
         let mut file = File::open(&path).unwrap();
         assert!(FdSet::deserialize(&mut file).is_err());
     }
 
     // ── close_others ───────────────────────────────────────────────────
 
-    #[test]
     // Disabled: close_others() closes ALL fds not in set, including
     // Rust runtime internals (kqueue/epoll), causing IO Safety abort.
     // This test should only run on Linux with /proc/self/fd available.
@@ -888,72 +952,59 @@ mod tests {
     #[test]
     fn test_set_cloexec() {
         let mut set = FdSet::new();
-        let fd = fresh_fd();
-        assert!(fd >= 0);
-        set.put(fd).unwrap();
+        let fd = put_owned(&mut set, fresh_fd());
 
         set.set_cloexec(true).unwrap();
+        // SAFETY: `fd` is still owned by `set`; `fcntl` uses scalar arguments.
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
         assert!(flags >= 0);
         assert_ne!(flags & libc::FD_CLOEXEC, 0);
 
         set.set_cloexec(false).unwrap();
+        // SAFETY: `fd` remains live and owned by `set` until the end of this test.
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
         assert!(flags >= 0);
         assert_eq!(flags & libc::FD_CLOEXEC, 0);
-
-        unsafe {
-            libc::close(fd);
-        };
     }
 
     // ── Drop behaviour ─────────────────────────────────────────────────
 
     #[test]
     fn test_drop_closes_fds() {
-        // Use a pipe to get a clean fd that won't conflict with I/O safety tracking
-        let mut pipes = [0i32; 2];
-        unsafe { libc::pipe(pipes.as_mut_ptr()) };
-        let fd = pipes[0];
-        unsafe {
-            libc::close(pipes[1]);
-        } // close write end
+        let fd;
 
         {
             let mut set = FdSet::new(); // close_on_drop = true
-            set.put(fd).unwrap();
+            fd = put_owned(&mut set, fresh_fd());
             // set drops here, closing fd
         }
 
-        // fd should now be closed - just verify we can't dup it again
-        let dup_result = unsafe { libc::dup(fd) };
-        assert!(dup_result < 0 || dup_result != fd);
+        // SAFETY: `fcntl` accepts scalar arguments. `FdSet::drop` closed its
+        // private descriptor synchronously, so this query must fail.
+        assert_eq!(unsafe { libc::fcntl(fd, libc::F_GETFD) }, -1);
     }
 
     #[test]
     fn test_drop_shallow_does_not_close() {
         let fd = fresh_fd();
-        assert!(fd >= 0);
+        let raw = fd.as_raw_fd();
 
         {
             let mut set = FdSet::new_shallow(); // close_on_drop = false
-            set.put(fd).unwrap();
+            set.put(raw).unwrap();
             // set drops here, fd NOT closed
         }
 
-        // fd should still be open
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        // SAFETY: `fd` is still owned by the local `OwnedFd`.
+        let flags = unsafe { libc::fcntl(raw, libc::F_GETFD) };
         assert!(flags >= 0);
-        unsafe {
-            libc::close(fd);
-        };
     }
 
     // ── len / is_empty ─────────────────────────────────────────────────
 
     #[test]
     fn test_len_is_empty() {
-        let mut set = FdSet::new();
+        let mut set = FdSet::new_shallow();
         assert_eq!(set.len(), 0);
         assert!(set.is_empty());
         set.put(100).unwrap();

@@ -764,7 +764,7 @@
     "src/basic/rust/virt.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 3
     },
     "src/basic/rust/xattr_util.rs": {
       "missing_safety": 0,
@@ -1274,27 +1274,8 @@
       "unsafe_sites": 5
     },
     "src/shared/rust/fdset.rs": {
-      "missing_safety": 18,
-      "missing_safety_sites": [
-        "220:20:let copy = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, FDSET_MIN_FD) };",
-        "471:5:unsafe {",
-        "481:13:let _ = unsafe { libc::close(fd) };",
-        "486:17:let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };",
-        "502:15:let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, new_flags) };",
-        "520:9:unsafe { libc::pipe(pipes.as_mut_ptr()) };",
-        "521:9:unsafe { libc::close(pipes[1]) };",
-        "730:21:let owned = unsafe { OwnedFd::from_raw_fd(0) }; // stdin",
-        "752:20:assert_eq!(unsafe { libc::fcntl(d1, libc::F_GETFD) }, -1);",
-        "753:20:assert_eq!(unsafe { libc::fcntl(d2, libc::F_GETFD) }, -1);",
-        "896:21:let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };",
-        "901:21:let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };",
-        "905:9:unsafe {",
-        "916:9:unsafe { libc::pipe(pipes.as_mut_ptr()) };",
-        "918:9:unsafe {",
-        "929:26:let dup_result = unsafe { libc::dup(fd) };",
-        "945:21:let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };",
-        "947:9:unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 18
     },
     "src/shared/rust/ffi.rs": {
@@ -1481,7 +1462,7 @@
     "src/shared/rust/machine_id_setup.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 5
+      "unsafe_sites": 9
     },
     "src/shared/rust/mkfs_util.rs": {
       "missing_safety": 0,
@@ -1537,6 +1518,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 14
+    },
+    "src/shared/rust/pkcs7_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 5
     },
     "src/shared/rust/plymouth_util.rs": {
       "missing_safety": 0,
@@ -1883,8 +1869,8 @@
     }
   },
   "totals": {
-    "missing_safety": 365,
-    "unsafe_sites": 5650
+    "missing_safety": 347,
+    "unsafe_sites": 5660
   },
   "version": 2,
   "window": 3

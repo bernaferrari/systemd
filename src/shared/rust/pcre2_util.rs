@@ -9,10 +9,9 @@
 // or auto-detected from pattern content), and pattern matching against
 // arbitrary byte buffers with optional ovector output.
 //
-// PORT-GAP: C's `HAVE_PCRE2` configuration gate and locale-aware
-// `[[:upper:]]` AUTO-case probe are not yet represented in Rust. The latter
-// currently retains an explicit ASCII-only approximation rather than hiding
-// a potentially locale-dependent semantic difference.
+// PORT-GAP: C's `HAVE_PCRE2` configuration gate is not yet represented in
+// Rust. Runtime loading remains optional and reports `EOPNOTSUPP` when the
+// library is unavailable.
 
 use std::collections::HashSet;
 use std::ffi::{CString, c_void};
@@ -93,7 +92,7 @@ impl From<Pcre2Error> for i32 {
 #[repr(i32)]
 pub enum PatternCompileCase {
     /// Auto-detect: use case-insensitive matching if the pattern
-    /// contains no uppercase ASCII letters.
+    /// contains no characters matched by PCRE2's `[[:upper:]]` class.
     Auto = 0,
     /// Force case-sensitive matching.
     Sensitive = 1,
@@ -240,6 +239,46 @@ type Pcre2GetErrorMessageFn = unsafe extern "C" fn(
 
 type Pcre2GetOvectorPointerFn = unsafe extern "C" fn(*mut c_void) -> *mut usize;
 
+/// Owns a PCRE2 match-data allocation until the matching operation finishes.
+///
+/// This mirrors the C `_cleanup_(pcre2_match_data_freep)` scope guards used by
+/// both `pattern_compile_and_log()`'s AUTO probe and
+/// `pattern_matches_and_log()`.
+struct MatchDataGuard {
+    ptr: *mut c_void,
+    free_fn: Pcre2MatchDataFreeFn,
+}
+
+impl MatchDataGuard {
+    fn new(lib: &Pcre2Lib) -> Result<Self, Pcre2Error> {
+        // SAFETY: match_data_create is the validated PCRE2 ABI symbol, and a
+        // positive ovector count with a null optional general context is valid.
+        let ptr = unsafe { (lib.match_data_create())(1, std::ptr::null_mut()) };
+        if ptr.is_null() {
+            return Err(Pcre2Error::OutOfMemory);
+        }
+
+        Ok(Self {
+            ptr,
+            free_fn: lib.match_data_free(),
+        })
+    }
+
+    fn as_ptr(&self) -> *mut c_void {
+        self.ptr
+    }
+}
+
+impl Drop for MatchDataGuard {
+    fn drop(&mut self) {
+        // SAFETY: this guard owns the non-null match-data allocation returned
+        // by its corresponding PCRE2 constructor exactly once.
+        unsafe {
+            (self.free_fn)(self.ptr);
+        }
+    }
+}
+
 // ── Dlopen state ────────────────────────────────────────────────────────────
 
 /// Global flag: has `dlopen_pcre2()` been called successfully?
@@ -385,14 +424,6 @@ pub fn dlopen_pcre2() -> Result<(), Pcre2Error> {
     Ok(())
 }
 
-/// Check whether the pattern string contains any uppercase ASCII letters.
-///
-/// Used by the `Auto` case mode to decide whether to enable
-/// case-insensitive matching.
-fn pattern_has_uppercase(pattern: &str) -> bool {
-    pattern.bytes().any(|b| b.is_ascii_uppercase())
-}
-
 /// Get an error message string from a PCRE2 error code.
 ///
 /// Returns a human-readable message, or `"unknown error"` if the code
@@ -408,6 +439,91 @@ fn pcre2_error_message(lib: &Pcre2Lib, errorcode: i32) -> String {
     // Find the NUL terminator.
     let nul = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
     String::from_utf8_lossy(&buf[..nul]).into_owned()
+}
+
+/// Compile a pattern using an already-loaded PCRE2 library.
+///
+/// Keeping the raw call here lets the AUTO probe compile its fixed sensitive
+/// expression without recursively entering [`pattern_compile`]. This is the
+/// same effective call graph as C's recursive `PATTERN_COMPILE_CASE_SENSITIVE`
+/// invocation, while making the recursion boundary explicit in Rust.
+fn compile_pattern_with_flags(
+    lib: &Pcre2Lib,
+    pattern: &std::ffi::CStr,
+    pattern_for_error: &str,
+    flags: u32,
+) -> Result<CompiledPattern, Pcre2Error> {
+    let mut errorcode: i32 = 0;
+    let mut erroroffset: usize = 0;
+
+    // SAFETY: compile is the validated PCRE2 ABI symbol; `pattern` is live
+    // and NUL-terminated, both out-pointers refer to live writable locals,
+    // and a null compile context is explicitly supported by PCRE2.
+    let code_ptr = unsafe {
+        (lib.compile())(
+            pattern.as_ptr() as *const u8,
+            PCRE2_ZERO_TERMINATED,
+            flags,
+            &mut errorcode,
+            &mut erroroffset,
+            std::ptr::null_mut(),
+        )
+    };
+
+    if code_ptr.is_null() {
+        return Err(Pcre2Error::InvalidPattern {
+            pattern: pattern_for_error.to_string(),
+            detail: pcre2_error_message(lib, errorcode),
+        });
+    }
+
+    // SAFETY: the non-null pointer was returned by pcre2_compile_8 and is
+    // transferred to the resulting RAII guard for exactly one code_free call.
+    unsafe { CompiledPattern::from_raw(code_ptr) }.ok_or_else(|| Pcre2Error::InvalidPattern {
+        pattern: pattern_for_error.to_string(),
+        detail: "pcre2_compile returned null".to_string(),
+    })
+}
+
+/// Match compiled code using caller-owned PCRE2 match data.
+fn match_with_data(
+    lib: &Pcre2Lib,
+    compiled_pattern: &CompiledPattern,
+    message: &[u8],
+    match_data: &MatchDataGuard,
+) -> i32 {
+    // SAFETY: match_fn is the validated PCRE2 ABI symbol; the compiled code
+    // and match-data allocation are live, and `message` remains valid for its
+    // exact explicit length for the duration of this call.
+    unsafe {
+        (lib.match_fn())(
+            compiled_pattern.as_ptr(),
+            message.as_ptr(),
+            message.len(),
+            0,
+            0,
+            match_data.as_ptr(),
+            std::ptr::null_mut(),
+        )
+    }
+}
+
+/// Reproduce C's AUTO-case probe using PCRE2 itself.
+///
+/// `pattern_compile_and_log()` compiles `[[:upper:]]` case-sensitively and
+/// matches it against the user pattern. A PCRE2 match error deliberately means
+/// "no uppercase" here because C implements `has_case = r >= 0`; only probe
+/// allocation and compilation failures are returned to the caller.
+fn pattern_has_uppercase(lib: &Pcre2Lib, pattern: &std::ffi::CStr) -> Result<bool, Pcre2Error> {
+    let match_data = MatchDataGuard::new(lib)?;
+    let probe = compile_pattern_with_flags(lib, c"[[:upper:]]", "[[:upper:]]", 0)?;
+
+    // C passes PCRE2_ZERO_TERMINATED here. `CString` rules out interior NULs,
+    // so the explicit byte length is exactly the same subject and avoids
+    // exposing a second raw FFI call at this semantic boundary.
+    let result = match_with_data(lib, &probe, pattern.to_bytes(), &match_data);
+
+    Ok(result >= 0)
 }
 
 /// Compile a PCRE2 regex pattern.
@@ -434,54 +550,29 @@ pub fn pattern_compile(
     dlopen_pcre2()?;
     let lib = Pcre2Lib::current()?;
 
-    let mut flags: u32 = 0;
-
-    if case_ == PatternCompileCase::Insensitive {
-        flags = PCRE2_CASELESS;
-    } else if case_ == PatternCompileCase::Auto {
-        // Auto-detect: compile a probe pattern and test the user pattern
-        // for uppercase letters.
-        let has_upper = pattern_has_uppercase(pattern);
-        if !has_upper {
-            flags = PCRE2_CASELESS;
-        }
-    }
-
+    // Unlike C strings, Rust strings may contain NUL bytes. Reject those
+    // before the AUTO probe so every PCRE2 call sees the same complete pattern
+    // and never silently truncates its subject at an interior NUL.
     let pattern_cstr = CString::new(pattern).map_err(|_| Pcre2Error::InvalidPattern {
         pattern: pattern.to_string(),
         detail: "pattern contains NUL byte".to_string(),
     })?;
 
-    let mut errorcode: i32 = 0;
-    let mut erroroffset: usize = 0;
+    let mut flags: u32 = 0;
 
-    // SAFETY: compile is the validated PCRE2 ABI symbol; `pattern_cstr` is a
-    // live NUL-terminated pattern, both out-pointers refer to live writable
-    // locals, and a null compile context is explicitly supported by PCRE2.
-    let code_ptr = unsafe {
-        (lib.compile())(
-            pattern_cstr.as_ptr() as *const u8,
-            PCRE2_ZERO_TERMINATED,
-            flags,
-            &mut errorcode,
-            &mut erroroffset,
-            std::ptr::null_mut(),
-        )
-    };
-
-    if code_ptr.is_null() {
-        let detail = pcre2_error_message(&lib, errorcode);
-        return Err(Pcre2Error::InvalidPattern {
-            pattern: pattern.to_string(),
-            detail,
-        });
+    if case_ == PatternCompileCase::Insensitive {
+        flags = PCRE2_CASELESS;
+    } else if case_ == PatternCompileCase::Auto {
+        // This deliberately uses PCRE2's locale-aware `[[:upper:]]` class,
+        // rather than Rust or ASCII character classification, to reproduce
+        // C's AUTO-case decision exactly.
+        let has_upper = pattern_has_uppercase(&lib, &pattern_cstr)?;
+        if !has_upper {
+            flags = PCRE2_CASELESS;
+        }
     }
 
-    // SAFETY: code_ptr is non-null and returned by pcre2_compile_8.
-    unsafe { CompiledPattern::from_raw(code_ptr) }.ok_or(Pcre2Error::InvalidPattern {
-        pattern: pattern.to_string(),
-        detail: "pcre2_compile returned null".to_string(),
-    })
+    compile_pattern_with_flags(&lib, &pattern_cstr, pattern, flags)
 }
 
 /// Match a compiled PCRE2 pattern against a message buffer.
@@ -518,47 +609,10 @@ pub fn pattern_matches_bytes(
 ) -> Result<MatchResult, Pcre2Error> {
     let lib = Pcre2Lib::current()?;
 
-    // Create match data for the full match's two ovector offsets.
-    // SAFETY: match_data_create is the validated PCRE2 ABI symbol, and a
-    // positive ovector count with a null optional general context is valid.
-    let md = unsafe { (lib.match_data_create())(1, std::ptr::null_mut()) };
-    if md.is_null() {
-        return Err(Pcre2Error::OutOfMemory);
-    }
+    let match_data = MatchDataGuard::new(&lib)?;
+    let md = match_data.as_ptr();
 
-    // Ensure match data is freed.
-    struct MatchDataGuard {
-        ptr: *mut c_void,
-        free_fn: Pcre2MatchDataFreeFn,
-    }
-    impl Drop for MatchDataGuard {
-        fn drop(&mut self) {
-            // SAFETY: this guard owns the non-null match-data allocation
-            // returned by its corresponding PCRE2 constructor exactly once.
-            unsafe {
-                (self.free_fn)(self.ptr);
-            }
-        }
-    }
-    let _guard = MatchDataGuard {
-        ptr: md,
-        free_fn: lib.match_data_free(),
-    };
-
-    // SAFETY: match_fn is the validated PCRE2 ABI symbol; the compiled code
-    // and match-data allocations are live, and the byte slice remains valid
-    // for its exact explicit length for the duration of this call.
-    let rc = unsafe {
-        (lib.match_fn())(
-            compiled_pattern.as_ptr(),
-            message.as_ptr(),
-            message.len(),
-            0, // start offset
-            0, // options
-            md,
-            std::ptr::null_mut(),
-        )
-    };
+    let rc = match_with_data(&lib, compiled_pattern, message, &match_data);
 
     if rc == PCRE2_ERROR_NOMATCH {
         return Ok(MatchResult {
@@ -664,16 +718,6 @@ mod tests {
     }
 
     #[test]
-    fn test_pattern_has_uppercase() {
-        assert!(pattern_has_uppercase("Hello"));
-        assert!(pattern_has_uppercase("ABC"));
-        assert!(pattern_has_uppercase("aBc"));
-        assert!(!pattern_has_uppercase("hello"));
-        assert!(!pattern_has_uppercase("123"));
-        assert!(!pattern_has_uppercase(""));
-        assert!(!pattern_has_uppercase("hello-world"));
-    }
-
     #[test]
     fn test_pcre2_error_display_unsupported() {
         let e = Pcre2Error::Unsupported;

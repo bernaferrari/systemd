@@ -2,12 +2,21 @@
 //
 // PORT-SYNC: src/basic/virt.c, src/basic/virt.h
 //
-// Virtualization type definitions and string table lookups.
-// Skipped: detect_vm/detect_container/detect_virtualization (file I/O, CPUID),
+// Virtualization type definitions, string table lookups, and the safe
+// container-detection facade.
+// Skipped: detect_vm/detect_virtualization (file I/O, CPUID),
 //          running_in_userns/running_in_chroot (namespace/inode checks).
 
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::c_char;
+
+// SAFETY: this is the exact no-argument declaration from virt.h. The safe
+// wrapper below validates the returned C enum value before constructing the
+// corresponding Rust enum.
+unsafe extern "C" {
+    #[link_name = "detect_container"]
+    safe fn c_detect_container() -> libc::c_int;
+}
 
 // ── Enum ──────────────────────────────────────────────────────────────────
 
@@ -114,6 +123,20 @@ pub fn virtualization_is_vm(v: Virtualization) -> bool {
 pub fn virtualization_is_container(v: Virtualization) -> bool {
     let x = v as i32;
     x >= CONTAINER_FIRST && x <= CONTAINER_LAST
+}
+
+/// Detect the current container environment using C's authoritative detector.
+///
+/// This retains `detect_container()`'s complete namespace, environment,
+/// procfs, and runtime-marker policy instead of duplicating a partial subset
+/// in Rust. Negative C errno returns are preserved unchanged.
+pub fn detect_container() -> Result<Virtualization, i32> {
+    let result = c_detect_container();
+    if result < 0 {
+        return Err(result);
+    }
+
+    virtualization_from_raw(result).ok_or(-libc::EIO)
 }
 
 #[unsafe(no_mangle)]

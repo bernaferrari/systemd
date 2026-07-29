@@ -16,6 +16,19 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+// SAFETY: Exact virt.h/id128-util.h declarations; the safe helper provides
+// `c_id128_get_product` a valid unique output and neither C call retains it.
+unsafe extern "C" {
+    #[link_name = "detect_vm"]
+    fn c_detect_vm() -> libc::c_int;
+
+    #[link_name = "running_in_chroot"]
+    fn c_running_in_chroot() -> libc::c_int;
+
+    #[link_name = "id128_get_product"]
+    fn c_id128_get_product(ret: *mut SdId128) -> libc::c_int;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Primary persistent machine-id path.
@@ -32,6 +45,15 @@ const UNINITIALIZED_STR: &str = "uninitialized\n";
 
 /// Expected length of a plain-format 128-bit machine-id (32 hex chars + newline).
 const MACHINE_ID_LINE_LEN: usize = 33;
+
+// These discriminants are part of the `Virtualization` enum in `src/basic/virt.h`.
+// Only these VM kinds make C's acquire_machine_id() probe the product UUID
+// unless the caller explicitly forces the firmware path.
+const VIRTUALIZATION_KVM: libc::c_int = 1;
+const VIRTUALIZATION_AMAZON: libc::c_int = 2;
+const VIRTUALIZATION_QEMU: libc::c_int = 3;
+const VIRTUALIZATION_XEN: libc::c_int = 5;
+const VIRTUALIZATION_BHYVE: libc::c_int = 12;
 
 // ── Enums / Flags ─────────────────────────────────────────────────────────
 
@@ -378,6 +400,37 @@ fn acquire_from_container_uuid() -> MachineIdResult<Option<(SdId128, MachineIdSo
     }
 }
 
+/// Return the firmware product UUID when C considers this machine eligible.
+///
+/// This keeps the VM eligibility list, container rejection, DMI/device-tree/
+/// Xen source ordering, null/all-`FF` rejection, and errno behavior in the C
+/// authority. Like C's `acquire_machine_id()`, all product lookup failures are
+/// fallthroughs to the random source rather than user-visible setup failures.
+fn acquire_from_firmware(force_firmware: bool) -> Option<SdId128> {
+    // SAFETY: `detect_vm()` has no pointer arguments and returns its C enum
+    // value synchronously. A negative detection error is intentionally not a
+    // match, exactly as C's `IN_SET(detect_vm(), ...)` condition behaves.
+    let vm = unsafe { c_detect_vm() };
+    let vm_has_product_uuid = matches!(
+        vm,
+        VIRTUALIZATION_KVM
+            | VIRTUALIZATION_AMAZON
+            | VIRTUALIZATION_QEMU
+            | VIRTUALIZATION_XEN
+            | VIRTUALIZATION_BHYVE
+    );
+    if !force_firmware && !vm_has_product_uuid {
+        return None;
+    }
+
+    let mut id = SdId128::nil();
+    // SAFETY: `id` is initialized, uniquely borrowed writable storage with
+    // the first sixteen bytes and alignment required by C's `sd_id128_t`.
+    // The C helper writes it only on success and retains no pointer.
+    let result = unsafe { c_id128_get_product(&mut id) };
+    (result >= 0).then_some(id)
+}
+
 /// Acquire a machine-id by trying several sources in priority order.
 ///
 /// Mirrors the C `acquire_machine_id()` function:
@@ -421,12 +474,15 @@ pub fn acquire_machine_id(
             return Ok(pair);
         }
 
-        // 5. Firmware — in the real implementation this reads DMI/SMBIOS.
-        // We only honour it when `force_firmware` is true, as the
-        // environment detection (VM vs container) is a C-side concern.
-        if force_firmware {
-            // Placeholder: in production `id128_get_product()` is called.
-            // We cannot call that from pure Rust, so we fall through.
+        // 5. Firmware. C does not use host product metadata from a chroot.
+        // Its helper owns the remaining platform/container-specific product
+        // UUID acquisition; failures intentionally fall through.
+        // SAFETY: `running_in_chroot()` has no pointer arguments and returns
+        // its errno-style result synchronously, retaining no Rust state.
+        if unsafe { c_running_in_chroot() } <= 0 {
+            if let Some(id) = acquire_from_firmware(force_firmware) {
+                return Ok((id, MachineIdSource::Firmware));
+            }
         }
     }
 

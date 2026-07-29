@@ -2,17 +2,86 @@
 //
 // PORT-SYNC: src/shared/pkcs7-util.c, src/shared/pkcs7-util.h
 //
-// PKCS#7 signature utilities — signer extraction from DER-encoded PKCS#7
-// signatures, certificate source types, verify flags, and PEM marker
-// constants.
+// PKCS#7 signature utilities — C-authoritative signer extraction from
+// DER-encoded PKCS#7 signatures, certificate source types, verify flags, and
+// PEM marker constants.
 //
-// PORT-GAP: The OpenSSL-backed DER parsing, signer extraction, verification,
-// and loading paths remain C-only. This Rust module provides only the safe
-// value model and error contracts; it deliberately returns EOPNOTSUPP for
-// those cryptographic operations rather than presenting a partial parser as
-// equivalent to the C implementation.
+// Signer extraction delegates to C so OpenSSL loading, parsing, and error
+// behavior remain shared. The returned C allocation is copied into Rust-owned
+// values and released with signer_free_many(), its authoritative destructor.
+//
+// PORT-GAP: PKCS#7 verification, certificate hashing, and explicit OpenSSL
+// loading remain C-only. Their Rust entry points deliberately return
+// EOPNOTSUPP rather than presenting partial implementations as equivalent.
 
 use crate::ffi::Errno;
+use std::ptr::NonNull;
+
+#[repr(C)]
+struct CSigner {
+    issuer: libc::iovec,
+    serial: libc::iovec,
+}
+
+// SAFETY: These declarations exactly match pkcs7-util.h. The safe extraction
+// wrapper below supplies initialized output slots and releases every successful
+// signer array through the paired C destructor.
+unsafe extern "C" {
+    #[link_name = "pkcs7_extract_signers"]
+    fn c_pkcs7_extract_signers(
+        signature: *const libc::iovec,
+        ret_signers: *mut *mut CSigner,
+        ret_n_signers: *mut usize,
+    ) -> libc::c_int;
+
+    #[link_name = "signer_free_many"]
+    fn c_signer_free_many(signers: *mut CSigner, n_signers: usize);
+}
+
+struct CSignerArray {
+    signers: NonNull<CSigner>,
+    len: usize,
+}
+
+impl CSignerArray {
+    fn as_slice(&self) -> &[CSigner] {
+        // The guard exists only after C returns exactly `len` initialized
+        // elements and retains their ownership for this slice's lifetime.
+        // SAFETY: `signers` is non-null and valid for `len` CSigner elements.
+        unsafe { std::slice::from_raw_parts(self.signers.as_ptr(), self.len) }
+    }
+}
+
+impl Drop for CSignerArray {
+    fn drop(&mut self) {
+        // SAFETY: `signers` and `len` are the unchanged allocation and count
+        // returned by pkcs7_extract_signers(), and this guard is their sole
+        // owner. signer_free_many() releases both nested iovecs and the array.
+        unsafe { c_signer_free_many(self.signers.as_ptr(), self.len) }
+    }
+}
+
+fn copy_signer_iovec(iovec: &libc::iovec, encoded_signature_len: usize) -> Result<Vec<u8>> {
+    if iovec.iov_base.is_null()
+        || iovec.iov_len == 0
+        || iovec.iov_len > encoded_signature_len
+        || iovec.iov_len > isize::MAX as usize
+    {
+        return Err(Pkcs7Error::not_recoverable());
+    }
+
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(iovec.iov_len)
+        .map_err(|_| Pkcs7Error::out_of_memory())?;
+
+    // C owns this allocation until CSignerArray drops; Rust retains no borrow.
+    // SAFETY: the checked non-null pointer is live for the checked, bounded
+    // iov_len according to the successful extractor's output contract.
+    let source = unsafe { std::slice::from_raw_parts(iovec.iov_base.cast::<u8>(), iovec.iov_len) };
+    bytes.extend_from_slice(source);
+    Ok(bytes)
+}
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -207,12 +276,13 @@ pub fn looks_like_pkcs7_pem(data: &[u8]) -> bool {
     start && end
 }
 
-// ── PKCS#7 extraction (stub — requires OpenSSL at runtime) ──────────────────
+// ── PKCS#7 extraction ───────────────────────────────────────────────────────
 
 /// Extract signer information from a DER-encoded PKCS#7 signature.
 ///
-/// The C implementation of this operation is OpenSSL-backed and remains the
-/// authoritative implementation; the Rust placeholder reports unsupported.
+/// Parsing remains C-authoritative: this passes the DER bytes to
+/// `pkcs7_extract_signers()`, copies its bounded results into Rust-owned
+/// vectors, and releases all C allocations through `signer_free_many()`.
 ///
 /// # Errors
 ///
@@ -221,14 +291,60 @@ pub fn looks_like_pkcs7_pem(data: &[u8]) -> bool {
 /// - `Pkcs7Error::no_data()` — the PKCS#7 structure contains no signer
 ///   information.
 /// - `Pkcs7Error::not_supported()` — OpenSSL is not available at runtime.
+/// - `Pkcs7Error::not_recoverable()` — C returned an inconsistent signer
+///   allocation or an invalid encoded signer field.
+/// - `Pkcs7Error::out_of_memory()` — a Rust-owned result could not be
+///   allocated.
 pub fn pkcs7_extract_signers(der: &[u8]) -> Result<Vec<Signer>> {
-    if der.is_empty() {
+    if der.is_empty() || der.len() > libc::c_long::MAX as usize {
         return Err(Pkcs7Error::bad_message());
     }
 
-    // Deliberately do not attempt partial ASN.1 parsing here. The C path
-    // owns OpenSSL ABI loading, object lifetimes, and DER encoding details.
-    Err(Pkcs7Error::not_supported())
+    let signature = libc::iovec {
+        iov_base: der.as_ptr().cast_mut().cast(),
+        iov_len: der.len(),
+    };
+    let mut c_signers = std::ptr::null_mut();
+    let mut n_signers = 0;
+
+    // C only reads `signature` and transfers successful outputs to its caller.
+    // SAFETY: the iovec borrows live `der` bytes, and both outputs are valid,
+    // uniquely borrowed, initialized slots.
+    let result = unsafe { c_pkcs7_extract_signers(&signature, &mut c_signers, &mut n_signers) };
+    if result < 0 {
+        return Err(Pkcs7Error::from_neg_errno(result));
+    }
+
+    let count = result as usize;
+    let Some(c_signers) = NonNull::new(c_signers) else {
+        return Err(Pkcs7Error::not_recoverable());
+    };
+
+    // C returns its local signer count both as the positive result and through
+    // ret_n_signers. Use the return value for ownership because it is also the
+    // exact number of initialized array elements. Take ownership before
+    // validating the redundant count and limit so inconsistent successful
+    // outputs are still released through the C destructor.
+    let c_signers = CSignerArray {
+        signers: c_signers,
+        len: count,
+    };
+    if count == 0 || count > SIGNERS_MAX || n_signers != count {
+        return Err(Pkcs7Error::not_recoverable());
+    }
+
+    let mut signers = Vec::new();
+    signers
+        .try_reserve_exact(count)
+        .map_err(|_| Pkcs7Error::out_of_memory())?;
+    for signer in c_signers.as_slice() {
+        signers.push(Signer {
+            issuer: copy_signer_iovec(&signer.issuer, der.len())?,
+            serial: copy_signer_iovec(&signer.serial, der.len())?,
+        });
+    }
+
+    Ok(signers)
 }
 
 /// Verify a PKCS#7 signature in memory.
@@ -467,7 +583,7 @@ mod tests {
         assert_ne!(a, c);
     }
 
-    // ── Extraction stub tests ────────────────────────────────────────────
+    // ── Extraction tests ─────────────────────────────────────────────────
 
     #[test]
     fn test_pkcs7_extract_signers_empty_input() {
@@ -477,11 +593,13 @@ mod tests {
     }
 
     #[test]
-    fn test_pkcs7_extract_signers_not_supported() {
-        // Any non-empty DER will fail with EOPNOTSUPP until OpenSSL is linked
+    fn test_pkcs7_extract_signers_malformed_or_not_supported() {
+        // With OpenSSL this is malformed DER; without OpenSSL the authoritative
+        // C implementation reports that extraction is unsupported.
         let result = pkcs7_extract_signers(&[0x30, 0x82]);
         assert!(result.is_err());
-        assert!(result.unwrap_err().is_not_supported());
+        let error = result.unwrap_err();
+        assert!(error.is_bad_message() || error.is_not_supported());
     }
 
     #[test]

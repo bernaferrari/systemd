@@ -25,6 +25,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
+use systemd_basic_rs::virt::{detect_container, virtualization_is_container};
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -261,18 +262,17 @@ pub fn is_unprivileged() -> bool {
 
 /// Parse a boolean environment variable.
 ///
-/// Interprets `"1"`, `"yes"`, `"true"`, `"on"` as true, and `"0"`, `"no"`,
-/// `"false"`, `"off"` as false. Returns `None` if the variable is unset or
-/// empty.
+/// Interprets the same case-insensitive spellings as C's `parse_boolean()`:
+/// `"1"`, `"yes"`, `"y"`, `"true"`, `"t"`, `"on"` and their false
+/// counterparts. Returns `None` if the variable is unset, empty, or invalid.
 pub fn parse_env_bool(name: &str) -> Option<bool> {
     let val = std::env::var(name).ok()?;
-    let val = val.trim();
     if val.is_empty() {
         return None;
     }
     match val.to_ascii_lowercase().as_str() {
-        "1" | "yes" | "true" | "on" => Some(true),
-        "0" | "no" | "false" | "off" => Some(false),
+        "1" | "yes" | "y" | "true" | "t" | "on" => Some(true),
+        "0" | "no" | "n" | "false" | "f" | "off" => Some(false),
         _ => None,
     }
 }
@@ -284,7 +284,8 @@ pub fn parse_env_bool(name: &str) -> Option<bool> {
 /// Sets `UNPRIVILEGED_MODE` when `unprivileged_mode` is `Some(true)` or when
 /// the effective UID is non-zero. Sets `SKIP_FSTYPE_CHECK`,
 /// `SKIP_DEVICE_CHECK`, and `SKIP_FSROOT_CHECK` when the corresponding relax
-/// environment variable is `"yes"`.
+/// environment variable parses as true. Container detection independently
+/// sets `SKIP_DEVICE_CHECK`, matching the C implementation.
 pub fn verify_esp_flags_init(
     unprivileged_mode: Option<bool>,
     env_name_for_relaxing: &str,
@@ -302,10 +303,11 @@ pub fn verify_esp_flags_init(
             | VerifyEspFlags::SKIP_FSROOT_CHECK;
     }
 
-    // P2 parity gap: C also asks detect_container() and suppresses block-device
-    // probing there. Keep this constructor deterministic rather than adding a
-    // second, incomplete container detector; callers running in a container
-    // must explicitly request SKIP_DEVICE_CHECK for now.
+    // Match C's fail-open policy: a positive detection suppresses device
+    // probing, while a detection error is logged-and-ignored by the C caller.
+    if detect_container().is_ok_and(virtualization_is_container) {
+        flags |= VerifyEspFlags::SKIP_DEVICE_CHECK;
+    }
 
     flags
 }
@@ -1019,14 +1021,18 @@ mod tests {
 
     #[test]
     fn test_verify_esp_flags_init_no_relax() {
-        // Without the env var set, SKIP flags should be clear.
+        // Without the env var set, only container policy may request a skip.
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
         let environment = unsafe { TestEnvironment::lock() };
         environment.remove(ENV_RELAX_ESP_CHECKS);
         let flags = verify_esp_flags_init(Some(false), ENV_RELAX_ESP_CHECKS);
         assert!(!flags.contains(VerifyEspFlags::SKIP_FSTYPE_CHECK));
-        assert!(!flags.contains(VerifyEspFlags::SKIP_DEVICE_CHECK));
+        let in_container = detect_container().is_ok_and(virtualization_is_container);
+        assert_eq!(
+            flags.contains(VerifyEspFlags::SKIP_DEVICE_CHECK),
+            in_container
+        );
         assert!(!flags.contains(VerifyEspFlags::SKIP_FSROOT_CHECK));
         assert!(!flags.contains(VerifyEspFlags::UNPRIVILEGED_MODE));
     }
@@ -1132,6 +1138,12 @@ mod tests {
         environment.set("TEST_FIND_ESP_BOOL", "on");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(true));
 
+        environment.set("TEST_FIND_ESP_BOOL", "Y");
+        assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(true));
+
+        environment.set("TEST_FIND_ESP_BOOL", "t");
+        assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(true));
+
         environment.set("TEST_FIND_ESP_BOOL", "0");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(false));
 
@@ -1144,6 +1156,12 @@ mod tests {
         environment.set("TEST_FIND_ESP_BOOL", "off");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(false));
 
+        environment.set("TEST_FIND_ESP_BOOL", "N");
+        assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(false));
+
+        environment.set("TEST_FIND_ESP_BOOL", "f");
+        assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(false));
+
         environment.set("TEST_FIND_ESP_BOOL", "");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), None);
 
@@ -1151,6 +1169,10 @@ mod tests {
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), None);
 
         environment.set("TEST_FIND_ESP_BOOL", "invalid");
+        assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), None);
+
+        // parse_boolean() does not silently trim input.
+        environment.set("TEST_FIND_ESP_BOOL", " yes ");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), None);
     }
 
