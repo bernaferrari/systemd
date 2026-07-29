@@ -73,6 +73,8 @@ pub enum Compression {
     Xz = 1,
     Lz4 = 2,
     Zstd = 3,
+    Gzip = 4,
+    Bzip2 = 5,
 }
 
 #[repr(i32)]
@@ -226,7 +228,17 @@ const ASSERT_TYPE_TABLE: [&[u8]; 37] = [
     b"AssertKernelModuleLoaded\0",
 ];
 
-const COMPRESSION_TABLE: [&[u8]; 4] = [b"none\0", b"xz\0", b"lz4\0", b"zstd\0"];
+/* Keep this in the exact order and spelling of compression_table in
+ * src/basic/compress.c. In particular, "uncompressed" is a compatibility
+ * spelling, whereas "NONE" belongs to compression_uppercase_table. */
+const COMPRESSION_TABLE: [&[u8]; 6] = [
+    b"uncompressed\0",
+    b"xz\0",
+    b"lz4\0",
+    b"zstd\0",
+    b"gzip\0",
+    b"bzip2\0",
+];
 
 const SOCKET_ADDRESS_TYPE_TABLE: [Option<&[u8]>; 7] = [
     None,
@@ -421,16 +433,18 @@ pub fn assert_type_from_string(name: &str) -> Result<ConditionType, LookupError>
     condition_type_from_i32(value)
 }
 
-pub fn compression_lowercase_to_string(value: Compression) -> &'static str {
+pub fn compression_to_string(value: Compression) -> &'static str {
     static_text(COMPRESSION_TABLE[value as usize])
 }
 
-pub fn compression_lowercase_from_string(name: &str) -> Result<Compression, LookupError> {
+pub fn compression_from_string(name: &str) -> Result<Compression, LookupError> {
     match parse_enum_name(&COMPRESSION_TABLE, name)? {
         0 => Ok(Compression::None),
         1 => Ok(Compression::Xz),
         2 => Ok(Compression::Lz4),
         3 => Ok(Compression::Zstd),
+        4 => Ok(Compression::Gzip),
+        5 => Ok(Compression::Bzip2),
         _ => Err(LookupError::Invalid),
     }
 }
@@ -757,14 +771,14 @@ pub extern "C" fn rs_netif_has_carrier(operstate: u8, flags: u32) -> bool {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rs_compression_lowercase_to_string(value: i32) -> *const c_char {
+pub extern "C" fn rs_compression_to_string(value: i32) -> *const c_char {
     table_ptr(&COMPRESSION_TABLE, value)
 }
 
 /// # Safety
 /// `input` must be null or point to a live NUL-terminated C string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rs_compression_lowercase_from_string(input: *const c_char) -> i32 {
+pub unsafe extern "C" fn rs_compression_from_string(input: *const c_char) -> i32 {
     // SAFETY: propagated from this FFI function's contract.
     unsafe { table_from_input(&COMPRESSION_TABLE, input) }
 }
@@ -888,15 +902,10 @@ mod tests {
 
     #[test]
     fn compression_lookup_matches_c() {
-        assert_eq!(compression_lowercase_to_string(Compression::None), "none");
-        assert_eq!(
-            compression_lowercase_from_string("zstd"),
-            Ok(Compression::Zstd)
-        );
-        assert_eq!(
-            compression_lowercase_from_string("gzip"),
-            Err(LookupError::Invalid)
-        );
+        assert_eq!(compression_to_string(Compression::None), "uncompressed");
+        assert_eq!(compression_from_string("zstd"), Ok(Compression::Zstd));
+        assert_eq!(compression_from_string("gzip"), Ok(Compression::Gzip));
+        assert_eq!(compression_from_string("NONE"), Err(LookupError::Invalid));
     }
 
     #[test]

@@ -76,8 +76,8 @@ static void test_ipvlan_flags(void) {
         const char *c_ret, *r_ret;
         int cv, rv;
 
-        c_ret = ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_BRIGDE);
-        r_ret = rs_ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_BRIGDE);
+        c_ret = ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_BRIDGE);
+        r_ret = rs_ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_BRIDGE);
         assert_se(c_ret && r_ret);
         assert_se(streq(c_ret, r_ret));
 

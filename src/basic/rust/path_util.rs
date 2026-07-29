@@ -1705,10 +1705,14 @@ pub unsafe fn rs_path_split_prefix_filename(
             *ret_dir = d;
         }
 
-        // Return positive value to indicate trailing slash (O_DIRECTORY in C).
-        // We can't access the C macro from Rust, so we return 1 as a sentinel.
-        // Tests should compare sign, not exact value, for O_DIRECTORY cases.
-        if strlen(c) > r as usize { 1 } else { 0 }
+        // Preserve C's O_DIRECTORY success value for a trailing slash. This is
+        // part of the public function contract, rather than a generic boolean
+        // success indicator.
+        if strlen(c) > r as usize {
+            libc::O_DIRECTORY
+        } else {
+            0
+        }
     }
 }
 

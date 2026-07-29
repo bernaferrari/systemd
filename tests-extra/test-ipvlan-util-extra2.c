@@ -15,11 +15,11 @@ TEST(ipvlan_mode_to_from_string) {
 }
 
 TEST(ipvlan_flags_to_from_string) {
-        assert_se(streq(ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_BRIGDE), "bridge"));
+        assert_se(streq(ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_BRIDGE), "bridge"));
         assert_se(streq(ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_PRIVATE), "private"));
         assert_se(streq(ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_VEPA), "vepa"));
 
-        assert_se(ipvlan_flags_from_string("bridge") == NETDEV_IPVLAN_FLAGS_BRIGDE);
+        assert_se(ipvlan_flags_from_string("bridge") == NETDEV_IPVLAN_FLAGS_BRIDGE);
         assert_se(ipvlan_flags_from_string("private") == NETDEV_IPVLAN_FLAGS_PRIVATE);
         assert_se(ipvlan_flags_from_string("vepa") == NETDEV_IPVLAN_FLAGS_VEPA);
         assert_se(ipvlan_flags_from_string("invalid") < 0);

@@ -10,7 +10,7 @@
  * Only used by shadow tests — production code uses the C originals.
  */
 
-#include "basic-forward.h"
+#include "forward.h"
 
 /* PORT-SYNC: scope=basic.sort-util; authority=src/basic/sort-util.c,src/basic/sort-util.h */
 

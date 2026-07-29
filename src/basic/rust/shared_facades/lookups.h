@@ -3,7 +3,7 @@
 #pragma once
 
 /* Rust FFI declarations for shadow testing condition_type, dns_server_address_valid,
-   netif_has_carrier, compression_lowercase, socket_address_type, netlink_family, ip_tos,
+   netif_has_carrier, compression, socket_address_type, netlink_family, ip_tos,
    output_mode */
 
 #include <stddef.h>
@@ -30,8 +30,8 @@ bool rs_dns_server_address_valid(int family, const void *sa);
 bool rs_netif_has_carrier(uint8_t operstate, unsigned flags);
 
 /* compress.c */
-const char *rs_compression_lowercase_to_string(int c);
-int rs_compression_lowercase_from_string(const char *s);
+const char *rs_compression_to_string(int c);
+int rs_compression_from_string(const char *s);
 
 /* socket-util.c */
 const char *rs_socket_address_type_to_string(int t);

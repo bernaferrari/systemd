@@ -21,13 +21,13 @@ TEST(ipvlan_mode_from_string) {
 }
 
 TEST(ipvlan_flags_to_string) {
-        ASSERT_STREQ(ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_BRIGDE), "bridge");
+        ASSERT_STREQ(ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_BRIDGE), "bridge");
         ASSERT_STREQ(ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_PRIVATE), "private");
         ASSERT_STREQ(ipvlan_flags_to_string(NETDEV_IPVLAN_FLAGS_VEPA), "vepa");
 }
 
 TEST(ipvlan_flags_from_string) {
-        ASSERT_EQ(ipvlan_flags_from_string("bridge"), NETDEV_IPVLAN_FLAGS_BRIGDE);
+        ASSERT_EQ(ipvlan_flags_from_string("bridge"), NETDEV_IPVLAN_FLAGS_BRIDGE);
         ASSERT_EQ(ipvlan_flags_from_string("private"), NETDEV_IPVLAN_FLAGS_PRIVATE);
         ASSERT_EQ(ipvlan_flags_from_string("vepa"), NETDEV_IPVLAN_FLAGS_VEPA);
         ASSERT_EQ(ipvlan_flags_from_string("invalid"), _NETDEV_IPVLAN_FLAGS_INVALID);

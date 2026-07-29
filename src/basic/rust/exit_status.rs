@@ -336,7 +336,10 @@ pub unsafe extern "C" fn rs_is_clean_exit(
         };
     }
 
-    if !matches!(code, CLD_KILLED | CLD_DUMPED) {
+    // `is_clean_exit()` deliberately treats only non-core-dumping signal
+    // termination as clean. In particular, a dumped child is unclean even if
+    // its signal appears in the success-status bitmap.
+    if code != CLD_KILLED {
         return false;
     }
 
@@ -555,6 +558,7 @@ mod tests {
             ExitClean::Command,
             None
         ));
+        assert!(!is_clean_exit(CLD_DUMPED, SIGTERM, ExitClean::Daemon, None));
     }
 
     #[test]

@@ -5,7 +5,7 @@
 
 #include <stdbool.h>
 
-#include "basic-forward.h"
+#include "forward.h"
 
 bool rs_valid_ldh_char(char c);
 bool rs_hostname_is_valid(const char *s, int flags);

@@ -3099,6 +3099,20 @@ def main() -> int:
             "match the reviewed basic header signatures"
         )
 
+    exit_set_symbols = PARTIAL_SURFACES["exit_status_sets"][2]
+    shared_exit_sets = dict(header_inventory(SHARED_EXIT_STATUS_HEADER, exit_set_symbols))
+    basic_exit_sets = dict(
+        header_inventory(
+            PARTIAL_SURFACES["exit_status_sets"][0],
+            exit_set_symbols,
+        )
+    )
+    if shared_exit_sets != basic_exit_sets or set(shared_exit_sets) != exit_set_symbols:
+        return fail(
+            "shared exit_status.h duplicate set-helper declarations must exactly "
+            "match the reviewed basic header signatures"
+        )
+
     if not allocator_boundary_is_c_compatible(SURFACES["devnum_util"][1]):
         return fail(
             "devnum_util C ABI formatting must be allocation-free and its device path must use one libc::malloc"

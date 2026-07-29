@@ -311,19 +311,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        # dns_label.h predates the dedicated validator header and retains the
-        # same two declarations for existing consumers. The single exported
-        # facade is deliberately checked against both advertised headers.
-        "dns_label_srv_type_abi": (
-            shared_rust / "dns_label.h",
-            basic_rust / "dns_domain_validators.rs",
-            frozenset(
-                {
-                    "rs_dns_srv_type_is_valid",
-                    "rs_dnssd_srv_type_is_valid",
-                }
-            ),
-        ),
         "dns_label_abi": (
             shared_rust / "dns_label.h",
             basic_rust / "dns_label.rs",
@@ -1133,7 +1120,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "sha256_hmac": (tests_extra / "test-sha256-hmac-rust.c",),
         "siphash24": (tests_extra / "test-siphash24-rust.c",),
         "dns_domain_validators": (tests_extra / "test-dns-label-rust.c",),
-        "dns_label_srv_type_abi": (tests_extra / "test-dns-label-rust.c",),
         "dns_label_abi": (tests_extra / "test-dns-label-rust.c",),
         "bitmap": (tests_extra / "test-bitmap-rust.c",),
         "iovec_wrapper": (tests_extra / "test-iovec-wrapper-rust.c",),
@@ -1365,10 +1351,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "siphash24": (root / "src/basic/siphash24.c", root / "src/basic/siphash24.h"),
         "dns_domain_validators": (
-            root / "src/shared/dns-domain.c",
-            root / "src/shared/dns-domain.h",
-        ),
-        "dns_label_srv_type_abi": (
             root / "src/shared/dns-domain.c",
             root / "src/shared/dns-domain.h",
         ),

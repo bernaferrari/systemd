@@ -82,8 +82,8 @@ tier = 2
 symbols = 6
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/sort-util.c" = "8aca5cac769cdda89029a5767ad4904d9aa44c76", "src/basic/sort-util.h" = "ad9be969129c8ee04dbaa356f4d821a7e16ecc61" }
-last_reviewed_rust_blobs = { "src/basic/rust/sort_util.rs" = "d64282c0c6055b217c25a989a49e57404c729e48", "src/basic/rust/sort_util.h" = "2166f21753e95542f66ab99360f4a2c88a84ad09" }
-notes = "Reviewed static raw-byte sorting ABI slice 2026-07-29; no build/tests/VM. Six C facades use checked opaque-byte search/swap loops and synchronous C callbacks without libc delegation or typed reinterpretation. C remains production authority; runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/sort_util.rs" = "d64282c0c6055b217c25a989a49e57404c729e48", "src/basic/rust/sort_util.h" = "0f2319212033647a2ff17d742f7f19bd4b028bbd" }
+notes = "Reviewed static raw-byte sorting ABI slice 2026-07-29; C/R Meson shadow test passed in the Ubuntu Lima guest. Six C facades use checked opaque-byte search/swap loops and synchronous C callbacks without libc delegation or typed reinterpretation. C remains production authority; broader runtime parity remains P2."
 
 [utf8]
 c_paths = [
@@ -510,8 +510,8 @@ tier = 2
 symbols = 10
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/hostname-util.c" = "ea49676ea304e57aa5188cf6d43bacf844f245de", "src/basic/hostname-util.h" = "3eb676064a97b520d31be687536d941e59db2365", "src/basic/user-util.c" = "fe4c0e6a36858f6b915705f50219a00c104a50f1", "src/basic/user-util.h" = "8355548b00ca3cd41ad52990f7f66f0807e47bc0", "src/basic/string-util.c" = "9de61aafe88b5cf3b2fb61eb1ae96c6e875cb7aa", "src/basic/string-util.h" = "74d6ca16826ab8b709b284fb4cd4c86c94988f99", "src/basic/utf8.c" = "0fccc4711cb9eb8e3817eff421e41b2f2f951be3", "src/basic/utf8.h" = "fde72a0d5422c9800125484ac619decf7ac93ffb" }
-last_reviewed_rust_blobs = { "src/basic/rust/hostname_util.rs" = "efcb4a7466899af9467e3b481471e1f03f5f7401", "src/basic/rust/hostname_util.h" = "54819d3b78c05b969430fe1fa6d96bd22600a214" }
-notes = "Reviewed static hostname ABI slice 2026-07-28; no build/tests/VM. Ten facades preserve raw-byte LDH validation, trailing-dot policy, in-place cleanup aliasing, ASCII-only synthetic classifiers, libc-owned split outputs with success-only publication, and relaxed user/machine-spec behavior. Environment/file hostname getters and unrelated hostname utilities remain excluded. C remains production authority; runtime parity unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/hostname_util.rs" = "a29e5a209983c0abf597794b65854fcd2c94540e", "src/basic/rust/hostname_util.h" = "632a835b49d5b2ec6e180a7a83d52163be55e747" }
+notes = "Reviewed static hostname ABI slice 2026-07-29; C/R Meson shadow test passed in the Ubuntu Lima guest. Ten facades preserve raw-byte LDH validation, trailing-dot policy, in-place cleanup aliasing, ASCII-only synthetic classifiers, libc-owned split outputs with success-only publication, and relaxed user/machine-spec behavior. Environment/file hostname getters and unrelated hostname utilities remain excluded. C remains production authority; broader runtime parity remains P2."
 
 [ether-addr-util]
 c_paths = [
@@ -614,8 +614,8 @@ tier = 1
 symbols = 37
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5" }
-last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "99633f88e36cd53e5e17e93cbd5eb0bb432dcabc", "src/basic/rust/path_util/byte_abi.rs" = "8adae62fb6f2e47b83b782d9af42ca12f81e2c06", "src/basic/rust/path_util.h" = "6c203f60db89a99ba099093e068ad1899b726743" }
-notes = "Reviewed static behavior slice 2026-07-29; no build/tests/VM. Thirty-seven pure path byte, predicate, validation, and allocation facades are covered by machine-checked contracts with exact ABI, opaque C-string bytes, borrowed-interior offsets, allocator ownership, and success-only publication. Filesystem I/O APIs, remaining validators, and skip_dev_prefix remain excluded. Partial provenance with static-only evidence, not runtime parity."
+last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "dcd57cd5bc3545af21409907e4c3bbb5fe0312d3", "src/basic/rust/path_util/byte_abi.rs" = "8adae62fb6f2e47b83b782d9af42ca12f81e2c06", "src/basic/rust/path_util.h" = "6c203f60db89a99ba099093e068ad1899b726743" }
+notes = "Reviewed static behavior slice 2026-07-29; the focused path-util-extra C/R Meson shadow passed in the Ubuntu Lima guest, including exact O_DIRECTORY propagation. Thirty-seven pure path byte, predicate, validation, and allocation facades are covered by machine-checked contracts with exact ABI, opaque C-string bytes, borrowed-interior offsets, allocator ownership, and success-only publication. Filesystem I/O APIs, remaining validators, and skip_dev_prefix remain excluded. Partial provenance; broader runtime parity remains P2."
 
 [bus-label]
 c_paths = [
@@ -1084,8 +1084,8 @@ tier = 2
 symbols = 30
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/dns-domain.c" = "c90da5fc465f2d94981700e10a8df365ea6420e9", "src/shared/dns-domain.h" = "aabfaa502957546c53d1682c456e6400f6d101db", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
-last_reviewed_rust_blobs = { "src/basic/rust/dns_label.rs" = "74822776be6a7af4fa9d7b14668af58b214e5e6b", "src/shared/rust/dns_label.h" = "db7809478eef8870734db74c9b660a21e2f298f8" }
-notes = "Reviewed static DNS label/name ABI slice 2026-07-29; no build/tests/VM. Thirty facades preserve C label escaping, DNS name traversal and comparison, wire/address conversion, transforms, DNS-SD composition, libc ownership, and success-only output publication. Reverse IPv4 octets delegate to the reviewed safe_atou8 parser; invalid required outer pointers fail closed by explicit policy. C remains production authority; runtime parity is unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/dns_label.rs" = "74822776be6a7af4fa9d7b14668af58b214e5e6b", "src/shared/rust/dns_label.h" = "e30ff73171cb75a8284858ec7aff1b3e3707b15a" }
+notes = "Reviewed static DNS label/name ABI slice 2026-07-29; the C/R Meson shadow passed in the Ubuntu Lima guest. Thirty facades preserve C label escaping, DNS name traversal and comparison, wire/address conversion, transforms, DNS-SD composition, libc ownership, and success-only output publication. Reverse IPv4 octets delegate to the reviewed safe_atou8 parser; invalid required outer pointers fail closed by explicit policy. C remains production authority; broader runtime parity remains P2."
 
 [dns_type_predicates]
 c_file = "src/shared/dns-type.c"
@@ -1193,8 +1193,8 @@ tier = 1
 symbols = 9
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/exit-status.c" = "b40664d204ce207221836c981ec35cb07ae18ed0", "src/shared/exit-status.h" = "5a880d466406b1d2714e50d78ffebd5884be112b", "src/shared/securebits-util.c" = "bd682e6cbe9c336a02fa98693cfba3d2081875e2", "src/shared/securebits-util.h" = "cacae7347d7044a56ac7c655e817ffd280074135" }
-last_reviewed_rust_blobs = { "src/basic/rust/exit_status.rs" = "4d7e20b0853c817313a78d5b665c1166950ac7fb", "src/basic/rust/exit_status.h" = "241fe777769a4d0f225283166ecdce23a30eacd0" }
-notes = "Reviewed static exit-status ABI slice 2026-07-29; no build/tests/VM. Nine facades preserve status class-mask lookup, status-name parsing, borrowed static names, securebit assertion behavior, securebit mask validation, and C Bitmap-backed clean-exit/status-set operations. Native BTreeSet status sets remain Rust-only; C-layout bitmap sets retain C allocator ownership. C remains production authority; runtime parity is unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/exit_status.rs" = "0434e6bce78bb6586346ad55484e4595bfb2de9b", "src/basic/rust/exit_status.h" = "241fe777769a4d0f225283166ecdce23a30eacd0" }
+notes = "Reviewed static exit-status ABI slice 2026-07-29; the C/R Meson shadow passed in the Ubuntu Lima guest. Nine facades preserve status class-mask lookup, status-name parsing, borrowed static names, securebit assertion behavior, securebit mask validation, and C Bitmap-backed clean-exit/status-set operations. Native BTreeSet status sets remain Rust-only; C-layout bitmap sets retain C allocator ownership. C remains production authority; broader runtime parity remains P2."
 
 [gpt_util]
 c_file = "src/shared/gpt.c"
@@ -1493,7 +1493,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "needs_review"
-notes = "2026-07-27 provenance audit records each current table/predicate authority behind this heterogeneous facade; behavioral completion remains unclaimed."
+notes = "2026-07-29 provenance audit records each current table/predicate authority behind this heterogeneous facade. The compression facade now exactly shadows compression_to_string()/compression_from_string(): uncompressed, xz, lz4, zstd, gzip, and bzip2, not the obsolete lowercase-only table. Behavioral completion beyond the focused shadow tests remains unclaimed."
 
 [shared_validation_facades]
 c_paths = ["src/shared/compare-operator.c", "src/shared/compare-operator.h", "src/shared/web-util.c", "src/shared/web-util.h", "src/shared/color-util.c", "src/shared/color-util.h", "src/shared/boot-entry.c", "src/shared/boot-entry.h", "src/shared/pkcs11-util.c", "src/shared/pkcs11-util.h", "src/shared/user-record.c", "src/shared/user-record.h"]

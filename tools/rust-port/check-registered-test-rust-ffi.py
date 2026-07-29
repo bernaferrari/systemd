@@ -894,11 +894,11 @@ def shared_str_tables_authority_failures(
             "netif",
             r"\bbool\s+netif_has_carrier\(uint8_t\s+operstate,\s*unsigned\s+flags\)",
         ),
-        "rs_compression_lowercase_to_string": (
+        "rs_compression_to_string": (
             "compress",
             r"\bDEFINE_STRING_TABLE_LOOKUP\(\s*compression\s*,\s*Compression\s*\)",
         ),
-        "rs_compression_lowercase_from_string": (
+        "rs_compression_from_string": (
             "compress",
             r"\bDEFINE_STRING_TABLE_LOOKUP\(\s*compression\s*,\s*Compression\s*\)",
         ),

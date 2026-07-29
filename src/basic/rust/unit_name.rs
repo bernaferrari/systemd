@@ -873,9 +873,9 @@ pub unsafe extern "C" fn rs_slice_build_parent_slice(
 
     // SAFETY: `dash` was found within `s`.
     let dash_pos = unsafe { dash.offset_from(s) } as usize;
-    let suffix = b".slice";
-    // SAFETY: replacing from the dash with the six-byte `.slice` suffix stays
-    // within the original validated `.slice` allocation.
+    let suffix = b".slice\0";
+    // SAFETY: replacing from the dash with the NUL-terminated `.slice` suffix
+    // stays within the original validated `.slice` allocation.
     unsafe {
         ptr::copy_nonoverlapping(suffix.as_ptr(), s.add(dash_pos) as *mut u8, suffix.len());
     }
@@ -1930,6 +1930,17 @@ mod tests {
         assert!(unsafe { rs_slice_name_is_valid(name) });
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
+    }
+
+    #[test]
+    fn test_slice_build_parent_slice_nested() {
+        let slice = cstr("foo-bar.slice");
+        let mut ret: *mut c_char = ptr::null_mut();
+        // SAFETY: `slice` is a live NUL-terminated string and `ret` is writable.
+        let rc = unsafe { rs_slice_build_parent_slice(slice, &mut ret) };
+        assert_eq!(rc, 1);
+        assert_eq!(from_raw_mut(ret), "foo.slice");
+        reclaim_cstring(slice);
     }
 
     #[test]

@@ -632,29 +632,30 @@ pub unsafe extern "C" fn rs_hostname_cleanup(s: *mut c_char) -> *mut c_char {
     for source in 0..input_len {
         // SAFETY: `source` lies before the validated terminating NUL.
         let byte = unsafe { *s.add(source) as u8 };
-        match byte {
-            b'.' if !dot && !hyphen => {
-                // SAFETY: the write position never advances beyond `source`.
-                unsafe { *s.add(destination) = b'.' as c_char };
-                destination += 1;
-                dot = true;
-                hyphen = false;
+        if byte == b'.' {
+            if dot || hyphen {
+                continue;
             }
-            b'-' if !dot => {
-                // SAFETY: the write position never advances beyond `source`.
-                unsafe { *s.add(destination) = b'-' as c_char };
-                destination += 1;
-                dot = false;
-                hyphen = true;
+            // SAFETY: the write position never advances beyond `source`.
+            unsafe { *s.add(destination) = b'.' as c_char };
+            destination += 1;
+            dot = true;
+            hyphen = false;
+        } else if byte == b'-' {
+            if dot {
+                continue;
             }
-            byte if valid_ldh_char(byte) || matches!(byte, b'?' | b'$') => {
-                // SAFETY: the write position never advances beyond `source`.
-                unsafe { *s.add(destination) = byte as c_char };
-                destination += 1;
-                dot = false;
-                hyphen = false;
-            }
-            _ => {}
+            // SAFETY: the write position never advances beyond `source`.
+            unsafe { *s.add(destination) = b'-' as c_char };
+            destination += 1;
+            dot = false;
+            hyphen = true;
+        } else if valid_ldh_char(byte) || matches!(byte, b'?' | b'$') {
+            // SAFETY: the write position never advances beyond `source`.
+            unsafe { *s.add(destination) = byte as c_char };
+            destination += 1;
+            dot = false;
+            hyphen = false;
         }
         if destination >= LINUX_HOST_NAME_MAX {
             break;

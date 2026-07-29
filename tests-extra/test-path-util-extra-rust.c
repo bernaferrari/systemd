@@ -6,6 +6,7 @@
  * path_compare_filename, path_equal_filename */
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include "tests.h"
@@ -326,14 +327,19 @@ static void test_path_extract_directory(void) {
 }
 
 /* RUST-CONTRACT: path-filename-compare */
+static int comparison_sign(int value) {
+        return (value > 0) - (value < 0);
+}
+
 static void test_path_compare_filename(void) {
-        assert_se(path_compare_filename("/foo/bar", "/baz/bar") == rs_path_compare_filename("/foo/bar", "/baz/bar"));
-        assert_se(path_compare_filename("/foo", "/bar") == rs_path_compare_filename("/foo", "/bar"));
-        assert_se(path_compare_filename("/a/b", "/a/c") == rs_path_compare_filename("/a/b", "/a/c"));
-        assert_se(path_compare_filename("/", "/foo") == rs_path_compare_filename("/", "/foo"));
+        /* Comparator APIs promise ordering, not a particular nonzero magnitude. */
+        assert_se(comparison_sign(path_compare_filename("/foo/bar", "/baz/bar")) == comparison_sign(rs_path_compare_filename("/foo/bar", "/baz/bar")));
+        assert_se(comparison_sign(path_compare_filename("/foo", "/bar")) == comparison_sign(rs_path_compare_filename("/foo", "/bar")));
+        assert_se(comparison_sign(path_compare_filename("/a/b", "/a/c")) == comparison_sign(rs_path_compare_filename("/a/b", "/a/c")));
+        assert_se(comparison_sign(path_compare_filename("/", "/foo")) == comparison_sign(rs_path_compare_filename("/", "/foo")));
         /* Note: path_compare_filename(NULL, NULL) causes strcmp(NULL, NULL) which is UB — skip */
-        assert_se(path_compare_filename(NULL, "/foo") == rs_path_compare_filename(NULL, "/foo"));
-        assert_se(path_compare_filename("/foo", NULL) == rs_path_compare_filename("/foo", NULL));
+        assert_se(comparison_sign(path_compare_filename(NULL, "/foo")) == comparison_sign(rs_path_compare_filename(NULL, "/foo")));
+        assert_se(comparison_sign(path_compare_filename("/foo", NULL)) == comparison_sign(rs_path_compare_filename("/foo", NULL)));
 }
 
 static void test_path_equal_filename(void) {

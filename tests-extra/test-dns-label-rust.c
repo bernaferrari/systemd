@@ -726,23 +726,26 @@ static void test_dns_name_suffix(void) {
         int cv, rv;
 
         cv = dns_name_suffix("www.example.com", 1, &cr);
-        rv = rs_dns_name_suffix("www.example.com", 1, &cr);
+        rv = rs_dns_name_suffix("www.example.com", 1, &rr);
         assert_se(cv == rv);
+        assert_se(streq(cr, rr));
 
         cv = dns_name_suffix("www.example.com", 2, &cr);
-        rv = rs_dns_name_suffix("www.example.com", 2, &cr);
+        rv = rs_dns_name_suffix("www.example.com", 2, &rr);
         assert_se(cv == rv);
+        assert_se(streq(cr, rr));
 
         /* Too many labels */
         cv = dns_name_suffix("www.example.com", 10, &cr);
-        rv = rs_dns_name_suffix("www.example.com", 10, &cr);
+        rv = rs_dns_name_suffix("www.example.com", 10, &rr);
         assert_se(cv == rv);
         assert_se(cv == -EINVAL);
 
         /* Zero labels */
         cv = dns_name_suffix("www.example.com", 0, &cr);
-        rv = rs_dns_name_suffix("www.example.com", 0, &cr);
+        rv = rs_dns_name_suffix("www.example.com", 0, &rr);
         assert_se(cv == rv);
+        assert_se(streq(cr, rr));
 }
 
 /* ── dns_name_equal_skip ───────────────────────────────────────────── */

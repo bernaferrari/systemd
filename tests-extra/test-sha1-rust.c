@@ -27,14 +27,15 @@ static void test_sha1_empty(void) {
         struct sha1_ctx c_ctx;
         uint8_t c_result[20];
         sha1_init_ctx(&c_ctx);
-        sha1_finish_ctx(&c_ctx, c_result);
-        assert_se(memcmp(c_result, expected, 20) == 0);
 
         struct rs_sha1_ctx r_ctx;
         uint8_t r_result[20];
         rs_sha1_init_ctx(&r_ctx);
         assert_se(memcmp(c_ctx.state, r_ctx.state, sizeof(c_ctx.state)) == 0);
         assert_se(memcmp(c_ctx.count, r_ctx.count, sizeof(c_ctx.count)) == 0);
+
+        assert_se(sha1_finish_ctx(&c_ctx, c_result) == c_result);
+        assert_se(memcmp(c_result, expected, 20) == 0);
         assert_se(rs_sha1_finish_ctx(&r_ctx, r_result) == r_result);
         assert_se(memcmp(r_result, expected, 20) == 0);
 

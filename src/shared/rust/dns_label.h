@@ -16,8 +16,6 @@ int rs_dns_name_equal(const char *x, const char *y);
 int rs_dns_name_endswith(const char *name, const char *suffix);
 int rs_dns_name_startswith(const char *name, const char *prefix);
 int rs_dns_name_count_labels(const char *name);
-bool rs_dns_srv_type_is_valid(const char *name);
-bool rs_dnssd_srv_type_is_valid(const char *name);
 bool rs_dns_name_is_single_label(const char *name);
 bool rs_dns_name_dont_resolve(const char *name);
 int rs_dns_name_dot_suffixed(const char *name);

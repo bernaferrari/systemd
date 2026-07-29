@@ -23,6 +23,7 @@
 /* C headers */
 #include "compress.h"
 #include "condition.h"
+#include "sd-json.h"
 #include "socket-util.h"
 #include "output-mode.h"
 
@@ -30,58 +31,78 @@
 #include "rust/shared_facades/lookups.h"
 #include "rust/netdev_str_tables.h"
 
-/* ── compression_lowercase ───────────────────────────────────────────── */
+/* ── compression ─────────────────────────────────────────────────────── */
 
-static void test_compression_lowercase(void) {
+static void test_compression(void) {
         const char *cv, *rv;
         Compression cc, rc;
 
         /* to_string */
-        cv = compression_lowercase_to_string(COMPRESSION_NONE);
-        rv = rs_compression_lowercase_to_string(COMPRESSION_NONE);
+        cv = compression_to_string(COMPRESSION_NONE);
+        rv = rs_compression_to_string(COMPRESSION_NONE);
         assert_se(streq_ptr(cv, rv));
-        assert_se(streq(cv, "none"));
+        assert_se(streq(cv, "uncompressed"));
 
-        cv = compression_lowercase_to_string(COMPRESSION_XZ);
-        rv = rs_compression_lowercase_to_string(COMPRESSION_XZ);
+        cv = compression_to_string(COMPRESSION_XZ);
+        rv = rs_compression_to_string(COMPRESSION_XZ);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "xz"));
 
-        cv = compression_lowercase_to_string(COMPRESSION_LZ4);
-        rv = rs_compression_lowercase_to_string(COMPRESSION_LZ4);
+        cv = compression_to_string(COMPRESSION_LZ4);
+        rv = rs_compression_to_string(COMPRESSION_LZ4);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "lz4"));
 
-        cv = compression_lowercase_to_string(COMPRESSION_ZSTD);
-        rv = rs_compression_lowercase_to_string(COMPRESSION_ZSTD);
+        cv = compression_to_string(COMPRESSION_ZSTD);
+        rv = rs_compression_to_string(COMPRESSION_ZSTD);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "zstd"));
 
+        cv = compression_to_string(COMPRESSION_GZIP);
+        rv = rs_compression_to_string(COMPRESSION_GZIP);
+        assert_se(streq_ptr(cv, rv));
+        assert_se(streq(cv, "gzip"));
+
+        cv = compression_to_string(COMPRESSION_BZIP2);
+        rv = rs_compression_to_string(COMPRESSION_BZIP2);
+        assert_se(streq_ptr(cv, rv));
+        assert_se(streq(cv, "bzip2"));
+
         /* Invalid */
-        cv = compression_lowercase_to_string(-1);
-        rv = rs_compression_lowercase_to_string(-1);
+        cv = compression_to_string(-1);
+        rv = rs_compression_to_string(-1);
         assert_se(cv == NULL);
         assert_se(rv == NULL);
 
         /* from_string */
-        cc = compression_lowercase_from_string("none");
-        rc = rs_compression_lowercase_from_string("none");
+        cc = compression_from_string("uncompressed");
+        rc = rs_compression_from_string("uncompressed");
         assert_se(cc == rc);
         assert_se(cc == COMPRESSION_NONE);
 
-        cc = compression_lowercase_from_string("xz");
-        rc = rs_compression_lowercase_from_string("xz");
+        cc = compression_from_string("xz");
+        rc = rs_compression_from_string("xz");
         assert_se(cc == rc);
         assert_se(cc == COMPRESSION_XZ);
 
-        cc = compression_lowercase_from_string("XZ");
-        rc = rs_compression_lowercase_from_string("XZ");
+        cc = compression_from_string("gzip");
+        rc = rs_compression_from_string("gzip");
+        assert_se(cc == rc);
+        assert_se(cc == COMPRESSION_GZIP);
+
+        cc = compression_from_string("bzip2");
+        rc = rs_compression_from_string("bzip2");
+        assert_se(cc == rc);
+        assert_se(cc == COMPRESSION_BZIP2);
+
+        cc = compression_from_string("XZ");
+        rc = rs_compression_from_string("XZ");
         /* Case-sensitive: "XZ" should fail */
         assert_se(cc < 0);
         assert_se(rc < 0);
 
-        cc = compression_lowercase_from_string("bogus");
-        rc = rs_compression_lowercase_from_string("bogus");
+        cc = compression_from_string("bogus");
+        rc = rs_compression_from_string("bogus");
         assert_se(cc < 0);
         assert_se(rc < 0);
 }
@@ -385,7 +406,7 @@ static void test_shared_str_table_ffi_contracts(void) {
          * rejects it rather than crashing at the public ABI boundary. */
         assert_se(rs_condition_type_from_string(invalid) == -EINVAL);
         assert_se(rs_assert_type_from_string(invalid) == -EINVAL);
-        assert_se(rs_compression_lowercase_from_string(invalid) == -EINVAL);
+        assert_se(rs_compression_from_string(invalid) == -EINVAL);
         assert_se(rs_socket_address_type_from_string(invalid) == -EINVAL);
         assert_se(rs_netlink_family_from_string(invalid) == -EINVAL);
         assert_se(rs_ip_tos_from_string(invalid) == -EINVAL);
@@ -467,7 +488,7 @@ static void test_condition_result(void) {
 }
 
 int main(int argc, char **argv) {
-        test_compression_lowercase();
+        test_compression();
         test_socket_address_type();
         test_netlink_family();
         test_ip_tos();

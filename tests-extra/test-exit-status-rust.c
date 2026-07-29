@@ -21,16 +21,16 @@
 #include "rust/exit_status.h"
 
 /* secure_bit_to_string is static inline in securebits-util.c, not in the header.
- * Re-declare it here for testing. */
+ * Re-declare its index-based C contract here for testing. */
 static inline const char *secure_bit_to_string(int i) {
         /* match a single bit */
         switch (i) {
-        case SECBIT_KEEP_CAPS: return "keep-caps";
-        case SECBIT_KEEP_CAPS_LOCKED: return "keep-caps-locked";
-        case SECBIT_NO_SETUID_FIXUP: return "no-setuid-fixup";
-        case SECBIT_NO_SETUID_FIXUP_LOCKED: return "no-setuid-fixup-locked";
-        case SECBIT_NOROOT: return "noroot";
-        case SECBIT_NOROOT_LOCKED: return "noroot-locked";
+        case SECURE_KEEP_CAPS: return "keep-caps";
+        case SECURE_KEEP_CAPS_LOCKED: return "keep-caps-locked";
+        case SECURE_NO_SETUID_FIXUP: return "no-setuid-fixup";
+        case SECURE_NO_SETUID_FIXUP_LOCKED: return "no-setuid-fixup-locked";
+        case SECURE_NOROOT: return "noroot";
+        case SECURE_NOROOT_LOCKED: return "noroot-locked";
         default: return NULL;
         }
 }
@@ -265,33 +265,33 @@ static void test_secure_bits_is_valid(void) {
 static void test_secure_bit_to_string(void) {
         const char *cv, *rv;
 
-        cv = secure_bit_to_string(SECBIT_NOROOT);
-        rv = rs_secure_bit_to_string(SECBIT_NOROOT);
+        cv = secure_bit_to_string(SECURE_NOROOT);
+        rv = rs_secure_bit_to_string(SECURE_NOROOT);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "noroot"));
 
-        cv = secure_bit_to_string(SECBIT_NOROOT_LOCKED);
-        rv = rs_secure_bit_to_string(SECBIT_NOROOT_LOCKED);
+        cv = secure_bit_to_string(SECURE_NOROOT_LOCKED);
+        rv = rs_secure_bit_to_string(SECURE_NOROOT_LOCKED);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "noroot-locked"));
 
-        cv = secure_bit_to_string(SECBIT_NO_SETUID_FIXUP);
-        rv = rs_secure_bit_to_string(SECBIT_NO_SETUID_FIXUP);
+        cv = secure_bit_to_string(SECURE_NO_SETUID_FIXUP);
+        rv = rs_secure_bit_to_string(SECURE_NO_SETUID_FIXUP);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "no-setuid-fixup"));
 
-        cv = secure_bit_to_string(SECBIT_NO_SETUID_FIXUP_LOCKED);
-        rv = rs_secure_bit_to_string(SECBIT_NO_SETUID_FIXUP_LOCKED);
+        cv = secure_bit_to_string(SECURE_NO_SETUID_FIXUP_LOCKED);
+        rv = rs_secure_bit_to_string(SECURE_NO_SETUID_FIXUP_LOCKED);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "no-setuid-fixup-locked"));
 
-        cv = secure_bit_to_string(SECBIT_KEEP_CAPS);
-        rv = rs_secure_bit_to_string(SECBIT_KEEP_CAPS);
+        cv = secure_bit_to_string(SECURE_KEEP_CAPS);
+        rv = rs_secure_bit_to_string(SECURE_KEEP_CAPS);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "keep-caps"));
 
-        cv = secure_bit_to_string(SECBIT_KEEP_CAPS_LOCKED);
-        rv = rs_secure_bit_to_string(SECBIT_KEEP_CAPS_LOCKED);
+        cv = secure_bit_to_string(SECURE_KEEP_CAPS_LOCKED);
+        rv = rs_secure_bit_to_string(SECURE_KEEP_CAPS_LOCKED);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "keep-caps-locked"));
 }
