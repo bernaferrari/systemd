@@ -105,13 +105,16 @@ pub enum PipeKind {
 /// Check whether the given raw file descriptor refers to a pipe and whether
 /// O_NONBLOCK is set.
 pub fn fd_is_nonblock_pipe(fd: i32) -> PipeKind {
+    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: `st` is valid writable storage and `fd` is passed through to libc for validation.
     if unsafe { libc::fstat(fd, &mut st) } < 0 {
         return PipeKind::NotPipe;
     }
     if (st.st_mode & libc::S_IFMT) != libc::S_IFIFO {
         return PipeKind::NotPipe;
     }
+    // SAFETY: `fd` is passed through to libc for validation and F_GETFL has no pointer arguments.
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
     if flags < 0 {
         return PipeKind::NotPipe;
@@ -130,10 +133,12 @@ pub fn fd_is_nonblock_pipe(fd: i32) -> PipeKind {
 /// Uses `fallocate(PUNCH_HOLE | KEEP_SIZE)` where possible and `ftruncate`
 /// to extend beyond the current end-of-file.
 pub fn create_hole(fd: i32, size: i64) -> std::io::Result<()> {
+    // SAFETY: `fd` is passed through to libc for validation and SEEK_CUR has no pointer arguments.
     let offset = unsafe { libc::lseek(fd, 0, libc::SEEK_CUR) };
     if offset < 0 {
         return Err(std::io::Error::last_os_error());
     }
+    // SAFETY: `fd` is passed through to libc for validation and SEEK_END has no pointer arguments.
     let end = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };
     if end < 0 {
         return Err(std::io::Error::last_os_error());
@@ -141,6 +146,7 @@ pub fn create_hole(fd: i32, size: i64) -> std::io::Result<()> {
 
     if offset < end {
         let punch_len = std::cmp::min(size, end - offset) as libc::off_t;
+        // SAFETY: `fd` is passed through to the kernel; the integer offset and length need no memory validity.
         let ret = unsafe {
             crate::ffi::fallocate(
                 fd,
@@ -158,6 +164,7 @@ pub fn create_hole(fd: i32, size: i64) -> std::io::Result<()> {
     }
 
     if end - offset >= size {
+        // SAFETY: `fd` is passed through to libc for validation and SEEK_SET has no pointer arguments.
         let ret = unsafe { libc::lseek(fd, offset + size, libc::SEEK_SET) };
         if ret < 0 {
             return Err(std::io::Error::last_os_error());
@@ -166,9 +173,11 @@ pub fn create_hole(fd: i32, size: i64) -> std::io::Result<()> {
     }
 
     let remaining = (size - (end - offset)) as libc::off_t;
+    // SAFETY: `fd` is passed through to libc for validation and the length is an integer.
     if unsafe { libc::ftruncate(fd, end + remaining) } < 0 {
         return Err(std::io::Error::last_os_error());
     }
+    // SAFETY: `fd` is passed through to libc for validation and SEEK_END has no pointer arguments.
     let ret = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };
     if ret < 0 {
         return Err(std::io::Error::last_os_error());
@@ -328,6 +337,7 @@ pub fn copy_bytes_fd(
         }
 
         let mut buf = vec![0u8; to_copy];
+        // SAFETY: `buf` is writable for `buf.len()` bytes; `fd_in` is validated by libc.
         let n = unsafe { libc::read(fd_in, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
         if n < 0 {
             let err = std::io::Error::last_os_error();
@@ -342,6 +352,7 @@ pub fn copy_bytes_fd(
 
         let mut written: usize = 0;
         while written < n as usize {
+            // SAFETY: `written < n <= buf.len()`, so this pointer and remaining byte range are valid to read.
             let k = unsafe {
                 libc::write(
                     fd_out,
@@ -362,15 +373,18 @@ pub fn copy_bytes_fd(
     }
 
     if flags.contains(CopyFlags::FSYNC) {
+        // SAFETY: `fd_out` is passed through to libc for validation and fsync has no pointer arguments.
         if unsafe { libc::fsync(fd_out) } < 0 {
             return Err(std::io::Error::last_os_error());
         }
     }
     if flags.contains(CopyFlags::TRUNCATE) {
+        // SAFETY: `fd_out` is passed through to libc for validation and SEEK_CUR has no pointer arguments.
         let offset = unsafe { libc::lseek(fd_out, 0, libc::SEEK_CUR) };
         if offset < 0 {
             return Err(std::io::Error::last_os_error());
         }
+        // SAFETY: `fd_out` is passed through to libc for validation and the length is an integer.
         if unsafe { libc::ftruncate(fd_out, offset) } < 0 {
             return Err(std::io::Error::last_os_error());
         }
@@ -400,6 +414,7 @@ fn set_file_times(
             tv_nsec: mtime_nsec as libc::c_long,
         },
     ];
+    // SAFETY: `times` is a live two-element array required by futimens; `fd` is libc-validated.
     if unsafe { libc::futimens(fd, times.as_ptr()) } < 0 {
         Err(std::io::Error::last_os_error())
     } else {
@@ -559,10 +574,13 @@ fn copy_tree_inner(
 
 /// Copy access mode (permission bits) from `src_fd` to `dst_fd`.
 pub fn copy_access(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
+    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: `st` is valid writable storage and `src_fd` is passed through to libc for validation.
     if unsafe { libc::fstat(src_fd, &mut st) } < 0 {
         return Err(std::io::Error::last_os_error());
     }
+    // SAFETY: `dst_fd` is passed through to libc for validation and the mode is an integer.
     if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {
         Err(std::io::Error::last_os_error())
     } else {
@@ -572,10 +590,13 @@ pub fn copy_access(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
 
 /// Copy ownership (uid/gid) from `src_fd` to `dst_fd`.
 pub fn copy_owner(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
+    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: `st` is valid writable storage and `src_fd` is passed through to libc for validation.
     if unsafe { libc::fstat(src_fd, &mut st) } < 0 {
         return Err(std::io::Error::last_os_error());
     }
+    // SAFETY: `dst_fd` is passed through to libc for validation and uid/gid are integers.
     if unsafe { libc::fchown(dst_fd, st.st_uid, st.st_gid) } < 0 {
         Err(std::io::Error::last_os_error())
     } else {
@@ -585,14 +606,18 @@ pub fn copy_owner(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
 
 /// Copy both mode and ownership from `src_fd` to `dst_fd`.
 pub fn copy_rights(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
+    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: `st` is valid writable storage and `src_fd` is passed through to libc for validation.
     if unsafe { libc::fstat(src_fd, &mut st) } < 0 {
         return Err(std::io::Error::last_os_error());
     }
     // fchmod first – fchown may clear setuid/setgid bits.
+    // SAFETY: `dst_fd` is passed through to libc for validation and the mode is an integer.
     if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {
         return Err(std::io::Error::last_os_error());
     }
+    // SAFETY: `dst_fd` is passed through to libc for validation and uid/gid are integers.
     if unsafe { libc::fchown(dst_fd, st.st_uid, st.st_gid) } < 0 {
         Err(std::io::Error::last_os_error())
     } else {
@@ -602,7 +627,9 @@ pub fn copy_rights(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
 
 /// Copy timestamps (atime + mtime) from `src_fd` to `dst_fd`.
 pub fn copy_times(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
+    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: `st` is valid writable storage and `src_fd` is passed through to libc for validation.
     if unsafe { libc::fstat(src_fd, &mut st) } < 0 {
         return Err(std::io::Error::last_os_error());
     }
@@ -616,6 +643,7 @@ pub fn copy_times(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
             tv_nsec: st.st_mtime_nsec,
         },
     ];
+    // SAFETY: `times` is a live two-element array required by futimens; `dst_fd` is libc-validated.
     if unsafe { libc::futimens(dst_fd, times.as_ptr()) } < 0 {
         Err(std::io::Error::last_os_error())
     } else {
@@ -641,6 +669,7 @@ pub fn reflink<P: AsRef<std::path::Path>, Q: AsRef<std::path::Path>>(
 /// Reflink between two open file descriptors.
 pub fn reflink_fd(src_fd: i32, dst_fd: i32) -> std::io::Result<bool> {
     const FICLONE: u64 = 0x4004_9409;
+    // SAFETY: ioctl receives integer file descriptors and the FICLONE request's integer argument.
     let ret = unsafe { libc::ioctl(dst_fd, FICLONE, src_fd) };
     if ret < 0 {
         let err = std::io::Error::last_os_error();
@@ -700,13 +729,16 @@ impl HardlinkContext {
         let key = format!("{}:{}", dev, ino);
         let key_cstr = std::ffi::CString::new(key)?;
         let store_cstr = std::ffi::CString::new(store.to_str().unwrap_or(""))?;
+        // SAFETY: `store_cstr` is NUL-terminated and remains live for the open call.
         let store_dir =
             unsafe { libc::open(store_cstr.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };
         if store_dir < 0 {
             return Ok(false);
         }
+        // SAFETY: both C strings are NUL-terminated and both directory fds are libc-validated.
         let ret =
             unsafe { libc::linkat(store_dir, key_cstr.as_ptr(), dst_dir, dst_name.as_ptr(), 0) };
+        // SAFETY: `store_dir` was returned by open and has not yet been closed.
         unsafe { libc::close(store_dir) };
         if ret < 0 {
             let err = std::io::Error::last_os_error();
@@ -737,13 +769,16 @@ impl HardlinkContext {
         let key = format!("{}:{}", dev, ino);
         let key_cstr = std::ffi::CString::new(key)?;
         let store_cstr = std::ffi::CString::new(store.to_str().unwrap_or(""))?;
+        // SAFETY: `store_cstr` is NUL-terminated and remains live for the open call.
         let store_dir =
             unsafe { libc::open(store_cstr.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };
         if store_dir < 0 {
             return Err(std::io::Error::last_os_error());
         }
+        // SAFETY: both C strings are NUL-terminated and both directory fds are libc-validated.
         let ret =
             unsafe { libc::linkat(dst_dir, dst_name.as_ptr(), store_dir, key_cstr.as_ptr(), 0) };
+        // SAFETY: `store_dir` was returned by open and has not yet been closed.
         unsafe { libc::close(store_dir) };
         if ret < 0 {
             Err(std::io::Error::last_os_error())
@@ -1020,6 +1055,7 @@ mod tests {
             f.write_all(&[0xFF; 1024]).unwrap();
         }
 
+        // SAFETY: the temporary CString is NUL-terminated and remains live for the duration of open.
         let fd = unsafe {
             libc::open(
                 std::ffi::CString::new(path.to_str().unwrap())
@@ -1031,9 +1067,11 @@ mod tests {
         };
         assert!(fd >= 0);
 
+        // SAFETY: `fd` was returned by open and SEEK_SET has no pointer arguments.
         unsafe { libc::lseek(fd, 1024, libc::SEEK_SET) };
 
         create_hole(fd, 4096).unwrap();
+        // SAFETY: `fd` was returned by open and has not yet been closed.
         unsafe { libc::close(fd) };
 
         let meta = std::fs::metadata(&path).unwrap();

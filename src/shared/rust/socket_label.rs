@@ -291,7 +291,9 @@ impl RawSocketAddress {
     }
 
     fn from_sockaddr_in(addr: libc::sockaddr_in) -> Result<Self> {
+        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
         let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+        // SAFETY: storage is suitably aligned and large enough for sockaddr_in, and is exclusively borrowed.
         unsafe {
             ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_in, addr);
         }
@@ -302,7 +304,9 @@ impl RawSocketAddress {
     }
 
     fn from_sockaddr_in6(addr: libc::sockaddr_in6) -> Result<Self> {
+        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
         let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+        // SAFETY: storage is suitably aligned and large enough for sockaddr_in6, and is exclusively borrowed.
         unsafe {
             ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_in6, addr);
         }
@@ -313,7 +317,9 @@ impl RawSocketAddress {
     }
 
     fn from_sockaddr_un(addr: libc::sockaddr_un, len: usize) -> Result<Self> {
+        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
         let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+        // SAFETY: storage is suitably aligned and large enough for sockaddr_un, and is exclusively borrowed.
         unsafe {
             ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_un, addr);
         }
@@ -325,6 +331,7 @@ impl RawSocketAddress {
 }
 
 fn sockaddr_in_from(addr: &SocketAddrV4) -> libc::sockaddr_in {
+    // SAFETY: sockaddr_in is a C socket-address type whose all-zero bit pattern is valid.
     let mut raw: libc::sockaddr_in = unsafe { mem::zeroed() };
     set_sockaddr_in_len(&mut raw, sockaddr_in_len());
     raw.sin_family = libc::AF_INET as libc::sa_family_t;
@@ -336,6 +343,7 @@ fn sockaddr_in_from(addr: &SocketAddrV4) -> libc::sockaddr_in {
 }
 
 fn sockaddr_in6_from(addr: &SocketAddrV6) -> libc::sockaddr_in6 {
+    // SAFETY: sockaddr_in6 is a C socket-address type whose all-zero bit pattern is valid.
     let mut raw: libc::sockaddr_in6 = unsafe { mem::zeroed() };
     set_sockaddr_in6_len(&mut raw, sockaddr_in6_len());
     raw.sin6_family = libc::AF_INET6 as libc::sa_family_t;
@@ -349,6 +357,7 @@ fn sockaddr_in6_from(addr: &SocketAddrV6) -> libc::sockaddr_in6 {
 }
 
 fn sockaddr_unix_from(path: &UnixSocketPath) -> Result<RawSocketAddress> {
+    // SAFETY: sockaddr_un is a C socket-address type whose all-zero bit pattern is valid.
     let mut addr: libc::sockaddr_un = unsafe { mem::zeroed() };
     addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
     set_sockaddr_un_len(&mut addr, mem::size_of::<libc::sockaddr_un>());
@@ -368,6 +377,7 @@ fn sockaddr_unix_from(path: &UnixSocketPath) -> Result<RawSocketAddress> {
                 return Err(SocketLabelError::InvalidValue("unix socket path too long"));
             }
 
+            // SAFETY: the validated byte slice and sun_path are non-overlapping, and the destination is large enough.
             unsafe {
                 ptr::copy_nonoverlapping(
                     bytes.as_ptr(),
@@ -402,6 +412,7 @@ fn sockaddr_unix_from(path: &UnixSocketPath) -> Result<RawSocketAddress> {
                     ));
                 }
 
+                // SAFETY: the validated name and sun_path tail are non-overlapping, and the destination is large enough.
                 unsafe {
                     ptr::copy_nonoverlapping(
                         name.as_ptr(),
@@ -432,7 +443,9 @@ fn sockaddr_netlink_from(pid: u32, groups: u32) -> Result<RawSocketAddress> {
             nl_groups: groups,
         };
 
+        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
         let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+        // SAFETY: storage is suitably aligned and large enough for sockaddr_nl, and is exclusively borrowed.
         unsafe {
             ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_nl, addr);
         }
@@ -463,7 +476,9 @@ fn sockaddr_vsock_from(cid: u32, port: u32) -> Result<RawSocketAddress> {
             svm_zero: [0; 4],
         };
 
+        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
         let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+        // SAFETY: storage is suitably aligned and large enough for sockaddr_vm, and is exclusively borrowed.
         unsafe {
             ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_vm, addr);
         }
@@ -507,6 +522,7 @@ pub fn socket_address_listen(
 
     let _selinux_guard = SelinuxSocketCreateGuard::new(selinux_label)?;
 
+    // SAFETY: address verification supplies a supported socket family and type; libc::socket accepts these integer arguments.
     let fd = cvt_fd(unsafe {
         libc::socket(
             address.family(),
@@ -570,6 +586,7 @@ pub fn socket_address_listen(
     }
 
     if address.can_accept() {
+        // SAFETY: fd is a successfully created socket descriptor that remains owned by this function.
         cvt(unsafe { libc::listen(fd, backlog) })?;
     }
 
@@ -577,10 +594,12 @@ pub fn socket_address_listen(
         let _ = touch(path);
     }
 
+    // SAFETY: fd was successfully created above and its ownership is transferred exactly once to OwnedFd.
     Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
 fn bind_socket(fd: RawFd, addr: &RawSocketAddress) -> io::Result<()> {
+    // SAFETY: addr points to initialized socket storage with the matching recorded length; fd is supplied by the caller.
     cvt(unsafe { libc::bind(fd, addr.as_ptr(), addr.len) }).map(|_| ())
 }
 
@@ -626,6 +645,7 @@ fn socket_bind_to_ifname(fd: RawFd, ifname: &str) -> Result<()> {
     {
         let name = CString::new(ifname)
             .map_err(|_| SocketLabelError::InvalidValue("interface name contains NUL"))?;
+        // SAFETY: name is a live NUL-terminated CString, and its byte pointer and length remain valid for this call.
         cvt(unsafe {
             libc::setsockopt(
                 fd,
@@ -707,6 +727,7 @@ fn socket_set_transparent(fd: RawFd, family: i32, enabled: bool) -> Result<()> {
 
 fn set_sockopt_int(fd: RawFd, level: i32, optname: i32, value: i32) -> Result<()> {
     let value = value as i32;
+    // SAFETY: value is a live, aligned i32 and the pointer and length describe exactly that object for this call.
     cvt(unsafe {
         libc::setsockopt(
             fd,
@@ -722,6 +743,7 @@ fn set_sockopt_int(fd: RawFd, level: i32, optname: i32, value: i32) -> Result<()
 fn touch(path: &Path) -> io::Result<()> {
     let path = CString::new(path.as_os_str().as_bytes())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL byte"))?;
+    // SAFETY: path is a live NUL-terminated CString; AT_FDCWD and a null times pointer are valid utimensat arguments.
     cvt(unsafe { libc::utimensat(libc::AT_FDCWD, path.as_ptr(), ptr::null(), 0) }).map(|_| ())
 }
 
@@ -745,6 +767,7 @@ struct UmaskGuard(libc::mode_t);
 
 impl UmaskGuard {
     fn set(mask: u32) -> Self {
+        // SAFETY: umask accepts the converted mode value and has no pointer or lifetime requirements.
         let old = unsafe { libc::umask(mask as libc::mode_t) };
         Self(old)
     }
@@ -752,6 +775,7 @@ impl UmaskGuard {
 
 impl Drop for UmaskGuard {
     fn drop(&mut self) {
+        // SAFETY: the mode was returned by libc::umask and is valid to restore.
         unsafe {
             libc::umask(self.0);
         }

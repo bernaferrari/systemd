@@ -266,6 +266,7 @@ fn open_rtnetlink() -> Result<i32> {
 /// Returns the kernel error code from the ACK (0 on success).
 fn rtnl_call(fd: i32, msg_type: u16, flags: u16, payload: &[u8]) -> Result<i32> {
     let hdr = NlMsgHdr::new(msg_type, flags, 1, 0, payload.len() as u32);
+    // SAFETY: `hdr` is a live repr(C) header, and the byte slice covers exactly its size.
     let hdr_bytes = unsafe {
         std::slice::from_raw_parts(
             &hdr as *const NlMsgHdr as *const u8,
@@ -288,6 +289,7 @@ fn rtnl_call(fd: i32, msg_type: u16, flags: u16, payload: &[u8]) -> Result<i32> 
         return Err(LoopbackSetupError::TruncatedMessage);
     }
 
+    // SAFETY: the preceding length check guarantees a complete header; unaligned access handles netlink alignment.
     let resp_hdr: NlMsgHdr =
         unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };
 
@@ -298,6 +300,7 @@ fn rtnl_call(fd: i32, msg_type: u16, flags: u16, payload: &[u8]) -> Result<i32> 
             if n < payload_start + mem::size_of::<i32>() {
                 return Err(LoopbackSetupError::TruncatedMessage);
             }
+            // SAFETY: the preceding length check leaves a complete i32 at `payload_start`; unaligned access is permitted.
             let error_code: i32 = unsafe {
                 std::ptr::read_unaligned(recv_buf[payload_start..].as_ptr() as *const i32)
             };
@@ -319,6 +322,7 @@ fn append_attr_u32(buf: &mut Vec<u8>, attr_type: u16, value: u32) {
     buf.extend(std::iter::repeat(0).take(pad));
 
     let attr = RtAttr::new(attr_type, 4);
+    // SAFETY: `attr` is a live repr(C) attribute header, and the byte slice covers exactly its size.
     let attr_bytes = unsafe {
         std::slice::from_raw_parts(
             &attr as *const RtAttr as *const u8,
@@ -335,6 +339,7 @@ fn append_attr_bytes(buf: &mut Vec<u8>, attr_type: u16, data: &[u8]) {
     buf.extend(std::iter::repeat(0).take(pad));
 
     let attr = RtAttr::new(attr_type, data.len() as u16);
+    // SAFETY: `attr` is a live repr(C) attribute header, and the byte slice covers exactly its size.
     let attr_bytes = unsafe {
         std::slice::from_raw_parts(
             &attr as *const RtAttr as *const u8,
@@ -356,6 +361,7 @@ fn append_attr_bytes(buf: &mut Vec<u8>, attr_type: u16, data: &[u8]) {
 /// Returns the kernel error code (0 = success).
 fn start_loopback(fd: i32) -> Result<i32> {
     let ifi = IfInfoMsg::new(LOOPBACK_IFINDEX, IFF_UP);
+    // SAFETY: `ifi` is a live repr(C) link header, and the byte slice covers exactly its size.
     let ifi_bytes = unsafe {
         std::slice::from_raw_parts(
             &ifi as *const IfInfoMsg as *const u8,
@@ -375,6 +381,7 @@ fn start_loopback(fd: i32) -> Result<i32> {
 /// Returns the kernel error code (0 = success, -EEXIST = already present).
 fn add_ipv4_address(fd: i32) -> Result<i32> {
     let ifa = IfAddrMsg::new(AF_INET as u8, 8, RT_SCOPE_HOST, LOOPBACK_IFINDEX);
+    // SAFETY: `ifa` is a live repr(C) address header, and the byte slice covers exactly its size.
     let ifa_bytes = unsafe {
         std::slice::from_raw_parts(
             &ifa as *const IfAddrMsg as *const u8,
@@ -399,6 +406,7 @@ fn add_ipv4_address(fd: i32) -> Result<i32> {
 /// Returns the kernel error code (0 = success, -EEXIST = already present).
 fn add_ipv6_address(fd: i32) -> Result<i32> {
     let ifa = IfAddrMsg::new(AF_INET6 as u8, 128, RT_SCOPE_HOST, LOOPBACK_IFINDEX);
+    // SAFETY: `ifa` is a live repr(C) address header, and the byte slice covers exactly its size.
     let ifa_bytes = unsafe {
         std::slice::from_raw_parts(
             &ifa as *const IfAddrMsg as *const u8,
@@ -427,6 +435,7 @@ fn add_ipv6_address(fd: i32) -> Result<i32> {
 /// Sends RTM_GETLINK and checks the IFF_UP flag in the response.
 fn check_loopback(fd: i32) -> Result<bool> {
     let ifi = IfInfoMsg::new(LOOPBACK_IFINDEX, 0);
+    // SAFETY: `ifi` is a live repr(C) link header, and the byte slice covers exactly its size.
     let ifi_bytes = unsafe {
         std::slice::from_raw_parts(
             &ifi as *const IfInfoMsg as *const u8,
@@ -444,6 +453,7 @@ fn check_loopback(fd: i32) -> Result<bool> {
         0,
         payload.len() as u32,
     );
+    // SAFETY: `hdr` is a live repr(C) header, and the byte slice covers exactly its size.
     let hdr_bytes = unsafe {
         std::slice::from_raw_parts(
             &hdr as *const NlMsgHdr as *const u8,
@@ -464,6 +474,7 @@ fn check_loopback(fd: i32) -> Result<bool> {
         return Err(LoopbackSetupError::TruncatedMessage);
     }
 
+    // SAFETY: the preceding length check guarantees a complete header; unaligned access handles netlink alignment.
     let resp_hdr: NlMsgHdr =
         unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };
 
@@ -471,6 +482,7 @@ fn check_loopback(fd: i32) -> Result<bool> {
     if resp_hdr.type_ == NLMSG_ERROR {
         let payload_start = mem::size_of::<NlMsgHdr>();
         if n >= payload_start + mem::size_of::<i32>() {
+            // SAFETY: the enclosing length check leaves a complete i32 at `payload_start`; unaligned access is permitted.
             let error_code: i32 = unsafe {
                 std::ptr::read_unaligned(recv_buf[payload_start..].as_ptr() as *const i32)
             };
@@ -485,6 +497,7 @@ fn check_loopback(fd: i32) -> Result<bool> {
 
     // Re-issue without ACK to get actual interface data
     let hdr2 = NlMsgHdr::new(RTM_GETLINK, NLM_F_REQUEST, 2, 0, payload.len() as u32);
+    // SAFETY: `hdr2` is a live repr(C) header, and the byte slice covers exactly its size.
     let hdr2_bytes = unsafe {
         std::slice::from_raw_parts(
             &hdr2 as *const NlMsgHdr as *const u8,
@@ -501,6 +514,7 @@ fn check_loopback(fd: i32) -> Result<bool> {
         return Err(LoopbackSetupError::TruncatedMessage);
     }
 
+    // SAFETY: the preceding length check guarantees a complete header; unaligned access handles netlink alignment.
     let resp_hdr2: NlMsgHdr =
         unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };
     if resp_hdr2.type_ != RTM_GETLINK {
@@ -508,6 +522,7 @@ fn check_loopback(fd: i32) -> Result<bool> {
     }
 
     let offset_ifi = mem::size_of::<NlMsgHdr>();
+    // SAFETY: `n2` was checked for a complete header plus link message; unaligned access handles the byte buffer alignment.
     let resp_ifi: IfInfoMsg =
         unsafe { std::ptr::read_unaligned(recv_buf[offset_ifi..].as_ptr() as *const IfInfoMsg) };
 
@@ -610,6 +625,7 @@ pub fn is_success(rcode: i32) -> bool {
 /// Build the IPv4 loopback address attribute payload for testing/inspection.
 pub fn ipv4_loopback_payload() -> Vec<u8> {
     let ifa = IfAddrMsg::new(AF_INET as u8, 8, RT_SCOPE_HOST, LOOPBACK_IFINDEX);
+    // SAFETY: `ifa` is a live repr(C) address header, and the byte slice covers exactly its size.
     let ifa_bytes = unsafe {
         std::slice::from_raw_parts(
             &ifa as *const IfAddrMsg as *const u8,
@@ -628,6 +644,7 @@ pub fn ipv4_loopback_payload() -> Vec<u8> {
 /// Build the IPv6 loopback address attribute payload for testing/inspection.
 pub fn ipv6_loopback_payload() -> Vec<u8> {
     let ifa = IfAddrMsg::new(AF_INET6 as u8, 128, RT_SCOPE_HOST, LOOPBACK_IFINDEX);
+    // SAFETY: `ifa` is a live repr(C) address header, and the byte slice covers exactly its size.
     let ifa_bytes = unsafe {
         std::slice::from_raw_parts(
             &ifa as *const IfAddrMsg as *const u8,
@@ -650,6 +667,7 @@ pub fn ipv6_loopback_payload() -> Vec<u8> {
 /// Build the SETLINK payload for bringing the interface up.
 pub fn setlink_up_payload() -> Vec<u8> {
     let ifi = IfInfoMsg::new(LOOPBACK_IFINDEX, IFF_UP);
+    // SAFETY: `ifi` is a live repr(C) link header, and the byte slice covers exactly its size.
     let ifi_bytes = unsafe {
         std::slice::from_raw_parts(
             &ifi as *const IfInfoMsg as *const u8,
@@ -672,6 +690,7 @@ pub fn parse_ifa_flags(payload: &[u8]) -> Option<u32> {
 
     let mut offset = ifa_len;
     while offset + mem::size_of::<RtAttr>() <= payload.len() {
+        // SAFETY: the loop condition guarantees a complete attribute header at `offset`; unaligned access handles byte alignment.
         let attr: RtAttr =
             unsafe { std::ptr::read_unaligned(payload[offset..].as_ptr() as *const RtAttr) };
         if attr.rta_len as usize <= mem::size_of::<RtAttr>() {
@@ -681,6 +700,7 @@ pub fn parse_ifa_flags(payload: &[u8]) -> Option<u32> {
             let data_start = offset + mem::size_of::<RtAttr>();
             let data_end = offset + attr.rta_len as usize;
             if data_end <= payload.len() && data_end - data_start == 4 {
+                // SAFETY: the bounds check guarantees four bytes at `data_start`; unaligned access handles byte alignment.
                 let flags: u32 = unsafe {
                     std::ptr::read_unaligned(payload[data_start..].as_ptr() as *const u32)
                 };
@@ -703,6 +723,7 @@ pub fn parse_ifi_flags(payload: &[u8]) -> Option<u32> {
     if payload.len() < mem::size_of::<IfInfoMsg>() {
         return None;
     }
+    // SAFETY: the preceding length check guarantees a complete link message; unaligned access handles byte alignment.
     let ifi: IfInfoMsg = unsafe { std::ptr::read_unaligned(payload.as_ptr() as *const IfInfoMsg) };
     Some(ifi.ifi_flags)
 }
@@ -733,6 +754,7 @@ pub fn targets_loopback(payload: &[u8]) -> bool {
     if payload.len() < mem::size_of::<IfAddrMsg>() {
         return false;
     }
+    // SAFETY: the preceding length check guarantees a complete address message; unaligned access handles byte alignment.
     let ifa: IfAddrMsg = unsafe { std::ptr::read_unaligned(payload.as_ptr() as *const IfAddrMsg) };
     ifa.ifa_index == LOOPBACK_IFINDEX
 }

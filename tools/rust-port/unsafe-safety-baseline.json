@@ -854,47 +854,8 @@
       "unsafe_sites": 15
     },
     "src/shared/rust/copy.rs": {
-      "missing_safety": 38,
-      "missing_safety_sites": [
-        "108:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
-        "109:8:if unsafe { libc::fstat(fd, &mut st) } < 0 {",
-        "115:17:let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };",
-        "133:18:let offset = unsafe { libc::lseek(fd, 0, libc::SEEK_CUR) };",
-        "137:15:let end = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };",
-        "144:19:let ret = unsafe {",
-        "161:19:let ret = unsafe { libc::lseek(fd, offset + size, libc::SEEK_SET) };",
-        "169:8:if unsafe { libc::ftruncate(fd, end + remaining) } < 0 {",
-        "172:15:let ret = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };",
-        "331:17:let n = unsafe { libc::read(fd_in, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };",
-        "345:21:let k = unsafe {",
-        "365:12:if unsafe { libc::fsync(fd_out) } < 0 {",
-        "370:22:let offset = unsafe { libc::lseek(fd_out, 0, libc::SEEK_CUR) };",
-        "374:12:if unsafe { libc::ftruncate(fd_out, offset) } < 0 {",
-        "403:8:if unsafe { libc::futimens(fd, times.as_ptr()) } < 0 {",
-        "562:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
-        "563:8:if unsafe { libc::fstat(src_fd, &mut st) } < 0 {",
-        "566:8:if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {",
-        "575:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
-        "576:8:if unsafe { libc::fstat(src_fd, &mut st) } < 0 {",
-        "579:8:if unsafe { libc::fchown(dst_fd, st.st_uid, st.st_gid) } < 0 {",
-        "588:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
-        "589:8:if unsafe { libc::fstat(src_fd, &mut st) } < 0 {",
-        "593:8:if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {",
-        "596:8:if unsafe { libc::fchown(dst_fd, st.st_uid, st.st_gid) } < 0 {",
-        "605:30:let mut st: libc::stat = unsafe { std::mem::zeroed() };",
-        "606:8:if unsafe { libc::fstat(src_fd, &mut st) } < 0 {",
-        "619:8:if unsafe { libc::futimens(dst_fd, times.as_ptr()) } < 0 {",
-        "644:15:let ret = unsafe { libc::ioctl(dst_fd, FICLONE, src_fd) };",
-        "704:13:unsafe { libc::open(store_cstr.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };",
-        "709:13:unsafe { libc::linkat(store_dir, key_cstr.as_ptr(), dst_dir, dst_name.as_ptr(), 0) };",
-        "710:9:unsafe { libc::close(store_dir) };",
-        "741:13:unsafe { libc::open(store_cstr.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };",
-        "746:13:unsafe { libc::linkat(dst_dir, dst_name.as_ptr(), store_dir, key_cstr.as_ptr(), 0) };",
-        "747:9:unsafe { libc::close(store_dir) };",
-        "1023:18:let fd = unsafe {",
-        "1034:9:unsafe { libc::lseek(fd, 1024, libc::SEEK_SET) };",
-        "1037:9:unsafe { libc::close(fd) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 39
     },
     "src/shared/rust/coredump_util.rs": {
@@ -998,31 +959,8 @@
       "unsafe_sites": 3
     },
     "src/shared/rust/loopback_setup.rs": {
-      "missing_safety": 22,
-      "missing_safety_sites": [
-        "269:21:let hdr_bytes = unsafe {",
-        "292:9:unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };",
-        "301:35:let error_code: i32 = unsafe {",
-        "322:22:let attr_bytes = unsafe {",
-        "338:22:let attr_bytes = unsafe {",
-        "359:21:let ifi_bytes = unsafe {",
-        "378:21:let ifa_bytes = unsafe {",
-        "402:21:let ifa_bytes = unsafe {",
-        "430:21:let ifi_bytes = unsafe {",
-        "447:21:let hdr_bytes = unsafe {",
-        "468:9:unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };",
-        "474:35:let error_code: i32 = unsafe {",
-        "488:22:let hdr2_bytes = unsafe {",
-        "505:9:unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };",
-        "512:9:unsafe { std::ptr::read_unaligned(recv_buf[offset_ifi..].as_ptr() as *const IfInfoMsg) };",
-        "613:21:let ifa_bytes = unsafe {",
-        "631:21:let ifa_bytes = unsafe {",
-        "653:21:let ifi_bytes = unsafe {",
-        "676:13:unsafe { std::ptr::read_unaligned(payload[offset..].as_ptr() as *const RtAttr) };",
-        "684:34:let flags: u32 = unsafe {",
-        "706:26:let ifi: IfInfoMsg = unsafe { std::ptr::read_unaligned(payload.as_ptr() as *const IfInfoMsg) };",
-        "736:26:let ifa: IfAddrMsg = unsafe { std::ptr::read_unaligned(payload.as_ptr() as *const IfAddrMsg) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 22
     },
     "src/shared/rust/machine_id_setup.rs": {
@@ -1151,33 +1089,8 @@
       "unsafe_sites": 20
     },
     "src/shared/rust/socket_label.rs": {
-      "missing_safety": 24,
-      "missing_safety_sites": [
-        "294:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
-        "295:9:unsafe {",
-        "305:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
-        "306:9:unsafe {",
-        "316:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
-        "317:9:unsafe {",
-        "328:38:let mut raw: libc::sockaddr_in = unsafe { mem::zeroed() };",
-        "339:39:let mut raw: libc::sockaddr_in6 = unsafe { mem::zeroed() };",
-        "352:39:let mut addr: libc::sockaddr_un = unsafe { mem::zeroed() };",
-        "371:13:unsafe {",
-        "405:17:unsafe {",
-        "435:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
-        "436:9:unsafe {",
-        "466:51:let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };",
-        "467:9:unsafe {",
-        "510:21:let fd = cvt_fd(unsafe {",
-        "573:13:cvt(unsafe { libc::listen(fd, backlog) })?;",
-        "580:8:Ok(unsafe { OwnedFd::from_raw_fd(fd) })",
-        "584:9:cvt(unsafe { libc::bind(fd, addr.as_ptr(), addr.len) }).map(|_| ())",
-        "629:13:cvt(unsafe {",
-        "710:9:cvt(unsafe {",
-        "725:9:cvt(unsafe { libc::utimensat(libc::AT_FDCWD, path.as_ptr(), ptr::null(), 0) }).map(|_| ())",
-        "748:19:let old = unsafe { libc::umask(mask as libc::mode_t) };",
-        "755:9:unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 24
     },
     "src/shared/rust/socket_netlink.rs": {
@@ -1257,7 +1170,7 @@
     }
   },
   "totals": {
-    "missing_safety": 139,
+    "missing_safety": 55,
     "unsafe_sites": 4999
   },
   "version": 2,
