@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+[package]
+name = "systemd-rust-fuzz-smoke"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[[test]]
+name = "parser_fuzz"
+path = "parser_fuzz.rs"

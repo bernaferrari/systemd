@@ -993,6 +993,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-rust-fuzz-smoke"
+version = "0.0.1"
+
+[[package]]
 name = "systemd-shared-rs"
 version = "0.0.1"
 dependencies = [

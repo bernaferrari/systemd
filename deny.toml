@@ -11,7 +11,7 @@ ignore = []
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"
-highlights = "all"
+highlight = "all"
 
 [sources]
 unknown-registry = "deny"

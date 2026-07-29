@@ -14,10 +14,10 @@ run() {
     "$@"
 }
 
-run cargo test --locked --manifest-path src/core/rust/Cargo.toml fuzz_unit_file::tests:: -- --test-threads="${RUST_TEST_THREADS}"
-run cargo test --locked --manifest-path src/shared/rust/Cargo.toml fuzz_calendarspec::tests:: -- --test-threads="${RUST_TEST_THREADS}"
-run cargo test --locked --manifest-path src/journal/rust/Cargo.toml fuzz_journald_native_fd::tests:: -- --test-threads="${RUST_TEST_THREADS}"
-run cargo test --locked --manifest-path src/udev/rust/Cargo.toml fuzz_udev_rules::tests:: -- --test-threads="${RUST_TEST_THREADS}"
-run cargo test --locked --manifest-path src/network/rust/Cargo.toml fuzz_network_parser::tests:: -- --test-threads="${RUST_TEST_THREADS}"
-run cargo test --locked --manifest-path src/network/rust/Cargo.toml fuzz_netdev_parser::tests:: -- --test-threads="${RUST_TEST_THREADS}"
-run cargo test --locked --manifest-path src/resolve/rust/Cargo.toml fuzz_dns_packet::tests:: -- --test-threads="${RUST_TEST_THREADS}"
+run cargo test --locked --manifest-path test/rust-fuzz-smoke/Cargo.toml fuzz_unit_file::tests:: -- --test-threads="${RUST_TEST_THREADS}"
+run cargo test --locked --manifest-path test/rust-fuzz-smoke/Cargo.toml fuzz_calendarspec::tests:: -- --test-threads="${RUST_TEST_THREADS}"
+run cargo test --locked --manifest-path test/rust-fuzz-smoke/Cargo.toml fuzz_journald_native_fd::tests:: -- --test-threads="${RUST_TEST_THREADS}"
+run cargo test --locked --manifest-path test/rust-fuzz-smoke/Cargo.toml fuzz_udev_rules::tests:: -- --test-threads="${RUST_TEST_THREADS}"
+run cargo test --locked --manifest-path test/rust-fuzz-smoke/Cargo.toml fuzz_network_parser::tests:: -- --test-threads="${RUST_TEST_THREADS}"
+run cargo test --locked --manifest-path test/rust-fuzz-smoke/Cargo.toml fuzz_netdev_parser::tests:: -- --test-threads="${RUST_TEST_THREADS}"
+run cargo test --locked --manifest-path test/rust-fuzz-smoke/Cargo.toml fuzz_dns_packet::tests:: -- --test-threads="${RUST_TEST_THREADS}"
