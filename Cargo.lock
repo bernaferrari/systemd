@@ -889,9 +889,6 @@ dependencies = [
 [[package]]
 name = "systemd-pcrextend-rs"
 version = "0.0.1"
-dependencies = [
- "systemd-shared-rs",
-]
 
 [[package]]
 name = "systemd-platform-rs"

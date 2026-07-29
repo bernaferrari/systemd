@@ -1273,11 +1273,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 12
     },
-    "src/shared/rust/fido2_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 6
-    },
     "src/shared/rust/find_esp.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1380,16 +1375,6 @@
         "554:30:let err_error: i32 = unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.err.error)) };"
       ],
       "unsafe_sites": 16
-    },
-    "src/shared/rust/libcrypt_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 9
-    },
-    "src/shared/rust/libfido2_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
     },
     "src/shared/rust/libmount_util.rs": {
       "missing_safety": 0,
@@ -1513,11 +1498,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 15
-    },
-    "src/shared/rust/pkcs7_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
     },
     "src/shared/rust/plymouth_util.rs": {
       "missing_safety": 0,
