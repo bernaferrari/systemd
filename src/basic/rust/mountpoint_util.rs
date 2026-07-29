@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/mountpoint-util.c (mount_propagation_flag_to_string/from_string,
-//            mount_propagation_flag_is_valid, is_name_to_handle_at_fatal_error,
-//            file_handle_equal)
+// PORT-SYNC: scope=basic.mountpoint-util; authority=src/basic/mountpoint-util.c,src/basic/mountpoint-util.h
 //
 // Mount propagation flag conversion and mountpoint utility functions.
-// Pure Rust — no FFI. Uses safe idiomatic Rust with enums and Result types.
 
-use libc::c_ulong;
+use std::ffi::CStr;
+
+use libc::{c_char, c_int, c_ulong};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -72,19 +71,23 @@ pub fn mount_propagation_flag_to_string(flag: MountPropagationFlag) -> &'static 
     }
 }
 
-pub fn mount_propagation_flag_from_string(name: &str) -> Result<MountPropagationFlag, i32> {
+fn mount_propagation_flag_from_bytes(name: &[u8]) -> Result<MountPropagationFlag, i32> {
     let flag = if name.is_empty() {
         MountPropagationFlag::None
-    } else if name == "shared" {
+    } else if name == b"shared" {
         MountPropagationFlag::Shared
-    } else if name == "slave" {
+    } else if name == b"slave" {
         MountPropagationFlag::Slave
-    } else if name == "private" {
+    } else if name == b"private" {
         MountPropagationFlag::Private
     } else {
         return Err(-EINVAL);
     };
     Ok(flag)
+}
+
+pub fn mount_propagation_flag_from_string(name: &str) -> Result<MountPropagationFlag, i32> {
+    mount_propagation_flag_from_bytes(name.as_bytes())
 }
 
 pub fn mount_propagation_flag_is_valid(flag: MountPropagationFlag) -> bool {
@@ -98,6 +101,58 @@ pub fn mount_propagation_flag_raw_is_valid(flag: u64) -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_mount_propagation_flag_is_valid(flag: c_ulong) -> bool {
     mount_propagation_flag_raw_is_valid(flag as u64)
+}
+
+/// C ABI facade for `mount_propagation_flag_to_string()`.
+///
+/// The returned pointer is either NULL or a borrowed pointer to an immutable,
+/// NUL-terminated static string. It must not be freed or retained beyond the
+/// lifetime of the loaded Rust library.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_mount_propagation_flag_to_string(flags: c_ulong) -> *const c_char {
+    let string = match MountPropagationFlag::from_raw_flags(flags as u64) {
+        Some(MountPropagationFlag::None) => c"",
+        Some(MountPropagationFlag::Shared) => c"shared",
+        Some(MountPropagationFlag::Slave) => c"slave",
+        Some(MountPropagationFlag::Private) => c"private",
+        None => return std::ptr::null(),
+    };
+
+    string.as_ptr()
+}
+
+/// C ABI facade for `mount_propagation_flag_from_string()`.
+///
+/// # Safety
+///
+/// `ret` must be a non-NULL, writable `unsigned long` pointer. When non-NULL,
+/// `name` must point to a live NUL-terminated C string for the duration of the
+/// call. NULL `name` is treated as an empty string. The input is borrowed as
+/// raw bytes and no data is retained or allocated across the ABI boundary. On
+/// error, `ret` is not written.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_mount_propagation_flag_from_string(
+    name: *const c_char,
+    ret: *mut c_ulong,
+) -> c_int {
+    assert!(!ret.is_null());
+
+    let name = if name.is_null() {
+        b"".as_slice()
+    } else {
+        // SAFETY: required by this entry point's contract after the NULL check.
+        unsafe { CStr::from_ptr(name) }.to_bytes()
+    };
+
+    let flag = match mount_propagation_flag_from_bytes(name) {
+        Ok(flag) => flag,
+        Err(err) => return err,
+    };
+
+    // SAFETY: required by this entry point's contract; this is reached only
+    // after successful parsing, matching the C function's publication order.
+    unsafe { *ret = flag.to_raw_flag() as c_ulong };
+    0
 }
 
 // ── Error classification helpers ──────────────────────────────────────────
@@ -120,9 +175,7 @@ pub fn errno_is_neg_privilege(r: i32) -> bool {
 // ── is_name_to_handle_at_fatal_error ──────────────────────────────────────
 
 pub fn is_name_to_handle_at_fatal_error(err: i32) -> bool {
-    if err >= 0 {
-        return true;
-    }
+    assert!(err < 0, "err must be a negative errno");
 
     if errno_is_neg_not_supported(err) {
         return false;
@@ -132,6 +185,14 @@ pub fn is_name_to_handle_at_fatal_error(err: i32) -> bool {
     }
 
     !(err == -EOVERFLOW || err == -EINVAL)
+}
+
+/// C ABI facade for `is_name_to_handle_at_fatal_error()`.
+///
+/// `err` must be a negative errno, as required by the C authority.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_is_name_to_handle_at_fatal_error(err: c_int) -> bool {
+    is_name_to_handle_at_fatal_error(err)
 }
 
 // ── File handle comparison ────────────────────────────────────────────────
@@ -242,6 +303,11 @@ mod tests {
     }
 
     #[test]
+    fn test_mount_propagation_flag_from_bytes_non_utf8() {
+        assert_eq!(mount_propagation_flag_from_bytes(b"shared\xff"), Err(-22));
+    }
+
+    #[test]
     fn test_from_raw_flags_zero() {
         assert_eq!(
             MountPropagationFlag::from_raw_flags(0),
@@ -340,10 +406,9 @@ mod tests {
     }
 
     #[test]
-    fn test_is_name_to_handle_at_fatal_error_positive() {
-        assert!(is_name_to_handle_at_fatal_error(1));
-        assert!(is_name_to_handle_at_fatal_error(0));
-        assert!(is_name_to_handle_at_fatal_error(100));
+    #[should_panic(expected = "err must be a negative errno")]
+    fn test_is_name_to_handle_at_fatal_error_requires_negative_errno() {
+        is_name_to_handle_at_fatal_error(0);
     }
 
     #[test]

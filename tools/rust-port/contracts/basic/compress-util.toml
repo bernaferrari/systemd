@@ -1,0 +1,80 @@
+schema = 1
+module = "compress-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "compression_from_string_harder",
+    "compression_from_filename",
+    "compression_supported_journal",
+    "compression_detect_from_magic",
+    "compress_blob",
+    "decompress_blob",
+    "compress_stream",
+    "decompress_stream",
+]
+
+[authority]
+c_headers = ["src/basic/compress.h"]
+c_sources = ["src/basic/compress.c"]
+rust_headers = ["src/basic/rust/compress_util.h"]
+rust_sources = ["src/basic/rust/compress_util.rs"]
+
+[[surface]]
+id = "compression-string-tables"
+c_symbols = ["compression_to_string", "compression_uppercase_to_string"]
+rust_symbols = ["rs_compression_to_string", "rs_compression_uppercase_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["compression_to_string", "compression_uppercase_to_string"]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-compress-util-rust.c"
+meson_target = "test-compress-util-rust"
+labels = ["compression-string-tables"]
+
+[[surface]]
+id = "compression-string-parsing"
+c_symbols = ["compression_from_string", "compression_uppercase_from_string"]
+rust_symbols = ["rs_compression_from_string", "rs_compression_uppercase_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-compress-util-rust.c"
+meson_target = "test-compress-util-rust"
+labels = ["compression-string-parsing"]
+
+[[surface]]
+id = "compression-supported-feature-mask"
+c_symbols = ["compression_supported"]
+rust_symbols = ["rs_compression_supported"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "compression-invalid-enum-fail-closed"
+deviation_rationale = "The C authority asserts on an invalid Compression enum; the Rust FFI facade returns false outside that asserted domain while matching every valid discriminant."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-28."
+
+[surface.static_fixture]
+file = "tests-extra/test-compress-util-rust.c"
+meson_target = "test-compress-util-rust"
+labels = ["compression-supported-feature-mask"]

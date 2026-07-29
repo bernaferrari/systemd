@@ -758,11 +758,30 @@ last_reviewed_rust_blobs = { "src/basic/rust/process_util_str_tables.rs" = "3e17
 notes = "Reviewed static ABI slice 2026-07-28; no build/tests/VM. Exact string-table facades preserve static borrowed SIGCHLD names, safe_atou-compatible scheduler parsing, and C-allocator-owned scheduler formatting including decimal fallback and unchanged-on-error output. Syscall/process/PID APIs remain excluded; C remains production authority and runtime parity is unclaimed."
 
 [compress-util]
-c_file = "src/basic/compress.c"
-rust_file = "src/basic/rust/compress_util.rs"
+c_paths = [
+    "src/basic/compress.c",
+    "src/basic/compress.h",
+]
+rust_paths = [
+    "src/basic/rust/compress_util.rs",
+    "src/basic/rust/compress_util.h",
+]
+scope = "basic.compress"
+rust_scope_paths = ["src/basic/rust/compress_util.rs"]
+rust_interface_paths = ["src/basic/rust/compress_util.h"]
+contract_file = "tools/rust-port/contracts/basic/compress-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/compress.c", rust_paths = ["src/basic/rust/compress_util.rs", "src/basic/rust/compress_util.h"] },
+    { kind = "direct", path = "src/basic/compress.h", rust_paths = ["src/basic/rust/compress_util.rs", "src/basic/rust/compress_util.h"] },
+]
+test_file = "tests-extra/test-compress-util-rust.c"
 status = "in-progress"
 tier = 1
-notes = "5 shadow tests pass. 5 FFI exports: rs_compression_to_string, rs_compression_from_string, rs_compression_to_string_lowercase, rs_compression_from_string_lowercase, rs_compression_supported. Uses extern C for rs_get_compression_supported_mask. Skipped: all compress/decompress functions (dlopen, zlib, lz4, zstd)."
+symbols = 5
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/compress.c" = "0f62fb95f55905f5565542fa0f873afca62c2c6b", "src/basic/compress.h" = "f46b787f0cd425bfb17c29945a3944550193b992" }
+last_reviewed_rust_blobs = { "src/basic/rust/compress_util.rs" = "817982df3da3617e2f5d69c58245197ba0371c6e", "src/basic/rust/compress_util.h" = "d4cee1feebe629c306b0c2d18186d46877ae4af7" }
+notes = "Reviewed static compression-table ABI slice 2026-07-28; no build/tests/VM. Five facades preserve all six current enum values, ordinary and uppercase C string tables, static borrowed pointers, raw C-string parsing, and Meson-derived codec feature availability. Invalid enum input to compression_supported() is an explicit fail-closed Rust extension; streaming/blob codec APIs remain excluded. C remains production authority; runtime parity is unclaimed."
 
 [locale-util]
 c_paths = [
@@ -1005,7 +1024,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "3b74e2bb1b89485bd0ff55c2fdb561a806d25c5e", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "c481b6d6da88f36dbacf844ab414ca91396bf233", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
@@ -1067,7 +1086,7 @@ status = "in-progress"
 tier = 1
 symbols = 3
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/arphrd-util.c" = "0c5a85edaa577ca45176c816d6de0f6e76f694eb", "src/basic/arphrd-util.h" = "97a1c0b248c5fed47e218f5fe703d779322c4b0f", "src/basic/arphrd-to-name.awk" = "302504b6510ddd7e2b90ae2097656b8d0ba86cb9", "src/basic/generate-arphrd-list.sh" = "be4c75d7e0b9a85c2ba4e12356888cbbd45466a2", "src/basic/meson.build" = "3b74e2bb1b89485bd0ff55c2fdb561a806d25c5e", "src/include/uapi/linux/if_arp.h" = "12d06bb6d87d995d9f85449a64a3009ce43ca957", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/arphrd-util.c" = "0c5a85edaa577ca45176c816d6de0f6e76f694eb", "src/basic/arphrd-util.h" = "97a1c0b248c5fed47e218f5fe703d779322c4b0f", "src/basic/arphrd-to-name.awk" = "302504b6510ddd7e2b90ae2097656b8d0ba86cb9", "src/basic/generate-arphrd-list.sh" = "be4c75d7e0b9a85c2ba4e12356888cbbd45466a2", "src/basic/meson.build" = "c481b6d6da88f36dbacf844ab414ca91396bf233", "src/include/uapi/linux/if_arp.h" = "12d06bb6d87d995d9f85449a64a3009ce43ca957", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/arphrd_util.rs" = "ecab09b0791eea5d40480688fe54479adb94cbc4", "src/basic/rust/arphrd_util.h" = "0698e817471435bb4fda2dc612bcc708bbb45964" }
 notes = "Reviewed static ARPHRD table slice 2026-07-28; no build/tests/VM. Three facades preserve generated Linux-UAPI name lookup, gperf ASCII case folding, the HDLC/CISCO alias, borrowed static output, uint16_t width, and address-length mapping. Generator inputs and Meson’s --ignore-case setting are pinned. C remains the production authority; runtime parity is unclaimed."
 
@@ -1232,7 +1251,7 @@ status = "in-progress"
 tier = 1
 symbols = 4
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/capability-list.c" = "6c60888327c31046f46decb004f0b5ab11e04d46", "src/basic/capability-list.h" = "f60569a61abc131c3b2442adc4bdb5e0c0776a02", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890", "src/basic/generate-capability-list.sh" = "ab87f94f500dccf931ad42ce7b05a892f82fe9f7", "src/basic/capability-to-name.awk" = "bd8a28c2fe8e32e90ae3201e67e524440c90e7cb", "src/basic/meson.build" = "3b74e2bb1b89485bd0ff55c2fdb561a806d25c5e", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/uapi/linux/capability.h" = "60fd34309de01c518f1de2d384ea4cf09525b29f", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/capability-list.c" = "6c60888327c31046f46decb004f0b5ab11e04d46", "src/basic/capability-list.h" = "f60569a61abc131c3b2442adc4bdb5e0c0776a02", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890", "src/basic/generate-capability-list.sh" = "ab87f94f500dccf931ad42ce7b05a892f82fe9f7", "src/basic/capability-to-name.awk" = "bd8a28c2fe8e32e90ae3201e67e524440c90e7cb", "src/basic/meson.build" = "c481b6d6da88f36dbacf844ab414ca91396bf233", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/uapi/linux/capability.h" = "60fd34309de01c518f1de2d384ea4cf09525b29f", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/capability_list.rs" = "466bd5573fec2f53213ad85eae4929e0428bbbf8", "src/basic/rust/capability_list.h" = "8284fb977e94a0044ee93b26c0975ff5bc182d3e" }
 notes = "Reviewed static capability-list ABI slice 2026-07-28; no build/tests/VM. Four facades preserve NUL-backed borrowed names, target-generated gperf ASCII case folding, safe_atoi numeric grammar, CAP_LIMIT bounds, and caller-buffer numeric rendering without allocation. The table is anchored to vendored UAPI and generation inputs; the Linux C-vs-Rust fixture deliberately detects a newer target table. Capability-set allocation/vector APIs remain C-only. C remains the production authority; runtime parity is unclaimed."
 
@@ -1642,9 +1661,8 @@ symbols = 6
 sync_status = "needs_review"
 
 [misc_validators]
-c_paths = ["src/basic/mountpoint-util.c", "src/basic/parse-util.c", "src/basic/os-util.c", "src/shared/hostname-setup.c", "src/shared/bus-print-properties.c", "src/basic/user-util.c", "src/shared/reboot-util.c", "src/basic/syslog-util.c", "src/basic/socket-util.c"]
-rust_file = "src/basic/rust/misc_validators.rs;src/basic/rust/mountpoint_util.rs"
-header_file = "src/basic/mountpoint-util.h"
+c_paths = ["src/basic/parse-util.c", "src/basic/os-util.c", "src/shared/hostname-setup.c", "src/shared/bus-print-properties.c", "src/basic/user-util.c", "src/shared/reboot-util.c", "src/basic/syslog-util.c", "src/basic/socket-util.c"]
+rust_file = "src/basic/rust/misc_validators.rs"
 status = "in-progress"
 tier = 3
 symbols = 10
@@ -1652,23 +1670,56 @@ sync_status = "needs_review"
 notes = "2026-07-27 static audit: ten exact C ABI predicates cover raw scalar domains and byte-oriented account, log, nft, and bus-property validation. Current C sources/headers, canonical Rust headers, and Rust-linked comparison fixtures are registered; runtime parity is unclaimed."
 
 [mount_setup]
-c_paths = ["src/shared/mount-setup.c", "src/shared/mount-setup.h"]
-rust_file = "src/basic/rust/mount_setup.rs"
-header_file = "src/shared/mount-setup.h"
+c_paths = [
+    "src/shared/mount-setup.c",
+    "src/shared/mount-setup.h",
+]
+rust_paths = [
+    "src/basic/rust/mount_setup.rs",
+    "src/basic/rust/mount_setup.h",
+]
+scope = "basic.mount-setup"
+rust_scope_paths = ["src/basic/rust/mount_setup.rs"]
+rust_interface_paths = ["src/basic/rust/mount_setup.h"]
+contract_file = "tools/rust-port/contracts/basic/mount-setup.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/mount-setup.c", rust_paths = ["src/basic/rust/mount_setup.rs", "src/basic/rust/mount_setup.h"] },
+    { kind = "direct", path = "src/shared/mount-setup.h", rust_paths = ["src/basic/rust/mount_setup.rs", "src/basic/rust/mount_setup.h"] },
+]
+test_file = "tests-extra/test-mount-setup-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored mount classification tables to current shared source/header; behavioral completion remains unclaimed."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/mount-setup.c" = "f402990cf747c3aeb326345c28f7bdc04ebde219", "src/shared/mount-setup.h" = "9e1787b2c5ac996c649b6c1c56ed6c4066e5f255" }
+last_reviewed_rust_blobs = { "src/basic/rust/mount_setup.rs" = "7772df23b079238924fc851225c981d00fb945eb", "src/basic/rust/mount_setup.h" = "c8fe5b4e7c6bc58b44dd5250d4f9c22cc1b8077b" }
+notes = "Reviewed static mount-classification ABI slice 2026-07-28; no build/tests/VM. Component-aware raw-byte paths preserve C path_equal()/path_startswith() normalization, NAME_MAX rejection, all current mount-table paths, cgroup descendants, and /run/host descendants. NULL input is an explicit fail-closed Rust extension; mounting remains excluded. C remains production authority; runtime parity is unclaimed."
 
 [mountpoint_util]
-c_file = "src/basic/mountpoint-util.c"
-rust_file = "src/basic/rust/mountpoint_util.rs"
-header_file = "src/basic/mountpoint-util.h"
+c_paths = [
+    "src/basic/mountpoint-util.c",
+    "src/basic/mountpoint-util.h",
+]
+rust_paths = [
+    "src/basic/rust/mountpoint_util.rs",
+    "src/basic/rust/mountpoint_util.h",
+]
+scope = "basic.mountpoint-util"
+rust_scope_paths = ["src/basic/rust/mountpoint_util.rs"]
+rust_interface_paths = ["src/basic/rust/mountpoint_util.h"]
+contract_file = "tools/rust-port/contracts/basic/mountpoint-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/mountpoint-util.c", rust_paths = ["src/basic/rust/mountpoint_util.rs", "src/basic/rust/mountpoint_util.h"] },
+    { kind = "direct", path = "src/basic/mountpoint-util.h", rust_paths = ["src/basic/rust/mountpoint_util.rs", "src/basic/rust/mountpoint_util.h"] },
+]
+test_file = "tests-extra/test-namespace-mountpoint-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 5
-sync_status = "needs_review"
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/mountpoint-util.c" = "4db4d8162fd14c92f99216cc8795e264f7b1d649", "src/basic/mountpoint-util.h" = "7f29ffe177848b64d22b00f2677166672829501e" }
+last_reviewed_rust_blobs = { "src/basic/rust/mountpoint_util.rs" = "f7f1db46f6ba9980df4fe0c3337bc01d89527f8f", "src/basic/rust/mountpoint_util.h" = "e0fc049eaec754fac5b78e22eab490ab7257fbcc" }
+notes = "Reviewed static mountpoint ABI slice 2026-07-28; no build/tests/VM. Four facades preserve propagation-mask handling, static borrowed names, raw C-string parsing with success-only output publication, exact unsigned-long/int widths, and fatal negative-errno classification. Handle acquisition and mount I/O remain excluded. C remains production authority; runtime parity is unclaimed."
 
 [namespace_util]
 c_paths = [
@@ -1779,24 +1830,56 @@ last_reviewed_rust_blobs = { "src/basic/rust/recovery_key.rs" = "19cba5c23b71d21
 notes = "Reviewed static recovery-key ABI slice 2026-07-28; no build/tests/VM. Decode and normalization preserve modhex spelling, 64/71-byte syntax, 8-character grouping, C-owned output, output-on-success, and allocator-before-validation ordering. Random key generation remains C-only. C remains the production authority; runtime parity is unclaimed."
 
 [replace_var]
-c_file = "src/basic/replace-var.c"
-rust_file = "src/basic/rust/replace_var.rs"
-header_file = "src/basic/replace-var.h"
-test_file = "src/test/test-replace-var.c"
+c_paths = [
+    "src/basic/replace-var.c",
+    "src/basic/replace-var.h",
+]
+rust_paths = [
+    "src/basic/rust/replace_var.rs",
+    "src/basic/rust/replace_var.h",
+]
+scope = "basic.replace-var"
+rust_scope_paths = ["src/basic/rust/replace_var.rs"]
+rust_interface_paths = ["src/basic/rust/replace_var.h"]
+contract_file = "tools/rust-port/contracts/basic/replace-var.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/replace-var.c", rust_paths = ["src/basic/rust/replace_var.rs", "src/basic/rust/replace_var.h"] },
+    { kind = "direct", path = "src/basic/replace-var.h", rust_paths = ["src/basic/rust/replace_var.rs", "src/basic/rust/replace_var.h"] },
+]
+test_file = "tests-extra/test-replace-var-rust.c"
+status = "in-progress"
+tier = 3
+symbols = 1
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/replace-var.c" = "1ff79dd84a6ca9d1473ad9738b436e117f164009", "src/basic/replace-var.h" = "abaa57b503defcf68de2484bbbf48f1ad0ff8034" }
+last_reviewed_rust_blobs = { "src/basic/rust/replace_var.rs" = "312a40e4a9a35015bd5330d9f111965bc04f3f28", "src/basic/rust/replace_var.h" = "71ca080afe86fb96c5f5688a79bb173d59ff3f1c" }
+notes = "Reviewed static replace-var ABI slice 2026-07-28; no build/tests/VM. The raw-byte replacement loop preserves uppercase-and-underscore token grammar, literal malformed tokens, lookup order, NULL lookup failure, C allocator ownership for the return and every callback result, and overflow/OOM cleanup. C assertion preconditions remain assertions. C remains production authority; runtime parity is unclaimed."
+
+[resize_fs_util]
+c_paths = [
+    "src/shared/resize-fs.c",
+    "src/shared/resize-fs.h",
+]
+rust_paths = [
+    "src/basic/rust/resize_fs_util.rs",
+    "src/basic/rust/resize_fs_util.h",
+]
+scope = "basic.resize-fs-util"
+rust_scope_paths = ["src/basic/rust/resize_fs_util.rs"]
+rust_interface_paths = ["src/basic/rust/resize_fs_util.h"]
+contract_file = "tools/rust-port/contracts/basic/resize-fs-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/resize-fs.c", rust_paths = ["src/basic/rust/resize_fs_util.rs", "src/basic/rust/resize_fs_util.h"] },
+    { kind = "direct", path = "src/shared/resize-fs.h", rust_paths = ["src/basic/rust/resize_fs_util.rs", "src/basic/rust/resize_fs_util.h"] },
+]
+test_file = "tests-extra/test-resize-fs-rust.c"
 status = "in-progress"
 tier = 3
 symbols = 3
-sync_status = "needs_review"
-
-[resize_fs_util]
-c_paths = ["src/shared/resize-fs.c", "src/shared/resize-fs.h"]
-rust_file = "src/basic/rust/resize_fs_util.rs"
-header_file = "src/shared/resize-fs.h"
-status = "in-progress"
-tier = 3
-symbols = 2
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored resize policy helpers to current shared source/header; behavioral completion remains unclaimed."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/resize-fs.c" = "7a7854666486f098beba3da6baeb0b1ed320117b", "src/shared/resize-fs.h" = "f1b8dd19e160539307fba6afadcc32328a188fc5" }
+last_reviewed_rust_blobs = { "src/basic/rust/resize_fs_util.rs" = "2ef04fbf19555843fe46b4aa22d89a62c4427670", "src/basic/rust/resize_fs_util.h" = "21e266f89ca326e123cc81afa87b71bfa8a5e952" }
+notes = "Reviewed static resize policy ABI slice 2026-07-28; no build/tests/VM. Filesystem-name/magic minimum-size and online-resize policy facades preserve UINT64_MAX, raw C-string semantics, and signed statfs_f_type_t ABI behavior including BTRFS on 32-bit targets. resize_fs() I/O remains excluded. C remains production authority; runtime parity is unclaimed."
 
 [safe_math]
 c_file = "src/basic/macro.h"
@@ -1885,14 +1968,34 @@ sync_status = "needs_review"
 notes = "Rust-only module index. Each child facade owns its exact C/H authority separately; this row prevents the directory root from becoming an implicit semantic authority."
 
 [specifier_util]
-c_paths = ["src/shared/specifier.c", "src/shared/specifier.h", "src/shared/efi-loader.c", "src/shared/efi-loader.h"]
-rust_file = "src/basic/rust/specifier_util.rs"
-header_file = "src/shared/specifier.h"
+c_paths = [
+    "src/shared/specifier.c",
+    "src/shared/specifier.h",
+    "src/shared/efi-loader.c",
+    "src/shared/efi-loader.h",
+]
+rust_paths = [
+    "src/basic/rust/specifier_util.rs",
+    "src/basic/rust/specifier_util.h",
+]
+scope = "basic.specifier-util"
+rust_scope_paths = ["src/basic/rust/specifier_util.rs"]
+rust_interface_paths = ["src/basic/rust/specifier_util.h"]
+contract_file = "tools/rust-port/contracts/basic/specifier-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/specifier.c", rust_paths = ["src/basic/rust/specifier_util.rs", "src/basic/rust/specifier_util.h"] },
+    { kind = "direct", path = "src/shared/specifier.h", rust_paths = ["src/basic/rust/specifier_util.rs", "src/basic/rust/specifier_util.h"] },
+    { kind = "direct", path = "src/shared/efi-loader.c", rust_paths = ["src/basic/rust/specifier_util.rs", "src/basic/rust/specifier_util.h"] },
+    { kind = "direct", path = "src/shared/efi-loader.h", rust_paths = ["src/basic/rust/specifier_util.rs", "src/basic/rust/specifier_util.h"] },
+]
+test_file = "tests-extra/test-specifier-efi-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 8
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit maps specifier escaping and EFI entry validation to current shared authorities; behavioral completion remains unclaimed."
+symbols = 3
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/specifier.c" = "9d2066899f2fe0b5852499d13a255f105fce292d", "src/shared/specifier.h" = "3b9d43cd85dd0e7615ed0517851519e62babd844", "src/shared/efi-loader.c" = "da0a3a57b58cf8a387cec5757f4cad39280a605b", "src/shared/efi-loader.h" = "d4344e92adadd0c26ab48c894227e922bee39080" }
+last_reviewed_rust_blobs = { "src/basic/rust/specifier_util.rs" = "cfbe20dbdfc69b5f28a40d8806617a38cdc7607f", "src/basic/rust/specifier_util.h" = "22ff6d9f68d7094a1bb1f8da4745d6e0c34fa23b" }
+notes = "Reviewed static specifier/EFI ABI slice 2026-07-28; no build/tests/VM. Percent escaping is raw-byte and C-allocator owned; strv escaping preserves borrowed input, owned output, and failure-atomic publication; EFI entry validation preserves filename and ASCII charset boundaries. NULL ret for strv escaping is an explicit fail-closed Rust extension. Other specifier and EFI I/O APIs remain excluded; C remains production authority and runtime parity is unclaimed."
 
 [strverscmp]
 c_paths = ["src/fundamental/string-util.c", "src/fundamental/string-util.h"]

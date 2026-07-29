@@ -8,9 +8,12 @@
 # selected <seccomp.h>, not from Rust's target_arch:
 #   --cfg=systemd_seccomp_arch_loongarch64
 #   --cfg=systemd_seccomp_arch_riscv64
-# Standalone Cargo users must first probe their selected libseccomp header and
-# pass only the cfgs for macros it defines. Leaving both unset is the safe
-# compatibility mode for older headers.
+# Compression cfgs likewise come from Meson's HAVE_* probes:
+#   --cfg=systemd_have_xz, systemd_have_lz4, systemd_have_zstd,
+#   --cfg=systemd_have_zlib, systemd_have_bzip2
+# Standalone Cargo users must probe the corresponding C headers/configuration
+# before enabling any of these cfgs. Leaving them unset is the safe
+# compatibility mode: only uncompressed payloads are reported as supported.
 #
 # NOTE: `cargo test` will fail with linker errors because the Rust code
 # calls back into C functions (e.g., sha256_process_bytes, unhexchar).

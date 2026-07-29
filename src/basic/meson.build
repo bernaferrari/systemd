@@ -400,7 +400,8 @@ import sys
  dynamic_uid_min, dynamic_uid_max,
  container_uid_min, container_uid_max,
  foreign_uid_min, foreign_uid_max,
- seccomp_arch_loongarch64, seccomp_arch_riscv64) = sys.argv[1:16]
+ seccomp_arch_loongarch64, seccomp_arch_riscv64,
+ have_xz, have_lz4, have_zstd, have_zlib, have_bzip2) = sys.argv[1:21]
 env = os.environ.copy()
 env["CARGO_TARGET_DIR"] = target_dir
 env["SYSTEMD_ERRNO_TO_NAME_RS"] = errno_to_name_rust
@@ -415,6 +416,11 @@ env["SYSTEMD_FOREIGN_UID_MAX"] = foreign_uid_max
 for enabled, cfg in (
     (seccomp_arch_loongarch64, "systemd_seccomp_arch_loongarch64"),
     (seccomp_arch_riscv64, "systemd_seccomp_arch_riscv64"),
+    (have_xz, "systemd_have_xz"),
+    (have_lz4, "systemd_have_lz4"),
+    (have_zstd, "systemd_have_zstd"),
+    (have_zlib, "systemd_have_zlib"),
+    (have_bzip2, "systemd_have_bzip2"),
 ):
     if enabled == "1":
         encoded_rustflags = env.get("CARGO_ENCODED_RUSTFLAGS")
@@ -458,7 +464,12 @@ shutil.copy2(os.path.join(target_dir, "release", "libsystemd_basic_rs.a"), out)
                            '@0@'.format(foreign_uid_base),
                            '@0@'.format(foreign_uid_base + 0xFFFF),
                            '@0@'.format(have_seccomp_arch_loongarch64 ? 1 : 0),
-                           '@0@'.format(have_seccomp_arch_riscv64 ? 1 : 0)],
+                           '@0@'.format(have_seccomp_arch_riscv64 ? 1 : 0),
+                           '@0@'.format(conf.get('HAVE_XZ')),
+                           '@0@'.format(conf.get('HAVE_LZ4')),
+                           '@0@'.format(conf.get('HAVE_ZSTD')),
+                           '@0@'.format(conf.get('HAVE_ZLIB')),
+                           '@0@'.format(conf.get('HAVE_BZIP2'))],
                 build_by_default : true,
                 build_always_stale : true)
 endif

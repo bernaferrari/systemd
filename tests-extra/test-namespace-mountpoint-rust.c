@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <string.h>
 #include <stdint.h>
 
@@ -15,6 +16,7 @@
 #include <linux/sched.h>
 
 /* ── mount_propagation_flag_to_string ──────────────────────────────────── */
+/* RUST-CONTRACT: mount-propagation-flag-strings */
 
 static void test_mount_propagation_to_string_zero(void) {
         const char *r_c = mount_propagation_flag_to_string(0);
@@ -60,7 +62,43 @@ static void test_mount_propagation_to_string_all_bits(void) {
         assert_se(!r_c && !r_r);
 }
 
+static void test_mount_propagation_to_string_ignores_other_flags(void) {
+        unsigned long flags = MS_SHARED | MS_RDONLY;
+        const char *r_c = mount_propagation_flag_to_string(flags);
+        const char *r_r = rs_mount_propagation_flag_to_string(flags);
+
+        assert_se(r_c && r_r);
+        assert_se(streq(r_c, r_r));
+        assert_se(streq(r_r, "shared"));
+}
+
+static void test_mount_propagation_to_string_is_static(void) {
+        const char *first = rs_mount_propagation_flag_to_string(MS_PRIVATE);
+        const char *second = rs_mount_propagation_flag_to_string(MS_PRIVATE);
+
+        assert_se(first && second);
+        assert_se(first == second);
+}
+
+/* RUST-CONTRACT: mount-propagation-flag-validity */
+static void test_mount_propagation_flag_validity(void) {
+        static const unsigned long cases[] = {
+                0,
+                MS_SHARED,
+                MS_SLAVE,
+                MS_PRIVATE,
+                MS_SHARED | MS_SLAVE,
+                MS_SHARED | MS_RDONLY,
+                ULONG_MAX,
+        };
+
+        for (size_t i = 0; i < ELEMENTSOF(cases); i++)
+                assert_se(mount_propagation_flag_is_valid(cases[i]) ==
+                          rs_mount_propagation_flag_is_valid(cases[i]));
+}
+
 /* ── mount_propagation_flag_from_string ────────────────────────────────── */
+/* RUST-CONTRACT: mount-propagation-flag-parsing */
 
 static void test_mount_propagation_from_string_empty(void) {
         unsigned long c_ret = 999, r_ret = 999;
@@ -98,11 +136,13 @@ static void test_mount_propagation_from_string_private(void) {
 }
 
 static void test_mount_propagation_from_string_invalid(void) {
-        unsigned long c_ret = 0, r_ret = 0;
+        unsigned long c_ret = ULONG_MAX, r_ret = ULONG_MAX;
         int r_c = mount_propagation_flag_from_string("foobar", &c_ret);
         int r_r = rs_mount_propagation_flag_from_string("foobar", &r_ret);
         assert_se(r_c == r_r);
         assert_se(r_c < 0);
+        assert_se(c_ret == ULONG_MAX);
+        assert_se(r_ret == ULONG_MAX);
 }
 
 static void test_mount_propagation_from_string_case(void) {
@@ -113,7 +153,43 @@ static void test_mount_propagation_from_string_case(void) {
         assert_se(r_c < 0);
 }
 
+static void test_mount_propagation_from_string_null(void) {
+        unsigned long c_ret = ULONG_MAX, r_ret = ULONG_MAX;
+        int r_c = mount_propagation_flag_from_string(NULL, &c_ret);
+        int r_r = rs_mount_propagation_flag_from_string(NULL, &r_ret);
+
+        assert_se(r_c == r_r);
+        assert_se(r_c == 0);
+        assert_se(c_ret == 0);
+        assert_se(r_ret == 0);
+}
+
+static void test_mount_propagation_from_string_non_utf8(void) {
+        static const char name[] = { 's', 'h', 'a', 'r', 'e', 'd', '\xff', 0 };
+        unsigned long c_ret = ULONG_MAX, r_ret = ULONG_MAX;
+        int r_c = mount_propagation_flag_from_string(name, &c_ret);
+        int r_r = rs_mount_propagation_flag_from_string(name, &r_ret);
+
+        assert_se(r_c == r_r);
+        assert_se(r_c < 0);
+        assert_se(c_ret == ULONG_MAX);
+        assert_se(r_ret == ULONG_MAX);
+}
+
+static void test_mount_propagation_from_string_stops_at_nul(void) {
+        static const char name[] = { 's', 'h', 'a', 'r', 'e', 'd', 0, 'x', 0 };
+        unsigned long c_ret = ULONG_MAX, r_ret = ULONG_MAX;
+        int r_c = mount_propagation_flag_from_string(name, &c_ret);
+        int r_r = rs_mount_propagation_flag_from_string(name, &r_ret);
+
+        assert_se(r_c == r_r);
+        assert_se(r_c == 0);
+        assert_se(c_ret == MS_SHARED);
+        assert_se(r_ret == MS_SHARED);
+}
+
 /* ── is_name_to_handle_at_fatal_error ────────────────────────────────────── */
+/* RUST-CONTRACT: name-to-handle-fatal-error */
 
 /* C implementation asserts err < 0, so only test negative errno values */
 
@@ -251,12 +327,18 @@ int main(int argc, char *argv[]) {
         test_mount_propagation_to_string_private();
         test_mount_propagation_to_string_combined();
         test_mount_propagation_to_string_all_bits();
+        test_mount_propagation_to_string_ignores_other_flags();
+        test_mount_propagation_to_string_is_static();
+        test_mount_propagation_flag_validity();
         test_mount_propagation_from_string_empty();
         test_mount_propagation_from_string_shared();
         test_mount_propagation_from_string_slave();
         test_mount_propagation_from_string_private();
         test_mount_propagation_from_string_invalid();
         test_mount_propagation_from_string_case();
+        test_mount_propagation_from_string_null();
+        test_mount_propagation_from_string_non_utf8();
+        test_mount_propagation_from_string_stops_at_nul();
         test_is_name_to_handle_at_fatal_error_fatal();
         test_is_name_to_handle_at_fatal_error_not_supported();
         test_is_name_to_handle_at_fatal_error_privilege();

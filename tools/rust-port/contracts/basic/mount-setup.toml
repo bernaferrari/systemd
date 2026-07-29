@@ -1,0 +1,50 @@
+schema = 1
+module = "mount_setup"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["mount_cgroupfs", "mount_setup_early", "mount_setup"]
+
+[authority]
+c_headers = ["src/shared/mount-setup.h"]
+c_sources = ["src/shared/mount-setup.c"]
+rust_headers = ["src/basic/rust/mount_setup.h"]
+rust_sources = ["src/basic/rust/mount_setup.rs"]
+
+[[surface]]
+id = "mount-point-is-api"
+c_symbols = ["mount_point_is_api"]
+rust_symbols = ["rs_mount_point_is_api"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "mount-setup-null-path-fail-closed"
+deviation_rationale = "The C authority requires a non-NULL path through path_equal()/path_startswith(); the Rust ABI returns false for NULL while preserving all valid-input behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-28."
+
+[surface.static_fixture]
+file = "tests-extra/test-mount-setup-rust.c"
+meson_target = "test-mount-setup-rust"
+labels = ["mount-point-is-api"]
+
+[[surface]]
+id = "mount-point-ignore"
+c_symbols = ["mount_point_ignore"]
+rust_symbols = ["rs_mount_point_ignore"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "mount-setup-null-path-fail-closed"
+deviation_rationale = "The C authority requires a non-NULL path through path_equal()/path_startswith(); the Rust ABI returns false for NULL while preserving all valid-input behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-28."
+
+[surface.static_fixture]
+file = "tests-extra/test-mount-setup-rust.c"
+meson_target = "test-mount-setup-rust"
+labels = ["mount-point-ignore"]

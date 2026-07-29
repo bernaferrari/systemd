@@ -1,0 +1,100 @@
+schema = 1
+module = "mountpoint_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "name_to_handle_at_loop",
+    "name_to_handle_at_try_fid",
+    "name_to_handle_at_u64",
+    "file_handle_equal",
+    "file_handle_dup",
+    "is_mount_point_at",
+    "path_is_mount_point_full",
+    "mount_nofollow",
+    "mount_option_supported",
+]
+
+[authority]
+c_headers = ["src/basic/mountpoint-util.h"]
+c_sources = ["src/basic/mountpoint-util.c"]
+rust_headers = ["src/basic/rust/mountpoint_util.h"]
+rust_sources = ["src/basic/rust/mountpoint_util.rs"]
+
+[[surface]]
+id = "mount-propagation-flag-strings"
+c_symbols = ["mount_propagation_flag_to_string"]
+rust_symbols = ["rs_mount_propagation_flag_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-namespace-mountpoint-rust.c"
+meson_target = "test-namespace-mountpoint-rust"
+labels = ["mount-propagation-flag-strings"]
+
+[[surface]]
+id = "mount-propagation-flag-parsing"
+c_symbols = ["mount_propagation_flag_from_string"]
+rust_symbols = ["rs_mount_propagation_flag_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-namespace-mountpoint-rust.c"
+meson_target = "test-namespace-mountpoint-rust"
+labels = ["mount-propagation-flag-parsing"]
+
+[[surface]]
+id = "mount-propagation-flag-validity"
+c_symbols = ["mount_propagation_flag_is_valid"]
+rust_symbols = ["rs_mount_propagation_flag_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-namespace-mountpoint-rust.c"
+meson_target = "test-namespace-mountpoint-rust"
+labels = ["mount-propagation-flag-validity"]
+
+[[surface]]
+id = "name-to-handle-fatal-error"
+c_symbols = ["is_name_to_handle_at_fatal_error"]
+rust_symbols = ["rs_is_name_to_handle_at_fatal_error"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-namespace-mountpoint-rust.c"
+meson_target = "test-namespace-mountpoint-rust"
+labels = ["name-to-handle-fatal-error"]

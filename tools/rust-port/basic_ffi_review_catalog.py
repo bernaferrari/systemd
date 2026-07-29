@@ -506,7 +506,59 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "mount_propagation_validator": (
             basic_rust / "mountpoint_util.h",
             basic_rust / "mountpoint_util.rs",
-            frozenset({"rs_mount_propagation_flag_is_valid"}),
+            frozenset(
+                {
+                    "rs_mount_propagation_flag_to_string",
+                    "rs_mount_propagation_flag_from_string",
+                    "rs_mount_propagation_flag_is_valid",
+                    "rs_is_name_to_handle_at_fatal_error",
+                }
+            ),
+        ),
+        "compress_util": (
+            basic_rust / "compress_util.h",
+            basic_rust / "compress_util.rs",
+            frozenset(
+                {
+                    "rs_compression_to_string",
+                    "rs_compression_from_string",
+                    "rs_compression_uppercase_to_string",
+                    "rs_compression_uppercase_from_string",
+                    "rs_compression_supported",
+                }
+            ),
+        ),
+        "mount_setup": (
+            basic_rust / "mount_setup.h",
+            basic_rust / "mount_setup.rs",
+            frozenset({"rs_mount_point_is_api", "rs_mount_point_ignore"}),
+        ),
+        "resize_fs_util": (
+            basic_rust / "resize_fs_util.h",
+            basic_rust / "resize_fs_util.rs",
+            frozenset(
+                {
+                    "rs_minimal_size_by_fs_name",
+                    "rs_minimal_size_by_fs_magic",
+                    "rs_fs_can_online_shrink_and_grow",
+                }
+            ),
+        ),
+        "replace_var": (
+            basic_rust / "replace_var.h",
+            basic_rust / "replace_var.rs",
+            frozenset({"rs_replace_var"}),
+        ),
+        "specifier_util": (
+            basic_rust / "specifier_util.h",
+            basic_rust / "specifier_util.rs",
+            frozenset(
+                {
+                    "rs_specifier_escape",
+                    "rs_specifier_escape_strv",
+                    "rs_efi_loader_entry_name_valid",
+                }
+            ),
         ),
         "btrfs_validate_subvolume_name": (
             basic_rust / "btrfs_util.h",
@@ -986,7 +1038,14 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "misc_inline_abi": (tests_extra / "test-misc-inline-rust.c",),
         "xattr_util": (tests_extra / "test-xattr-util-rust.c",),
         "misc_validator_registered": (tests_extra / "test-misc-validators-rust.c",),
-        "mount_propagation_validator": (tests_extra / "test-misc-validators-rust.c",),
+        "mount_propagation_validator": (
+            tests_extra / "test-namespace-mountpoint-rust.c",
+        ),
+        "compress_util": (tests_extra / "test-compress-util-rust.c",),
+        "mount_setup": (tests_extra / "test-mount-setup-rust.c",),
+        "resize_fs_util": (tests_extra / "test-resize-fs-rust.c",),
+        "replace_var": (tests_extra / "test-replace-var-rust.c",),
+        "specifier_util": (tests_extra / "test-specifier-efi-rust.c",),
         "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
         "argv_util": (tests_extra / "test-argv-util-rust.c",),
         "compare_operator": (tests_extra / "test-compare-operator-rust.c",),
@@ -1039,6 +1098,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         tests_extra / "test-strreplace-rust.c",
         tests_extra / "test-ether-addr-util-rust.c",
         tests_extra / "test-seccomp-util-rust.c",
+        tests_extra / "test-replace-var-rust.c",
     )
     c_authorities = {
         "af_list": (root / "src/basic/af-list.c",),
@@ -1236,6 +1296,28 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "mount_propagation_validator": (
             root / "src/basic/mountpoint-util.c",
             root / "src/basic/mountpoint-util.h",
+        ),
+        "compress_util": (
+            root / "src/basic/compress.c",
+            root / "src/basic/compress.h",
+        ),
+        "mount_setup": (
+            root / "src/shared/mount-setup.c",
+            root / "src/shared/mount-setup.h",
+        ),
+        "resize_fs_util": (
+            root / "src/shared/resize-fs.c",
+            root / "src/shared/resize-fs.h",
+        ),
+        "replace_var": (
+            root / "src/basic/replace-var.c",
+            root / "src/basic/replace-var.h",
+        ),
+        "specifier_util": (
+            root / "src/shared/specifier.c",
+            root / "src/shared/specifier.h",
+            root / "src/shared/efi-loader.c",
+            root / "src/shared/efi-loader.h",
         ),
         "btrfs_validate_subvolume_name": (
             root / "src/basic/btrfs-util.c",

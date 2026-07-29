@@ -82,6 +82,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 4
     },
+    "src/basic/rust/compress_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
     "src/basic/rust/confidential_virt.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -280,6 +285,16 @@
       "missing_safety_sites": [],
       "unsafe_sites": 16
     },
+    "src/basic/rust/mount_setup.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
+    "src/basic/rust/mountpoint_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
+    },
     "src/basic/rust/murmurhash2.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -399,6 +414,16 @@
       "missing_safety_sites": [],
       "unsafe_sites": 8
     },
+    "src/basic/rust/replace_var.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 14
+    },
+    "src/basic/rust/resize_fs_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
     "src/basic/rust/rlimit_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -433,6 +458,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 4
+    },
+    "src/basic/rust/specifier_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 18
     },
     "src/basic/rust/sysctl_util.rs": {
       "missing_safety": 0,
@@ -2061,7 +2091,7 @@
   },
   "totals": {
     "missing_safety": 632,
-    "unsafe_sites": 4957
+    "unsafe_sites": 5002
   },
   "version": 2,
   "window": 3

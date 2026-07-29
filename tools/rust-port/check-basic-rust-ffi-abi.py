@@ -65,6 +65,7 @@ IOVEC_INCLUDE_TESTS = (
 )
 C_TYPES = {
     "CompareOperator": "i32",
+    "Compression": "i32",
     "CompareOperatorParseFlags": "i32",
     "ConditionType": "i32",
     # Glyph has int ABI. The Rust facade accepts the raw integer so C callers
@@ -96,6 +97,7 @@ C_TYPES = {
     "char * const *": "*const*mutc_char",
     "const char * const *": "*const*constc_char",
     "char* const*": "*const*mutc_char",
+    "rs_replace_var_lookup_t": "Option<ReplaceVarLookup>",
     "char ***": "*mut*mut*mutc_char",
     "char **": "*mut*mutc_char",
     "const char *": "*constc_char",
@@ -961,7 +963,8 @@ def uid_configuration_is_authoritative() -> bool:
  dynamic_uid_min, dynamic_uid_max,
  container_uid_min, container_uid_max,
  foreign_uid_min, foreign_uid_max,
- seccomp_arch_loongarch64, seccomp_arch_riscv64) = sys.argv[1:16]"""
+ seccomp_arch_loongarch64, seccomp_arch_riscv64,
+ have_xz, have_lz4, have_zstd, have_zlib, have_bzip2) = sys.argv[1:21]"""
     command_arguments = """'@0@'.format(greeter_uid_min),
                            '@0@'.format(greeter_uid_max),
                            '@0@'.format(dynamic_uid_min),
@@ -2919,6 +2922,22 @@ def main() -> int:
                 if "#define strv_contains(l, s) (!!strv_find((l), (s)))" not in authority:
                     return fail(
                         "strv_registered: strv_contains macro no longer matches current C authority"
+                    )
+                authority_curated += 1
+                continue
+            if name == "replace_var" and symbol == "rs_replace_var":
+                expected_signature = (
+                    ("*constc_char", "Option<ReplaceVarLookup>", "*mutc_void"),
+                    "*mutc_char",
+                )
+                normalized_authority = re.sub(r"\s+", " ", authority)
+                expected_c_signature = (
+                    "char* replace_var(const char *text, char *(*lookup)(const char *variable, "
+                    "void *userdata), void *userdata)"
+                )
+                if expected != expected_signature or expected_c_signature not in normalized_authority:
+                    return fail(
+                        "replace_var: callback ABI no longer matches the current C declaration"
                     )
                 authority_curated += 1
                 continue

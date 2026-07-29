@@ -254,9 +254,14 @@ jobs:
           test-alloc-util-rust
           test-alloc-util-extra2-rust
           test-at-flags-rust
+          test-compress-util-rust
           test-ioprio-util-rust
+          test-mount-setup-rust
           test-namespace-mountpoint-rust
           test-nsflags-rust
+          test-replace-var-rust
+          test-resize-fs-rust
+          test-specifier-efi-rust
           test-time-util-extra2-rust
           test-str-tables-batch3-rust
           test-udev-util-rust
@@ -380,9 +385,14 @@ jobs:
           test-alloc-util-rust
           test-alloc-util-extra2-rust
           test-at-flags-rust
+          test-compress-util-rust
           test-ioprio-util-rust
+          test-mount-setup-rust
           test-namespace-mountpoint-rust
           test-nsflags-rust
+          test-replace-var-rust
+          test-resize-fs-rust
+          test-specifier-efi-rust
           test-time-util-extra2-rust
           test-str-tables-batch3-rust
           test-udev-util-rust

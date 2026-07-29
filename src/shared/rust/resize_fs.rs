@@ -23,8 +23,8 @@ pub const XFS_SUPER_MAGIC: u64 = 0x5846_5342;
 
 // ── Minimum filesystem sizes ────────────────────────────────────────────────
 
-/// Minimum size for ext4 resize (256 MiB).
-pub const EXT4_MINIMAL_SIZE: u64 = 256 * 1024 * 1024;
+/// Minimum size for ext4 resize (32 MiB).
+pub const EXT4_MINIMAL_SIZE: u64 = 32 * 1024 * 1024;
 /// Minimum size for btrfs resize (256 MiB, enforced by kernel).
 pub const BTRFS_MINIMAL_SIZE: u64 = 256 * 1024 * 1024;
 /// Minimum size for XFS resize (300 MiB).
@@ -433,7 +433,7 @@ mod tests {
 
     #[test]
     fn test_minimal_size_values() {
-        assert_eq!(EXT4_MINIMAL_SIZE, 256 * 1024 * 1024);
+        assert_eq!(EXT4_MINIMAL_SIZE, 32 * 1024 * 1024);
         assert_eq!(BTRFS_MINIMAL_SIZE, 256 * 1024 * 1024);
         assert_eq!(XFS_MINIMAL_SIZE, 300 * 1024 * 1024);
     }

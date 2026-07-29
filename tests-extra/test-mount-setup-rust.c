@@ -9,6 +9,7 @@
 
 /* ── mount_point_is_api ────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: mount-point-is-api */
 static void test_mount_point_is_api_exact(void) {
         static const char *api_paths[] = {
                 "/proc", "/sys", "/dev", "/dev/shm", "/dev/pts",
@@ -50,8 +51,35 @@ static void test_mount_point_is_api_partial(void) {
         assert_se(!rs_mount_point_is_api("/sysfs"));
 }
 
+static void test_mount_point_is_api_path_components_and_bytes(void) {
+        static const char proc_nul_suffix[] = { '/', 'p', 'r', 'o', 'c', 0, 'x', 0 };
+
+        assert_se(mount_point_is_api("//./proc/") == rs_mount_point_is_api("//./proc/"));
+        assert_se(rs_mount_point_is_api("//./proc/"));
+        assert_se(mount_point_is_api("/sys//fs/cgroup/./slice") == rs_mount_point_is_api("/sys//fs/cgroup/./slice"));
+        assert_se(rs_mount_point_is_api("/sys//fs/cgroup/./slice"));
+        assert_se(mount_point_is_api("/sys/fs/cgroupx") == rs_mount_point_is_api("/sys/fs/cgroupx"));
+        assert_se(!rs_mount_point_is_api("/sys/fs/cgroupx"));
+        assert_se(mount_point_is_api("/proc\xff") == rs_mount_point_is_api("/proc\xff"));
+        assert_se(!rs_mount_point_is_api("/proc\xff"));
+        assert_se(mount_point_is_api(proc_nul_suffix) == rs_mount_point_is_api(proc_nul_suffix));
+        assert_se(rs_mount_point_is_api(proc_nul_suffix));
+}
+
+static void test_mount_point_is_api_oversized_component(void) {
+        char path[sizeof("/sys/fs/cgroup/") + 256];
+
+        strcpy(path, "/sys/fs/cgroup/");
+        memset(path + strlen(path), 'x', 256);
+        path[sizeof(path) - 1] = 0;
+
+        assert_se(mount_point_is_api(path) == rs_mount_point_is_api(path));
+        assert_se(!rs_mount_point_is_api(path));
+}
+
 /* ── mount_point_ignore ───────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: mount-point-ignore */
 static void test_mount_point_ignore_exact(void) {
         static const char *ignore_paths[] = {
                 "/sys/fs/selinux", "/dev/console", "/proc/kmsg",
@@ -82,16 +110,46 @@ static void test_mount_point_ignore_null(void) {
         assert_se(!rs_mount_point_ignore(NULL));
 }
 
+static void test_mount_point_ignore_path_components_and_bytes(void) {
+        static const char run_host_nul_suffix[] = { '/', 'r', 'u', 'n', '/', 'h', 'o', 's', 't', 0, 'x', 0 };
+
+        assert_se(mount_point_ignore("/run//host/./incoming") == rs_mount_point_ignore("/run//host/./incoming"));
+        assert_se(rs_mount_point_ignore("/run//host/./incoming"));
+        assert_se(mount_point_ignore("/run/hostess") == rs_mount_point_ignore("/run/hostess"));
+        assert_se(!rs_mount_point_ignore("/run/hostess"));
+        assert_se(mount_point_ignore("/run/hostile") == rs_mount_point_ignore("/run/hostile"));
+        assert_se(!rs_mount_point_ignore("/run/hostile"));
+        assert_se(mount_point_ignore("/run/host/\xff") == rs_mount_point_ignore("/run/host/\xff"));
+        assert_se(rs_mount_point_ignore("/run/host/\xff"));
+        assert_se(mount_point_ignore(run_host_nul_suffix) == rs_mount_point_ignore(run_host_nul_suffix));
+        assert_se(rs_mount_point_ignore(run_host_nul_suffix));
+}
+
+static void test_mount_point_ignore_oversized_component(void) {
+        char path[sizeof("/run/host/") + 256];
+
+        strcpy(path, "/run/host/");
+        memset(path + strlen(path), 'x', 256);
+        path[sizeof(path) - 1] = 0;
+
+        assert_se(mount_point_ignore(path) == rs_mount_point_ignore(path));
+        assert_se(!rs_mount_point_ignore(path));
+}
+
 int main(int argc, char *argv[]) {
         test_mount_point_is_api_exact();
         test_mount_point_is_api_cgroup_subdir();
         test_mount_point_is_api_not_api();
         test_mount_point_is_api_null();
         test_mount_point_is_api_partial();
+        test_mount_point_is_api_path_components_and_bytes();
+        test_mount_point_is_api_oversized_component();
         test_mount_point_ignore_exact();
         test_mount_point_ignore_run_host();
         test_mount_point_ignore_not_ignored();
         test_mount_point_ignore_null();
+        test_mount_point_ignore_path_components_and_bytes();
+        test_mount_point_ignore_oversized_component();
 
         return 0;
 }

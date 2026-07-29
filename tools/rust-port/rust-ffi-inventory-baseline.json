@@ -25,14 +25,6 @@
       "rs_bus_label_escape",
       "rs_bus_label_unescape_n"
     ],
-    "src/basic/rust/compress_util.h": [
-      "rs_compression_from_string",
-      "rs_compression_from_string_lowercase",
-      "rs_compression_supported",
-      "rs_compression_to_string",
-      "rs_compression_to_string_lowercase",
-      "rs_get_compression_supported_mask"
-    ],
     "src/basic/rust/device_nodes.h": [
       "rs_allow_listed_char_for_devnode",
       "rs_encode_devnode_name"
@@ -114,15 +106,6 @@
       "rs_mempool_free_tile",
       "rs_mempool_init"
     ],
-    "src/basic/rust/mount_setup.h": [
-      "rs_mount_point_ignore",
-      "rs_mount_point_is_api"
-    ],
-    "src/basic/rust/mountpoint_util.h": [
-      "rs_is_name_to_handle_at_fatal_error",
-      "rs_mount_propagation_flag_from_string",
-      "rs_mount_propagation_flag_to_string"
-    ],
     "src/basic/rust/parse_util.h": [
       "rs_parse_boolean",
       "rs_parse_errno",
@@ -186,14 +169,6 @@
       "rs_ratelimit_num_dropped",
       "rs_ratelimit_reset"
     ],
-    "src/basic/rust/replace_var.h": [
-      "rs_replace_var"
-    ],
-    "src/basic/rust/resize_fs_util.h": [
-      "rs_fs_can_online_shrink_and_grow",
-      "rs_minimal_size_by_fs_magic",
-      "rs_minimal_size_by_fs_name"
-    ],
     "src/basic/rust/serialize.h": [
       "rs_deserialize_dual_timestamp",
       "rs_deserialize_usec"
@@ -252,11 +227,6 @@
       "rs_qsort_r_safe",
       "rs_qsort_safe",
       "rs_xbsearch_r"
-    ],
-    "src/basic/rust/specifier_util.h": [
-      "rs_efi_loader_entry_name_valid",
-      "rs_specifier_escape",
-      "rs_specifier_escape_strv"
     ],
     "src/basic/rust/strbuf.h": [
       "rs_strbuf_add_string_full",
