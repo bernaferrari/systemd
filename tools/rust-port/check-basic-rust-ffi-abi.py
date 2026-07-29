@@ -1187,24 +1187,6 @@ def safe_math_boundary_is_reviewed() -> bool:
     )
 
 
-def at_flags_boundary_is_reviewed() -> bool:
-    source = SURFACES["at_flags_util"][1].read_text()
-    header = SURFACES["at_flags_util"][0].read_text()
-    test = SHADOW_TESTS["at_flags_util"][0].read_text()
-    return (
-        "pub const AT_SYMLINK_FOLLOW: i32 = libc::AT_SYMLINK_FOLLOW;" in source
-        and "pub const AT_SYMLINK_NOFOLLOW: i32 = libc::AT_SYMLINK_NOFOLLOW;" in source
-        and source.count("unwrap_or(-libc::EINVAL)") == 2
-        and "int rs_at_flags_normalize_nofollow(int flags);" in header
-        and "int rs_at_flags_normalize_follow(int flags);" in header
-        and '#include "rust/at_flags_util.h"' in test
-        and "int rs_at_flags_normalize_nofollow(" not in test
-        and "AT_SYMLINK_FOLLOW | AT_SYMLINK_NOFOLLOW" in test
-        and "rs_at_flags_normalize_nofollow(flags) == -EINVAL" in test
-        and "rs_at_flags_normalize_follow(flags) == -EINVAL" in test
-    )
-
-
 def ioprio_boundary_is_reviewed() -> bool:
     source = SURFACES["ioprio_util"][1].read_text()
     header = SURFACES["ioprio_util"][0].read_text()
@@ -3340,10 +3322,6 @@ def main() -> int:
     if not safe_math_boundary_is_reviewed():
         return fail(
             "safe_math must preserve target-width unsigned-long alignment and current C overflow sentinels"
-        )
-    if not at_flags_boundary_is_reviewed():
-        return fail(
-            "at_flags_util must use target libc flags and fail closed without unwinding on contradictions"
         )
     if not ioprio_boundary_is_reviewed():
         return fail(

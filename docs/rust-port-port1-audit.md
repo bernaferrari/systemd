@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 11:06 UTC
+Generated: 2026-07-29 11:13 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **385**
-- `genuine-rust`: **257**
-- `ffi-backed-rust`: **128**
+- Total modules audited: **380**
+- `genuine-rust`: **254**
+- `ffi-backed-rust`: **126**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -38,7 +38,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/architecture.rs` | 2 | 18 | 0 | 41 |
 | `src/basic/rust/argv_util.rs` | 2 | 34 | 0 | 15 |
 | `src/basic/rust/arphrd_util.rs` | 3 | 27 | 0 | 10 |
-| `src/basic/rust/at_flags_util.rs` | 2 | 19 | 0 | 9 |
 | `src/basic/rust/basic_validators.rs` | 27 | 40 | 0 | 9 |
 | `src/basic/rust/bitmap.rs` | 11 | 35 | 0 | 55 |
 | `src/basic/rust/bootspec_util.rs` | 2 | 25 | 0 | 44 |
@@ -68,7 +67,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/exec_util.rs` | 5 | 37 | 0 | 43 |
 | `src/basic/rust/exit_status.rs` | 9 | 37 | 0 | 33 |
 | `src/basic/rust/extract_word.rs` | 1 | 35 | 0 | 104 |
-| `src/basic/rust/file_classify.rs` | 1 | 18 | 0 | 1 |
 | `src/basic/rust/format_util.rs` | 2 | 27 | 0 | 13 |
 | `src/basic/rust/fstype_util.rs` | 8 | 39 | 0 | 10 |
 | `src/basic/rust/glob_util.rs` | 2 | 24 | 0 | 12 |

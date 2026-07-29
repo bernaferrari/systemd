@@ -1884,20 +1884,6 @@ if get_option('rust').enabled()
         test('test-unit-def-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-file-classify-rust',
-                files('test-file-classify-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-file-classify-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-log-target-image-rust',
                 files('test-log-target-image-rust.c'),
                 include_directories : includes,
@@ -2620,20 +2606,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-virt-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-at-flags-rust',
-                'test-at-flags-rust.c',
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-at-flags-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-securebits-rust',

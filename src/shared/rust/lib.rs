@@ -45,11 +45,9 @@
 #![allow(clippy::nonminimal_bool)]
 
 pub mod acpi_fpdt;
-pub mod async_util;
 pub mod barrier;
 pub mod base_filesystem;
 pub mod battery_util;
-pub mod binfmt_util;
 pub mod bitmap;
 pub mod blockdev_util;
 pub mod bond_util;
@@ -77,7 +75,6 @@ pub mod cgroup_show;
 pub mod chown_recursive;
 pub mod clean_ipc;
 pub mod clock_util;
-pub mod common_signal;
 pub mod compare_operator;
 pub mod condition;
 pub mod conf_parser;

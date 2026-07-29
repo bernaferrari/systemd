@@ -205,11 +205,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/basic/rust/file_classify.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
     "src/basic/rust/format_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1043,11 +1038,6 @@
       ],
       "unsafe_sites": 7
     },
-    "src/shared/rust/binfmt_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 3
-    },
     "src/shared/rust/blockdev_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1088,11 +1078,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 4
-    },
-    "src/shared/rust/common_signal.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 3
     },
     "src/shared/rust/condition.rs": {
       "missing_safety": 6,

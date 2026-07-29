@@ -35,12 +35,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     surfaces = {
         "af_list": (basic_rust / "af_list.h", basic_rust / "af_list.rs"),
         "architecture": (basic_rust / "architecture.h", basic_rust / "architecture.rs"),
-        "at_flags_util": (basic_rust / "at_flags_util.h", basic_rust / "at_flags_util.rs"),
         "basic_validators": (basic_rust / "basic_validators.h", basic_rust / "basic_validators.rs"),
         "bus_type_util": (basic_rust / "bus_type_util.h", basic_rust / "bus_type_util.rs"),
         "capability_util": (basic_rust / "capability_util.h", basic_rust / "capability_util.rs"),
         "devnum_util": (basic_rust / "devnum_util.h", basic_rust / "devnum_util.rs"),
-        "file_classify": (shared_rust / "file_classify.h", basic_rust / "file_classify.rs"),
         "dns_type_predicates": (
             shared_rust / "dns_type_predicates.h",
             basic_rust / "dns_type_predicates.rs",
@@ -1426,7 +1424,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     shadow_tests = {
         "af_list": (tests_extra / "test-af-list-rust.c",),
         "architecture": (tests_extra / "test-architecture-rust.c",),
-        "at_flags_util": (tests_extra / "test-at-flags-rust.c",),
         "basic_validators": (tests_extra / "test-basic-validators-rust.c",),
         "bus_type_util": (
             tests_extra / "test-bus-type-util-rust.c",
@@ -1434,7 +1431,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "capability_util": (tests_extra / "test-capability-util-rust.c",),
         "devnum_util": (tests_extra / "test-devnum-util-rust.c",),
-        "file_classify": (tests_extra / "test-file-classify-rust.c",),
         "dns_type_predicates": (tests_extra / "test-dns-type-predicates-rust.c",),
         "errno_util": (
             tests_extra / "test-errno-util-rust.c",
@@ -1657,7 +1653,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     c_authorities = {
         "af_list": (root / "src/basic/af-list.c",),
         "architecture": (root / "src/basic/architecture.c", root / "src/basic/architecture.h"),
-        "at_flags_util": (root / "src/basic/fs-util.h",),
         "basic_validators": (
             root / "src/basic/cgroup-util.h",
             root / "src/basic/io-util.h",
@@ -1674,12 +1669,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "bus_type_util": (root / "src/libsystemd/sd-bus/bus-type.c", root / "src/basic/hash-funcs.c"),
         "capability_util": (root / "src/basic/capability-util.h",),
         "devnum_util": (root / "src/basic/devnum-util.c", root / "src/basic/devnum-util.h"),
-        "file_classify": (
-            root / "src/basic/login-util.c",
-            root / "src/basic/login-util.h",
-            root / "src/basic/string-util.h",
-            root / "src/fundamental/string-util.h",
-        ),
         "dns_type_predicates": (root / "src/shared/dns-type.c", root / "src/shared/dns-type.h"),
         "errno_util": (
             root / "src/basic/errno-util.c",
