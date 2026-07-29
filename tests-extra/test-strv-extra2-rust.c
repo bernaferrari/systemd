@@ -173,6 +173,6 @@ int main(int argc, char **argv) {
         test_strv_sort_uniq();
         test_strv_push_pair();
         test_strv_insert();
-        /* test_strv_copy_unless_empty(); */
+        test_strv_copy_unless_empty();
         return 0;
 }

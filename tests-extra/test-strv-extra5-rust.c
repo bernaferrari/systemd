@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include "extract-word.h"
 #include "tests.h"
 #include "strv.h"
 #include "rust/strv.h"

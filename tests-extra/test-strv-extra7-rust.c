@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
         test_strv_isempty();
         test_strv_copy();
         test_strv_join();
-        /* test_strv_fnmatch(); */
+        test_strv_fnmatch();
         test_strv_fnmatch_or_empty();
         test_strv_extend();
         test_strv_push();
