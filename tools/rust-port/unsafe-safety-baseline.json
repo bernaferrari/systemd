@@ -20,11 +20,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 14
     },
-    "src/basic/rust/ansi_color.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
     "src/basic/rust/basic_validators.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -54,11 +49,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 7
-    },
-    "src/basic/rust/compress_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
     },
     "src/basic/rust/credential_validators.rs": {
       "missing_safety": 0,
@@ -156,16 +146,6 @@
       "unsafe_sites": 2
     },
     "src/basic/rust/format_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/basic/rust/fstype_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 21
-    },
-    "src/basic/rust/glyph_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 4
@@ -909,17 +889,6 @@
       ],
       "unsafe_sites": 20
     },
-    "src/shared/rust/bpf_program.rs": {
-      "missing_safety": 5,
-      "missing_safety_sites": [
-        "294:13:unsafe {",
-        "459:25:let cgroup_fd = unsafe {",
-        "473:9:unsafe {",
-        "509:25:let cgroup_fd = unsafe {",
-        "528:9:unsafe {"
-      ],
-      "unsafe_sites": 11
-    },
     "src/shared/rust/btrfs_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1055,20 +1024,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 14
-    },
-    "src/shared/rust/hibernate_util.rs": {
-      "missing_safety": 8,
-      "missing_safety_sites": [
-        "286:5:unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }",
-        "362:19:let ret = unsafe { libc::ioctl(raw_fd, FS_IOC_FIEMAP, &mut kfiemap) };",
-        "378:19:let ret = unsafe { libc::ioctl(raw_fd, FS_IOC_FIEMAP, &mut kfiemap) };",
-        "390:13:unsafe {",
-        "397:13:unsafe {",
-        "405:23:let ret = unsafe { libc::ioctl(raw_fd, FS_IOC_FIEMAP, buf.as_mut_ptr()) };",
-        "411:17:unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const KernelFiemap) };",
-        "419:48:let extent: FiemapExtent = unsafe {"
-      ],
-      "unsafe_sites": 8
     },
     "src/shared/rust/hostname_setup.rs": {
       "missing_safety": 0,
@@ -1531,8 +1486,8 @@
     }
   },
   "totals": {
-    "missing_safety": 243,
-    "unsafe_sites": 5262
+    "missing_safety": 230,
+    "unsafe_sites": 5207
   },
   "version": 2,
   "window": 3

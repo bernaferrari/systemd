@@ -5,7 +5,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
-#include <fcntl.h>
 
 #include "tests.h"
 #include "parse-util.h"
@@ -16,7 +15,6 @@
 #include "rust/path_util.h"
 #include "rust/strv.h"
 #include "rust/in_addr_util.h"
-#include "rust/fstype_util.h"
 #include "rust/terminal_util.h"
 #include "rust/parse_util.h"
 
@@ -470,100 +468,6 @@ static void test_safe_atolu_full_empty(void) {
         assert_se(c < 0);
 }
 
-/* ── file_handle_equal ────────────────────────────────────────────── */
-
-static void test_file_handle_equal_identical(void) {
-        /* file_handle has flexible array f_handle[0], need extra space */
-        unsigned char buf_a[sizeof(struct file_handle) + 4] = {};
-        unsigned char buf_b[sizeof(struct file_handle) + 4] = {};
-        struct file_handle *fh_a = (struct file_handle *)buf_a;
-        struct file_handle *fh_b = (struct file_handle *)buf_b;
-        unsigned char data[] = { 0x01, 0x02, 0x03, 0x04 };
-
-        fh_a->handle_bytes = 4;
-        fh_a->handle_type = 1;
-        memcpy(fh_a->f_handle, data, 4);
-
-        fh_b->handle_bytes = 4;
-        fh_b->handle_type = 1;
-        memcpy(fh_b->f_handle, data, 4);
-
-        assert_se(file_handle_equal(fh_a, fh_b) == rs_file_handle_equal(fh_a, fh_b));
-        assert_se(rs_file_handle_equal(fh_a, fh_b) == true);
-}
-
-static void test_file_handle_equal_different_type(void) {
-        unsigned char buf_a[sizeof(struct file_handle) + 4] = {};
-        unsigned char buf_b[sizeof(struct file_handle) + 4] = {};
-        struct file_handle *fh_a = (struct file_handle *)buf_a;
-        struct file_handle *fh_b = (struct file_handle *)buf_b;
-
-        fh_a->handle_bytes = 4;
-        fh_a->handle_type = 1;
-        fh_b->handle_bytes = 4;
-        fh_b->handle_type = 2;
-
-        assert_se(file_handle_equal(fh_a, fh_b) == rs_file_handle_equal(fh_a, fh_b));
-        assert_se(!rs_file_handle_equal(fh_a, fh_b));
-}
-
-static void test_file_handle_equal_different_data(void) {
-        unsigned char buf_a[sizeof(struct file_handle) + 4] = {};
-        unsigned char buf_b[sizeof(struct file_handle) + 4] = {};
-        struct file_handle *fh_a = (struct file_handle *)buf_a;
-        struct file_handle *fh_b = (struct file_handle *)buf_b;
-
-        fh_a->handle_bytes = 4;
-        fh_a->handle_type = 1;
-        fh_a->f_handle[0] = 0x01;
-
-        fh_b->handle_bytes = 4;
-        fh_b->handle_type = 1;
-        fh_b->f_handle[0] = 0x02;
-
-        assert_se(file_handle_equal(fh_a, fh_b) == rs_file_handle_equal(fh_a, fh_b));
-        assert_se(!rs_file_handle_equal(fh_a, fh_b));
-}
-
-static void test_file_handle_equal_different_size(void) {
-        unsigned char buf_a[sizeof(struct file_handle) + 4] = {};
-        unsigned char buf_b[sizeof(struct file_handle) + 8] = {};
-        struct file_handle *fh_a = (struct file_handle *)buf_a;
-        struct file_handle *fh_b = (struct file_handle *)buf_b;
-
-        fh_a->handle_bytes = 4;
-        fh_a->handle_type = 1;
-        fh_b->handle_bytes = 8;
-        fh_b->handle_type = 1;
-
-        assert_se(file_handle_equal(fh_a, fh_b) == rs_file_handle_equal(fh_a, fh_b));
-        assert_se(!rs_file_handle_equal(fh_a, fh_b));
-}
-
-static void test_file_handle_equal_null(void) {
-        unsigned char buf[sizeof(struct file_handle) + 4] = {};
-        struct file_handle *fh = (struct file_handle *)buf;
-        fh->handle_bytes = 4;
-        fh->handle_type = 1;
-
-        /* C has assert(a) / assert(b) — only test Rust with NULL.
-         * Both NULL: Rust returns true (pointer equality), C would assert. */
-        assert_se(!rs_file_handle_equal(NULL, fh));
-        assert_se(!rs_file_handle_equal(fh, NULL));
-        assert_se(rs_file_handle_equal(NULL, NULL)); /* a == b → true */
-}
-
-static void test_file_handle_equal_zero_bytes(void) {
-        /* Same type, zero handle_bytes → equal */
-        struct file_handle fh_a = {}, fh_b = {};
-
-        fh_a.handle_type = 1;
-        fh_b.handle_type = 1;
-
-        assert_se(file_handle_equal(&fh_a, &fh_b) == rs_file_handle_equal(&fh_a, &fh_b));
-        assert_se(rs_file_handle_equal(&fh_a, &fh_b) == true);
-}
-
 int main(int argc, char *argv[]) {
         test_path_is_absolute_null();
         test_path_is_absolute_absolute();
@@ -604,12 +508,5 @@ int main(int argc, char *argv[]) {
         test_safe_atolu_full_auto_base();
         test_safe_atolu_full_invalid();
         test_safe_atolu_full_empty();
-        test_file_handle_equal_identical();
-        test_file_handle_equal_different_type();
-        test_file_handle_equal_different_data();
-        test_file_handle_equal_different_size();
-        test_file_handle_equal_null();
-        test_file_handle_equal_zero_bytes();
-
         return 0;
 }

@@ -55,14 +55,12 @@ pub fn startswith<'a>(s: &'a str, prefix: &'a str) -> Option<&'a str> {
 // easy to locate without conflating it with private ABI implementation pieces.
 pub mod af_list;
 pub mod alloc_util;
-pub mod ansi_color;
 pub mod basic_validators;
 pub mod bitmap;
 pub mod btrfs_util;
 pub mod bus_label;
 pub mod bus_type_util;
 pub mod capability_util;
-pub mod compress_util;
 pub mod credential_validators;
 pub mod device_nodes;
 pub mod devnum_util;
@@ -82,8 +80,6 @@ pub mod exit_status;
 pub mod extract_word;
 pub mod ffi;
 pub mod format_util;
-pub mod fstype_util;
-pub mod glyph_util;
 pub mod gpt_util;
 pub mod gunicode;
 pub mod hexdecoct;

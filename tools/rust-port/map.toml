@@ -115,62 +115,6 @@ last_reviewed_upstream_blobs = { "src/basic/utf8.c" = "0fccc4711cb9eb8e3817eff42
 last_reviewed_rust_blobs = { "src/basic/rust/utf8.rs" = "cdec824ab2ad55f49df6e5681d527cfde50a8d68", "src/basic/rust/utf8.h" = "fc2ba0b4f1c054aabef5cfb54d07bd69c75bb3a9" }
 notes = "Reviewed static UTF-8 ABI slice 2026-07-29; no build/tests/VM. Nineteen C facades preserve raw byte traversal, C allocator ownership, UTF-16 little-endian layout, output publication, invalid-byte escaping, and the exact gunicode width table. Remaining C APIs and all runtime parity are unclaimed; C remains production authority."
 
-[ansi-color]
-c_paths = ["src/basic/ansi-color.c", "src/basic/ansi-color.h", "src/basic/terminal-util.c", "src/basic/terminal-util.h", "src/basic/process-util.c", "src/basic/process-util.h", "src/basic/stat-util.c", "src/basic/stat-util.h"]
-rust_paths = ["src/basic/rust/ansi_color.rs", "src/basic/rust/ansi_color.h"]
-scope = "basic.ansi-color"
-rust_scope_paths = ["src/basic/rust/ansi_color.rs"]
-rust_interface_paths = ["src/basic/rust/ansi_color.h"]
-contract_file = "tools/rust-port/contracts/basic/ansi-color.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/ansi-color.c", rust_paths = ["src/basic/rust/ansi_color.rs", "src/basic/rust/ansi_color.h"] },
-    { kind = "direct", path = "src/basic/ansi-color.h", rust_paths = ["src/basic/rust/ansi_color.rs", "src/basic/rust/ansi_color.h"] },
-    { kind = "direct", path = "src/basic/terminal-util.c", rust_paths = ["src/basic/rust/ansi_color.rs"], rationale = "Terminal capability cache and dumb-terminal selection independently mirrored by the ANSI facade." },
-    { kind = "direct", path = "src/basic/terminal-util.h", rust_paths = ["src/basic/rust/ansi_color.rs"], rationale = "Terminal cache declarations behind the mirrored selection behavior." },
-    { kind = "direct", path = "src/basic/process-util.c", rust_paths = ["src/basic/rust/ansi_color.rs"], rationale = "PID-one detection used by the terminal selection branch." },
-    { kind = "direct", path = "src/basic/process-util.h", rust_paths = ["src/basic/rust/ansi_color.rs"], rationale = "PID helper declarations behind the mirrored selection behavior." },
-    { kind = "direct", path = "src/basic/stat-util.c", rust_paths = ["src/basic/rust/ansi_color.rs"], rationale = "Device-null inode comparison used by the terminal capability cache." },
-    { kind = "direct", path = "src/basic/stat-util.h", rust_paths = ["src/basic/rust/ansi_color.rs"], rationale = "Stat inode comparison declarations behind the mirrored terminal behavior." },
-]
-test_file = "tests-extra/test-ansi-color-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 7
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/ansi-color.c" = "36cdca727c93db3eb39aa5060ab3b34560f49d35", "src/basic/ansi-color.h" = "25a170aa653d0847a5e993ec32a94680f035fa75", "src/basic/terminal-util.c" = "597880d0ff1c878cc043f1d3f175ad05b43fa1f2", "src/basic/terminal-util.h" = "0e65d205a5296b9d6389efccb76ecfa6b6d91e2a", "src/basic/process-util.c" = "ab563c51058822e2ef07b71a46c61cc588d435cd", "src/basic/process-util.h" = "007397704ec42531b6e08a474f11d4e3dee29228", "src/basic/stat-util.c" = "72307fa7217822d3f930744bb3454d7bdf47f13a", "src/basic/stat-util.h" = "aa1c21ed90a91e0c03c2c4de833b29c5c4d67efa" }
-last_reviewed_rust_blobs = { "src/basic/rust/ansi_color.rs" = "c14545828f9ab12ed9d373cf761c403814c748fd", "src/basic/rust/ansi_color.h" = "9d2bdb6a2da9aab988ab87e5ab9f13460204e5b2" }
-notes = "Reviewed static ANSI color ABI slice 2026-07-29; no build/tests/VM. Seven C facades preserve the generated color table, complete case-insensitive boolean grammar, SYSTEMD_COLORS parsing, SGR byte validation, C-lifetime terminal and ANSI caches, TTY/device-null/PID selection, and underline state. The ABI cache has an explicit reset facade for differential environment changes. C remains production authority; runtime parity is unclaimed."
-
-[glyph-util]
-c_paths = [
-    "src/basic/glyph-util.c",
-    "src/basic/glyph-util.h",
-    "src/basic/locale-util.c",
-    "src/basic/locale-util.h",
-]
-rust_paths = [
-    "src/basic/rust/glyph_util.rs",
-    "src/basic/rust/glyph_util.h",
-]
-scope = "basic.glyph-util"
-rust_scope_paths = ["src/basic/rust/glyph_util.rs"]
-rust_interface_paths = ["src/basic/rust/glyph_util.h"]
-contract_file = "tools/rust-port/contracts/basic/glyph-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/glyph-util.c", rust_paths = ["src/basic/rust/glyph_util.rs", "src/basic/rust/glyph_util.h"] },
-    { kind = "direct", path = "src/basic/glyph-util.h", rust_paths = ["src/basic/rust/glyph_util.rs", "src/basic/rust/glyph_util.h"] },
-    { kind = "direct", path = "src/basic/locale-util.c", rust_paths = ["src/basic/rust/glyph_util.rs", "src/basic/rust/glyph_util.h"] },
-    { kind = "direct", path = "src/basic/locale-util.h", rust_paths = ["src/basic/rust/glyph_util.rs", "src/basic/rust/glyph_util.h"] },
-]
-test_file = "tests-extra/test-glyph-util-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 1
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/glyph-util.c" = "f71975d810b976a6d88ade6429799fe048b01532", "src/basic/glyph-util.h" = "f7b71818774b93e91fb2ac60e9500975b7acbfc3", "src/basic/locale-util.c" = "9dc74ef36f99c4356c36aae881b5eb784e991142", "src/basic/locale-util.h" = "673503590ab339f07d3bbdadce2424302873d5ff" }
-last_reviewed_rust_blobs = { "src/basic/rust/glyph_util.rs" = "ed3b59369ec16b0463227cb5214d333e81f65239", "src/basic/rust/glyph_util.h" = "5f5daaacfa03518781e9d15bc3ccdc18d26c15e8" }
-notes = "Reviewed static glyph ABI slice 2026-07-28; no build/tests/VM. The exact facade returns NUL-backed borrowed static strings, preserves negative NULL and the positive invalid-code assertion precondition, and corrects locale versus emoji selection through C-compatible secure SYSTEMD_UTF8, ordinary SYSTEMD_EMOJI, boolean, caching, main-thread, setlocale, and codeset policy. Runtime and locale-differential parity remain unclaimed; C remains production authority."
-
 [string-table]
 c_paths = [
     "src/basic/string-table.c",
@@ -960,32 +904,6 @@ last_reviewed_upstream_blobs = { "src/basic/process-util.c" = "ab563c51058822e2e
 last_reviewed_rust_blobs = { "src/basic/rust/process_util_str_tables.rs" = "3e1778b376d590f269daf0162b7edb676ec59eaa", "src/basic/rust/process_util_str_tables.h" = "8fe274a8a40a848b6c257111c2fa8c01e5eb0825" }
 notes = "Reviewed static ABI slice 2026-07-28; no build/tests/VM. Exact string-table facades preserve static borrowed SIGCHLD names, safe_atou-compatible scheduler parsing, and C-allocator-owned scheduler formatting including decimal fallback and unchanged-on-error output. Syscall/process/PID APIs remain excluded; C remains production authority and runtime parity is unclaimed."
 
-[compress-util]
-c_paths = [
-    "src/basic/compress.c",
-    "src/basic/compress.h",
-]
-rust_paths = [
-    "src/basic/rust/compress_util.rs",
-    "src/basic/rust/compress_util.h",
-]
-scope = "basic.compress"
-rust_scope_paths = ["src/basic/rust/compress_util.rs"]
-rust_interface_paths = ["src/basic/rust/compress_util.h"]
-contract_file = "tools/rust-port/contracts/basic/compress-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/compress.c", rust_paths = ["src/basic/rust/compress_util.rs", "src/basic/rust/compress_util.h"] },
-    { kind = "direct", path = "src/basic/compress.h", rust_paths = ["src/basic/rust/compress_util.rs", "src/basic/rust/compress_util.h"] },
-]
-test_file = "tests-extra/test-compress-util-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 5
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/compress.c" = "0f62fb95f55905f5565542fa0f873afca62c2c6b", "src/basic/compress.h" = "f46b787f0cd425bfb17c29945a3944550193b992" }
-last_reviewed_rust_blobs = { "src/basic/rust/compress_util.rs" = "817982df3da3617e2f5d69c58245197ba0371c6e", "src/basic/rust/compress_util.h" = "d4cee1feebe629c306b0c2d18186d46877ae4af7" }
-notes = "Reviewed static compression-table ABI slice 2026-07-28; no build/tests/VM. Five facades preserve all six current enum values, ordinary and uppercase C string tables, static borrowed pointers, raw C-string parsing, and Meson-derived codec feature availability. Invalid enum input to compression_supported() is an explicit fail-closed Rust extension; streaming/blob codec APIs remain excluded. C remains production authority; runtime parity is unclaimed."
-
 [virt]
 c_file = "src/basic/virt.c"
 rust_file = "src/basic/rust/virt.rs"
@@ -1106,7 +1024,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "9b30679373c83e27b7fa594a6c927c06c7045c4c", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "7e89c451321073fa51e51ff69e0f8415aace7f94", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
@@ -1400,34 +1318,6 @@ sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/exit-status.c" = "b40664d204ce207221836c981ec35cb07ae18ed0", "src/shared/exit-status.h" = "5a880d466406b1d2714e50d78ffebd5884be112b", "src/shared/securebits-util.c" = "bd682e6cbe9c336a02fa98693cfba3d2081875e2", "src/shared/securebits-util.h" = "cacae7347d7044a56ac7c655e817ffd280074135" }
 last_reviewed_rust_blobs = { "src/basic/rust/exit_status.rs" = "4d7e20b0853c817313a78d5b665c1166950ac7fb", "src/basic/rust/exit_status.h" = "241fe777769a4d0f225283166ecdce23a30eacd0" }
 notes = "Reviewed static exit-status ABI slice 2026-07-29; no build/tests/VM. Nine facades preserve status class-mask lookup, status-name parsing, borrowed static names, securebit assertion behavior, securebit mask validation, and C Bitmap-backed clean-exit/status-set operations. Native BTreeSet status sets remain Rust-only; C-layout bitmap sets retain C allocator ownership. C remains production authority; runtime parity is unclaimed."
-
-[fstype_util]
-c_paths = [
-    "src/basic/mountpoint-util.c",
-    "src/basic/mountpoint-util.h",
-    "src/basic/filesystem-sets.py",
-]
-rust_paths = [
-    "src/basic/rust/fstype_util.rs",
-    "src/basic/rust/fstype_util.h",
-]
-scope = "basic.fstype-util"
-rust_scope_paths = ["src/basic/rust/fstype_util.rs"]
-rust_interface_paths = ["src/basic/rust/fstype_util.h"]
-contract_file = "tools/rust-port/contracts/basic/fstype-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/mountpoint-util.c", rust_paths = ["src/basic/rust/fstype_util.rs", "src/basic/rust/fstype_util.h"] },
-    { kind = "direct", path = "src/basic/mountpoint-util.h", rust_paths = ["src/basic/rust/fstype_util.rs", "src/basic/rust/fstype_util.h"] },
-    { kind = "direct", path = "src/basic/filesystem-sets.py", rust_paths = ["src/basic/rust/fstype_util.rs", "src/basic/rust/fstype_util.h"] },
-]
-test_file = "tests-extra/test-fstype-util-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 8
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/mountpoint-util.c" = "4db4d8162fd14c92f99216cc8795e264f7b1d649", "src/basic/mountpoint-util.h" = "7f29ffe177848b64d22b00f2677166672829501e", "src/basic/filesystem-sets.py" = "be08664aef65a08b2bb972d7853a27987492f7b6" }
-last_reviewed_rust_blobs = { "src/basic/rust/fstype_util.rs" = "8cc861b5efba03eb215b167e06b18d9c51eb4987", "src/basic/rust/fstype_util.h" = "ddb0715e9aa8c3d65d59997694639218e18fde40" }
-notes = "Reviewed static filesystem predicate slice 2026-07-28; no build/tests/VM. Eight byte-preserving facades track generated filesystem sets, fuse-prefix handling, API-VFS path boundaries, the corrected uid/gid versus ownership distinction, and native flexible-layout file-handle equality. Mount/syscall behavior remains C-only. C remains production authority; runtime parity is unclaimed."
 
 [gpt_util]
 c_file = "src/shared/gpt.c"
@@ -2382,16 +2272,6 @@ symbols = 2
 sync_status = "needs_review"
 notes = "2026-07-27 history/source audit: bpf-dlopen was renamed to bpf-util (7d822ca8af). The current source/header own libbpf dynamic loading and error translation; behavioral completion remains unclaimed."
 
-[bpf_program]
-c_file = "src/shared/bpf-program.c"
-rust_file = "src/shared/rust/bpf_program.rs"
-header_file = "src/shared/bpf-program.h"
-status = "in-progress"
-tier = 3
-symbols = 4
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: BPF program loading/kernel ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
-
 [bus_polkit]
 c_file = "src/shared/bus-polkit.c"
 rust_file = "src/shared/rust/bus_polkit.rs"
@@ -2743,26 +2623,6 @@ tier = 3
 symbols = 2
 sync_status = "needs_review"
 notes = "2026-07-27 provenance audit re-anchored SELinux-aware temporary-file creation to current shared tmpfile-util source/header; behavioral completion remains unclaimed."
-
-[varlink_oom_prekill]
-c_paths = ["src/shared/varlink-io.systemd.oom.Prekill.c", "src/shared/varlink-io.systemd.oom.Prekill.h"]
-rust_file = "src/shared/rust/varlink_oom_prekill.rs"
-header_file = "src/shared/varlink-io.systemd.oom.Prekill.h"
-status = "in-progress"
-tier = 3
-symbols = 2
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored oom.Prekill Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
-
-[varlink_pcr_lock]
-c_paths = ["src/shared/varlink-io.systemd.PCRLock.c", "src/shared/varlink-io.systemd.PCRLock.h"]
-rust_file = "src/shared/rust/varlink_pcr_lock.rs"
-header_file = "src/shared/varlink-io.systemd.PCRLock.h"
-status = "in-progress"
-tier = 3
-symbols = 2
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored PCRLock Varlink interface constants/IDL to the current generated interface source/header; behavioral completion remains unclaimed."
 
 [journalctl]
 c_file = "src/journal/journalctl.c"

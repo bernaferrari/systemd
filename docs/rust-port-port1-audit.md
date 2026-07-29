@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 12:46 UTC
+Generated: 2026-07-29 12:59 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **310**
-- `genuine-rust`: **208**
-- `ffi-backed-rust`: **102**
+- Total modules audited: **302**
+- `genuine-rust`: **205**
+- `ffi-backed-rust`: **97**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -34,14 +34,12 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 |---|---:|---:|---:|---:|
 | `src/basic/rust/af_list.rs` | 6 | 29 | 0 | 16 |
 | `src/basic/rust/alloc_util.rs` | 6 | 41 | 0 | 25 |
-| `src/basic/rust/ansi_color.rs` | 7 | 39 | 0 | 50 |
 | `src/basic/rust/basic_validators.rs` | 27 | 40 | 0 | 9 |
 | `src/basic/rust/bitmap.rs` | 11 | 35 | 0 | 55 |
 | `src/basic/rust/btrfs_util.rs` | 1 | 21 | 0 | 13 |
 | `src/basic/rust/bus_label.rs` | 2 | 15 | 0 | 17 |
 | `src/basic/rust/bus_type_util.rs` | 9 | 26 | 0 | 12 |
 | `src/basic/rust/capability_util.rs` | 4 | 44 | 0 | 17 |
-| `src/basic/rust/compress_util.rs` | 5 | 19 | 0 | 4 |
 | `src/basic/rust/credential_validators.rs` | 2 | 35 | 0 | 9 |
 | `src/basic/rust/device_nodes.rs` | 2 | 13 | 0 | 26 |
 | `src/basic/rust/devnum_util.rs` | 7 | 36 | 1 | 63 |
@@ -58,8 +56,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/exit_status.rs` | 9 | 37 | 0 | 33 |
 | `src/basic/rust/extract_word.rs` | 1 | 35 | 0 | 104 |
 | `src/basic/rust/format_util.rs` | 2 | 27 | 0 | 13 |
-| `src/basic/rust/fstype_util.rs` | 8 | 39 | 0 | 10 |
-| `src/basic/rust/glyph_util.rs` | 1 | 36 | 0 | 26 |
 | `src/basic/rust/gpt_util.rs` | 17 | 41 | 0 | 45 |
 | `src/basic/rust/gunicode.rs` | 2 | 28 | 1 | 8 |
 | `src/basic/rust/header_inline_abi.rs` | 7 | 11 | 0 | 5 |
@@ -122,7 +118,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/virt.rs` | 5 | 25 | 1 | 7 |
 | `src/basic/rust/xattr_util.rs` | 2 | 18 | 0 | 4 |
 | `src/basic/rust/xml_tokenizer.rs` | 1 | 34 | 0 | 73 |
-| `src/shared/rust/bpf_program.rs` | 1 | 54 | 2 | 51 |
 | `src/shared/rust/btrfs_util.rs` | 1 | 49 | 1 | 40 |
 | `src/shared/rust/daemon_util.rs` | 1 | 52 | 1 | 29 |
 | `src/shared/rust/fdset.rs` | 1 | 76 | 1 | 54 |

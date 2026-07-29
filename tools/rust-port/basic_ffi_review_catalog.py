@@ -182,21 +182,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "ansi_color": (
-            basic_rust / "ansi_color.h",
-            basic_rust / "ansi_color.rs",
-            frozenset(
-                {
-                    "rs_color_mode_from_string",
-                    "rs_color_mode_to_string",
-                    "rs_parse_systemd_colors",
-                    "rs_get_color_mode",
-                    "rs_underline_enabled",
-                    "rs_reset_ansi_feature_caches",
-                    "rs_looks_like_ansi_color_code",
-                }
-            ),
-        ),
         "syslog_util": (
             basic_rust / "syslog_util.h",
             basic_rust / "syslog_util.rs",
@@ -947,19 +932,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "compress_util": (
-            basic_rust / "compress_util.h",
-            basic_rust / "compress_util.rs",
-            frozenset(
-                {
-                    "rs_compression_to_string",
-                    "rs_compression_from_string",
-                    "rs_compression_uppercase_to_string",
-                    "rs_compression_uppercase_from_string",
-                    "rs_compression_supported",
-                }
-            ),
-        ),
         "bus_label": (
             basic_rust / "bus_label.h",
             basic_rust / "bus_label.rs",
@@ -1055,22 +1027,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "credential_validators.h",
             basic_rust / "credential_validators.rs",
             frozenset({"rs_credential_name_valid", "rs_credential_glob_valid"}),
-        ),
-        "fstype_util": (
-            basic_rust / "fstype_util.h",
-            basic_rust / "fstype_util.rs",
-            frozenset(
-                {
-                    "rs_fstype_is_ro",
-                    "rs_fstype_needs_quota",
-                    "rs_fstype_can_uid_gid",
-                    "rs_path_below_api_vfs",
-                    "rs_fstype_is_network",
-                    "rs_fstype_is_api_vfs",
-                    "rs_fstype_is_blockdev_backed",
-                    "rs_file_handle_equal",
-                }
-            ),
         ),
         "namespace_util": (
             basic_rust / "namespace_util.h",
@@ -1201,11 +1157,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "glyph_util": (
-            basic_rust / "glyph_util.h",
-            basic_rust / "glyph_util.rs",
-            frozenset({"rs_glyph_full"}),
-        ),
         "nulstr_util": (
             basic_rust / "nulstr_util.h",
             basic_rust / "nulstr_util.rs",
@@ -1289,7 +1240,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-parse-extra-rust.c",
         ),
         "utf8_abi": (tests_extra / "test-utf8-rust.c",),
-        "ansi_color": (tests_extra / "test-ansi-color-rust.c",),
         "syslog_util": (tests_extra / "test-syslog-util-rust.c",),
         "exec_util": (tests_extra / "test-exec-util-rust.c",),
         "unit_dbus": (tests_extra / "test-unit-dbus-rust.c",),
@@ -1385,7 +1335,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "mount_propagation_validator": (
             tests_extra / "test-namespace-mountpoint-rust.c",
         ),
-        "compress_util": (tests_extra / "test-compress-util-rust.c",),
         "bus_label": (tests_extra / "test-bus-label-rust.c",),
         "gunicode": (tests_extra / "test-gunicode-rust.c",),
         "efivars_util": (
@@ -1402,7 +1351,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "credential_validators": (
             tests_extra / "test-credential-validators-rust.c",
         ),
-        "fstype_util": (tests_extra / "test-fstype-util-rust.c",),
         "namespace_util": (tests_extra / "test-namespace-mountpoint-rust.c",),
         "edid": (tests_extra / "test-edid-rust.c",),
         "nsflags": (tests_extra / "test-nsflags-rust.c",),
@@ -1415,7 +1363,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "string_table": (tests_extra / "test-string-table-rust.c",),
         "strxcpyx": (tests_extra / "test-strxcpyx-rust.c",),
         "terminal_util": (tests_extra / "test-terminal-util-rust.c",),
-        "glyph_util": (tests_extra / "test-glyph-util-rust.c",),
         "nulstr_util": (tests_extra / "test-nulstr-util-rust.c",),
         "recovery_key": (tests_extra / "test-recovery-key-rust.c",),
     }
@@ -1524,7 +1471,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/gunicode.c",
             root / "src/basic/gunicode.h",
         ),
-        "ansi_color": (root / "src/basic/ansi-color.c", root / "src/basic/ansi-color.h"),
         "syslog_util": (root / "src/basic/syslog-util.c", root / "src/basic/syslog-util.h"),
         "exec_util": (
             root / "src/shared/exec-util.c",
@@ -1719,10 +1665,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/mountpoint-util.c",
             root / "src/basic/mountpoint-util.h",
         ),
-        "compress_util": (
-            root / "src/basic/compress.c",
-            root / "src/basic/compress.h",
-        ),
         "bus_label": (
             root / "src/basic/bus-label.c",
             root / "src/basic/bus-label.h",
@@ -1764,10 +1706,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "credential_validators": (
             root / "src/shared/creds-util.c",
             root / "src/shared/creds-util.h",
-        ),
-        "fstype_util": (
-            root / "src/basic/mountpoint-util.c",
-            root / "src/basic/mountpoint-util.h",
         ),
         "namespace_util": (
             root / "src/basic/namespace-util.c",
@@ -1824,12 +1762,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/terminal-util.c",
             root / "src/basic/terminal-util.h",
             root / "src/shared/pretty-print.c",
-        ),
-        "glyph_util": (
-            root / "src/basic/glyph-util.c",
-            root / "src/basic/glyph-util.h",
-            root / "src/basic/locale-util.c",
-            root / "src/basic/locale-util.h",
         ),
         "nulstr_util": (
             root / "src/basic/nulstr-util.c",

@@ -538,20 +538,6 @@ if get_option('rust').enabled()
         test('test-sort-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-glyph-util-rust',
-                files('test-glyph-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-glyph-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-string-table-rust',
                 files('test-string-table-rust.c'),
                 include_directories : includes,
@@ -578,20 +564,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-utf8-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-ansi-color-rust',
-                files('test-ansi-color-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-ansi-color-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-parse-util-rust',
@@ -1168,20 +1140,6 @@ if get_option('rust').enabled()
         test('test-process-util-str-tables-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-compress-util-rust',
-                files('test-compress-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-compress-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-str-tables-batch3-rust',
                 files('test-str-tables-batch3-rust.c'),
                 include_directories : includes,
@@ -1588,20 +1546,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-credential-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-fstype-util-rust',
-                files('test-fstype-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-fstype-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-user-shell-util-rust',
