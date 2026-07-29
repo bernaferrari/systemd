@@ -5,8 +5,7 @@
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
-use std::os::unix::fs::FileTypeExt;
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{Shutdown, UnixStream};
 use std::path::Path;
 
 use crate::ffi::Errno;
@@ -104,14 +103,22 @@ pub fn fido2_read_salt_file<P: AsRef<Path>>(
 ) -> Result<[u8; FIDO2_SALT_SIZE]> {
     let filename = filename.as_ref();
     let effective_offset = if offset == 0 { None } else { Some(offset) };
-    let metadata = std::fs::metadata(filename).map_err(Fido2UtilError::from_io)?;
 
-    if metadata.file_type().is_socket() && effective_offset.is_none() {
-        let mut stream = UnixStream::connect(filename).map_err(Fido2UtilError::from_io)?;
-        return read_salt_from_reader(&mut stream);
-    }
-
-    let mut file = File::open(filename).map_err(Fido2UtilError::from_io)?;
+    let mut file = match File::open(filename) {
+        Ok(file) => file,
+        // Match read_full_file_full(): only retry as an AF_UNIX socket when a
+        // non-seeking open reports ENXIO for the socket inode.
+        Err(error)
+            if effective_offset.is_none() && error.raw_os_error() == Some(Errno::ENXIO as i32) =>
+        {
+            let mut stream = UnixStream::connect(filename).map_err(Fido2UtilError::from_io)?;
+            stream
+                .shutdown(Shutdown::Write)
+                .map_err(Fido2UtilError::from_io)?;
+            return read_salt_from_reader(&mut stream);
+        }
+        Err(error) => return Err(Fido2UtilError::from_io(error)),
+    };
 
     if let Some(offset) = effective_offset {
         ensure_offset_in_range(offset)?;
@@ -190,14 +197,19 @@ fn bytes_to_salt(mut bytes: Vec<u8>) -> Result<[u8; FIDO2_SALT_SIZE]> {
 }
 
 fn zero_bytes(bytes: &mut [u8]) {
-    bytes.fill(0);
+    for byte in bytes {
+        // SAFETY: `byte` is an exclusive reference to initialized storage in
+        // the temporary salt buffer. A volatile write prevents its erasure
+        // from being optimized away before the buffer is released.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::Write;
+    use std::io::{Read, Write};
     use std::os::unix::net::UnixListener;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -235,6 +247,8 @@ mod tests {
 
         let sender = thread::spawn(move || {
             let (mut connection, _) = listener.accept().unwrap();
+            let mut byte = [0u8; 1];
+            assert_eq!(connection.read(&mut byte).unwrap(), 0);
             connection.write_all(&payload).unwrap();
         });
 

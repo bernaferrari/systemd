@@ -13,7 +13,11 @@
 
 use std::ffi::{CStr, CString, c_void};
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::ptr::NonNull;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::ffi::Errno;
 
@@ -132,35 +136,44 @@ impl From<Pkcs11Error> for i32 {
 
 // ── PKCS#11 type definitions ──────────────────────────────────────────────
 
+/// PKCS#11 scalar types are `CK_ULONG` in the C API.
+///
+/// Keep these ABI-facing aliases platform-width, rather than assuming a
+/// 64-bit target, so `#[repr(C)]` structures below retain their C layout.
+pub type CkUlong = libc::c_ulong;
+
 /// PKCS#11 return value (`CK_RV`).
-pub type CkRv = u64;
+pub type CkRv = CkUlong;
 
 /// PKCS#11 slot ID.
-pub type CkSlotId = u64;
+pub type CkSlotId = CkUlong;
 
 /// PKCS#11 session handle.
-pub type CkSessionHandle = u64;
+pub type CkSessionHandle = CkUlong;
 
 /// PKCS#11 object handle.
-pub type CkObjectHandle = u64;
+pub type CkObjectHandle = CkUlong;
 
 /// PKCS#11 flags bitmask.
-pub type CkFlags = u64;
+pub type CkFlags = CkUlong;
 
 /// PKCS#11 boolean.
 pub type CkBool = std::os::raw::c_uchar;
 
 /// PKCS#11 attribute type.
-pub type CkAttributeType = u64;
+pub type CkAttributeType = CkUlong;
 
 /// PKCS#11 object class.
-pub type CkObjectClass = u64;
+pub type CkObjectClass = CkUlong;
 
 /// PKCS#11 key type.
-pub type CkKeyType = u64;
+pub type CkKeyType = CkUlong;
 
 /// PKCS#11 mechanism type.
-pub type CkMechanismType = u64;
+pub type CkMechanismType = CkUlong;
+
+/// PKCS#11 certificate type.
+pub type CkCertificateType = CkUlong;
 
 /// Well-known `CK_RV` values.
 pub mod ck_rv {
@@ -276,11 +289,11 @@ pub mod ck_mechanism {
 
 /// Well-known `CK_CERTIFICATE_TYPE` values.
 pub mod ck_certificate_type {
-    use super::CkObjectClass;
+    use super::CkCertificateType;
 
-    pub const X_509: CkObjectClass = 0x0000;
-    pub const X_509_ATTR_CERT: CkObjectClass = 0x0001;
-    pub const WTLS: CkObjectClass = 0x0002;
+    pub const X_509: CkCertificateType = 0x0000;
+    pub const X_509_ATTR_CERT: CkCertificateType = 0x0001;
+    pub const WTLS: CkCertificateType = 0x0002;
 }
 
 /// Well-known `CKF_` token flags.
@@ -300,6 +313,16 @@ pub mod ckf_flag {
     pub const USER_PIN_FINAL_TRY: CkFlags = 0x0000_2000;
     pub const USER_PIN_LOCKED: CkFlags = 0x0000_4000;
     pub const USER_PIN_TO_BE_CHANGED: CkFlags = 0x0000_8000;
+}
+
+/// Well-known `CKF_` mechanism-info flags.
+///
+/// These values overlap token flags but apply to `CK_MECHANISM_INFO`, not to
+/// `CK_TOKEN_INFO::flags`; keeping them separate prevents accidental use when
+/// inspecting token state.
+pub mod ckf_mechanism_flag {
+    use super::CkFlags;
+
     /// EC uncompressed point support.
     pub const EC_UNCOMPRESS: CkFlags = 0x0000_0100;
     /// EC compressed point support.
@@ -328,6 +351,7 @@ pub const CK_FALSE: CkBool = 0;
 /// Fields that the C code reads from tokens.  The label,
 /// manufacturerID, model, and serialNumber are space-padded,
 /// non-NUL-terminated byte arrays of fixed width.
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CkTokenInfo {
     pub label: [u8; 32],
@@ -380,6 +404,7 @@ impl Default for CkTokenInfo {
 }
 
 /// Subset of `CK_SLOT_INFO` relevant to systemd.
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CkSlotInfo {
     pub slot_description: [u8; 64],
@@ -654,6 +679,10 @@ pub fn flags_set(flags: CkFlags, mask: CkFlags) -> bool {
 /// Global flag: has `dlopen_p11kit()` been called and completed successfully?
 static P11KIT_LOADED: AtomicBool = AtomicBool::new(false);
 
+/// Serializes initialization so racing callers cannot each retain a
+/// process-lifetime loader reference after resolving the same symbols.
+static P11KIT_LOAD_LOCK: Mutex<()> = Mutex::new(());
+
 /// Attempt to dynamically load libp11-kit and resolve all required symbols.
 ///
 /// Idempotent: after the first successful call returns `Ok(())` immediately.
@@ -664,28 +693,26 @@ pub fn dlopen_p11kit() -> Result<(), Pkcs11Error> {
         return Ok(());
     }
 
-    let handle = unsafe { dlopen_wrapper(LIBP11KIT_NAME) }?;
+    // A poisoned lock cannot invalidate the process-wide dynamic loader. Keep
+    // the mutex usable after an unrelated panic while preserving serialization.
+    let _load_lock = P11KIT_LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    // Verify every required symbol is present.
-    let missing: Vec<String> = REQUIRED_SYMBOLS
-        .iter()
-        .filter_map(|sym| {
-            let c_sym = CString::new(*sym).unwrap_or_default();
-            let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };
-            if ptr.is_null() {
-                Some((*sym).to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if !missing.is_empty() {
-        return Err(Pkcs11Error::SymbolNotFound(missing.join(", ")));
+    if P11KIT_LOADED.load(Ordering::Acquire) {
+        return Ok(());
     }
 
-    // Keep the handle open for the process lifetime.
-    let _ = handle;
+    let handle = dlopen_wrapper(LIBP11KIT_NAME)?;
+
+    for symbol in REQUIRED_SYMBOLS {
+        resolve_required_symbol(&handle, symbol)?;
+    }
+
+    // Match dlopen_many_sym_or_warn(): resolved symbols belong to a library
+    // that remains loaded for the process lifetime. In contrast, `DlHandle`
+    // closes an incomplete load on every error path above.
+    handle.leak();
 
     P11KIT_LOADED.store(true, Ordering::Release);
     Ok(())
@@ -699,40 +726,95 @@ pub fn p11kit_is_loaded() -> bool {
 /// Reset the loaded state.  Useful for tests.
 #[cfg(test)]
 pub fn reset_p11kit_loaded() {
+    let _load_lock = P11KIT_LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     P11KIT_LOADED.store(false, Ordering::Release);
 }
 
 // ── Platform dlopen / dlsym wrappers ─────────────────────────────────────
 
-/// Open a shared library, returning the handle on success.
+/// An owned dynamic-loader reference.
 ///
-/// Wraps `dlopen()` with `RTLD_LAZY | RTLD_LOCAL`.
-unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, Pkcs11Error> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| Pkcs11Error::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: c_name is NUL-terminated and remains live for the call.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-    if handle.is_null() {
-        let detail = unsafe {
-            let err_ptr = libc::dlerror();
-            if err_ptr.is_null() {
-                "unknown error".to_string()
-            } else {
-                CStr::from_ptr(err_ptr).to_string_lossy().into_owned()
-            }
-        };
-        Err(Pkcs11Error::DlopenFailed(detail))
-    } else {
-        Ok(handle)
+/// A successful load is deliberately leaked only after all required symbols
+/// resolve. Failed partial loads drop normally and release their reference.
+struct DlHandle(NonNull<c_void>);
+
+impl DlHandle {
+    fn as_ptr(&self) -> *mut c_void {
+        self.0.as_ptr()
+    }
+
+    fn leak(self) {
+        std::mem::forget(self);
     }
 }
 
-/// Look up a symbol in an already-opened library handle.
+impl Drop for DlHandle {
+    fn drop(&mut self) {
+        // SAFETY: `DlHandle` is created only from a successful `dlopen()` and
+        // owns exactly one loader reference until it is deliberately leaked.
+        unsafe { libc::dlclose(self.as_ptr()) };
+    }
+}
+
+/// Open a shared library, returning the handle on success.
 ///
-/// Returns a raw pointer that is non-null on success, null if not found.
-unsafe fn dlsym_wrapper(handle: *mut c_void, name: &CStr) -> *const c_void {
-    // SAFETY: the caller supplies a live dlopen handle and name is NUL-terminated.
-    unsafe { libc::dlsym(handle, name.as_ptr()) }
+/// Mirrors the C loader's `RTLD_NOW | RTLD_NODELETE` policy. The latter keeps
+/// the object mapped after a failed partial load is closed, while `DlHandle`
+/// still correctly accounts for and releases that loader reference.
+fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, Pkcs11Error> {
+    let c_name = CString::new(lib_name)
+        .map_err(|e| Pkcs11Error::DlopenFailed(format!("Invalid library name: {}", e)))?;
+    // SAFETY: c_name is NUL-terminated and remains live for the call.
+    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_NOW | libc::RTLD_NODELETE) };
+    NonNull::new(handle)
+        .map(DlHandle)
+        .ok_or_else(|| Pkcs11Error::DlopenFailed(dlerror_string()))
+}
+
+/// Look up a required symbol in an already-opened library handle.
+///
+/// Clearing and then checking `dlerror()` is required by POSIX: a null value
+/// returned by `dlsym()` alone does not distinguish a missing symbol.
+fn resolve_required_symbol(handle: &DlHandle, symbol: &str) -> Result<(), Pkcs11Error> {
+    let name = CString::new(symbol).map_err(|_| {
+        Pkcs11Error::InvalidArgument("required symbol name contains an interior NUL".into())
+    })?;
+
+    // SAFETY: `dlerror()` has no arguments and only accesses the calling
+    // thread's loader diagnostic state.
+    unsafe { libc::dlerror() };
+    // SAFETY: `handle` owns a live `dlopen()` reference and `name` remains
+    // NUL-terminated and live for the duration of this lookup.
+    let pointer = unsafe { libc::dlsym(handle.as_ptr(), name.as_ptr()) };
+    // SAFETY: as above, this reads the calling thread's loader diagnostic.
+    let error = unsafe { libc::dlerror() };
+
+    if !error.is_null() {
+        // SAFETY: a non-null value returned by `dlerror()` is a borrowed,
+        // NUL-terminated diagnostic valid until the next loader operation.
+        let detail = unsafe { CStr::from_ptr(error) }.to_string_lossy();
+        return Err(Pkcs11Error::SymbolNotFound(format!("{symbol}: {detail}")));
+    }
+
+    NonNull::new(pointer).ok_or_else(|| Pkcs11Error::SymbolNotFound(symbol.into()))?;
+    Ok(())
+}
+
+fn dlerror_string() -> String {
+    // SAFETY: `dlerror()` has no arguments and returns either null or a
+    // borrowed, NUL-terminated diagnostic valid until the next loader call.
+    let error = unsafe { libc::dlerror() };
+    if error.is_null() {
+        "unknown error".into()
+    } else {
+        // SAFETY: checked non-null above; the dynamic loader guarantees a
+        // NUL-terminated diagnostic string.
+        unsafe { CStr::from_ptr(error) }
+            .to_string_lossy()
+            .into_owned()
+    }
 }
 
 // ── Query helpers ────────────────────────────────────────────────────────

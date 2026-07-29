@@ -1101,11 +1101,8 @@
       "unsafe_sites": 2
     },
     "src/shared/rust/chown_recursive.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "142:19:let ret = unsafe {",
-        "278:36:let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
     },
     "src/shared/rust/clean_ipc.rs": {
@@ -1331,12 +1328,12 @@
     "src/shared/rust/fido2_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 1
+      "unsafe_sites": 2
     },
     "src/shared/rust/find_esp.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 13
+      "unsafe_sites": 14
     },
     "src/shared/rust/fork_notify.rs": {
       "missing_safety": 0,
@@ -1684,14 +1681,9 @@
       "unsafe_sites": 21
     },
     "src/shared/rust/pkcs11_util.rs": {
-      "missing_safety": 4,
-      "missing_safety_sites": [
-        "667:18:let handle = unsafe { dlopen_wrapper(LIBP11KIT_NAME) }?;",
-        "674:23:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
-        "710:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, Pkcs11Error> {",
-        "733:1:unsafe fn dlsym_wrapper(handle: *mut c_void, name: &CStr) -> *const c_void {"
-      ],
-      "unsafe_sites": 7
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
     },
     "src/shared/rust/plymouth_util.rs": {
       "missing_safety": 0,
@@ -2056,8 +2048,8 @@
     }
   },
   "totals": {
-    "missing_safety": 516,
-    "unsafe_sites": 5712
+    "missing_safety": 510,
+    "unsafe_sites": 5715
   },
   "version": 2,
   "window": 3

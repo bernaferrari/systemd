@@ -15,7 +15,8 @@
 use crate::ffi::*;
 use std::fs::{self, Metadata};
 use std::io;
-use std::os::unix::fs::MetadataExt;
+use std::mem::MaybeUninit;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
@@ -139,10 +140,11 @@ fn needs_change(meta: &Metadata, opts: &ChownOptions) -> bool {
 /// support xattrs), but propagates other errors.
 fn remove_acl_xattrs(fd: i32) -> io::Result<()> {
     for name in ACL_XATTR_NAMES {
+        // SAFETY: `fd` stays owned by the caller, and every attribute name is
+        // a static NUL-terminated byte string for the duration of the call.
         let ret = unsafe {
             #[cfg(target_os = "linux")]
             {
-                // SAFETY: NUL-terminated name, valid fd.
                 libc::fremovexattr(fd, name.as_ptr().cast())
             }
             #[cfg(not(target_os = "linux"))]
@@ -196,8 +198,27 @@ fn chown_one_fd(fd: i32, meta: &Metadata, opts: &ChownOptions) -> io::Result<()>
 ///
 /// Children are processed first (depth-first), then the directory itself —
 /// matching the C `chown_recursive_internal()` semantics.
-fn chown_recursive_dir(dir: &Path, opts: &ChownOptions) -> io::Result<bool> {
+fn open_directory(path: &Path, follow_symlinks: bool) -> io::Result<fs::File> {
+    let no_follow = if follow_symlinks { 0 } else { libc::O_NOFOLLOW };
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOATIME | no_follow)
+        .open(path)
+}
+
+fn chown_recursive_dir(
+    dir: &Path,
+    opts: &ChownOptions,
+    open_file: Option<fs::File>,
+    original_meta: Option<&Metadata>,
+) -> io::Result<bool> {
     let mut changed = false;
+    let dir_file = match open_file {
+        Some(file) => file,
+        None => open_directory(dir, false)?,
+    };
+    let current_meta = dir_file.metadata()?;
+    let dir_meta = original_meta.unwrap_or(&current_meta);
 
     let entries = fs::read_dir(dir)?;
     for entry in entries {
@@ -206,7 +227,7 @@ fn chown_recursive_dir(dir: &Path, opts: &ChownOptions) -> io::Result<bool> {
         let meta = fs::symlink_metadata(&path)?;
 
         if meta.is_dir() {
-            if chown_recursive_dir(&path, opts)? {
+            if chown_recursive_dir(&path, opts, None, None)? {
                 changed = true;
             }
         } else if needs_change(&meta, opts) {
@@ -217,10 +238,8 @@ fn chown_recursive_dir(dir: &Path, opts: &ChownOptions) -> io::Result<bool> {
     }
 
     // Chown the directory itself last.
-    let dir_meta = fs::symlink_metadata(dir)?;
     if needs_change(&dir_meta, opts) {
-        let d = fs::File::open(dir)?;
-        chown_one_fd(d.as_raw_fd(), &dir_meta, opts)?;
+        chown_one_fd(dir_file.as_raw_fd(), dir_meta, opts)?;
         return Ok(true);
     }
 
@@ -231,9 +250,10 @@ fn chown_recursive_dir(dir: &Path, opts: &ChownOptions) -> io::Result<bool> {
 
 /// Recursively change ownership and permissions of a directory tree by path.
 ///
-/// If `follow_symlinks` is true the initial `path` resolution follows
-/// symlinks; individual directory entries are *never* followed (matching the
-/// C `O_NOFOLLOW` behaviour for children).
+/// If `follow_symlinks` is true the initial `path` resolution follows a final
+/// symlink. `path` itself must resolve to a directory, matching the C
+/// `O_DIRECTORY` entry point. Nested directory opens use `O_NOFOLLOW`; the
+/// remaining non-directory traversal is still path-based (a documented P2).
 ///
 /// Returns `Ok(true)` if any changes were made, `Ok(false)` if the shortcut
 /// optimisation determined no work is needed, or an error.
@@ -242,29 +262,22 @@ pub fn path_chown_recursive(
     opts: &ChownOptions,
     follow_symlinks: bool,
 ) -> io::Result<bool> {
+    // Match the C authority: this API is directory-only, opens before its
+    // no-op check, and follows a final symlink only when explicitly asked.
+    let file = open_directory(path, follow_symlinks)?;
+
     if opts.is_noop() {
         return Ok(false);
     }
 
-    let meta = if follow_symlinks {
-        fs::metadata(path)?
-    } else {
-        fs::symlink_metadata(path)?
-    };
+    let meta = file.metadata()?;
 
     // Shortcut — mirrors the C early-return.
     if !needs_change(&meta, opts) {
         return Ok(false);
     }
 
-    // Single non-directory: chown directly.
-    if !meta.is_dir() {
-        let file = fs::File::open(path)?;
-        chown_one_fd(file.as_raw_fd(), &meta, opts)?;
-        return Ok(true);
-    }
-
-    chown_recursive_dir(path, opts)
+    chown_recursive_dir(path, opts, Some(file), Some(&meta))
 }
 
 /// Recursively change ownership and permissions of a directory tree by fd.
@@ -275,11 +288,14 @@ pub fn fd_chown_recursive<Fd: AsRawFd>(fd: &Fd, opts: &ChownOptions) -> io::Resu
 
     // Stat first (before the directory check), matching C's ordering in
     // `fd_chown_recursive()`.
-    let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: `raw` is a valid fd provided by the caller.
-    if unsafe { libc::fstat(raw, &mut stat_buf) } < 0 {
+    let mut stat_buf = MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat_buf` is writable, properly aligned output storage. `raw`
+    // is borrowed from the caller and remains valid for this synchronous call.
+    if unsafe { libc::fstat(raw, stat_buf.as_mut_ptr()) } < 0 {
         return Err(io::Error::last_os_error());
     }
+    // SAFETY: successful fstat(2) initialized the complete output struct.
+    let stat_buf = unsafe { stat_buf.assume_init() };
 
     if (stat_buf.st_mode & libc::S_IFMT) != libc::S_IFDIR {
         return Err(io::Error::new(

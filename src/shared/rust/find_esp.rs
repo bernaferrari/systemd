@@ -17,6 +17,7 @@
 use crate::ffi::*;
 use std::fmt;
 use std::io;
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -409,12 +410,20 @@ pub fn check_fat_filesystem(path: &Path) -> Result<(), FindEspError> {
 ///
 /// Returns an `EspInfo` with discovered metadata on success.
 pub fn verify_esp(path: &Path, flags: VerifyEspFlags) -> Result<EspInfo, FindEspError> {
+    verify_esp_at(None, path, flags)
+}
+
+fn verify_esp_at(
+    root_fd: Option<BorrowedFd<'_>>,
+    path: &Path,
+    flags: VerifyEspFlags,
+) -> Result<EspInfo, FindEspError> {
     let searching = flags.contains(VerifyEspFlags::SEARCHING);
     let skip_fs = flags.contains(VerifyEspFlags::SKIP_FSTYPE_CHECK);
     let skip_dev = flags.contains(VerifyEspFlags::SKIP_DEVICE_CHECK);
 
     // Resolve the path (chase symlinks).
-    let resolved = canonicalize_or_resolve(path).map_err(|e| {
+    let resolved = resolve_path_at(root_fd, path).map_err(|e| {
         if searching && e.kind() == io::ErrorKind::NotFound {
             FindEspError::NotFound
         } else {
@@ -465,8 +474,67 @@ fn canonicalize_or_resolve(p: &Path) -> io::Result<PathBuf> {
     })
 }
 
+/// Resolve `p` beneath `root_fd`, treating absolute paths and absolute symlink
+/// targets as relative to that root, like `chaseat(root_fd, root_fd, ...)`.
+fn canonicalize_or_resolve_at(root_fd: BorrowedFd<'_>, p: &Path) -> io::Result<PathBuf> {
+    let c_path = CString::new(p.as_os_str().as_bytes())?;
+
+    // SAFETY: `open_how` consists solely of integer fields, for which zero is
+    // valid. All fields understood by this call are initialized below.
+    let mut how: libc::open_how = unsafe { std::mem::zeroed() };
+    how.flags = (O_PATH | libc::O_CLOEXEC) as u64;
+    how.resolve = libc::RESOLVE_IN_ROOT;
+
+    // SAFETY: root_fd is borrowed for the duration of the call; c_path and how
+    // remain live; the kernel is given the exact size of open_how. On success,
+    // the returned value is a newly owned file descriptor.
+    let fd = unsafe {
+        libc::syscall(
+            libc::SYS_openat2,
+            root_fd.as_raw_fd(),
+            c_path.as_ptr(),
+            &how,
+            std::mem::size_of::<libc::open_how>(),
+        )
+    };
+    if fd >= 0 {
+        // SAFETY: a successful openat2 syscall returns a new descriptor in
+        // c_int range, and ownership has not been transferred elsewhere.
+        return readlink_fd(unsafe { OwnedFd::from_raw_fd(fd as i32) });
+    }
+
+    let openat2_error = io::Error::last_os_error();
+    if !matches!(
+        openat2_error.raw_os_error(),
+        Some(libc::ENOSYS | libc::EPERM | libc::EAGAIN)
+    ) {
+        return Err(openat2_error);
+    }
+
+    // openat2 may be unavailable on old kernels or blocked by seccomp. The
+    // fallback is deliberately conservative: resolve through the root fd and
+    // reject any result outside it. Unlike openat2, this cannot reinterpret an
+    // absolute symlink target inside the alternate root, but it cannot escape
+    // to the host tree either.
+    let root = readlink_fd_path(root_fd)?;
+    let relative = p.strip_prefix("/").unwrap_or(p);
+    let resolved = canonicalize_or_resolve(&root.join(relative))?;
+    if !resolved.starts_with(&root) {
+        return Err(io::Error::from_raw_os_error(libc::EXDEV));
+    }
+
+    Ok(resolved)
+}
+
+fn resolve_path_at(root_fd: Option<BorrowedFd<'_>>, p: &Path) -> io::Result<PathBuf> {
+    match root_fd {
+        Some(fd) => canonicalize_or_resolve_at(fd, p),
+        None => canonicalize_or_resolve(p),
+    }
+}
+
 /// Open a path (directory) with O_PATH.
-fn open_path(p: &Path) -> io::Result<i32> {
+fn open_path(p: &Path) -> io::Result<OwnedFd> {
     let c_path = CString::new(p.as_os_str().as_bytes())?;
     // SAFETY: c_path is NUL-terminated and remains alive for the call. These
     // flags do not include O_CREAT or O_TMPFILE, so no variadic mode argument
@@ -480,14 +548,20 @@ fn open_path(p: &Path) -> io::Result<i32> {
     if fd < 0 {
         Err(io::Error::last_os_error())
     } else {
-        Ok(fd)
+        // SAFETY: successful open returns a new descriptor, and ownership has
+        // not been transferred elsewhere.
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
     }
 }
 
 /// Read the symlink target of `/proc/self/fd/<fd>`, taking ownership of `fd`.
-fn readlink_fd(fd: i32) -> io::Result<PathBuf> {
-    let _guard = FdGuard(fd);
-    std::fs::read_link(format!("/proc/self/fd/{fd}"))
+fn readlink_fd(fd: OwnedFd) -> io::Result<PathBuf> {
+    readlink_fd_path(fd.as_fd())
+}
+
+/// Read the symlink target of `/proc/self/fd/<fd>` without taking ownership.
+fn readlink_fd_path(fd: BorrowedFd<'_>) -> io::Result<PathBuf> {
+    std::fs::read_link(format!("/proc/self/fd/{}", fd.as_raw_fd()))
 }
 
 // ── ESP discovery (high-level) ──────────────────────────────────────────────
@@ -505,23 +579,31 @@ pub fn find_esp_and_warn(
     path: Option<&Path>,
     unprivileged_mode: Option<bool>,
 ) -> Result<EspInfo, FindEspError> {
+    find_esp_and_warn_at(None, path, unprivileged_mode)
+}
+
+fn find_esp_and_warn_at(
+    root_fd: Option<BorrowedFd<'_>>,
+    path: Option<&Path>,
+    unprivileged_mode: Option<bool>,
+) -> Result<EspInfo, FindEspError> {
     let flags = verify_esp_flags_init(unprivileged_mode, ENV_RELAX_ESP_CHECKS);
 
     // Explicit path takes priority.
     if let Some(p) = path {
-        return verify_esp(p, flags);
+        return verify_esp_at(root_fd, p, flags);
     }
 
     // Check environment variable override.
-    if let Ok(env_path) = std::env::var(ENV_ESP_PATH) {
-        if !path_is_valid_absolute(&env_path) {
+    if let Some(env_path) = std::env::var_os(ENV_ESP_PATH) {
+        let p = Path::new(&env_path);
+        if !p.is_absolute() || env_path.as_bytes().contains(&0) {
             return Err(FindEspError::General(format!(
                 "${} does not refer to an absolute path, refusing: {:?}",
                 ENV_ESP_PATH, env_path
             )));
         }
-        let p = Path::new(&env_path);
-        let resolved = canonicalize_or_resolve(p).map_err(|e| FindEspError::PathResolution {
+        let resolved = resolve_path_at(root_fd, p).map_err(|e| FindEspError::PathResolution {
             path: p.to_path_buf(),
             source: e,
         })?;
@@ -540,7 +622,7 @@ pub fn find_esp_and_warn(
     // Search well-known paths.
     for dir in ESP_SEARCH_PATHS {
         let p = Path::new(dir);
-        match verify_esp(p, flags | VerifyEspFlags::SEARCHING) {
+        match verify_esp_at(root_fd, p, flags | VerifyEspFlags::SEARCHING) {
             Ok(info) => return Ok(info),
             Err(FindEspError::NotFound)
             | Err(FindEspError::NotFatFs(_))
@@ -572,59 +654,12 @@ pub fn find_esp_and_warn_full(
         _ => Path::new("/"),
     };
 
-    // Open root directory fd.
-    let root_cstr = CString::new(effective_root.as_os_str().as_bytes()).map_err(|_| {
-        FindEspError::General(format!("Root path {:?} contains NUL byte", effective_root))
-    })?;
-
-    // SAFETY: root_cstr is NUL-terminated and remains alive for the call.
-    // These flags require no variadic mode argument.
-    let root_fd = unsafe {
-        libc::open(
-            root_cstr.as_ptr(),
-            O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
-        )
-    };
-    if root_fd < 0 {
-        return Err(FindEspError::Io(io::Error::last_os_error()));
+    if effective_root == Path::new("/") {
+        return find_esp_and_warn(path, unprivileged_mode);
     }
 
-    let _guard = FdGuard(root_fd);
-
-    // Resolve path relative to root.
-    let search_path = if let Some(p) = path {
-        // If the path is absolute, use it as-is. Otherwise, join with root.
-        if p.is_absolute() {
-            p.to_path_buf()
-        } else {
-            effective_root.join(p)
-        }
-    } else {
-        PathBuf::new() // signal: no explicit path
-    };
-
-    let info = if search_path.as_os_str().is_empty() {
-        find_esp_and_warn(None, unprivileged_mode)?
-    } else {
-        find_esp_and_warn(Some(&search_path), unprivileged_mode)?
-    };
-
-    // Prefix the path with root if we resolved relative to it.
-    let info = if let Some(ref p) = info.path {
-        let prefixed = if root != Some(Path::new("/")) && root.is_some() {
-            effective_root.join(p)
-        } else {
-            p.clone()
-        };
-        EspInfo {
-            path: Some(prefixed),
-            ..info
-        }
-    } else {
-        info
-    };
-
-    Ok(info)
+    let root_fd = open_path(effective_root).map_err(FindEspError::Io)?;
+    find_esp_and_warn_at(Some(root_fd.as_fd()), path, unprivileged_mode)
 }
 
 // ── XBOOTLDR verification ──────────────────────────────────────────────────
@@ -634,10 +669,18 @@ pub fn find_esp_and_warn_full(
 /// Similar to `verify_esp` but checks for XBOOTLDR partition type instead
 /// of ESP type. No filesystem type check is performed (XBOOTLDR can be any fs).
 pub fn verify_xbootldr(path: &Path, flags: VerifyEspFlags) -> Result<XBootLdrInfo, FindEspError> {
+    verify_xbootldr_at(None, path, flags)
+}
+
+fn verify_xbootldr_at(
+    root_fd: Option<BorrowedFd<'_>>,
+    path: &Path,
+    flags: VerifyEspFlags,
+) -> Result<XBootLdrInfo, FindEspError> {
     let searching = flags.contains(VerifyEspFlags::SEARCHING);
     let skip_dev = flags.contains(VerifyEspFlags::SKIP_DEVICE_CHECK);
 
-    let resolved = canonicalize_or_resolve(path).map_err(|e| {
+    let resolved = resolve_path_at(root_fd, path).map_err(|e| {
         if searching && e.kind() == io::ErrorKind::NotFound {
             FindEspError::NotFound
         } else {
@@ -683,21 +726,29 @@ pub fn find_xbootldr_and_warn(
     path: Option<&Path>,
     unprivileged_mode: Option<bool>,
 ) -> Result<XBootLdrInfo, FindEspError> {
+    find_xbootldr_and_warn_at(None, path, unprivileged_mode)
+}
+
+fn find_xbootldr_and_warn_at(
+    root_fd: Option<BorrowedFd<'_>>,
+    path: Option<&Path>,
+    unprivileged_mode: Option<bool>,
+) -> Result<XBootLdrInfo, FindEspError> {
     let flags = verify_esp_flags_init(unprivileged_mode, ENV_RELAX_XBOOTLDR_CHECKS);
 
     if let Some(p) = path {
-        return verify_xbootldr(p, flags);
+        return verify_xbootldr_at(root_fd, p, flags);
     }
 
-    if let Ok(env_path) = std::env::var(ENV_XBOOTLDR_PATH) {
-        if !path_is_valid_absolute(&env_path) {
+    if let Some(env_path) = std::env::var_os(ENV_XBOOTLDR_PATH) {
+        let p = Path::new(&env_path);
+        if !p.is_absolute() || env_path.as_bytes().contains(&0) {
             return Err(FindEspError::General(format!(
                 "${} does not refer to an absolute path, refusing: {:?}",
                 ENV_XBOOTLDR_PATH, env_path
             )));
         }
-        let p = Path::new(&env_path);
-        let resolved = canonicalize_or_resolve(p).map_err(|e| FindEspError::PathResolution {
+        let resolved = resolve_path_at(root_fd, p).map_err(|e| FindEspError::PathResolution {
             path: p.to_path_buf(),
             source: e,
         })?;
@@ -713,7 +764,8 @@ pub fn find_xbootldr_and_warn(
         return Ok(XBootLdrInfo::from_path_and_dev(resolved, metadata.dev()));
     }
 
-    match verify_xbootldr(
+    match verify_xbootldr_at(
+        root_fd,
         Path::new(XBOOTLDR_SEARCH_PATH),
         flags | VerifyEspFlags::SEARCHING,
     ) {
@@ -737,55 +789,12 @@ pub fn find_xbootldr_and_warn_full(
         _ => Path::new("/"),
     };
 
-    let root_cstr = CString::new(effective_root.as_os_str().as_bytes()).map_err(|_| {
-        FindEspError::General(format!("Root path {:?} contains NUL byte", effective_root))
-    })?;
-
-    // SAFETY: root_cstr is NUL-terminated and remains alive for the call.
-    // These flags require no variadic mode argument.
-    let root_fd = unsafe {
-        libc::open(
-            root_cstr.as_ptr(),
-            O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
-        )
-    };
-    if root_fd < 0 {
-        return Err(FindEspError::Io(io::Error::last_os_error()));
+    if effective_root == Path::new("/") {
+        return find_xbootldr_and_warn(path, unprivileged_mode);
     }
 
-    let _guard = FdGuard(root_fd);
-
-    let search_path = if let Some(p) = path {
-        if p.is_absolute() {
-            p.to_path_buf()
-        } else {
-            effective_root.join(p)
-        }
-    } else {
-        PathBuf::new()
-    };
-
-    let info = if search_path.as_os_str().is_empty() {
-        find_xbootldr_and_warn(None, unprivileged_mode)?
-    } else {
-        find_xbootldr_and_warn(Some(&search_path), unprivileged_mode)?
-    };
-
-    let info = if let Some(ref p) = info.path {
-        let prefixed = if root != Some(Path::new("/")) && root.is_some() {
-            effective_root.join(p)
-        } else {
-            p.clone()
-        };
-        XBootLdrInfo {
-            path: Some(prefixed),
-            ..info
-        }
-    } else {
-        info
-    };
-
-    Ok(info)
+    let root_fd = open_path(effective_root).map_err(FindEspError::Io)?;
+    find_xbootldr_and_warn_at(Some(root_fd.as_fd()), path, unprivileged_mode)
 }
 
 /// Take (claim) an ESP mount point by returning the path string.
@@ -811,26 +820,6 @@ pub fn verify_xbootldr_automount(path: &Path) -> Result<XBootLdrInfo, FindEspErr
         | VerifyEspFlags::UNPRIVILEGED_MODE
         | VerifyEspFlags::SKIP_DEVICE_CHECK;
     verify_xbootldr(path, flags)
-}
-
-// ── RAII guard for file descriptors ────────────────────────────────────────
-
-/// RAII guard that closes its uniquely owned, open file descriptor on drop.
-///
-/// All construction sites must transfer ownership of a descriptor returned by
-/// a successful `open(2)` call and must not close it elsewhere.
-struct FdGuard(i32);
-
-impl Drop for FdGuard {
-    fn drop(&mut self) {
-        if self.0 >= 0 {
-            // SAFETY: FdGuard's invariant guarantees this is an open,
-            // uniquely owned descriptor, and Drop runs only once.
-            unsafe {
-                libc::close(self.0);
-            }
-        }
-    }
 }
 
 // ── Re-export CString at module level ───────────────────────────────────────
