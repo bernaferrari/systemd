@@ -13,7 +13,6 @@ id = "mapping-and-contracts"
 purpose = "Describe C-to-Rust ownership, reviewed scopes, and observable behavior contracts."
 paths = [
     "tools/rust-port/map.toml",
-    "tools/rust-port/contracts/basic/btrfs-util.toml",
     "tools/rust-port/contracts/basic/bitmap.toml",
     "tools/rust-port/contracts/basic/dns-domain-validators.toml",
     "tools/rust-port/contracts/basic/extract-word.toml",

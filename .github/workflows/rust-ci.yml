@@ -226,7 +226,6 @@ jobs:
           test-stat-util-rust
           test-shared-validators-rust
           test-mount-color-btrfs-rust
-          test-btrfs-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
           test-hexdecoct-rust
@@ -350,7 +349,6 @@ jobs:
           test-stat-util-rust
           test-shared-validators-rust
           test-mount-color-btrfs-rust
-          test-btrfs-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
           test-hexdecoct-rust

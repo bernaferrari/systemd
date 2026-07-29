@@ -1433,20 +1433,6 @@ if get_option('rust').enabled()
         )
         test('test-mount-setup-rust', rust_test_exe)
 
-        rust_test_exe = executable(
-                'test-btrfs-util-rust',
-                files('test-btrfs-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-btrfs-util-rust', rust_test_exe)
-
         if conf.get('HAVE_SECCOMP') == 1
                 rust_test_exe = executable(
                         'test-seccomp-util-rust',

@@ -965,7 +965,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "03ff1daa923efd66ac0b7359379be2d52a587d55", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "7e6bc3496c8ba016d9742d4366be142c53bb4ab2", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
@@ -999,26 +999,6 @@ sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/bitmap.c" = "7c985a0956f93247b5f813699221792f0be38ea8", "src/shared/bitmap.h" = "a12451ca0e7c5d4d4147c59bea208798231447a8", "src/basic/iterator.h" = "be9e1a9b6bd1777f87474b41d941ce709500052d" }
 last_reviewed_rust_blobs = { "src/basic/rust/bitmap.rs" = "447c6b3952598f8ae8a452a37e9630e17fe5f8a6", "src/basic/rust/bitmap.h" = "24472b290cdfc7ea6623de24516c171120b846a1" }
 notes = "Reviewed static bitmap ABI slice 2026-07-29; no build/tests/VM. Eleven facades use a dedicated libc-owned repr(C) Bitmap and iterator prefix rather than exposing the Vec-based Rust model. C remains production authority; runtime parity remains P2."
-
-[btrfs_util]
-c_paths = ["src/basic/btrfs-util.c", "src/basic/btrfs-util.h"]
-rust_paths = ["src/basic/rust/btrfs_util.rs", "src/basic/rust/btrfs_util.h"]
-scope = "basic.btrfs-util"
-rust_scope_paths = ["src/basic/rust/btrfs_util.rs"]
-rust_interface_paths = ["src/basic/rust/btrfs_util.h"]
-contract_file = "tools/rust-port/contracts/basic/btrfs-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/btrfs-util.c", rust_paths = ["src/basic/rust/btrfs_util.rs", "src/basic/rust/btrfs_util.h"] },
-    { kind = "direct", path = "src/basic/btrfs-util.h", rust_paths = ["src/basic/rust/btrfs_util.rs", "src/basic/rust/btrfs_util.h"] },
-]
-test_file = "tests-extra/test-btrfs-util-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 1
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/btrfs-util.c" = "1c605a9ef2f60f093294448c4dadc11560cbd17a", "src/basic/btrfs-util.h" = "3d7332d5041140c54227ffc54e8e8bd05a16910c" }
-last_reviewed_rust_blobs = { "src/basic/rust/btrfs_util.rs" = "476d1f7b2591d1e9eb1fe1e85f1021b1e601f690", "src/basic/rust/btrfs_util.h" = "51a18ab28f4ca22dd9932fea712fd967e4a02644" }
-notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The exact byte-preserving validation ABI keeps C's filename_is_valid() before BTRFS_SUBVOL_NAME_MAX, so names longer than NAME_MAX return -EINVAL rather than the formerly divergent Rust success/-E2BIG result. Btrfs ioctl/subvolume creation behavior remains C-only; runtime parity is unclaimed."
 
 [capability_util]
 c_paths = ["src/basic/capability-util.c", "src/basic/capability-util.h"]

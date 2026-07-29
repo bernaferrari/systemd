@@ -337,7 +337,6 @@ if get_option('rust').enabled()
                 'rust/exec_util.rs',
                 'rust/capability_util.rs',
                 'rust/mount_setup.rs',
-                'rust/btrfs_util.rs',
                 'rust/mountpoint_util.rs',
                 'rust/credential_validators.rs',
                 'rust/af_list.rs',

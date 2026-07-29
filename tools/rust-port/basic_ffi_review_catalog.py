@@ -905,11 +905,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "mount_setup.rs",
             frozenset({"rs_mount_point_is_api", "rs_mount_point_ignore"}),
         ),
-        "btrfs_validate_subvolume_name": (
-            basic_rust / "btrfs_util.h",
-            basic_rust / "btrfs_util.rs",
-            frozenset({"rs_btrfs_validate_subvolume_name"}),
-        ),
         "hexdecoct": (
             basic_rust / "hexdecoct.h",
             basic_rust / "hexdecoct.rs",
@@ -1217,7 +1212,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "gunicode": (tests_extra / "test-gunicode-rust.c",),
         "device_nodes": (tests_extra / "test-device-nodes-rust.c",),
         "mount_setup": (tests_extra / "test-mount-setup-rust.c",),
-        "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
         "hexdecoct": (tests_extra / "test-hexdecoct-rust.c",),
         "env_util": (tests_extra / "test-env-util-rust.c",),
         "credential_validators": (
@@ -1529,10 +1523,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "mount_setup": (
             root / "src/shared/mount-setup.c",
             root / "src/shared/mount-setup.h",
-        ),
-        "btrfs_validate_subvolume_name": (
-            root / "src/basic/btrfs-util.c",
-            root / "src/basic/btrfs-util.h",
         ),
         "hexdecoct": (root / "src/basic/hexdecoct.c", root / "src/basic/hexdecoct.h"),
         "env_util": (root / "src/basic/env-util.c", root / "src/basic/env-util.h"),

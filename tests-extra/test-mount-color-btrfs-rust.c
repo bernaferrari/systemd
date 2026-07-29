@@ -1,17 +1,15 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-/* Shadow test: C mount_propagation_flag, color-util, btrfs, coredump_filter vs Rust */
+/* Shadow test: C mount_propagation_flag, color-util, coredump_filter vs Rust */
 
 #include "tests.h"
 #include <sys/mount.h>
 #include "mountpoint-util.h"
 #include "color-util.h"
-#include "linux/btrfs.h"
 #include "coredump-util.h"
 
 /* Rust FFI */
 #include "rust/mountpoint_util.h"
 #include "rust/shared_facades/validation.h"
-#include "rust/btrfs_util.h"
 #include "rust/netdev_str_tables.h"
 
 /* ── mount_propagation_flag ─────────────────────────────────────────────── */
@@ -193,64 +191,6 @@ static void test_rgb_hsv(void) {
         rs_rgb_to_hsv(0.5, 0.5, 0.5, NULL, NULL, NULL);
 }
 
-/* ── btrfs_validate_subvolume_name ───────────────────────────────────────── */
-
-static void test_btrfs_validate_subvolume_name(void) {
-        int cr, rr;
-
-        /* Valid name */
-        cr = btrfs_validate_subvolume_name("my-subvol");
-        rr = rs_btrfs_validate_subvolume_name("my-subvol");
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-
-        /* Valid: simple name */
-        cr = btrfs_validate_subvolume_name("root");
-        rr = rs_btrfs_validate_subvolume_name("root");
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-
-        /* Invalid: empty */
-        cr = btrfs_validate_subvolume_name("");
-        rr = rs_btrfs_validate_subvolume_name("");
-        assert_se(cr < 0);
-        assert_se(rr < 0);
-
-        /* Invalid: NULL */
-        cr = btrfs_validate_subvolume_name(NULL);
-        rr = rs_btrfs_validate_subvolume_name(NULL);
-        assert_se(cr < 0);
-        assert_se(rr < 0);
-
-        /* Invalid: slash */
-        cr = btrfs_validate_subvolume_name("foo/bar");
-        rr = rs_btrfs_validate_subvolume_name("foo/bar");
-        assert_se(cr < 0);
-        assert_se(rr < 0);
-
-        /* Invalid: dot */
-        cr = btrfs_validate_subvolume_name(".");
-        rr = rs_btrfs_validate_subvolume_name(".");
-        assert_se(cr < 0);
-        assert_se(rr < 0);
-
-        /* Invalid: dotdot */
-        cr = btrfs_validate_subvolume_name("..");
-        rr = rs_btrfs_validate_subvolume_name("..");
-        assert_se(cr < 0);
-        assert_se(rr < 0);
-
-        /* Invalid: too long (filename_is_valid rejects at NAME_MAX=255
-           before BTRFS_SUBVOL_NAME_MAX=4039 check is reached) */
-        char longname[4100];
-        memset(longname, 'a', sizeof(longname) - 1);
-        longname[sizeof(longname) - 1] = '\0';
-        cr = btrfs_validate_subvolume_name(longname);
-        rr = rs_btrfs_validate_subvolume_name(longname);
-        assert_se(cr == rr);
-        assert_se(cr < 0);
-}
-
 /* ── coredump_filter_mask_from_string ───────────────────────────────────── */
 
 static void test_coredump_filter_mask(void) {
@@ -313,7 +253,6 @@ static void test_coredump_filter_mask(void) {
 int main(int argc, char **argv) {
         test_mount_propagation_flag();
         test_rgb_hsv();
-        test_btrfs_validate_subvolume_name();
         test_coredump_filter_mask();
         return 0;
 }

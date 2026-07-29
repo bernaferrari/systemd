@@ -57,7 +57,6 @@ pub mod af_list;
 pub mod alloc_util;
 pub mod basic_validators;
 pub mod bitmap;
-pub mod btrfs_util;
 pub mod bus_label;
 pub mod capability_util;
 pub mod credential_validators;

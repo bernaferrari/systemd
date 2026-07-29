@@ -30,11 +30,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 43
     },
-    "src/basic/rust/btrfs_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
     "src/basic/rust/bus_label.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
