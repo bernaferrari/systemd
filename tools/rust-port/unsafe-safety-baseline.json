@@ -128,7 +128,7 @@
     "src/basic/rust/dlfcn_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 8
+      "unsafe_sites": 10
     },
     "src/basic/rust/dns_domain_validators.rs": {
       "missing_safety": 0,
@@ -1064,13 +1064,9 @@
       "unsafe_sites": 1
     },
     "src/shared/rust/blockdev_util.rs": {
-      "missing_safety": 3,
-      "missing_safety_sites": [
-        "326:32:let mut stat: libc::stat = unsafe { std::mem::zeroed() };",
-        "334:21:let major = unsafe { libc::major(stat.st_rdev) } as u32;",
-        "335:21:let minor = unsafe { libc::minor(stat.st_rdev) } as u32;"
-      ],
-      "unsafe_sites": 6
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
     },
     "src/shared/rust/bpf_program.rs": {
       "missing_safety": 5,
@@ -1360,7 +1356,7 @@
     "src/shared/rust/idn_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 14
+      "unsafe_sites": 7
     },
     "src/shared/rust/install_file.rs": {
       "missing_safety": 25,
@@ -1460,28 +1456,9 @@
       "unsafe_sites": 2
     },
     "src/shared/rust/libmount_util.rs": {
-      "missing_safety": 18,
-      "missing_safety_sites": [
-        "525:19:let func: unsafe extern \"C\" fn(*mut c_void) -> *const libc::c_char =",
-        "557:24:let new_table: unsafe extern \"C\" fn() -> *mut c_void =",
-        "559:23:let new_iter: unsafe extern \"C\" fn(i32) -> *mut c_void =",
-        "561:25:let free_table: unsafe extern \"C\" fn(*mut c_void) = self.resolve_fn(b\"mnt_free_table\\0\")?;",
-        "562:24:let free_iter: unsafe extern \"C\" fn(*mut c_void) = self.resolve_fn(b\"mnt_free_iter\\0\")?;",
-        "563:22:let next_fs: unsafe extern \"C\" fn(*mut c_void, *mut c_void, *mut *mut c_void) -> i32 =",
-        "571:24:let iter_ptr = unsafe { new_iter(direction.as_raw()) };",
-        "573:13:unsafe { free_table(table_ptr) };",
-        "581:29:let parse_file: unsafe extern \"C\" fn(*mut c_void, *const libc::c_char) -> i32 =",
-        "617:26:let source = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_source\\0\") }?;",
-        "618:26:let target = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_target\\0\") }?;",
-        "619:26:let fstype = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_fstype\\0\") }?;",
-        "620:27:let options = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_options\\0\") }?;",
-        "621:28:let vfs_opts = unsafe { self.fs_get_string(fs, b\"mnt_fs_get_vfs_options\\0\") }?;",
-        "690:23:let new_iter: unsafe extern \"C\" fn(i32) -> *mut c_void =",
-        "692:24:let free_iter: unsafe extern \"C\" fn(*mut c_void) = self.resolve_fn(b\"mnt_free_iter\\0\")?;",
-        "693:25:let next_child: unsafe extern \"C\" fn(",
-        "741:1:unsafe impl Sync for LibmountLibrary {}"
-      ],
-      "unsafe_sites": 43
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 21
     },
     "src/shared/rust/log_assert_critical.rs": {
       "missing_safety": 0,
@@ -2025,8 +2002,8 @@
     }
   },
   "totals": {
-    "missing_safety": 495,
-    "unsafe_sites": 5736
+    "missing_safety": 474,
+    "unsafe_sites": 5707
   },
   "version": 2,
   "window": 3

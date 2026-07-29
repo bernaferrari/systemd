@@ -580,7 +580,7 @@ tier = 2
 symbols = 7
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/devnum-util.c" = "e7d7b652281aefe052efe762f7fb9dec911c0a4e", "src/basic/devnum-util.h" = "a23dfcacb484807a7c783c65a450d5c933a56939" }
-last_reviewed_rust_blobs = { "src/basic/rust/devnum_util.rs" = "9995b6259a31d92d1198787d7280c87690405236", "src/basic/rust/devnum_util.h" = "9e57d9e55a146e6ffef62a2280d090f36a7995e9" }
+last_reviewed_rust_blobs = { "src/basic/rust/devnum_util.rs" = "5cfe37a16f5b02532cd195567917b0af8bdbb99e", "src/basic/rust/devnum_util.h" = "9e57d9e55a146e6ffef62a2280d090f36a7995e9" }
 notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. The machine-checked contract covers five non-inline operations plus the two inline predicates, with exact ABI, byte grammar, errno, libc allocation, ownership, and success-only output publication evidence. device_path_make_canonical remains explicitly excluded, so this is partial reviewed provenance rather than synced or runtime parity."
 
 [hostname-util]

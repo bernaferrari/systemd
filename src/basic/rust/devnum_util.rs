@@ -25,7 +25,7 @@ const S_IFCHR: u32 = 0o020000;
 const S_IFBLK: u32 = 0o060000;
 
 #[inline]
-fn makedev(major: u32, minor: u32) -> u64 {
+const fn makedev(major: u32, minor: u32) -> u64 {
     (minor as u64 & 0x0000_00ff)
         | (((major as u64) & 0x0000_0fff) << 8)
         | (((minor as u64) & 0xffff_ff00) << 12)
@@ -33,13 +33,35 @@ fn makedev(major: u32, minor: u32) -> u64 {
 }
 
 #[inline]
-fn dev_major(dev: u64) -> u32 {
+const fn dev_major(dev: u64) -> u32 {
     (((dev & 0x0000_0000_000f_ff00) >> 8) | ((dev & 0xffff_f000_0000_0000) >> 32)) as u32
 }
 
 #[inline]
-fn dev_minor(dev: u64) -> u32 {
+const fn dev_minor(dev: u64) -> u32 {
     ((dev & 0x0000_0000_0000_00ff) | ((dev & 0x0000_0fff_fff0_0000) >> 12)) as u32
+}
+
+/// Encode Linux `dev_t` bits from a major/minor pair.
+///
+/// This is the same layout as glibc's `makedev(3)` macro and systemd's C
+/// `devnum-util`; keeping it here prevents consumers from inventing their own
+/// incompatible `major << 32 | minor` representation.
+#[inline]
+pub const fn devnum_from_major_minor(major: u32, minor: u32) -> u64 {
+    makedev(major, minor)
+}
+
+/// Decode the major component of Linux `dev_t` bits.
+#[inline]
+pub const fn devnum_major(dev: u64) -> u32 {
+    dev_major(dev)
+}
+
+/// Decode the minor component of Linux `dev_t` bits.
+#[inline]
+pub const fn devnum_minor(dev: u64) -> u32 {
+    dev_minor(dev)
 }
 
 fn parse_u32_base0(text: &[u8]) -> Result<u32, Errno> {

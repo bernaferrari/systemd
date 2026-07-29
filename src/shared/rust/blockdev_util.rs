@@ -10,10 +10,12 @@
 
 use std::fs;
 use std::io;
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
 use crate::ffi::Errno;
+use systemd_basic_rs::devnum_util::{devnum_from_major_minor, devnum_major, devnum_minor};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -163,19 +165,19 @@ pub type Result<T> = std::result::Result<T, BlockDevError>;
 /// Extract the device major number from a raw `dev_t`.
 #[inline]
 pub fn dev_major(devt: u64) -> u32 {
-    ((devt >> 32) & 0xFFFF_FFFF) as u32
+    devnum_major(devt)
 }
 
 /// Extract the device minor number from a raw `dev_t`.
 #[inline]
 pub fn dev_minor(devt: u64) -> u32 {
-    (devt & 0xFFFF_FFFF) as u32
+    devnum_minor(devt)
 }
 
 /// Build a `dev_t` from major and minor numbers.
 #[inline]
 pub fn make_dev(major: u32, minor: u32) -> u64 {
-    ((major as u64) << 32) | (minor as u64)
+    devnum_from_major_minor(major, minor)
 }
 
 /// Return the sysfs path for a block device: `/sys/dev/block/<major>:<minor>`.
@@ -256,7 +258,7 @@ pub fn blockdev_get_sector_size<Fd: AsRawFd>(fd: &Fd) -> Result<u32> {
 /// Returns `BlockDevError::Errno(ENODEV)` if the major number is zero,
 /// or on any sysfs access failure.
 pub fn block_get_whole_disk(devt: u64) -> Result<WholeDiskResult> {
-    if dev_major(devt) == 0 && dev_minor(devt) == 0 {
+    if dev_major(devt) == 0 {
         return Err(BlockDevError::Errno(Errno::ENODEV));
     }
 
@@ -315,28 +317,33 @@ impl WholeDiskResult {
 
 /// Get the block device number backing a file descriptor.
 ///
-/// Uses `fstat` to obtain the device number. Returns
-/// `Ok(None)` if there is no block device backing the fd.
+/// Uses `fstat` to obtain the filesystem's backing device number. Returns
+/// `Ok(None)` when the filesystem is not backed by a representable block
+/// device (including the currently unported btrfs fallback case).
 ///
 /// # Errors
 ///
 /// Returns `BlockDevError::Errno(EBADF)` for bad fds.
 pub fn get_block_device_fd<Fd: AsRawFd>(fd: &Fd) -> Result<Option<u64>> {
     let raw_fd = fd.as_raw_fd();
-    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: `stat` is a valid stack-allocated buffer.
-    if unsafe { libc::fstat(raw_fd, &mut stat) } < 0 {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: raw_fd is borrowed for this call and `stat` provides writable
+    // storage of exactly the ABI-required size.
+    if unsafe { libc::fstat(raw_fd, stat.as_mut_ptr()) } < 0 {
         return Err(BlockDevError::from_io(io::Error::last_os_error()));
     }
+    // SAFETY: successful fstat initialized every field of `stat`.
+    let stat = unsafe { stat.assume_init() };
 
-    // Check if it's a block device.
-    if (stat.st_mode & libc::S_IFMT) == libc::S_IFBLK {
-        let major = unsafe { libc::major(stat.st_rdev) } as u32;
-        let minor = unsafe { libc::minor(stat.st_rdev) } as u32;
-        return Ok(Some(make_dev(major, minor)));
+    // C's get_block_device_fd() identifies the device backing the mounted
+    // filesystem, not a block special file's st_rdev. A zero major number is
+    // the special btrfs/devtmpfs path; btrfs ioctl fallback remains a separate
+    // P2 rather than returning an incorrect st_rdev value.
+    if dev_major(stat.st_dev as u64) == 0 {
+        return Ok(None);
     }
 
-    Ok(None)
+    Ok(Some(stat.st_dev as u64))
 }
 
 /// Get the block device number backing a filesystem path.
@@ -347,7 +354,12 @@ pub fn get_block_device_fd<Fd: AsRawFd>(fd: &Fd) -> Result<Option<u64>> {
 ///
 /// Returns an error if the path cannot be opened or fstat'd.
 pub fn get_block_device(path: &Path) -> Result<Option<u64>> {
-    let fd = fs::File::open(path)?;
+    // Match C's O_NOFOLLOW|O_CLOEXEC open rather than silently resolving a
+    // user-controlled final symlink before inspecting its backing device.
+    let fd = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)?;
     get_block_device_fd(&fd)
 }
 

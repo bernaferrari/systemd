@@ -8,6 +8,7 @@ use std::ptr::NonNull;
 use std::sync::OnceLock;
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
 
 const LIBIDN2_CANDIDATES: &[&str] = &["libidn2.so.0"];
 
@@ -36,29 +37,6 @@ struct LibIdn2 {
     lookup_u8: Idn2LookupU8Fn,
     strerror: Idn2StrerrorFn,
     to_unicode_8z8z: Idn2ToUnicode8z8zFn,
-}
-
-#[derive(Debug)]
-struct DlHandle(NonNull<c_void>);
-
-impl DlHandle {
-    fn as_ptr(&self) -> *mut c_void {
-        self.0.as_ptr()
-    }
-
-    fn leak(self) {
-        std::mem::forget(self);
-    }
-}
-
-impl Drop for DlHandle {
-    fn drop(&mut self) {
-        // SAFETY: DlHandle is constructed only from a successful dlopen(), and
-        // ownership of that reference has not been transferred elsewhere.
-        unsafe {
-            libc::dlclose(self.as_ptr());
-        }
-    }
 }
 
 struct OwnedIdn2String {
@@ -244,7 +222,9 @@ fn libidn2() -> Result<&'static LibIdn2, IdnError> {
 
     let (api, handle) = load_libidn2()?;
     match LIBIDN2.set(api) {
-        Ok(()) => handle.leak(),
+        // Match dlopen_many_sym_or_warn(): a fully resolved library remains
+        // loaded for the process lifetime.
+        Ok(()) => handle.publish(),
         Err(_) => {
             /* Another thread installed an API first. Dropping our handle is safe
              * because its function pointers were never published. */
@@ -256,7 +236,7 @@ fn libidn2() -> Result<&'static LibIdn2, IdnError> {
         .expect("the libidn2 API was installed by this or another thread"))
 }
 
-fn load_libidn2() -> Result<(LibIdn2, DlHandle), IdnError> {
+fn load_libidn2() -> Result<(LibIdn2, UnpublishedDlopenHandle), IdnError> {
     let mut saw_dlopen_failure = false;
 
     for candidate in LIBIDN2_CANDIDATES {
@@ -276,12 +256,12 @@ fn load_libidn2() -> Result<(LibIdn2, DlHandle), IdnError> {
     }
 }
 
-fn try_load_libidn2(lib_name: &str) -> Result<(LibIdn2, DlHandle), IdnError> {
+fn try_load_libidn2(lib_name: &str) -> Result<(LibIdn2, UnpublishedDlopenHandle), IdnError> {
     let handle = dlopen_wrapper(lib_name)?;
 
-    let lookup_u8 = resolve_symbol(&handle, c"idn2_lookup_u8")?;
-    let strerror = resolve_symbol(&handle, c"idn2_strerror")?;
-    let to_unicode_8z8z = resolve_symbol(&handle, c"idn2_to_unicode_8z8z")?;
+    let lookup_u8 = resolve_symbol(&handle, "idn2_lookup_u8")?;
+    let strerror = resolve_symbol(&handle, "idn2_strerror")?;
+    let to_unicode_8z8z = resolve_symbol(&handle, "idn2_to_unicode_8z8z")?;
 
     // SAFETY: Each symbol was resolved by its exact public libidn2 ABI name,
     // and the compile-time assertions above spell out the corresponding type.
@@ -356,58 +336,22 @@ fn idn2_error_message(api: &LibIdn2, code: i32) -> String {
         .into_owned()
 }
 
-fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, IdnError> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| IdnError::DlopenFailed(format!("invalid library name: {e}")))?;
-
-    // SAFETY: c_name is NUL-terminated and remains live for the call.
-    let handle = unsafe {
-        libc::dlopen(
-            c_name.as_ptr(),
-            libc::RTLD_NOW | libc::RTLD_LOCAL | libc::RTLD_NODELETE,
-        )
-    };
-    NonNull::new(handle)
-        .map(DlHandle)
-        .ok_or_else(|| IdnError::DlopenFailed(format!("{lib_name}: {}", dlerror_string())))
+fn dlopen_wrapper(lib_name: &str) -> Result<UnpublishedDlopenHandle, IdnError> {
+    // `dlopen_safe()` deliberately omits RTLD_GLOBAL, so it retains the
+    // platform default RTLD_LOCAL visibility while also enforcing systemd's
+    // static-build and block_dlopen() policy. Keep that C authority instead
+    // of reproducing loader policy with a direct libc::dlopen() call.
+    UnpublishedDlopenHandle::open(lib_name)
+        .map_err(|error| IdnError::DlopenFailed(error.to_string()))
 }
 
-fn resolve_symbol(handle: &DlHandle, symbol: &CStr) -> Result<NonNull<c_void>, IdnError> {
-    // POSIX requires clearing the thread-local error before dlsym() because a
-    // null symbol value is not, by itself, an error indication.
-    // SAFETY: dlerror has no arguments and clears the calling thread's pending
-    // dynamic-loader diagnostic.
-    unsafe {
-        libc::dlerror();
-    }
-
-    // SAFETY: handle owns a live dlopen reference and symbol is NUL-terminated.
-    let ptr = unsafe { libc::dlsym(handle.as_ptr(), symbol.as_ptr()) };
-    // SAFETY: dlerror has no arguments and returns a thread-local diagnostic.
-    let error = unsafe { libc::dlerror() };
-    if !error.is_null() {
-        return Err(IdnError::SymbolNotFound(format!(
-            "{}: {}",
-            symbol.to_string_lossy(),
-            // SAFETY: dlerror() returned a non-null, NUL-terminated diagnostic.
-            unsafe { CStr::from_ptr(error) }.to_string_lossy()
-        )));
-    }
-
-    NonNull::new(ptr).ok_or_else(|| IdnError::SymbolNotFound(symbol.to_string_lossy().into_owned()))
-}
-
-fn dlerror_string() -> String {
-    // SAFETY: dlerror has no arguments; a non-null result is a borrowed,
-    // NUL-terminated diagnostic that remains valid until the next loader call.
-    unsafe {
-        let ptr = libc::dlerror();
-        if ptr.is_null() {
-            "unknown error".to_owned()
-        } else {
-            CStr::from_ptr(ptr).to_string_lossy().into_owned()
-        }
-    }
+fn resolve_symbol(
+    handle: &UnpublishedDlopenHandle,
+    symbol: &str,
+) -> Result<NonNull<c_void>, IdnError> {
+    handle
+        .resolve_required(symbol)
+        .map_err(|error| IdnError::SymbolNotFound(error.to_string()))
 }
 
 #[cfg(test)]

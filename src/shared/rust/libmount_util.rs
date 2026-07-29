@@ -10,6 +10,8 @@ use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use systemd_basic_rs::dlfcn_util::{PublishedDlopenHandle, UnpublishedDlopenHandle};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -413,18 +415,26 @@ impl Default for MountTable {
 
 /// Handle to the dynamically loaded libmount shared library.
 ///
-/// All `unsafe` operations (dlopen, dlsym, dlclose, function-pointer calls)
-/// are encapsulated behind a safe public API.  The handle is RAII — when
-/// dropped the library reference is released.
+/// The handle follows C's `dlopen_many_sym_or_warn()` lifetime: once every
+/// required symbol has been validated, its reference is retained for the
+/// process lifetime. Function-pointer calls remain encapsulated behind the
+/// typed operations below.
 #[cfg(target_os = "linux")]
 pub struct LibmountLibrary {
-    handle: *mut c_void,
+    handle: PublishedDlopenHandle,
 }
+
+/// C's `dlopen_libmount()` stores one successful handle in a static variable
+/// and retries only failures. Keep the same success-only cache: callers share
+/// the process-lifetime reference, while a temporary loader failure does not
+/// prevent a later retry after the environment has changed.
+#[cfg(target_os = "linux")]
+static LIBMOUNT_HANDLE: OnceLock<Mutex<Option<PublishedDlopenHandle>>> = OnceLock::new();
 
 #[cfg(target_os = "linux")]
 impl LibmountLibrary {
-    /// Open `libmount.so.1` via `dlopen` and verify that all required
-    /// symbols are resolvable.
+    /// Open `libmount.so.1` through systemd's loader policy and verify that
+    /// all required symbols are resolvable.
     ///
     /// Equivalent to the C `dlopen_libmount()`.
     ///
@@ -432,43 +442,36 @@ impl LibmountLibrary {
     /// - `DlopenFailed` if the shared library cannot be loaded.
     /// - `SymbolNotFound` if any required symbol is missing.
     pub fn open() -> Result<Self, LibmountError> {
-        let soname = CString::new(LIBMOUNT_SONAME)
-            .map_err(|_| LibmountError::InvalidArgument("NUL in library name".into()))?;
-
-        // SAFETY: dlopen with RTLD_NOW is safe; null result is checked below.
-        let handle = unsafe { libc::dlopen(soname.as_ptr(), libc::RTLD_NOW) };
-        if handle.is_null() {
-            let msg = unsafe {
-                let e = libc::dlerror();
-                if e.is_null() {
-                    "unknown error".to_string()
-                } else {
-                    CStr::from_ptr(e).to_string_lossy().into_owned()
-                }
-            };
-            return Err(LibmountError::DlopenFailed(msg));
+        let cache = LIBMOUNT_HANDLE.get_or_init(|| Mutex::new(None));
+        // A panic while loading cannot invalidate a published handle: it is
+        // immutable and deliberately process-lifetime. Retain such a value
+        // rather than turning an unrelated historical panic into a loader
+        // failure for every subsequent caller.
+        let mut cache = cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(handle) = *cache {
+            return Ok(Self { handle });
         }
 
-        let lib = Self { handle };
+        let handle = UnpublishedDlopenHandle::open(LIBMOUNT_SONAME)
+            .map_err(|error| LibmountError::DlopenFailed(error.to_string()))?;
 
         // Verify all required symbols upfront (mirrors the C dlopen_many_sym_or_warn).
         for &name in REQUIRED_SYMBOLS {
-            if lib.resolve_raw(name).is_err() {
-                let sym = CStr::from_bytes_until_nul(name)
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                // SAFETY: handle is valid, we haven't stored it anywhere else yet.
-                unsafe {
-                    libc::dlclose(handle);
-                }
-                return Err(LibmountError::SymbolNotFound(sym));
-            }
+            let symbol = Self::symbol_name(name)?;
+            handle
+                .resolve_required(symbol)
+                .map_err(|error| LibmountError::SymbolNotFound(error.to_string()))?;
         }
 
-        Ok(lib)
+        let handle = handle.publish();
+        *cache = Some(handle);
+        Ok(Self { handle })
     }
 
-    /// Check whether libmount is available without keeping the handle open.
+    /// Check whether libmount is available and initialize its shared loader
+    /// cache on the first successful call.
     ///
     /// Returns `Ok(true)` if the library can be loaded and all required
     /// symbols are present, `Ok(false)` if loading fails gracefully, or
@@ -483,22 +486,23 @@ impl LibmountLibrary {
 
     // ── internal symbol resolution ──────────────────────────────────────
 
-    /// Resolve a NUL-terminated symbol name to a raw pointer.
-    ///
-    /// # Safety
-    /// Caller must transmute the returned pointer to the correct function
-    /// signature before invoking it.
-    unsafe fn resolve_raw(&self, name: &[u8]) -> Result<*mut c_void, LibmountError> {
-        // SAFETY: self.handle is retained from dlopen and name is documented as NUL-terminated.
-        let ptr = unsafe { libc::dlsym(self.handle, name.as_ptr().cast()) };
-        if ptr.is_null() {
-            return Err(LibmountError::SymbolNotFound(
-                CStr::from_bytes_until_nul(name)
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_else(|_| format!("{:?}", name)),
-            ));
-        }
-        Ok(ptr)
+    /// Interpret a static NUL-terminated libmount symbol spelling as UTF-8.
+    fn symbol_name(name: &[u8]) -> Result<&str, LibmountError> {
+        CStr::from_bytes_until_nul(name)
+            .ok()
+            .and_then(|name| name.to_str().ok())
+            .ok_or_else(|| LibmountError::InvalidArgument(format!("invalid symbol name: {name:?}")))
+    }
+
+    /// Resolve a NUL-terminated symbol name through the retained loader
+    /// handle. The returned pointer is not callable until the caller selects
+    /// and validates its exact C function signature.
+    fn resolve_raw(&self, name: &[u8]) -> Result<*mut c_void, LibmountError> {
+        let symbol = Self::symbol_name(name)?;
+        self.handle
+            .resolve_required(symbol)
+            .map(|pointer| pointer.as_ptr())
+            .map_err(|error| LibmountError::SymbolNotFound(error.to_string()))
     }
 
     /// Transmute a raw symbol pointer to a typed function pointer.
@@ -507,7 +511,7 @@ impl LibmountLibrary {
     /// `T` must exactly match the C function's signature.
     unsafe fn resolve_fn<T>(&self, name: &[u8]) -> Result<T, LibmountError> {
         // SAFETY: the caller guarantees T matches the named symbol's signature.
-        let ptr = unsafe { self.resolve_raw(name) }?;
+        let ptr = self.resolve_raw(name)?;
         // SAFETY: the same caller contract covers the pointer-to-function conversion.
         Ok(unsafe { std::mem::transmute_copy(&ptr) })
     }
@@ -522,11 +526,14 @@ impl LibmountLibrary {
         fs: *mut c_void,
         symbol_name: &[u8],
     ) -> Result<String, LibmountError> {
-        let func: unsafe extern "C" fn(*mut c_void) -> *const libc::c_char =
+        // SAFETY: `fs_get_string` only accepts the five libmnt_fs accessors
+        // declared in REQUIRED_SYMBOLS, all of which have this signature in
+        // libmount.h.
+        let func: extern "C" fn(*mut c_void) -> *const libc::c_char =
             // SAFETY: the caller guarantees symbol_name identifies this exact accessor signature.
             unsafe { self.resolve_fn(symbol_name) }?;
         // SAFETY: the caller guarantees fs is a live libmnt_fs pointer.
-        let ptr = unsafe { func(fs) };
+        let ptr = func(fs);
         if ptr.is_null() {
             Ok(String::new())
         } else {
@@ -554,98 +561,126 @@ impl LibmountLibrary {
         direction: IterDirection,
     ) -> Result<MountTable, LibmountError> {
         // ── create table + iter via libmount ───────────────────────────
-        let new_table: unsafe extern "C" fn() -> *mut c_void =
-            self.resolve_fn(b"mnt_new_table\0")?;
-        let new_iter: unsafe extern "C" fn(i32) -> *mut c_void =
-            self.resolve_fn(b"mnt_new_iter\0")?;
-        let free_table: unsafe extern "C" fn(*mut c_void) = self.resolve_fn(b"mnt_free_table\0")?;
-        let free_iter: unsafe extern "C" fn(*mut c_void) = self.resolve_fn(b"mnt_free_iter\0")?;
-        let next_fs: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut *mut c_void) -> i32 =
-            self.resolve_fn(b"mnt_table_next_fs\0")?;
+        // SAFETY: mnt_new_table has this no-argument pointer-returning
+        // signature in libmount.h.
+        let new_table: extern "C" fn() -> *mut c_void =
+            unsafe { self.resolve_fn(b"mnt_new_table\0") }?;
+        // SAFETY: mnt_new_iter takes libmount's integer direction constant
+        // and returns an owned iterator pointer.
+        let new_iter: extern "C" fn(i32) -> *mut c_void =
+            unsafe { self.resolve_fn(b"mnt_new_iter\0") }?;
+        // SAFETY: mnt_free_table consumes a table allocated by mnt_new_table.
+        let free_table: extern "C" fn(*mut c_void) =
+            unsafe { self.resolve_fn(b"mnt_free_table\0") }?;
+        // SAFETY: mnt_free_iter consumes an iterator allocated by mnt_new_iter.
+        let free_iter: extern "C" fn(*mut c_void) = unsafe { self.resolve_fn(b"mnt_free_iter\0") }?;
+        // SAFETY: mnt_table_next_fs has this table/iterator/output-pointer
+        // signature in libmount.h.
+        let next_fs: extern "C" fn(*mut c_void, *mut c_void, *mut *mut c_void) -> i32 =
+            unsafe { self.resolve_fn(b"mnt_table_next_fs\0") }?;
 
-        // SAFETY: all function pointers resolved in open().
-        let table_ptr = unsafe { new_table() };
+        // SAFETY: new_table has the documented libmount signature and has
+        // been resolved from the validated process-lifetime library.
+        let table_ptr = new_table();
         if table_ptr.is_null() {
             return Err(LibmountError::OutOfMemory);
         }
-        let iter_ptr = unsafe { new_iter(direction.as_raw()) };
+        // SAFETY: new_iter has the documented libmount signature and
+        // direction is one of libmount's two iteration constants.
+        let iter_ptr = new_iter(direction.as_raw());
         if iter_ptr.is_null() {
-            unsafe { free_table(table_ptr) };
+            // SAFETY: table_ptr was returned by mnt_new_table above and has
+            // not been released yet.
+            free_table(table_ptr);
             return Err(LibmountError::OutOfMemory);
         }
 
-        // ── parse source ───────────────────────────────────────────────
-        let rc = if let Some(p) = path {
-            let c_path = CString::new(p)
-                .map_err(|_| LibmountError::InvalidArgument("NUL in path".into()))?;
-            let parse_file: unsafe extern "C" fn(*mut c_void, *const libc::c_char) -> i32 =
-                self.resolve_fn(b"mnt_table_parse_file\0")?;
-            // SAFETY: table_ptr is valid, c_path is NUL-terminated.
-            unsafe { parse_file(table_ptr, c_path.as_ptr()) }
-        } else {
-            let parse_mtab: unsafe extern "C" fn(*mut c_void, *const libc::c_char) -> i32 =
-                self.resolve_fn(b"mnt_table_parse_mtab\0")?;
-            // SAFETY: table_ptr is valid, NULL path means "use default mtab".
-            unsafe { parse_mtab(table_ptr, std::ptr::null()) }
-        };
+        let result = (|| {
+            // ── parse source ───────────────────────────────────────────
+            let rc = if let Some(p) = path {
+                let c_path = CString::new(p)
+                    .map_err(|_| LibmountError::InvalidArgument("NUL in path".into()))?;
+                // SAFETY: mnt_table_parse_file takes a live table and a
+                // NUL-terminated path, exactly as supplied below.
+                let parse_file: extern "C" fn(*mut c_void, *const libc::c_char) -> i32 =
+                    unsafe { self.resolve_fn(b"mnt_table_parse_file\0") }?;
+                // SAFETY: table_ptr is valid, c_path is NUL-terminated.
+                parse_file(table_ptr, c_path.as_ptr())
+            } else {
+                // SAFETY: mnt_table_parse_mtab takes a live table and an
+                // optional path pointer; NULL requests the system mtab.
+                let parse_mtab: extern "C" fn(*mut c_void, *const libc::c_char) -> i32 =
+                    unsafe { self.resolve_fn(b"mnt_table_parse_mtab\0") }?;
+                // SAFETY: table_ptr is valid, NULL path means "use default mtab".
+                parse_mtab(table_ptr, std::ptr::null())
+            };
 
-        if rc < 0 {
-            // SAFETY: pointers are valid.
-            unsafe {
-                free_table(table_ptr);
-                free_iter(iter_ptr);
-            }
-            return Err(LibmountError::OperationFailed(
-                rc,
-                "mnt_table_parse_file/mtab".into(),
-            ));
-        }
-
-        // ── iterate all entries → Rust ─────────────────────────────────
-        let mut entries = Vec::new();
-        loop {
-            let mut fs: *mut c_void = std::ptr::null_mut();
-            // SAFETY: table_ptr, iter_ptr, &mut fs are valid.
-            let rc = unsafe { next_fs(table_ptr, iter_ptr, &mut fs) };
-            if rc != 0 {
-                break;
-            }
-            if fs.is_null() {
-                break;
+            if rc < 0 {
+                return Err(LibmountError::OperationFailed(
+                    rc,
+                    "mnt_table_parse_file/mtab".into(),
+                ));
             }
 
-            let source = unsafe { self.fs_get_string(fs, b"mnt_fs_get_source\0") }?;
-            let target = unsafe { self.fs_get_string(fs, b"mnt_fs_get_target\0") }?;
-            let fstype = unsafe { self.fs_get_string(fs, b"mnt_fs_get_fstype\0") }?;
-            let options = unsafe { self.fs_get_string(fs, b"mnt_fs_get_options\0") }?;
-            let vfs_opts = unsafe { self.fs_get_string(fs, b"mnt_fs_get_vfs_options\0") }?;
+            // ── iterate all entries → Rust ─────────────────────────────
+            let mut entries = Vec::new();
+            loop {
+                let mut fs: *mut c_void = std::ptr::null_mut();
+                // SAFETY: table_ptr, iter_ptr, and the writable `fs` output
+                // slot remain valid for this call.
+                let rc = next_fs(table_ptr, iter_ptr, &mut fs);
+                if rc < 0 {
+                    return Err(LibmountError::OperationFailed(
+                        rc,
+                        "mnt_table_next_fs".into(),
+                    ));
+                }
+                if rc > 0 {
+                    break;
+                }
+                if fs.is_null() {
+                    return Err(LibmountError::OperationFailed(
+                        -libc::EIO,
+                        "mnt_table_next_fs returned a null filesystem".into(),
+                    ));
+                }
 
-            entries.push(MountInfoEntry {
-                mount_id: 0,
-                parent_id: 0,
-                major: 0,
-                minor: 0,
-                root: String::new(),
-                mount_point: target,
-                mount_options: options,
-                optional_fields: Vec::new(),
-                fs_type: fstype,
-                mount_source: source,
-                super_options: vfs_opts,
-            });
-        }
+                // SAFETY: next_fs returned a live filesystem owned by
+                // table_ptr, which remains allocated until after this closure.
+                let source = unsafe { self.fs_get_string(fs, b"mnt_fs_get_source\0") }?;
+                // SAFETY: same live libmnt_fs object as above.
+                let target = unsafe { self.fs_get_string(fs, b"mnt_fs_get_target\0") }?;
+                // SAFETY: same live libmnt_fs object as above.
+                let fstype = unsafe { self.fs_get_string(fs, b"mnt_fs_get_fstype\0") }?;
+                // SAFETY: same live libmnt_fs object as above.
+                let options = unsafe { self.fs_get_string(fs, b"mnt_fs_get_options\0") }?;
+                // SAFETY: same live libmnt_fs object as above.
+                let vfs_opts = unsafe { self.fs_get_string(fs, b"mnt_fs_get_vfs_options\0") }?;
 
-        // SAFETY: pointers are valid.
-        unsafe {
-            free_table(table_ptr);
-            free_iter(iter_ptr);
-        }
+                entries.push(MountInfoEntry {
+                    mount_id: 0,
+                    parent_id: 0,
+                    major: 0,
+                    minor: 0,
+                    root: String::new(),
+                    mount_point: target,
+                    mount_options: options,
+                    optional_fields: Vec::new(),
+                    fs_type: fstype,
+                    mount_source: source,
+                    super_options: vfs_opts,
+                });
+            }
 
-        if direction == IterDirection::Backward {
-            entries.reverse();
-        }
+            Ok(MountTable::from_entries(entries))
+        })();
 
-        Ok(MountTable::from_entries(entries))
+        // Both allocations succeeded above and their contents are no longer
+        // borrowed once the closure has returned, regardless of error.
+        free_table(table_ptr);
+        free_iter(iter_ptr);
+
+        result
     }
 
     /// Parse the system fstab using libmount.
@@ -687,28 +722,36 @@ impl LibmountLibrary {
         table_ptr: *mut c_void,
         fs_ptr: *mut c_void,
     ) -> Result<bool, LibmountError> {
-        let new_iter: unsafe extern "C" fn(i32) -> *mut c_void =
-            self.resolve_fn(b"mnt_new_iter\0")?;
-        let free_iter: unsafe extern "C" fn(*mut c_void) = self.resolve_fn(b"mnt_free_iter\0")?;
-        let next_child: unsafe extern "C" fn(
+        // SAFETY: mnt_new_iter takes a libmount iteration direction and
+        // returns an owned iterator pointer.
+        let new_iter: extern "C" fn(i32) -> *mut c_void =
+            unsafe { self.resolve_fn(b"mnt_new_iter\0") }?;
+        // SAFETY: mnt_free_iter consumes an iterator allocated by mnt_new_iter.
+        let free_iter: extern "C" fn(*mut c_void) = unsafe { self.resolve_fn(b"mnt_free_iter\0") }?;
+        // SAFETY: mnt_table_next_child_fs has this table/iterator/filesystem/
+        // output-pointer signature in libmount.h.
+        let next_child: extern "C" fn(
             *mut c_void,
             *mut c_void,
             *mut c_void,
             *mut *mut c_void,
-        ) -> i32 = self.resolve_fn(b"mnt_table_next_child_fs\0")?;
+            // SAFETY: resolve_fn is given the exact signature declared for
+            // mnt_table_next_child_fs in libmount.h.
+        ) -> i32 = unsafe { self.resolve_fn(b"mnt_table_next_child_fs\0") }?;
 
         // SAFETY: all symbols resolved in open().
-        let iter_ptr = unsafe { new_iter(MNT_ITER_FORWARD) };
+        let iter_ptr = new_iter(MNT_ITER_FORWARD);
         if iter_ptr.is_null() {
             return Err(LibmountError::OutOfMemory);
         }
 
         let mut child: *mut c_void = std::ptr::null_mut();
-        // SAFETY: pointers are valid.
-        let rc = unsafe { next_child(table_ptr, iter_ptr, fs_ptr, &mut child) };
+        // SAFETY: caller's contract makes table_ptr and fs_ptr live libmount
+        // objects, iter_ptr is live, and child is writable for this call.
+        let rc = next_child(table_ptr, iter_ptr, fs_ptr, &mut child);
 
-        // SAFETY: iter_ptr is valid.
-        unsafe { free_iter(iter_ptr) };
+        // SAFETY: iter_ptr was returned by mnt_new_iter and has not been freed.
+        free_iter(iter_ptr);
 
         if rc < 0 {
             Err(LibmountError::OperationFailed(
@@ -721,24 +764,6 @@ impl LibmountLibrary {
         }
     }
 }
-
-#[cfg(target_os = "linux")]
-impl Drop for LibmountLibrary {
-    fn drop(&mut self) {
-        // SAFETY: handle was verified non-null in open().
-        unsafe {
-            libc::dlclose(self.handle);
-        }
-    }
-}
-
-// SAFETY: The dlopen handle is read-only after open and all resolved
-// function pointers are invoked with their correct signatures.
-#[cfg(target_os = "linux")]
-unsafe impl Send for LibmountLibrary {}
-
-#[cfg(target_os = "linux")]
-unsafe impl Sync for LibmountLibrary {}
 
 // ── Tests ─────────────────────────────────────────────────────────────────
 

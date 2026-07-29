@@ -105,6 +105,60 @@ impl std::error::Error for DlsymError {}
 #[derive(Debug)]
 pub struct UnpublishedDlopenHandle(NonNull<c_void>);
 
+/// A fully validated dynamic-loader reference retained for process lifetime.
+///
+/// This deliberately has no `Drop` implementation.  systemd's
+/// `dlopen_many_sym_or_warn()` treats successfully resolved optional
+/// libraries as regular dependencies and keeps their references for the
+/// remainder of the process.  Keeping the live handle also permits later
+/// symbol lookups without bypassing the shared loader policy.
+#[derive(Debug, Clone, Copy)]
+pub struct PublishedDlopenHandle(NonNull<c_void>);
+
+// SAFETY: POSIX dynamic-loader handles may be shared between threads and this
+// wrapper never unloads or mutates the referenced object. Its only operation,
+// dlsym(), uses the platform's thread-safe loader interface.
+unsafe impl Send for PublishedDlopenHandle {}
+
+// SAFETY: as for Send, concurrent immutable references only perform
+// thread-safe loader symbol lookups and cannot create Rust aliasing.
+unsafe impl Sync for PublishedDlopenHandle {}
+
+fn resolve_required_symbol(
+    handle: NonNull<c_void>,
+    symbol: &str,
+) -> Result<NonNull<c_void>, DlsymError> {
+    let name = CString::new(symbol).map_err(|_| DlsymError::invalid_name(symbol))?;
+
+    // POSIX requires clearing the thread-local diagnostic before dlsym():
+    // a null symbol value alone does not distinguish an error.
+    // SAFETY: `dlerror()` takes no arguments.
+    unsafe { libc::dlerror() };
+    // SAFETY: `handle` is a live reference returned by `dlopen_safe()` and
+    // `name` remains a live NUL-terminated string throughout the lookup.
+    let pointer = unsafe { libc::dlsym(handle.as_ptr(), name.as_ptr()) };
+    // SAFETY: `dlerror()` takes no arguments and returns thread-local loader
+    // state.
+    let loader_error = unsafe { libc::dlerror() };
+
+    if !loader_error.is_null() {
+        // SAFETY: checked non-null above; copy the borrowed diagnostic before
+        // any subsequent loader operation invalidates it.
+        let detail = unsafe { CStr::from_ptr(loader_error) }
+            .to_string_lossy()
+            .into_owned();
+        return Err(DlsymError {
+            symbol: symbol.into(),
+            detail: Some(detail),
+        });
+    }
+
+    NonNull::new(pointer).ok_or_else(|| DlsymError {
+        symbol: symbol.into(),
+        detail: None,
+    })
+}
+
 impl UnpublishedDlopenHandle {
     /// Open `library` using C's process-wide loader policy.
     pub fn open(library: &str) -> Result<Self, DlopenError> {
@@ -142,40 +196,21 @@ impl UnpublishedDlopenHandle {
 
     /// Resolve a required symbol, preserving the loader's diagnostic.
     pub fn resolve_required(&self, symbol: &str) -> Result<NonNull<c_void>, DlsymError> {
-        let name = CString::new(symbol).map_err(|_| DlsymError::invalid_name(symbol))?;
-
-        // POSIX requires clearing the thread-local diagnostic before dlsym():
-        // a null symbol value alone does not distinguish an error.
-        // SAFETY: `dlerror()` takes no arguments.
-        unsafe { libc::dlerror() };
-        // SAFETY: this value owns a live loader reference and `name` remains a
-        // live NUL-terminated string throughout the lookup.
-        let pointer = unsafe { libc::dlsym(self.0.as_ptr(), name.as_ptr()) };
-        // SAFETY: `dlerror()` takes no arguments and returns thread-local
-        // loader state.
-        let loader_error = unsafe { libc::dlerror() };
-
-        if !loader_error.is_null() {
-            // SAFETY: checked non-null above; copy the borrowed diagnostic
-            // before any subsequent loader operation invalidates it.
-            let detail = unsafe { CStr::from_ptr(loader_error) }
-                .to_string_lossy()
-                .into_owned();
-            return Err(DlsymError {
-                symbol: symbol.into(),
-                detail: Some(detail),
-            });
-        }
-
-        NonNull::new(pointer).ok_or_else(|| DlsymError {
-            symbol: symbol.into(),
-            detail: None,
-        })
+        resolve_required_symbol(self.0, symbol)
     }
 
     /// Retain a fully validated library reference for process lifetime.
-    pub fn publish(self) {
+    pub fn publish(self) -> PublishedDlopenHandle {
+        let handle = self.0;
         std::mem::forget(self);
+        PublishedDlopenHandle(handle)
+    }
+}
+
+impl PublishedDlopenHandle {
+    /// Resolve a required symbol from this process-lifetime library handle.
+    pub fn resolve_required(&self, symbol: &str) -> Result<NonNull<c_void>, DlsymError> {
+        resolve_required_symbol(self.0, symbol)
     }
 }
 

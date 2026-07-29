@@ -12,7 +12,9 @@
 //
 // Verification pins the candidate directory, confirms its filesystem type and
 // mount-root status, and obtains its backing device. GPT/DOS partition metadata
-// probing via blkid/udev remains a deliberately tracked porting gap.
+// probing via blkid/udev and the C btrfs backing-device fallback remain
+// deliberately tracked porting gaps; neither is represented as discovered
+// partition metadata by this safe model.
 
 use crate::ffi::*;
 use std::ffi::{CString, OsStr};
@@ -22,6 +24,7 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -184,11 +187,11 @@ impl EspInfo {
 
     /// Create a new `EspInfo` with path and device id (used for env-var override).
     pub fn from_path_and_dev(path: PathBuf, dev: u64) -> Self {
-        let major = ((dev >> 8) & 0xfff_f) as u32;
-        let minor = ((dev & 0xff) | ((dev >> 12) & 0xfff_f00)) as u32;
         Self {
             path: Some(path),
-            device_id: Some((major, minor)),
+            // Reuse the target-authoritative Linux dev_t codec rather than
+            // approximating the split with masks that lose high major bits.
+            device_id: Some((devnum_major(dev), devnum_minor(dev))),
             ..Default::default()
         }
     }
@@ -235,11 +238,11 @@ impl XBootLdrInfo {
 
     /// Create a new `XBootLdrInfo` with path and device id.
     pub fn from_path_and_dev(path: PathBuf, dev: u64) -> Self {
-        let major = ((dev >> 8) & 0xfff_f) as u32;
-        let minor = ((dev & 0xff) | ((dev >> 12) & 0xfff_f00)) as u32;
         Self {
             path: Some(path),
-            device_id: Some((major, minor)),
+            // See EspInfo::from_path_and_dev for why this shared codec is
+            // required for complete Linux dev_t decoding.
+            device_id: Some((devnum_major(dev), devnum_minor(dev))),
             ..Default::default()
         }
     }
@@ -299,18 +302,36 @@ pub fn verify_esp_flags_init(
             | VerifyEspFlags::SKIP_FSROOT_CHECK;
     }
 
+    // P2 parity gap: C also asks detect_container() and suppresses block-device
+    // probing there. Keep this constructor deterministic rather than adding a
+    // second, incomplete container detector; callers running in a container
+    // must explicitly request SKIP_DEVICE_CHECK for now.
+
     flags
 }
 
 // ── Path validation helpers ─────────────────────────────────────────────────
 
+/// Return whether a Unix path is absolute and passes C's structural limits.
+///
+/// This mirrors `path_is_valid()` as used by the C environment overrides:
+/// an absolute, non-empty path may contain `.` and `..` components, but it may
+/// not contain a NUL byte, a component longer than `NAME_MAX`, or a pathname
+/// string of `PATH_MAX` bytes or more (C reserves one further byte for NUL).
+fn os_path_is_valid_absolute(p: &OsStr) -> bool {
+    let bytes = p.as_bytes();
+    !bytes.is_empty()
+        && bytes[0] == b'/'
+        && !bytes.contains(&0)
+        && bytes.len() < libc::PATH_MAX as usize
+        && bytes
+            .split(|byte| *byte == b'/')
+            .all(|component| component.len() <= libc::NAME_MAX as usize)
+}
+
 /// Check that a path string is valid and absolute.
 pub fn path_is_valid_absolute(p: &str) -> bool {
-    if p.is_empty() {
-        return false;
-    }
-    let path = Path::new(p);
-    path.is_absolute() && p.chars().all(|c| c != '\0')
+    os_path_is_valid_absolute(OsStr::new(p))
 }
 
 /// Extract the filename component from a path, if any, without requiring UTF-8.
@@ -476,20 +497,22 @@ fn verify_esp_at(
     // nevertheless requested.
     let (dev_major, dev_minor) = device.unwrap_or((0, 0));
 
-    if dev_major == 0 && dev_minor == 0 {
+    // C asks btrfs_get_block_device_fd() when statx reports major 0. This
+    // port has no equivalent btrfs topology query yet, so reject all such
+    // pseudo-devices rather than treating a 0:<minor> btrfs mount as a usable
+    // block device and fabricating partition verification success.
+    if dev_major == 0 {
         return Err(FindEspError::NoBackingDevice(resolved));
     }
 
-    // In a real implementation, blkid or udev probing would happen here.
-    // For the safe Rust rewrite, we return the device info we have.
-    Ok(EspInfo::from_partition_details(
-        resolved,
-        0,
-        0,
-        0,
-        [0u8; 16],
-        (dev_major, dev_minor),
-    ))
+    // P2 parity gap: C obtains this information from blkid (privileged) or
+    // udev (unprivileged) and rejects a non-ESP partition. Do not present
+    // placeholder zeroes as probe results while that authority is absent.
+    Ok(EspInfo {
+        path: Some(resolved),
+        device_id: Some((dev_major, dev_minor)),
+        ..Default::default()
+    })
 }
 
 /// Attempt to canonicalise a path, falling back to resolving it via openat.
@@ -650,7 +673,7 @@ fn find_esp_and_warn_at(
     // Check environment variable override.
     if let Some(env_path) = std::env::var_os(ENV_ESP_PATH) {
         let p = Path::new(&env_path);
-        if !p.is_absolute() || env_path.as_bytes().contains(&0) {
+        if !os_path_is_valid_absolute(&env_path) {
             return Err(FindEspError::General(format!(
                 "${} does not refer to an absolute path, refusing: {:?}",
                 ENV_ESP_PATH, env_path
@@ -764,12 +787,15 @@ fn verify_xbootldr_at(
 
     let (dev_major, dev_minor) = device.unwrap_or((0, 0));
 
-    if dev_major == 0 && dev_minor == 0 {
+    // See verify_esp_at(): btrfs uses major 0 and requires C's dedicated
+    // backing-device resolver, which this safe port has not implemented.
+    if dev_major == 0 {
         return Err(FindEspError::NoBackingDevice(resolved));
     }
 
-    // In a real implementation, blkid or udev probing would verify the
-    // partition type GUID matches SD_GPT_XBOOTLDR here.
+    // P2 parity gap: C uses blkid/udev to verify either the GPT XBOOTLDR GUID
+    // or DOS 0xea type and to return the GPT UUID. Keep those unavailable
+    // fields absent rather than claiming a verified partition.
     Ok(XBootLdrInfo {
         path: Some(resolved),
         partition_uuid: None,
@@ -805,7 +831,7 @@ fn find_xbootldr_and_warn_at(
 
     if let Some(env_path) = std::env::var_os(ENV_XBOOTLDR_PATH) {
         let p = Path::new(&env_path);
-        if !p.is_absolute() || env_path.as_bytes().contains(&0) {
+        if !os_path_is_valid_absolute(&env_path) {
             return Err(FindEspError::General(format!(
                 "${} does not refer to an absolute path, refusing: {:?}",
                 ENV_XBOOTLDR_PATH, env_path
