@@ -12,6 +12,7 @@ use crate::ffi::*;
 use std::ffi::CString;
 use std::fs;
 use std::io;
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -153,6 +154,8 @@ fn is_physical_fs(f_type: u64) -> bool {
 /// Get the filesystem type for an open directory fd.
 fn get_fs_type(fd: i32) -> Result<u64, RmRfError> {
     let mut sfs = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: `fd` is borrowed for this synchronous syscall and `sfs` is
+    // writable storage for the kernel to initialize.
     let r = unsafe { libc::fstatfs(fd, sfs.as_mut_ptr()) };
     if r < 0 {
         return Err(RmRfError::from_errno(
@@ -160,12 +163,15 @@ fn get_fs_type(fd: i32) -> Result<u64, RmRfError> {
             "fstatfs",
         ));
     }
+    // SAFETY: successful `fstatfs()` initialized every field of `sfs`.
     Ok(unsafe { sfs.assume_init() }.f_type as u64)
 }
 
 /// Get the device number for an open directory fd.
 fn get_dev(fd: i32) -> Result<u64, RmRfError> {
     let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `fd` is borrowed for this synchronous syscall and `st` is
+    // writable storage for the kernel to initialize.
     let r = unsafe { libc::fstat(fd, st.as_mut_ptr()) };
     if r < 0 {
         return Err(RmRfError::from_errno(
@@ -173,7 +179,16 @@ fn get_dev(fd: i32) -> Result<u64, RmRfError> {
             "fstat",
         ));
     }
+    // SAFETY: successful `fstat()` initialized every field of `st`.
     Ok(unsafe { st.assume_init() }.st_dev as u64)
+}
+
+/// Adopt a descriptor returned by a successful descriptor-creating syscall.
+fn owned_fd_from_syscall(fd: RawFd) -> OwnedFd {
+    debug_assert!(fd >= 0);
+    // SAFETY: callers invoke this only for a non-negative descriptor returned
+    // by a successful syscall, and transfer its sole ownership to `OwnedFd`.
+    unsafe { OwnedFd::from_raw_fd(fd) }
 }
 
 // ── Low-level syscall wrappers ────────────────────────────────────────────
@@ -189,23 +204,58 @@ fn to_cstr(path: &str) -> Result<CString, RmRfError> {
         .map_err(|_| RmRfError::InvalidArgument(format!("path contains nul byte: {path:?}")))
 }
 
-/// Wrapper around `fstatat` that returns a `libc::stat` on success.
-fn fstatat_at(dfd: i32, path: &str, flags: i32) -> Result<libc::stat, RmRfError> {
-    let c_path = to_cstr(path)?;
-    let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
-    let r = unsafe { libc::fstatat(dfd, c_path.as_ptr(), st.as_mut_ptr(), flags) };
-    if r < 0 {
-        return Err(RmRfError::from_errno(last_errno(), path));
+/// Query statx data, requiring every requested field to be supported.
+fn statx_at(dfd: RawFd, path: &CString, flags: i32, mask: u32) -> Result<libc::statx, RmRfError> {
+    let mut statx = std::mem::MaybeUninit::<libc::statx>::zeroed();
+    // SAFETY: `path` is NUL-terminated and live for the call, and `statx`
+    // points to writable, zero-initialized native storage.
+    let result = unsafe { libc::statx(dfd, path.as_ptr(), flags, mask, statx.as_mut_ptr()) };
+    if result < 0 {
+        return Err(RmRfError::from_errno(last_errno(), "statx"));
     }
-    Ok(unsafe { st.assume_init() })
+
+    // SAFETY: the storage was initialized before the successful syscall, so
+    // optional fields omitted by an older kernel remain initialized as zero.
+    let statx = unsafe { statx.assume_init() };
+    if statx.stx_mask & mask != mask {
+        return Err(RmRfError::Io(
+            io::ErrorKind::Unsupported,
+            "statx did not return required fields".into(),
+        ));
+    }
+    Ok(statx)
 }
 
 /// Check if a directory entry (within dfd) is a mount point.
 fn is_mount_point_at(dfd: i32, name: &str) -> Result<bool, RmRfError> {
-    // Stat the path itself and its parent to compare st_dev.
-    let child = fstatat_at(dfd, name, 0)?;
-    let parent_st = fstatat_at(dfd, "", AT_EMPTY_PATH)?;
-    Ok(child.st_dev != parent_st.st_dev)
+    let name = to_cstr(name)?;
+    let mask = libc::STATX_TYPE | libc::STATX_INO;
+    let child = statx_at(
+        dfd,
+        &name,
+        libc::AT_SYMLINK_NOFOLLOW | libc::AT_NO_AUTOMOUNT | libc::AT_STATX_DONT_SYNC,
+        mask,
+    )?;
+
+    let mount_root = libc::STATX_ATTR_MOUNT_ROOT as u64;
+    if child.stx_attributes_mask & mount_root != 0 && child.stx_attributes & mount_root != 0 {
+        return Ok(true);
+    }
+
+    // Match the C chroot safeguard: an entry resolving to the process root is
+    // a boundary even if the kernel does not mark it as a mount root here.
+    let root = statx_at(
+        libc::AT_FDCWD,
+        &to_cstr("/")?,
+        libc::AT_NO_AUTOMOUNT | libc::AT_STATX_DONT_SYNC,
+        mask,
+    )?;
+    Ok(
+        child.stx_mode & libc::S_IFMT as u16 == root.stx_mode & libc::S_IFMT as u16
+            && child.stx_dev_major == root.stx_dev_major
+            && child.stx_dev_minor == root.stx_dev_minor
+            && child.stx_ino == root.stx_ino,
+    )
 }
 
 /// Check if an errno indicates a recoverable subvolume removal failure.
@@ -229,16 +279,66 @@ struct PatchResult {
     chmod_done: bool,
 }
 
+/// Change the mode of an inode pinned by a descriptor, including `O_PATH` fds.
+fn fchmod_opath(fd: RawFd, mode: libc::mode_t) -> Result<(), RmRfError> {
+    let mode = mode & 0o7777;
+
+    // SAFETY: `fd` stays borrowed for the synchronous call, the empty C
+    // pathname is static, and AT_EMPTY_PATH selects the inode pinned by `fd`.
+    if unsafe { libc::fchmodat(fd, c"".as_ptr(), mode, libc::AT_EMPTY_PATH) } >= 0 {
+        return Ok(());
+    }
+
+    let mut errno = last_errno();
+
+    // Older libc implementations reject AT_EMPTY_PATH even when the kernel
+    // provides fchmodat2(2), so match the C helper's direct-syscall fallback.
+    #[cfg(target_os = "linux")]
+    if errno == -libc::EINVAL {
+        // SAFETY: `fd` remains borrowed, the empty pathname is static, and the
+        // scalar arguments exactly match Linux fchmodat2(2)'s ABI.
+        if unsafe {
+            libc::syscall(
+                libc::SYS_fchmodat2,
+                fd,
+                c"".as_ptr(),
+                mode,
+                libc::AT_EMPTY_PATH,
+            )
+        } >= 0
+        {
+            return Ok(());
+        }
+        errno = last_errno();
+    }
+
+    if errno != -libc::ENOSYS && errno != -libc::EPERM {
+        return Err(RmRfError::from_errno(errno, "fchmodat"));
+    }
+
+    let proc_path = to_cstr(&format!("/proc/self/fd/{fd}"))?;
+    // SAFETY: `proc_path` is NUL-terminated and live for this synchronous
+    // call; the procfs magic link resolves to the still-pinned inode.
+    if unsafe { libc::chmod(proc_path.as_ptr(), mode) } < 0 {
+        return Err(RmRfError::from_errno(last_errno(), "chmod"));
+    }
+
+    Ok(())
+}
+
 /// Try to add u+rwx bits to a directory's mode so we can traverse/unlink entries.
 ///
 /// If `refuse_already_set` is true and the bits are already present, returns an error
 /// (preserving the original EACCES semantics).
 fn patch_dirfd_mode(dfd: i32, refuse_already_set: bool) -> Result<PatchResult, RmRfError> {
     let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `dfd` is borrowed for this synchronous syscall and `st` is
+    // writable storage for the kernel to initialize.
     let r = unsafe { libc::fstat(dfd, st.as_mut_ptr()) };
     if r < 0 {
         return Err(RmRfError::from_errno(last_errno(), "fstat"));
     }
+    // SAFETY: successful `fstat()` initialized every field of `st`.
     let st = unsafe { st.assume_init() };
 
     if (st.st_mode & libc::S_IFMT) != libc::S_IFDIR {
@@ -246,7 +346,7 @@ fn patch_dirfd_mode(dfd: i32, refuse_already_set: bool) -> Result<PatchResult, R
     }
 
     // Already has owner rwx?
-    if (st.st_mode & 0o700) != 0 {
+    if (st.st_mode & 0o700) == 0o700 {
         if refuse_already_set {
             return Err(RmRfError::PermissionDenied(
                 "directory already has rwx but still EACCES".into(),
@@ -259,6 +359,7 @@ fn patch_dirfd_mode(dfd: i32, refuse_already_set: bool) -> Result<PatchResult, R
     }
 
     // Can only chmod if we own the directory.
+    // SAFETY: `geteuid()` has no arguments and no Rust-side preconditions.
     if st.st_uid != unsafe { libc::geteuid() } {
         return Err(RmRfError::PermissionDenied(
             "directory not owned by euid".into(),
@@ -266,10 +367,7 @@ fn patch_dirfd_mode(dfd: i32, refuse_already_set: bool) -> Result<PatchResult, R
     }
 
     let new_mode = (st.st_mode | 0o700) & 0o7777;
-    let r = unsafe { libc::fchmod(dfd, new_mode) };
-    if r < 0 {
-        return Err(RmRfError::from_errno(last_errno(), "fchmod"));
-    }
+    fchmod_opath(dfd, new_mode)?;
 
     Ok(PatchResult {
         old_mode: st.st_mode,
@@ -288,7 +386,9 @@ fn unlinkat_harder(
 ) -> Result<(), RmRfError> {
     let c_name = to_cstr(filename)?;
 
-    // First attempt.
+    // First attempt. `c_name` is NUL-terminated and remains live throughout
+    // the syscall; `dfd` is borrowed from the caller.
+    // SAFETY: the pathname and descriptor meet unlinkat(2)'s requirements.
     let r = unsafe { libc::unlinkat(dfd, c_name.as_ptr(), unlink_flags) };
     if r >= 0 {
         return Ok(());
@@ -301,9 +401,13 @@ fn unlinkat_harder(
 
     // Try patching directory permissions.
     let patch = patch_dirfd_mode(dfd, true)?;
+    // SAFETY: `c_name` remains NUL-terminated and live, and `dfd` is borrowed
+    // for this retry after its directory mode was patched.
     let r = unsafe { libc::unlinkat(dfd, c_name.as_ptr(), unlink_flags) };
     if r >= 0 {
         if remove_flags.contains(RemoveFlags::REMOVE_CHMOD_RESTORE) {
+            // SAFETY: `dfd` still refers to the patched directory, and this
+            // restores the mode captured by `patch_dirfd_mode()`.
             unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };
         }
         return Ok(());
@@ -311,6 +415,8 @@ fn unlinkat_harder(
     let errno2 = last_errno();
 
     // Restore on failure.
+    // SAFETY: `dfd` still refers to the patched directory, and this restores
+    // the mode captured by `patch_dirfd_mode()` before returning the error.
     unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };
     RmRfError::neg_errno_result(errno2, filename)
 }
@@ -325,8 +431,11 @@ fn fstatat_harder(
     let c_name = to_cstr(filename)?;
 
     let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `c_name` is NUL-terminated and live, `dfd` is borrowed, and
+    // `st` is writable storage for the kernel to initialize.
     let r = unsafe { libc::fstatat(dfd, c_name.as_ptr(), st.as_mut_ptr(), fstatat_flags) };
     if r >= 0 {
+        // SAFETY: successful `fstatat()` initialized every field of `st`.
         return Ok(unsafe { st.assume_init() });
     }
     let errno = last_errno();
@@ -336,15 +445,22 @@ fn fstatat_harder(
     }
 
     let patch = patch_dirfd_mode(dfd, true)?;
+    // SAFETY: `c_name` remains NUL-terminated and live, `dfd` is borrowed,
+    // and `st` is writable storage for this retry.
     let r = unsafe { libc::fstatat(dfd, c_name.as_ptr(), st.as_mut_ptr(), fstatat_flags) };
     if r >= 0 {
         if remove_flags.contains(RemoveFlags::REMOVE_CHMOD_RESTORE) {
+            // SAFETY: `dfd` still refers to the patched directory, and this
+            // restores the mode captured by `patch_dirfd_mode()`.
             unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };
         }
+        // SAFETY: successful `fstatat()` initialized every field of `st`.
         return Ok(unsafe { st.assume_init() });
     }
     let errno2 = last_errno();
 
+    // SAFETY: `dfd` still refers to the patched directory, and this restores
+    // the mode captured by `patch_dirfd_mode()` before returning the error.
     unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };
     Err(RmRfError::from_errno(errno2, filename))
 }
@@ -357,6 +473,26 @@ const DIR_OPEN_FLAGS: i32 = libc::O_RDONLY
     | libc::O_NOFOLLOW
     | O_NOATIME;
 
+/// Open a path and immediately adopt the returned descriptor.
+fn openat_owned(dfd: RawFd, path: &CString, flags: i32) -> Result<OwnedFd, RmRfError> {
+    // SAFETY: `path` is NUL-terminated and live for the syscall. On success
+    // the returned descriptor is immediately transferred into `OwnedFd`.
+    let fd = unsafe { libc::openat(dfd, path.as_ptr(), flags) };
+    if fd < 0 {
+        return Err(RmRfError::from_errno(last_errno(), "openat"));
+    }
+    Ok(owned_fd_from_syscall(fd))
+}
+
+/// Reopen a pinned descriptor with a new access mode.
+fn fd_reopen(fd: RawFd, flags: i32) -> Result<OwnedFd, RmRfError> {
+    openat_owned(
+        fd,
+        &to_cstr(".")?,
+        flags | libc::O_DIRECTORY | libc::O_CLOEXEC,
+    )
+}
+
 /// Like `openat()` for directories, but retries with chmod on EACCES.
 ///
 /// Returns the opened fd and the original mode of the directory.
@@ -365,7 +501,7 @@ fn openat_harder(
     path: &str,
     open_flags: i32,
     remove_flags: RemoveFlags,
-) -> Result<(i32, libc::mode_t), RmRfError> {
+) -> Result<(OwnedFd, libc::mode_t), RmRfError> {
     let c_path = to_cstr(path)?;
 
     let is_opath = (open_flags & O_PATH) != 0;
@@ -374,48 +510,93 @@ fn openat_harder(
 
     // Fast path: no chmod needed or incompatible flags.
     if is_opath || !is_dir || !want_chmod {
-        let fd = unsafe { libc::openat(dfd, c_path.as_ptr(), open_flags) };
-        if fd < 0 {
-            return Err(RmRfError::from_errno(last_errno(), path));
-        }
-        let st = fstat_fd(fd)?;
+        let fd = openat_owned(dfd, &c_path, open_flags)?;
+        let st = fstat_fd(fd.as_raw_fd())?;
         return Ok((fd, st.st_mode));
     }
 
     // Open via O_PATH first to inspect, then chmod if needed.
-    let pfd = unsafe {
-        libc::openat(
-            dfd,
-            c_path.as_ptr(),
-            (open_flags & (libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW)) | O_PATH,
-        )
-    };
-    if pfd < 0 {
-        return Err(RmRfError::from_errno(last_errno(), path));
-    }
+    let pfd = openat_owned(
+        dfd,
+        &c_path,
+        (open_flags & (libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW)) | O_PATH,
+    )?;
 
-    let patch = patch_dirfd_mode(pfd, false)?;
-    // Reopen without O_NOFOLLOW to get a real directory fd.
-    let fd = unsafe { libc::openat(pfd, c_path.as_ptr(), open_flags & !libc::O_NOFOLLOW) };
-    if fd < 0 {
-        if patch.chmod_done {
-            unsafe { libc::fchmod(pfd, patch.old_mode & 0o7777) };
+    let patch = patch_dirfd_mode(pfd.as_raw_fd(), false)?;
+    // Reopen the pinned object itself, rather than resolving `path` again.
+    let fd = match fd_reopen(pfd.as_raw_fd(), open_flags & !libc::O_NOFOLLOW) {
+        Ok(fd) => fd,
+        Err(error) => {
+            if patch.chmod_done {
+                let _ = fchmod_opath(pfd.as_raw_fd(), patch.old_mode);
+            }
+            return Err(error);
         }
-        unsafe { libc::close(pfd) };
-        return Err(RmRfError::from_errno(last_errno(), path));
-    }
+    };
 
-    unsafe { libc::close(pfd) };
     Ok((fd, patch.old_mode))
+}
+
+/// Query the filesystem containing a path without consuming the caller's fd.
+fn get_fs_type_at(dfd: RawFd, path: &CString) -> Result<u64, RmRfError> {
+    let fd = openat_owned(dfd, path, O_PATH | libc::O_CLOEXEC)?;
+    get_fs_type(fd.as_raw_fd())
+}
+
+/// Determine whether `path` resolves to the process root on the same mount.
+fn path_is_root_at(dfd: RawFd, path: &CString) -> Result<bool, RmRfError> {
+    let target;
+    let target_fd = if path.as_bytes().is_empty() {
+        dfd
+    } else {
+        // SAFETY: `path` is NUL-terminated and live for the call. A successful
+        // result is immediately adopted below.
+        let fd = unsafe {
+            libc::openat(
+                dfd,
+                path.as_ptr(),
+                O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            let error = last_errno();
+            if error == -libc::ENOTDIR {
+                return Ok(false);
+            }
+            return Err(RmRfError::from_errno(error, "checking for root"));
+        }
+        target = owned_fd_from_syscall(fd);
+        target.as_raw_fd()
+    };
+
+    let root = openat_owned(
+        libc::AT_FDCWD,
+        &to_cstr("/")?,
+        O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
+    )?;
+    let empty = to_cstr("")?;
+    let mask = libc::STATX_TYPE | libc::STATX_INO | libc::STATX_MNT_ID;
+    let flags = AT_EMPTY_PATH | libc::AT_NO_AUTOMOUNT | libc::AT_STATX_DONT_SYNC;
+    let target_statx = statx_at(target_fd, &empty, flags, mask)?;
+    let root_statx = statx_at(root.as_raw_fd(), &empty, flags, mask)?;
+
+    Ok(target_statx.stx_mnt_id == root_statx.stx_mnt_id
+        && target_statx.stx_mode & libc::S_IFMT as u16 == root_statx.stx_mode & libc::S_IFMT as u16
+        && target_statx.stx_dev_major == root_statx.stx_dev_major
+        && target_statx.stx_dev_minor == root_statx.stx_dev_minor
+        && target_statx.stx_ino == root_statx.stx_ino)
 }
 
 /// fstat on an fd, returning a stat struct.
 fn fstat_fd(fd: i32) -> Result<libc::stat, RmRfError> {
     let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `fd` is borrowed for this synchronous syscall and `st` is
+    // writable storage for the kernel to initialize.
     let r = unsafe { libc::fstat(fd, st.as_mut_ptr()) };
     if r < 0 {
         return Err(RmRfError::from_errno(last_errno(), "fstat"));
     }
+    // SAFETY: successful `fstat()` initialized every field of `st`.
     Ok(unsafe { st.assume_init() })
 }
 
@@ -487,11 +668,16 @@ fn rm_rf_inner_child(
             return Err(RmRfError::IsDirectory);
         }
 
-        let (subdir_fd, _) = openat_harder(fd, fname, DIR_OPEN_FLAGS, flags)?;
-        let _ = rm_rf_children_impl(subdir_fd, flags | RemoveFlags::REMOVE_PHYSICAL, root_dev);
-        // Close is handled inside rm_rf_children_impl (it takes ownership via fdopendir).
+        let (subdir_fd, old_mode) = openat_harder(fd, fname, DIR_OPEN_FLAGS, flags)?;
+        let child_result = rm_rf_children_impl(
+            subdir_fd,
+            flags | RemoveFlags::REMOVE_PHYSICAL,
+            root_dev,
+            old_mode,
+        );
 
         unlinkat_harder(fd, fname, libc::AT_REMOVEDIR, flags)?;
+        child_result?;
         return Ok(ChildResult::Removed);
     }
 
@@ -544,22 +730,63 @@ impl Drop for TodoEntry {
 ///
 /// The fd is consumed (closed) by this function in all cases.
 fn rm_rf_children_impl(
-    fd: i32,
+    fd: OwnedFd,
     flags: RemoveFlags,
     root_dev: Option<u64>,
+    old_mode: libc::mode_t,
 ) -> Result<(), RmRfError> {
     let mut ret: Option<RmRfError> = None;
     let mut todos: Vec<TodoEntry> = Vec::new();
 
-    let mut current_fd = fd;
-    let mut current_dir: *mut libc::DIR;
+    let mut pending_fd = Some(fd);
+    let mut current_dir = std::ptr::null_mut();
     let mut current_dirname: Option<CString> = None;
-    let mut current_old_mode: libc::mode_t = 0;
+    let mut current_old_mode = old_mode;
+    let mut descending = true;
 
     loop {
-        if !todos.is_empty() {
+        if descending {
+            // `fdopendir()` takes ownership on success. Keep the raw
+            // descriptor in hand so the failure path can close it exactly once.
+            let raw_fd = pending_fd
+                .take()
+                .expect("descent requires a pending fd")
+                .into_raw_fd();
+            // SAFETY: `raw_fd` is a uniquely owned live directory descriptor.
+            current_dir = unsafe { libc::fdopendir(raw_fd) };
+            if current_dir.is_null() {
+                let error = last_errno();
+                // SAFETY: `fdopendir()` failed and therefore did not consume
+                // `raw_fd`; this branch retains its sole ownership.
+                unsafe { libc::close(raw_fd) };
+                return Err(RmRfError::from_errno(error, "fdopendir"));
+            }
+            // SAFETY: `current_dir` is a live stream returned by fdopendir().
+            let current_fd = unsafe { libc::dirfd(current_dir) };
+            assert!(current_fd >= 0);
+
+            // Check filesystem type.
+            if !flags.contains(RemoveFlags::REMOVE_PHYSICAL) {
+                let f_type = match get_fs_type(current_fd) {
+                    Ok(f_type) => f_type,
+                    Err(error) => {
+                        close_owned_dir(&mut current_dir);
+                        return Err(error);
+                    }
+                };
+                if is_physical_fs(f_type) {
+                    close_owned_dir(&mut current_dir);
+                    return Err(RmRfError::PhysicalFs(
+                        "attempted to remove disk filesystem".into(),
+                    ));
+                }
+            }
+            descending = false;
+        } else {
+            debug_assert!(!todos.is_empty());
             // We are returning from recursion: remove the inner directory.
             let parent = todos.last().unwrap();
+            // SAFETY: todo entries uniquely own live DIR streams.
             let parent_fd = unsafe { libc::dirfd(parent.dir) };
             let dirname = current_dirname.as_ref().unwrap();
 
@@ -574,6 +801,8 @@ fn rm_rf_children_impl(
                         ret = Some(e);
                     }
                     if flags.contains(RemoveFlags::REMOVE_CHMOD_RESTORE) {
+                        // SAFETY: `parent_fd` is borrowed from the live parent
+                        // stream and `dirname` is a live NUL-terminated path.
                         unsafe {
                             libc::fchmodat(
                                 parent_fd,
@@ -592,46 +821,34 @@ fn rm_rf_children_impl(
             parent.dir = std::ptr::null_mut(); // prevent double-close
             current_dirname = Some(parent.dirname.clone());
             current_old_mode = parent.old_mode;
-            current_fd = unsafe { libc::dirfd(current_dir) };
-        } else {
-            // Open the directory.
-            assert!(current_fd >= 0);
-            current_dir = unsafe { libc::fdopendir(current_fd) };
-            if current_dir.is_null() {
-                unsafe { libc::close(current_fd) };
-                return Err(RmRfError::from_errno(last_errno(), "fdopendir"));
-            }
-            current_fd = unsafe { libc::dirfd(current_dir) };
-            assert!(current_fd >= 0);
-
-            // Check filesystem type.
-            if !flags.contains(RemoveFlags::REMOVE_PHYSICAL) {
-                let f_type = match get_fs_type(current_fd) {
-                    Ok(f_type) => f_type,
-                    Err(error) => {
-                        // `fdopendir()` took ownership of `current_fd`; close
-                        // the resulting stream before propagating the error.
-                        close_owned_dir(&mut current_dir);
-                        return Err(error);
-                    }
-                };
-                if is_physical_fs(f_type) {
-                    // `fdopendir()` took ownership of `current_fd`; close the
-                    // resulting stream before rejecting physical filesystems.
-                    close_owned_dir(&mut current_dir);
-                    return Err(RmRfError::PhysicalFs(
-                        "attempted to remove disk filesystem".into(),
-                    ));
-                }
-            }
         }
+
+        // SAFETY: both the descent and unwind paths leave `current_dir`
+        // holding the unique live stream for the current level.
+        let current_fd = unsafe { libc::dirfd(current_dir) };
+        assert!(current_fd >= 0);
+
+        let mut descended = false;
 
         // Iterate directory entries.
         loop {
+            // POSIX only distinguishes a failed readdir() from end-of-directory
+            // through errno, so clear a stale thread-local value first.
+            clear_errno();
+            // SAFETY: `current_dir` remains live and exclusively used by this
+            // traversal until it is moved into a todo frame or closed.
             let entry = unsafe { libc::readdir(current_dir) };
             if entry.is_null() {
-                break;
+                let errno = last_errno();
+                if errno == 0 {
+                    break;
+                }
+
+                close_owned_dir(&mut current_dir);
+                return Err(RmRfError::from_errno(errno, "readdir"));
             }
+            // SAFETY: readdir() returned a live dirent whose d_name is
+            // NUL-terminated for the lifetime of this iteration.
             let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };
             let name_str = match name.to_str() {
                 Ok(s) => s,
@@ -641,6 +858,7 @@ fn rm_rf_children_impl(
                 continue;
             }
 
+            // SAFETY: `entry` is the live dirent returned above.
             let d_type = unsafe { (*entry).d_type };
             let directory_hint = if d_type == libc::DT_DIR {
                 DirectoryHint::Directory
@@ -666,10 +884,13 @@ fn rm_rf_children_impl(
                                 dirname: current_dirname.take().unwrap_or_default(),
                                 old_mode: current_old_mode,
                             });
-                            current_fd = new_fd;
+                            current_dir = std::ptr::null_mut();
+                            pending_fd = Some(new_fd);
                             current_dirname = Some(new_dirname);
                             current_old_mode = mode;
-                            break; // break inner loop to process new fd
+                            descending = true;
+                            descended = true;
+                            break;
                         }
                         Err(e) => {
                             if !matches!(&e, RmRfError::NotFound(_)) && ret.is_none() {
@@ -686,9 +907,16 @@ fn rm_rf_children_impl(
             }
         }
 
+        if descended {
+            // The parent DIR is owned by the new todo frame and the child fd
+            // is owned by `pending_fd`; open and enumerate it next.
+            continue;
+        }
+
         // syncfs if requested.
         #[cfg(target_os = "linux")]
         if flags.contains(RemoveFlags::REMOVE_SYNCFS) {
+            // SAFETY: `current_fd` is borrowed from the live current DIR.
             let r = unsafe { crate::ffi::syncfs(current_fd) };
             if r < 0 && ret.is_none() {
                 ret = Some(RmRfError::from_errno(last_errno(), "syncfs"));
@@ -698,12 +926,21 @@ fn rm_rf_children_impl(
         if todos.is_empty() {
             // Restore mode if requested.
             if flags.contains(RemoveFlags::REMOVE_CHMOD_RESTORE) {
-                unsafe { libc::fchmod(current_fd, current_old_mode & 0o7777) };
+                // SAFETY: `current_fd` is borrowed from the live root DIR.
+                if unsafe { libc::fchmod(current_fd, current_old_mode & 0o7777) } < 0
+                    && ret.is_none()
+                {
+                    ret = Some(RmRfError::from_errno(last_errno(), "fchmod"));
+                }
             }
-            // Close the final DIR*.
             close_owned_dir(&mut current_dir);
             break;
         }
+
+        // The current child has been completely enumerated. Closing it before
+        // the next iteration mirrors C's `_cleanup_closedir_`; the next pass
+        // removes the child and resumes its parent stream.
+        close_owned_dir(&mut current_dir);
     }
 
     match ret {
@@ -726,7 +963,16 @@ pub fn rm_rf_children(fd: i32, flags: RemoveFlags, root_dev: Option<u64>) -> Res
     if fd < 0 {
         return Err(RmRfError::BadFd);
     }
-    rm_rf_children_impl(fd, flags, root_dev)
+    let stat = match fstat_fd(fd) {
+        Ok(stat) => stat,
+        Err(error) => {
+            // SAFETY: the public contract transfers this raw descriptor even
+            // when validation fails; close it exactly once on this path.
+            unsafe { libc::close(fd) };
+            return Err(error);
+        }
+    };
+    rm_rf_children_impl(owned_fd_from_syscall(fd), flags, root_dev, stat.st_mode)
 }
 
 /// Remove a directory tree rooted at `path`.
@@ -758,17 +1004,45 @@ pub fn rm_rf_at(dir_fd: i32, path: &Path, flags: RemoveFlags) -> Result<(), RmRf
         ));
     }
 
-    // Refuse to remove root filesystem.
-    if path_str == "/" || path.is_absolute() && path_str == "/" {
-        return Err(RmRfError::PhysicalFs(
-            "attempted to remove entire root filesystem".into(),
-        ));
-    }
-
     let c_path = to_cstr(path_str)?;
+
+    // Refuse every pathname/dirfd alias of the process root before attempting
+    // any unlink or opening the tree for enumeration.
+    match path_is_root_at(dir_fd, &c_path) {
+        Ok(true) => {
+            return Err(RmRfError::PhysicalFs(
+                "attempted to remove entire root filesystem".into(),
+            ));
+        }
+        Ok(false) => {}
+        Err(RmRfError::NotFound(_)) => {
+            // `path_is_root_at()` follows the final component and therefore
+            // reports ENOENT for dangling symlinks. Match C by checking the
+            // entry itself without following it before accepting absence.
+            // SAFETY: `c_path` is NUL-terminated and live for the call.
+            if unsafe {
+                libc::faccessat(
+                    dir_fd,
+                    c_path.as_ptr(),
+                    libc::F_OK,
+                    libc::AT_SYMLINK_NOFOLLOW,
+                )
+            } < 0
+            {
+                let error = last_errno();
+                if flags.contains(RemoveFlags::REMOVE_MISSING_OK) && error == -libc::ENOENT {
+                    return Ok(());
+                }
+                return RmRfError::neg_errno_result(error, path_str);
+            }
+        }
+        Err(error) => return Err(error),
+    }
 
     // Try direct unlinkat first (for REMOVE_ROOT | REMOVE_PHYSICAL).
     if flags.contains(RemoveFlags::REMOVE_ROOT | RemoveFlags::REMOVE_PHYSICAL) {
+        // SAFETY: `c_path` is NUL-terminated and live, and `dir_fd` is
+        // borrowed for this synchronous unlinkat(2) call.
         let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };
         if r >= 0 {
             return Ok(());
@@ -783,6 +1057,8 @@ pub fn rm_rf_at(dir_fd: i32, path: &Path, flags: RemoveFlags) -> Result<(), RmRf
 
     // Try unlinkat for REMOVE_ROOT.
     if flags.contains(RemoveFlags::REMOVE_ROOT) {
+        // SAFETY: `c_path` is NUL-terminated and live, and `dir_fd` is
+        // borrowed for this synchronous unlinkat(2) call.
         let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };
         if r >= 0 {
             return Ok(());
@@ -791,10 +1067,12 @@ pub fn rm_rf_at(dir_fd: i32, path: &Path, flags: RemoveFlags) -> Result<(), RmRf
 
     // Open as directory and remove children.
     match openat_harder(dir_fd, path_str, DIR_OPEN_FLAGS, flags) {
-        Ok((fd, _old_mode)) => {
-            let r = rm_rf_children_impl(fd, flags, None);
+        Ok((fd, old_mode)) => {
+            let r = rm_rf_children_impl(fd, flags, None, old_mode);
 
             if flags.contains(RemoveFlags::REMOVE_ROOT) {
+                // SAFETY: `c_path` is NUL-terminated and live, and `dir_fd`
+                // is borrowed for this synchronous unlinkat(2) call.
                 let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };
                 if qr < 0 {
                     let errno = last_errno();
@@ -823,32 +1101,16 @@ pub fn rm_rf_at(dir_fd: i32, path: &Path, flags: RemoveFlags) -> Result<(), RmRf
                     }
 
                     if !flags.contains(RemoveFlags::REMOVE_PHYSICAL) {
-                        // Check filesystem type via fstatat.
-                        let c_p = to_cstr(path_str)?;
-                        let mut sfs = std::mem::MaybeUninit::<libc::statfs>::uninit();
-                        let r = unsafe {
-                            libc::fstatat(
-                                dir_fd,
-                                c_p.as_ptr(),
-                                std::ptr::null_mut(),
-                                libc::AT_SYMLINK_NOFOLLOW,
-                            )
-                        };
-                        // If we can't stat, fall through to unlink.
-                        if r >= 0 {
-                            // Try fstatfs on the parent dir.
-                            let mut sfs2 = std::mem::MaybeUninit::<libc::statfs>::uninit();
-                            let r2 = unsafe { libc::fstatfs(dir_fd, sfs2.as_mut_ptr()) };
-                            if r2 >= 0
-                                && is_physical_fs(unsafe { sfs2.assume_init() }.f_type as u64)
-                            {
-                                return Err(RmRfError::PhysicalFs(
-                                    "attempted to remove files from a disk filesystem".into(),
-                                ));
-                            }
+                        let f_type = get_fs_type_at(dir_fd, &c_path)?;
+                        if is_physical_fs(f_type) {
+                            return Err(RmRfError::PhysicalFs(
+                                "attempted to remove files from a disk filesystem".into(),
+                            ));
                         }
                     }
 
+                    // SAFETY: `c_path` is NUL-terminated and live, and
+                    // `dir_fd` is borrowed for this synchronous unlinkat(2) call.
                     let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), 0) };
                     if qr >= 0 {
                         return Ok(());
@@ -1154,12 +1416,16 @@ mod tests {
         fs::write(child_dir.join("file.txt"), "data").unwrap();
 
         let tmp_path = CString::new(tmp.path().as_os_str().as_bytes()).unwrap();
+        // SAFETY: `tmp_path` is NUL-terminated and live for this synchronous
+        // open; the test takes ownership of the returned descriptor.
         let parent_fd =
             unsafe { libc::open(tmp_path.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };
         assert!(parent_fd >= 0);
 
         rm_rf_child(parent_fd, "child_rm", RemoveFlags::REMOVE_PHYSICAL).unwrap();
         assert!(!child_dir.exists());
+        // SAFETY: `parent_fd` is the live descriptor opened above and has not
+        // been transferred elsewhere in this test.
         unsafe { libc::close(parent_fd) };
     }
 

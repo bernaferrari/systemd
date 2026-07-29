@@ -1119,58 +1119,9 @@
       "unsafe_sites": 1
     },
     "src/shared/rust/rm_rf.rs": {
-      "missing_safety": 48,
-      "missing_safety_sites": [
-        "156:13:let r = unsafe { libc::fstatfs(fd, sfs.as_mut_ptr()) };",
-        "163:8:Ok(unsafe { sfs.assume_init() }.f_type as u64)",
-        "169:13:let r = unsafe { libc::fstat(fd, st.as_mut_ptr()) };",
-        "176:8:Ok(unsafe { st.assume_init() }.st_dev as u64)",
-        "196:13:let r = unsafe { libc::fstatat(dfd, c_path.as_ptr(), st.as_mut_ptr(), flags) };",
-        "200:8:Ok(unsafe { st.assume_init() })",
-        "238:13:let r = unsafe { libc::fstat(dfd, st.as_mut_ptr()) };",
-        "242:14:let st = unsafe { st.assume_init() };",
-        "262:21:if st.st_uid != unsafe { libc::geteuid() } {",
-        "269:13:let r = unsafe { libc::fchmod(dfd, new_mode) };",
-        "292:13:let r = unsafe { libc::unlinkat(dfd, c_name.as_ptr(), unlink_flags) };",
-        "304:13:let r = unsafe { libc::unlinkat(dfd, c_name.as_ptr(), unlink_flags) };",
-        "307:13:unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };",
-        "314:5:unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };",
-        "328:13:let r = unsafe { libc::fstatat(dfd, c_name.as_ptr(), st.as_mut_ptr(), fstatat_flags) };",
-        "330:19:return Ok(unsafe { st.assume_init() });",
-        "339:13:let r = unsafe { libc::fstatat(dfd, c_name.as_ptr(), st.as_mut_ptr(), fstatat_flags) };",
-        "342:13:unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };",
-        "344:19:return Ok(unsafe { st.assume_init() });",
-        "348:5:unsafe { libc::fchmod(dfd, patch.old_mode & 0o7777) };",
-        "377:18:let fd = unsafe { libc::openat(dfd, c_path.as_ptr(), open_flags) };",
-        "386:15:let pfd = unsafe {",
-        "399:14:let fd = unsafe { libc::openat(pfd, c_path.as_ptr(), open_flags & !libc::O_NOFOLLOW) };",
-        "402:13:unsafe { libc::fchmod(pfd, patch.old_mode & 0o7777) };",
-        "404:9:unsafe { libc::close(pfd) };",
-        "408:5:unsafe { libc::close(pfd) };",
-        "415:13:let r = unsafe { libc::fstat(fd, st.as_mut_ptr()) };",
-        "419:8:Ok(unsafe { st.assume_init() })",
-        "563:29:let parent_fd = unsafe { libc::dirfd(parent.dir) };",
-        "577:25:unsafe {",
-        "595:26:current_fd = unsafe { libc::dirfd(current_dir) };",
-        "599:27:current_dir = unsafe { libc::fdopendir(current_fd) };",
-        "601:17:unsafe { libc::close(current_fd) };",
-        "604:26:current_fd = unsafe { libc::dirfd(current_dir) };",
-        "631:25:let entry = unsafe { libc::readdir(current_dir) };",
-        "635:24:let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };",
-        "644:26:let d_type = unsafe { (*entry).d_type };",
-        "692:21:let r = unsafe { crate::ffi::syncfs(current_fd) };",
-        "701:17:unsafe { libc::fchmod(current_fd, current_old_mode & 0o7777) };",
-        "772:17:let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
-        "786:17:let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
-        "798:26:let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
-        "829:33:let r = unsafe {",
-        "841:38:let r2 = unsafe { libc::fstatfs(dir_fd, sfs2.as_mut_ptr()) };",
-        "843:51:&& is_physical_fs(unsafe { sfs2.assume_init() }.f_type as u64)",
-        "852:30:let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), 0) };",
-        "1158:13:unsafe { libc::open(tmp_path.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };",
-        "1163:9:unsafe { libc::close(parent_fd) };"
-      ],
-      "unsafe_sites": 49
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 47
     },
     "src/shared/rust/seccomp_util/architecture.rs": {
       "missing_safety": 0,
@@ -1345,8 +1296,8 @@
     }
   },
   "totals": {
-    "missing_safety": 222,
-    "unsafe_sites": 5003
+    "missing_safety": 174,
+    "unsafe_sites": 4999
   },
   "version": 2,
   "window": 3
