@@ -214,9 +214,48 @@ fn chmod_fd(fd: RawFd, mode: libc::mode_t) -> io::Result<()> {
         return Err(err);
     }
 
-    // fchmod(2) rejects O_PATH descriptors. Like systemd's fchmod_opath(),
-    // address the already-pinned inode through procfs instead of reopening
-    // the mutable directory entry.
+    // fchmod(2) rejects O_PATH descriptors. Match fchmod_opath(): first ask
+    // libc's fchmodat(3) to act on the pinned descriptor with AT_EMPTY_PATH.
+    // New enough libc versions route this to fchmodat2(2) themselves.
+    // SAFETY: `fd` stays borrowed, the empty pathname is NUL-terminated, and
+    // AT_EMPTY_PATH makes the operation apply to that descriptor's inode.
+    if unsafe { libc::fchmodat(fd, c"".as_ptr(), mode, libc::AT_EMPTY_PATH) } >= 0 {
+        return Ok(());
+    }
+
+    let mut err = io::Error::last_os_error();
+
+    // Older libc implementations reject AT_EMPTY_PATH with EINVAL even when
+    // the kernel supports fchmodat2(2). Invoke that Linux syscall directly in
+    // precisely that case. Both variants keep the inode pinned by `fd` and do
+    // not re-resolve a mutable filesystem path.
+    #[cfg(target_os = "linux")]
+    if err.raw_os_error() == Some(libc::EINVAL) {
+        // SAFETY: `fd` stays borrowed, the empty pathname is NUL-terminated,
+        // and the syscall arguments match Linux fchmodat2(2)'s ABI.
+        if unsafe {
+            libc::syscall(
+                libc::SYS_fchmodat2,
+                fd,
+                c"".as_ptr(),
+                mode,
+                libc::AT_EMPTY_PATH,
+            )
+        } >= 0
+        {
+            return Ok(());
+        }
+        err = io::Error::last_os_error();
+    }
+
+    // Only an unavailable or sandbox-blocked descriptor syscall may fall back
+    // to procfs, just as the C implementation does. /proc/self/fd/N is a
+    // magic link to the still-open descriptor, not a re-resolution of the
+    // original directory entry.
+    if !matches!(err.raw_os_error(), Some(libc::ENOSYS | libc::EPERM)) {
+        return Err(err);
+    }
+
     let fd_path = proc_fd_path(fd);
     // SAFETY: `fd_path` is a valid NUL-terminated path and `mode` is passed by
     // value.

@@ -1054,15 +1054,9 @@
       "unsafe_sites": 3
     },
     "src/shared/rust/blkid_util.rs": {
-      "missing_safety": 5,
-      "missing_safety_sites": [
-        "123:18:let handle = unsafe { dlopen_wrapper(LIBBLKID_NAME) }?;",
-        "130:23:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
-        "160:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, BlkidError> {",
-        "183:1:unsafe fn dlsym_wrapper(handle: *mut c_void, name: &CStr) -> *const c_void {",
-        "293:13:let s = unsafe { CStr::from_ptr(ptr) }"
-      ],
-      "unsafe_sites": 8
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 9
     },
     "src/shared/rust/blockdev_util.rs": {
       "missing_safety": 3,
@@ -1103,12 +1097,12 @@
     "src/shared/rust/chown_recursive.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 17
+      "unsafe_sites": 19
     },
     "src/shared/rust/clean_ipc.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 4
+      "unsafe_sites": 9
     },
     "src/shared/rust/clock_util.rs": {
       "missing_safety": 0,
@@ -1819,7 +1813,7 @@
     "src/shared/rust/shift_uid.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 5
+      "unsafe_sites": 6
     },
     "src/shared/rust/smack_util.rs": {
       "missing_safety": 0,
@@ -2048,8 +2042,8 @@
     }
   },
   "totals": {
-    "missing_safety": 510,
-    "unsafe_sites": 5736
+    "missing_safety": 505,
+    "unsafe_sites": 5745
   },
   "version": 2,
   "window": 3

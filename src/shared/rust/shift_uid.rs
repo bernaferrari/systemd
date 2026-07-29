@@ -361,6 +361,21 @@ fn open_directory(path: &Path) -> Result<File, ShiftUidError> {
         .open(path)?)
 }
 
+/// Return whether an otherwise writable-looking filesystem rejects writes
+/// through this already-pinned directory descriptor.
+///
+/// Network filesystems can report no `ST_RDONLY` flag while still returning
+/// `EROFS` for access checks. C checks this after `fstatfs()` for every
+/// subtree, so preserve that conservative skip rather than descending into a
+/// tree that cannot be patched.
+fn fd_is_effectively_read_only(fd: i32) -> bool {
+    // SAFETY: AT_EMPTY_PATH makes the static empty C string refer to `fd` for
+    // this synchronous access check. The call neither retains the descriptor
+    // nor writes through the pathname pointer.
+    let ret = unsafe { libc::faccessat(fd, c"".as_ptr(), libc::W_OK, libc::AT_EMPTY_PATH) };
+    ret < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::EROFS)
+}
+
 /// Recursively walk a directory tree, patching ownership of every inode.
 ///
 /// Stops recursion at fully userns-compatible filesystems (procfs, sysfs,
@@ -401,7 +416,9 @@ fn recurse_dir(
     }
 
     // Match the C fast path for mounts that are explicitly read-only.
-    if (statfs_buf.f_flags as libc::c_ulong & libc::ST_RDONLY as libc::c_ulong) != 0 {
+    if (statfs_buf.f_flags as libc::c_ulong & libc::ST_RDONLY as libc::c_ulong) != 0
+        || fd_is_effectively_read_only(dir_file.as_raw_fd())
+    {
         return Ok(false);
     }
 

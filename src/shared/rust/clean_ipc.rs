@@ -6,11 +6,13 @@
 // (shared memory segments, message queues, semaphores) owned by
 // a given UID or GID.
 
-#[cfg(target_os = "linux")]
-use std::ffi::CString;
-use std::fs;
+use std::ffi::{CString, OsStr};
+use std::fs::{self, File, OpenOptions, ReadDir};
 use std::io;
-use std::os::unix::fs::MetadataExt;
+use std::mem::MaybeUninit;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 const UID_INVALID: libc::uid_t = u32::MAX;
@@ -72,13 +74,13 @@ fn parse_sysvipc_sem_line(line: &str) -> Option<SysvSemEntry> {
 
 fn parse_sysvipc_msg_line(line: &str) -> Option<SysvMsgEntry> {
     let p: Vec<&str> = line.split_whitespace().collect();
-    if p.len() < 12 {
+    if p.len() < 11 {
         return None;
     }
     Some(SysvMsgEntry {
         msgid: p[1].parse().ok()?,
-        uid: p[8].parse().ok()?,
-        gid: p[9].parse().ok()?,
+        uid: p[7].parse().ok()?,
+        gid: p[8].parse().ok()?,
     })
 }
 
@@ -109,7 +111,7 @@ fn effective_gid(gid: libc::gid_t) -> Option<libc::gid_t> {
 
 // ── SysV IPC removal ─────────────────────────────────────────────────────
 
-fn shm_remove(shmid: i32) -> io::Result<()> {
+fn shm_remove(shmid: i32) -> io::Result<bool> {
     // SAFETY: shmctl(IPC_RMID, NULL) marks the segment for deletion.
     // shmid is parsed from /proc/sysvipc/shm.
     let ret = unsafe { libc::shmctl(shmid, libc::IPC_RMID, std::ptr::null_mut()) };
@@ -117,15 +119,15 @@ fn shm_remove(shmid: i32) -> io::Result<()> {
         let err = io::Error::last_os_error();
         let code = err.raw_os_error().unwrap_or(0);
         if code == libc::EIDRM || code == libc::EINVAL {
-            return Ok(());
+            return Ok(false);
         }
         Err(err)
     } else {
-        Ok(())
+        Ok(true)
     }
 }
 
-fn sem_remove(semid: i32) -> io::Result<()> {
+fn sem_remove(semid: i32) -> io::Result<bool> {
     // SAFETY: semctl(IPC_RMID) removes the semaphore set.
     // semid is parsed from /proc/sysvipc/sem.
     let ret = unsafe { libc::semctl(semid, 0, libc::IPC_RMID) };
@@ -133,16 +135,16 @@ fn sem_remove(semid: i32) -> io::Result<()> {
         let err = io::Error::last_os_error();
         let code = err.raw_os_error().unwrap_or(0);
         if code == libc::EIDRM || code == libc::EINVAL {
-            return Ok(());
+            return Ok(false);
         }
         Err(err)
     } else {
-        Ok(())
+        Ok(true)
     }
 }
 
 #[cfg(target_os = "linux")]
-fn msg_remove(msgid: i32) -> io::Result<()> {
+fn msg_remove(msgid: i32) -> io::Result<bool> {
     // SAFETY: msgctl(IPC_RMID, NULL) removes the message queue.
     // msgid is parsed from /proc/sysvipc/msg.
     let ret = unsafe { libc::msgctl(msgid, libc::IPC_RMID, std::ptr::null_mut()) };
@@ -150,31 +152,42 @@ fn msg_remove(msgid: i32) -> io::Result<()> {
         let err = io::Error::last_os_error();
         let code = err.raw_os_error().unwrap_or(0);
         if code == libc::EIDRM || code == libc::EINVAL {
-            return Ok(());
+            return Ok(false);
         }
         Err(err)
     } else {
-        Ok(())
+        Ok(true)
     }
 }
 
 // ── POSIX MQ removal ─────────────────────────────────────────────────────
 
 #[cfg(target_os = "linux")]
-fn mq_unlink_named(name: &str) -> io::Result<()> {
-    let c_name = CString::new(name)
+fn mq_unlink_named(name: &OsStr) -> io::Result<()> {
+    let mut bytes = Vec::with_capacity(name.as_bytes().len() + 1);
+    bytes.push(b'/');
+    bytes.extend_from_slice(name.as_bytes());
+    let c_name = CString::new(bytes)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "NUL in queue name"))?;
     // SAFETY: mq_unlink removes a POSIX message queue by name.
     // name is prefixed with '/' per POSIX requirements.
     let ret = unsafe { libc::mq_unlink(c_name.as_ptr()) };
     if ret < 0 {
-        let err = io::Error::last_os_error();
-        if err.raw_os_error() == Some(libc::ENOENT) {
-            return Ok(());
-        }
-        Err(err)
+        Err(io::Error::last_os_error())
     } else {
         Ok(())
+    }
+}
+
+fn remember_error(last_error: &mut Option<io::Error>, error: io::Error) {
+    *last_error = Some(error);
+}
+
+fn finish_cleanup(found: bool, last_error: Option<io::Error>) -> io::Result<IpcStatus> {
+    match last_error {
+        Some(error) => Err(error),
+        None if found => Ok(IpcStatus::Found),
+        None => Ok(IpcStatus::NotFound),
     }
 }
 
@@ -201,6 +214,7 @@ fn clean_sysvipc_shm(
     }
 
     let mut found = false;
+    let mut last_error = None;
     for line in content.lines().skip(1) {
         let entry = match parse_sysvipc_shm_line(line) {
             Some(e) => e,
@@ -216,21 +230,18 @@ fn clean_sysvipc_shm(
             return Ok(IpcStatus::Found);
         }
         match shm_remove(entry.shmid) {
-            Ok(()) => found = true,
+            Ok(removed) => found |= removed,
             Err(e) => {
                 eprintln!(
                     "Failed to remove SysV shared memory segment {}: {}",
                     entry.shmid, e
                 );
+                remember_error(&mut last_error, e);
             }
         }
     }
 
-    Ok(if found {
-        IpcStatus::Found
-    } else {
-        IpcStatus::NotFound
-    })
+    finish_cleanup(found, last_error)
 }
 
 fn clean_sysvipc_sem(
@@ -244,6 +255,7 @@ fn clean_sysvipc_sem(
     }
 
     let mut found = false;
+    let mut last_error = None;
     for line in content.lines().skip(1) {
         let entry = match parse_sysvipc_sem_line(line) {
             Some(e) => e,
@@ -256,18 +268,15 @@ fn clean_sysvipc_sem(
             return Ok(IpcStatus::Found);
         }
         match sem_remove(entry.semid) {
-            Ok(()) => found = true,
+            Ok(removed) => found |= removed,
             Err(e) => {
                 eprintln!("Failed to remove SysV semaphore {}: {}", entry.semid, e);
+                remember_error(&mut last_error, e);
             }
         }
     }
 
-    Ok(if found {
-        IpcStatus::Found
-    } else {
-        IpcStatus::NotFound
-    })
+    finish_cleanup(found, last_error)
 }
 
 #[cfg(target_os = "linux")]
@@ -282,6 +291,7 @@ fn clean_sysvipc_msg(
     }
 
     let mut found = false;
+    let mut last_error = None;
     for line in content.lines().skip(1) {
         let entry = match parse_sysvipc_msg_line(line) {
             Some(e) => e,
@@ -294,70 +304,159 @@ fn clean_sysvipc_msg(
             return Ok(IpcStatus::Found);
         }
         match msg_remove(entry.msgid) {
-            Ok(()) => found = true,
+            Ok(removed) => found |= removed,
             Err(e) => {
                 eprintln!("Failed to remove SysV message queue {}: {}", entry.msgid, e);
+                remember_error(&mut last_error, e);
             }
         }
     }
 
-    Ok(if found {
-        IpcStatus::Found
-    } else {
-        IpcStatus::NotFound
-    })
+    finish_cleanup(found, last_error)
 }
 
 // ── POSIX shared memory cleaner ──────────────────────────────────────────
 
+fn open_directory(path: &Path) -> io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .open(path)
+}
+
+fn openat_directory(parent_fd: RawFd, name: &OsStr) -> io::Result<OwnedFd> {
+    let c_name = CString::new(name.as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "NUL in directory name"))?;
+
+    // SAFETY: c_name is a valid NUL-terminated pathname, parent_fd remains
+    // open for the call, and a successful descriptor is immediately owned.
+    let fd = unsafe {
+        libc::openat(
+            parent_fd,
+            c_name.as_ptr(),
+            libc::O_RDONLY
+                | libc::O_DIRECTORY
+                | libc::O_NOFOLLOW
+                | libc::O_NOATIME
+                | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        // SAFETY: fd was just returned by openat and ownership is transferred
+        // exactly once to OwnedFd.
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+}
+
+fn read_dir_fd(fd: RawFd) -> io::Result<ReadDir> {
+    // Rust's standard library has no safe fdopendir/readdir interface. The
+    // procfs magic link reopens this pinned descriptor for iteration; all
+    // security-sensitive stat/open/remove operations below remain *at()-based.
+    // P2: replace this /proc dependency if a small safe directory-stream
+    // abstraction is introduced for the Rust port.
+    fs::read_dir(format!("/proc/self/fd/{fd}"))
+}
+
+fn fstatat_nofollow(parent_fd: RawFd, name: &OsStr) -> io::Result<libc::stat> {
+    let c_name = CString::new(name.as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "NUL in directory entry"))?;
+    let mut stat = MaybeUninit::<libc::stat>::uninit();
+
+    // SAFETY: parent_fd remains open, c_name is NUL-terminated, and stat
+    // points to writable storage. AT_SYMLINK_NOFOLLOW matches the C cleanup
+    // code and prevents ownership checks from following an attacker symlink.
+    if unsafe {
+        libc::fstatat(
+            parent_fd,
+            c_name.as_ptr(),
+            stat.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    } < 0
+    {
+        Err(io::Error::last_os_error())
+    } else {
+        // SAFETY: fstatat returned success and initialized the structure.
+        Ok(unsafe { stat.assume_init() })
+    }
+}
+
+fn unlinkat_entry(parent_fd: RawFd, name: &OsStr, directory: bool) -> io::Result<()> {
+    let c_name = CString::new(name.as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "NUL in directory entry"))?;
+    let flags = if directory { libc::AT_REMOVEDIR } else { 0 };
+
+    // SAFETY: parent_fd remains open and c_name is a valid NUL-terminated
+    // pathname. The flags select file or empty-directory removal.
+    if unsafe { libc::unlinkat(parent_fd, c_name.as_ptr(), flags) } < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
 fn clean_posix_shm_dir(
-    dir_path: &Path,
+    dir: &File,
+    display_path: &Path,
     delete_uid: Option<libc::uid_t>,
     delete_gid: Option<libc::gid_t>,
     remove: bool,
 ) -> io::Result<IpcStatus> {
-    let entries = match fs::read_dir(dir_path) {
-        Ok(e) => e,
-        Err(e) if e.raw_os_error() == Some(libc::ENOENT) => return Ok(IpcStatus::NotFound),
-        Err(e) => return Err(e),
-    };
+    let entries = read_dir_fd(dir.as_raw_fd())?;
 
     let mut found = false;
+    let mut last_error = None;
 
     for entry in entries {
         let entry = match entry {
             Ok(e) => e,
-            Err(e) if e.raw_os_error() == Some(libc::ENOENT) => continue,
             Err(e) => return Err(e),
         };
 
         let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        if name_str == "." || name_str == ".." {
+        if name.as_bytes() == b"." || name.as_bytes() == b".." {
             continue;
         }
+        let entry_path = display_path.join(&name);
 
-        let metadata = match fs::metadata(entry.path()) {
-            Ok(m) => m,
+        let stat = match fstatat_nofollow(dir.as_raw_fd(), &name) {
+            Ok(stat) => stat,
             Err(e) if e.raw_os_error() == Some(libc::ENOENT) => continue,
             Err(e) => {
-                eprintln!("Failed to stat POSIX shm {}: {}", entry.path().display(), e);
+                eprintln!("Failed to stat POSIX shm {}: {}", entry_path.display(), e);
+                remember_error(&mut last_error, e);
                 continue;
             }
         };
 
-        let is_dir = metadata.is_dir();
+        let is_dir = stat.st_mode & libc::S_IFMT == libc::S_IFDIR;
 
         if is_dir {
-            match clean_posix_shm_dir(&entry.path(), delete_uid, delete_gid, remove) {
-                Ok(IpcStatus::Found) if !remove => return Ok(IpcStatus::Found),
-                Ok(IpcStatus::Found) => {}
-                Err(_) => {}
-                _ => {}
+            match openat_directory(dir.as_raw_fd(), &name) {
+                Ok(child_fd) => {
+                    let child = File::from(child_fd);
+                    match clean_posix_shm_dir(&child, &entry_path, delete_uid, delete_gid, remove) {
+                        Ok(IpcStatus::Found) if !remove => return Ok(IpcStatus::Found),
+                        Ok(IpcStatus::Found) => {}
+                        Err(error) => remember_error(&mut last_error, error),
+                        Ok(IpcStatus::NotFound) => {}
+                    }
+                }
+                Err(e) if e.raw_os_error() == Some(libc::ENOENT) => {}
+                Err(e) => {
+                    eprintln!(
+                        "Failed to enter POSIX shm directory {}: {}",
+                        entry_path.display(),
+                        e
+                    );
+                    remember_error(&mut last_error, e);
+                }
             }
         }
 
-        if !match_uid_gid(metadata.uid(), metadata.gid(), delete_uid, delete_gid) {
+        if !match_uid_gid(stat.st_uid, stat.st_gid, delete_uid, delete_gid) {
             continue;
         }
 
@@ -365,30 +464,17 @@ fn clean_posix_shm_dir(
             return Ok(IpcStatus::Found);
         }
 
-        let result = if is_dir {
-            fs::remove_dir(entry.path())
-        } else {
-            fs::remove_file(entry.path())
-        };
-
-        match result {
+        match unlinkat_entry(dir.as_raw_fd(), &name, is_dir) {
             Ok(()) => found = true,
             Err(e) if e.raw_os_error() == Some(libc::ENOENT) => {}
             Err(e) => {
-                eprintln!(
-                    "Failed to remove POSIX shm {}: {}",
-                    entry.path().display(),
-                    e
-                );
+                eprintln!("Failed to remove POSIX shm {}: {}", entry_path.display(), e);
+                remember_error(&mut last_error, e);
             }
         }
     }
 
-    Ok(if found {
-        IpcStatus::Found
-    } else {
-        IpcStatus::NotFound
-    })
+    finish_cleanup(found, last_error)
 }
 
 fn clean_posix_shm(
@@ -396,7 +482,13 @@ fn clean_posix_shm(
     delete_gid: Option<libc::gid_t>,
     remove: bool,
 ) -> io::Result<IpcStatus> {
-    clean_posix_shm_dir(Path::new("/dev/shm"), delete_uid, delete_gid, remove)
+    let path = Path::new("/dev/shm");
+    let dir = match open_directory(path) {
+        Ok(dir) => dir,
+        Err(e) if e.raw_os_error() == Some(libc::ENOENT) => return Ok(IpcStatus::NotFound),
+        Err(e) => return Err(e),
+    };
+    clean_posix_shm_dir(&dir, path, delete_uid, delete_gid, remove)
 }
 
 // ── POSIX message queue cleaner ──────────────────────────────────────────
@@ -407,37 +499,38 @@ fn clean_posix_mq(
     delete_gid: Option<libc::gid_t>,
     remove: bool,
 ) -> io::Result<IpcStatus> {
-    let entries = match fs::read_dir("/dev/mqueue") {
-        Ok(e) => e,
+    let dir = match open_directory(Path::new("/dev/mqueue")) {
+        Ok(dir) => dir,
         Err(e) if e.raw_os_error() == Some(libc::ENOENT) => return Ok(IpcStatus::NotFound),
         Err(e) => return Err(e),
     };
+    let entries = read_dir_fd(dir.as_raw_fd())?;
 
     let mut found = false;
+    let mut last_error = None;
 
     for entry in entries {
         let entry = match entry {
             Ok(e) => e,
-            Err(e) if e.raw_os_error() == Some(libc::ENOENT) => continue,
             Err(e) => return Err(e),
         };
 
         let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        if name_str == "." || name_str == ".." {
+        if name.as_bytes() == b"." || name.as_bytes() == b".." {
             continue;
         }
 
-        let metadata = match fs::metadata(entry.path()) {
-            Ok(m) => m,
+        let stat = match fstatat_nofollow(dir.as_raw_fd(), &name) {
+            Ok(stat) => stat,
             Err(e) if e.raw_os_error() == Some(libc::ENOENT) => continue,
             Err(e) => {
-                eprintln!("Failed to stat MQ {}: {}", entry.path().display(), e);
+                eprintln!("Failed to stat MQ {}: {}", name.to_string_lossy(), e);
+                remember_error(&mut last_error, e);
                 continue;
             }
         };
 
-        if !match_uid_gid(metadata.uid(), metadata.gid(), delete_uid, delete_gid) {
+        if !match_uid_gid(stat.st_uid, stat.st_gid, delete_uid, delete_gid) {
             continue;
         }
 
@@ -445,20 +538,21 @@ fn clean_posix_mq(
             return Ok(IpcStatus::Found);
         }
 
-        let mq_name = format!("/{}", name_str);
-        match mq_unlink_named(&mq_name) {
+        match mq_unlink_named(&name) {
             Ok(()) => found = true,
+            Err(e) if e.raw_os_error() == Some(libc::ENOENT) => {}
             Err(e) => {
-                eprintln!("Failed to unlink POSIX message queue {}: {}", mq_name, e);
+                eprintln!(
+                    "Failed to unlink POSIX message queue /{}: {}",
+                    name.to_string_lossy(),
+                    e
+                );
+                remember_error(&mut last_error, e);
             }
         }
     }
 
-    Ok(if found {
-        IpcStatus::Found
-    } else {
-        IpcStatus::NotFound
-    })
+    finish_cleanup(found, last_error)
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -491,21 +585,22 @@ fn clean_ipc_core(uid: libc::uid_t, gid: libc::gid_t, remove: bool) -> io::Resul
             clean_posix_mq,
         ];
 
-        let mut found = false;
+        let mut first_outcome = None;
         for cleaner in cleaners {
             match cleaner(delete_uid, delete_gid, remove) {
                 Ok(IpcStatus::Found) if !remove => return Ok(IpcStatus::Found),
-                Ok(IpcStatus::Found) => found = true,
-                Err(e) => return Err(e),
-                _ => {}
+                Err(e) if !remove => return Err(e),
+                Ok(IpcStatus::Found) => {
+                    first_outcome.get_or_insert(Ok(IpcStatus::Found));
+                }
+                Err(e) => {
+                    first_outcome.get_or_insert(Err(e));
+                }
+                Ok(IpcStatus::NotFound) => {}
             }
         }
 
-        return Ok(if found {
-            IpcStatus::Found
-        } else {
-            IpcStatus::NotFound
-        });
+        return first_outcome.unwrap_or(Ok(IpcStatus::NotFound));
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -516,21 +611,22 @@ fn clean_ipc_core(uid: libc::uid_t, gid: libc::gid_t, remove: bool) -> io::Resul
             bool,
         ) -> io::Result<IpcStatus>] = &[clean_sysvipc_shm, clean_sysvipc_sem, clean_posix_shm];
 
-        let mut found = false;
+        let mut first_outcome = None;
         for cleaner in cleaners {
             match cleaner(delete_uid, delete_gid, remove) {
                 Ok(IpcStatus::Found) if !remove => return Ok(IpcStatus::Found),
-                Ok(IpcStatus::Found) => found = true,
-                Err(e) => return Err(e),
-                _ => {}
+                Err(e) if !remove => return Err(e),
+                Ok(IpcStatus::Found) => {
+                    first_outcome.get_or_insert(Ok(IpcStatus::Found));
+                }
+                Err(e) => {
+                    first_outcome.get_or_insert(Err(e));
+                }
+                Ok(IpcStatus::NotFound) => {}
             }
         }
 
-        Ok(if found {
-            IpcStatus::Found
-        } else {
-            IpcStatus::NotFound
-        })
+        first_outcome.unwrap_or(Ok(IpcStatus::NotFound))
     }
 }
 
@@ -717,11 +813,11 @@ mod tests {
 
     #[test]
     fn test_parse_sysvipc_msg_line_valid() {
-        let line = "0x00000000 0 0644 0 0 0 0 1000 1000 1000 1000 1700000000 1700000000 1700000000";
+        let line = "0x00000000 0 0644 0 0 0 0 1000 1001 1002 1003 1700000000 1700000000 1700000000";
         let entry = parse_sysvipc_msg_line(line).unwrap();
         assert_eq!(entry.msgid, 0);
         assert_eq!(entry.uid, 1000);
-        assert_eq!(entry.gid, 1000);
+        assert_eq!(entry.gid, 1001);
     }
 
     #[test]
