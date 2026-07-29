@@ -1772,20 +1772,6 @@ if get_option('rust').enabled()
         test('test-credential-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-glob-util-rust',
-                files('test-glob-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-glob-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-fstype-util-rust',
                 files('test-fstype-util-rust.c'),
                 include_directories : includes,
@@ -2522,20 +2508,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-safe-math-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-ioprio-util-rust',
-                'test-ioprio-util-rust.c',
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-ioprio-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-percent-scale-rust',

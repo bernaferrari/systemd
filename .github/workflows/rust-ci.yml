@@ -152,7 +152,6 @@ jobs:
           test-unit-dbus-rust
           test-ratelimit-rust
           test-extract-word-rust
-          test-glob-util-rust
           test-user-shell-util-rust
           test-strbuf-rust
           test-mempool-rust
@@ -279,7 +278,6 @@ jobs:
           test-alloc-util-rust
           test-alloc-util-extra2-rust
           test-compress-util-rust
-          test-ioprio-util-rust
           test-mount-setup-rust
           test-namespace-mountpoint-rust
           test-nsflags-rust
@@ -311,7 +309,6 @@ jobs:
           test-unit-dbus-rust
           test-ratelimit-rust
           test-extract-word-rust
-          test-glob-util-rust
           test-user-shell-util-rust
           test-strbuf-rust
           test-mempool-rust
@@ -438,7 +435,6 @@ jobs:
           test-alloc-util-rust
           test-alloc-util-extra2-rust
           test-compress-util-rust
-          test-ioprio-util-rust
           test-mount-setup-rust
           test-namespace-mountpoint-rust
           test-nsflags-rust

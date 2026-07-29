@@ -1187,23 +1187,6 @@ def safe_math_boundary_is_reviewed() -> bool:
     )
 
 
-def ioprio_boundary_is_reviewed() -> bool:
-    source = SURFACES["ioprio_util"][1].read_text()
-    header = SURFACES["ioprio_util"][0].read_text()
-    test = SHADOW_TESTS["ioprio_util"][0].read_text()
-    return (
-        "let priolevel = data & IOPRIO_LEVEL_MASK;" in source
-        and "let priohint = (data >> IOPRIO_HINT_SHIFT) & IOPRIO_HINT_MASK;" in source
-        and "if prioclass < 0 || prioclass >= IOPRIO_NR_CLASSES" in source
-        and "data < 0" not in source
-        and "int rs_ioprio_prio_value(int class, int data);" in header
-        and '#include "rust/ioprio_util.h"' in test
-        and "int rs_ioprio_prio_value(" not in test
-        and "ioprio_prio_value(IOPRIO_CLASS_BE, -1)" in test
-        and "ioprio_prio_value(IOPRIO_CLASS_BE, INT_MAX)" in test
-    )
-
-
 def time_arithmetic_boundary_is_reviewed() -> bool:
     header, source, _ = PARTIAL_SURFACES["time_util_arithmetic"]
     source_text = source.read_text()
@@ -3318,10 +3301,6 @@ def main() -> int:
     if not safe_math_boundary_is_reviewed():
         return fail(
             "safe_math must preserve target-width unsigned-long alignment and current C overflow sentinels"
-        )
-    if not ioprio_boundary_is_reviewed():
-        return fail(
-            "ioprio_util must mask packed level/hint data exactly like current Linux before class validation"
         )
     if not time_arithmetic_boundary_is_reviewed():
         return fail(

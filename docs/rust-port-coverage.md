@@ -13,17 +13,17 @@ Scope: `src`
 ## Snapshot Totals
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1416**
+- All `src` Rust files: **1410**
 - Rust metadata adapters: **30**
 - Rust test/fuzz support files: **95**
-- Unverified Rust behavior candidates: **1291**
+- Unverified Rust behavior candidates: **1285**
 
 Excluding `src/test`:
 - C files: **1569**
-- Rust files: **1416**
+- Rust files: **1410**
 - Rust metadata adapters: **30**
 - Rust test/fuzz support files: **95**
-- Unverified Rust behavior candidates: **1291**
+- Unverified Rust behavior candidates: **1285**
 
 ## Per-Subsystem Inventory
 
@@ -33,7 +33,7 @@ Excluding `src/test`:
 | `analyze` | 40 | 2 | 0 | 0 | 2 |
 | `ask-password` | 1 | 3 | 0 | 0 | 3 |
 | `backlight` | 1 | 3 | 0 | 0 | 3 |
-| `basic` | 119 | 154 | 0 | 2 | 152 |
+| `basic` | 119 | 152 | 0 | 2 | 150 |
 | `battery-check` | 1 | 3 | 0 | 0 | 3 |
 | `binfmt` | 1 | 2 | 0 | 0 | 2 |
 | `bless-boot` | 3 | 0 | 0 | 0 | 0 |
@@ -119,7 +119,7 @@ Excluding `src/test`:
 | `run` | 2 | 3 | 0 | 0 | 3 |
 | `run-generator` | 1 | 3 | 0 | 0 | 3 |
 | `sbsign` | 2 | 0 | 0 | 0 | 0 |
-| `shared` | 283 | 271 | 0 | 6 | 265 |
+| `shared` | 283 | 267 | 0 | 6 | 261 |
 | `shutdown` | 7 | 0 | 0 | 0 | 0 |
 | `sleep` | 3 | 0 | 0 | 0 | 0 |
 | `socket-activate` | 1 | 3 | 0 | 0 | 3 |

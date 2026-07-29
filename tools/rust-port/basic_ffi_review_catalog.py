@@ -43,7 +43,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "dns_type_predicates.rs",
         ),
         "iovec_util": (basic_rust / "iovec_util.h", basic_rust / "iovec_util.rs"),
-        "ioprio_util": (basic_rust / "ioprio_util.h", basic_rust / "ioprio_util.rs"),
         "import_util": (basic_rust / "import_util.h", basic_rust / "import_util.rs"),
         "unit_name": (basic_rust / "unit_name.h", basic_rust / "unit_name.rs"),
         "errno_util": (basic_rust / "errno_util.h", basic_rust / "errno_util.rs"),
@@ -260,11 +259,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "extract_word.h",
             basic_rust / "extract_word.rs",
             frozenset({"rs_extract_first_word"}),
-        ),
-        "glob_util": (
-            shared_rust / "glob_util.h",
-            basic_rust / "glob_util.rs",
-            frozenset({"rs_string_is_glob", "rs_glob_non_glob_prefix"}),
         ),
         "user_shell_util": (
             shared_rust / "user_shell_util.h",
@@ -1420,7 +1414,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-errno-util-extra3-rust.c",
         ),
         "iovec_util": (tests_extra / "test-iovec-util-rust.c",),
-        "ioprio_util": (tests_extra / "test-ioprio-util-rust.c",),
         "import_util": (tests_extra / "test-seccomp-import-rust.c",),
         "unit_name": (tests_extra / "test-unit-name-rust.c",),
         "percent_util": (
@@ -1470,7 +1463,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "unit_dbus": (tests_extra / "test-unit-dbus-rust.c",),
         "ratelimit": (tests_extra / "test-ratelimit-rust.c",),
         "extract_word": (tests_extra / "test-extract-word-rust.c",),
-        "glob_util": (tests_extra / "test-glob-util-rust.c",),
         "user_shell_util": (tests_extra / "test-user-shell-util-rust.c",),
         "parse_util_fractional": (tests_extra / "test-user-shell-util-rust.c",),
         "strbuf": (tests_extra / "test-strbuf-rust.c",),
@@ -1657,7 +1649,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/seccomp-util.h",
         ),
         "iovec_util": (root / "src/basic/iovec-util.c", root / "src/fundamental/iovec-util.h"),
-        "ioprio_util": (root / "src/shared/ioprio-util.h",),
         "import_util": (root / "src/shared/import-util.c", root / "src/shared/reboot-util.c"),
         "unit_name": (root / "src/basic/unit-name.c",),
         "percent_util": (root / "src/basic/percent-util.c", root / "src/basic/percent-util.h"),
@@ -1735,7 +1726,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/extract-word.c",
             root / "src/basic/extract-word.h",
         ),
-        "glob_util": (root / "src/basic/glob-util.c", root / "src/basic/glob-util.h"),
         "user_shell_util": (
             root / "src/basic/user-util.c",
             root / "src/basic/user-util.h",

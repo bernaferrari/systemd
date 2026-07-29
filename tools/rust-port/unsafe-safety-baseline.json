@@ -205,11 +205,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 21
     },
-    "src/basic/rust/glob_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
     "src/basic/rust/glyph_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],

@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 11:26 UTC
+Generated: 2026-07-29 11:32 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **369**
-- `genuine-rust`: **246**
-- `ffi-backed-rust`: **123**
+- Total modules audited: **363**
+- `genuine-rust`: **242**
+- `ffi-backed-rust`: **121**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -67,7 +67,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/extract_word.rs` | 1 | 35 | 0 | 104 |
 | `src/basic/rust/format_util.rs` | 2 | 27 | 0 | 13 |
 | `src/basic/rust/fstype_util.rs` | 8 | 39 | 0 | 10 |
-| `src/basic/rust/glob_util.rs` | 2 | 24 | 0 | 12 |
 | `src/basic/rust/glyph_util.rs` | 1 | 36 | 0 | 26 |
 | `src/basic/rust/gpt_util.rs` | 17 | 41 | 0 | 45 |
 | `src/basic/rust/gunicode.rs` | 2 | 28 | 1 | 8 |
@@ -80,7 +79,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/image_policy_util.rs` | 17 | 69 | 0 | 169 |
 | `src/basic/rust/import_util.rs` | 5 | 23 | 0 | 29 |
 | `src/basic/rust/in_addr_util.rs` | 1 | 77 | 1 | 199 |
-| `src/basic/rust/ioprio_util.rs` | 4 | 34 | 0 | 2 |
 | `src/basic/rust/iovec_util.rs` | 12 | 41 | 0 | 34 |
 | `src/basic/rust/iovec_wrapper.rs` | 8 | 36 | 0 | 34 |
 | `src/basic/rust/locale_util.rs` | 3 | 37 | 0 | 7 |
