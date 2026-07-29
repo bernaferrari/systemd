@@ -284,8 +284,7 @@ TEST(id128_from_string_nonzero_preserves_output_on_error) {
 }
 
 TEST(id128_from_string_nonzero_null_args) {
-        sd_id128_t dummy;
-        int rc, rr2;
+        int rr2;
 
         /* NULL ret (C version uses ASSERT_PTR which aborts, so only test Rust) */
         rr2 = rs_id128_from_string_nonzero("f97d158c50d44ebaa4967a35e1d4075c", NULL);

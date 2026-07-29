@@ -290,6 +290,24 @@ TEST(extract_first_word_dont_coalesce) {
         free(rs_word);
 }
 
+/* A final non-coalesced separator leaves C's cursor at its terminating NUL,
+ * not at NULL. Consumers use that distinction to reject trailing separators. */
+TEST(extract_first_word_terminal_separator_cursor) {
+        const char *c_input = "-";
+        const char *rs_input = "-";
+        char *c_word = NULL, *rs_word = NULL;
+
+        int cr = extract_first_word(&c_input, &c_word, "-", EXTRACT_DONT_COALESCE_SEPARATORS);
+        int rr = rs_extract_first_word(&rs_input, &rs_word, "-", EXTRACT_DONT_COALESCE_SEPARATORS);
+        assert_se(cr == rr && cr == 1);
+        assert_se(streq(c_word, rs_word));
+        assert_se(streq(c_word, ""));
+        assert_se(c_input && rs_input);
+        assert_se(*c_input == '\0' && *rs_input == '\0');
+        free(c_word);
+        free(rs_word);
+}
+
 /* ── extract_first_word: multiple words sequentially ─────────────────────── */
 
 TEST(extract_first_word_sequential) {

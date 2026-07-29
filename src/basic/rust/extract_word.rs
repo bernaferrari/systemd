@@ -626,9 +626,13 @@ fn extract_first_word_bytes(
                 if !flags_set(flags, EXTRACT_RETAIN_SEPARATORS) {
                     p += 1;
                 }
+                // C preserves a cursor at the terminating NUL after a
+                // non-coalesced separator. That is observably different from
+                // NULL: callers such as parse_range use it to reject a
+                // trailing separator rather than treating the value as done.
                 return Ok(ExtractBytesResult::Word {
                     word,
-                    next: (p < input.len()).then_some(p),
+                    next: Some(p),
                 });
             }
             p += 1;
@@ -743,7 +747,9 @@ fn extract_first_word_bytes(
                 }
                 return Ok(ExtractBytesResult::Word {
                     word,
-                    next: (p < input.len()).then_some(p),
+                    // Keep the one-past-last cursor for the same C-visible
+                    // trailing-separator distinction as above.
+                    next: Some(p),
                 });
             }
             if !flags_set(flags, EXTRACT_RETAIN_SEPARATORS) {

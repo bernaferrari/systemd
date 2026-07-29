@@ -53,12 +53,14 @@ static void test_credential_name_valid_with_dotdot(void) {
 
 static void test_credential_name_valid_c_string_bytes(void) {
         const char non_ascii[] = { (char) 0xff, 0 };
+        const char control[] = "foo\x01" "bar";
         char longest[NAME_MAX + 2];
 
         memset(longest, 'x', sizeof(longest) - 1);
         longest[sizeof(longest) - 1] = 0;
 
         assert_credential_name_matches(non_ascii);
+        assert_credential_name_matches(control);
         assert_credential_name_matches(longest);
         longest[sizeof(longest) - 2] = 0;
         assert_credential_name_matches(longest);
@@ -109,12 +111,14 @@ static void test_credential_glob_invalid_multiple_wildcards(void) {
 
 static void test_credential_glob_valid_c_string_bytes(void) {
         const char non_ascii[] = { (char) 0xff, 0 };
+        const char control[] = "foo\x01" "bar";
         char longest[NAME_MAX + 2];
 
         memset(longest, 'x', sizeof(longest) - 1);
         longest[sizeof(longest) - 1] = 0;
 
         assert_credential_glob_matches(non_ascii);
+        assert_credential_glob_matches(control);
         assert_credential_glob_matches(longest);
         longest[sizeof(longest) - 2] = '*';
         assert_credential_glob_matches(longest);

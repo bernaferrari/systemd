@@ -211,8 +211,8 @@ tier = 2
 symbols = 1
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/extract-word.c" = "5ebf67437c2c7d0fa4f4b9e2b47c58c60829a2f1", "src/basic/extract-word.h" = "2740de9189e4e3e7499ce33084d8ec6b9db28006" }
-last_reviewed_rust_blobs = { "src/basic/rust/extract_word.rs" = "27c196a22ef8e805f986608b30476d8718157160", "src/basic/rust/extract_word.h" = "12cbe4c512c884b86d1649d231bf4a6280cae581" }
-notes = "Reviewed static extract-word ABI slice 2026-07-29; no build/tests/VM. The first-word facade preserves raw C strings, cursor advancement, quoting, escaping, errors, and libc allocation. The logging variant is deliberately excluded because its observable syntax-logging contract is not yet faithfully ported. C remains production authority; runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/extract_word.rs" = "8175da826744cd4b37a19e4893422321bf00f97b", "src/basic/rust/extract_word.h" = "12cbe4c512c884b86d1649d231bf4a6280cae581" }
+notes = "Reviewed extract-word ABI slice 2026-07-29; the focused C/R Meson shadow passed in the Ubuntu Lima guest, including the terminal non-coalesced-separator cursor contract. The first-word facade preserves raw C strings, cursor advancement, quoting, escaping, errors, and libc allocation. The logging variant is deliberately excluded because its observable syntax-logging contract is not yet faithfully ported. C remains production authority; broader runtime parity remains P2."
 
 [strv]
 c_paths = [
@@ -874,14 +874,14 @@ c_provenance_edges = [
     { kind = "direct", path = "src/basic/unit-def.c", rust_paths = ["src/basic/rust/unit_def.rs", "src/basic/rust/unit_def.h"] },
     { kind = "direct", path = "src/basic/unit-def.h", rust_paths = ["src/basic/rust/unit_def.rs", "src/basic/rust/unit_def.h"] },
 ]
-test_file = "tests-extra/test-unit-dbus-rust.c"
+test_file = "tests-extra/test-unit-def-rust.c; tests-extra/test-unit-dbus-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 4
+symbols = 46
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/unit-def.c" = "57a67af163e31c9f42b2017f54d135ebbf576233", "src/basic/unit-def.h" = "9192d8c4a530f6292ed2dd953be1cdd0500a535b" }
-last_reviewed_rust_blobs = { "src/basic/rust/unit_def.rs" = "c33faa8ecf7eeae204c8f1199a4539b993385588", "src/basic/rust/unit_def.h" = "d2a1e4a2177fd85f3975a22f9e8f7253da727ecd" }
-notes = "Reviewed static unit D-Bus ABI slice 2026-07-29; no build/tests/VM. Four facades preserve raw-byte escaping, C-owned path/name outputs with deferred publication, and static interface strings. The existing table facades remain separately tracked; runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/unit_def.rs" = "eabc5c75707e3be80181a6b2948633eecf1afd41", "src/basic/rust/unit_def.h" = "d2a1e4a2177fd85f3975a22f9e8f7253da727ecd" }
+notes = "Reviewed unit-definition ABI/table slice 2026-07-29; the C/R unit-def Meson shadow passed in the Ubuntu Lima guest. Forty-six facades cover raw-byte escaping, C-owned path/name outputs with deferred publication, static interface strings, and current enum/string-table discriminants. C remains production authority; broader runtime parity remains P2."
 
 [rlimit-util]
 c_file = "src/basic/rlimit-util.c"

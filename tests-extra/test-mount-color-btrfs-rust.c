@@ -2,6 +2,7 @@
 /* Shadow test: C mount_propagation_flag, color-util, coredump_filter vs Rust */
 
 #include "tests.h"
+#include <math.h>
 #include <sys/mount.h>
 #include "mountpoint-util.h"
 #include "color-util.h"
@@ -118,6 +119,44 @@ static void test_mount_propagation_flag(void) {
 
 /* ── rgb_to_hsv / hsv_to_rgb ────────────────────────────────────────────── */
 
+/* Inputs and outputs are bounded, so this is tight relative to the HSV range
+ * while allowing equivalent C and Rust floating-point expressions to differ
+ * in their final rounding. */
+#define HSV_EPSILON 1e-12
+
+static void assert_finite_double_close(double a, double b) {
+        assert_se(isfinite(a));
+        assert_se(isfinite(b));
+        assert_se(fabs(a - b) <= HSV_EPSILON);
+}
+
+static void assert_rgb_to_hsv_parity(
+                double r,
+                double g,
+                double b,
+                double expected_h,
+                double expected_s,
+                double expected_v,
+                bool expected_h_is_nan) {
+
+        double ch, cs, cv, rh, rs, rv;
+
+        rgb_to_hsv(r, g, b, &ch, &cs, &cv);
+        rs_rgb_to_hsv(r, g, b, &rh, &rs, &rv);
+
+        if (expected_h_is_nan)
+                assert_se(isnan(ch) && isnan(rh));
+        else {
+                assert_finite_double_close(ch, rh);
+                assert_finite_double_close(ch, expected_h);
+        }
+
+        assert_finite_double_close(cs, rs);
+        assert_finite_double_close(cv, rv);
+        assert_finite_double_close(cs, expected_s);
+        assert_finite_double_close(cv, expected_v);
+}
+
 static void test_rgb_hsv(void) {
         double ch, cs, cv;
         double rh, rs, rv;
@@ -125,35 +164,21 @@ static void test_rgb_hsv(void) {
         uint8_t rr_r, rr_g, rr_b;
 
         /* Black: RGB(0,0,0) → V=0, S=0, H=NaN */
-        rs_rgb_to_hsv(0.0, 0.0, 0.0, &rh, &rs, &rv);
+        assert_rgb_to_hsv_parity(0.0, 0.0, 0.0, NAN, 0.0, 0.0, true);
         rs_hsv_to_rgb(0.0, 0.0, 0.0, &rr_r, &rr_g, &rr_b);
-        assert_se(rv == 0.0);
-        assert_se(rs == 0.0);
-        assert_se(rh != rh); /* NaN check */
         assert_se(rr_r == 0 && rr_g == 0 && rr_b == 0);
 
         /* White: RGB(1,1,1) → V=100, S=0, H=NaN */
-        rs_rgb_to_hsv(1.0, 1.0, 1.0, &rh, &rs, &rv);
-        assert_se(rv == 100.0);
-        assert_se(rs == 0.0);
-        assert_se(rh != rh); /* NaN check */
+        assert_rgb_to_hsv_parity(1.0, 1.0, 1.0, NAN, 0.0, 100.0, true);
 
         /* Pure red: RGB(1,0,0) → H=0, S=100, V=100 */
-        rs_rgb_to_hsv(1.0, 0.0, 0.0, &rh, &rs, &rv);
-        assert_se(rh == 0.0);
-        assert_se(rs == 100.0);
-        assert_se(rv == 100.0);
+        assert_rgb_to_hsv_parity(1.0, 0.0, 0.0, 0.0, 100.0, 100.0, false);
 
         /* Pure green: RGB(0,1,0) → H=120, S=100, V=100 */
-        rs_rgb_to_hsv(0.0, 1.0, 0.0, &rh, &rs, &rv);
-        assert_se(rh == 120.0);
-        assert_se(rs == 100.0);
-        assert_se(rv == 100.0);
+        assert_rgb_to_hsv_parity(0.0, 1.0, 0.0, 120.0, 100.0, 100.0, false);
 
         /* Pure blue: RGB(0,0,1) → H=240, S=100, V=100 */
-        rs_rgb_to_hsv(0.0, 0.0, 1.0, &rh, &rs, &rv);
-        assert_se(rh == 240.0);
-        assert_se(rv == 100.0);
+        assert_rgb_to_hsv_parity(0.0, 0.0, 1.0, 240.0, 100.0, 100.0, false);
 
         /* Round-trip: verify Rust hsv_to_rgb values */
         rs_hsv_to_rgb(0.0, 100.0, 100.0, &rr_r, &rr_g, &rr_b);
@@ -168,9 +193,9 @@ static void test_rgb_hsv(void) {
         /* C and Rust rgb_to_hsv agree */
         rgb_to_hsv(0.5, 0.3, 0.7, &ch, &cs, &cv);
         rs_rgb_to_hsv(0.5, 0.3, 0.7, &rh, &rs, &rv);
-        assert_se(ch == rh);
-        assert_se(cs == rs);
-        assert_se(cv == rv);
+        assert_finite_double_close(ch, rh);
+        assert_finite_double_close(cs, rs);
+        assert_finite_double_close(cv, rv);
 
         /* C and Rust hsv_to_rgb agree */
         hsv_to_rgb(270.0, 50.0, 80.0, &cr_r, &cr_g, &cr_b);

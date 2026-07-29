@@ -63,8 +63,8 @@ static void test_parse_range(void) {
         /* Invalid: dash only */
         cr = parse_range("-", &cl, &cu);
         rr = rs_parse_range("-", &rl, &ru);
-        assert_se(cr < 0);
-        assert_se(rr < 0);
+        assert_se(cr == rr);
+        assert_se(cr == -EINVAL);
 
         /* Invalid: second part not a number */
         cr = parse_range("5-abc", &cl, &cu);

@@ -62,8 +62,8 @@ static void test_credential_name_valid(void) {
         assert_se(!cv);
 
         /* Control characters not valid */
-        cv = credential_name_valid("foo\x01bar");
-        rv = rs_credential_name_valid("foo\x01bar");
+        cv = credential_name_valid("foo\x01" "bar");
+        rv = rs_credential_name_valid("foo\x01" "bar");
         assert_se(cv == rv);
         assert_se(!cv);
 

@@ -429,8 +429,8 @@ pub enum UnitDependency {
     RequisiteOf,
     WantedBy,
     BoundBy,
-    UpheldBy,
     ConsistsOf,
+    UpheldBy,
     Conflicts,
     ConflictedBy,
     Before,
@@ -455,7 +455,7 @@ pub enum UnitDependency {
 ffi_string_table!(UNIT_DEPENDENCY_TABLE, UnitDependency, rs_unit_dependency_to_string, rs_unit_dependency_from_string;
     Requires => "Requires", Requisite => "Requisite", Wants => "Wants", BindsTo => "BindsTo",
     PartOf => "PartOf", Upholds => "Upholds", RequiredBy => "RequiredBy", RequisiteOf => "RequisiteOf",
-    WantedBy => "WantedBy", BoundBy => "BoundBy", UpheldBy => "UpheldBy", ConsistsOf => "ConsistsOf",
+    WantedBy => "WantedBy", BoundBy => "BoundBy", ConsistsOf => "ConsistsOf", UpheldBy => "UpheldBy",
     Conflicts => "Conflicts", ConflictedBy => "ConflictedBy", Before => "Before", After => "After",
     OnSuccess => "OnSuccess", OnSuccessOf => "OnSuccessOf", OnFailure => "OnFailure", OnFailureOf => "OnFailureOf",
     Triggers => "Triggers", TriggeredBy => "TriggeredBy", PropagatesReloadTo => "PropagatesReloadTo",
@@ -946,9 +946,16 @@ mod tests {
 
     #[test]
     fn test_unit_dependency_roundtrip() {
+        /* These adjacent inverse dependencies have historically been easy to
+         * transpose. Keep their C ABI discriminants explicit. */
+        assert_eq!(UnitDependency::ConsistsOf as i32, 10);
+        assert_eq!(UnitDependency::UpheldBy as i32, 11);
+
         let all = [
             UnitDependency::Requires,
             UnitDependency::Wants,
+            UnitDependency::ConsistsOf,
+            UnitDependency::UpheldBy,
             UnitDependency::After,
             UnitDependency::SliceOf,
         ];
