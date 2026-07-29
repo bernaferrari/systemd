@@ -12,6 +12,7 @@
 use std::ffi::CString;
 use std::fs;
 use std::io;
+use std::mem::MaybeUninit;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -268,13 +269,17 @@ fn apply_xattr_path(path: &Path, xattr_name: &[u8], label: Option<&str>) -> Resu
     match label {
         Some(value) => {
             let c_label = CString::new(value).map_err(|_| SmackError::InvalidLabel)?;
-            // SAFETY: all pointers are valid null-terminated byte strings.
+            // SAFETY: `path_cstr` and `xattr_name` are NUL-terminated. `c_label`
+            // points to `as_bytes().len()` initialized bytes; the CString terminator
+            // is intentionally excluded because xattr values are raw bytes and C
+            // passes `strlen(label)` to xsetxattr().
+            // SAFETY: all raw pointers and the value length are valid for this call.
             let ret = unsafe {
                 libc::lsetxattr(
                     path_cstr.as_ptr(),
                     xattr_name.as_ptr(),
                     c_label.as_ptr() as *const libc::c_void,
-                    c_label.as_bytes_with_nul().len(),
+                    c_label.as_bytes().len(),
                     0,
                 )
             };
@@ -301,14 +306,15 @@ fn apply_xattr_fd(fd: i32, xattr_name: &[u8], label: Option<&str>) -> Result<(),
     match label {
         Some(value) => {
             let c_label = CString::new(value).map_err(|_| SmackError::InvalidLabel)?;
-            // SAFETY: fd assumed valid, label is valid.
+            // SAFETY: `fd` is passed through to the kernel. `xattr_name` is
+            // NUL-terminated and `c_label` points to the initialized raw value
+            // bytes, excluding its CString terminator as required by xattr(7).
             let ret = unsafe {
                 libc::fsetxattr(
                     fd,
                     xattr_name.as_ptr(),
                     c_label.as_ptr() as *const libc::c_void,
-                    c_label.as_bytes_with_nul().len(),
-                    0,
+                    c_label.as_bytes().len(),
                     0,
                 )
             };
@@ -319,8 +325,9 @@ fn apply_xattr_fd(fd: i32, xattr_name: &[u8], label: Option<&str>) -> Result<(),
             }
         }
         None => {
-            // SAFETY: fd assumed valid.
-            let ret = unsafe { libc::fremovexattr(fd, xattr_name.as_ptr(), 0) };
+            // SAFETY: `fd` is passed through to the kernel and `xattr_name` is
+            // a valid NUL-terminated attribute name.
+            let ret = unsafe { libc::fremovexattr(fd, xattr_name.as_ptr()) };
             if ret < 0 {
                 Err(SmackError::from(std::io::Error::last_os_error()))
             } else {
@@ -377,11 +384,15 @@ fn smack_fix_fd_inner(fd: i32, label_path: &Path, flags: LabelFixFlags) -> Resul
         return Ok(());
     }
 
-    let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: fd assumed valid, stat_buf is stack-allocated.
-    if unsafe { libc::fstat(fd, &mut stat_buf) } < 0 {
+    let mut stat_buf = MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat_buf` points to writable, properly aligned storage for a
+    // complete stat result. The kernel reports an invalid descriptor as an
+    // error without initializing that storage.
+    if unsafe { libc::fstat(fd, stat_buf.as_mut_ptr()) } < 0 {
         return Err(SmackError::from(std::io::Error::last_os_error()));
     }
+    // SAFETY: successful fstat(2) initialized the entire output struct.
+    let stat_buf = unsafe { stat_buf.assume_init() };
 
     let label = match label_for_file_type(stat_buf.st_mode as u32) {
         Some(l) => l,
@@ -389,16 +400,34 @@ fn smack_fix_fd_inner(fd: i32, label_path: &Path, flags: LabelFixFlags) -> Resul
     };
 
     let c_label = CString::new(label).unwrap();
-    // SAFETY: fd valid, c_label valid, XATTR_SMACK64 is valid null-terminated.
+    // xsetxattr_full() in the C implementation uses /proc/self/fd for O_PATH
+    // descriptors, because fsetxattr(2) rejects them with EBADF. Keep that
+    // behavior here: mac_smack_fix_full() deliberately opens named inodes with
+    // O_PATH|O_NOFOLLOW to pin them without following a final symlink.
+    // SAFETY: F_GETFL neither dereferences Rust memory nor takes ownership of
+    // `fd`; every branch passes NUL-terminated attribute and path names plus
+    // a live raw label slice to the kernel for the duration of this call.
     let ret = unsafe {
-        libc::fsetxattr(
-            fd,
-            XATTR_SMACK64.as_ptr(),
-            c_label.as_ptr() as *const libc::c_void,
-            c_label.as_bytes_with_nul().len(),
-            0,
-            libc::AT_EMPTY_PATH,
-        )
+        let fd_flags = libc::fcntl(fd, libc::F_GETFL);
+        if fd_flags >= 0 && (fd_flags & O_PATH) != 0 {
+            let proc_fd_path = CString::new(format!("/proc/self/fd/{fd}"))
+                .expect("a decimal file descriptor contains no NUL bytes");
+            libc::setxattr(
+                proc_fd_path.as_ptr(),
+                XATTR_SMACK64.as_ptr(),
+                c_label.as_ptr() as *const libc::c_void,
+                c_label.as_bytes().len(),
+                0,
+            )
+        } else {
+            libc::fsetxattr(
+                fd,
+                XATTR_SMACK64.as_ptr(),
+                c_label.as_ptr() as *const libc::c_void,
+                c_label.as_bytes().len(),
+                0,
+            )
+        }
     };
 
     if ret >= 0 {

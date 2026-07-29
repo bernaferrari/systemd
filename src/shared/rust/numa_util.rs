@@ -77,12 +77,16 @@ pub enum MpolType {
     Interleave = 3,
     /// Local node allocation (preferred node is the node of the CPU).
     Local = 4,
+    /// Prefer allocation from the supplied set of NUMA nodes.
+    PreferredMany = 5,
+    /// Interleave allocation using the kernel's weighted node distribution.
+    WeightedInterleave = 6,
 }
 
 impl MpolType {
     /// All valid policy type values, as a range of raw i32 values.
     pub const MIN_RAW: i32 = 0;
-    pub const MAX_RAW: i32 = 4;
+    pub const MAX_RAW: i32 = 6;
 
     /// Check if a raw i32 value represents a valid policy type.
     pub fn is_valid_raw(raw: i32) -> bool {
@@ -97,6 +101,8 @@ impl MpolType {
             2 => Some(Self::Bind),
             3 => Some(Self::Interleave),
             4 => Some(Self::Local),
+            5 => Some(Self::PreferredMany),
+            6 => Some(Self::WeightedInterleave),
             _ => None,
         }
     }
@@ -114,6 +120,8 @@ impl MpolType {
             Self::Bind => "bind",
             Self::Interleave => "interleave",
             Self::Local => "local",
+            Self::PreferredMany => "preferred-many",
+            Self::WeightedInterleave => "weighted-interleave",
         }
     }
 
@@ -125,6 +133,8 @@ impl MpolType {
             "bind" => Some(Self::Bind),
             "interleave" => Some(Self::Interleave),
             "local" => Some(Self::Local),
+            "preferred-many" => Some(Self::PreferredMany),
+            "weighted-interleave" => Some(Self::WeightedInterleave),
             _ => None,
         }
     }
@@ -145,15 +155,18 @@ impl MpolType {
 /// A bitmap representing a set of NUMA nodes.
 ///
 /// Each bit `i` set in the mask indicates that NUMA node `i` is included.
-/// The internal representation uses 64-bit words, matching the kernel's
-/// `unsigned long`-based nodemask on 64-bit systems.
+/// The internal representation uses the target's `unsigned long` width, the
+/// word format required by the `set_mempolicy(2)` ABI on both 32- and 64-bit
+/// Linux targets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeMask {
-    /// Bitmap stored as a vector of 64-bit words.
-    words: Vec<u64>,
+    /// Bitmap stored in the kernel ABI's `unsigned long` word format.
+    words: Vec<libc::c_ulong>,
 }
 
 impl NodeMask {
+    const BITS_PER_WORD: usize = std::mem::size_of::<libc::c_ulong>() * u8::BITS as usize;
+
     /// Create an empty node mask.
     pub fn new() -> Self {
         Self { words: Vec::new() }
@@ -161,29 +174,29 @@ impl NodeMask {
 
     /// Create a node mask with enough capacity for `max_node` nodes.
     pub fn with_capacity(max_node: u32) -> Self {
-        let n_words = (max_node as usize + 64) / 64;
+        let n_words = max_node as usize / Self::BITS_PER_WORD + 1;
         Self {
-            words: vec![0u64; n_words],
+            words: vec![0; n_words],
         }
     }
 
     /// Set a node in the mask.
     pub fn set(&mut self, node: u32) {
-        let word_idx = node as usize / 64;
-        let bit_idx = node as usize % 64;
+        let word_idx = node as usize / Self::BITS_PER_WORD;
+        let bit_idx = node as usize % Self::BITS_PER_WORD;
         if word_idx >= self.words.len() {
             self.words.resize(word_idx + 1, 0);
         }
-        self.words[word_idx] |= 1u64 << bit_idx;
+        self.words[word_idx] |= 1 << bit_idx;
     }
 
     /// Test whether a node is set in the mask.
     pub fn is_set(&self, node: u32) -> bool {
-        let word_idx = node as usize / 64;
-        let bit_idx = node as usize % 64;
+        let word_idx = node as usize / Self::BITS_PER_WORD;
+        let bit_idx = node as usize % Self::BITS_PER_WORD;
         self.words
             .get(word_idx)
-            .map_or(false, |w| *w & (1u64 << bit_idx) != 0)
+            .is_some_and(|word| *word & (1 << bit_idx) != 0)
     }
 
     /// Return the number of nodes set in the mask.
@@ -193,7 +206,7 @@ impl NodeMask {
 
     /// Return the total number of bits (nodes) the mask can represent.
     pub fn capacity(&self) -> usize {
-        self.words.len() * 64
+        self.words.len() * Self::BITS_PER_WORD
     }
 
     /// Return true if the mask is empty (no nodes set).
@@ -203,10 +216,10 @@ impl NodeMask {
 
     /// Convert to the `(maxnode, nodes)` format expected by `set_mempolicy(2)`.
     ///
-    /// Returns `(maxnode, Option<&[u64]>)` where `maxnode` is `capacity + 1`
-    /// (per kernel convention) and `nodes` is the word array. Returns `None`
-    /// for the nodes slice when no nodes are set.
-    pub fn to_mempolicy_format(&self) -> (usize, Option<&[u64]>) {
+    /// Returns `(maxnode, Option<&[libc::c_ulong]>)` where `maxnode` is
+    /// `capacity + 1` (per kernel convention) and `nodes` is the kernel ABI
+    /// word array. Returns `None` for the nodes slice when no nodes are set.
+    pub fn to_mempolicy_format(&self) -> (usize, Option<&[libc::c_ulong]>) {
         if self.is_empty() {
             return (0, None);
         }
@@ -336,6 +349,8 @@ impl NumaPolicy {
 /// supported, or `Err(NumaError::NotSupported)` if `ENOSYS`.
 #[cfg(target_os = "linux")]
 pub fn numa_is_supported() -> Result<(), NumaError> {
+    // SAFETY: the syscall explicitly permits all output pointers to be null
+    // when no query flags request data, and no Rust memory is dereferenced.
     let ret = unsafe {
         libc::get_mempolicy(
             std::ptr::null_mut(),
@@ -377,11 +392,14 @@ pub fn apply_numa_policy(policy: &NumaPolicy) -> Result<(), NumaError> {
 
     let (mode, maxnode, nodes) = policy.to_mempolicy();
 
+    // SAFETY: `nodes` either supplies a null pointer with `maxnode == 0`, or
+    // borrows the policy's contiguous node-mask words for the duration of the
+    // synchronous syscall. `maxnode` describes that same allocation.
     let ret = unsafe {
         libc::set_mempolicy(
             mode,
             nodes.map_or(std::ptr::null(), |n| n.as_ptr()),
-            maxnode as u64,
+            maxnode as libc::c_ulong,
         )
     };
 
@@ -390,6 +408,16 @@ pub fn apply_numa_policy(policy: &NumaPolicy) -> Result<(), NumaError> {
         let errno = err.raw_os_error().unwrap_or(libc::EINVAL);
         if errno == libc::ENOMEM {
             return Err(NumaError::OutOfMemory);
+        }
+        if errno == libc::EINVAL
+            && matches!(
+                policy.policy_type(),
+                MpolType::PreferredMany | MpolType::WeightedInterleave
+            )
+        {
+            // Match the C compatibility behavior for kernels that predate
+            // these policy modes: the syscall ABI exists, but not this mode.
+            return Err(NumaError::Errno(libc::EOPNOTSUPP));
         }
         return Err(NumaError::Errno(errno));
     }
@@ -444,11 +472,11 @@ mod tests {
 
     #[test]
     fn test_mpol_type_is_valid_raw() {
-        for raw in 0..=4 {
+        for raw in 0..=6 {
             assert!(MpolType::is_valid_raw(raw), "raw={raw} should be valid");
         }
         assert!(!MpolType::is_valid_raw(-1));
-        assert!(!MpolType::is_valid_raw(5));
+        assert!(!MpolType::is_valid_raw(7));
         assert!(!MpolType::is_valid_raw(100));
     }
 
@@ -459,6 +487,8 @@ mod tests {
         assert_eq!(MpolType::from_raw(2), Some(MpolType::Bind));
         assert_eq!(MpolType::from_raw(3), Some(MpolType::Interleave));
         assert_eq!(MpolType::from_raw(4), Some(MpolType::Local));
+        assert_eq!(MpolType::from_raw(5), Some(MpolType::PreferredMany));
+        assert_eq!(MpolType::from_raw(6), Some(MpolType::WeightedInterleave));
         assert_eq!(MpolType::from_raw(-1), None);
         assert_eq!(MpolType::from_raw(99), None);
     }
@@ -470,6 +500,8 @@ mod tests {
         assert_eq!(MpolType::Bind.as_str(), "bind");
         assert_eq!(MpolType::Interleave.as_str(), "interleave");
         assert_eq!(MpolType::Local.as_str(), "local");
+        assert_eq!(MpolType::PreferredMany.as_str(), "preferred-many");
+        assert_eq!(MpolType::WeightedInterleave.as_str(), "weighted-interleave");
     }
 
     #[test]
@@ -485,6 +517,14 @@ mod tests {
             Some(MpolType::Interleave)
         );
         assert_eq!(MpolType::from_str_name("local"), Some(MpolType::Local));
+        assert_eq!(
+            MpolType::from_str_name("preferred-many"),
+            Some(MpolType::PreferredMany)
+        );
+        assert_eq!(
+            MpolType::from_str_name("weighted-interleave"),
+            Some(MpolType::WeightedInterleave)
+        );
         assert_eq!(MpolType::from_str_name("invalid"), None);
         assert_eq!(MpolType::from_str_name(""), None);
     }
@@ -496,6 +536,8 @@ mod tests {
         assert!(!MpolType::Preferred.requires_nodes());
         assert!(MpolType::Bind.requires_nodes());
         assert!(MpolType::Interleave.requires_nodes());
+        assert!(MpolType::PreferredMany.requires_nodes());
+        assert!(MpolType::WeightedInterleave.requires_nodes());
     }
 
     #[test]
@@ -505,6 +547,8 @@ mod tests {
         assert!(MpolType::Preferred.allows_empty_nodes());
         assert!(!MpolType::Bind.allows_empty_nodes());
         assert!(!MpolType::Interleave.allows_empty_nodes());
+        assert!(!MpolType::PreferredMany.allows_empty_nodes());
+        assert!(!MpolType::WeightedInterleave.allows_empty_nodes());
     }
 
     #[test]

@@ -14,6 +14,7 @@ use std::ffi::CStr;
 use std::fmt;
 use std::fs;
 use std::io;
+use std::mem::MaybeUninit;
 use std::path::Path;
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -333,23 +334,32 @@ pub fn is_localhost(hostname: &str) -> bool {
 
 /// Retrieve the current system hostname via `uname(2)`.
 fn sys_uname_nodename() -> io::Result<String> {
-    let mut utsname: libc::utsname = unsafe { std::mem::zeroed() };
-    // SAFETY: utsname is a stack-allocated, properly aligned struct.
-    let ret = unsafe { libc::uname(&mut utsname) };
+    let mut utsname = MaybeUninit::<libc::utsname>::uninit();
+    // SAFETY: `utsname` points to writable, properly aligned storage for the
+    // complete `libc::utsname` output struct.
+    let ret = unsafe { libc::uname(utsname.as_mut_ptr()) };
     if ret < 0 {
         return Err(io::Error::last_os_error());
     }
-    let nodename = unsafe { CStr::from_ptr(utsname.nodename.as_ptr()) };
+
+    // SAFETY: a successful `uname(2)` initialized every field of the output
+    // struct, including `nodename`.
+    let utsname = unsafe { utsname.assume_init() };
+    let nodename_bytes: Vec<u8> = utsname.nodename.iter().map(|&byte| byte as u8).collect();
+    let nodename = CStr::from_bytes_until_nul(&nodename_bytes).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "uname(2) returned a hostname without a NUL terminator",
+        )
+    })?;
     Ok(nodename.to_string_lossy().into_owned())
 }
 
 /// Set the system hostname via `sethostname(2)`.
-///
-/// # Safety
-/// The hostname bytes must be a valid UTF-8 string of length ≤ `LINUX_HOST_NAME_MAX`.
 fn sys_sethostname(hostname: &[u8]) -> io::Result<()> {
-    // SAFETY: hostname is a valid byte slice bounded by the caller to ≤ 64 bytes.
-    let ret = unsafe { libc::sethostname(hostname.as_ptr() as *const _, hostname.len() as i32) };
+    // SAFETY: `hostname` is a valid byte slice whose pointer remains readable
+    // for exactly `hostname.len()` bytes throughout the syscall.
+    let ret = unsafe { libc::sethostname(hostname.as_ptr() as *const _, hostname.len()) };
     if ret < 0 {
         Err(io::Error::last_os_error())
     } else {

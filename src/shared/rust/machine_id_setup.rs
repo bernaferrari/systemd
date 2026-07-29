@@ -8,9 +8,11 @@
 // persistent modes, and can commit a transient ID to disk.
 
 use crate::ffi::*;
+use std::ffi::CString;
 use std::fmt;
 use std::fs;
 use std::io;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -166,6 +168,8 @@ impl SdId128 {
         // SAFETY: getrandom() writes exactly `len` bytes into `buf` and
         // returns 0 on success or a negative errno.  The pointer is valid
         // for the given length.
+        // SAFETY: `bytes` remains writable for its exact length throughout
+        // this synchronous call.
         let ret =
             unsafe { crate::ffi::getrandom(bytes.as_mut_ptr().cast(), bytes.len(), GRND_NONBLOCK) };
         if ret < 0 {
@@ -213,27 +217,56 @@ impl Default for SdId128 {
 
 // ── Parsing helpers ──────────────────────────────────────────────────────
 
-/// Parse a 32-character lowercase hex string into `SdId128`.
+/// Parse a 32-character hexadecimal string into `SdId128`.
 ///
-/// Accepts both the plain 32-char form and the dashed UUID form.
+/// Accepts both the plain 32-character form and the canonical dashed UUID
+/// form. This matches `sd_id128_from_string()` and rejects misplaced dashes.
 pub fn id128_from_string(s: &str) -> MachineIdResult<SdId128> {
-    // Strip dashes if present (UUID form).
-    let hex: String = s.chars().filter(|&c| c != '-').collect();
+    let bytes = s.as_bytes();
+    let is_uuid = match bytes.len() {
+        32 => false,
+        36 if [8, 13, 18, 23]
+            .into_iter()
+            .all(|index| bytes[index] == b'-') =>
+        {
+            true
+        }
+        _ => {
+            return Err(MachineIdError::InvalidFormat(format!(
+                "expected 32 hex chars or a canonical dashed UUID, got {} bytes",
+                bytes.len()
+            )));
+        }
+    };
 
-    if hex.len() != 32 {
-        return Err(MachineIdError::InvalidFormat(format!(
-            "expected 32 hex chars, got {}",
-            hex.len()
-        )));
+    if !bytes.iter().enumerate().all(|(index, byte)| {
+        (is_uuid && matches!(index, 8 | 13 | 18 | 23)) || byte.is_ascii_hexdigit()
+    }) {
+        return Err(MachineIdError::InvalidFormat(
+            "non-hex character in machine-id".into(),
+        ));
     }
 
     let mut bytes = [0u8; 16];
-    for i in 0..16 {
-        bytes[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(|_| {
-            MachineIdError::InvalidFormat(format!("non-hex character at position {}", i * 2))
-        })?;
+    for (index, byte) in s
+        .bytes()
+        .filter(|byte| *byte != b'-')
+        .collect::<Vec<_>>()
+        .chunks_exact(2)
+        .enumerate()
+    {
+        bytes[index] = (hex_value(byte[0]) << 4) | hex_value(byte[1]);
     }
     Ok(SdId128 { bytes })
+}
+
+const fn hex_value(byte: u8) -> u8 {
+    match byte {
+        b'0'..=b'9' => byte - b'0',
+        b'a'..=b'f' => byte - b'a' + 10,
+        b'A'..=b'F' => byte - b'A' + 10,
+        _ => unreachable!(), // validated by id128_from_string()
+    }
 }
 
 /// Try to read a plain-format machine-id from a file path.
@@ -571,12 +604,11 @@ pub fn machine_id_commit(root: &Path) -> MachineIdResult<()> {
 ///
 /// Returns `Ok(())` on success or if syncfs is unavailable.
 fn sync_directory(dir: &Path) -> io::Result<()> {
-    let fd = unsafe {
-        libc::open(
-            dir.to_string_lossy().as_ptr().cast(),
-            libc::O_RDONLY | libc::O_CLOEXEC,
-        )
-    };
+    let dir = CString::new(dir.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains a null byte"))?;
+
+    // SAFETY: `dir` is a NUL-terminated path with no interior NUL bytes.
+    let fd = unsafe { libc::open(dir.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -687,6 +719,16 @@ mod tests {
     #[test]
     fn test_id128_from_string_rejects_non_hex() {
         assert!(id128_from_string("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz").is_err());
+    }
+
+    #[test]
+    fn test_id128_from_string_rejects_misplaced_uuid_dashes() {
+        assert!(id128_from_string("332211004455-6677-8899-aabbccddeeff").is_err());
+    }
+
+    #[test]
+    fn test_id128_from_string_rejects_non_ascii_without_panicking() {
+        assert!(id128_from_string("33221100445566778899aabbccddeefé").is_err());
     }
 
     #[test]

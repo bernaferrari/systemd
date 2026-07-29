@@ -247,7 +247,8 @@ impl XBootLdrInfo {
 ///
 /// Returns `true` if the effective UID is not 0.
 pub fn is_unprivileged() -> bool {
-    // SAFETY: geteuid is a simple syscall that never fails.
+    // SAFETY: geteuid() takes no arguments, does not dereference Rust memory,
+    // and every uid_t bit pattern it returns is valid.
     unsafe { libc::geteuid() != 0 }
 }
 
@@ -378,6 +379,8 @@ pub fn check_fat_filesystem(path: &Path) -> Result<(), FindEspError> {
     let c_path = CString::new(path.as_os_str().as_bytes())
         .map_err(|_| FindEspError::General(format!("Path {:?} contains NUL byte", path)))?;
 
+    // SAFETY: Linux's statfs is a C POD struct containing only integers and
+    // integer arrays, for which the all-zero bit pattern is valid.
     let mut statfs_buf: libc::statfs = unsafe { std::mem::zeroed() };
 
     // SAFETY: c_path is a valid NUL-terminated string, statfs_buf is a valid
@@ -465,7 +468,9 @@ fn canonicalize_or_resolve(p: &Path) -> io::Result<PathBuf> {
 /// Open a path (directory) with O_PATH.
 fn open_path(p: &Path) -> io::Result<i32> {
     let c_path = CString::new(p.as_os_str().as_bytes())?;
-    // SAFETY: c_path is a valid NUL-terminated string.
+    // SAFETY: c_path is NUL-terminated and remains alive for the call. These
+    // flags do not include O_CREAT or O_TMPFILE, so no variadic mode argument
+    // is required.
     let fd = unsafe {
         libc::open(
             c_path.as_ptr(),
@@ -479,27 +484,10 @@ fn open_path(p: &Path) -> io::Result<i32> {
     }
 }
 
-/// Read the symlink target of /proc/self/fd/<fd>.
+/// Read the symlink target of `/proc/self/fd/<fd>`, taking ownership of `fd`.
 fn readlink_fd(fd: i32) -> io::Result<PathBuf> {
-    let link = format!("/proc/self/fd/{}", fd);
-    let mut buf = vec![0u8; 4096];
-    // SAFETY: link is a valid NUL-terminated string, buf is a valid buffer.
-    let len = unsafe {
-        libc::readlink(
-            link.as_ptr() as *const _,
-            buf.as_mut_ptr() as *mut _,
-            buf.len() - 1,
-        )
-    };
-    if len < 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        buf.truncate(len as usize);
-        let path = PathBuf::from(String::from_utf8_lossy(&buf).into_owned());
-        // Close the fd on success.
-        unsafe { libc::close(fd) };
-        Ok(path)
-    }
+    let _guard = FdGuard(fd);
+    std::fs::read_link(format!("/proc/self/fd/{fd}"))
 }
 
 // ── ESP discovery (high-level) ──────────────────────────────────────────────
@@ -589,7 +577,8 @@ pub fn find_esp_and_warn_full(
         FindEspError::General(format!("Root path {:?} contains NUL byte", effective_root))
     })?;
 
-    // SAFETY: root_cstr is a valid NUL-terminated string.
+    // SAFETY: root_cstr is NUL-terminated and remains alive for the call.
+    // These flags require no variadic mode argument.
     let root_fd = unsafe {
         libc::open(
             root_cstr.as_ptr(),
@@ -752,7 +741,8 @@ pub fn find_xbootldr_and_warn_full(
         FindEspError::General(format!("Root path {:?} contains NUL byte", effective_root))
     })?;
 
-    // SAFETY: root_cstr is a valid NUL-terminated string.
+    // SAFETY: root_cstr is NUL-terminated and remains alive for the call.
+    // These flags require no variadic mode argument.
     let root_fd = unsafe {
         libc::open(
             root_cstr.as_ptr(),
@@ -825,13 +815,17 @@ pub fn verify_xbootldr_automount(path: &Path) -> Result<XBootLdrInfo, FindEspErr
 
 // ── RAII guard for file descriptors ────────────────────────────────────────
 
-/// RAII guard that closes a file descriptor on drop.
+/// RAII guard that closes its uniquely owned, open file descriptor on drop.
+///
+/// All construction sites must transfer ownership of a descriptor returned by
+/// a successful `open(2)` call and must not close it elsewhere.
 struct FdGuard(i32);
 
 impl Drop for FdGuard {
     fn drop(&mut self) {
         if self.0 >= 0 {
-            // SAFETY: self.0 is a valid fd obtained from open().
+            // SAFETY: FdGuard's invariant guarantees this is an open,
+            // uniquely owned descriptor, and Drop runs only once.
             unsafe {
                 libc::close(self.0);
             }

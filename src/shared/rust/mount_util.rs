@@ -60,6 +60,10 @@ pub struct SubMount {
 }
 
 impl SubMount {
+    /// Takes exclusive ownership of `mount_fd`, which must either be a valid
+    /// open file descriptor or a negative sentinel. The caller must not close
+    /// or otherwise transfer a non-negative descriptor after constructing this
+    /// value.
     pub fn new(path: String, mount_fd: i32) -> Self {
         Self { path, mount_fd }
     }
@@ -703,22 +707,28 @@ pub fn mount_verbose_full(
     options: Option<&str>,
     follow_symlink: bool,
 ) -> io::Result<()> {
+    // Match mount_verbose_full(): mount-related options become flags and only
+    // filesystem-specific options are passed to mount(2).
+    let (flags, remaining_options) = mount_option_mangle(options, flags);
     let c_what = to_cstring(what)?;
     let c_where = to_cstring(where_)?;
     let c_fstype = fstype.map(to_cstring).transpose()?;
-    let c_options = options.map(to_cstring).transpose()?;
+    let c_options = remaining_options.as_deref().map(to_cstring).transpose()?;
 
     let fstype_ptr = c_fstype.as_ref().map_or(std::ptr::null(), |s| s.as_ptr());
     let options_ptr = c_options
         .as_ref()
         .map_or(std::ptr::null(), |s| s.as_ptr() as *const libc::c_void);
 
-    // SAFETY: All CString pointers are valid null-terminated strings.
-    // When follow_symlink is false, the C version uses openat2 with
-    // RESOLVE_NO_SYMLINKS to resolve the target. This implementation
-    // always follows symlinks; the nofollow path requires openat2
-    // infrastructure that is not yet available here.
+    // SAFETY: All CString pointers are valid null-terminated strings. The
+    // `options_ptr` either is null or points to the retained `c_options` for
+    // the duration of the call.
+    //
+    // The C implementation resolves a no-follow target using openat2 with
+    // RESOLVE_NO_SYMLINKS. That infrastructure is not available here, so this
+    // implementation always follows symlinks.
     let _ = follow_symlink;
+    // SAFETY: all retained pointer arguments remain valid for this call.
     let ret = unsafe {
         libc::mount(
             c_what.as_ptr(),
@@ -747,7 +757,11 @@ pub fn mount_follow_verbose(
     mount_verbose_full(what, where_, fstype, flags, options, true)
 }
 
-/// Mount a filesystem without following symlinks in the target path.
+/// Mount a filesystem through the no-follow API.
+///
+/// This currently follows target symlinks because the openat2-backed C
+/// implementation has not yet been ported. Do not use this wrapper where
+/// rejecting target symlinks is a security requirement.
 #[cfg(target_os = "linux")]
 pub fn mount_nofollow_verbose(
     what: &str,

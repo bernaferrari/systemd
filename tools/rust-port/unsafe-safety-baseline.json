@@ -1336,12 +1336,9 @@
       "unsafe_sites": 1
     },
     "src/shared/rust/find_esp.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "381:40:let mut statfs_buf: libc::statfs = unsafe { std::mem::zeroed() };",
-        "500:9:unsafe { libc::close(fd) };"
-      ],
-      "unsafe_sites": 15
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 13
     },
     "src/shared/rust/fork_notify.rs": {
       "missing_safety": 0,
@@ -1363,12 +1360,9 @@
       "unsafe_sites": 8
     },
     "src/shared/rust/hostname_setup.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "336:38:let mut utsname: libc::utsname = unsafe { std::mem::zeroed() };",
-        "342:20:let nodename = unsafe { CStr::from_ptr(utsname.nodename.as_ptr()) };"
-      ],
-      "unsafe_sites": 4
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
     },
     "src/shared/rust/hwdb_util.rs": {
       "missing_safety": 0,
@@ -1566,11 +1560,8 @@
       "unsafe_sites": 22
     },
     "src/shared/rust/machine_id_setup.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "170:13:unsafe { crate::ffi::getrandom(bytes.as_mut_ptr().cast(), bytes.len(), GRND_NONBLOCK) };",
-        "574:14:let fd = unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
     },
     "src/shared/rust/mkfs_util.rs": {
@@ -1584,10 +1575,8 @@
       "unsafe_sites": 1
     },
     "src/shared/rust/mount_util.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "722:15:let ret = unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
     },
     "src/shared/rust/netif_util.rs": {
@@ -1596,11 +1585,8 @@
       "unsafe_sites": 2
     },
     "src/shared/rust/numa_util.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "339:15:let ret = unsafe {",
-        "380:15:let ret = unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/shared/rust/osc_context.rs": {
@@ -1852,10 +1838,8 @@
       "unsafe_sites": 5
     },
     "src/shared/rust/smack_util.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "380:36:let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 14
     },
     "src/shared/rust/socket_forward.rs": {
@@ -2080,8 +2064,8 @@
     }
   },
   "totals": {
-    "missing_safety": 531,
-    "unsafe_sites": 5715
+    "missing_safety": 521,
+    "unsafe_sites": 5712
   },
   "version": 2,
   "window": 3
