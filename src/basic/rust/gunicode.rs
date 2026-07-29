@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/gunicode.c (utf8_prev_char, utf8_skip_data, unichar_iswide)
+// PORT-SYNC: scope=basic.gunicode; authority=src/basic/gunicode.c,src/basic/gunicode.h
 //
 // Unicode manipulation: prev_char, skip_data, iswide.
+
+use std::ffi::c_char;
 
 // ── UTF-8 skip data table ─────────────────────────────────────────────────
 
@@ -19,7 +21,23 @@ pub const UTF8_SKIP_DATA: [u8; 256] = [
     3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 1, 1,
 ];
 
-pub const rs_utf8_skip_data: [u8; 256] = UTF8_SKIP_DATA;
+const fn utf8_skip_data_as_c_char() -> [c_char; 256] {
+    let mut result = [0; 256];
+    let mut index = 0;
+    while index < UTF8_SKIP_DATA.len() {
+        result[index] = UTF8_SKIP_DATA[index] as c_char;
+        index += 1;
+    }
+    result
+}
+
+/// C ABI export corresponding to `utf8_skip_data`.
+///
+/// The table is byte-for-byte identical to C and uses C's `char` element
+/// type, rather than merely an equivalently sized Rust integer type.
+#[allow(non_upper_case_globals)]
+#[unsafe(no_mangle)]
+pub static rs_utf8_skip_data: [c_char; 256] = utf8_skip_data_as_c_char();
 
 // ── Public API ────────────────────────────────────────────────────────────
 
@@ -40,6 +58,35 @@ pub fn utf8_prev_char(data: &[u8], pos: usize) -> usize {
         p -= 1;
         if (data[p] & 0xc0) != 0x80 {
             return p;
+        }
+    }
+}
+
+/// C ABI twin of `utf8_prev_char()`.
+///
+/// # Safety
+/// `p` must be non-null and point into (or one byte past) a live byte
+/// allocation. There must be a non-continuation byte before `p` in the same
+/// allocation, and every byte inspected while walking backwards must be
+/// readable. As in C, this routine does not validate UTF-8 and callers must
+/// not use it when `p` might be the first byte of the allocation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_prev_char(p: *const c_char) -> *mut c_char {
+    if p.is_null() {
+        // Match the C function's assert(p) precondition without unwinding
+        // across the C ABI boundary.
+        std::process::abort();
+    }
+
+    let mut current = p;
+    loop {
+        // SAFETY: the caller contract guarantees that each predecessor stays
+        // within the same allocation and is readable, until this returns.
+        current = unsafe { current.sub(1) };
+        // SAFETY: `current` is readable by the caller contract above.
+        let byte = unsafe { current.read() } as u8;
+        if (byte & 0xc0) != 0x80 {
+            return current.cast_mut();
         }
     }
 }
@@ -86,6 +133,12 @@ pub fn unichar_iswide(uc: u32) -> bool {
         (0x30000, 0x3FFFD),
     ];
     WIDE.iter().any(|&(lo, hi)| uc >= lo && uc <= hi)
+}
+
+/// C ABI twin of `unichar_iswide()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_unichar_iswide(c: u32) -> bool {
+    unichar_iswide(c)
 }
 
 #[cfg(test)]

@@ -10,16 +10,13 @@ excluded_c_symbols = [
     "sigaction_many_internal",
     "sigset_add_many_internal",
     "sigprocmask_many_internal",
-    "signal_to_string",
     "signal_to_string_with_check",
-    "signal_from_string",
     "signal_code_to_string",
     "nop_signal_handler",
     "signal_is_blocked",
     "autoreaping_enabled",
     "pop_pending_signal_internal",
     "propagate_signal",
-    "parse_signo",
     "sigterm_process_group_handler",
 ]
 
@@ -44,3 +41,50 @@ verification = "static-only"
 file = "tests-extra/test-signal-inline-rust.c"
 meson_target = "test-signal-inline-rust"
 labels = ["signal-si-code-from-process"]
+
+[[surface]]
+id = "signal-name-and-number"
+c_symbols = ["signal_to_string", "signal_from_string"]
+rust_symbols = ["rs_signal_to_string", "rs_signal_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "environment"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["signal_to_string"]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-signal-util-rust.c"
+meson_target = "test-signal-util-rust"
+labels = ["signal-name-and-number"]
+
+[[surface]]
+id = "signal-number-parser"
+c_symbols = ["parse_signo"]
+rust_symbols = ["rs_parse_signo"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "environment"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-signal-util-rust.c"
+meson_target = "test-signal-util-rust"
+labels = ["signal-number-parser"]

@@ -579,20 +579,56 @@ last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "6d4b77bfdd9b9c20ee
 notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Thirty-one pure path byte, predicate, and is_device_path facades are covered by eighteen machine-checked contracts with exact ABI, opaque C-string bytes, NULL/empty/non-UTF-8 cases, borrowed-interior offsets, in-place simplification, libc-owned outputs, and success-only publication. Filesystem I/O path APIs, remaining unexported validators, and skip_dev_prefix (header_inline ownership) remain excluded. Partial provenance with static-only evidence, not runtime parity."
 
 [bus-label]
-c_file = "src/basic/bus-label.c"
-rust_file = "src/basic/rust/bus_label.rs"
+c_paths = [
+    "src/basic/bus-label.c",
+    "src/basic/bus-label.h",
+]
+rust_paths = [
+    "src/basic/rust/bus_label.rs",
+    "src/basic/rust/bus_label.h",
+]
+scope = "basic.bus-label"
+rust_scope_paths = ["src/basic/rust/bus_label.rs"]
+rust_interface_paths = ["src/basic/rust/bus_label.h"]
+contract_file = "tools/rust-port/contracts/basic/bus-label.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/bus-label.c", rust_paths = ["src/basic/rust/bus_label.rs", "src/basic/rust/bus_label.h"] },
+    { kind = "direct", path = "src/basic/bus-label.h", rust_paths = ["src/basic/rust/bus_label.rs", "src/basic/rust/bus_label.h"] },
+]
+test_file = "tests-extra/test-bus-label-rust.c"
 status = "in-progress"
 tier = 3
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: bus-label encoding/decoding has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/bus-label.c" = "b6bf9ca4682896aee4e9191ac94001822a003b39", "src/basic/bus-label.h" = "22dd796984725ed05b95d99cc7bf210fb12a84bb" }
+last_reviewed_rust_blobs = { "src/basic/rust/bus_label.rs" = "b68dc39fae064eb663382c585a1b37deb6a30db5", "src/basic/rust/bus_label.h" = "95a28d11e800e5d4fb37fdf299e3997eeadc9947" }
+notes = "Reviewed static bus-label ABI slice 2026-07-28; no build/tests/VM. Raw-byte escape/unescape facades preserve C allocator ownership, SIZE_MAX length selection, embedded decoded NUL bytes, lower-case hexadecimal, and literal malformed escapes. NULL input and allocation overflow return NULL as documented fail-closed extensions. C remains production authority; runtime parity is unclaimed."
 
 [gunicode]
-c_file = "src/basic/gunicode.c"
-rust_file = "src/basic/rust/gunicode.rs"
+c_paths = [
+    "src/basic/gunicode.c",
+    "src/basic/gunicode.h",
+]
+rust_paths = [
+    "src/basic/rust/gunicode.rs",
+    "src/basic/rust/gunicode.h",
+]
+scope = "basic.gunicode"
+rust_scope_paths = ["src/basic/rust/gunicode.rs"]
+rust_interface_paths = ["src/basic/rust/gunicode.h"]
+contract_file = "tools/rust-port/contracts/basic/gunicode.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/gunicode.c", rust_paths = ["src/basic/rust/gunicode.rs", "src/basic/rust/gunicode.h"] },
+    { kind = "direct", path = "src/basic/gunicode.h", rust_paths = ["src/basic/rust/gunicode.rs", "src/basic/rust/gunicode.h"] },
+]
+test_file = "tests-extra/test-gunicode-rust.c"
 status = "in-progress"
 tier = 1
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: Unicode tables and width/UTF-8 boundary behavior has no complete current behavior review or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+symbols = 3
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/gunicode.c" = "7c33a7c87251a5fdac6bcc5ed90d7ea4a7d094b7", "src/basic/gunicode.h" = "9bba03ba30b9a120ec9b7dddea6959a356482654" }
+last_reviewed_rust_blobs = { "src/basic/rust/gunicode.rs" = "017f54f38af2fd3472db10a63385981de74b961c", "src/basic/rust/gunicode.h" = "30930be47f14d7b098fc37df765f53ec83b2c470" }
+notes = "Reviewed static gunicode ABI slice 2026-07-28; no build/tests/VM. The exported 256-byte table and width predicate mirror C exactly; utf8_prev_char retains C's strict readable-predecessor precondition and assertion behavior. C remains production authority; runtime parity is unclaimed."
 
 [iovec-util]
 c_paths = [
@@ -630,11 +666,34 @@ tier = 1
 notes = "2 shadow tests pass. 2 FFI exports: rs_architecture_to_string, rs_architecture_from_string. 33-entry string table matching C architecture_table. Skipped: uname_architecture (platform-specific arch_map, uname syscall)."
 
 [device-nodes]
-c_file = "src/basic/device-nodes.c"
-rust_file = "src/basic/rust/device_nodes.rs"
+c_paths = [
+    "src/basic/device-nodes.c",
+    "src/basic/device-nodes.h",
+    "src/basic/utf8.c",
+    "src/basic/utf8.h",
+]
+rust_paths = [
+    "src/basic/rust/device_nodes.rs",
+    "src/basic/rust/device_nodes.h",
+]
+scope = "basic.device-nodes"
+rust_scope_paths = ["src/basic/rust/device_nodes.rs"]
+rust_interface_paths = ["src/basic/rust/device_nodes.h"]
+contract_file = "tools/rust-port/contracts/basic/device-nodes.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/device-nodes.c", rust_paths = ["src/basic/rust/device_nodes.rs", "src/basic/rust/device_nodes.h"] },
+    { kind = "direct", path = "src/basic/device-nodes.h", rust_paths = ["src/basic/rust/device_nodes.rs", "src/basic/rust/device_nodes.h"] },
+    { kind = "direct", path = "src/basic/utf8.c", rust_paths = ["src/basic/rust/device_nodes.rs"] },
+    { kind = "direct", path = "src/basic/utf8.h", rust_paths = ["src/basic/rust/device_nodes.rs"] },
+]
+test_file = "tests-extra/test-device-nodes-rust.c"
 status = "in-progress"
 tier = 1
-notes = "2 shadow tests pass. 2 FFI exports: rs_allow_listed_char_for_devnode, rs_encode_devnode_name. UTF-8 passthrough, \\xHH escaping for disallowed chars. Skipped: devnode_same (uses stat())."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/device-nodes.c" = "15abe31236968aa29dd50c687e84388b98f0ddb8", "src/basic/device-nodes.h" = "f57378c0f6133f08256c617375cd82f253512cba", "src/basic/utf8.c" = "0fccc4711cb9eb8e3817eff421e41b2f2f951be3", "src/basic/utf8.h" = "fde72a0d5422c9800125484ac619decf7ac93ffb" }
+last_reviewed_rust_blobs = { "src/basic/rust/device_nodes.rs" = "fdb5ae7b6c175d4b3b1317fbce8a4fd92c8349b7", "src/basic/rust/device_nodes.h" = "cb30c913521d7fce1162a4c9c4803b89b1a56f7c" }
+notes = "Reviewed static device-node encoding ABI slice 2026-07-28; no build/tests/VM. Exact C byte acceptance, legacy UTF-8 scalar validation, -EINVAL capacity behavior, partial writes, and snprintf's transient NUL are covered by a Rust-linked C/R fixture. devnode_same() filesystem I/O remains excluded. C remains production authority; runtime parity is unclaimed."
 
 [runtime-scope]
 c_paths = [
@@ -714,14 +773,14 @@ c_provenance_edges = [
     { kind = "direct", path = "src/basic/signal-util.c", rust_paths = ["src/basic/rust/signal_util.rs", "src/basic/rust/signal_util.h"] },
     { kind = "direct", path = "src/basic/signal-util.h", rust_paths = ["src/basic/rust/signal_util.rs", "src/basic/rust/signal_util.h"] },
 ]
-test_file = "tests-extra/test-signal-inline-rust.c"
+test_file = "tests-extra/test-signal-util-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 1
+symbols = 4
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/signal-util.c" = "aceafd35e2e14f133ca3aca51f13bf5e25333066", "src/basic/signal-util.h" = "e5860094db35c4806c66a2660fe9267386297657" }
-last_reviewed_rust_blobs = { "src/basic/rust/signal_util.rs" = "77b9cc83d83f3241d0b589a83cc6f3b3c531796a", "src/basic/rust/signal_util.h" = "c98cc0bb15fee17faf585945ea673b51d9b2b8a2" }
-notes = "Reviewed static signal ABI slice 2026-07-28; no build/tests/VM. The exact si_code_from_process facade preserves the Linux C inline's all-negative, SI_USER, and SI_QUEUE rule without pointer or allocation crossing. Pre-existing SIGNAL_VALID and signal_to_string_with_check facades remain catalog-reviewed separately; signal reset/mask/handler, parsing, and string-table APIs remain explicitly excluded here. C remains production authority; runtime parity is unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/signal_util.rs" = "e1838467acfe55d8ddec4cdfca5e4fbacb369f29", "src/basic/rust/signal_util.h" = "c98cc0bb15fee17faf585945ea673b51d9b2b8a2" }
+notes = "Reviewed static signal ABI slice 2026-07-28; no build/tests/VM. Four claimed facades preserve the C inline's si_code rule, target signal spellings, C-string parser grammar, runtime real-time bounds, errno returns, and optional output publication. Reset/mask/handler and signal-code decoding remain C-only. C remains production authority; runtime parity is unclaimed."
 
 [process-util-str-tables]
 c_paths = [
@@ -1376,14 +1435,38 @@ sync_status = "needs_review"
 notes = "Static audit 2026-07-27; no build/tests/VM. Sixteen exact extern-C exports cover every scalar predicate, dns_type_to_af(), and the three TLSA string lookups in current src/shared/dns-type.c. The FFI uses uint16_t/uint8_t, C bool/int, target libc address-family values, -EINVAL on unsupported address types, and borrowed static NUL-terminated strings. Exact source/header signatures plus future exhaustive C-versus-Rust Meson/CI comparisons are pinned; runtime parity is unclaimed."
 
 [efivars_util]
-c_paths = ["src/fundamental/efivars.c", "src/fundamental/efivars.h", "src/basic/efivars.c", "src/basic/efivars.h", "src/shared/efi-api.c", "src/shared/efi-api.h"]
-rust_file = "src/basic/rust/efivars_util.rs"
-header_file = "src/basic/efivars.h"
+c_paths = [
+    "src/fundamental/efivars.c",
+    "src/fundamental/efivars.h",
+    "src/basic/efivars.c",
+    "src/basic/efivars.h",
+    "src/shared/efi-api.c",
+    "src/shared/efi-api.h",
+]
+rust_paths = [
+    "src/basic/rust/efivars_util.rs",
+    "src/basic/rust/efivars_util.h",
+]
+scope = "basic.efivars-util"
+rust_scope_paths = ["src/basic/rust/efivars_util.rs"]
+rust_interface_paths = ["src/basic/rust/efivars_util.h"]
+contract_file = "tools/rust-port/contracts/basic/efivars-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/fundamental/efivars.c", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
+    { kind = "direct", path = "src/fundamental/efivars.h", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
+    { kind = "direct", path = "src/basic/efivars.c", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
+    { kind = "direct", path = "src/basic/efivars.h", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
+    { kind = "direct", path = "src/shared/efi-api.c", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
+    { kind = "direct", path = "src/shared/efi-api.h", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
+]
+test_file = "tests-extra/test-efivars-rust.c"
 status = "in-progress"
 tier = 3
 symbols = 5
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit maps secure-boot, backslash, and GUID/ID128 behavior to their current fundamental/basic/shared authorities; behavioral completion remains unclaimed."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/fundamental/efivars.c" = "87dc1fff8f4b41f889567255039d647fbcf32c52", "src/fundamental/efivars.h" = "88bc97d75d6c363b4aad97ee51a8718feca4ba80", "src/basic/efivars.c" = "b64b83664a8d72a0e20a79fb90b1c2af67d0c501", "src/basic/efivars.h" = "c0ec94af5b164917e44b2a3f5aaf5675ace8f6dd", "src/shared/efi-api.c" = "652c48e84bac4baa24af39c85092c52d3900081c", "src/shared/efi-api.h" = "4f9a223d7f380505d763d6c93a7decf973f2cca1" }
+last_reviewed_rust_blobs = { "src/basic/rust/efivars_util.rs" = "0761c3f9e15fa5e494d4997f8e18159294a11a37", "src/basic/rust/efivars_util.h" = "a8ac9db2d4c1fa35caa62ff1859e8e74111f6ec8" }
+notes = "Reviewed static EFI scalar and GUID ABI slice 2026-07-28; no build/tests/VM. Secure-boot tables/state decoding, in-place backslash conversion, and unaligned native-endian EFI_GUID/ID128 conversion use C-compatible pointers and output ownership. NULL is a documented fail-closed extension where C asserts. EFI variable I/O remains excluded; C remains production authority and runtime parity is unclaimed."
 
 [env_util]
 c_paths = [
@@ -1443,15 +1526,34 @@ sync_status = "needs_review"
 notes = "2026-07-27 provenance audit maps command-flag conversions and embedded-newline indentation to current shared exec/bootspec authorities; behavioral completion remains unclaimed."
 
 [exit_status]
-c_paths = ["src/shared/exit-status.c", "src/shared/exit-status.h", "src/shared/securebits-util.c", "src/shared/securebits-util.h"]
-rust_file = "src/basic/rust/exit_status.rs"
-header_file = "src/shared/exit-status.h"
-test_file = "src/test/test-exit-status.c"
+c_paths = [
+    "src/shared/exit-status.c",
+    "src/shared/exit-status.h",
+    "src/shared/securebits-util.c",
+    "src/shared/securebits-util.h",
+]
+rust_paths = [
+    "src/basic/rust/exit_status.rs",
+    "src/basic/rust/exit_status.h",
+]
+scope = "basic.exit-status"
+rust_scope_paths = ["src/basic/rust/exit_status.rs"]
+rust_interface_paths = ["src/basic/rust/exit_status.h"]
+contract_file = "tools/rust-port/contracts/basic/exit-status.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/exit-status.c", rust_paths = ["src/basic/rust/exit_status.rs", "src/basic/rust/exit_status.h"] },
+    { kind = "direct", path = "src/shared/exit-status.h", rust_paths = ["src/basic/rust/exit_status.rs", "src/basic/rust/exit_status.h"] },
+    { kind = "direct", path = "src/shared/securebits-util.c", rust_paths = ["src/basic/rust/exit_status.rs", "src/basic/rust/exit_status.h"] },
+    { kind = "direct", path = "src/shared/securebits-util.h", rust_paths = ["src/basic/rust/exit_status.rs", "src/basic/rust/exit_status.h"] },
+]
+test_file = "tests-extra/test-exit-status-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 5
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit maps status lookup and securebit naming behavior to current shared authorities; behavioral completion remains unclaimed."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/exit-status.c" = "b40664d204ce207221836c981ec35cb07ae18ed0", "src/shared/exit-status.h" = "5a880d466406b1d2714e50d78ffebd5884be112b", "src/shared/securebits-util.c" = "bd682e6cbe9c336a02fa98693cfba3d2081875e2", "src/shared/securebits-util.h" = "cacae7347d7044a56ac7c655e817ffd280074135" }
+last_reviewed_rust_blobs = { "src/basic/rust/exit_status.rs" = "c18a0f21c6b150933cc8fd7b5c9c94db9a01bdf5", "src/basic/rust/exit_status.h" = "241fe777769a4d0f225283166ecdce23a30eacd0" }
+notes = "Reviewed static exit-status ABI slice 2026-07-28; no build/tests/VM. Four facades preserve status class-mask lookup, borrowed static names, securebit assertion behavior, and securebit mask validation. Parsing and Bitmap-backed status-set ownership stay explicitly C-only. C remains production authority; runtime parity is unclaimed."
 
 [file_classify]
 c_paths = [
@@ -1904,13 +2006,23 @@ notes = "Static architecture/parity audit only; no build/tests/VM. The shared Ru
 
 [serialize]
 c_paths = ["src/shared/serialize.c", "src/shared/serialize.h"]
-rust_file = "src/basic/rust/serialize.rs"
-header_file = "src/shared/serialize.h"
+rust_paths = ["src/basic/rust/serialize.rs", "src/basic/rust/serialize.h"]
+scope = "basic.serialize"
+rust_scope_paths = ["src/basic/rust/serialize.rs"]
+rust_interface_paths = ["src/basic/rust/serialize.h"]
+contract_file = "tools/rust-port/contracts/basic/serialize.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/serialize.c", rust_paths = ["src/basic/rust/serialize.rs", "src/basic/rust/serialize.h"] },
+    { kind = "direct", path = "src/shared/serialize.h", rust_paths = ["src/basic/rust/serialize.rs", "src/basic/rust/serialize.h"] },
+]
+test_file = "tests-extra/test-serialize-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 9
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored timestamp deserialization behavior to current shared source/header; behavioral completion remains unclaimed."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/serialize.c" = "ab19689aec46a56865d693893e7f732b69a8be54", "src/shared/serialize.h" = "eef1ca169e5e0a769978c5bb55db2f1211d8b077" }
+last_reviewed_rust_blobs = { "src/basic/rust/serialize.rs" = "c55b1362e055fa435e7c86e1427fc5a67b92f201", "src/basic/rust/serialize.h" = "f53014bfa6556a8d6053881c2ed7df34f69df16a" }
+notes = "Reviewed static serialization ABI slice 2026-07-28; no build/tests/VM. Two deserializers preserve raw C bytes, safe_atou64 and libc sscanf parsing behavior, negative errno, and deferred caller-storage publication. NULL handling is explicitly fail-closed; FD, environment, and allocation surfaces stay C-only. C remains production authority; runtime parity is unclaimed."
 
 [sha1]
 c_paths = ["src/fundamental/sha1.c", "src/fundamental/sha1.h"]

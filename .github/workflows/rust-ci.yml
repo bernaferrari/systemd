@@ -144,6 +144,14 @@ jobs:
           systemd_basic_rs
           test-af-list-rust
           test-architecture-rust
+          test-bus-label-rust
+          test-device-nodes-rust
+          test-gunicode-rust
+          test-exit-status-rust
+          test-efivars-rust
+          test-efi-guid-rust
+          test-serialize-rust
+          test-signal-util-rust
           test-capability-list-rust
           test-capability-util-rust
           test-unit-name-rust
@@ -247,6 +255,7 @@ jobs:
           test-boot-entry-rust
           test-pkcs11-rust
           test-misc-rust2
+          test-misc-rust3
           test-misc-untested2-rust
           test-uid-classification-rust
           test-unaligned-rust
@@ -275,6 +284,14 @@ jobs:
           --print-errorlogs
           test-af-list-rust
           test-architecture-rust
+          test-bus-label-rust
+          test-device-nodes-rust
+          test-gunicode-rust
+          test-exit-status-rust
+          test-efivars-rust
+          test-efi-guid-rust
+          test-serialize-rust
+          test-signal-util-rust
           test-capability-list-rust
           test-capability-util-rust
           test-unit-name-rust
@@ -378,6 +395,7 @@ jobs:
           test-boot-entry-rust
           test-pkcs11-rust
           test-misc-rust2
+          test-misc-rust3
           test-misc-untested2-rust
           test-uid-classification-rust
           test-unaligned-rust

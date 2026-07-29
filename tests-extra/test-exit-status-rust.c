@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: exit-status-lookup */
+/* RUST-CONTRACT: exit-status-class */
+/* RUST-CONTRACT: securebit-name */
 /* Shadow test: C exit-status/securebits vs Rust */
 
 #include <assert.h>
@@ -121,6 +124,20 @@ static void test_exit_status_to_string(void) {
         rv = rs_exit_status_to_string(EX_CONFIG, EXIT_STATUS_FULL);
         assert_se(streq_ptr(cv, rv));
         assert_se(streq(cv, "CONFIG"));
+
+        /* Class is a raw C bit mask, including combinations and unrelated bits. */
+        cv = exit_status_to_string(EXIT_CHDIR, EXIT_STATUS_LIBC | EXIT_STATUS_SYSTEMD);
+        rv = rs_exit_status_to_string(EXIT_CHDIR, EXIT_STATUS_LIBC | EXIT_STATUS_SYSTEMD);
+        assert_se(streq_ptr(cv, rv));
+
+        cv = exit_status_to_string(EXIT_CHDIR, 1 << 8);
+        rv = rs_exit_status_to_string(EXIT_CHDIR, 1 << 8);
+        assert_se(streq_ptr(cv, rv));
+        assert_se(cv == NULL);
+
+        cv = exit_status_to_string(EXIT_CHDIR, -1);
+        rv = rs_exit_status_to_string(EXIT_CHDIR, -1);
+        assert_se(streq_ptr(cv, rv));
 }
 
 /* ── exit_status_class ────────────────────────────────────────────────── */
@@ -159,82 +176,6 @@ static void test_exit_status_class(void) {
         rv = rs_exit_status_class(-1);
         assert_se(streq_ptr(cv, rv));
         assert_se(cv == NULL);
-}
-
-/* ── exit_status_from_string ──────────────────────────────────────────── */
-
-static void test_exit_status_from_string(void) {
-        int cv, rv;
-
-        cv = exit_status_from_string("SUCCESS");
-        rv = rs_exit_status_from_string("SUCCESS");
-        assert_se(cv == rv);
-        assert_se(cv == EXIT_SUCCESS);
-
-        cv = exit_status_from_string("FAILURE");
-        rv = rs_exit_status_from_string("FAILURE");
-        assert_se(cv == rv);
-        assert_se(cv == EXIT_FAILURE);
-
-        cv = exit_status_from_string("CHDIR");
-        rv = rs_exit_status_from_string("CHDIR");
-        assert_se(cv == rv);
-        assert_se(cv == EXIT_CHDIR);
-
-        cv = exit_status_from_string("MEMORY");
-        rv = rs_exit_status_from_string("MEMORY");
-        assert_se(cv == rv);
-        assert_se(cv == EXIT_MEMORY);
-
-        cv = exit_status_from_string("USAGE");
-        rv = rs_exit_status_from_string("USAGE");
-        assert_se(cv == rv);
-        assert_se(cv == EX_USAGE);
-
-        cv = exit_status_from_string("EXCEPTION");
-        rv = rs_exit_status_from_string("EXCEPTION");
-        assert_se(cv == rv);
-        assert_se(cv == EXIT_EXCEPTION);
-
-        /* Numeric fallback */
-        cv = exit_status_from_string("0");
-        rv = rs_exit_status_from_string("0");
-        assert_se(cv == rv);
-        assert_se(cv == 0);
-
-        cv = exit_status_from_string("255");
-        rv = rs_exit_status_from_string("255");
-        assert_se(cv == rv);
-        assert_se(cv == 255);
-
-        cv = exit_status_from_string("42");
-        rv = rs_exit_status_from_string("42");
-        assert_se(cv == rv);
-        assert_se(cv == 42);
-
-        /* Case sensitive */
-        cv = exit_status_from_string("success");
-        rv = rs_exit_status_from_string("success");
-        assert_se(cv == rv);
-        assert_se(cv < 0); /* -EINVAL */
-
-        /* Unknown string */
-        cv = exit_status_from_string("FOOBAR");
-        rv = rs_exit_status_from_string("FOOBAR");
-        assert_se(cv == rv);
-        assert_se(cv < 0);
-
-        /* Overflow */
-        cv = exit_status_from_string("256");
-        rv = rs_exit_status_from_string("256");
-        assert_se(cv == rv);
-        assert_se(cv < 0); /* -ERANGE */
-
-        /* Empty/NULL */
-        cv = exit_status_from_string("");
-        rv = rs_exit_status_from_string("");
-        assert_se(cv == rv);
-        assert_se(cv < 0);
 }
 
 /* ── secure_bits_is_valid ─────────────────────────────────────────────── */
@@ -301,98 +242,10 @@ static void test_secure_bit_to_string(void) {
         assert_se(streq(cv, "keep-caps-locked"));
 }
 
-/* ── is_clean_exit ─────────────────────────────────────────────────────── */
-
-static void test_is_clean_exit(void) {
-        bool cv, rv;
-
-        /* Normal exit with status 0 is clean */
-        cv = is_clean_exit(CLD_EXITED, 0, EXIT_CLEAN_DAEMON, NULL);
-        rv = rs_is_clean_exit(CLD_EXITED, 0, EXIT_CLEAN_DAEMON, NULL);
-        assert_se(cv == rv);
-        assert_se(cv == true);
-
-        /* Normal exit with non-zero status, no success set → not clean */
-        cv = is_clean_exit(CLD_EXITED, 1, EXIT_CLEAN_DAEMON, NULL);
-        rv = rs_is_clean_exit(CLD_EXITED, 1, EXIT_CLEAN_DAEMON, NULL);
-        assert_se(cv == rv);
-        assert_se(cv == false);
-
-        /* Killed by SIGTERM, daemon mode → clean */
-        cv = is_clean_exit(CLD_KILLED, SIGTERM, EXIT_CLEAN_DAEMON, NULL);
-        rv = rs_is_clean_exit(CLD_KILLED, SIGTERM, EXIT_CLEAN_DAEMON, NULL);
-        assert_se(cv == rv);
-        assert_se(cv == true);
-
-        /* Killed by SIGTERM, command mode → not clean */
-        cv = is_clean_exit(CLD_KILLED, SIGTERM, EXIT_CLEAN_COMMAND, NULL);
-        rv = rs_is_clean_exit(CLD_KILLED, SIGTERM, EXIT_CLEAN_COMMAND, NULL);
-        assert_se(cv == rv);
-        assert_se(cv == false);
-
-        /* Killed by SIGHUP, daemon mode → clean */
-        cv = is_clean_exit(CLD_KILLED, SIGHUP, EXIT_CLEAN_DAEMON, NULL);
-        rv = rs_is_clean_exit(CLD_KILLED, SIGHUP, EXIT_CLEAN_DAEMON, NULL);
-        assert_se(cv == rv);
-        assert_se(cv == true);
-
-        /* Killed by SIGKILL (9), daemon mode → not clean */
-        cv = is_clean_exit(CLD_KILLED, SIGKILL, EXIT_CLEAN_DAEMON, NULL);
-        rv = rs_is_clean_exit(CLD_KILLED, SIGKILL, EXIT_CLEAN_DAEMON, NULL);
-        assert_se(cv == rv);
-        assert_se(cv == false);
-
-        /* CLD_DUMPED → not clean */
-        cv = is_clean_exit(CLD_DUMPED, SIGSEGV, EXIT_CLEAN_DAEMON, NULL);
-        rv = rs_is_clean_exit(CLD_DUMPED, SIGSEGV, EXIT_CLEAN_DAEMON, NULL);
-        assert_se(cv == rv);
-        assert_se(cv == false);
-}
-
-/* ── exit_status_set ───────────────────────────────────────────────────── */
-
-static void test_exit_status_set_is_empty(void) {
-        bool cv, rv;
-
-        /* NULL → empty */
-        cv = exit_status_set_is_empty(NULL);
-        rv = rs_exit_status_set_is_empty(NULL);
-        assert_se(cv == rv);
-        assert_se(cv == true);
-
-        /* Fresh set is empty */
-        ExitStatusSet x = {};
-        cv = exit_status_set_is_empty(&x);
-        rv = rs_exit_status_set_is_empty(&x);
-        assert_se(cv == rv);
-        assert_se(cv == true);
-}
-
-static void test_exit_status_set_test(void) {
-        bool cv, rv;
-
-        /* NULL set → no match */
-        cv = exit_status_set_test(NULL, CLD_EXITED, 0);
-        rv = rs_exit_status_set_test(NULL, CLD_EXITED, 0);
-        assert_se(cv == rv);
-        assert_se(cv == false);
-
-        /* Empty set → no match */
-        ExitStatusSet x = {};
-        cv = exit_status_set_test(&x, CLD_EXITED, 42);
-        rv = rs_exit_status_set_test(&x, CLD_EXITED, 42);
-        assert_se(cv == rv);
-        assert_se(cv == false);
-}
-
 int main(int argc, char **argv) {
         test_exit_status_to_string();
         test_exit_status_class();
-        test_exit_status_from_string();
         test_secure_bits_is_valid();
         test_secure_bit_to_string();
-        test_is_clean_exit();
-        test_exit_status_set_is_empty();
-        test_exit_status_set_test();
         return 0;
 }

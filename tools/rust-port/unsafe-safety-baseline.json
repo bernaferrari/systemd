@@ -57,6 +57,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 21
     },
+    "src/basic/rust/bus_label.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 9
+    },
     "src/basic/rust/bus_type_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -97,6 +102,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 4
     },
+    "src/basic/rust/device_nodes.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 7
+    },
     "src/basic/rust/devnum_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -132,6 +142,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 6
+    },
+    "src/basic/rust/efivars_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 10
     },
     "src/basic/rust/errno_util.rs": {
       "missing_safety": 0,
@@ -197,6 +212,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 7
+    },
+    "src/basic/rust/gunicode.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
     },
     "src/basic/rust/header_inline_abi.rs": {
       "missing_safety": 0,
@@ -439,6 +459,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 5
     },
+    "src/basic/rust/serialize.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 11
+    },
     "src/basic/rust/shared_facades/lookups.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -457,7 +482,7 @@
     "src/basic/rust/signal_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 4
+      "unsafe_sites": 17
     },
     "src/basic/rust/specifier_util.rs": {
       "missing_safety": 0,
@@ -2091,7 +2116,7 @@
   },
   "totals": {
     "missing_safety": 632,
-    "unsafe_sites": 5002
+    "unsafe_sites": 5055
   },
   "version": 2,
   "window": 3

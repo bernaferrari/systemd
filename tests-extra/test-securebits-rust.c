@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: securebit-mask-validation */
 /* Shadow test: C securebits-util.h inline functions vs Rust */
 
 #include <assert.h>

@@ -1,0 +1,72 @@
+schema = 1
+module = "serialize"
+semantic_coverage = "partial"
+source_structure = "intentionally-coupled"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "deserialize_read_line",
+    "deserialize_fd",
+    "deserialize_fd_many",
+    "deserialize_environment",
+    "deserialize_strv",
+    "deserialize_pidref",
+    "deserialize_ratelimit",
+]
+
+[authority]
+c_headers = ["src/shared/serialize.h"]
+c_sources = ["src/shared/serialize.c"]
+rust_headers = ["src/basic/rust/serialize.h"]
+rust_sources = ["src/basic/rust/serialize.rs"]
+
+[[surface]]
+id = "deserialize-usec"
+c_symbols = ["deserialize_usec"]
+rust_symbols = ["rs_deserialize_usec"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "deserialize-usec-null-fail-closed"
+deviation_rationale = "The C authority asserts on NULL inputs; the Rust facade returns -EINVAL before dereferencing either NULL pointer while matching the C parser for valid C strings and output storage."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-28."
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-serialize-rust.c"
+meson_target = "test-serialize-rust"
+labels = ["deserialize-usec"]
+
+[[surface]]
+id = "deserialize-dual-timestamp"
+c_symbols = ["deserialize_dual_timestamp"]
+rust_symbols = ["rs_deserialize_dual_timestamp"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "deserialize-dual-timestamp-null-fail-closed"
+deviation_rationale = "The C authority asserts on NULL inputs; the Rust facade returns -EINVAL before dereferencing either NULL pointer while matching the C strspn/sscanf conversion and deferred output publication for valid inputs."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-28."
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-serialize-rust.c"
+meson_target = "test-serialize-rust"
+labels = ["deserialize-dual-timestamp"]

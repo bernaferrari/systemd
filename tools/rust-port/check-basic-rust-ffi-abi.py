@@ -68,14 +68,18 @@ C_TYPES = {
     "Compression": "i32",
     "CompareOperatorParseFlags": "i32",
     "ConditionType": "i32",
+    "ExitStatusClass": "i32",
     # Glyph has int ABI. The Rust facade accepts the raw integer so C callers
     # retain the header's assertion contract for out-of-range positive values.
     "Glyph": "i32",
     "NamespaceType": "i32",
     "GptPartitionType": "GptPartitionType",
     "ShellEscapeFlags": "u32",
+    "SecureBootMode": "i32",
     "UnescapeFlags": "u32",
     "XEscapeFlags": "u32",
+    # gunicode.c aliases its Unicode scalar type to uint32_t locally.
+    "unichar": "u32",
     # These C enums have `int` ABI, but the Rust facades intentionally take
     # raw integers so invalid C discriminants remain defined/non-matching.
     "OutputMode": "i32",
@@ -101,18 +105,22 @@ C_TYPES = {
     "char ***": "*mut*mut*mutc_char",
     "char **": "*mut*mutc_char",
     "const char *": "*constc_char",
+    "const sd_char *": "*constc_char",
     "const char **": "*mut*constc_char",
     "const char * *": "*mut*constc_char",
     "const sd_id128_t *": "*constSdId128",
     "const void *": "*constc_void",
     "void **": "*mut*mutc_void",
     "const uint64_t *": "*constu64",
+    "const uint8_t *": "*constu8",
     "const CapabilityQuintet *": "*constCapabilityQuintet",
     "const EdidHeader *": "*constEdidHeaderAbi",
     "const dev_t *": "*constu64",
     "const PidRef *": "*constPidRef",
     "const InstallChange *": "*constInstallChange",
     "const dual_timestamp *": "*constDualTimestamp",
+    "dual_timestamp *": "*mutDualTimestamp",
+    "struct dual_timestamp *": "*mutDualTimestamp",
     "const triple_timestamp *": "*constTripleTimestamp",
     "const struct rs_IoVec *": "*constIoVec",
     "const struct file_handle *": "*constfile_handle",
@@ -145,6 +153,7 @@ C_TYPES = {
     "uint16_t *": "*mutu16",
     "uint32_t *": "*mutu32",
     "uint64_t *": "*mutu64",
+    "usec_t *": "*mutu64",
     "int32_t *": "*muti32",
     "int *": "*muti32",
     "unsigned *": "*mutu32",
@@ -429,6 +438,7 @@ def normalize_rust_type(type_name: str) -> str:
         "StatFsType": "c_long",
         "XStatXFlags": "u32",
         "SipHashState": "siphash",
+        "CDualTimestamp": "DualTimestamp",
     }
     for alias, canonical in aliases.items():
         normalized = normalized.replace(alias, canonical)
@@ -2941,6 +2951,38 @@ def main() -> int:
                     )
                 authority_curated += 1
                 continue
+            if name == "efivars_util" and symbol == "rs_efi_guid_to_id128":
+                # The C authority returns sd_id128_t by value, while this
+                # deliberately audited facade uses caller storage to avoid
+                # the by-value-union ABI variance on aarch64.
+                if (
+                    expected != (("*constc_void", "*mutu8"), "i32")
+                    or not re.search(
+                        r"\bsd_id128_t\s+efi_guid_to_id128\s*\(\s*const\s+void\s*\*\s*guid\s*\)",
+                        authority,
+                    )
+                ):
+                    return fail(
+                        "efivars_util: efi_guid_to_id128 output-pointer ABI no longer matches C authority"
+                    )
+                authority_curated += 1
+                continue
+            if name == "efivars_util" and symbol == "rs_efi_id128_to_guid":
+                # See the paired output-pointer facade above. The input is a
+                # 16-byte sd_id128_t representation rather than a by-value C
+                # union so the Rust declaration has one stable ABI.
+                if (
+                    expected != (("*constu8", "*mutc_void"), "()")
+                    or not re.search(
+                        r"\bvoid\s+efi_id128_to_guid\s*\(\s*sd_id128_t\s+id\s*,\s*void\s*\*\s*ret_guid\s*\)",
+                        authority,
+                    )
+                ):
+                    return fail(
+                        "efivars_util: efi_id128_to_guid pointer ABI no longer matches C authority"
+                    )
+                authority_curated += 1
+                continue
             if name == "signal_inline_registered" and symbol == "rs_signal_is_valid":
                 if (
                     "static inline bool SIGNAL_VALID(int signo)" not in authority
@@ -3068,6 +3110,25 @@ def main() -> int:
         return fail(
             "shared exit_status.h duplicate secure-bits declaration must exactly "
             "match the reviewed basic header signature"
+        )
+
+    exit_lookup_symbols = PARTIAL_SURFACES["exit_status_lookup"][2]
+    shared_exit_lookup = dict(
+        header_inventory(SHARED_EXIT_STATUS_HEADER, exit_lookup_symbols)
+    )
+    basic_exit_lookup = dict(
+        header_inventory(
+            PARTIAL_SURFACES["exit_status_lookup"][0],
+            exit_lookup_symbols,
+        )
+    )
+    if (
+        shared_exit_lookup != basic_exit_lookup
+        or set(shared_exit_lookup) != exit_lookup_symbols
+    ):
+        return fail(
+            "shared exit_status.h duplicate lookup declarations must exactly "
+            "match the reviewed basic header signatures"
         )
 
     if not allocator_boundary_is_c_compatible(SURFACES["devnum_util"][1]):

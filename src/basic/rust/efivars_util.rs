@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/fundamental/efivars.c (secure_boot_mode_to_string, decode_secure_boot_mode)
-//            src/basic/efivars.c (efi_tilt_backslashes)
-//            src/shared/efi-api.c (efi_guid_to_id128, efi_id128_to_guid)
+// PORT-SYNC: scope=basic.efivars-util; authority=src/fundamental/efivars.c,src/fundamental/efivars.h,src/basic/efivars.c,src/basic/efivars.h,src/shared/efi-api.c,src/shared/efi-api.h
 //
 // UEFI Secure Boot mode string table, state machine decoder,
 // backslash-to-slash conversion, and GUID/ID128 byte-order conversion.
+
+use core::ffi::{c_char, c_int, c_void};
+use core::ptr;
 
 // ── Secure boot mode enum ────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ const EINVAL: i32 = -22;
 
 // ── secure_boot_mode_to_string ───────────────────────────────────────────
 
-static SECURE_BOOT_STRINGS: [&str; 8] = [
+const SECURE_BOOT_STRINGS: [&str; 8] = [
     "unsupported",
     "disabled",
     "unknown",
@@ -115,7 +116,7 @@ pub fn efi_tilt_backslashes_in_place(buf: &mut [u8]) {
 /// EFI GUID struct layout (mixed-endian): Data1(u32), Data2(u16), Data3(u16), Data4([u8;8]).
 /// Total: 16 bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct EfiGuid {
     pub data1: u32,
     pub data2: u16,
@@ -129,14 +130,14 @@ pub type Id128 = [u8; 16];
 /// Convert an EFI GUID to ID128 format (mixed-endian to big-endian byte order).
 /// Mirrors `efi_guid_to_id128()` from efi-api.c.
 ///
-/// Data1/Data2/Data3 are stored as native-endian in the EFI_GUID struct.
-/// We convert them to big-endian byte order for display/storage.
+/// Data1/Data2/Data3 are native-endian integer fields in the EFI_GUID struct.
+/// We convert their numeric values to big-endian byte order for display/storage.
 pub fn efi_guid_to_id128(guid: &EfiGuid) -> Id128 {
     let mut result = [0u8; 16];
 
-    let d1 = u32::from_le(guid.data1);
-    let d2 = u16::from_le(guid.data2);
-    let d3 = u16::from_le(guid.data3);
+    let d1 = guid.data1;
+    let d2 = guid.data2;
+    let d3 = guid.data3;
 
     result[0] = ((d1 >> 24) & 0xff) as u8;
     result[1] = ((d1 >> 16) & 0xff) as u8;
@@ -154,11 +155,9 @@ pub fn efi_guid_to_id128(guid: &EfiGuid) -> Id128 {
 /// Convert raw GUID bytes (as laid out in memory) to ID128 format.
 /// The raw bytes are interpreted as: Data1[4] + Data2[2] + Data3[2] + Data4[8] in native endian.
 pub fn efi_guid_bytes_to_id128(guid_bytes: &[u8; 16]) -> Result<Id128, i32> {
-    // On a little-endian system (which Linux targets are), the EFI_GUID struct
-    // has Data1/Data2/Data3 stored as little-endian integers.
-    let d1 = u32::from_le_bytes([guid_bytes[0], guid_bytes[1], guid_bytes[2], guid_bytes[3]]);
-    let d2 = u16::from_le_bytes([guid_bytes[4], guid_bytes[5]]);
-    let d3 = u16::from_le_bytes([guid_bytes[6], guid_bytes[7]]);
+    let d1 = u32::from_ne_bytes([guid_bytes[0], guid_bytes[1], guid_bytes[2], guid_bytes[3]]);
+    let d2 = u16::from_ne_bytes([guid_bytes[4], guid_bytes[5]]);
+    let d3 = u16::from_ne_bytes([guid_bytes[6], guid_bytes[7]]);
 
     let mut result = [0u8; 16];
     result[0] = ((d1 >> 24) & 0xff) as u8;
@@ -188,9 +187,9 @@ pub fn efi_id128_to_guid(id: &Id128) -> EfiGuid {
     data4.copy_from_slice(&id[8..16]);
 
     EfiGuid {
-        data1: u32::to_le(d1),
-        data2: u16::to_le(d2),
-        data3: u16::to_le(d3),
+        data1: d1,
+        data2: d2,
+        data3: d3,
         data4,
     }
 }
@@ -199,11 +198,122 @@ pub fn efi_id128_to_guid(id: &Id128) -> EfiGuid {
 pub fn efi_id128_to_guid_bytes(id: &Id128) -> [u8; 16] {
     let guid = efi_id128_to_guid(id);
     let mut result = [0u8; 16];
-    result[0..4].copy_from_slice(&guid.data1.to_le_bytes());
-    result[4..6].copy_from_slice(&guid.data2.to_le_bytes());
-    result[6..8].copy_from_slice(&guid.data3.to_le_bytes());
+    result[0..4].copy_from_slice(&guid.data1.to_ne_bytes());
+    result[4..6].copy_from_slice(&guid.data2.to_ne_bytes());
+    result[6..8].copy_from_slice(&guid.data3.to_ne_bytes());
     result[8..16].copy_from_slice(&guid.data4);
     result
+}
+
+// ── C ABI ────────────────────────────────────────────────────────────────
+
+/// C ABI mirror of `secure_boot_mode_to_string()`.
+///
+/// The returned pointer is borrowed immutable static storage and is null for
+/// values outside the C enum's valid range.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_secure_boot_mode_to_string(m: c_int) -> *const c_char {
+    match m {
+        0 => c"unsupported".as_ptr(),
+        1 => c"disabled".as_ptr(),
+        2 => c"unknown".as_ptr(),
+        3 => c"audit".as_ptr(),
+        4 => c"deployed".as_ptr(),
+        5 => c"setup".as_ptr(),
+        6 => c"user".as_ptr(),
+        7 => c"tainted".as_ptr(),
+        _ => ptr::null(),
+    }
+}
+
+/// C ABI mirror of `decode_secure_boot_mode()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_decode_secure_boot_mode(
+    secure: bool,
+    audit: bool,
+    deployed: bool,
+    setup: bool,
+    moksb: bool,
+) -> c_int {
+    decode_secure_boot_mode(secure, audit, deployed, setup, moksb) as c_int
+}
+
+/// C ABI mirror of `efi_tilt_backslashes()`.
+///
+/// A null input is outside the C function's asserted contract; it returns null
+/// here as a fail-closed extension. Otherwise `s` must name a writable,
+/// NUL-terminated C byte string for the duration of this call.
+///
+/// # Safety
+/// `s` must satisfy the writable C-string requirement above whenever non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_efi_tilt_backslashes(s: *mut c_char) -> *mut c_char {
+    if s.is_null() {
+        return ptr::null_mut();
+    }
+
+    let mut cursor = s.cast::<u8>();
+    loop {
+        // SAFETY: the C ABI contract requires a readable NUL-terminated string
+        // and writable bytes through that terminator; `cursor` advances within it.
+        let byte = unsafe { *cursor };
+        if byte == 0 {
+            return s;
+        }
+        if byte == b'\\' {
+            // SAFETY: this is the current byte of the writable C string above.
+            unsafe { *cursor = b'/' };
+        }
+        // SAFETY: `cursor` has not reached the required terminating NUL.
+        cursor = unsafe { cursor.add(1) };
+    }
+}
+
+/// C ABI facade for `efi_guid_to_id128()` using output storage instead of the
+/// C function's by-value union return. The input may be unaligned, just as C's
+/// `memcpy`-based implementation permits.
+///
+/// Null pointers are outside C's asserted contract and return `-EINVAL` here.
+///
+/// # Safety
+/// Non-null `guid` and `ret` must respectively name 16 readable and 16
+/// writable bytes for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_efi_guid_to_id128(guid: *const c_void, ret: *mut u8) -> c_int {
+    if guid.is_null() || ret.is_null() {
+        return EINVAL;
+    }
+
+    let mut raw_guid = [0u8; 16];
+    // SAFETY: the C ABI requires `guid` to name 16 readable bytes. The local
+    // array is distinct, aligned storage and therefore also handles unaligned input.
+    unsafe { ptr::copy_nonoverlapping(guid.cast::<u8>(), raw_guid.as_mut_ptr(), raw_guid.len()) };
+    let id = efi_guid_bytes_to_id128(&raw_guid).expect("fixed-size GUID conversion cannot fail");
+    // SAFETY: the C ABI requires `ret` to name 16 writable bytes; `id` is local.
+    unsafe { ptr::copy_nonoverlapping(id.as_ptr(), ret, id.len()) };
+    0
+}
+
+/// C ABI facade for `efi_id128_to_guid()` using an ID128 byte pointer.
+///
+/// Null pointers are outside C's asserted contract and are a no-op extension
+/// because this void-returning ABI has no error channel.
+///
+/// # Safety
+/// Non-null `id` and `ret_guid` must respectively name 16 readable and 16
+/// writable bytes for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_efi_id128_to_guid(id: *const u8, ret_guid: *mut c_void) {
+    if id.is_null() || ret_guid.is_null() {
+        return;
+    }
+
+    let mut id_bytes = [0u8; 16];
+    // SAFETY: the C ABI requires 16 readable bytes at `id`; the local is distinct.
+    unsafe { ptr::copy_nonoverlapping(id, id_bytes.as_mut_ptr(), id_bytes.len()) };
+    let guid = efi_id128_to_guid_bytes(&id_bytes);
+    // SAFETY: the C ABI requires 16 writable bytes at `ret_guid`; `guid` is local.
+    unsafe { ptr::copy_nonoverlapping(guid.as_ptr(), ret_guid.cast::<u8>(), guid.len()) };
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -359,14 +469,11 @@ mod tests {
 
     #[test]
     fn test_efi_guid_to_id128_known() {
-        // Construct GUID with native-endian fields matching C struct layout:
-        // Data1=0x8bf06e4f → in LE memory: 4f 6e f0 8b
-        // Data2=0x3412 → in LE memory: 12 34
-        // Data3=0x5678 → in LE memory: 78 56
+        // These are native integer fields, matching the C EFI_GUID struct.
         let guid = EfiGuid {
-            data1: u32::to_le(0x8bf06e4f),
-            data2: u16::to_le(0x3412),
-            data3: u16::to_le(0x5678),
+            data1: 0x8bf06e4f,
+            data2: 0x3412,
+            data3: 0x5678,
             data4: [0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78],
         };
         let result = efi_guid_to_id128(&guid);
@@ -386,26 +493,28 @@ mod tests {
 
     #[test]
     fn test_efi_guid_bytes_to_id128() {
-        // Same test as above but using raw bytes (LE layout)
-        let guid_bytes: [u8; 16] = [
-            0x4f, 0x6e, 0xf0, 0x8b, 0x12, 0x34, 0x78, 0x56, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34,
-            0x56, 0x78,
-        ];
+        let mut guid_bytes = [0u8; 16];
+        guid_bytes[..4].copy_from_slice(&0x8bf06e4fu32.to_ne_bytes());
+        guid_bytes[4..6].copy_from_slice(&0x3412u16.to_ne_bytes());
+        guid_bytes[6..8].copy_from_slice(&0x5678u16.to_ne_bytes());
+        guid_bytes[8..].copy_from_slice(&[0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78]);
         let result = efi_guid_bytes_to_id128(&guid_bytes).unwrap();
-        assert_eq!(result[0], 0x8b);
-        assert_eq!(result[1], 0xf0);
-        assert_eq!(result[2], 0x6e);
-        assert_eq!(result[3], 0x4f);
-        assert_eq!(&result[8..16], &guid_bytes[8..16]);
+        assert_eq!(
+            result,
+            [
+                0x8b, 0xf0, 0x6e, 0x4f, 0x34, 0x12, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34,
+                0x56, 0x78,
+            ]
+        );
     }
 
     #[test]
     fn test_efi_id128_to_guid_zero() {
         let id = [0u8; 16];
         let guid = efi_id128_to_guid(&id);
-        assert_eq!(u32::from_le(guid.data1), 0);
-        assert_eq!(u16::from_le(guid.data2), 0);
-        assert_eq!(u16::from_le(guid.data3), 0);
+        assert_eq!(guid.data1, 0);
+        assert_eq!(guid.data2, 0);
+        assert_eq!(guid.data3, 0);
         assert_eq!(guid.data4, [0u8; 8]);
     }
 
@@ -416,9 +525,9 @@ mod tests {
             0x56, 0x78,
         ];
         let guid = efi_id128_to_guid(&id);
-        assert_eq!(u32::from_le(guid.data1), 0x8bf06e4f);
-        assert_eq!(u16::from_le(guid.data2), 0x3412);
-        assert_eq!(u16::from_le(guid.data3), 0x7856);
+        assert_eq!(guid.data1, 0x8bf06e4f);
+        assert_eq!(guid.data2, 0x3412);
+        assert_eq!(guid.data3, 0x7856);
         assert_eq!(guid.data4, [0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78]);
     }
 

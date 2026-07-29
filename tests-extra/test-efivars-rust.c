@@ -6,6 +6,7 @@
 #include "string-util.h"
 #include "rust/efivars_util.h"
 
+/* RUST-CONTRACT: secure-boot-mode-string */
 static void test_secure_boot_mode_to_string(void) {
         const char *cr, *rr;
 
@@ -55,6 +56,7 @@ typedef struct {
         SecureBootMode expected;
 } DecodeTestCase;
 
+/* RUST-CONTRACT: secure-boot-mode-decoding */
 static void test_decode_secure_boot_mode(void) {
         /* All 32 combinations of 5 bools */
         static const DecodeTestCase cases[] = {
@@ -105,6 +107,7 @@ static void test_decode_secure_boot_mode(void) {
         }
 }
 
+/* RUST-CONTRACT: efi-path-separator */
 static void test_efi_tilt_backslashes(void) {
         /* Both modify in-place and return the same pointer */
         _cleanup_free_ char *r1 = strdup("foo\\bar\\baz");

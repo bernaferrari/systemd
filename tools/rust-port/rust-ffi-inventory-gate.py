@@ -529,7 +529,8 @@ def signature_authority_pairs(
         add_header(header, symbols)
     add_header(
         basic.SHARED_EXIT_STATUS_HEADER,
-        basic.PARTIAL_SURFACES["exit_status_securebits"][2],
+        basic.PARTIAL_SURFACES["exit_status_securebits"][2]
+        | basic.PARTIAL_SURFACES["exit_status_lookup"][2],
     )
     add_header(basic.IN_ADDR_UTIL_HEADER)
     add_header(basic.ETHER_ADDR_UTIL_HEADER)

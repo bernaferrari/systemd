@@ -21,21 +21,6 @@
       "rs_bitmap_set",
       "rs_bitmap_unset"
     ],
-    "src/basic/rust/bus_label.h": [
-      "rs_bus_label_escape",
-      "rs_bus_label_unescape_n"
-    ],
-    "src/basic/rust/device_nodes.h": [
-      "rs_allow_listed_char_for_devnode",
-      "rs_encode_devnode_name"
-    ],
-    "src/basic/rust/efivars_util.h": [
-      "rs_decode_secure_boot_mode",
-      "rs_efi_guid_to_id128",
-      "rs_efi_id128_to_guid",
-      "rs_efi_tilt_backslashes",
-      "rs_secure_boot_mode_to_string"
-    ],
     "src/basic/rust/exec_util.h": [
       "rs_exec_command_flags_from_string",
       "rs_exec_command_flags_from_strv",
@@ -44,22 +29,15 @@
       "rs_indent_embedded_newlines"
     ],
     "src/basic/rust/exit_status.h": [
-      "rs_exit_status_class",
       "rs_exit_status_from_string",
       "rs_exit_status_set_free",
       "rs_exit_status_set_is_empty",
       "rs_exit_status_set_test",
-      "rs_exit_status_to_string",
-      "rs_is_clean_exit",
-      "rs_secure_bit_to_string"
+      "rs_is_clean_exit"
     ],
     "src/basic/rust/extract_word.h": [
       "rs_extract_first_word",
       "rs_extract_first_word_and_warn"
-    ],
-    "src/basic/rust/gunicode.h": [
-      "rs_unichar_iswide",
-      "rs_utf8_prev_char"
     ],
     "src/basic/rust/hexdecoct.h": [
       "rs_base32hexmem",
@@ -169,10 +147,7 @@
       "rs_ratelimit_num_dropped",
       "rs_ratelimit_reset"
     ],
-    "src/basic/rust/serialize.h": [
-      "rs_deserialize_dual_timestamp",
-      "rs_deserialize_usec"
-    ],
+    "src/basic/rust/serialize.h": [],
     "src/basic/rust/sha1.h": [
       "rs_sha1_finish_ctx",
       "rs_sha1_init_ctx",
@@ -186,10 +161,7 @@
     "src/basic/rust/signal_util.h": [
       "rs_get_nsig",
       "rs_get_sigrtmax",
-      "rs_get_sigrtmin",
-      "rs_parse_signo",
-      "rs_signal_from_string",
-      "rs_signal_to_string"
+      "rs_get_sigrtmin"
     ],
     "src/basic/rust/siphash24.h": [
       "rs_siphash24",
@@ -349,12 +321,7 @@
       "rs_dns_srv_type_is_valid",
       "rs_dnssd_srv_type_is_valid"
     ],
-    "src/shared/rust/exit_status.h": [
-      "rs_exit_status_class",
-      "rs_exit_status_from_string",
-      "rs_exit_status_to_string",
-      "rs_secure_bit_to_string"
-    ],
+    "src/shared/rust/exit_status.h": ["rs_exit_status_from_string"],
     "src/shared/rust/glob_util.h": [
       "rs_glob_non_glob_prefix",
       "rs_string_is_glob"

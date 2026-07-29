@@ -1,0 +1,51 @@
+schema = 1
+module = "device-nodes"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["devnode_same"]
+
+[authority]
+c_headers = ["src/basic/device-nodes.h", "src/basic/utf8.h"]
+c_sources = ["src/basic/device-nodes.c", "src/basic/utf8.c"]
+rust_headers = ["src/basic/rust/device_nodes.h"]
+rust_sources = ["src/basic/rust/device_nodes.rs"]
+
+[[surface]]
+id = "device-node-allowed-byte"
+c_symbols = ["allow_listed_char_for_devnode"]
+rust_symbols = ["rs_allow_listed_char_for_devnode"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-device-nodes-rust.c"
+meson_target = "test-device-nodes-rust"
+labels = ["device-node-allowed-byte"]
+
+[[surface]]
+id = "device-node-name-encoding"
+c_symbols = ["encode_devnode_name"]
+rust_symbols = ["rs_encode_devnode_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "str_enc"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "write"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-device-nodes-rust.c"
+meson_target = "test-device-nodes-rust"
+labels = ["device-node-name-encoding"]

@@ -8,6 +8,7 @@
 #include "rust/efivars_util.h"
 
 /* ── efi_guid_to_id128 ────────────────────────────────────────────── */
+/* RUST-CONTRACT: efi-guid-to-id128 */
 
 static void test_efi_guid_to_id128_null_guid(void) {
         uint8_t r_out[16] = {};
@@ -63,6 +64,7 @@ static void test_efi_guid_to_id128_known(void) {
 }
 
 /* ── efi_id128_to_guid ────────────────────────────────────────────── */
+/* RUST-CONTRACT: id128-to-efi-guid */
 
 static void test_efi_id128_to_guid_null_id(void) {
         uint8_t r_out[16] = {};

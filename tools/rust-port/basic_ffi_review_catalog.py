@@ -86,6 +86,17 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "exit_status.rs",
             frozenset({"rs_secure_bits_is_valid"}),
         ),
+        "exit_status_lookup": (
+            basic_rust / "exit_status.h",
+            basic_rust / "exit_status.rs",
+            frozenset(
+                {
+                    "rs_exit_status_to_string",
+                    "rs_exit_status_class",
+                    "rs_secure_bit_to_string",
+                }
+            ),
+        ),
         "parse_util": (
             basic_rust / "parse_util.h",
             basic_rust / "parse_util.rs",
@@ -350,6 +361,22 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "signal_util_parsing": (
+            basic_rust / "signal_util.h",
+            basic_rust / "signal_util.rs",
+            frozenset(
+                {
+                    "rs_signal_to_string",
+                    "rs_signal_from_string",
+                    "rs_parse_signo",
+                }
+            ),
+        ),
+        "serialize_deserialization": (
+            basic_rust / "serialize.h",
+            basic_rust / "serialize.rs",
+            frozenset({"rs_deserialize_usec", "rs_deserialize_dual_timestamp"}),
+        ),
         "udev_util": (
             basic_rust / "udev_util.h",
             basic_rust / "udev_util.rs",
@@ -526,6 +553,36 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_compression_uppercase_from_string",
                     "rs_compression_supported",
                 }
+            ),
+        ),
+        "bus_label": (
+            basic_rust / "bus_label.h",
+            basic_rust / "bus_label.rs",
+            frozenset({"rs_bus_label_escape", "rs_bus_label_unescape_n"}),
+        ),
+        "gunicode": (
+            basic_rust / "gunicode.h",
+            basic_rust / "gunicode.rs",
+            frozenset({"rs_utf8_prev_char", "rs_unichar_iswide"}),
+        ),
+        "efivars_util": (
+            basic_rust / "efivars_util.h",
+            basic_rust / "efivars_util.rs",
+            frozenset(
+                {
+                    "rs_secure_boot_mode_to_string",
+                    "rs_decode_secure_boot_mode",
+                    "rs_efi_tilt_backslashes",
+                    "rs_efi_guid_to_id128",
+                    "rs_efi_id128_to_guid",
+                }
+            ),
+        ),
+        "device_nodes": (
+            basic_rust / "device_nodes.h",
+            basic_rust / "device_nodes.rs",
+            frozenset(
+                {"rs_allow_listed_char_for_devnode", "rs_encode_devnode_name"}
             ),
         ),
         "mount_setup": (
@@ -960,6 +1017,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-misc-validators-rust.c",
         ),
         "exit_status_securebits": (tests_extra / "test-securebits-rust.c",),
+        "exit_status_lookup": (tests_extra / "test-exit-status-rust.c",),
         "parse_util": (
             tests_extra / "test-parse-util-extra-rust.c",
             tests_extra / "test-parse-util-inline-rust.c",
@@ -1013,6 +1071,8 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-string-util-inline2-rust.c",
             tests_extra / "test-signal-inline-rust.c",
         ),
+        "signal_util_parsing": (tests_extra / "test-signal-util-rust.c",),
+        "serialize_deserialization": (tests_extra / "test-serialize-rust.c",),
         "udev_util": (tests_extra / "test-udev-util-rust.c",),
         "shared_validation_facades": (
             tests_extra / "test-shared-validators-rust.c",
@@ -1042,6 +1102,14 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-namespace-mountpoint-rust.c",
         ),
         "compress_util": (tests_extra / "test-compress-util-rust.c",),
+        "bus_label": (tests_extra / "test-bus-label-rust.c",),
+        "gunicode": (tests_extra / "test-gunicode-rust.c",),
+        "efivars_util": (
+            tests_extra / "test-efivars-rust.c",
+            tests_extra / "test-efi-guid-rust.c",
+            tests_extra / "test-misc-rust3.c",
+        ),
+        "device_nodes": (tests_extra / "test-device-nodes-rust.c",),
         "mount_setup": (tests_extra / "test-mount-setup-rust.c",),
         "resize_fs_util": (tests_extra / "test-resize-fs-rust.c",),
         "replace_var": (tests_extra / "test-replace-var-rust.c",),
@@ -1181,6 +1249,12 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     partial_c_authorities = {
         "address_label_valid": (root / "src/basic/socket-util.c",),
         "exit_status_securebits": (root / "src/shared/securebits-util.h",),
+        "exit_status_lookup": (
+            root / "src/shared/exit-status.c",
+            root / "src/shared/exit-status.h",
+            root / "src/shared/securebits-util.c",
+            root / "src/shared/securebits-util.h",
+        ),
         "parse_util": (root / "src/basic/parse-util.c", root / "src/basic/parse-util.h"),
         "time_util_formatting": (
             root / "src/basic/time-util.c",
@@ -1243,6 +1317,14 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/signal-util.h",
             root / "src/basic/signal-util.c",
         ),
+        "signal_util_parsing": (
+            root / "src/basic/signal-util.c",
+            root / "src/basic/signal-util.h",
+        ),
+        "serialize_deserialization": (
+            root / "src/shared/serialize.c",
+            root / "src/shared/serialize.h",
+        ),
         "udev_util": (root / "src/shared/udev-util.c", root / "src/shared/udev-util.h"),
         "shared_validation_facades": (
             root / "src/shared/boot-entry.c",
@@ -1300,6 +1382,28 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "compress_util": (
             root / "src/basic/compress.c",
             root / "src/basic/compress.h",
+        ),
+        "bus_label": (
+            root / "src/basic/bus-label.c",
+            root / "src/basic/bus-label.h",
+        ),
+        "gunicode": (
+            root / "src/basic/gunicode.c",
+            root / "src/basic/gunicode.h",
+        ),
+        "efivars_util": (
+            root / "src/fundamental/efivars.c",
+            root / "src/fundamental/efivars.h",
+            root / "src/basic/efivars.c",
+            root / "src/basic/efivars.h",
+            root / "src/shared/efi-api.c",
+            root / "src/shared/efi-api.h",
+        ),
+        "device_nodes": (
+            root / "src/basic/device-nodes.c",
+            root / "src/basic/device-nodes.h",
+            root / "src/basic/utf8.c",
+            root / "src/basic/utf8.h",
         ),
         "mount_setup": (
             root / "src/shared/mount-setup.c",

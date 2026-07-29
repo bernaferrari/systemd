@@ -1,0 +1,105 @@
+schema = 1
+module = "exit_status"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "exit_status_from_string",
+    "is_clean_exit",
+    "exit_status_set_free",
+    "exit_status_set_is_empty",
+    "exit_status_set_test",
+    "secure_bits_to_strv",
+    "secure_bits_from_string",
+]
+
+[authority]
+c_headers = ["src/shared/exit-status.h", "src/shared/securebits-util.h"]
+c_sources = ["src/shared/exit-status.c", "src/shared/securebits-util.c"]
+rust_headers = ["src/basic/rust/exit_status.h"]
+rust_sources = ["src/basic/rust/exit_status.rs"]
+
+[[surface]]
+id = "securebit-mask-validation"
+c_symbols = ["secure_bits_is_valid"]
+rust_symbols = ["rs_secure_bits_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-securebits-rust.c"
+meson_target = "test-securebits-rust"
+labels = ["securebit-mask-validation"]
+
+[[surface]]
+id = "exit-status-lookup"
+c_symbols = ["exit_status_to_string"]
+rust_symbols = ["rs_exit_status_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-exit-status-rust.c"
+meson_target = "test-exit-status-rust"
+labels = ["exit-status-lookup"]
+
+[[surface]]
+id = "exit-status-class"
+c_symbols = ["exit_status_class"]
+rust_symbols = ["rs_exit_status_class"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-exit-status-rust.c"
+meson_target = "test-exit-status-rust"
+labels = ["exit-status-class"]
+
+[[surface]]
+id = "securebit-name"
+c_symbols = ["secure_bit_to_string"]
+rust_symbols = ["rs_secure_bit_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-exit-status-rust.c"
+meson_target = "test-exit-status-rust"
+labels = ["securebit-name"]

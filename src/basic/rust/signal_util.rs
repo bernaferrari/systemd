@@ -83,37 +83,45 @@ fn static_signal_to_string(signo: i32) -> Option<&'static str> {
 
 fn static_signal_to_c_string(signo: i32) -> Option<&'static CStr> {
     Some(match signo {
-        1 => c"HUP",
-        2 => c"INT",
-        3 => c"QUIT",
-        4 => c"ILL",
-        5 => c"TRAP",
-        6 => c"ABRT",
-        7 => c"BUS",
-        8 => c"FPE",
-        9 => c"KILL",
-        10 => c"USR1",
-        11 => c"SEGV",
-        12 => c"USR2",
-        13 => c"PIPE",
-        14 => c"ALRM",
-        15 => c"TERM",
-        16 => c"STKFLT",
-        17 => c"CHLD",
-        18 => c"CONT",
-        19 => c"STOP",
-        20 => c"TSTP",
-        21 => c"TTIN",
-        22 => c"TTOU",
-        23 => c"URG",
-        24 => c"XCPU",
-        25 => c"XFSZ",
-        26 => c"VTALRM",
-        27 => c"PROF",
-        28 => c"WINCH",
-        29 => c"IO",
-        30 => c"PWR",
-        31 => c"SYS",
+        x if x == libc::SIGHUP => c"HUP",
+        x if x == libc::SIGINT => c"INT",
+        x if x == libc::SIGQUIT => c"QUIT",
+        x if x == libc::SIGILL => c"ILL",
+        x if x == libc::SIGTRAP => c"TRAP",
+        x if x == libc::SIGABRT => c"ABRT",
+        x if x == libc::SIGBUS => c"BUS",
+        x if x == libc::SIGFPE => c"FPE",
+        x if x == libc::SIGKILL => c"KILL",
+        x if x == libc::SIGUSR1 => c"USR1",
+        x if x == libc::SIGSEGV => c"SEGV",
+        x if x == libc::SIGUSR2 => c"USR2",
+        x if x == libc::SIGPIPE => c"PIPE",
+        x if x == libc::SIGALRM => c"ALRM",
+        x if x == libc::SIGTERM => c"TERM",
+        #[cfg(not(any(
+            target_arch = "mips",
+            target_arch = "mips32r6",
+            target_arch = "mips64",
+            target_arch = "mips64r6",
+            target_arch = "sparc",
+            target_arch = "sparc64",
+        )))]
+        x if x == libc::SIGSTKFLT => c"STKFLT",
+        x if x == libc::SIGCHLD => c"CHLD",
+        x if x == libc::SIGCONT => c"CONT",
+        x if x == libc::SIGSTOP => c"STOP",
+        x if x == libc::SIGTSTP => c"TSTP",
+        x if x == libc::SIGTTIN => c"TTIN",
+        x if x == libc::SIGTTOU => c"TTOU",
+        x if x == libc::SIGURG => c"URG",
+        x if x == libc::SIGXCPU => c"XCPU",
+        x if x == libc::SIGXFSZ => c"XFSZ",
+        x if x == libc::SIGVTALRM => c"VTALRM",
+        x if x == libc::SIGPROF => c"PROF",
+        x if x == libc::SIGWINCH => c"WINCH",
+        x if x == libc::SIGIO => c"IO",
+        x if x == libc::SIGPWR => c"PWR",
+        x if x == libc::SIGSYS => c"SYS",
         _ => return None,
     })
 }
@@ -125,9 +133,14 @@ fn write_signal_number(buffer: &mut [c_char; 32], prefix: &[u8], value: i32) {
         position += 1;
     }
 
+    if value < 0 {
+        buffer[position] = b'-' as c_char;
+        position += 1;
+    }
+
     let mut digits = [0_u8; 10];
     let mut count = 0;
-    let mut value = value as u32;
+    let mut value = value.unsigned_abs();
     loop {
         digits[count] = b'0' + (value % 10) as u8;
         count += 1;
@@ -141,6 +154,52 @@ fn write_signal_number(buffer: &mut [c_char; 32], prefix: &[u8], value: i32) {
         position += 1;
     }
     buffer[position] = 0;
+}
+
+fn static_signal_from_c_bytes(name: &[u8]) -> Option<i32> {
+    [
+        (libc::SIGHUP, b"HUP".as_slice()),
+        (libc::SIGINT, b"INT".as_slice()),
+        (libc::SIGQUIT, b"QUIT".as_slice()),
+        (libc::SIGILL, b"ILL".as_slice()),
+        (libc::SIGTRAP, b"TRAP".as_slice()),
+        (libc::SIGABRT, b"ABRT".as_slice()),
+        (libc::SIGBUS, b"BUS".as_slice()),
+        (libc::SIGFPE, b"FPE".as_slice()),
+        (libc::SIGKILL, b"KILL".as_slice()),
+        (libc::SIGUSR1, b"USR1".as_slice()),
+        (libc::SIGSEGV, b"SEGV".as_slice()),
+        (libc::SIGUSR2, b"USR2".as_slice()),
+        (libc::SIGPIPE, b"PIPE".as_slice()),
+        (libc::SIGALRM, b"ALRM".as_slice()),
+        (libc::SIGTERM, b"TERM".as_slice()),
+        #[cfg(not(any(
+            target_arch = "mips",
+            target_arch = "mips32r6",
+            target_arch = "mips64",
+            target_arch = "mips64r6",
+            target_arch = "sparc",
+            target_arch = "sparc64",
+        )))]
+        (libc::SIGSTKFLT, b"STKFLT".as_slice()),
+        (libc::SIGCHLD, b"CHLD".as_slice()),
+        (libc::SIGCONT, b"CONT".as_slice()),
+        (libc::SIGSTOP, b"STOP".as_slice()),
+        (libc::SIGTSTP, b"TSTP".as_slice()),
+        (libc::SIGTTIN, b"TTIN".as_slice()),
+        (libc::SIGTTOU, b"TTOU".as_slice()),
+        (libc::SIGURG, b"URG".as_slice()),
+        (libc::SIGXCPU, b"XCPU".as_slice()),
+        (libc::SIGXFSZ, b"XFSZ".as_slice()),
+        (libc::SIGVTALRM, b"VTALRM".as_slice()),
+        (libc::SIGPROF, b"PROF".as_slice()),
+        (libc::SIGWINCH, b"WINCH".as_slice()),
+        (libc::SIGIO, b"IO".as_slice()),
+        (libc::SIGPWR, b"PWR".as_slice()),
+        (libc::SIGSYS, b"SYS".as_slice()),
+    ]
+    .into_iter()
+    .find_map(|(signal, candidate)| (name == candidate).then_some(signal))
 }
 
 fn dynamic_signal_to_c_string(signo: i32) -> *const c_char {
@@ -173,6 +232,131 @@ pub extern "C" fn rs_signal_to_string_with_check(signo: i32) -> *const c_char {
     static_signal_to_c_string(signo)
         .map(CStr::as_ptr)
         .unwrap_or_else(|| dynamic_signal_to_c_string(signo))
+}
+
+/// C ABI for `signal_to_string()`.
+///
+/// The result is either a borrowed immutable C string with static storage or
+/// the module's thread-local formatting buffer. It is never caller-owned.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_signal_to_string(signo: i32) -> *const c_char {
+    static_signal_to_c_string(signo)
+        .map(CStr::as_ptr)
+        .unwrap_or_else(|| dynamic_signal_to_c_string(signo))
+}
+
+/// C ABI for `signal_from_string()`.
+///
+/// # Safety
+///
+/// `s` must be a live NUL-terminated C string for this call, matching the C
+/// function's non-NULL input precondition. The bytes are borrowed only.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_signal_from_string(s: *const c_char) -> i32 {
+    let mut signo = 0;
+    // SAFETY: `s` satisfies the C-string precondition above and `signo` is a
+    // writable local. This preserves `safe_atoi()`'s decimal/base and errno
+    // semantics used by the C authority.
+    if unsafe { crate::parse_util::rs_safe_atoi(s, &mut signo) } >= 0 {
+        return if rs_signal_is_valid(signo) {
+            signo
+        } else {
+            Errno::ERANGE.to_neg_errno()
+        };
+    }
+
+    let mut input = s;
+    // SAFETY: `s` is a live NUL-terminated string under this function's
+    // contract; the bytes are only inspected during this call.
+    let mut bytes = unsafe { CStr::from_ptr(input) }.to_bytes();
+    if bytes.starts_with(b"SIG") {
+        // SAFETY: the prefix length was checked against the borrowed C string.
+        input = unsafe { input.add(3) };
+        bytes = &bytes[3..];
+    }
+
+    if let Some(signo) = static_signal_from_c_bytes(bytes) {
+        return signo;
+    }
+
+    if let Some(rest) = bytes.strip_prefix(b"RTMIN") {
+        if rest.is_empty() {
+            // SAFETY: the helper has no pointer contract and returns the
+            // process runtime's SIGRTMIN value.
+            return unsafe { rs_get_sigrtmin() };
+        }
+        if rest[0] != b'+' {
+            return Errno::EINVAL.to_neg_errno();
+        }
+
+        // SAFETY: `input + 5` is the checked RTMIN suffix and therefore a
+        // live NUL-terminated C string; `signo` is a writable local.
+        let r = unsafe { crate::parse_util::rs_safe_atoi(input.add(5), &mut signo) };
+        if r < 0 {
+            return r;
+        }
+
+        // SAFETY: the helpers have no pointer effects and expose the C
+        // runtime's dynamic real-time signal bounds.
+        let (realtime_min, realtime_max) = unsafe { (rs_get_sigrtmin(), rs_get_sigrtmax()) };
+        if signo < 0 || signo > realtime_max - realtime_min {
+            return Errno::ERANGE.to_neg_errno();
+        }
+        return signo + realtime_min;
+    }
+
+    if let Some(rest) = bytes.strip_prefix(b"RTMAX") {
+        if rest.is_empty() {
+            // SAFETY: the helper has no pointer contract and returns the
+            // process runtime's SIGRTMAX value.
+            return unsafe { rs_get_sigrtmax() };
+        }
+        if rest[0] != b'-' {
+            return Errno::EINVAL.to_neg_errno();
+        }
+
+        // SAFETY: `input + 5` is the checked RTMAX suffix and therefore a
+        // live NUL-terminated C string; `signo` is a writable local.
+        let r = unsafe { crate::parse_util::rs_safe_atoi(input.add(5), &mut signo) };
+        if r < 0 {
+            return r;
+        }
+
+        // SAFETY: the helpers have no pointer effects and expose the C
+        // runtime's dynamic real-time signal bounds.
+        let (realtime_min, realtime_max) = unsafe { (rs_get_sigrtmin(), rs_get_sigrtmax()) };
+        if signo > 0 || signo < realtime_min - realtime_max {
+            return Errno::ERANGE.to_neg_errno();
+        }
+        return signo + realtime_max;
+    }
+
+    Errno::EINVAL.to_neg_errno()
+}
+
+/// C ABI for `parse_signo()`.
+///
+/// # Safety
+///
+/// `s` must be a live NUL-terminated C string. If `ret` is non-NULL, it must
+/// be writable for one `int`; its value is changed only on success.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_signo(s: *const c_char, ret: *mut i32) -> i32 {
+    let mut signo = 0;
+    // SAFETY: this forwards `parse_signo()`'s C-string and optional-output
+    // contracts to the shared C-compatible numeric parser.
+    let r = unsafe { crate::parse_util::rs_safe_atoi(s, &mut signo) };
+    if r < 0 {
+        return r;
+    }
+    if !rs_signal_is_valid(signo) {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    if !ret.is_null() {
+        // SAFETY: guaranteed by this function's documented C ABI contract.
+        unsafe { *ret = signo };
+    }
+    0
 }
 
 /// C ABI for the inline `si_code_from_process()` predicate.

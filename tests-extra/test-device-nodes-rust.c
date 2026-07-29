@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C device-nodes vs Rust rs_device_nodes */
 
+#include <limits.h>
 #include <string.h>
 
 #include "device-nodes.h"
@@ -8,8 +9,20 @@
 #include "rust/device_nodes.h"
 
 /* ── allow_listed_char_for_devnode ─────────────────────────────────────── */
+/* RUST-CONTRACT: device-node-allowed-byte */
 
 static void test_allow_listed_char(void) {
+        static const char additional[] = { '!', '/', (char) 0x80, 0 };
+
+        /* Match C across the complete char domain, including values that are
+         * negative when char is signed and a high-bit byte in `additional`. */
+        for (unsigned c = 0; c <= UCHAR_MAX; c++) {
+                assert_se(!!allow_listed_char_for_devnode((char) c, NULL) ==
+                          !!rs_allow_listed_char_for_devnode((char) c, NULL));
+                assert_se(!!allow_listed_char_for_devnode((char) c, additional) ==
+                          !!rs_allow_listed_char_for_devnode((char) c, additional));
+        }
+
         /* Digits */
         for (char c = '0'; c <= '9'; c++) {
                 assert_se(allow_listed_char_for_devnode(c, NULL) == 1);
@@ -55,6 +68,7 @@ static void test_allow_listed_char(void) {
 }
 
 /* ── encode_devnode_name ──────────────────────────────────────────────── */
+/* RUST-CONTRACT: device-node-name-encoding */
 
 static void test_encode_devnode_name(void) {
         char c_buf[256], r_buf[256];
@@ -125,11 +139,41 @@ static void test_encode_devnode_name(void) {
         assert_se(streq(c_buf, r_buf));
 }
 
+static void test_encode_devnode_name_boundaries(void) {
+        static const char truncated[] = { (char) 0xc2, 'A', 0 };
+        static const char overlong[] = { (char) 0xc0, (char) 0x80, 0 };
+        static const char surrogate[] = { (char) 0xed, (char) 0xa0, (char) 0x80, 0 };
+        static const char noncharacter[] = { (char) 0xef, (char) 0xb7, (char) 0x90, 0 };
+        static const char out_of_range[] = {
+                (char) 0xf4, (char) 0x90, (char) 0x80, (char) 0x80, 0
+        };
+        static const char invalid_lead[] = { (char) 0xff, 0 };
+        static const char *const cases[] = {
+                "", "abc", "systemd sucks", "valíd\\ųtf8", truncated,
+                overlong, surrogate, noncharacter, out_of_range, invalid_lead,
+        };
+
+        for (size_t input = 0; input < ELEMENTSOF(cases); input++)
+                for (size_t len = 0; len <= 32; len++) {
+                        char c_output[32], rust_output[32];
+
+                        memset(c_output, 0xa5, sizeof(c_output));
+                        memset(rust_output, 0xa5, sizeof(rust_output));
+
+                        assert_se(encode_devnode_name(cases[input], c_output, len) ==
+                                  rs_encode_devnode_name(cases[input], rust_output, len));
+                        /* This includes C snprintf's temporary NUL after a
+                         * completed escape before a later capacity failure. */
+                        assert_se(memcmp(c_output, rust_output, sizeof(c_output)) == 0);
+                }
+}
+
 /* ── Main ───────────────────────────────────────────────────────────────── */
 
 int main(int argc, char **argv) {
         test_allow_listed_char();
         test_encode_devnode_name();
+        test_encode_devnode_name_boundaries();
 
         return 0;
 }

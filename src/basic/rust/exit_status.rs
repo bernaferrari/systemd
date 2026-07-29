@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/exit-status.c (lookup functions), securebits-util.c (bit_to_string)
+// PORT-SYNC: scope=basic.exit-status; authority=src/shared/exit-status.c,src/shared/exit-status.h,src/shared/securebits-util.c,src/shared/securebits-util.h
 //
 use std::collections::BTreeSet;
+use std::ffi::CStr;
 use std::fmt;
+use std::ptr;
 
 use bitflags::bitflags;
 
@@ -73,86 +75,93 @@ impl fmt::Display for ExitStatusFromStringError {
 
 impl std::error::Error for ExitStatusFromStringError {}
 
-fn exit_status_mapping(code: u8) -> Option<ExitStatusMapping> {
+fn exit_status_mapping_raw(code: u8) -> Option<(&'static CStr, ExitStatusClass)> {
     let mapping = match code {
-        0 => ("SUCCESS", ExitStatusClass::LIBC),
-        1 => ("FAILURE", ExitStatusClass::LIBC),
+        0 => (c"SUCCESS", ExitStatusClass::LIBC),
+        1 => (c"FAILURE", ExitStatusClass::LIBC),
 
-        2 => ("INVALIDARGUMENT", ExitStatusClass::LSB),
-        3 => ("NOTIMPLEMENTED", ExitStatusClass::LSB),
-        4 => ("NOPERMISSION", ExitStatusClass::LSB),
-        5 => ("NOTINSTALLED", ExitStatusClass::LSB),
-        6 => ("NOTCONFIGURED", ExitStatusClass::LSB),
-        7 => ("NOTRUNNING", ExitStatusClass::LSB),
+        2 => (c"INVALIDARGUMENT", ExitStatusClass::LSB),
+        3 => (c"NOTIMPLEMENTED", ExitStatusClass::LSB),
+        4 => (c"NOPERMISSION", ExitStatusClass::LSB),
+        5 => (c"NOTINSTALLED", ExitStatusClass::LSB),
+        6 => (c"NOTCONFIGURED", ExitStatusClass::LSB),
+        7 => (c"NOTRUNNING", ExitStatusClass::LSB),
 
-        64 => ("USAGE", ExitStatusClass::BSD),
-        65 => ("DATAERR", ExitStatusClass::BSD),
-        66 => ("NOINPUT", ExitStatusClass::BSD),
-        67 => ("NOUSER", ExitStatusClass::BSD),
-        68 => ("NOHOST", ExitStatusClass::BSD),
-        69 => ("UNAVAILABLE", ExitStatusClass::BSD),
-        70 => ("SOFTWARE", ExitStatusClass::BSD),
-        71 => ("OSERR", ExitStatusClass::BSD),
-        72 => ("OSFILE", ExitStatusClass::BSD),
-        73 => ("CANTCREAT", ExitStatusClass::BSD),
-        74 => ("IOERR", ExitStatusClass::BSD),
-        75 => ("TEMPFAIL", ExitStatusClass::BSD),
-        76 => ("PROTOCOL", ExitStatusClass::BSD),
-        77 => ("NOPERM", ExitStatusClass::BSD),
-        78 => ("CONFIG", ExitStatusClass::BSD),
+        64 => (c"USAGE", ExitStatusClass::BSD),
+        65 => (c"DATAERR", ExitStatusClass::BSD),
+        66 => (c"NOINPUT", ExitStatusClass::BSD),
+        67 => (c"NOUSER", ExitStatusClass::BSD),
+        68 => (c"NOHOST", ExitStatusClass::BSD),
+        69 => (c"UNAVAILABLE", ExitStatusClass::BSD),
+        70 => (c"SOFTWARE", ExitStatusClass::BSD),
+        71 => (c"OSERR", ExitStatusClass::BSD),
+        72 => (c"OSFILE", ExitStatusClass::BSD),
+        73 => (c"CANTCREAT", ExitStatusClass::BSD),
+        74 => (c"IOERR", ExitStatusClass::BSD),
+        75 => (c"TEMPFAIL", ExitStatusClass::BSD),
+        76 => (c"PROTOCOL", ExitStatusClass::BSD),
+        77 => (c"NOPERM", ExitStatusClass::BSD),
+        78 => (c"CONFIG", ExitStatusClass::BSD),
 
-        200 => ("CHDIR", ExitStatusClass::SYSTEMD),
-        201 => ("NICE", ExitStatusClass::SYSTEMD),
-        202 => ("FDS", ExitStatusClass::SYSTEMD),
-        203 => ("EXEC", ExitStatusClass::SYSTEMD),
-        204 => ("MEMORY", ExitStatusClass::SYSTEMD),
-        205 => ("LIMITS", ExitStatusClass::SYSTEMD),
-        206 => ("OOM_ADJUST", ExitStatusClass::SYSTEMD),
-        207 => ("SIGNAL_MASK", ExitStatusClass::SYSTEMD),
-        208 => ("STDIN", ExitStatusClass::SYSTEMD),
-        209 => ("STDOUT", ExitStatusClass::SYSTEMD),
-        210 => ("CHROOT", ExitStatusClass::SYSTEMD),
-        211 => ("IOPRIO", ExitStatusClass::SYSTEMD),
-        212 => ("TIMERSLACK", ExitStatusClass::SYSTEMD),
-        213 => ("SECUREBITS", ExitStatusClass::SYSTEMD),
-        214 => ("SETSCHEDULER", ExitStatusClass::SYSTEMD),
-        215 => ("CPUAFFINITY", ExitStatusClass::SYSTEMD),
-        216 => ("GROUP", ExitStatusClass::SYSTEMD),
-        217 => ("USER", ExitStatusClass::SYSTEMD),
-        218 => ("CAPABILITIES", ExitStatusClass::SYSTEMD),
-        219 => ("CGROUP", ExitStatusClass::SYSTEMD),
-        220 => ("SETSID", ExitStatusClass::SYSTEMD),
-        221 => ("CONFIRM", ExitStatusClass::SYSTEMD),
-        222 => ("STDERR", ExitStatusClass::SYSTEMD),
-        224 => ("PAM", ExitStatusClass::SYSTEMD),
-        225 => ("NETWORK", ExitStatusClass::SYSTEMD),
-        226 => ("NAMESPACE", ExitStatusClass::SYSTEMD),
-        227 => ("NO_NEW_PRIVILEGES", ExitStatusClass::SYSTEMD),
-        228 => ("SECCOMP", ExitStatusClass::SYSTEMD),
-        229 => ("SELINUX_CONTEXT", ExitStatusClass::SYSTEMD),
-        230 => ("PERSONALITY", ExitStatusClass::SYSTEMD),
-        231 => ("APPARMOR", ExitStatusClass::SYSTEMD),
-        232 => ("ADDRESS_FAMILIES", ExitStatusClass::SYSTEMD),
-        233 => ("RUNTIME_DIRECTORY", ExitStatusClass::SYSTEMD),
-        235 => ("CHOWN", ExitStatusClass::SYSTEMD),
-        236 => ("SMACK_PROCESS_LABEL", ExitStatusClass::SYSTEMD),
-        237 => ("KEYRING", ExitStatusClass::SYSTEMD),
-        238 => ("STATE_DIRECTORY", ExitStatusClass::SYSTEMD),
-        239 => ("CACHE_DIRECTORY", ExitStatusClass::SYSTEMD),
-        240 => ("LOGS_DIRECTORY", ExitStatusClass::SYSTEMD),
-        241 => ("CONFIGURATION_DIRECTORY", ExitStatusClass::SYSTEMD),
-        242 => ("NUMA_POLICY", ExitStatusClass::SYSTEMD),
-        243 => ("CREDENTIALS", ExitStatusClass::SYSTEMD),
-        244 => ("BPF", ExitStatusClass::SYSTEMD),
-        245 => ("KSM", ExitStatusClass::SYSTEMD),
-        246 => ("MEMORY_THP", ExitStatusClass::SYSTEMD),
-        255 => ("EXCEPTION", ExitStatusClass::SYSTEMD),
+        200 => (c"CHDIR", ExitStatusClass::SYSTEMD),
+        201 => (c"NICE", ExitStatusClass::SYSTEMD),
+        202 => (c"FDS", ExitStatusClass::SYSTEMD),
+        203 => (c"EXEC", ExitStatusClass::SYSTEMD),
+        204 => (c"MEMORY", ExitStatusClass::SYSTEMD),
+        205 => (c"LIMITS", ExitStatusClass::SYSTEMD),
+        206 => (c"OOM_ADJUST", ExitStatusClass::SYSTEMD),
+        207 => (c"SIGNAL_MASK", ExitStatusClass::SYSTEMD),
+        208 => (c"STDIN", ExitStatusClass::SYSTEMD),
+        209 => (c"STDOUT", ExitStatusClass::SYSTEMD),
+        210 => (c"CHROOT", ExitStatusClass::SYSTEMD),
+        211 => (c"IOPRIO", ExitStatusClass::SYSTEMD),
+        212 => (c"TIMERSLACK", ExitStatusClass::SYSTEMD),
+        213 => (c"SECUREBITS", ExitStatusClass::SYSTEMD),
+        214 => (c"SETSCHEDULER", ExitStatusClass::SYSTEMD),
+        215 => (c"CPUAFFINITY", ExitStatusClass::SYSTEMD),
+        216 => (c"GROUP", ExitStatusClass::SYSTEMD),
+        217 => (c"USER", ExitStatusClass::SYSTEMD),
+        218 => (c"CAPABILITIES", ExitStatusClass::SYSTEMD),
+        219 => (c"CGROUP", ExitStatusClass::SYSTEMD),
+        220 => (c"SETSID", ExitStatusClass::SYSTEMD),
+        221 => (c"CONFIRM", ExitStatusClass::SYSTEMD),
+        222 => (c"STDERR", ExitStatusClass::SYSTEMD),
+        224 => (c"PAM", ExitStatusClass::SYSTEMD),
+        225 => (c"NETWORK", ExitStatusClass::SYSTEMD),
+        226 => (c"NAMESPACE", ExitStatusClass::SYSTEMD),
+        227 => (c"NO_NEW_PRIVILEGES", ExitStatusClass::SYSTEMD),
+        228 => (c"SECCOMP", ExitStatusClass::SYSTEMD),
+        229 => (c"SELINUX_CONTEXT", ExitStatusClass::SYSTEMD),
+        230 => (c"PERSONALITY", ExitStatusClass::SYSTEMD),
+        231 => (c"APPARMOR", ExitStatusClass::SYSTEMD),
+        232 => (c"ADDRESS_FAMILIES", ExitStatusClass::SYSTEMD),
+        233 => (c"RUNTIME_DIRECTORY", ExitStatusClass::SYSTEMD),
+        235 => (c"CHOWN", ExitStatusClass::SYSTEMD),
+        236 => (c"SMACK_PROCESS_LABEL", ExitStatusClass::SYSTEMD),
+        237 => (c"KEYRING", ExitStatusClass::SYSTEMD),
+        238 => (c"STATE_DIRECTORY", ExitStatusClass::SYSTEMD),
+        239 => (c"CACHE_DIRECTORY", ExitStatusClass::SYSTEMD),
+        240 => (c"LOGS_DIRECTORY", ExitStatusClass::SYSTEMD),
+        241 => (c"CONFIGURATION_DIRECTORY", ExitStatusClass::SYSTEMD),
+        242 => (c"NUMA_POLICY", ExitStatusClass::SYSTEMD),
+        243 => (c"CREDENTIALS", ExitStatusClass::SYSTEMD),
+        244 => (c"BPF", ExitStatusClass::SYSTEMD),
+        245 => (c"KSM", ExitStatusClass::SYSTEMD),
+        246 => (c"MEMORY_THP", ExitStatusClass::SYSTEMD),
+        255 => (c"EXCEPTION", ExitStatusClass::SYSTEMD),
         _ => return None,
     };
 
+    Some(mapping)
+}
+
+fn exit_status_mapping(code: u8) -> Option<ExitStatusMapping> {
+    let (c_name, class) = exit_status_mapping_raw(code)?;
     Some(ExitStatusMapping {
-        name: mapping.0,
-        class: mapping.1,
+        name: c_name
+            .to_str()
+            .expect("exit status names are valid ASCII strings"),
+        class,
     })
 }
 
@@ -190,19 +199,66 @@ pub fn exit_status_from_string(s: &str) -> Result<i32, ExitStatusFromStringError
 }
 
 pub fn secure_bit_to_string(bit: i32) -> Option<&'static str> {
+    secure_bit_to_c_string(bit).map(|name| {
+        name.to_str()
+            .expect("secure bit names are valid ASCII strings")
+    })
+}
+
+fn secure_bit_to_c_string(bit: i32) -> Option<&'static CStr> {
     Some(match bit {
-        SECURE_KEEP_CAPS => "keep-caps",
-        SECURE_KEEP_CAPS_LOCKED => "keep-caps-locked",
-        SECURE_NO_SETUID_FIXUP => "no-setuid-fixup",
-        SECURE_NO_SETUID_FIXUP_LOCKED => "no-setuid-fixup-locked",
-        SECURE_NOROOT => "noroot",
-        SECURE_NOROOT_LOCKED => "noroot-locked",
+        SECURE_KEEP_CAPS => c"keep-caps",
+        SECURE_KEEP_CAPS_LOCKED => c"keep-caps-locked",
+        SECURE_NO_SETUID_FIXUP => c"no-setuid-fixup",
+        SECURE_NO_SETUID_FIXUP_LOCKED => c"no-setuid-fixup-locked",
+        SECURE_NOROOT => c"noroot",
+        SECURE_NOROOT_LOCKED => c"noroot-locked",
         _ => return None,
     })
 }
 
 pub fn secure_bits_is_valid(bits: i32) -> bool {
     ((SECURE_ALL_BITS | SECURE_ALL_LOCKS) & bits) == bits
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_exit_status_to_string(
+    code: libc::c_int,
+    class: libc::c_int,
+) -> *const libc::c_char {
+    let Ok(code) = u8::try_from(code) else {
+        return ptr::null();
+    };
+    let class = ExitStatusClass::from_bits_retain(class as u8);
+
+    exit_status_mapping_raw(code)
+        .filter(|(_, mapping_class)| class.contains(*mapping_class))
+        .map_or(ptr::null(), |(c_name, _)| c_name.as_ptr())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_exit_status_class(code: libc::c_int) -> *const libc::c_char {
+    let Ok(code) = u8::try_from(code) else {
+        return ptr::null();
+    };
+    let Some(mapping) = exit_status_mapping(code) else {
+        return ptr::null();
+    };
+
+    match mapping.class {
+        ExitStatusClass::LIBC => c"libc".as_ptr(),
+        ExitStatusClass::SYSTEMD => c"systemd".as_ptr(),
+        ExitStatusClass::LSB => c"LSB".as_ptr(),
+        ExitStatusClass::BSD => c"BSD".as_ptr(),
+        _ => ptr::null(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_secure_bit_to_string(bit: libc::c_int) -> *const libc::c_char {
+    secure_bit_to_c_string(bit)
+        .unwrap_or_else(|| std::process::abort())
+        .as_ptr()
 }
 
 #[unsafe(no_mangle)]

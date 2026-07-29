@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: deserialize-usec */
+/* RUST-CONTRACT: deserialize-dual-timestamp */
 /* Shadow test: C deserialize_usec/deserialize_dual_timestamp vs Rust */
 
 #include <string.h>
@@ -62,7 +64,7 @@ static void test_deserialize_usec(void) {
         assert_se(c_ret < 0);
         assert_se(r_ret < 0);
 
-        /* Note: overflow behavior differs — C strtoull wraps, Rust detects. */
+        /* Base-zero and overflow parity are covered by test_deserialize_abi_edges(). */
 }
 
 static void test_deserialize_dual_timestamp(void) {
@@ -155,12 +157,81 @@ static void test_deserialize_dual_timestamp(void) {
         assert_se(c_ret < 0);
         assert_se(r_ret < 0);
 
-        /* Note: overflow behavior differs — C sscanf wraps silently,
-         * Rust detects overflow. Not tested for shadow comparison. */
+        /* Sign, raw-byte, output-publication, and overflow parity are covered below. */
+}
+
+static void test_deserialize_abi_edges(void) {
+        static const char non_ascii_usec[] = { '1', '2', '\xff', 0 };
+        static const char non_ascii_timestamp[] = { '1', '0', '0', ' ', '2', '0', '0', '\xff', 0 };
+        const usec_t usec_sentinel = UINT64_C(0xdeadbeefdeadbeef);
+        const dual_timestamp timestamp_sentinel = {
+                .realtime = UINT64_C(0xdeadbeefdeadbeef),
+                .monotonic = UINT64_C(0xcafebabecafebabe),
+        };
+        usec_t c_usec, r_usec;
+        dual_timestamp c_timestamp, r_timestamp;
+        int c_ret, r_ret;
+
+        /* deserialize_usec() keeps safe_atou64's byte-oriented base-zero grammar. */
+        c_ret = deserialize_usec(" \t+012", &c_usec);
+        r_ret = rs_deserialize_usec(" \t+012", &r_usec);
+        assert_se(c_ret == r_ret);
+        assert_se(c_usec == r_usec);
+        assert_se(c_usec == 10); /* 012 is octal after leading whitespace and '+'. */
+
+        c_usec = r_usec = usec_sentinel;
+        c_ret = deserialize_usec(non_ascii_usec, &c_usec);
+        r_ret = rs_deserialize_usec(non_ascii_usec, &r_usec);
+        assert_se(c_ret == r_ret);
+        assert_se(c_usec == usec_sentinel);
+        assert_se(r_usec == usec_sentinel);
+
+        c_usec = r_usec = usec_sentinel;
+        c_ret = deserialize_usec("18446744073709551616", &c_usec);
+        r_ret = rs_deserialize_usec("18446744073709551616", &r_usec);
+        assert_se(c_ret == r_ret);
+        assert_se(c_usec == usec_sentinel);
+        assert_se(r_usec == usec_sentinel);
+
+        /* sscanf() accepts a leading '+', and leading zeroes remain decimal here. */
+        c_ret = deserialize_dual_timestamp("\t+00100 +00200\r", &c_timestamp);
+        r_ret = rs_deserialize_dual_timestamp("\t+00100 +00200\r", &r_timestamp);
+        assert_se(c_ret == r_ret);
+        assert_se(c_timestamp.realtime == r_timestamp.realtime);
+        assert_se(c_timestamp.monotonic == r_timestamp.monotonic);
+        assert_se(c_timestamp.realtime == 100);
+        assert_se(c_timestamp.monotonic == 200);
+
+        /* Failed parses must not publish either output field. */
+        c_timestamp = r_timestamp = timestamp_sentinel;
+        c_ret = deserialize_dual_timestamp("100 -200", &c_timestamp);
+        r_ret = rs_deserialize_dual_timestamp("100 -200", &r_timestamp);
+        assert_se(c_ret == r_ret);
+        assert_se(c_timestamp.realtime == timestamp_sentinel.realtime);
+        assert_se(c_timestamp.monotonic == timestamp_sentinel.monotonic);
+        assert_se(r_timestamp.realtime == timestamp_sentinel.realtime);
+        assert_se(r_timestamp.monotonic == timestamp_sentinel.monotonic);
+
+        c_timestamp = r_timestamp = timestamp_sentinel;
+        c_ret = deserialize_dual_timestamp(non_ascii_timestamp, &c_timestamp);
+        r_ret = rs_deserialize_dual_timestamp(non_ascii_timestamp, &r_timestamp);
+        assert_se(c_ret == r_ret);
+        assert_se(c_timestamp.realtime == timestamp_sentinel.realtime);
+        assert_se(c_timestamp.monotonic == timestamp_sentinel.monotonic);
+        assert_se(r_timestamp.realtime == timestamp_sentinel.realtime);
+        assert_se(r_timestamp.monotonic == timestamp_sentinel.monotonic);
+
+        /* The authority leaves sscanf overflow to libc; the facade must too. */
+        c_ret = deserialize_dual_timestamp("18446744073709551616 1", &c_timestamp);
+        r_ret = rs_deserialize_dual_timestamp("18446744073709551616 1", &r_timestamp);
+        assert_se(c_ret == r_ret);
+        assert_se(c_timestamp.realtime == r_timestamp.realtime);
+        assert_se(c_timestamp.monotonic == r_timestamp.monotonic);
 }
 
 int main(int argc, char **argv) {
         test_deserialize_usec();
         test_deserialize_dual_timestamp();
+        test_deserialize_abi_edges();
         return 0;
 }

@@ -9,9 +9,13 @@
 /* ── utf8_skip_data ────────────────────────────────────────────────────── */
 
 static void test_utf8_skip_data(void) {
+        /* The exported Rust table must agree byte-for-byte with C. */
+        for (int i = 0; i < 256; i++)
+                assert_se(utf8_skip_data[i] == rs_utf8_skip_data[i]);
+
         /* ASCII bytes (0x00-0x7F) → skip 1 */
         for (int i = 0; i < 0x80; i++)
-                assert_se(utf8_skip_data[i] == rs_utf8_skip_data[i]);
+                assert_se(utf8_skip_data[i] == 1 && rs_utf8_skip_data[i] == 1);
 
         /* 2-byte lead (0xC0-0xDF) → skip 2 */
         for (int i = 0xC0; i <= 0xDF; i++)
@@ -39,6 +43,7 @@ static void test_utf8_skip_data(void) {
 }
 
 /* ── utf8_prev_char ──────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: gunicode-previous-character */
 
 static void test_utf8_prev_char(void) {
         /* "abc" — prev from 'c' should point to 'b' */
@@ -75,6 +80,7 @@ static void test_utf8_prev_char(void) {
 }
 
 /* ── unichar_iswide ─────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: gunicode-wide-character */
 
 static void test_unichar_iswide_ascii(void) {
         /* ASCII should never be wide */

@@ -1,318 +1,305 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/device-nodes.c
+// PORT-SYNC: scope=basic.device-nodes; authority=src/basic/device-nodes.c,src/basic/device-nodes.h,src/basic/utf8.c,src/basic/utf8.h
 //
 // Device node name encoding: allow_listed_char_for_devnode, encode_devnode_name.
 
 use crate::ffi::Errno;
+use std::ffi::CStr;
+use std::os::raw::{c_char, c_int};
+use std::slice;
 
-// ── Internal helpers ──────────────────────────────────────────────────────
+const HEX_LOWER: &[u8; 16] = b"0123456789abcdef";
+const FIXED_ALLOWED: &[u8] = b"#+-.:=@_";
 
-/// Determine the expected length of a UTF-8 sequence from its leading byte.
-/// Returns 1 for ASCII, 0 for continuation bytes, 2–4 for multi-byte leads.
-#[inline]
-fn utf8_sequence_length(byte: u8) -> usize {
-    if byte < 0x80 {
-        1
-    } else if byte < 0xC0 {
-        0 // continuation byte — shouldn't appear as leading byte
-    } else if byte < 0xE0 {
-        2
-    } else if byte < 0xF0 {
-        3
-    } else if byte < 0xF8 {
-        4
-    } else {
-        1 // overlong/invalid, treat as single byte
-    }
-}
-
-// ── Public API ────────────────────────────────────────────────────────────
-
-/// Check if a character is allowed in a device node name.
+/// Check whether a raw byte is accepted in a device-node name.
 ///
-/// Port of C `allow_listed_char_for_devnode()`.
-/// Allowed: ASCII digits, ASCII letters, and the set `#+-.:=@_`.
-/// If `additional` is `Some`, characters in that slice are also allowed.
+/// This deliberately models C `strchr()` semantics: NUL is found at the
+/// terminator of the fixed allow-list.
 pub fn allow_listed_char_for_devnode(c: u8, additional: Option<&[u8]>) -> bool {
-    // ASCII digit
-    if c >= b'0' && c <= b'9' {
-        return true;
-    }
-    // ASCII letter
-    if (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z') {
-        return true;
-    }
-    // Fixed allow-list: #+-.:=@_
-    if c == b'#'
-        || c == b'+'
-        || c == b'-'
-        || c == b'.'
-        || c == b':'
-        || c == b'='
-        || c == b'@'
-        || c == b'_'
-    {
-        return true;
-    }
-    // Additional allowed characters
-    if let Some(extra) = additional {
-        if extra.contains(&c) {
-            return true;
-        }
-    }
-    false
+    c.is_ascii_digit()
+        || c.is_ascii_alphabetic()
+        || c == 0
+        || FIXED_ALLOWED.contains(&c)
+        || additional.is_some_and(|extra| extra.contains(&c))
 }
 
-/// Encode a byte string for use as a device node name.
-///
-/// Port of C `encode_devnode_name()`.
-/// Allowed characters and multi-byte UTF-8 sequences pass through;
-/// backslash and all other characters are escaped as `\xHH`.
-///
-/// Returns `Ok(written_len)` on success (excluding NUL terminator),
-/// or `Err(Errno::EINVAL)` on error or insufficient buffer space.
-pub fn encode_devnode_name(input: &[u8], buf: &mut [u8]) -> Result<usize, Errno> {
-    let hex = b"0123456789abcdef";
-    let mut j: usize = 0;
+#[inline]
+const fn encoded_len(unichar: u32) -> usize {
+    if unichar < 0x80 {
+        1
+    } else if unichar < 0x800 {
+        2
+    } else if unichar < 0x10000 {
+        3
+    } else if unichar < 0x200000 {
+        4
+    } else if unichar < 0x4000000 {
+        5
+    } else {
+        6
+    }
+}
 
-    let mut i: usize = 0;
+#[inline]
+const fn valid_unichar(unichar: u32) -> bool {
+    unichar < 0x110000
+        && !(0xd800..=0xdfff).contains(&unichar)
+        && !(0xfdd0..=0xfdef).contains(&unichar)
+        && unichar & 0xfffe != 0xfffe
+}
+
+/// Safe byte-slice form of C
+/// `utf8_encoded_valid_unichar(input, SIZE_MAX)`.
+///
+/// Only the first encoded character is considered. Invalid sequences return
+/// `None` so the encoder escapes their first raw byte and then tries again at
+/// the following byte, exactly like the C loop.
+fn valid_utf8_unichar_len(input: &[u8]) -> Option<usize> {
+    let first = *input.first()?;
+    let width = match first {
+        0x00..=0x7f => 1,
+        0xc0..=0xdf => 2,
+        0xe0..=0xef => 3,
+        0xf0..=0xf7 => 4,
+        0xf8..=0xfb => 5,
+        0xfc..=0xfd => 6,
+        _ => return None,
+    };
+
+    if width == 1 {
+        return Some(1);
+    }
+
+    let sequence = input.get(..width)?;
+    if sequence[1..].iter().any(|byte| byte & 0xc0 != 0x80) {
+        return None;
+    }
+
+    let initial_mask = match width {
+        2 => 0x1f,
+        3 => 0x0f,
+        4 => 0x07,
+        5 => 0x03,
+        6 => 0x01,
+        _ => unreachable!(),
+    };
+    let mut unichar = u32::from(first & initial_mask);
+    for byte in &sequence[1..] {
+        unichar = (unichar << 6) | u32::from(byte & 0x3f);
+    }
+
+    (encoded_len(unichar) == width && valid_unichar(unichar)).then_some(width)
+}
+
+/// Encode raw bytes for use as a device-node name.
+///
+/// Valid multi-byte UTF-8 is copied unchanged. Backslash and bytes outside the
+/// allow-list are encoded as `\xHH`. The output is NUL-terminated on success.
+///
+/// On insufficient capacity this returns `EINVAL`, as the C authority does,
+/// and preserves all writes made before the failing capacity check. In
+/// particular, a completed escape writes its temporary trailing NUL before
+/// processing the next input byte.
+pub fn encode_devnode_name(input: &[u8], output: &mut [u8]) -> Result<usize, Errno> {
+    let mut i = 0;
+    let mut j = 0;
+
     while i < input.len() {
-        let byte = input[i];
-
-        // Check for multi-byte UTF-8 sequence
-        let seqlen = utf8_sequence_length(byte);
-        if seqlen > 1 {
-            // Validate: we need all bytes in the sequence to exist
-            if i + seqlen > input.len() {
-                return Err(Errno::EINVAL); // truncated UTF-8
-            }
-            if j + seqlen >= buf.len() {
+        let seqlen = valid_utf8_unichar_len(&input[i..]);
+        if seqlen.is_some_and(|n| n > 1) {
+            let n = seqlen.unwrap();
+            if output.len() - j < n {
                 return Err(Errno::EINVAL);
             }
-            buf[j..j + seqlen].copy_from_slice(&input[i..i + seqlen]);
-            j += seqlen;
-            i += seqlen;
-            continue;
-        }
 
-        // Escape backslash and non-allowed characters
-        if byte == b'\\' || !allow_listed_char_for_devnode(byte, None) {
-            if j + 4 >= buf.len() {
+            output[j..j + n].copy_from_slice(&input[i..i + n]);
+            i += n;
+            j += n;
+        } else if input[i] == b'\\' || !allow_listed_char_for_devnode(input[i], None) {
+            /* C uses snprintf(..., 5, ...), including its temporary trailing NUL. */
+            if output.len() - j < 5 {
                 return Err(Errno::EINVAL);
             }
-            buf[j] = b'\\';
-            buf[j + 1] = b'x';
-            buf[j + 2] = hex[(byte >> 4) as usize];
-            buf[j + 3] = hex[(byte & 0x0f) as usize];
+
+            let byte = input[i];
+            output[j] = b'\\';
+            output[j + 1] = b'x';
+            output[j + 2] = HEX_LOWER[usize::from(byte >> 4)];
+            output[j + 3] = HEX_LOWER[usize::from(byte & 0x0f)];
+            output[j + 4] = 0;
+            i += 1;
             j += 4;
         } else {
-            if j >= buf.len() {
+            if output.len() - j < 1 {
                 return Err(Errno::EINVAL);
             }
-            buf[j] = byte;
+
+            output[j] = input[i];
+            i += 1;
             j += 1;
         }
-
-        i += 1;
     }
 
-    // NUL terminator
-    if j >= buf.len() {
+    if output.len() - j < 1 {
         return Err(Errno::EINVAL);
     }
-    buf[j] = 0;
+
+    output[j] = 0;
     Ok(j)
+}
+
+/// C ABI mirror of `allow_listed_char_for_devnode()`.
+///
+/// # Safety
+/// If `additional` is non-NULL, it must point to a readable NUL-terminated C
+/// string that remains live for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_allow_listed_char_for_devnode(
+    c: c_char,
+    additional: *const c_char,
+) -> c_int {
+    let additional = if additional.is_null() {
+        None
+    } else {
+        // SAFETY: upheld by this function's caller contract.
+        Some(unsafe { CStr::from_ptr(additional) }.to_bytes())
+    };
+
+    if allow_listed_char_for_devnode(c as u8, additional) {
+        1
+    } else {
+        0
+    }
+}
+
+/// C ABI mirror of `encode_devnode_name()`.
+///
+/// # Safety
+/// `input` must point to a readable NUL-terminated C string. `output` must be
+/// writable for `len` bytes. Both pointers must be non-NULL, and their live
+/// ranges must not overlap.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_encode_devnode_name(
+    input: *const c_char,
+    output: *mut c_char,
+    len: usize,
+) -> c_int {
+    if input.is_null() || output.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: the caller supplies a readable NUL-terminated input string.
+    let input = unsafe { CStr::from_ptr(input) }.to_bytes();
+    // SAFETY: the caller supplies a non-NULL output range of exactly `len`
+    // bytes, disjoint from the live input range.
+    let output = unsafe { slice::from_raw_parts_mut(output.cast::<u8>(), len) };
+
+    match encode_devnode_name(input, output) {
+        Ok(_) => 0,
+        Err(error) => error.to_neg_errno(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ── allow_listed_char_for_devnode tests ────────────────────────────
+    use std::ptr;
 
     #[test]
-    fn allow_listed_all_digits() {
+    fn allow_list_matches_c_strchr_semantics() {
         for c in b'0'..=b'9' {
-            assert!(
-                allow_listed_char_for_devnode(c, None),
-                "digit {}",
-                c as char
-            );
+            assert!(allow_listed_char_for_devnode(c, None));
         }
-    }
-
-    #[test]
-    fn allow_listed_lowercase_letters() {
         for c in b'a'..=b'z' {
-            assert!(
-                allow_listed_char_for_devnode(c, None),
-                "lower {}",
-                c as char
-            );
+            assert!(allow_listed_char_for_devnode(c, None));
         }
-    }
-
-    #[test]
-    fn allow_listed_uppercase_letters() {
         for c in b'A'..=b'Z' {
-            assert!(
-                allow_listed_char_for_devnode(c, None),
-                "upper {}",
-                c as char
-            );
+            assert!(allow_listed_char_for_devnode(c, None));
         }
+        for &c in FIXED_ALLOWED {
+            assert!(allow_listed_char_for_devnode(c, None));
+        }
+
+        assert!(allow_listed_char_for_devnode(0, None));
+        assert!(allow_listed_char_for_devnode(b'!', Some(b"!/")));
+        assert!(!allow_listed_char_for_devnode(b'!', None));
+        assert!(!allow_listed_char_for_devnode(0xff, None));
     }
 
     #[test]
-    fn allow_listed_special_chars() {
-        for &c in b"#+-.:=@_" {
-            assert!(
-                allow_listed_char_for_devnode(c, None),
-                "special {}",
-                c as char
-            );
-        }
+    fn encode_allowed_escaped_and_valid_utf8() {
+        let input = "valíd\\ųtf8".as_bytes();
+        let mut output = [0xa5; 64];
+
+        assert_eq!(encode_devnode_name(input, &mut output), Ok(15));
+        assert_eq!(&output[..=15], b"val\xc3\xadd\\x5c\xc5\xb3tf8\0");
     }
 
     #[test]
-    fn allow_listed_disallowed_chars() {
-        let disallowed = [
-            b' ', b'!', b'/', b'*', b'?', b'[', b']', b'(', b')', b'<', b'>', b'&', b'|', b';',
-            b',',
+    fn invalid_utf8_is_escaped_one_raw_byte_at_a_time() {
+        let cases: &[(&[u8], &[u8])] = &[
+            (&[0xc2, b'A'], b"\\xc2A"),
+            (&[0xc0, 0x80], b"\\xc0\\x80"),
+            (&[0xed, 0xa0, 0x80], b"\\xed\\xa0\\x80"),
+            (&[0xef, 0xb7, 0x90], b"\\xef\\xb7\\x90"),
+            (&[0xf4, 0x90, 0x80, 0x80], b"\\xf4\\x90\\x80\\x80"),
+            (&[0xff], b"\\xff"),
         ];
-        for &c in &disallowed {
-            assert!(
-                !allow_listed_char_for_devnode(c, None),
-                "disallowed {}",
-                c as char
-            );
+
+        for &(input, expected) in cases {
+            let mut output = [0xa5; 32];
+            let written = encode_devnode_name(input, &mut output).unwrap();
+            assert_eq!(&output[..written], expected);
+            assert_eq!(output[written], 0);
         }
     }
 
     #[test]
-    fn allow_listed_additional_chars() {
-        let additional = b"!/";
-        assert!(allow_listed_char_for_devnode(b'!', Some(additional)));
-        assert!(allow_listed_char_for_devnode(b'/', Some(additional)));
-        // Already allowed chars still work
-        assert!(allow_listed_char_for_devnode(b'@', Some(additional)));
-        // Space still not allowed
-        assert!(!allow_listed_char_for_devnode(b' ', Some(additional)));
-    }
+    fn capacity_failure_preserves_c_partial_writes() {
+        let mut allowed = [0xa5; 1];
+        assert_eq!(encode_devnode_name(b"ab", &mut allowed), Err(Errno::EINVAL));
+        assert_eq!(allowed, [b'a']);
 
-    #[test]
-    fn allow_listed_no_additional() {
-        assert!(!allow_listed_char_for_devnode(b' ', None));
-        assert!(allow_listed_char_for_devnode(b'a', None));
-    }
+        let mut escaped = [0xa5; 5];
+        assert_eq!(encode_devnode_name(b" a", &mut escaped), Err(Errno::EINVAL));
+        assert_eq!(&escaped, b"\\x20a");
 
-    #[test]
-    fn allow_listed_empty_additional() {
-        assert!(!allow_listed_char_for_devnode(b' ', Some(b"")));
-    }
-
-    // ── encode_devnode_name tests ──────────────────────────────────────
-
-    #[test]
-    fn encode_empty_string() {
-        let mut buf = [0u8; 4];
-        assert_eq!(encode_devnode_name(b"", &mut buf), Ok(0));
-        assert_eq!(buf[0], 0);
-    }
-
-    #[test]
-    fn encode_simple_allowed() {
-        let mut buf = [0u8; 10];
-        let len = encode_devnode_name(b"hello", &mut buf).unwrap();
-        assert_eq!(len, 5);
-        assert_eq!(&buf[..5], b"hello");
-    }
-
-    #[test]
-    fn encode_all_allowed_chars() {
-        let input = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#+-.:=@_";
-        let mut buf = [0u8; 128];
-        let len = encode_devnode_name(input, &mut buf).unwrap();
-        assert_eq!(len, input.len());
-        assert_eq!(&buf[..len], input);
-    }
-
-    #[test]
-    fn encode_escapes_space() {
-        let mut buf = [0u8; 16];
-        let len = encode_devnode_name(b"foo bar", &mut buf).unwrap();
-        assert_eq!(len, 10);
-        assert_eq!(&buf[..len], b"foo\\x20bar");
-    }
-
-    #[test]
-    fn encode_escapes_backslash() {
-        let mut buf = [0u8; 16];
-        let len = encode_devnode_name(b"foo\\bar", &mut buf).unwrap();
-        assert_eq!(len, 10);
-        assert_eq!(&buf[..len], b"foo\\x5cbar");
-    }
-
-    #[test]
-    fn encode_escapes_newline() {
-        let mut buf = [0u8; 16];
-        let len = encode_devnode_name(b"foo\nbar", &mut buf).unwrap();
-        assert_eq!(len, 10);
-        assert_eq!(&buf[..len], b"foo\\x0abar");
-    }
-
-    #[test]
-    fn encode_escapes_tab() {
-        let mut buf = [0u8; 16];
-        let len = encode_devnode_name(b"foo\tbar", &mut buf).unwrap();
-        assert_eq!(len, 10);
-        assert_eq!(&buf[..len], b"foo\\x09bar");
-    }
-
-    #[test]
-    fn encode_multiple_escapes() {
-        let mut buf = [0u8; 32];
-        let len = encode_devnode_name(b"a b c", &mut buf).unwrap();
-        assert_eq!(len, 11);
-        assert_eq!(&buf[..len], b"a\\x20b\\x20c");
-    }
-
-    #[test]
-    fn encode_insufficient_buffer() {
-        let mut buf = [0u8; 5];
+        let mut utf8 = [0xa5; 2];
         assert_eq!(
-            encode_devnode_name(b"hello world", &mut buf),
+            encode_devnode_name("í".as_bytes(), &mut utf8),
             Err(Errno::EINVAL)
         );
+        assert_eq!(utf8, [0xc3, 0xad]);
+
+        let mut too_short_for_snprintf = [0xa5; 4];
+        assert_eq!(
+            encode_devnode_name(b" ", &mut too_short_for_snprintf),
+            Err(Errno::EINVAL)
+        );
+        assert_eq!(too_short_for_snprintf, [0xa5; 4]);
     }
 
     #[test]
-    fn encode_exact_buffer_fit() {
-        let mut buf = [0u8; 4]; // 3 chars + NUL
-        let len = encode_devnode_name(b"abc", &mut buf).unwrap();
-        assert_eq!(len, 3);
-        assert_eq!(&buf[..3], b"abc");
+    fn exact_capacity_includes_final_nul() {
+        let mut output = [0xa5; 4];
+        assert_eq!(encode_devnode_name(b"abc", &mut output), Ok(3));
+        assert_eq!(&output, b"abc\0");
     }
 
     #[test]
-    fn encode_buffer_too_small_by_one() {
-        let mut buf = [0u8; 3]; // need 3 + 1 = 4
-        assert_eq!(encode_devnode_name(b"abc", &mut buf), Err(Errno::EINVAL));
-    }
+    fn ffi_rejects_null_pointers() {
+        let mut output = [0i8; 1];
 
-    #[test]
-    fn encode_high_bytes_escaped() {
-        let mut buf = [0u8; 16];
-        let len = encode_devnode_name(&[0x80, 0xFF], &mut buf).unwrap();
-        assert_eq!(len, 8);
-        assert_eq!(&buf[..8], b"\\x80\\xff");
-    }
-
-    #[test]
-    fn encode_mixed_allowed_and_escaped() {
-        let mut buf = [0u8; 32];
-        let len = encode_devnode_name(b"abc123 foo", &mut buf).unwrap();
-        assert_eq!(&buf[..len], b"abc123\\x20foo");
+        // SAFETY: null inputs are explicitly accepted and rejected before dereference.
+        assert_eq!(
+            unsafe { rs_encode_devnode_name(ptr::null(), output.as_mut_ptr(), output.len()) },
+            Errno::EINVAL.to_neg_errno()
+        );
+        // SAFETY: null output is explicitly accepted and rejected before dereference.
+        assert_eq!(
+            unsafe { rs_encode_devnode_name(c"".as_ptr(), ptr::null_mut(), 0) },
+            Errno::EINVAL.to_neg_errno()
+        );
     }
 }

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/serialize.c (deserialize_dual_timestamp, deserialize_usec)
+// PORT-SYNC: scope=basic.serialize; authority=src/shared/serialize.c,src/shared/serialize.h
 //
-// Serialization format deserialization utilities.
-// Pure Rust — no FFI boundary.
+// Serialization format deserialization utilities and C ABI facades.
 
 use crate::ffi::Errno;
+use crate::time_util::DualTimestamp as CDualTimestamp;
+use libc::{c_char, c_int, c_ulonglong};
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -174,6 +175,99 @@ pub fn deserialize_dual_timestamp(value: &str) -> Result<DualTimestamp, Serializ
         realtime,
         monotonic,
     })
+}
+
+// ── C ABI facades ─────────────────────────────────────────────────────────
+
+/// C ABI facade for `deserialize_usec()`.
+///
+/// `value` and `ret` must be non-null; `value` must designate a live,
+/// NUL-terminated byte string and `ret` writable `uint64_t` storage. The
+/// output is published only after successful parsing. This delegates to the
+/// raw-byte `safe_atou64()` port, retaining the C parser's base-zero grammar
+/// and errno-derived negative return values.
+///
+/// # Safety
+///
+/// `value` must point to a live NUL-terminated byte string and `ret` to
+/// writable `uint64_t` storage for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_deserialize_usec(value: *const c_char, ret: *mut u64) -> c_int {
+    if value.is_null() || ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: the facade's pointer contract is exactly that of rs_safe_atou64().
+    unsafe { crate::parse_util::rs_safe_atou64(value, ret) }
+}
+
+/// C ABI facade for `deserialize_dual_timestamp()`.
+///
+/// `value` and `ret` must be non-null; `value` must designate a live,
+/// NUL-terminated byte string and `ret` writable `dual_timestamp` storage.
+/// The input is deliberately parsed through the same `strspn()`/`sscanf()`
+/// sequence as the C authority, so raw-byte, whitespace, sign, overflow, and
+/// libc-specific conversion behavior remain unchanged. `*ret` is assigned
+/// only after all parsing checks succeed.
+///
+/// # Safety
+///
+/// `value` must point to a live NUL-terminated byte string and `ret` to
+/// writable `dual_timestamp` storage for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_deserialize_dual_timestamp(
+    value: *const c_char,
+    ret: *mut CDualTimestamp,
+) -> c_int {
+    if value.is_null() || ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    let whitespace = c" \t\n\r";
+    let digits = c"0123456789";
+    let mut a: c_ulonglong = 0;
+    let mut b: c_ulonglong = 0;
+
+    // Keep `pos` as C `int`, including for the `%n` conversion below, to
+    // match the authority's storage and subsequent indexing contract.
+    // SAFETY: `value` is a live NUL-terminated string by this facade's
+    // contract, and `whitespace` is a static NUL-terminated C string.
+    let mut pos = unsafe { libc::strspn(value, whitespace.as_ptr()) as c_int };
+    // SAFETY: `pos` was measured within `value` above.
+    if unsafe { *value.add(pos as usize) } == b'-' as c_char {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: `pos` was measured within `value` above; `digits` is static.
+    pos += unsafe { libc::strspn(value.add(pos as usize), digits.as_ptr()) as c_int };
+    // SAFETY: `pos` remains within the C string after the previous span.
+    pos += unsafe { libc::strspn(value.add(pos as usize), whitespace.as_ptr()) as c_int };
+    // SAFETY: `pos` was measured within `value` above.
+    if unsafe { *value.add(pos as usize) } == b'-' as c_char {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: all pointers meet sscanf's C contracts. `%llu` receives
+    // c_ulonglong storage, and `%n` receives C int storage.
+    let scanned = unsafe { libc::sscanf(value, c"%llu %llu%n".as_ptr(), &mut a, &mut b, &mut pos) };
+    if scanned != 2 {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: successful `%n` reports an offset within `value`.
+    if unsafe { *value.add(pos as usize) } != 0 {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: `ret` is writable by this facade's pointer contract. Publish
+    // only after every authority check above has succeeded.
+    unsafe {
+        *ret = CDualTimestamp {
+            realtime: a as u64,
+            monotonic: b as u64,
+        };
+    }
+    0
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────

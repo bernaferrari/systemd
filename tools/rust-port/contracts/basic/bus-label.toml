@@ -1,0 +1,59 @@
+schema = 1
+module = "bus-label"
+semantic_coverage = "complete"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+
+[authority]
+c_headers = ["src/basic/bus-label.h"]
+c_sources = ["src/basic/bus-label.c"]
+rust_headers = ["src/basic/rust/bus_label.h"]
+rust_sources = ["src/basic/rust/bus_label.rs"]
+
+[[surface]]
+id = "bus-label-escape"
+c_symbols = ["bus_label_escape"]
+rust_symbols = ["rs_bus_label_escape"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "owned-libc"
+release = "free"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-bus-label-rust.c"
+meson_target = "test-bus-label-rust"
+labels = ["bus-label-escape"]
+
+[[surface]]
+id = "bus-label-unescape"
+c_symbols = ["bus_label_unescape_n"]
+rust_symbols = ["rs_bus_label_unescape_n"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "owned-libc"
+release = "free"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-bus-label-rust.c"
+meson_target = "test-bus-label-rust"
+labels = ["bus-label-unescape"]

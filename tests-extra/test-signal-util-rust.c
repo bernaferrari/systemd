@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: signal-name-and-number */
+/* RUST-CONTRACT: signal-number-parser */
 /* Shadow test: C signal-util vs Rust rs_signal_util */
 
 #include "signal-util.h"
@@ -68,6 +70,15 @@ TEST(signal_from_string_numeric) {
 
         ASSERT_EQ(signal_from_string("999"), rs_signal_from_string("999"));
         assert_se(signal_from_string("999") < 0);
+
+        /* signal_from_string() uses safe_atoi(), including its base prefixes
+         * and leading-whitespace behavior. */
+        ASSERT_EQ(signal_from_string(" 15"), rs_signal_from_string(" 15"));
+        ASSERT_EQ(signal_from_string("+15"), rs_signal_from_string("+15"));
+        ASSERT_EQ(signal_from_string("0xf"), rs_signal_from_string("0xf"));
+        ASSERT_EQ(signal_from_string("0b1111"), rs_signal_from_string("0b1111"));
+        ASSERT_EQ(signal_from_string("0o17"), rs_signal_from_string("0o17"));
+        ASSERT_EQ(signal_from_string("15 "), rs_signal_from_string("15 "));
 }
 
 /* ── signal_from_string: RTMIN/RTMAX ─────────────────────────────────── */
@@ -227,6 +238,14 @@ TEST(signal_to_string_invalid) {
         r_ret = rs_signal_to_string(-1);
         assert_se(c_ret && r_ret);
         assert_se(streq(c_ret, r_ret));
+}
+
+TEST(signal_to_string_static_storage) {
+        const char *first = rs_signal_to_string(SIGTERM);
+        const char *second = rs_signal_to_string(SIGTERM);
+
+        assert_se(first == second);
+        assert_se(streq(first, "TERM"));
 }
 
 TEST(signal_to_string_rtmin) {

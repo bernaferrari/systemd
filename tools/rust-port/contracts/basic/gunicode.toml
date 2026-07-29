@@ -1,0 +1,55 @@
+schema = 1
+module = "gunicode"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["interval_compare"]
+
+[authority]
+c_headers = ["src/basic/gunicode.h"]
+c_sources = ["src/basic/gunicode.c"]
+rust_headers = ["src/basic/rust/gunicode.h"]
+rust_sources = ["src/basic/rust/gunicode.rs"]
+
+[[surface]]
+id = "gunicode-skip-table"
+c_symbols = ["utf8_skip_data"]
+rust_symbols = ["rs_utf8_skip_data"]
+coverage = "partial"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface]]
+id = "gunicode-previous-character"
+c_symbols = ["utf8_prev_char"]
+rust_symbols = ["rs_utf8_prev_char"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-gunicode-rust.c"
+meson_target = "test-gunicode-rust"
+labels = ["gunicode-previous-character"]
+
+[[surface]]
+id = "gunicode-wide-character"
+c_symbols = ["unichar_iswide"]
+rust_symbols = ["rs_unichar_iswide"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-gunicode-rust.c"
+meson_target = "test-gunicode-rust"
+labels = ["gunicode-wide-character"]

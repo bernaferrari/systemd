@@ -9,6 +9,7 @@
 #include "rust/bus_label.h"
 
 /* ── bus_label_escape ──────────────────────────────────────────────────── */
+/* RUST-CONTRACT: bus-label-escape */
 
 static void test_bus_label_escape_empty(void) {
         char *c_ret = bus_label_escape("");
@@ -95,6 +96,7 @@ static void test_bus_label_escape_roundtrip(void) {
 }
 
 /* ── bus_label_unescape_n ──────────────────────────────────────────────── */
+/* RUST-CONTRACT: bus-label-unescape */
 
 static void test_bus_label_unescape_empty(void) {
         /* "_" → "" */
@@ -177,6 +179,35 @@ static void test_bus_label_unescape_mixed(void) {
         free(r_ret);
 }
 
+static void test_bus_label_unescape_binary_output(void) {
+        /* The escaped byte sequence may decode to an embedded NUL. Compare the
+         * complete observable buffer rather than treating it as a C string. */
+        static const char input[] = { '_', '0', '0', 'A' };
+        char *c_ret = bus_label_unescape_n(input, sizeof(input));
+        char *r_ret = rs_bus_label_unescape_n(input, sizeof(input));
+
+        assert_se(c_ret != NULL);
+        assert_se(r_ret != NULL);
+        assert_se(memcmp(c_ret, r_ret, 3) == 0);
+        assert_se(c_ret[0] == 0);
+        assert_se(c_ret[1] == 'A');
+        assert_se(c_ret[2] == 0);
+        free(c_ret);
+        free(r_ret);
+}
+
+static void test_bus_label_unescape_size_max(void) {
+        char *c_ret = bus_label_unescape_n("foo_2fbar", SIZE_MAX);
+        char *r_ret = rs_bus_label_unescape_n("foo_2fbar", SIZE_MAX);
+
+        assert_se(c_ret != NULL);
+        assert_se(r_ret != NULL);
+        assert_se(streq(c_ret, r_ret));
+        assert_se(streq(r_ret, "foo/bar"));
+        free(c_ret);
+        free(r_ret);
+}
+
 /* ── Main ───────────────────────────────────────────────────────────────── */
 
 int main(int argc, char **argv) {
@@ -195,6 +226,8 @@ int main(int argc, char **argv) {
         test_bus_label_unescape_truncated_escape();
         test_bus_label_unescape_truncated_escape2();
         test_bus_label_unescape_mixed();
+        test_bus_label_unescape_binary_output();
+        test_bus_label_unescape_size_max();
 
         return 0;
 }

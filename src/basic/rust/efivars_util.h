@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.efivars-util; authority=src/fundamental/efivars.c,src/fundamental/efivars.h,src/basic/efivars.c,src/basic/efivars.h,src/shared/efi-api.c,src/shared/efi-api.h */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
