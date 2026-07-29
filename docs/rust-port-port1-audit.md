@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 12:04 UTC
+Generated: 2026-07-29 12:15 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **333**
-- `genuine-rust`: **220**
-- `ffi-backed-rust`: **113**
+- Total modules audited: **329**
+- `genuine-rust`: **219**
+- `ffi-backed-rust`: **110**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -92,12 +92,10 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/pe_binary.rs` | 7 | 37 | 1 | 36 |
 | `src/basic/rust/percent_util.rs` | 12 | 57 | 0 | 29 |
 | `src/basic/rust/prioq.rs` | 10 | 53 | 0 | 59 |
-| `src/basic/rust/proc_cmdline.rs` | 2 | 27 | 0 | 9 |
 | `src/basic/rust/process_util_str_tables.rs` | 4 | 27 | 0 | 20 |
 | `src/basic/rust/procfs_util.rs` | 7 | 35 | 0 | 60 |
 | `src/basic/rust/ratelimit.rs` | 6 | 37 | 0 | 13 |
 | `src/basic/rust/recovery_key.rs` | 2 | 25 | 1 | 23 |
-| `src/basic/rust/replace_var.rs` | 2 | 10 | 0 | 11 |
 | `src/basic/rust/resize_fs_util.rs` | 3 | 21 | 0 | 3 |
 | `src/basic/rust/rlimit_util.rs` | 7 | 25 | 0 | 25 |
 | `src/basic/rust/safe_math.rs` | 3 | 22 | 0 | 8 |
@@ -119,7 +117,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/strv.rs` | 52 | 73 | 0 | 228 |
 | `src/basic/rust/strverscmp.rs` | 1 | 21 | 0 | 28 |
 | `src/basic/rust/strxcpyx.rs` | 4 | 26 | 0 | 16 |
-| `src/basic/rust/sysctl_util.rs` | 1 | 18 | 0 | 38 |
 | `src/basic/rust/syslog_util.rs` | 7 | 33 | 0 | 39 |
 | `src/basic/rust/terminal_util.rs` | 6 | 46 | 0 | 15 |
 | `src/basic/rust/udev_util.rs` | 2 | 12 | 0 | 32 |

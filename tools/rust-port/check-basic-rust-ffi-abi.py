@@ -170,7 +170,6 @@ C_TYPES = {
     "char * const *": "*const*mutc_char",
     "const char * const *": "*const*constc_char",
     "char* const*": "*const*mutc_char",
-    "rs_replace_var_lookup_t": "Option<ReplaceVarLookup>",
     "char ***": "*mut*mut*mutc_char",
     "char **": "*mut*mutc_char",
     "const char *": "*constc_char",
@@ -2983,22 +2982,6 @@ def main() -> int:
                 ):
                     return fail(
                         "strv_registered: strv_free_and_replace macro or two-slot ownership ABI changed"
-                    )
-                authority_curated += 1
-                continue
-            if name == "replace_var" and symbol == "rs_replace_var":
-                expected_signature = (
-                    ("*constc_char", "Option<ReplaceVarLookup>", "*mutc_void"),
-                    "*mutc_char",
-                )
-                normalized_authority = re.sub(r"\s+", " ", authority)
-                expected_c_signature = (
-                    "char* replace_var(const char *text, char *(*lookup)(const char *variable, "
-                    "void *userdata), void *userdata)"
-                )
-                if expected != expected_signature or expected_c_signature not in normalized_authority:
-                    return fail(
-                        "replace_var: callback ABI no longer matches the current C declaration"
                     )
                 authority_curated += 1
                 continue

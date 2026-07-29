@@ -49,7 +49,6 @@ pub mod bitmap;
 pub mod bootspec;
 pub mod bpf_dlopen;
 pub mod bpf_program;
-pub mod bus_message_util;
 pub mod bus_polkit;
 pub mod bus_print_properties;
 pub mod bus_unit_util;

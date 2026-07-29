@@ -1006,11 +1006,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "replace_var": (
-            basic_rust / "replace_var.h",
-            basic_rust / "replace_var.rs",
-            frozenset({"rs_replace_var"}),
-        ),
         "specifier_util": (
             basic_rust / "specifier_util.h",
             basic_rust / "specifier_util.rs",
@@ -1207,16 +1202,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "proc_cmdline": (
-            basic_rust / "proc_cmdline.h",
-            basic_rust / "proc_cmdline.rs",
-            frozenset(
-                {
-                    "rs_proc_cmdline_key_startswith",
-                    "rs_proc_cmdline_key_streq",
-                }
-            ),
-        ),
         "process_util_str_tables": (
             basic_rust / "process_util_str_tables.h",
             basic_rust / "process_util_str_tables.rs",
@@ -1300,11 +1285,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "recovery_key.h",
             basic_rust / "recovery_key.rs",
             frozenset({"rs_decode_modhex_char", "rs_normalize_recovery_key"}),
-        ),
-        "sysctl_util": (
-            basic_rust / "sysctl_util.h",
-            basic_rust / "sysctl_util.rs",
-            frozenset({"rs_sysctl_normalize"}),
         ),
     }
     partial_extra_sources = {
@@ -1486,7 +1466,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "device_nodes": (tests_extra / "test-device-nodes-rust.c",),
         "mount_setup": (tests_extra / "test-mount-setup-rust.c",),
         "resize_fs_util": (tests_extra / "test-resize-fs-rust.c",),
-        "replace_var": (tests_extra / "test-replace-var-rust.c",),
         "specifier_util": (tests_extra / "test-specifier-efi-rust.c",),
         "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
         "argv_util": (tests_extra / "test-argv-util-rust.c",),
@@ -1505,7 +1484,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "memory_util": (tests_extra / "test-memory-util-rust.c",),
         "hostname_util": (tests_extra / "test-hostname-util-rust.c",),
         "id128_util": (tests_extra / "test-id128-rust.c",),
-        "proc_cmdline": (tests_extra / "test-proc-cmdline-rust.c",),
         "process_util_str_tables": (
             tests_extra / "test-process-util-str-tables-rust.c",
         ),
@@ -1518,7 +1496,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "dirent_util": (tests_extra / "test-dirent-util-rust.c",),
         "bootspec_util": (tests_extra / "test-bootspec-rust.c",),
         "recovery_key": (tests_extra / "test-recovery-key-rust.c",),
-        "sysctl_util": (tests_extra / "test-sysctl-util-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -1535,7 +1512,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         tests_extra / "test-strreplace-rust.c",
         tests_extra / "test-ether-addr-util-rust.c",
         tests_extra / "test-seccomp-util-rust.c",
-        tests_extra / "test-replace-var-rust.c",
     )
     c_authorities = {
         "af_list": (root / "src/basic/af-list.c",),
@@ -1855,10 +1831,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/resize-fs.c",
             root / "src/shared/resize-fs.h",
         ),
-        "replace_var": (
-            root / "src/basic/replace-var.c",
-            root / "src/basic/replace-var.h",
-        ),
         "specifier_util": (
             root / "src/shared/specifier.c",
             root / "src/shared/specifier.h",
@@ -1928,10 +1900,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/fundamental/sha256.c",
             root / "src/fundamental/sha256.h",
         ),
-        "proc_cmdline": (
-            root / "src/basic/proc-cmdline.c",
-            root / "src/basic/proc-cmdline.h",
-        ),
         "process_util_str_tables": (
             root / "src/basic/process-util.c",
             root / "src/basic/process-util.h",
@@ -1983,10 +1951,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "recovery_key": (
             root / "src/shared/recovery-key.c",
             root / "src/shared/recovery-key.h",
-        ),
-        "sysctl_util": (
-            root / "src/basic/sysctl-util.c",
-            root / "src/basic/sysctl-util.h",
         ),
     }
     return BasicFfiReviewCatalog(

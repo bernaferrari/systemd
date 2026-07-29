@@ -43,7 +43,6 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Counted memory primitives | `test-memory-util-rust` | Raw C pointer preconditions, zero-length exceptions, borrowed search results, and fundamental uniform-byte semantics |
 | Hostname conversion | `test-hostname-util-rust` | Raw-byte grammar, in-place cleanup, synthetic names, and C-allocated user@host splits |
 | ID128 conversion | `test-id128-rust` | Union ABI, caller buffers, opaque string parsing, exact comparison, and SHA-256 UUID digesting |
-| Kernel-command-line key matching | `test-proc-cmdline-rust` | Raw byte keys, dash/underscore-only relaxation, and borrowed interior prefix results |
 | Process string tables | `test-process-util-str-tables-rust` | Borrowed static SIGCHLD names, safe_atou-compatible scheduler parsing, and C-owned decimal fallback strings |
 | Generic string tables | `test-string-table-rust` | Borrowed table entries, C boolean and numeric fallbacks, libc allocation, and transactional output publication |
 | Signal-origin classification | `test-signal-inline-rust` | C inline `si_code` rule, including all negative codes plus `SI_USER` and `SI_QUEUE` |

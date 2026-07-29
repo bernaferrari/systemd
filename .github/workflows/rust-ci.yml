@@ -242,14 +242,12 @@ jobs:
           test-signal-inline-rust
           test-bootspec-rust
           test-recovery-key-rust
-          test-sysctl-util-rust
           test-hexdecoct-rust
           test-env-util-rust
           test-edid-rust
           test-memory-util-rust
           test-hostname-util-rust
           test-id128-rust
-          test-proc-cmdline-rust
           test-process-util-str-tables-rust
           test-string-table-rust
           test-strxcpyx-rust
@@ -275,7 +273,6 @@ jobs:
           test-mount-setup-rust
           test-namespace-mountpoint-rust
           test-nsflags-rust
-          test-replace-var-rust
           test-resize-fs-rust
           test-specifier-efi-rust
           test-time-util-extra2-rust
@@ -393,14 +390,12 @@ jobs:
           test-signal-inline-rust
           test-bootspec-rust
           test-recovery-key-rust
-          test-sysctl-util-rust
           test-hexdecoct-rust
           test-env-util-rust
           test-edid-rust
           test-memory-util-rust
           test-hostname-util-rust
           test-id128-rust
-          test-proc-cmdline-rust
           test-process-util-str-tables-rust
           test-string-table-rust
           test-strxcpyx-rust
@@ -426,7 +421,6 @@ jobs:
           test-mount-setup-rust
           test-namespace-mountpoint-rust
           test-nsflags-rust
-          test-replace-var-rust
           test-resize-fs-rust
           test-specifier-efi-rust
           test-time-util-extra2-rust

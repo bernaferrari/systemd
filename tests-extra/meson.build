@@ -1028,20 +1028,6 @@ if get_option('rust').enabled()
         test('test-mempool-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-replace-var-rust',
-                files('test-replace-var-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-replace-var-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-memory-util-rust',
                 files('test-memory-util-rust.c'),
                 include_directories : includes,
@@ -1180,20 +1166,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-signal-inline-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-proc-cmdline-rust',
-                files('test-proc-cmdline-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-proc-cmdline-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-rlimit-util-rust',
@@ -1980,20 +1952,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-terminal-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-sysctl-util-rust',
-                files('test-sysctl-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-sysctl-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-devt-compare-rust',

@@ -381,11 +381,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 50
     },
-    "src/basic/rust/proc_cmdline.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
     "src/basic/rust/process_util_str_tables.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -405,11 +400,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 8
-    },
-    "src/basic/rust/replace_var.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 14
     },
     "src/basic/rust/resize_fs_util.rs": {
       "missing_safety": 0,
@@ -601,11 +591,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 18
-    },
-    "src/basic/rust/sysctl_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 3
     },
     "src/basic/rust/syslog_util.rs": {
       "missing_safety": 0,
