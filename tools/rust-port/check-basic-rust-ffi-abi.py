@@ -96,6 +96,7 @@ C_TYPES = {
     "ExitStatusSet *": "*mutCExitStatusSet",
     "const ImagePolicy *": "*constCImagePolicy",
     "ImagePolicy *": "*mutCImagePolicy",
+    "ImagePolicy **": "*mut*mutCImagePolicy",
     # UIDRange is a C-owned pointer/length allocation. The native Rust Vec
     # type intentionally stays outside this ABI and is represented instead by
     # the dedicated repr(C) CUIDRange boundary mirror.
@@ -112,9 +113,11 @@ C_TYPES = {
     "const union sockaddr_union *": "*constc_void",
     "union sockaddr_union *": "*mutc_void",
     "const union in_addr_union *": "*constc_void",
+    "union in_addr_union *": "*mutc_void",
     "const SocketAddress *": "*constc_void",
     "SocketAddress *": "*mutc_void",
     "IfnameValidFlags": "i32",
+    "DNSLabelFlags": "u32",
     "RateLimit *": "*mutRateLimit",
     "const RateLimit *": "*constRateLimit",
     # Packed PE records stay opaque in the Rust facade. Pointer representation
@@ -186,6 +189,7 @@ C_TYPES = {
     "void **": "*mut*mutc_void",
     "const uint64_t *": "*constu64",
     "const uint8_t *": "*constu8",
+    "const uint8_t **": "*mut*constu8",
     "const uint16_t *": "*constu16",
     "const int *": "*consti32",
     "const uint8_t": "u8",

@@ -1,21 +1,11 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/dns-domain.c (dns_label_unescape, dns_label_escape, dns_name_parent,
-//           dns_name_is_root, dns_name_equal, dns_name_endswith, dns_name_startswith,
-//           dns_name_count_labels, dns_srv_type_is_valid, dnssd_srv_type_is_valid,
-//           dns_name_dont_resolve, dns_name_dot_suffixed,
-//           dns_name_skip, dns_name_suffix, dns_name_equal_skip, dns_name_common_suffix,
-//           dns_name_to_wire_format, dns_name_reverse, dns_name_address,
-//           dns_name_from_wire_format, dns_label_unescape_suffix,
-//           dns_name_compare_func, dns_name_between,
-//           dns_label_escape_new, dns_name_concat, dns_name_change_suffix,
-//           dns_name_normalize, dns_name_is_valid, dns_name_is_valid_ldh,
-//           dns_service_join, dns_service_split)
+// PORT-SYNC: scope=shared.dns-label; authority=src/shared/dns-domain.c,src/shared/dns-domain.h,src/basic/parse-util.c,src/basic/parse-util.h
 //
 // DNS label parsing and DNS name utility functions.
 // These are pure functions with no I/O or global state.
 
-use libc::c_char;
+use libc::{c_char, c_void};
 
 use crate::ffi::Errno;
 use std::ptr;
@@ -41,7 +31,8 @@ const DNS_LABEL_LEAVE_TRAILING_DOT: u32 = 1 << 2;
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_label_unescape(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_label_unescape(
     name: *mut *const c_char,
     dest: *mut c_char,
     mut sz: usize,
@@ -56,8 +47,8 @@ pub unsafe fn rs_dns_label_unescape(
 
         let mut n = *name;
 
-        // Empty input
-        if *n == 0 {
+        // `isempty(*name)` in the C implementation also accepts a null string.
+        if n.is_null() || *n == 0 {
             if !dest.is_null() && sz >= 1 {
                 *dest = 0;
             }
@@ -126,8 +117,11 @@ pub unsafe fn rs_dns_label_unescape(
                     if eb >= b'0' && eb <= b'9' {
                         // \DDD decimal escape
                         let b1 = *n.add(1) as u8;
+                        if !b1.is_ascii_digit() {
+                            return Errno::EINVAL.to_neg_errno();
+                        }
                         let b2 = *n.add(2) as u8;
-                        if !(b1 >= b'0' && b1 <= b'9') || !(b2 >= b'0' && b2 <= b'9') {
+                        if !b2.is_ascii_digit() {
                             return Errno::EINVAL.to_neg_errno(); // -EINVAL
                         }
 
@@ -215,7 +209,12 @@ pub unsafe fn rs_dns_label_unescape(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_skip(a: *const c_char, n_labels: u32, ret: *mut *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_skip(
+    a: *const c_char,
+    n_labels: u32,
+    ret: *mut *const c_char,
+) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -255,7 +254,8 @@ pub unsafe fn rs_dns_name_skip(a: *const c_char, n_labels: u32, ret: *mut *const
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_suffix(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_suffix(
     name: *const c_char,
     n_labels: u32,
     ret: *mut *const c_char,
@@ -310,7 +310,12 @@ pub unsafe fn rs_dns_name_suffix(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_equal_skip(a: *const c_char, n_labels: u32, b: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_equal_skip(
+    a: *const c_char,
+    n_labels: u32,
+    b: *const c_char,
+) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -340,7 +345,8 @@ pub unsafe fn rs_dns_name_equal_skip(a: *const c_char, n_labels: u32, b: *const 
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_common_suffix(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_common_suffix(
     a: *const c_char,
     b: *const c_char,
     ret: *mut *const c_char,
@@ -442,7 +448,8 @@ const DNS_HOSTNAME_MAX: usize = 253;
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_to_wire_format(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_to_wire_format(
     domain: *const c_char,
     buffer: *mut u8,
     mut len: usize,
@@ -515,7 +522,13 @@ pub unsafe fn rs_dns_name_to_wire_format(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_label_escape(p: *const c_char, l: usize, dest: *mut c_char, sz: usize) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_label_escape(
+    p: *const c_char,
+    l: usize,
+    dest: *mut c_char,
+    sz: usize,
+) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -588,7 +601,8 @@ pub unsafe fn rs_dns_label_escape(p: *const c_char, l: usize, dest: *mut c_char,
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_parent(name: *mut *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_parent(name: *mut *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe { rs_dns_label_unescape(name, std::ptr::null_mut(), DNS_LABEL_MAX, 0) }
@@ -605,7 +619,8 @@ pub unsafe fn rs_dns_name_parent(name: *mut *const c_char) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_is_root(name: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_is_root(name: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -635,7 +650,8 @@ pub unsafe fn rs_dns_name_is_root(name: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_equal(x: *const c_char, y: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_equal(x: *const c_char, y: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -689,7 +705,8 @@ pub unsafe fn rs_dns_name_equal(x: *const c_char, y: *const c_char) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_endswith(name: *const c_char, suffix: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_endswith(name: *const c_char, suffix: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -751,7 +768,8 @@ pub unsafe fn rs_dns_name_endswith(name: *const c_char, suffix: *const c_char) -
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_startswith(name: *const c_char, prefix: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_startswith(name: *const c_char, prefix: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -804,7 +822,8 @@ pub unsafe fn rs_dns_name_startswith(name: *const c_char, prefix: *const c_char)
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_count_labels(name: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_count_labels(name: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -837,6 +856,10 @@ pub unsafe fn rs_dns_name_count_labels(name: *const c_char) -> i32 {
 
 /// Helper: validates a single service type label.
 /// RFC 6335 Section 5.1: first char '_', second char letter, rest alphanumeric or hyphen.
+///
+/// # Safety
+/// `label` must reference at least `n` readable bytes for the duration of the
+/// call.
 unsafe fn srv_type_label_is_valid(label: *const c_char, n: usize) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -941,7 +964,8 @@ pub unsafe fn rs_dnssd_srv_type_is_valid(name: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_is_single_label(name: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_is_single_label(name: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -968,7 +992,8 @@ pub unsafe fn rs_dns_name_is_single_label(name: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_dont_resolve(name: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_dont_resolve(name: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1004,7 +1029,8 @@ pub unsafe fn rs_dns_name_dont_resolve(name: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_dot_suffixed(name: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_dot_suffixed(name: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1016,7 +1042,12 @@ pub unsafe fn rs_dns_name_dot_suffixed(name: *const c_char) -> i32 {
             if *p == b'.' as c_char && *(p.add(1)) == 0 {
                 return 1;
             }
-            let r = rs_dns_label_unescape(&mut p, std::ptr::null_mut(), DNS_LABEL_MAX, 4);
+            let r = rs_dns_label_unescape(
+                &mut p,
+                std::ptr::null_mut(),
+                DNS_LABEL_MAX,
+                DNS_LABEL_LEAVE_TRAILING_DOT,
+            );
             if r < 0 {
                 return r;
             }
@@ -1048,6 +1079,10 @@ fn rs_unhexchar(c: c_char) -> i32 {
     }
 }
 
+/// Compare two C strings as unsigned bytes.
+///
+/// # Safety
+/// `s1` and `s2` must each reference a live NUL-terminated string.
 unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -1094,7 +1129,12 @@ fn alloc_c_string(s: &str) -> *mut c_char {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_reverse(family: i32, a: *const u8, ret: *mut *mut c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_reverse(
+    family: i32,
+    a: *const c_void,
+    ret: *mut *mut c_char,
+) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1102,7 +1142,7 @@ pub unsafe fn rs_dns_name_reverse(family: i32, a: *const u8, ret: *mut *mut c_ch
             return Errno::EINVAL.to_neg_errno();
         }
 
-        let p = a;
+        let p = a.cast::<u8>();
 
         if family == 2 {
             // AF_INET
@@ -1156,7 +1196,12 @@ pub unsafe fn rs_dns_name_reverse(family: i32, a: *const u8, ret: *mut *mut c_ch
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_address(p: *const c_char, ret_family: *mut i32, ret: *mut u8) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_address(
+    p: *const c_char,
+    ret_family: *mut i32,
+    ret: *mut c_void,
+) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1164,6 +1209,7 @@ pub unsafe fn rs_dns_name_address(p: *const c_char, ret_family: *mut i32, ret: *
             return Errno::EINVAL.to_neg_errno();
         }
 
+        let ret = ret.cast::<u8>();
         let mut name = p;
 
         // Check in-addr.arpa suffix
@@ -1185,16 +1231,12 @@ pub unsafe fn rs_dns_name_address(p: *const c_char, ret_family: *mut i32, ret: *
                 if lr > 3 {
                     return Errno::EINVAL.to_neg_errno(); // -EINVAL
                 }
-                // Parse decimal octet
-                let mut val: u8 = 0;
-                for j in 0..lr as usize {
-                    let c = label[j] as u8;
-                    if c < b'0' || c > b'9' {
-                        return Errno::EINVAL.to_neg_errno(); // -EINVAL
-                    }
-                    val = val.wrapping_mul(10).wrapping_add(c - b'0');
+                let mut value = 0;
+                let parsed = crate::parse_util::rs_safe_atou8(label.as_ptr(), &mut value);
+                if parsed < 0 {
+                    return parsed;
                 }
-                octets[i] = val;
+                octets[i] = value;
             }
 
             // Verify remaining name equals "in-addr.arpa"
@@ -1209,10 +1251,6 @@ pub unsafe fn rs_dns_name_address(p: *const c_char, ret_family: *mut i32, ret: *
             *ret.add(1) = octets[2];
             *ret.add(2) = octets[1];
             *ret.add(3) = octets[0];
-            // Zero remaining bytes (union has 16 bytes)
-            for i in 4..16 {
-                *ret.add(i) = 0;
-            }
             return 1;
         }
 
@@ -1228,11 +1266,7 @@ pub unsafe fn rs_dns_name_address(p: *const c_char, ret_family: *mut i32, ret: *
 
                 let lr = rs_dns_label_unescape(&mut name, label.as_mut_ptr(), DNS_LABEL_MAX + 1, 0);
                 if lr <= 0 {
-                    return if lr == 0 {
-                        Errno::EINVAL.to_neg_errno()
-                    } else {
-                        lr
-                    };
+                    return lr;
                 }
                 if lr != 1 {
                     return Errno::EINVAL.to_neg_errno(); // -EINVAL
@@ -1245,11 +1279,7 @@ pub unsafe fn rs_dns_name_address(p: *const c_char, ret_family: *mut i32, ret: *
                 let lr2 =
                     rs_dns_label_unescape(&mut name, label.as_mut_ptr(), DNS_LABEL_MAX + 1, 0);
                 if lr2 <= 0 {
-                    return if lr2 == 0 {
-                        Errno::EINVAL.to_neg_errno()
-                    } else {
-                        lr2
-                    };
+                    return lr2;
                 }
                 if lr2 != 1 {
                     return Errno::EINVAL.to_neg_errno(); // -EINVAL
@@ -1296,7 +1326,8 @@ const DNS_LABEL_ESCAPED_MAX: usize = DNS_LABEL_MAX * 4 + 1;
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_from_wire_format(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_from_wire_format(
     data: *mut *const u8,
     len: *mut usize,
     ret: *mut *mut c_char,
@@ -1334,7 +1365,7 @@ pub unsafe fn rs_dns_name_from_wire_format(
                 break;
             }
             if c > DNS_LABEL_MAX as u8 {
-                return Errno::ENOPROTOOPT.to_neg_errno(); // -EBADMSG
+                return Errno::EBADMSG.to_neg_errno();
             }
             if c as usize > optlen {
                 return Errno::EMSGSIZE.to_neg_errno(); // -EMSGSIZE
@@ -1379,8 +1410,6 @@ pub unsafe fn rs_dns_name_from_wire_format(
             return Errno::ENOMEM.to_neg_errno(); // -ENOMEM
         }
         ptr::copy_nonoverlapping(domain.as_ptr(), ptr, n + 1);
-        std::mem::forget(domain);
-
         *ret = ptr;
         *data = optval;
         *len = optlen;
@@ -1391,6 +1420,10 @@ pub unsafe fn rs_dns_name_from_wire_format(
 // ── dns_label_unescape_suffix ────────────────────────────────────────
 
 /// Helper: like PTR_SUB1(p, base) — returns p-1 if p > base, else NULL.
+///
+/// # Safety
+/// Non-null pointers must belong to the same live allocation, with `p` at or
+/// after `base`.
 unsafe fn ptr_sub1(p: *const c_char, base: *const c_char) -> *const c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -1414,7 +1447,8 @@ unsafe fn ptr_sub1(p: *const c_char, base: *const c_char) -> *const c_char {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_label_unescape_suffix(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_label_unescape_suffix(
     mut name: *const c_char,
     label_terminal: *mut *const c_char,
     dest: *mut c_char,
@@ -1494,7 +1528,8 @@ pub unsafe fn rs_dns_label_unescape_suffix(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_compare_func(a: *const c_char, b: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_compare_func(a: *const c_char, b: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1545,7 +1580,12 @@ pub unsafe fn rs_dns_name_compare_func(a: *const c_char, b: *const c_char) -> i3
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_between(a: *const c_char, b: *const c_char, c: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_between(
+    a: *const c_char,
+    b: *const c_char,
+    c: *const c_char,
+) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1583,7 +1623,12 @@ pub unsafe fn rs_dns_name_between(a: *const c_char, b: *const c_char, c: *const 
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_label_escape_new(p: *const c_char, l: usize, ret: *mut *mut c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_label_escape_new(
+    p: *const c_char,
+    l: usize,
+    ret: *mut *mut c_char,
+) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1602,6 +1647,7 @@ pub unsafe fn rs_dns_label_escape_new(p: *const c_char, l: usize, ret: *mut *mut
 
         let r = rs_dns_label_escape(p, l, buf, DNS_LABEL_ESCAPED_MAX);
         if r < 0 {
+            free(buf.cast());
             return r;
         }
 
@@ -1623,7 +1669,8 @@ pub unsafe fn rs_dns_label_escape_new(p: *const c_char, l: usize, ret: *mut *mut
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_concat(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_concat(
     a: *const c_char,
     b: *const c_char,
     flags: u32,
@@ -1741,8 +1788,6 @@ pub unsafe fn rs_dns_name_concat(
                 return Errno::ENOMEM.to_neg_errno(); // -ENOMEM
             }
             ptr::copy_nonoverlapping(result.as_ptr(), ptr, n_result + 1);
-            std::mem::forget(result);
-
             *ret = ptr;
         }
 
@@ -1773,7 +1818,8 @@ fn strempty(s: *const c_char) -> *const c_char {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_change_suffix(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_change_suffix(
     name: *const c_char,
     old_suffix: *const c_char,
     new_suffix: *const c_char,
@@ -1826,7 +1872,7 @@ pub unsafe fn rs_dns_name_change_suffix(
                     != 0
             {
                 // Not the same, jump back and try with the next label again
-                s = old_suffix;
+                s = strempty(old_suffix);
                 n = saved_after;
                 saved_after = ptr::null();
                 saved_before = ptr::null();
@@ -1859,7 +1905,12 @@ pub unsafe fn rs_dns_name_change_suffix(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_normalize(s: *const c_char, flags: u32, ret: *mut *mut c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_normalize(
+    s: *const c_char,
+    flags: u32,
+    ret: *mut *mut c_char,
+) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe { rs_dns_name_concat(s, ptr::null(), flags, ret) }
@@ -1876,7 +1927,8 @@ pub unsafe fn rs_dns_name_normalize(s: *const c_char, flags: u32, ret: *mut *mut
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_is_valid(s: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_is_valid(s: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1902,7 +1954,8 @@ pub unsafe fn rs_dns_name_is_valid(s: *const c_char) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_name_is_valid_ldh(s: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_name_is_valid_ldh(s: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1926,6 +1979,11 @@ pub unsafe fn rs_dns_name_is_valid_ldh(s: *const c_char) -> i32 {
 // ── dns_service_join ────────────────────────────────────────────────────
 
 /// Helper: join two C strings with a separator, allocating the result.
+///
+/// # Safety
+/// `a` and `b` must each reference a live NUL-terminated string. The returned
+/// allocation, when non-null, belongs to the caller and must be released with
+/// the C allocator.
 unsafe fn alloc_strjoin(a: *const c_char, b: *const c_char) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -1945,6 +2003,11 @@ unsafe fn alloc_strjoin(a: *const c_char, b: *const c_char) -> *mut c_char {
 }
 
 /// Helper: duplicate n bytes from a C string, NUL-terminated.
+///
+/// # Safety
+/// `s` must reference at least `n` readable bytes. The returned allocation,
+/// when non-null, belongs to the caller and must be released with the C
+/// allocator.
 unsafe fn alloc_strndup(s: *const c_char, n: usize) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -1967,7 +2030,8 @@ unsafe fn alloc_strndup(s: *const c_char, n: usize) -> *mut c_char {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_service_join(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_service_join(
     name: *const c_char,
     type_: *const c_char,
     domain: *const c_char,
@@ -2030,7 +2094,8 @@ pub unsafe fn rs_dns_service_join(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_service_split(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_service_split(
     joined: *const c_char,
     ret_name: *mut *mut c_char,
     ret_type: *mut *mut c_char,
@@ -2146,12 +2211,18 @@ pub unsafe fn rs_dns_service_split(
 
         if !ret_domain.is_null() {
             *ret_domain = domain;
+        } else if !domain.is_null() {
+            free(domain.cast());
         }
         if !ret_type.is_null() {
             *ret_type = type_;
+        } else if !type_.is_null() {
+            free(type_.cast());
         }
         if !ret_name.is_null() {
             *ret_name = name;
+        } else if !name.is_null() {
+            free(name.cast());
         }
 
         0
@@ -2244,7 +2315,7 @@ mod tests {
 
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_dns_name_reverse(2, addr.as_ptr(), &mut name) },
+            unsafe { rs_dns_name_reverse(2, addr.as_ptr().cast(), &mut name) },
             0
         );
         assert_eq!(
@@ -2254,7 +2325,7 @@ mod tests {
         );
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_dns_name_address(name, &mut family, out.as_mut_ptr()) },
+            unsafe { rs_dns_name_address(name, &mut family, out.as_mut_ptr().cast()) },
             1
         );
         assert_eq!(family, 2);

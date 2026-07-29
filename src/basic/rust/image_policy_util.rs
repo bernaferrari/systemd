@@ -534,7 +534,7 @@ pub fn image_policy_from_string(s: &str, graceful: bool) -> Result<ImagePolicy, 
 
         let bit = 1u64 << (designator as u64);
         if (mask & bit) != 0 {
-            return Err(-Errno::ENOTUNIQ.to_neg_errno());
+            return Err(Errno::ENOTUNIQ.to_neg_errno());
         }
         mask |= bit;
 
@@ -677,6 +677,42 @@ fn policy_flag_from_bytes(bytes: &[u8]) -> Option<i32> {
         b"xfs" => PARTITION_POLICY_XFS,
         _ => return None,
     })
+}
+
+/// Split one of image-policy's C tokenizer fields.
+///
+/// `extract_first_word(..., EXTRACT_DONT_COALESCE_SEPARATORS)` strips a
+/// non-trailing backslash and treats the following byte literally, including
+/// a separator. It also keeps empty fields. Model that behavior here instead
+/// of treating every backslash as invalid.
+fn split_c_policy_words(bytes: &[u8], separator: u8) -> Result<Vec<Vec<u8>>, i32> {
+    let mut words = vec![Vec::new()];
+    let mut escaped = false;
+
+    for &byte in bytes {
+        if escaped {
+            words
+                .last_mut()
+                .expect("policy tokenizer always has a current field")
+                .push(byte);
+            escaped = false;
+        } else if byte == b'\\' {
+            escaped = true;
+        } else if byte == separator {
+            words.push(Vec::new());
+        } else {
+            words
+                .last_mut()
+                .expect("policy tokenizer always has a current field")
+                .push(byte);
+        }
+    }
+
+    if escaped {
+        return Err(Errno::EINVAL.to_neg_errno());
+    }
+
+    Ok(words)
 }
 
 /// # Safety
@@ -840,6 +876,161 @@ unsafe fn c_image_policy_flags_all_match(policy: *const CImagePolicy, expected: 
     true
 }
 
+/// Copy a valid C flexible-array policy into the native representation used by
+/// the policy algorithms below.
+///
+/// # Safety
+///
+/// `policy` must be null or point to a complete, live C `ImagePolicy` for the
+/// duration of this call. Non-null entries must use valid
+/// `PartitionDesignator` values, as required by the C API.
+unsafe fn c_image_policy_to_native(policy: *const CImagePolicy) -> Result<ImagePolicy, i32> {
+    // SAFETY: forwarded from this helper's C flexible-array policy contract.
+    let default_flags = unsafe { c_image_policy_default(policy) };
+    let mut policies = Vec::new();
+
+    // SAFETY: forwarded from this helper's C `ImagePolicy` contract.
+    for entry in unsafe { c_image_policy_entries(policy) } {
+        let designator = PartitionDesignator::from_i32(entry.designator)
+            .ok_or_else(|| Errno::EINVAL.to_neg_errno())?;
+        policies.push(PartitionPolicy {
+            designator,
+            flags: entry.flags,
+        });
+    }
+
+    Ok(ImagePolicy {
+        default_flags,
+        policies,
+    })
+}
+
+/// Allocate a C-layout flexible-array policy from the native representation.
+/// The caller owns the returned `malloc(3)` allocation.
+fn native_image_policy_to_c(policy: &ImagePolicy) -> Result<*mut CImagePolicy, i32> {
+    let entries_bytes = policy
+        .policies
+        .len()
+        .checked_mul(std::mem::size_of::<CPartitionPolicy>())
+        .ok_or_else(|| Errno::ENOMEM.to_neg_errno())?;
+    let allocation_size = std::mem::size_of::<CImagePolicy>()
+        .checked_add(entries_bytes)
+        .ok_or_else(|| Errno::ENOMEM.to_neg_errno())?;
+    let result = crate::ffi::malloc(allocation_size).cast::<CImagePolicy>();
+    if result.is_null() {
+        return Err(Errno::ENOMEM.to_neg_errno());
+    }
+
+    // SAFETY: `result` is a fresh allocation large enough for the C prefix
+    // and all flexible-array entries computed above.
+    unsafe {
+        ptr::write(
+            result,
+            CImagePolicy {
+                default_flags: policy.default_flags,
+                n_policies: policy.policies.len(),
+            },
+        );
+        let entries = result
+            .cast::<u8>()
+            .add(std::mem::size_of::<CImagePolicy>())
+            .cast::<CPartitionPolicy>();
+        for (index, entry) in policy.policies.iter().enumerate() {
+            ptr::write(
+                entries.add(index),
+                CPartitionPolicy {
+                    designator: entry.designator as i32,
+                    flags: entry.flags,
+                },
+            );
+        }
+    }
+    Ok(result)
+}
+
+#[inline]
+fn partition_policy_flags_from_bytes(bytes: &[u8], graceful: bool) -> Result<i32, i32> {
+    if bytes.is_empty() || bytes == b"-" {
+        return Ok(0);
+    }
+
+    let mut flags = 0;
+    for raw_flag in split_c_policy_words(bytes, b'+')? {
+        match policy_flag_from_bytes(ascii_strstrip(&raw_flag)) {
+            Some(flag) => flags |= flag,
+            None if graceful => {}
+            None => return Err(-EBADRQC),
+        }
+    }
+    Ok(flags)
+}
+
+/// Parse the C grammar without first converting it to UTF-8 or normalizing
+/// separators. `extract_first_word(..., EXTRACT_DONT_COALESCE_SEPARATORS)` in
+/// the C source deliberately treats empty `:` fields as malformed rules.
+fn image_policy_from_bytes(bytes: &[u8], graceful: bool) -> Result<ImagePolicy, i32> {
+    let symbolic_default = match bytes {
+        b"" | b"-" => Some(PARTITION_POLICY_IGNORE),
+        b"*" => Some(PARTITION_POLICY_OPEN),
+        b"~" => Some(PARTITION_POLICY_ABSENT),
+        _ => None,
+    };
+    if let Some(default_flags) = symbolic_default {
+        return Ok(ImagePolicy {
+            default_flags,
+            policies: Vec::new(),
+        });
+    }
+
+    let mut default_flags = PARTITION_POLICY_IGNORE;
+    let mut default_specified = false;
+    let mut seen_designators = 0_u64;
+    let mut policies = Vec::new();
+
+    for expression in split_c_policy_words(bytes, b':')? {
+        let Some(separator) = expression.iter().position(|byte| *byte == b'=') else {
+            return Err(Errno::EINVAL.to_neg_errno());
+        };
+        let designator_name = ascii_strstrip(&expression[..separator]);
+        let flags_text = ascii_strstrip(&expression[separator + 1..]);
+
+        if designator_name.is_empty() {
+            if default_specified {
+                return Err(Errno::ENOTUNIQ.to_neg_errno());
+            }
+            default_specified = true;
+            default_flags = partition_policy_flags_from_bytes(flags_text, graceful)?;
+            continue;
+        }
+
+        let Some(designator) = std::str::from_utf8(designator_name)
+            .ok()
+            .and_then(PartitionDesignator::from_str)
+        else {
+            if graceful {
+                continue;
+            }
+            return Err(-EBADSLT);
+        };
+        let bit = 1_u64 << designator as u64;
+        if seen_designators & bit != 0 {
+            return Err(Errno::ENOTUNIQ.to_neg_errno());
+        }
+        seen_designators |= bit;
+
+        policies.push(PartitionPolicy {
+            designator,
+            flags: partition_policy_flags_from_bytes(flags_text, graceful)?,
+        });
+    }
+
+    policies.sort_by_key(|policy| policy.designator);
+    Ok(ImagePolicy {
+        default_flags,
+        policies,
+    })
+}
+
 /// C ABI facade for `partition_policy_flags_extend()`.
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_partition_policy_flags_extend(flags: i32) -> i32 {
@@ -873,15 +1064,10 @@ pub unsafe extern "C" fn rs_partition_policy_flags_from_string(
         return 0;
     }
 
-    let mut flags = 0;
-    for raw_flag in bytes.split(|byte| *byte == b'+') {
-        match policy_flag_from_bytes(ascii_strstrip(raw_flag)) {
-            Some(flag) => flags |= flag,
-            None if graceful => {}
-            None => return -EBADRQC,
-        }
+    match partition_policy_flags_from_bytes(bytes, graceful) {
+        Ok(flags) => flags,
+        Err(error) => error,
     }
-    flags
 }
 
 /// Format flags into a C-allocator-owned policy string. The result pointer is
@@ -1096,6 +1282,233 @@ pub unsafe extern "C" fn rs_image_policy_equiv_deny(policy: *const CImagePolicy)
     unsafe { c_image_policy_flags_all_match(policy, PARTITION_POLICY_ABSENT) }
 }
 
+/// Parse a C image-policy expression into a C-allocator-owned flexible-array
+/// policy. A null `ret` performs C's validation-only parse.
+///
+/// # Safety
+///
+/// `s` must point to a live NUL-terminated C string. If non-null, `ret` must
+/// be writable for one `ImagePolicy *`; on success it receives ownership of a
+/// `malloc(3)` allocation released by `rs_image_policy_free()` or `free(3)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_from_string(
+    s: *const libc::c_char,
+    graceful: bool,
+    ret: *mut *mut CImagePolicy,
+) -> i32 {
+    if s.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    // SAFETY: upheld by this export's C-string contract.
+    let policy = match image_policy_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes(), graceful) {
+        Ok(policy) => policy,
+        Err(error) => return error,
+    };
+    if ret.is_null() {
+        return 0;
+    }
+    let output = match native_image_policy_to_c(&policy) {
+        Ok(output) => output,
+        Err(error) => return error,
+    };
+    // SAFETY: `ret` is writable by this export's contract and publication
+    // occurs only after the complete C-layout allocation has succeeded.
+    unsafe { ptr::write(ret, output) };
+    0
+}
+
+/// Render a C-layout image policy to a fresh C-allocator-owned string.
+///
+/// # Safety
+///
+/// `policy` must be null or point to a complete, live C `ImagePolicy`. `ret`
+/// must be writable and receives a `strdup(3)` allocation on success that the
+/// caller must release with `free(3)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_to_string(
+    policy: *const CImagePolicy,
+    simplify: bool,
+    ret: *mut *mut libc::c_char,
+) -> i32 {
+    if ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    // SAFETY: forwarded from this export's C `ImagePolicy` contract.
+    let policy = match unsafe { c_image_policy_to_native(policy) } {
+        Ok(policy) => policy,
+        Err(error) => return error,
+    };
+    let rendered = match policy.image_policy_to_string(simplify) {
+        Ok(rendered) => rendered,
+        Err(error) => return error,
+    };
+    let rendered = match CString::new(rendered) {
+        Ok(rendered) => rendered,
+        Err(_) => return Errno::EINVAL.to_neg_errno(),
+    };
+    // SAFETY: `rendered` is a live NUL-terminated C string. `strdup` provides
+    // the C-allocator ownership required by the public header.
+    let output = unsafe { crate::ffi::strdup(rendered.as_ptr()) };
+    if output.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
+    // SAFETY: `ret` is writable by this export's contract.
+    unsafe { ptr::write(ret, output) };
+    0
+}
+
+/// Calculate the intersection of two C-layout policies. Null inputs retain
+/// C's "allow everything" policy meaning; a null `ret` validates and
+/// calculates without publishing the temporary policy.
+///
+/// # Safety
+///
+/// Each input must be null or point to a complete, live C `ImagePolicy`. If
+/// non-null, `ret` must be writable for one `ImagePolicy *` and receives a
+/// C-allocator-owned flexible-array allocation on success.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_intersect(
+    a: *const CImagePolicy,
+    b: *const CImagePolicy,
+    ret: *mut *mut CImagePolicy,
+) -> i32 {
+    // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
+    let a = match unsafe { c_image_policy_to_native(a) } {
+        Ok(policy) => policy,
+        Err(error) => return error,
+    };
+    // SAFETY: as above, for `b`.
+    let b = match unsafe { c_image_policy_to_native(b) } {
+        Ok(policy) => policy,
+        Err(error) => return error,
+    };
+    let result = match a.image_policy_intersect(&b) {
+        Ok(policy) => policy,
+        Err(error) => return error,
+    };
+    if ret.is_null() {
+        return 0;
+    }
+    let output = match native_image_policy_to_c(&result) {
+        Ok(output) => output,
+        Err(error) => return error,
+    };
+    // SAFETY: `ret` is writable by this export's contract.
+    unsafe { ptr::write(ret, output) };
+    0
+}
+
+/// Calculate the union of two C-layout policies. See
+/// `rs_image_policy_intersect()` for pointer and ownership requirements.
+///
+/// # Safety
+/// Each input must be null or point to a complete, live C `ImagePolicy`. If
+/// non-null, `ret` must be writable for one `ImagePolicy *` and receives a
+/// C-allocator-owned flexible-array allocation on success.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_union(
+    a: *const CImagePolicy,
+    b: *const CImagePolicy,
+    ret: *mut *mut CImagePolicy,
+) -> i32 {
+    // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
+    let a = match unsafe { c_image_policy_to_native(a) } {
+        Ok(policy) => policy,
+        Err(error) => return error,
+    };
+    // SAFETY: as above, for `b`.
+    let b = match unsafe { c_image_policy_to_native(b) } {
+        Ok(policy) => policy,
+        Err(error) => return error,
+    };
+    let result = match a.image_policy_union(&b) {
+        Ok(policy) => policy,
+        Err(error) => return error,
+    };
+    if ret.is_null() {
+        return 0;
+    }
+    let output = match native_image_policy_to_c(&result) {
+        Ok(output) => output,
+        Err(error) => return error,
+    };
+    // SAFETY: `ret` is writable by this export's contract.
+    unsafe { ptr::write(ret, output) };
+    0
+}
+
+/// Determine the uniquely permitted filesystem type for a partition policy.
+///
+/// # Safety
+///
+/// `policy` must be null or point to a complete, live C `ImagePolicy`.
+/// `ret_fstype` must be writable; on a successful result of `1` it receives a
+/// `strdup(3)` allocation owned by the caller, and on a successful result of
+/// `0` it is set to null. `ret_encrypted` is optional but, if non-null, must
+/// be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_partition_policy_determine_fstype(
+    policy: *const CImagePolicy,
+    designator: i32,
+    ret_encrypted: *mut bool,
+    ret_fstype: *mut *mut libc::c_char,
+) -> i32 {
+    if ret_fstype.is_null() || PartitionDesignator::from_i32(designator).is_none() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    let designator =
+        PartitionDesignator::from_i32(designator).expect("designator was checked above");
+    // SAFETY: forwarded from this export's C `ImagePolicy` contract.
+    let policy_flags = unsafe { c_image_policy_get_exhaustively(policy, designator) };
+    if policy_flags < 0 {
+        return policy_flags;
+    }
+    let fstype = match partition_policy_flags_to_string(policy_flags & FSTYPE_MASK, true) {
+        Ok(fstype) => fstype,
+        Err(error) => return error,
+    };
+    let count = if fstype == "-" {
+        0
+    } else {
+        fstype.bytes().filter(|byte| *byte == b'+').count() + 1
+    };
+    if count != 1 {
+        if !ret_encrypted.is_null() {
+            // SAFETY: the optional output was supplied as writable by this
+            // export's contract.
+            unsafe { ptr::write(ret_encrypted, false) };
+        }
+        // SAFETY: the required output is writable by this export's contract.
+        unsafe { ptr::write(ret_fstype, ptr::null_mut()) };
+        return 0;
+    }
+
+    let encrypted = (policy_flags
+        & (PARTITION_POLICY_ENCRYPTED | PARTITION_POLICY_ENCRYPTEDWITHINTEGRITY))
+        != 0
+        && (policy_flags
+            & (PARTITION_POLICY_VERITY | PARTITION_POLICY_SIGNED | PARTITION_POLICY_UNPROTECTED))
+            == 0;
+    let fstype = match CString::new(fstype) {
+        Ok(fstype) => fstype,
+        Err(_) => return Errno::EINVAL.to_neg_errno(),
+    };
+    // SAFETY: `fstype` is a live NUL-terminated C string and `strdup` returns
+    // storage owned by the C allocator.
+    let output = unsafe { crate::ffi::strdup(fstype.as_ptr()) };
+    if output.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
+    if !ret_encrypted.is_null() {
+        // SAFETY: the optional output was supplied as writable by this
+        // export's contract.
+        unsafe { ptr::write(ret_encrypted, encrypted) };
+    }
+    // SAFETY: the required output is writable by this export's contract.
+    unsafe { ptr::write(ret_fstype, output) };
+    1
+}
+
 fn policy_intersect_or_union(
     a: &ImagePolicy,
     b: &ImagePolicy,
@@ -1189,7 +1602,7 @@ mod tests {
     fn reject_duplicate_designators() {
         assert_eq!(
             image_policy_from_string("root=signed:root=verity", false),
-            Err(-Errno::ENOTUNIQ.to_neg_errno())
+            Err(Errno::ENOTUNIQ.to_neg_errno())
         );
     }
 

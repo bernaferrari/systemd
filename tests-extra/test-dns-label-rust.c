@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* RUST-CONTRACT: dns-service-name */
 /* RUST-CONTRACT: dns-subtype-name */
+/* RUST-CONTRACT: dns-label-codec */
+/* RUST-CONTRACT: dns-name-navigation */
+/* RUST-CONTRACT: dns-wire-address */
+/* RUST-CONTRACT: dns-name-transform */
+/* RUST-CONTRACT: dns-service-composition */
 /* Shadow test: C dns-domain.c label/name functions vs Rust */
 
 #include <assert.h>
@@ -923,7 +928,15 @@ static void test_dns_name_address(void) {
         rv = rs_dns_name_address("www.example.com", &rf, (uint8_t *)&ra);
         assert_se(cv == rv);
         assert_se(cv == 0);
+        assert_se(cf == rf);
         assert_se(cf == AF_UNSPEC);
+        assert_se(memcmp(&ca, &ra, sizeof(ca)) == 0);
+
+        /* Decimal IPv4 labels must report overflow rather than wrapping. */
+        cv = dns_name_address("256.1.168.192.in-addr.arpa", &cf, &ca);
+        rv = rs_dns_name_address("256.1.168.192.in-addr.arpa", &rf, (uint8_t *)&ra);
+        assert_se(cv == rv);
+        assert_se(cv == -ERANGE);
 
         /* IPv6 reverse: 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa → ::1 */
         cv = dns_name_address(
@@ -972,6 +985,9 @@ static void test_dns_name_from_wire_format(void) {
                 cv = dns_name_from_wire_format(&cd, &cl, &cr);
                 rv = rs_dns_name_from_wire_format(&rd, &rl, &rr);
                 assert_se(cv == rv);
+                assert_se(streq(cr, rr));
+                cr = mfree(cr);
+                rr = mfree(rr);
         }
 
         /* Partial name (no terminating zero label) per RFC 4704 */
@@ -984,6 +1000,19 @@ static void test_dns_name_from_wire_format(void) {
                 assert_se(cv == rv);
                 assert_se(cv > 0);
                 assert_se(streq(cr, rr));
+        }
+
+        /* Label lengths above 63 are protocol errors, not unsupported options. */
+        {
+                const uint8_t oversized_label[] = { 0x40 };
+                cd = oversized_label; rd = oversized_label;
+                cl = sizeof(oversized_label); rl = sizeof(oversized_label);
+                cv = dns_name_from_wire_format(&cd, &cl, &cr);
+                rv = rs_dns_name_from_wire_format(&rd, &rl, &rr);
+                assert_se(cv == rv);
+                assert_se(cv == -EBADMSG);
+                assert_se(cd == rd);
+                assert_se(cl == rl);
         }
 }
 
@@ -1192,10 +1221,13 @@ static void test_dns_name_change_suffix(void) {
         assert_se(cv == rv);
         assert_se(cv == 0);
 
-        /* NULL old_suffix matches root — test C only first */
+        /* NULL old_suffix matches the root suffix. */
         cv = dns_name_change_suffix("example.com", NULL, "newsuffix.com", &cr);
-        assert_se(cv > 0 || cv == 0); /* may or may not match */
+        rv = rs_dns_name_change_suffix("example.com", NULL, "newsuffix.com", &rr);
+        assert_se(cv == rv);
+        assert_se(streq_ptr(cr, rr));
         cr = mfree(cr);
+        rr = mfree(rr);
 
         /* Change suffix: host.sub.example.com → host.sub.example.org */
         cv = dns_name_change_suffix("host.sub.example.com", "example.com", "example.org", &cr);

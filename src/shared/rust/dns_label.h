@@ -1,9 +1,12 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=shared.dns-label; authority=src/shared/dns-domain.c,src/shared/dns-domain.h */
 #pragma once
 
 /* Rust FFI declarations for shadow testing dns-domain.c label/name functions */
 
 #include <stddef.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 int rs_dns_label_unescape(const char **name, char *dest, size_t sz, unsigned flags);
 int rs_dns_label_escape(const char *p, size_t l, char *dest, size_t sz);
@@ -23,8 +26,8 @@ int rs_dns_name_suffix(const char *name, unsigned n_labels, const char **ret);
 int rs_dns_name_equal_skip(const char *a, unsigned n_labels, const char *b);
 int rs_dns_name_common_suffix(const char *a, const char *b, const char **ret);
 int rs_dns_name_to_wire_format(const char *domain, uint8_t *buffer, size_t len, bool canonical);
-int rs_dns_name_reverse(int family, const uint8_t *a, char **ret);
-int rs_dns_name_address(const char *p, int *ret_family, uint8_t *ret);
+int rs_dns_name_reverse(int family, const void *a, char **ret);
+int rs_dns_name_address(const char *p, int *ret_family, void *ret);
 int rs_dns_name_from_wire_format(const uint8_t **data, size_t *len, char **ret);
 int rs_dns_label_unescape_suffix(const char *name, const char **label_terminal, char *dest, size_t sz);
 int rs_dns_name_compare_func(const char *a, const char *b);

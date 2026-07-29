@@ -133,14 +133,8 @@
       "unsafe_sites": 8
     },
     "src/basic/rust/dns_label.rs": {
-      "missing_safety": 5,
-      "missing_safety_sites": [
-        "840:1:unsafe fn srv_type_label_is_valid(label: *const c_char, n: usize) -> bool {",
-        "1051:1:unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> i32 {",
-        "1394:1:unsafe fn ptr_sub1(p: *const c_char, base: *const c_char) -> *const c_char {",
-        "1929:1:unsafe fn alloc_strjoin(a: *const c_char, b: *const c_char) -> *mut c_char {",
-        "1948:1:unsafe fn alloc_strndup(s: *const c_char, n: usize) -> *mut c_char {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 102
     },
     "src/basic/rust/edid.rs": {
@@ -276,7 +270,7 @@
     "src/basic/rust/image_policy_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 46
+      "unsafe_sites": 72
     },
     "src/basic/rust/import_util.rs": {
       "missing_safety": 0,
@@ -2192,8 +2186,8 @@
     }
   },
   "totals": {
-    "missing_safety": 613,
-    "unsafe_sites": 5694
+    "missing_safety": 608,
+    "unsafe_sites": 5720
   },
   "version": 2,
   "window": 3

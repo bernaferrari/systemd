@@ -1671,15 +1671,26 @@ last_reviewed_rust_blobs = { "src/basic/rust/dns_domain_validators.rs" = "1b6ff5
 notes = "Reviewed static DNS-domain validator slice 2026-07-29; no build/tests/VM. Four facades preserve valid UTF-8 service/subtype limits plus the exact SRV/DNS-SD raw-label grammar through the shared DNS-label parser. Other DNS name parsing remains separately tracked; C remains production authority and runtime parity remains P2."
 
 [dns_label]
-c_paths = ["src/shared/dns-domain.c", "src/shared/dns-domain.h"]
-rust_file = "src/basic/rust/dns_label.rs"
-header_file = "src/shared/dns-domain.h"
+c_paths = ["src/shared/dns-domain.c", "src/shared/dns-domain.h", "src/basic/parse-util.c", "src/basic/parse-util.h"]
+rust_paths = ["src/basic/rust/dns_label.rs", "src/shared/rust/dns_label.h"]
+scope = "shared.dns-label"
+rust_scope_paths = ["src/basic/rust/dns_label.rs"]
+rust_interface_paths = ["src/shared/rust/dns_label.h"]
+contract_file = "tools/rust-port/contracts/shared/dns-label.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/dns-domain.c", rust_paths = ["src/basic/rust/dns_label.rs", "src/shared/rust/dns_label.h"] },
+    { kind = "direct", path = "src/shared/dns-domain.h", rust_paths = ["src/basic/rust/dns_label.rs", "src/shared/rust/dns_label.h"] },
+    { kind = "direct", path = "src/basic/parse-util.c", rust_paths = ["src/basic/rust/dns_label.rs"], rationale = "IPv4 reverse-DNS octets delegate to the safe_atou8 ABI mirror." },
+    { kind = "direct", path = "src/basic/parse-util.h", rust_paths = ["src/basic/rust/dns_label.rs"], rationale = "C numeric-parser declaration authority used by the delegated reverse-DNS behavior." },
+]
 test_file = "tests-extra/test-dns-label-rust.c"
 status = "in-progress"
-tier = 3
-symbols = 5
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored DNS label/name behavior and its Rust comparator to current shared authorities; behavioral completion remains unclaimed."
+tier = 2
+symbols = 30
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/dns-domain.c" = "c90da5fc465f2d94981700e10a8df365ea6420e9", "src/shared/dns-domain.h" = "aabfaa502957546c53d1682c456e6400f6d101db", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
+last_reviewed_rust_blobs = { "src/basic/rust/dns_label.rs" = "74822776be6a7af4fa9d7b14668af58b214e5e6b", "src/shared/rust/dns_label.h" = "db7809478eef8870734db74c9b660a21e2f298f8" }
+notes = "Reviewed static DNS label/name ABI slice 2026-07-29; no build/tests/VM. Thirty facades preserve C label escaping, DNS name traversal and comparison, wire/address conversion, transforms, DNS-SD composition, libc ownership, and success-only output publication. Reverse IPv4 octets delegate to the reviewed safe_atou8 parser; invalid required outer pointers fail closed by explicit policy. C remains production authority; runtime parity is unclaimed."
 
 [dns_type_predicates]
 c_file = "src/shared/dns-type.c"
@@ -1999,11 +2010,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-image-policy-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 12
+symbols = 17
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/image-policy.c" = "622b5c2aa14b32b3ab875d0b50b2472309413b61", "src/shared/image-policy.h" = "ae0d2f360bdc297959cc4dc0a3fd6581aab1973d" }
-last_reviewed_rust_blobs = { "src/basic/rust/image_policy_util.rs" = "b068dba78ee53085a6aeca5fc5e7097587ca6267", "src/basic/rust/image_policy_util.h" = "56e40c78c8f718a97fef9fb86e63452250dcd166" }
-notes = "Reviewed static image-policy ABI slice 2026-07-29; no build/tests/VM. Twelve facades preserve scalar/C-string flag behavior plus C-layout flexible-array policy freeing, lookup, equality, and special-equivalence operations. Native Vec-backed policies remain Rust-only; the remaining parser, formatter, combine, and fstype APIs stay C-only. C remains production authority; runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/image_policy_util.rs" = "6a21cb5922c9c26ed1d212a4aadd9e6454831b7e", "src/basic/rust/image_policy_util.h" = "6615bdba4a2ef9110ad629530d428e7dfc94ae17" }
+notes = "Reviewed static image-policy ABI slice 2026-07-29; no build/tests/VM. Seventeen facades preserve scalar/C-string flag behavior, C-layout flexible-array policy ownership, strict byte grammar, formatting, composition, lookup, equivalence, and filesystem-type selection. The native Vec model remains Rust-only behind explicit C-layout conversion; C remains production authority and runtime parity remains P2."
 
 [import_util]
 c_file = "src/shared/import-util.c, src/shared/reboot-util.c"

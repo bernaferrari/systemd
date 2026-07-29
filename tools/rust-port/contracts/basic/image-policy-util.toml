@@ -3,7 +3,7 @@ module = "image_policy_util"
 semantic_coverage = "partial"
 source_structure = "independent"
 deviation_policy = "explicit-only"
-excluded_c_symbols = ["image_policy_from_string", "image_policy_to_string", "image_policy_intersect", "image_policy_union", "partition_policy_determine_fstype"]
+excluded_c_symbols = ["image_policy_copy", "image_policy_ignore_designators"]
 
 [authority]
 c_headers = ["src/shared/image-policy.h"]
@@ -168,3 +168,109 @@ verification = "static-only"
 file = "tests-extra/test-image-policy-rust.c"
 meson_target = "test-image-policy-rust"
 labels = ["image-policy-special-equivalence"]
+
+[[surface]]
+id = "image-policy-parse"
+c_symbols = ["image_policy_from_string"]
+rust_symbols = ["rs_image_policy_from_string"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "image-policy-parse-null-input-fail-closed"
+deviation_rationale = "Valid byte-oriented policy expressions retain C grammar, allocator ownership, validation-only NULL ret behavior, and success-only publication. A malformed NULL input string returns -EINVAL rather than entering C assertion behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-image-policy-rust.c"
+meson_target = "test-image-policy-rust"
+labels = ["image-policy-parse"]
+
+[[surface]]
+id = "image-policy-format"
+c_symbols = ["image_policy_to_string"]
+rust_symbols = ["rs_image_policy_to_string"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "image-policy-format-required-output-fail-closed"
+deviation_rationale = "Valid C-layout flexible-array policies format to a libc-owned string with C result count and publication behavior. A malformed NULL ret pointer returns -EINVAL instead of C assertion behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-image-policy-rust.c"
+meson_target = "test-image-policy-rust"
+labels = ["image-policy-format"]
+
+[[surface]]
+id = "image-policy-set-operations"
+c_symbols = ["image_policy_intersect", "image_policy_union"]
+rust_symbols = ["rs_image_policy_intersect", "rs_image_policy_union"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["image_policy_intersect", "image_policy_union"]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-image-policy-rust.c"
+meson_target = "test-image-policy-rust"
+labels = ["image-policy-set-operations"]
+
+[[surface]]
+id = "image-policy-fstype"
+c_symbols = ["partition_policy_determine_fstype"]
+rust_symbols = ["rs_partition_policy_determine_fstype"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "image-policy-fstype-invalid-arguments-fail-closed"
+deviation_rationale = "Valid C-layout policies preserve C's unique-fstype 0/1 result, optional encryption output, libc fstype ownership, and success-only publication. Invalid designators or a NULL required ret_fstype return -EINVAL rather than C assertion behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[[surface.output]]
+arg = "ret_fstype"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-image-policy-rust.c"
+meson_target = "test-image-policy-rust"
+labels = ["image-policy-fstype"]

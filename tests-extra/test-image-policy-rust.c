@@ -5,6 +5,10 @@
 /* RUST-CONTRACT: image-policy-equal */
 /* RUST-CONTRACT: image-policy-equivalent */
 /* RUST-CONTRACT: image-policy-special-equivalence */
+/* RUST-CONTRACT: image-policy-parse */
+/* RUST-CONTRACT: image-policy-format */
+/* RUST-CONTRACT: image-policy-set-operations */
+/* RUST-CONTRACT: image-policy-fstype */
 
 #include <stdlib.h>
 #include <string.h>
@@ -323,6 +327,92 @@ TEST(image_policy_equivalent_null) {
 TEST(image_policy_free_null) {
         assert_se(image_policy_free(NULL) == NULL);
         assert_se(rs_image_policy_free(NULL) == NULL);
+}
+
+/* ── image_policy_from_string / image_policy_to_string ─────────────────── */
+
+TEST(image_policy_parse_and_format) {
+        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL, *rp = NULL;
+        _cleanup_free_ char *cs = NULL, *rs = NULL;
+        const char *input = "root=encrypted+ext4:usr=verity+signed:=unprotected";
+        int cr, rr;
+
+        cr = image_policy_from_string(input, false, &cp);
+        rr = rs_image_policy_from_string(input, false, &rp);
+        assert_se(cr == rr);
+        assert_se(cr == 0);
+        assert_se(image_policy_equal(cp, rp));
+
+        cr = image_policy_to_string(cp, true, &cs);
+        rr = rs_image_policy_to_string(rp, true, &rs);
+        assert_se(cr == rr);
+        assert_se(streq(cs, rs));
+}
+
+TEST(image_policy_parse_validation_only_and_strict_separators) {
+        const char *invalid[] = { " ", "root=encrypted::usr=signed", "root=encrypted:" };
+
+        assert_se(image_policy_from_string("root=encrypted", false, NULL) ==
+                  rs_image_policy_from_string("root=encrypted", false, NULL));
+        assert_se(image_policy_from_string("root=encrypted\\+signed", false, NULL) ==
+                  rs_image_policy_from_string("root=encrypted\\+signed", false, NULL));
+
+        FOREACH_ARRAY(s, invalid, ELEMENTSOF(invalid))
+                assert_se(image_policy_from_string(*s, false, NULL) ==
+                          rs_image_policy_from_string(*s, false, NULL));
+}
+
+/* ── image_policy_intersect / image_policy_union ───────────────────────── */
+
+TEST(image_policy_set_operations) {
+        _cleanup_(image_policy_freep) ImagePolicy *a = NULL, *b = NULL, *ci = NULL, *ri = NULL, *cu = NULL, *ru = NULL;
+        int cr, rr;
+
+        assert_se(image_policy_from_string("root=encrypted+ext4:usr=signed", false, &a) == 0);
+        assert_se(image_policy_from_string("root=encrypted+xfs:usr=signed", false, &b) == 0);
+
+        cr = image_policy_intersect(a, b, &ci);
+        rr = rs_image_policy_intersect(a, b, &ri);
+        assert_se(cr == rr);
+        assert_se(cr == 0);
+        assert_se(image_policy_equal(ci, ri));
+
+        cr = image_policy_union(a, b, &cu);
+        rr = rs_image_policy_union(a, b, &ru);
+        assert_se(cr == rr);
+        assert_se(cr == 0);
+        assert_se(image_policy_equal(cu, ru));
+
+        assert_se(image_policy_union(a, b, NULL) == rs_image_policy_union(a, b, NULL));
+}
+
+/* ── partition_policy_determine_fstype ─────────────────────────────────── */
+
+TEST(image_policy_fstype) {
+        _cleanup_(image_policy_freep) ImagePolicy *p = NULL;
+        _cleanup_free_ char *cfstype = NULL, *rfstype = NULL;
+        bool cencrypted, rencrypted;
+        int cr, rr;
+
+        assert_se(image_policy_from_string("root=encrypted+ext4", false, &p) == 0);
+        cr = partition_policy_determine_fstype(p, PARTITION_ROOT, &cencrypted, &cfstype);
+        rr = rs_partition_policy_determine_fstype(p, PARTITION_ROOT, &rencrypted, &rfstype);
+        assert_se(cr == rr);
+        assert_se(cr == 1);
+        assert_se(cencrypted == rencrypted);
+        assert_se(streq(cfstype, rfstype));
+
+        free(cfstype);
+        free(rfstype);
+        cfstype = rfstype = NULL;
+        p = image_policy_free(p);
+        assert_se(image_policy_from_string("root=ext4+xfs", false, &p) == 0);
+        cr = partition_policy_determine_fstype(p, PARTITION_ROOT, &cencrypted, &cfstype);
+        rr = rs_partition_policy_determine_fstype(p, PARTITION_ROOT, &rencrypted, &rfstype);
+        assert_se(cr == rr);
+        assert_se(cr == 0);
+        assert_se(cfstype == NULL && rfstype == NULL);
+        assert_se(cencrypted == rencrypted);
 }
 
 /* ── main ──────────────────────────────────────────────────────────────── */

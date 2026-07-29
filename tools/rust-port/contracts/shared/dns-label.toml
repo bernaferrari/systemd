@@ -1,0 +1,134 @@
+schema = 1
+module = "dns_label"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["dns_name_is_valid_or_address"]
+
+[authority]
+c_headers = ["src/shared/dns-domain.h", "src/basic/parse-util.h"]
+c_sources = ["src/shared/dns-domain.c", "src/basic/parse-util.c"]
+rust_headers = ["src/shared/rust/dns_label.h"]
+rust_sources = ["src/basic/rust/dns_label.rs"]
+
+[[surface]]
+id = "dns-label-codec"
+c_symbols = ["dns_label_unescape", "dns_label_escape", "dns_label_escape_new", "dns_label_unescape_suffix"]
+rust_symbols = ["rs_dns_label_unescape", "rs_dns_label_escape", "rs_dns_label_escape_new", "rs_dns_label_unescape_suffix"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "dns-label-malformed-required-pointer-fail-closed"
+deviation_rationale = "Valid C strings and buffers preserve C escape grammar, capacity, terminal-pointer updates, and libc string ownership. Malformed required outer pointers return negative errno instead of entering C assertions or dereferencing invalid storage."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-label-rust.c"
+meson_target = "test-dns-label-rust"
+labels = ["dns-label-codec"]
+
+[[surface]]
+id = "dns-name-navigation"
+c_symbols = ["dns_name_parent", "dns_name_is_root", "dns_name_equal", "dns_name_endswith", "dns_name_startswith", "dns_name_count_labels", "dns_name_is_single_label", "dns_name_dont_resolve", "dns_name_dot_suffixed", "dns_name_skip", "dns_name_suffix", "dns_name_equal_skip", "dns_name_common_suffix", "dns_name_compare_func", "dns_name_between", "dns_name_is_valid", "dns_name_is_valid_ldh"]
+rust_symbols = ["rs_dns_name_parent", "rs_dns_name_is_root", "rs_dns_name_equal", "rs_dns_name_endswith", "rs_dns_name_startswith", "rs_dns_name_count_labels", "rs_dns_name_is_single_label", "rs_dns_name_dont_resolve", "rs_dns_name_dot_suffixed", "rs_dns_name_skip", "rs_dns_name_suffix", "rs_dns_name_equal_skip", "rs_dns_name_common_suffix", "rs_dns_name_compare_func", "rs_dns_name_between", "rs_dns_name_is_valid", "rs_dns_name_is_valid_ldh"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "dns-navigation-required-pointer-fail-closed"
+deviation_rationale = "Valid DNS names preserve C label traversal, case-folding, suffix, comparator, and validity behavior. Malformed required pointers fail closed at the Rust boundary instead of invoking C assertion behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-label-rust.c"
+meson_target = "test-dns-label-rust"
+labels = ["dns-name-navigation"]
+
+[[surface]]
+id = "dns-wire-address"
+c_symbols = ["dns_name_to_wire_format", "dns_name_reverse", "dns_name_address", "dns_name_from_wire_format"]
+rust_symbols = ["rs_dns_name_to_wire_format", "rs_dns_name_reverse", "rs_dns_name_address", "rs_dns_name_from_wire_format"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "dns-wire-required-storage-fail-closed"
+deviation_rationale = "Valid C buffers and in_addr_union storage preserve DNS wire parsing, AF_INET/AF_INET6 byte order, errno, and success-only output publication. Malformed required storage returns -EINVAL rather than entering C assertions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[[surface.output]]
+symbols = ["dns_name_reverse", "dns_name_from_wire_format"]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-label-rust.c"
+meson_target = "test-dns-label-rust"
+labels = ["dns-wire-address"]
+
+[[surface]]
+id = "dns-name-transform"
+c_symbols = ["dns_name_concat", "dns_name_change_suffix", "dns_name_normalize"]
+rust_symbols = ["rs_dns_name_concat", "rs_dns_name_change_suffix", "rs_dns_name_normalize"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "dns-transform-required-output-fail-closed"
+deviation_rationale = "Valid strings preserve C concatenation, suffix replacement, normalization, allocation ownership, and success-only output publication. Malformed required output storage returns -EINVAL rather than C assertion behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[[surface.output]]
+symbols = ["dns_name_concat", "dns_name_change_suffix", "dns_name_normalize"]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-label-rust.c"
+meson_target = "test-dns-label-rust"
+labels = ["dns-name-transform"]
+
+[[surface]]
+id = "dns-service-composition"
+c_symbols = ["dns_service_join", "dns_service_split"]
+rust_symbols = ["rs_dns_service_join", "rs_dns_service_split"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "dns-service-required-output-fail-closed"
+deviation_rationale = "Valid service components preserve C DNS-SD formatting, splitting, libc ownership, optional split outputs, and success-only writes. Malformed required outer pointers return -EINVAL rather than C assertion behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[[surface.output]]
+symbols = ["dns_service_join"]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-label-rust.c"
+meson_target = "test-dns-label-rust"
+labels = ["dns-service-composition"]
