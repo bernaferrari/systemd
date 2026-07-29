@@ -12,6 +12,7 @@ use std::fmt;
 use std::io;
 use std::mem::MaybeUninit;
 use std::os::fd::RawFd;
+use std::os::unix::ffi::OsStrExt;
 #[cfg(test)]
 use std::os::unix::net::UnixDatagram;
 use std::sync::OnceLock;

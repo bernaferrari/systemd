@@ -273,8 +273,10 @@ unsafe fn quotactl_path_syscall(
     id: i32,
     addr: *mut c_void,
 ) -> Result<(), QuotaError> {
-    // SAFETY: the caller guarantees both pointers meet quotactl()'s command-specific contract.
-    let r = unsafe { libc::quotactl(cmd, special, id, addr) };
+    // SAFETY: the caller guarantees both pointers meet quotactl()'s
+    // command-specific contract. libc exposes the data argument as a byte
+    // pointer, so this is only a representation-preserving pointer cast.
+    let r = unsafe { libc::quotactl(cmd, special, id, addr.cast()) };
     if r < 0 {
         return Err(QuotaError::from_neg_errno(
             -(crate::ffi::get_errno()) as i32,
@@ -328,19 +330,15 @@ fn get_block_device_fd(fd: i32) -> Result<libc::dev_t, QuotaError> {
 /// Resolve a block device number to its `/dev` node path.
 #[cfg(target_os = "linux")]
 fn devname_from_devnum(devno: libc::dev_t) -> Result<std::ffi::CString, QuotaError> {
-    // SAFETY: `buf` is stack-allocated with a known size.  `devname_r`
-    // writes a NUL-terminated string into `buf` on success; the returned
-    // pointer is within `buf`'s lifetime.
-    unsafe {
-        let mut buf = [0u8; libc::PATH_MAX as usize];
-        let ptr = libc::devname_r(devno, libc::S_IFBLK, buf.as_mut_ptr().cast(), buf.len());
-        if ptr.is_null() {
-            return Err(QuotaError::NoBlockDevice);
-        }
-        let len = libc::strlen(ptr);
-        let bytes = std::slice::from_raw_parts(ptr as *const u8, len);
-        std::ffi::CString::new(bytes).map_err(|_| QuotaError::NoBlockDevice)
-    }
+    // Linux does not provide BSD's devname_r(). Reuse the port's device
+    // resolver, which performs the same block-device-number-to-node lookup
+    // required by the C fallback before calling path-based quotactl(2).
+    let path = crate::device_util::devname_from_devnum(
+        crate::device_util::DeviceMode::Block,
+        devno as u64,
+    )
+    .map_err(|_| QuotaError::NoBlockDevice)?;
+    std::ffi::CString::new(path).map_err(|_| QuotaError::NoBlockDevice)
 }
 
 /// Emulates `quotactl_fd()` on older kernels (< 5.14) that lack it.

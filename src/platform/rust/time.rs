@@ -58,8 +58,8 @@ impl BoottimeTimerFd {
     }
 
     pub fn arm_absolute_usec(&self, deadline_usec: Option<u64>) -> io::Result<()> {
+        use nix::sys::time::{TimeSpec, TimeValLike};
         use nix::sys::timerfd::{Expiration, TimerSetTimeFlags};
-        use nix::time::{TimeSpec, TimeValLike};
 
         let Some(deadline_usec) = deadline_usec else {
             return self.fd.unset().map_err(io::Error::from);

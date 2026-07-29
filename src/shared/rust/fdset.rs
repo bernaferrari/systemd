@@ -9,11 +9,14 @@
 // When false, it merely deallocates, mirroring `fdset_shallow_freep()`.
 
 use crate::ffi::*;
+use nix::errno::Errno;
 use std::collections::BTreeSet;
+use std::ffi::CStr;
 use std::fmt;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{self, Write as IoWrite};
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
+use std::ptr::NonNull;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -26,6 +29,57 @@ pub const FDSET_FD_NONE: RawFd = -1;
 
 /// `sd_listen_fds(3)` start offset.
 pub const SD_LISTEN_FDS_START: RawFd = 3;
+
+/// An owned `DIR*` for the `/proc/self/fd` scan. `std::fs::ReadDir` does not
+/// expose its descriptor, but this scan must omit exactly that descriptor just
+/// like C's `fdset_new_fill()` does.
+struct ProcFdDir(NonNull<libc::DIR>);
+
+impl ProcFdDir {
+    fn open() -> io::Result<Self> {
+        // SAFETY: the byte string is statically NUL-terminated and remains
+        // valid for the duration of the synchronous `opendir` call.
+        let directory = unsafe { libc::opendir(c"/proc/self/fd".as_ptr()) };
+        NonNull::new(directory)
+            .map(Self)
+            .ok_or_else(io::Error::last_os_error)
+    }
+
+    fn fd(&self) -> io::Result<RawFd> {
+        // SAFETY: `self.0` is a live `DIR*` owned by this guard.
+        let fd = unsafe { libc::dirfd(self.0.as_ptr()) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(fd)
+    }
+
+    fn next(&mut self) -> io::Result<Option<&libc::dirent>> {
+        Errno::clear();
+        // SAFETY: `self.0` is exclusively borrowed for this call. A non-null
+        // result is valid until the next directory operation on this stream.
+        let entry = unsafe { libc::readdir(self.0.as_ptr()) };
+        if entry.is_null() {
+            return match Errno::last_raw() {
+                0 => Ok(None),
+                _ => Err(io::Error::last_os_error()),
+            };
+        }
+
+        // SAFETY: `readdir` returned a non-null entry associated with the
+        // still-live directory stream. The reference is consumed before the
+        // next call that could overwrite its storage.
+        Ok(Some(unsafe { &*entry }))
+    }
+}
+
+impl Drop for ProcFdDir {
+    fn drop(&mut self) {
+        // SAFETY: this guard owns the `DIR*` exactly once. Drop intentionally
+        // ignores close errors, matching the prior `ReadDir` drop behavior.
+        let _ = unsafe { libc::closedir(self.0.as_ptr()) };
+    }
+}
 
 // ── Error type ────────────────────────────────────────────────────────────
 
@@ -142,12 +196,14 @@ impl FdSet {
         // succeeded. An error must not close descriptors which the caller
         // still owns.
         let mut set = Self::new_shallow();
-        let mut dir = fs::read_dir("/proc/self/fd").map_err(FdSetError::Io)?;
-        let dir_fd = dir.as_raw_fd();
+        let mut dir = ProcFdDir::open().map_err(FdSetError::Io)?;
+        let dir_fd = dir.fd().map_err(FdSetError::Io)?;
 
-        for entry in &mut dir {
-            let entry = entry.map_err(FdSetError::Io)?;
-            let fd: RawFd = match entry.file_name().to_str().and_then(|s| s.parse().ok()) {
+        while let Some(entry) = dir.next().map_err(FdSetError::Io)? {
+            // SAFETY: `d_name` is NUL-terminated for a successful `readdir`
+            // result and is consumed before the next directory operation.
+            let name = unsafe { CStr::from_ptr(entry.d_name.as_ptr()) };
+            let fd: RawFd = match name.to_str().ok().and_then(|s| s.parse().ok()) {
                 Some(v) => v,
                 None => continue,
             };

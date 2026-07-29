@@ -12,12 +12,37 @@
 use std::{ffi::CStr, fmt::Write as FmtWrite};
 
 use systemd_basic_rs::{
-    capability_list::capability_to_string,
     capability_util::CAP_LIMIT,
     mountpoint_util::{MountPropagationFlag, mount_propagation_flag_to_string},
 };
 
 use crate::nsflags::{NAMESPACE_FLAGS_ALL, NamespaceFlags, namespace_flags_to_string};
+
+// `src/basic/capability-list.h`: space for the C helper's numeric fallback
+// (`0x3e` plus its terminator).
+const CAPABILITY_TO_STRING_MAX: usize = 5;
+
+unsafe extern "C" {
+    #[link_name = "capability_to_string"]
+    fn c_capability_to_string(id: libc::c_int, buf: *mut libc::c_char) -> *const libc::c_char;
+}
+
+fn capability_to_string(id: i32) -> Option<String> {
+    let mut buf = [0; CAPABILITY_TO_STRING_MAX];
+    // SAFETY: `buf` has CAPABILITY_TO_STRING_MAX bytes, and the C helper
+    // returns either NULL or a NUL-terminated capability name.
+    let name = unsafe { c_capability_to_string(id, buf.as_mut_ptr()) };
+    if name.is_null() {
+        None
+    } else {
+        // SAFETY: guaranteed by capability_to_string() above.
+        Some(
+            unsafe { CStr::from_ptr(name) }
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+}
 
 // ── Flags ──────────────────────────────────────────────────────────────────
 

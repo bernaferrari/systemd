@@ -575,12 +575,14 @@ impl SockAddrNl {
 
     /// Convert to the libc sockaddr_nl for use in syscalls.
     pub fn as_sockaddr(&self) -> crate::ffi::sockaddr_nl {
-        crate::ffi::sockaddr_nl {
-            nl_family: self.nl_family as i32,
-            nl_pad: 0,
-            nl_pid: self.nl_pid,
-            nl_groups: self.nl_groups,
-        }
+        // SAFETY: `sockaddr_nl` is a plain C socket-address structure; an
+        // all-zero value is valid and avoids constructing target-specific
+        // padding fields directly.
+        let mut address: crate::ffi::sockaddr_nl = unsafe { std::mem::zeroed() };
+        address.nl_family = self.nl_family;
+        address.nl_pid = self.nl_pid;
+        address.nl_groups = self.nl_groups;
+        address
     }
 
     /// Parse from a libc sockaddr_nl.

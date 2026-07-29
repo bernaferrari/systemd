@@ -257,8 +257,6 @@ pub fn get_file_context_raw(path: &CString) -> Result<String, ContextError> {
             XATTR_NAME_SELINUX.as_ptr().cast(),
             std::ptr::null_mut(),
             0,
-            0,
-            0,
         );
 
         if buf_size < 0 {
@@ -283,8 +281,6 @@ pub fn get_file_context_raw(path: &CString) -> Result<String, ContextError> {
             XATTR_NAME_SELINUX.as_ptr().cast(),
             buf.as_mut_ptr() as *mut libc::c_void,
             buf_size as usize,
-            0,
-            0,
         );
 
         if ret < 0 {
@@ -317,8 +313,6 @@ pub fn get_fd_context_raw(fd: i32) -> Result<String, ContextError> {
             XATTR_NAME_SELINUX.as_ptr().cast(),
             std::ptr::null_mut(),
             0,
-            0,
-            0,
         );
 
         if buf_size < 0 {
@@ -339,8 +333,6 @@ pub fn get_fd_context_raw(fd: i32) -> Result<String, ContextError> {
             XATTR_NAME_SELINUX.as_ptr().cast(),
             buf.as_mut_ptr() as *mut libc::c_void,
             buf_size as usize,
-            0,
-            0,
         );
 
         if ret < 0 {
@@ -375,7 +367,6 @@ pub fn set_file_context_raw(path: &CString, context: &str) -> Result<(), Context
             XATTR_NAME_SELINUX.as_ptr().cast(),
             c_context.as_ptr() as *const libc::c_void,
             context.len(),
-            0,
             0,
         );
 
@@ -449,7 +440,6 @@ pub fn mac_selinux_apply_fd(fd: i32, _path: Option<&str>, label: &str) -> Result
             XATTR_NAME_SELINUX.as_ptr().cast(),
             c_context.as_ptr() as *const libc::c_void,
             label.len(),
-            0,
             0,
         );
 

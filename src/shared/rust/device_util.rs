@@ -39,10 +39,10 @@ impl DeviceMode {
     /// Extract the `DeviceMode` from a raw `st_mode` value.
     /// Returns `None` if the mode does not represent a device.
     pub fn from_stat_mode(st_mode: u32) -> Option<Self> {
-        let ifmt = (st_mode & libc::S_IFMT as u32) as u16;
+        let ifmt = st_mode & libc::S_IFMT as u32;
         match ifmt {
-            libc::S_IFBLK => Some(DeviceMode::Block),
-            libc::S_IFCHR => Some(DeviceMode::Char),
+            value if value == libc::S_IFBLK as u32 => Some(DeviceMode::Block),
+            value if value == libc::S_IFCHR as u32 => Some(DeviceMode::Char),
             _ => None,
         }
     }

@@ -36,6 +36,18 @@ pub const MODE_MASK_FULL: u32 = 0o7777;
 /// POSIX ACL extended-attribute names removed before chown.
 const ACL_XATTR_NAMES: &[&[u8]] = &[b"system.posix_acl_access\0", b"system.posix_acl_default\0"];
 
+// Linux 6.6 assigned fchmodat2(2) syscall number 452 on the generic 64-bit
+// syscall ABI. libc does not currently export this newer number.
+#[cfg(all(
+    target_os = "linux",
+    any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    )
+))]
+const SYS_FCHMODAT2: libc::c_long = 452;
+
 // ── Types ─────────────────────────────────────────────────────────────────
 
 /// Controls which aspects of file metadata are changed during a recursive
@@ -229,19 +241,18 @@ fn chmod_fd(fd: RawFd, mode: libc::mode_t) -> io::Result<()> {
     // the kernel supports fchmodat2(2). Invoke that Linux syscall directly in
     // precisely that case. Both variants keep the inode pinned by `fd` and do
     // not re-resolve a mutable filesystem path.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(
+        target_os = "linux",
+        any(
+            target_arch = "x86_64",
+            target_arch = "aarch64",
+            target_arch = "riscv64"
+        )
+    ))]
     if err.raw_os_error() == Some(libc::EINVAL) {
         // SAFETY: `fd` stays borrowed, the empty pathname is NUL-terminated,
         // and the syscall arguments match Linux fchmodat2(2)'s ABI.
-        if unsafe {
-            libc::syscall(
-                libc::SYS_fchmodat2,
-                fd,
-                c"".as_ptr(),
-                mode,
-                libc::AT_EMPTY_PATH,
-            )
-        } >= 0
+        if unsafe { libc::syscall(SYS_FCHMODAT2, fd, c"".as_ptr(), mode, libc::AT_EMPTY_PATH) } >= 0
         {
             return Ok(());
         }

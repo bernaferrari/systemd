@@ -21,6 +21,18 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+// Linux 6.6 assigned fchmodat2(2) syscall number 452 on the generic 64-bit
+// syscall ABI. libc does not currently export this newer number.
+#[cfg(all(
+    target_os = "linux",
+    any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    )
+))]
+const SYS_FCHMODAT2: libc::c_long = 452;
+
 // ── Error type ────────────────────────────────────────────────────────────
 
 /// Errors that can occur during recursive removal operations.
@@ -297,19 +309,18 @@ fn fchmod_opath(fd: RawFd, mode: libc::mode_t) -> Result<(), RmRfError> {
 
     // Older libc implementations reject AT_EMPTY_PATH even when the kernel
     // provides fchmodat2(2), so match the C helper's direct-syscall fallback.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(
+        target_os = "linux",
+        any(
+            target_arch = "x86_64",
+            target_arch = "aarch64",
+            target_arch = "riscv64"
+        )
+    ))]
     if errno == -libc::EINVAL {
         // SAFETY: `fd` remains borrowed, the empty pathname is static, and the
         // scalar arguments exactly match Linux fchmodat2(2)'s ABI.
-        if unsafe {
-            libc::syscall(
-                libc::SYS_fchmodat2,
-                fd,
-                c"".as_ptr(),
-                mode,
-                libc::AT_EMPTY_PATH,
-            )
-        } >= 0
+        if unsafe { libc::syscall(SYS_FCHMODAT2, fd, c"".as_ptr(), mode, libc::AT_EMPTY_PATH) } >= 0
         {
             return Ok(());
         }

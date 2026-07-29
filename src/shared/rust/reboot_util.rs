@@ -39,11 +39,11 @@ const RB_AUTOBOOT: u32 = 0x01234567;
 
 /// SYS_reboot syscall number on Linux (x86_64 / most arches).
 #[cfg(target_arch = "x86_64")]
-const SYS_REBOOT: i32 = 169;
+const SYS_REBOOT: libc::c_long = 169;
 #[cfg(target_arch = "aarch64")]
-const SYS_REBOOT: i32 = 142;
+const SYS_REBOOT: libc::c_long = 142;
 #[cfg(target_arch = "riscv64")]
-const SYS_REBOOT: i32 = 104;
+const SYS_REBOOT: libc::c_long = 104;
 
 /// Message written to `/run/nologin` when the system is going down.
 const NOLOGIN_MESSAGE: &str = "System is going down. Unprivileged users are not permitted to log in anymore. \

@@ -415,10 +415,20 @@ fn recurse_dir(
         return Ok(false);
     }
 
-    // Match the C fast path for mounts that are explicitly read-only.
-    if (statfs_buf.f_flags as libc::c_ulong & libc::ST_RDONLY as libc::c_ulong) != 0
-        || fd_is_effectively_read_only(dir_file.as_raw_fd())
-    {
+    // `statfs::f_flags` is not exposed by libc on every supported Linux ABI.
+    // `fstatvfs()` reports the same ST_RDONLY mount flag through its portable
+    // `f_flag` field, while the descriptor-based access probe below retains
+    // C's conservative EROFS fallback for network filesystems.
+    // SAFETY: `statvfs` is an integer-only output struct, and `dir_file` owns
+    // the live descriptor supplied to this synchronous system call.
+    let mount_is_read_only = unsafe {
+        let mut statvfs_buf: libc::statvfs = std::mem::zeroed();
+        if libc::fstatvfs(dir_file.as_raw_fd(), &mut statvfs_buf) < 0 {
+            return Err(ShiftUidError::Io(io::Error::last_os_error()));
+        }
+        (statvfs_buf.f_flag & libc::ST_RDONLY as libc::c_ulong) != 0
+    };
+    if mount_is_read_only || fd_is_effectively_read_only(dir_file.as_raw_fd()) {
         return Ok(false);
     }
 

@@ -436,12 +436,12 @@ fn sockaddr_unix_from(path: &UnixSocketPath) -> Result<RawSocketAddress> {
 fn sockaddr_netlink_from(pid: u32, groups: u32) -> Result<RawSocketAddress> {
     #[cfg(target_os = "linux")]
     {
-        let addr = libc::sockaddr_nl {
-            nl_family: libc::AF_NETLINK as libc::sa_family_t,
-            nl_pad: 0,
-            nl_pid: pid,
-            nl_groups: groups,
-        };
+        // SAFETY: `sockaddr_nl` is a plain C socket-address structure; an
+        // all-zero value is valid and leaves target-specific padding intact.
+        let mut addr: libc::sockaddr_nl = unsafe { mem::zeroed() };
+        addr.nl_family = libc::AF_NETLINK as libc::sa_family_t;
+        addr.nl_pid = pid;
+        addr.nl_groups = groups;
 
         // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
         let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };

@@ -205,8 +205,8 @@ fn ipv6_mask(addr: &mut Ipv6Addr, prefixlen: u8) -> Result<(), InAddrPrefixError
 /// Apply a network mask to an IP address, keeping only the top `prefixlen` bits.
 pub fn in_addr_mask(addr: &mut IpAddr, prefixlen: u8) -> Result<(), InAddrPrefixError> {
     match addr {
-        IpAddr::V4(ref mut a) => ipv4_mask(a, prefixlen),
-        IpAddr::V6(ref mut a) => ipv6_mask(a, prefixlen),
+        IpAddr::V4(a) => ipv4_mask(a, prefixlen),
+        IpAddr::V6(a) => ipv6_mask(a, prefixlen),
     }
 }
 

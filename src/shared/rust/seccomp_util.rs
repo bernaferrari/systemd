@@ -11,6 +11,7 @@ mod syscall_lists;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
 pub use architecture::reset_seccomp_available_cache;
 pub use architecture::{
     arch_has_sysctl, arch_is_s390, arch_supports_socket_filter, foreach_local_arch,

@@ -156,7 +156,7 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnsTxtItem {
     pub data: Vec<u8>,
 }
@@ -173,6 +173,7 @@ pub struct DnsSvcParam {
     pub value: Vec<u8>,
 }
 
+#[derive(Debug, Clone)]
 pub enum Rdata {
     Generic(Vec<u8>),
     Opt(Vec<u8>),

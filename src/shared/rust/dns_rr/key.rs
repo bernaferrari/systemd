@@ -7,6 +7,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 
 use super::model::{DnsClass, DnsType, ParseError};
+use super::record::DnsResourceRecord;
 
 fn dns_class_to_string(value: u16) -> Option<&'static str> {
     match value {
@@ -16,7 +17,7 @@ fn dns_class_to_string(value: u16) -> Option<&'static str> {
     }
 }
 
-fn dns_type_to_string(value: u16) -> Option<&'static str> {
+pub(super) fn dns_type_to_string(value: u16) -> Option<&'static str> {
     match value {
         x if x == DnsType::A as u16 => Some("A"),
         x if x == DnsType::Ns as u16 => Some("NS"),
@@ -89,7 +90,7 @@ pub(super) fn dns_name_count_labels(name: &str) -> usize {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct DnsResourceKey {
     pub dns_class: u16,
     pub rr_type: u16,
@@ -236,6 +237,8 @@ impl PartialEq for DnsResourceKey {
     }
 }
 
+impl Eq for DnsResourceKey {}
+
 impl Hash for DnsResourceKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         lower_name(&self.name).hash(state);
@@ -250,7 +253,6 @@ impl fmt::Display for DnsResourceKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) fn normalize_name(name: &str) -> Result<String, ParseError> {
     if dns_name_is_root(name) {
         return Ok(".".to_owned());

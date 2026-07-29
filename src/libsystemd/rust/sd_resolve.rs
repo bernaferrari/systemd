@@ -711,8 +711,8 @@ fn lookup_nameinfo(address: SocketAddr) -> LookupResult {
 }
 
 fn call_getnameinfo(address: *const libc::sockaddr, length: libc::socklen_t) -> LookupResult {
-    let mut host = [0_i8; 1025];
-    let mut service = [0_i8; 32];
+    let mut host = [0 as libc::c_char; 1025];
+    let mut service = [0 as libc::c_char; 32];
     // SAFETY: address points to a fully initialized sockaddr of length bytes;
     // both output arrays are writable for the lengths passed to libc.
     let ret_code = unsafe {

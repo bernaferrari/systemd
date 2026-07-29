@@ -446,7 +446,7 @@ fn spawn_pager_cmd(
         .stdin(Stdio::null()) // will be replaced by dup2 after spawn
         .env("LESS", less_opts);
 
-    if let Some(ref cs) = less_charset {
+    if let Some(cs) = less_charset {
         cmd.env("LESSCHARSET", cs);
     }
     if secure_mode == SecureMode::Enabled {

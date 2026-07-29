@@ -147,6 +147,8 @@ pub mod linux_compat {
 
 #[cfg(target_os = "linux")]
 pub mod linux_compat {
+    use std::os::raw::c_int;
+
     pub use libc::{
         AF_NETLINK, AT_EMPTY_PATH, EBADFD, EBADSLT, ENOANO, ENOKEY, ENOPKG, ERFKILL, EUCLEAN,
         EUNATCH, FALLOC_FL_KEEP_SIZE, FALLOC_FL_PUNCH_HOLE, GRND_NONBLOCK,
@@ -155,10 +157,18 @@ pub mod linux_compat {
         SOCK_CLOEXEC, SOCK_NONBLOCK, explicit_bzero, fallocate, getrandom, pipe2, prctl,
         sockaddr_nl, syncfs, ucred,
     };
-    pub use libc::{
-        BLKROSET, FS_DIRSYNC_FL, FS_NOATIME_FL, FS_NOCOW_FL, FS_NODUMP_FL, FS_PROJINHERIT_FL,
-        FS_SYNC_FL,
-    };
+
+    // libc deliberately does not expose every Linux UAPI fs.h constant. Keep
+    // the values sourced from src/include/uapi/linux/fs.h rather than falling
+    // back to zero: these flags are passed to ioctl/chattr policy code.
+    pub const BLKROSET: c_int = 0x125d; // _IO(0x12, 93)
+    pub const FS_SYNC_FL: c_int = 0x0000_0008;
+    pub const FS_NODUMP_FL: c_int = 0x0000_0040;
+    pub const FS_NOATIME_FL: c_int = 0x0000_0080;
+    pub const FS_DIRSYNC_FL: c_int = 0x0001_0000;
+    pub const FS_NOCOW_FL: c_int = 0x0080_0000;
+    pub const FS_PROJINHERIT_FL: c_int = 0x2000_0000;
+
     pub use libc::{SYS_copy_file_range, SYS_renameat2};
 }
 

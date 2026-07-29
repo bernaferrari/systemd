@@ -4,7 +4,9 @@
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
+use super::key::dns_type_to_string;
 use super::model::{
     DnsSvcParam, DnsSvcParamKey, DnsTxtItem, DnsType, DnssecAlgorithm, DnssecDigest, Rdata,
     SshfpAlgorithm, SshfpKeyType,

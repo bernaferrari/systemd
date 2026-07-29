@@ -7,8 +7,8 @@ use super::linux::{
     resize_partition_ioctl, set_loop_status64,
 };
 use super::model::{
-    LOCK_EX, LOCK_NB, LOCK_SH, LOCK_UN, LockOp, LoopError, MAX_REMOVE_ATTEMPTS, NO_CHANGE,
-    O_CLOEXEC, O_NOCTTY, O_NONBLOCK, O_RDONLY, O_RDWR, lock_op_is_valid,
+    LO_FLAGS_AUTOCLEAR, LOCK_EX, LOCK_NB, LOCK_SH, LOCK_UN, LockOp, LoopError, MAX_REMOVE_ATTEMPTS,
+    NO_CHANGE, O_CLOEXEC, O_NOCTTY, O_NONBLOCK, O_RDONLY, O_RDWR, lock_op_is_valid,
 };
 use std::fs;
 use std::os::unix::io::{AsRawFd, OwnedFd, RawFd};

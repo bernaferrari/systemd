@@ -29,7 +29,22 @@ mod cgroup;
 mod process;
 use cgroup::delegate_cgroup_access;
 use process::{ServiceFork, spawn_process, terminate_unconfirmed_child};
-pub(super) use process::{acquire_process_identity, signal_process_identity};
+
+// Keep the process-identity operations private to the Linux launch
+// implementation while making the parent-side spawn API available to the
+// sibling module. A direct `pub(super) use` would try to widen the visibility
+// of the child module's `pub(super)` functions and is rejected by Rust's
+// privacy rules.
+pub(super) fn acquire_process_identity(pid: u32) -> Result<ProcessIdentity, String> {
+    process::acquire_process_identity(pid)
+}
+
+pub(super) fn signal_process_identity(
+    identity: &ProcessIdentity,
+    signal: i32,
+) -> Result<(), String> {
+    process::signal_process_identity(identity, signal)
+}
 
 /// A socket-activation descriptor borrowed from the manager for the duration
 /// of a single spawn. The child duplicates it before changing any descriptor

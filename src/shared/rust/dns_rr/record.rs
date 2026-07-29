@@ -9,7 +9,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 use super::key::{
     DnsResourceKey, dns_name_change_suffix, dns_name_startswith, dns_type_may_redirect, eq_name,
-    skip_labels,
+    normalize_name, skip_labels,
 };
 use super::model::{
     AF_INET, AF_INET6, DNSKEY_FLAG_REVOKE, DnsClass, DnsSvcParam, DnsTxtItem, DnsType, ParseError,

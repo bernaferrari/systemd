@@ -442,11 +442,9 @@ pub fn disable_coredumps() {
     return;
 
     if let Err(e) = std::fs::write(CORE_PATTERN_PATH, "|/bin/false") {
-        // Mirror the C code: log at debug level but do not propagate.
-        #[cfg(target_os = "linux")]
-        log::debug!("Failed to turn off coredumps, ignoring: {e}");
-
-        #[cfg(not(target_os = "linux"))]
+        // C records this at debug level. This crate has no logging facade, so
+        // keep the failure non-propagating without introducing a user-visible
+        // stderr side effect.
         let _ = e;
     }
 }
