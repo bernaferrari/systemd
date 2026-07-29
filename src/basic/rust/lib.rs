@@ -66,7 +66,6 @@ pub mod bus_label;
 pub mod bus_type_util;
 pub mod capability_list;
 pub mod capability_util;
-pub mod cgroup_util_str_tables;
 pub mod compress_util;
 pub mod credential_validators;
 pub mod device_nodes;

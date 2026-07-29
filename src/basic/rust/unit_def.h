@@ -2,8 +2,6 @@
 /* PORT-SYNC: scope=basic.unit-def; authority=src/basic/unit-def.c,src/basic/unit-def.h */
 #pragma once
 
-#include <stdbool.h>
-
 /* unit-def string tables */
 const char *rs_unit_type_to_string(int v);
 int rs_unit_type_from_string(const char *s);
@@ -53,22 +51,3 @@ char *rs_unit_dbus_path_from_name(const char *name);
 int rs_unit_name_from_dbus_path(const char *path, char **name);
 const char *rs_unit_dbus_interface_from_type(int t);
 const char *rs_unit_dbus_interface_from_name(const char *name);
-
-/* cgroup-util string tables */
-const char *rs_cgroup_io_limit_type_to_string(int v);
-int rs_cgroup_io_limit_type_from_string(const char *s);
-const char *rs_cgroup_controller_to_string(int v);
-int rs_cgroup_controller_from_string(const char *s);
-const char *rs_managed_oom_mode_to_string(int v);
-int rs_managed_oom_mode_from_string(const char *s);
-const char *rs_managed_oom_preference_to_string(int v);
-int rs_managed_oom_preference_from_string(const char *s);
-
-/* cgroup-util escape functions */
-bool rs_cg_needs_escape(const char *p);
-char *rs_cg_unescape(const char *p);
-
-/* cgroup-util allocation-owning helpers; non-null results use free(3). */
-int rs_cg_mask_to_string(unsigned int mask, char **ret);
-int rs_cg_mask_from_string(const char *s, unsigned int *ret);
-int rs_cg_split_spec(const char *spec, char **ret_controller, char **ret_path);

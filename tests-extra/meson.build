@@ -1266,20 +1266,6 @@ if get_option('rust').enabled()
         test('test-str-tables-batch3-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-unit-def-cgroup-rust',
-                files('test-unit-def-cgroup-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-unit-def-cgroup-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-time-util-extra-rust',
                 files('test-time-util-extra-rust.c'),
                 include_directories : includes,
@@ -2010,34 +1996,6 @@ if get_option('rust').enabled()
         test('test-sysctl-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-cgroup-util-str-tables-rust',
-                files('test-cgroup-util-str-tables-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-cgroup-util-str-tables-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-cgroup-escape-rust',
-                files('test-cgroup-escape-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-cgroup-escape-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-devt-compare-rust',
                 files('test-devt-compare-rust.c'),
                 include_directories : includes,
@@ -2167,17 +2125,6 @@ if get_option('rust').enabled()
                 link_depends : runtest_env,
         )
         test('test-unit-dbus-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-cg-split-spec-rust',
-                files('test-cg-split-spec-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-        )
-        test('test-cg-split-spec-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-pkcs11-rust',

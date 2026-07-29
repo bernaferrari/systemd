@@ -75,11 +75,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 7
     },
-    "src/basic/rust/cgroup_util_str_tables.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 25
-    },
     "src/basic/rust/compress_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],

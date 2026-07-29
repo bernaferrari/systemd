@@ -293,7 +293,6 @@ if get_option('rust').enabled()
                 'rust/signal_util.rs',
                 'rust/syslog_util.rs',
                 'rust/compress_util.rs',
-                'rust/cgroup_util_str_tables.rs',
                 'rust/locale_util.rs',
                 'rust/process_util_str_tables.rs',
                 'rust/unit_def.rs',

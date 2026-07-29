@@ -38,10 +38,7 @@ CPP_DIRECTIVE_RE = re.compile(
 )
 Signature = tuple[tuple[str, ...], str]
 UNIT_DEF_HEADER = Path("src/basic/rust/unit_def.h")
-UNIT_DEF_AUTHORITIES = (
-    Path("src/basic/unit-def.c"),
-    Path("src/basic/cgroup-util.c"),
-)
+UNIT_DEF_AUTHORITIES = (Path("src/basic/unit-def.c"),)
 SHARED_STR_TABLES_HEADER = Path("src/basic/rust/shared_facades/lookups.h")
 
 
@@ -751,7 +748,7 @@ def backed_signature_failures(
 def unit_def_authority_failures(
     root: Path, rust_signatures: dict[str, Signature]
 ) -> tuple[list[str], int, int]:
-    """Pin the combined unit-def/cgroup mirror to current C signatures."""
+    """Pin the unit-def mirror to current C signatures."""
 
     header_text = (root / UNIT_DEF_HEADER).read_text(encoding="utf-8")
     advertised = set(RS_DECL_RE.findall(header_text))
@@ -772,12 +769,9 @@ def unit_def_authority_failures(
     authority_code = inventory.strip_c_non_code(authority)
     parsed = 0
     curated = 0
-    direct_name_helpers = {"cg_mask_to_string", "cg_mask_from_string"}
     for name in sorted(backed):
         c_name = name.removeprefix("rs_")
-        if c_name not in direct_name_helpers and (
-            c_name.endswith("_to_string") or c_name.endswith("_from_string")
-        ):
+        if c_name.endswith("_to_string") or c_name.endswith("_from_string"):
             suffix = (
                 "_to_string" if c_name.endswith("_to_string") else "_from_string"
             )
@@ -817,11 +811,6 @@ def unit_def_authority_failures(
 
         def authority_type(raw: str, *, parameter: bool) -> str:
             normalized = re.sub(r"\b(?:FreezerState|UnitType)\b", "int", raw)
-            # `CGroupMask` is a 32-bit controller-bit enum. The Rust C ABI
-            # intentionally exposes its bit representation as `u32`, matching
-            # the registered C comparison prototypes and avoiding an enum
-            # layout claim across compilers.
-            normalized = re.sub(r"\bCGroupMask\b", "unsigned int", normalized)
             return canonical_c_type(normalized, parameter=parameter)
 
         try:
@@ -845,9 +834,9 @@ def unit_def_authority_failures(
             )
         parsed += 1
 
-    if len(backed) != 59:
+    if len(backed) != 46:
         failures.append(
-            f"{UNIT_DEF_HEADER}: expected 59 artifact-backed reviewed declarations, "
+            f"{UNIT_DEF_HEADER}: expected 46 artifact-backed reviewed declarations, "
             f"found {len(backed)}"
         )
     return failures, parsed, curated
@@ -1104,7 +1093,7 @@ def main() -> int:
         f"same_source_c_helpers={len(set().union(*(set(v) for v in c_definitions.values())))} "
         f"unbacked_sources={len(unbacked)} unbacked_symbols={len(unbacked_symbols)} "
         f"backed_signatures={checked_signatures} artifact=systemd_basic_rs "
-        f"unit-def-signatures=59 C-authority-parsed={unit_def_authority_parsed} "
+        f"unit-def-signatures=46 C-authority-parsed={unit_def_authority_parsed} "
         f"C-authority-curated={unit_def_authority_curated} "
         f"shared-authority-curated={shared_str_tables_authority_curated} "
         "configuration=unconditional-only link_parity=unclaimed"

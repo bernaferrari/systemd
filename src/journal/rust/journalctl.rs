@@ -2,21 +2,7 @@
 //
 // PORT-SYNC: src/journal/journalctl.c
 //
-// Main journalctl binary with argument parsing and action dispatch.
-
-crate::journal_port_module!(
-    "Main journalctl binary with argument parsing and action dispatch.",
-    "src/journal/journalctl.c",
-    [
-        "parse_id_descriptor",
-        "parse_lines",
-        "help_facilities",
-        "help",
-        "vl_server",
-        "parse_argv",
-        "run",
-    ]
-);
+// Native journalctl argument parsing, filtering, and action dispatch.
 
 #[path = "journalctl/argument_values.rs"]
 mod argument_values;

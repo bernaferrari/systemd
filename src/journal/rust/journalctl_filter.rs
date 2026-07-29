@@ -2,17 +2,7 @@
 //
 // PORT-SYNC: src/journal/journalctl-filter.c
 //
-// journalctl journal filter setup (matches, boots, units, etc.).
-
-crate::journal_port_module!(
-    "journalctl journal filter setup (matches, boots, units, etc.).",
-    "src/journal/journalctl-filter.c",
-    [
-        "field_list_has_scope_options",
-        "journal_add_unit_matches",
-        "add_filters",
-    ]
-);
+// Native journalctl filter planning (matches, boots, units, and priorities).
 
 use crate::journalctl::JournalctlArgs;
 use std::collections::BTreeSet;

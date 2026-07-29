@@ -1034,15 +1034,8 @@ tier = 1
 symbols = 4
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/unit-def.c" = "57a67af163e31c9f42b2017f54d135ebbf576233", "src/basic/unit-def.h" = "9192d8c4a530f6292ed2dd953be1cdd0500a535b" }
-last_reviewed_rust_blobs = { "src/basic/rust/unit_def.rs" = "c33faa8ecf7eeae204c8f1199a4539b993385588", "src/basic/rust/unit_def.h" = "539e71f2aacf2caf4ea495fadcdb0a240be763c1" }
+last_reviewed_rust_blobs = { "src/basic/rust/unit_def.rs" = "c33faa8ecf7eeae204c8f1199a4539b993385588", "src/basic/rust/unit_def.h" = "d2a1e4a2177fd85f3975a22f9e8f7253da727ecd" }
 notes = "Reviewed static unit D-Bus ABI slice 2026-07-29; no build/tests/VM. Four facades preserve raw-byte escaping, C-owned path/name outputs with deferred publication, and static interface strings. The existing table facades remain separately tracked; runtime parity remains P2."
-
-[cgroup-util-str-tables]
-c_file = "src/basic/cgroup-util.c"
-rust_file = "src/basic/rust/cgroup_util_str_tables.rs"
-status = "in-progress"
-tier = 1
-notes = "Registered C comparison sources specify four cgroup string tables, byte-exact escape helpers, controller-mask conversion, and controller:path splitting. 13 explicit FFI exports: four table pairs, byte-exact rs_cg_needs_escape, borrowed-pointer rs_cg_unescape, plus three reviewed C-allocator-owning helpers. Static NUL-backed table strings avoid allocator crossings; returned strings use the process C allocator. Link/runtime validation remains unclaimed; cgroup I/O and filesystem operations remain out of scope."
 
 [proc-cmdline]
 c_paths = [
@@ -1165,7 +1158,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "0bace70c31446d69b9fec1210ea0988e40136fd0", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "897e7ffa12db8456e2976c7c2611749a2153b5e4", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
@@ -1227,7 +1220,7 @@ status = "in-progress"
 tier = 1
 symbols = 3
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/arphrd-util.c" = "0c5a85edaa577ca45176c816d6de0f6e76f694eb", "src/basic/arphrd-util.h" = "97a1c0b248c5fed47e218f5fe703d779322c4b0f", "src/basic/arphrd-to-name.awk" = "302504b6510ddd7e2b90ae2097656b8d0ba86cb9", "src/basic/generate-arphrd-list.sh" = "be4c75d7e0b9a85c2ba4e12356888cbbd45466a2", "src/basic/meson.build" = "0bace70c31446d69b9fec1210ea0988e40136fd0", "src/include/uapi/linux/if_arp.h" = "12d06bb6d87d995d9f85449a64a3009ce43ca957", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/arphrd-util.c" = "0c5a85edaa577ca45176c816d6de0f6e76f694eb", "src/basic/arphrd-util.h" = "97a1c0b248c5fed47e218f5fe703d779322c4b0f", "src/basic/arphrd-to-name.awk" = "302504b6510ddd7e2b90ae2097656b8d0ba86cb9", "src/basic/generate-arphrd-list.sh" = "be4c75d7e0b9a85c2ba4e12356888cbbd45466a2", "src/basic/meson.build" = "897e7ffa12db8456e2976c7c2611749a2153b5e4", "src/include/uapi/linux/if_arp.h" = "12d06bb6d87d995d9f85449a64a3009ce43ca957", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/arphrd_util.rs" = "ecab09b0791eea5d40480688fe54479adb94cbc4", "src/basic/rust/arphrd_util.h" = "0698e817471435bb4fda2dc612bcc708bbb45964" }
 notes = "Reviewed static ARPHRD table slice 2026-07-28; no build/tests/VM. Three facades preserve generated Linux-UAPI name lookup, gperf ASCII case folding, the HDLC/CISCO alias, borrowed static output, uint16_t width, and address-length mapping. Generator inputs and Meson’s --ignore-case setting are pinned. C remains the production authority; runtime parity is unclaimed."
 
@@ -1352,7 +1345,7 @@ status = "in-progress"
 tier = 1
 symbols = 4
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/capability-list.c" = "6c60888327c31046f46decb004f0b5ab11e04d46", "src/basic/capability-list.h" = "f60569a61abc131c3b2442adc4bdb5e0c0776a02", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890", "src/basic/generate-capability-list.sh" = "ab87f94f500dccf931ad42ce7b05a892f82fe9f7", "src/basic/capability-to-name.awk" = "bd8a28c2fe8e32e90ae3201e67e524440c90e7cb", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/uapi/linux/capability.h" = "60fd34309de01c518f1de2d384ea4cf09525b29f", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6", "src/basic/meson.build" = "0bace70c31446d69b9fec1210ea0988e40136fd0" }
+last_reviewed_upstream_blobs = { "src/basic/capability-list.c" = "6c60888327c31046f46decb004f0b5ab11e04d46", "src/basic/capability-list.h" = "f60569a61abc131c3b2442adc4bdb5e0c0776a02", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890", "src/basic/generate-capability-list.sh" = "ab87f94f500dccf931ad42ce7b05a892f82fe9f7", "src/basic/capability-to-name.awk" = "bd8a28c2fe8e32e90ae3201e67e524440c90e7cb", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/uapi/linux/capability.h" = "60fd34309de01c518f1de2d384ea4cf09525b29f", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6", "src/basic/meson.build" = "897e7ffa12db8456e2976c7c2611749a2153b5e4" }
 last_reviewed_rust_blobs = { "src/basic/rust/capability_list.rs" = "466bd5573fec2f53213ad85eae4929e0428bbbf8", "src/basic/rust/capability_list.h" = "8284fb977e94a0044ee93b26c0975ff5bc182d3e" }
 notes = "Reviewed static capability-list ABI slice 2026-07-28; no build/tests/VM. Four facades preserve NUL-backed borrowed names, target-generated gperf ASCII case folding, safe_atoi numeric grammar, CAP_LIMIT bounds, and caller-buffer numeric rendering without allocation. The table is anchored to vendored UAPI and generation inputs; the Linux C-vs-Rust fixture deliberately detects a newer target table. Capability-set allocation/vector APIs remain C-only. C remains the production authority; runtime parity is unclaimed."
 
@@ -3145,7 +3138,7 @@ status = "in-progress"
 tier = 3
 symbols = 1
 sync_status = "needs_review"
-notes = "Rust path currently uses journalctl_main.rs compatibility shim to exec journalctl-c backend; native Rust CLI action dispatch not ported yet."
+notes = "Rust module owns native argument parsing, filter planning, and action-dispatch modeling; journalctl_main.rs remains a compatibility shim that execs the C backend, so end-to-end CLI behavior is still C-authoritative."
 
 [journalctl_filter]
 c_file = "src/journal/journalctl-filter.c"
@@ -3154,7 +3147,7 @@ status = "in-progress"
 tier = 3
 symbols = 0
 sync_status = "needs_review"
-notes = "Port-sync wrapper only; unit/priority/boot filtering logic still in C backend."
+notes = "Rust module implements reusable unit, priority, boot, and match-filter planning consumed by the native journalctl library path; the installed journalctl executable still delegates end-to-end behavior to the C backend."
 
 [libsystemd_network_dhcp_option]
 c_file = "src/libsystemd-network/dhcp-message.c, src/libsystemd-network/dhcp-protocol.c"

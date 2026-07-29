@@ -6,14 +6,6 @@
 
 pub struct Errno(pub i32);
 
-pub mod port_sync;
-
-#[path = "bsod.rs"]
-pub mod bsod;
-
-#[path = "cat.rs"]
-pub mod cat;
-
 #[path = "fuzz_journald_audit.rs"]
 pub mod fuzz_journald_audit;
 
