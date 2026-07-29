@@ -293,11 +293,8 @@
       "unsafe_sites": 2
     },
     "src/basic/rust/iovec_util.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "90:1:unsafe fn free_iov_base(iovec: &mut IoVec) {",
-        "155:1:unsafe fn memcmp_nn(a: *const c_void, a_len: usize, b: *const c_void, b_len: usize) -> i32 {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 67
     },
     "src/basic/rust/iovec_wrapper.rs": {
@@ -595,12 +592,9 @@
       "unsafe_sites": 17
     },
     "src/basic/rust/string_util.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "480:1:unsafe fn rs_empty_or_dash(str_: *const c_char) -> bool {",
-        "700:1:unsafe fn skip_leading_chars(s: *const u8, bad: *const u8) -> *const u8 {"
-      ],
-      "unsafe_sites": 136
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 135
     },
     "src/basic/rust/string_util_escape.rs": {
       "missing_safety": 0,
@@ -788,11 +782,8 @@
       "unsafe_sites": 3
     },
     "src/core/rust/runtime_manager.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "692:12:if unsafe { libc::geteuid() } != 0 {",
-        "700:17:let _ = unsafe { libc::chown(c_path.as_ptr(), raw_uid, raw_gid) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/core/rust/runtime_manager/linux_cgroup.rs": {
@@ -1426,10 +1417,8 @@
       "unsafe_sites": 25
     },
     "src/shared/rust/journal_file_util.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "406:31:let (_, aligned, _) = unsafe { buf.align_to::<Self>() };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 4
     },
     "src/shared/rust/kbd_util.rs": {
@@ -1615,11 +1604,8 @@
       "unsafe_sites": 2
     },
     "src/shared/rust/osc_context.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "446:26:let status = unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) };",
-        "465:21:.or_else(|| unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/shared/rust/pager.rs": {
@@ -1738,10 +1724,8 @@
       "unsafe_sites": 1
     },
     "src/shared/rust/pretty_print.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "273:9:unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/shared/rust/qrcode_util.rs": {
@@ -1764,11 +1748,9 @@
       "unsafe_sites": 17
     },
     "src/shared/rust/quota_util.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "361:11:match unsafe { quotactl_fd_syscall(fd, cmd, id, addr) } {"
-      ],
-      "unsafe_sites": 10
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
     },
     "src/shared/rust/reboot_util.rs": {
       "missing_safety": 0,
@@ -2098,8 +2080,8 @@
     }
   },
   "totals": {
-    "missing_safety": 542,
-    "unsafe_sites": 5718
+    "missing_safety": 531,
+    "unsafe_sites": 5715
   },
   "version": 2,
   "window": 3

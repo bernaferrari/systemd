@@ -443,6 +443,9 @@ fn read_hostname() -> Option<String> {
         .filter(|value| !value.is_empty())
         .or_else(|| {
             let mut buffer = [0_u8; 256];
+            // SAFETY: `buffer` is writable for exactly the supplied length.
+            // It is pre-initialized so a hostname that fills the buffer
+            // without a trailing NUL is still safely treated as a full slice.
             let status = unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) };
             if status < 0 {
                 return None;
@@ -462,23 +465,35 @@ fn read_username() -> Option<String> {
     std::env::var("USER")
         .ok()
         .filter(|value| !value.is_empty())
+        // SAFETY: getpwuid_r receives writable `pwd`, `result`, and buffer
+        // storage. On success with non-null result it initializes the record
+        // and its string pointers remain valid while `buffer` is alive.
         .or_else(|| unsafe {
             let uid = libc::geteuid();
-            let mut pwd = std::mem::zeroed::<libc::passwd>();
+            let mut pwd = std::mem::MaybeUninit::<libc::passwd>::uninit();
             let mut result = std::ptr::null_mut();
             let mut buffer = vec![0_u8; 4096];
             let status = libc::getpwuid_r(
                 uid,
-                &mut pwd,
+                pwd.as_mut_ptr(),
                 buffer.as_mut_ptr().cast(),
                 buffer.len(),
                 &mut result,
             );
 
-            if status != 0 || result.is_null() || pwd.pw_name.is_null() {
+            if status != 0 || result.is_null() {
                 return None;
             }
 
+            // A successful getpwuid_r with a non-null result initialized the
+            // passwd record, including a NUL-terminated `pw_name` when it is
+            // non-null; the backing buffer is still alive.
+            let pwd = pwd.assume_init();
+            if pwd.pw_name.is_null() {
+                return None;
+            }
+            // `pw_name` was validated non-null and is NUL-terminated by the
+            // successful getpwuid_r call described above.
             CStr::from_ptr(pwd.pw_name)
                 .to_str()
                 .ok()

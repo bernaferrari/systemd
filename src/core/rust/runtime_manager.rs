@@ -594,7 +594,12 @@ impl RuntimeManager {
     }
 
     fn parse_numeric_identity(value: Option<&String>) -> Option<u32> {
-        value.and_then(|raw| raw.trim().parse::<u32>().ok())
+        value
+            .and_then(|raw| raw.trim().parse::<u32>().ok())
+            // Match uid_is_valid()/gid_is_valid() in the C implementation:
+            // both historical and native all-ones values are sentinels, not
+            // identities that may be assigned to a service.
+            .filter(|id| !matches!(*id, 0xffff | u32::MAX))
     }
 
     fn dynamic_uid_record_path(unit_name: &str) -> PathBuf {
@@ -679,29 +684,48 @@ impl RuntimeManager {
             return Some((Some(uid), Some(gid)));
         }
 
-        let user = Self::parse_numeric_identity(exec.user.as_ref());
-        let group = Self::parse_numeric_identity(exec.group.as_ref()).or(user);
+        // Named identity resolution still belongs to the remaining NSS/userdb
+        // port. Until that exists, reject an explicitly configured identity
+        // that is not a valid numeric UID/GID: silently treating `User=foo`
+        // as no identity would otherwise launch the service as the manager.
+        let user = match exec.user.as_ref() {
+            Some(raw) => Some(Self::parse_numeric_identity(Some(raw))?),
+            None => None,
+        };
+        let group = match exec.group.as_ref() {
+            Some(raw) => Some(Self::parse_numeric_identity(Some(raw))?),
+            None => user,
+        };
         Some((user, group))
     }
 
     #[cfg(target_os = "linux")]
-    fn maybe_apply_directory_owner(path: &Path, uid: Option<u32>, gid: Option<u32>) {
+    fn maybe_apply_directory_owner(path: &Path, uid: Option<u32>, gid: Option<u32>) -> bool {
         if uid.is_none() && gid.is_none() {
-            return;
+            return true;
         }
+
+        // SAFETY: geteuid() has no arguments, does not dereference memory, and
+        // is safe to call from ordinary process context.
         if unsafe { libc::geteuid() } != 0 {
-            return;
+            return true;
         }
         let Ok(c_path) = CString::new(path.as_os_str().as_bytes()) else {
-            return;
+            return false;
         };
         let raw_uid = uid.unwrap_or(u32::MAX) as libc::uid_t;
         let raw_gid = gid.unwrap_or(u32::MAX) as libc::gid_t;
-        let _ = unsafe { libc::chown(c_path.as_ptr(), raw_uid, raw_gid) };
+
+        // SAFETY: c_path is a live, NUL-terminated pathname for the duration
+        // of the call. uid_t/gid_t all-ones are the documented "leave
+        // unchanged" sentinels; every other value came from a validated u32.
+        unsafe { libc::chown(c_path.as_ptr(), raw_uid, raw_gid) >= 0 }
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn maybe_apply_directory_owner(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) {}
+    fn maybe_apply_directory_owner(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> bool {
+        true
+    }
 
     fn ensure_exec_directories_for_kind(
         &self,
@@ -719,8 +743,10 @@ impl RuntimeManager {
 
             let full = root.join(relative);
             fs::create_dir_all(&full).ok()?;
-            let _ = fs::set_permissions(&full, fs::Permissions::from_mode(mode));
-            Self::maybe_apply_directory_owner(&full, uid, gid);
+            fs::set_permissions(&full, fs::Permissions::from_mode(mode)).ok()?;
+            if !Self::maybe_apply_directory_owner(&full, uid, gid) {
+                return None;
+            }
             created.push(full);
         }
         Some(created)

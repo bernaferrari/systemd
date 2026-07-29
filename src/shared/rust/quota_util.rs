@@ -355,9 +355,12 @@ fn quotactl_fd_with_fallback(
     fd: i32,
     cmd: i32,
     id: i32,
-    addr: *mut c_void,
+    req: &mut Dqblk,
 ) -> Result<(), QuotaError> {
+    let addr = req as *mut Dqblk as *mut c_void;
     // Try the newer fd-based syscall first.
+    // SAFETY: `addr` was derived from the live, properly aligned `req` and
+    // remains valid throughout this function.
     match unsafe { quotactl_fd_syscall(fd, cmd, id, addr) } {
         Ok(()) => return Ok(()),
         Err(QuotaError::NotSupported) => { /* fall through to path-based */ }
@@ -371,8 +374,8 @@ fn quotactl_fd_with_fallback(
     }
     let devnode = devname_from_devnum(devno)?;
 
-    // SAFETY: `devnode` is a valid NUL-terminated CString. `addr` is a
-    // valid Dqblk pointer from the caller.
+    // SAFETY: `devnode` is a valid NUL-terminated CString and `addr` still
+    // points to the live `req` that meets the command-specific quota ABI.
     unsafe { quotactl_path_syscall(cmd, devnode.as_ptr(), id, addr) }
 }
 
@@ -394,15 +397,7 @@ pub fn quota_query_proj_id(fd: i32, proj_id: u32) -> Result<Option<Dqblk>, Quota
     let cmd = qcmd_fixed(subcmd::Q_GETQUOTA, QuotaType::Project);
     let mut req = Dqblk::default();
 
-    // SAFETY: `&mut req` is a valid, properly aligned Dqblk pointer.
-    match unsafe {
-        quotactl_fd_with_fallback(
-            fd,
-            cmd,
-            proj_id as i32,
-            &mut req as *mut Dqblk as *mut c_void,
-        )
-    } {
+    match quotactl_fd_with_fallback(fd, cmd, proj_id as i32, &mut req) {
         Ok(()) => Ok(Some(req)),
         Err(QuotaError::NotFound | QuotaError::NotSupported | QuotaError::Permission) => Ok(None),
         Err(e) => Err(e),
@@ -437,15 +432,7 @@ pub fn quota_proj_id_set_recursive(
     let cmd = qcmd_fixed(subcmd::Q_GETQUOTA, QuotaType::Project);
     let mut req = Dqblk::default();
 
-    // SAFETY: `&mut req` is a valid, properly aligned Dqblk pointer.
-    unsafe {
-        quotactl_fd_with_fallback(
-            fd,
-            cmd,
-            proj_id as i32,
-            &mut req as *mut Dqblk as *mut c_void,
-        )?;
-    }
+    quotactl_fd_with_fallback(fd, cmd, proj_id as i32, &mut req)?;
 
     if req.dqb_curinodes == 0 {
         return Err(QuotaError::NotRecoverable);

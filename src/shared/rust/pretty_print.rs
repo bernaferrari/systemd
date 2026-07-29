@@ -269,10 +269,19 @@ pub fn print_separator_colored() {
 fn terminal_columns() -> usize {
     #[cfg(unix)]
     {
-        use std::mem;
-        unsafe {
-            let mut ws: libc::winsize = mem::zeroed();
-            if libc::ioctl(1, libc::TIOCGWINSZ, &mut ws) == 0 {
+        let mut ws = std::mem::MaybeUninit::<libc::winsize>::uninit();
+        // SAFETY: stdout's conventional fd is passed to the `TIOCGWINSZ`
+        // ioctl, which initializes the supplied winsize on success. The
+        // result is checked before the buffer is assumed initialized.
+        let ws = unsafe {
+            if libc::ioctl(1, libc::TIOCGWINSZ, ws.as_mut_ptr()) == 0 {
+                Some(ws.assume_init())
+            } else {
+                None
+            }
+        };
+        if let Some(ws) = ws {
+            if ws.ws_col != 0 {
                 return ws.ws_col as usize;
             }
         }

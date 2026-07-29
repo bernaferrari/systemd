@@ -477,6 +477,12 @@ pub unsafe extern "C" fn rs_string_contains_word(
 
 // ── empty_or_dash_to_null ──────────────────────────────────────────────────
 
+/// Check the `empty_or_dash()` C-string predicate without constructing a Rust
+/// reference to caller-owned memory.
+///
+/// # Safety
+/// If non-null, `str_` must be readable through a terminating NUL. In
+/// particular, a leading dash requires that the following byte is readable.
 unsafe fn rs_empty_or_dash(str_: *const c_char) -> bool {
     if str_.is_null() {
         return true;
@@ -697,12 +703,17 @@ unsafe fn c_string_contains_byte(mut set: *const c_char, byte: u8) -> bool {
     }
 }
 
+/// Return the first byte of `s` that is absent from the given C character set.
+///
+/// # Safety
+/// If non-null, `s` and `bad` must each be readable through a terminating NUL
+/// for the duration of the call. The returned pointer is a suffix of `s` and
+/// inherits its lifetime. A null `bad` selects the static whitespace set.
 unsafe fn skip_leading_chars(s: *const u8, bad: *const u8) -> *const u8 {
     if s.is_null() {
         return std::ptr::null();
     }
-    // SAFETY: the caller guarantees non-null bad is a live C string.
-    if bad.is_null() || unsafe { *bad } == 0 {
+    if bad.is_null() {
         // Use WHITESPACE
         let mut p = s;
         while !p.is_null()

@@ -403,6 +403,9 @@ impl HashItem {
         if count == 0 {
             return &[];
         }
+        // `HashItem` is `#[repr(C)]` with only `u64` fields, so every bit
+        // pattern is valid. SAFETY: `align_to` only reinterprets the aligned
+        // portion within the borrowed slice's lifetime; it does not access it.
         let (_, aligned, _) = unsafe { buf.align_to::<Self>() };
         let take = aligned.len().min(count);
         &aligned[..take]

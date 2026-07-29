@@ -824,7 +824,7 @@ tier = 1
 symbols = 12
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/iovec-util.c" = "0be326a18364e75ed4e1e919a360b1f0cb9c8a5b", "src/basic/iovec-util.h" = "ab6178d653a884d0848ec928bb8c2911c4ed805c", "src/fundamental/iovec-util.h" = "7d8f65db43d2ba81fa9f5b4b0e00336af040a20b" }
-last_reviewed_rust_blobs = { "src/basic/rust/iovec_util.rs" = "43edb4ef47ef22abe7ec2f6a689a40404df0c2c1", "src/basic/rust/iovec_util.h" = "1e8f097b202d4169632a022787bfac20a68cec0d" }
+last_reviewed_rust_blobs = { "src/basic/rust/iovec_util.rs" = "b64c1a5e5566b8233857cae5e2984e7422842400", "src/basic/rust/iovec_util.h" = "1e8f097b202d4169632a022787bfac20a68cec0d" }
 notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. Twelve selected allocation, release, erase, increment, borrowed-string, comparison, and copy/aliasing facades are covered by eleven machine-checked contracts. The exact basic and fundamental C headers are authority; eight public C callables remain excluded. This is partial provenance with static-only evidence, not runtime parity."
 
 [architecture]

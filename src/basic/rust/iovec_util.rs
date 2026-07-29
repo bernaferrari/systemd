@@ -87,6 +87,12 @@ fn erase_bytes(bytes: &mut [u8]) {
     compiler_fence(Ordering::SeqCst);
 }
 
+/// Free the owned C allocation described by an iovec and clear the descriptor.
+///
+/// # Safety
+/// If non-null, `iovec.iov_base` must be uniquely owned and have originated
+/// from the C allocator, so that passing it to `free(3)` exactly once is
+/// valid. Callers must not retain aliases to the allocation after this call.
 unsafe fn free_iov_base(iovec: &mut IoVec) {
     if !iovec.iov_base.is_null() {
         // SAFETY: owned iovec payloads follow the C API contract and are
@@ -152,6 +158,12 @@ pub unsafe extern "C" fn rs_iovec_erase(iovec: *mut IoVec) {
     erase_bytes(bytes);
 }
 
+/// Compare two non-null C memory ranges with the `memcmp_nn()` ordering.
+///
+/// # Safety
+/// When the smaller of `a_len` and `b_len` is non-zero, both `a` and `b` must
+/// be non-null and readable for that many bytes. The ranges must remain valid
+/// for the duration of the comparison.
 unsafe fn memcmp_nn(a: *const c_void, a_len: usize, b: *const c_void, b_len: usize) -> i32 {
     let min_len = cmp::min(a_len, b_len);
     if min_len > 0 {
