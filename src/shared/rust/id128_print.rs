@@ -208,6 +208,10 @@ fn fill_random_bytes(buffer: &mut [u8]) -> Result<(), Id128PrintError> {
 
     while filled < buffer.len() {
         let chunk = &mut buffer[filled..];
+        // `getrandom(2)` writes no more than the requested byte count; negative
+        // and zero return values are handled below.
+        // SAFETY: `chunk` is a live, exclusively borrowed output slice, valid
+        // for exactly `chunk.len()` writable bytes for the duration of the call.
         let read = unsafe { crate::ffi::getrandom(chunk.as_mut_ptr(), chunk.len(), 0) };
 
         if read < 0 {

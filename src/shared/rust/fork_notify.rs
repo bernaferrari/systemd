@@ -9,13 +9,15 @@
 use crate::ffi::*;
 use std::fs;
 use std::io;
+use std::mem::{self, MaybeUninit};
+use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::notify_recv::{NotificationMessage, NotifyError, notify_recv};
+use crate::notify_recv::{NOTIFY_BUFFER_MAX, NOTIFY_FD_MAX, NotificationMessage};
 
 // ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -293,6 +295,203 @@ fn kill_and_reap_failed_child(child: &mut Child) {
     let _ = child.wait();
 }
 
+/// Ask the kernel to attach an authenticated `SCM_CREDENTIALS` record to
+/// every received datagram.
+fn enable_sender_credentials(socket: &UnixDatagram) -> io::Result<()> {
+    let enabled: libc::c_int = 1;
+    // SAFETY: the socket owns a live file descriptor and `enabled` points to
+    // an initialized `c_int` for exactly the size passed to setsockopt(2).
+    let result = unsafe {
+        libc::setsockopt(
+            socket.as_raw_fd(),
+            libc::SOL_SOCKET,
+            SO_PASSCRED,
+            (&enabled as *const libc::c_int).cast(),
+            mem::size_of_val(&enabled) as libc::socklen_t,
+        )
+    };
+    if result < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+/// Receive one notification together with kernel-authenticated sender
+/// credentials.
+///
+/// Invalid, truncated, or credential-less datagrams are returned as
+/// `Ok(None)`, matching the C receiver's "ignore and keep waiting" behavior.
+fn recv_notification_with_sender(
+    socket: &UnixDatagram,
+) -> io::Result<Option<(NotificationMessage, u32)>> {
+    let mut payload = [0_u8; NOTIFY_BUFFER_MAX];
+    let mut iov = libc::iovec {
+        iov_base: payload.as_mut_ptr().cast(),
+        iov_len: payload.len(),
+    };
+
+    // Reserve room for the mandatory credentials and for unexpected passed
+    // descriptors so those descriptors can be closed rather than leaked.
+    // SAFETY: CMSG_SPACE performs only ancillary-data layout arithmetic for
+    // the exact payload sizes supplied here.
+    let control_len = unsafe {
+        libc::CMSG_SPACE(mem::size_of::<ucred>() as u32) as usize
+            + libc::CMSG_SPACE(
+                mem::size_of::<libc::c_int>()
+                    .checked_mul(NOTIFY_FD_MAX)
+                    .expect("notification fd control size overflow") as u32,
+            ) as usize
+    };
+    let control_slots = control_len.div_ceil(mem::size_of::<libc::cmsghdr>());
+    let mut control = Vec::<MaybeUninit<libc::cmsghdr>>::with_capacity(control_slots);
+    control.resize_with(control_slots, MaybeUninit::uninit);
+
+    // SAFETY: an all-zero msghdr is a valid empty message header; its live
+    // payload and ancillary buffers are installed immediately below.
+    let mut message = unsafe { mem::zeroed::<libc::msghdr>() };
+    message.msg_iov = &mut iov;
+    message.msg_iovlen = 1;
+    message.msg_control = control.as_mut_ptr().cast();
+    message.msg_controllen = control_len;
+
+    let received =
+        // SAFETY: `message` points to live writable payload and aligned control
+        // buffers for the duration of recvmsg(2). MSG_CMSG_CLOEXEC prevents any
+        // received descriptor from being briefly exposed across exec.
+        unsafe { libc::recvmsg(socket.as_raw_fd(), &mut message, libc::MSG_CMSG_CLOEXEC) };
+    if received < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let reported_control_len = message.msg_controllen;
+    let bounded_control_len = reported_control_len.min(control_len);
+    // Keep libc's iterator inside the actual allocation even if an invalid
+    // result claims more ancillary bytes than were supplied.
+    message.msg_controllen = bounded_control_len;
+    let control_start = message.msg_control.cast::<u8>() as usize;
+    let Some(control_end) = control_start.checked_add(bounded_control_len) else {
+        return Ok(None);
+    };
+    // SAFETY: CMSG_LEN performs only ancillary-data layout arithmetic.
+    let header_len = unsafe { libc::CMSG_LEN(0) as usize };
+
+    let mut sender = None;
+    let mut malformed_control = reported_control_len > control_len;
+    // SAFETY: `msg_controllen` has been clamped to the live, aligned control
+    // allocation. Every returned pointer is bounds-checked before dereference.
+    let mut control_message = unsafe { libc::CMSG_FIRSTHDR(&message) };
+    while !control_message.is_null() {
+        let cmsg_start = control_message.cast::<u8>() as usize;
+        let Some(header_end) = cmsg_start.checked_add(header_len) else {
+            malformed_control = true;
+            break;
+        };
+        if cmsg_start < control_start || header_end > control_end {
+            malformed_control = true;
+            break;
+        }
+
+        // SAFETY: the complete, aligned cmsghdr lies within the checked
+        // control-buffer range.
+        let header = unsafe { &*control_message };
+        let cmsg_len = header.cmsg_len as usize;
+        let Some(cmsg_end) = cmsg_start.checked_add(cmsg_len) else {
+            malformed_control = true;
+            break;
+        };
+        if cmsg_len < header_len || cmsg_end > control_end {
+            malformed_control = true;
+            break;
+        }
+
+        // SAFETY: CMSG_DATA performs layout arithmetic from the validated,
+        // complete header.
+        let data = unsafe { libc::CMSG_DATA(control_message).cast::<u8>() };
+        let data_start = data as usize;
+        let payload_len = cmsg_len - header_len;
+        if data_start != header_end
+            || data_start
+                .checked_add(payload_len)
+                .is_none_or(|end| end > cmsg_end)
+        {
+            malformed_control = true;
+            break;
+        }
+
+        if header.cmsg_level == libc::SOL_SOCKET && header.cmsg_type == libc::SCM_RIGHTS {
+            if payload_len % mem::size_of::<libc::c_int>() != 0 {
+                malformed_control = true;
+                break;
+            }
+
+            for index in 0..payload_len / mem::size_of::<libc::c_int>() {
+                // SAFETY: the payload bounds above prove this complete c_int
+                // lies in the received control record. SCM_RIGHTS descriptors
+                // are newly installed in this process by recvmsg(2).
+                let fd = unsafe {
+                    data.add(index * mem::size_of::<libc::c_int>())
+                        .cast::<libc::c_int>()
+                        .read_unaligned()
+                };
+                if fd < 0 {
+                    malformed_control = true;
+                    break;
+                }
+                // SAFETY: this function deliberately takes ownership of each
+                // unexpected received descriptor and closes it.
+                unsafe {
+                    libc::close(fd);
+                }
+            }
+            if malformed_control {
+                break;
+            }
+        } else if header.cmsg_level == libc::SOL_SOCKET
+            && header.cmsg_type == SCM_CREDENTIALS
+            && payload_len == mem::size_of::<ucred>()
+            && sender.is_none()
+        {
+            // SAFETY: the exact payload-length check proves a complete
+            // `ucred` is present. `read_unaligned` avoids imposing a Rust
+            // alignment requirement on the C ancillary-data pointer.
+            let credentials = unsafe { data.cast::<ucred>().read_unaligned() };
+            sender = u32::try_from(credentials.pid).ok().filter(|pid| *pid != 0);
+        }
+
+        // SAFETY: the current header and its length are fully contained in the
+        // clamped control buffer, so libc can safely locate the next record.
+        control_message = unsafe { libc::CMSG_NXTHDR(&message, control_message) };
+    }
+
+    if received == 0
+        || message.msg_flags & (libc::MSG_TRUNC | libc::MSG_CTRUNC) != 0
+        || malformed_control
+        || sender.is_none()
+    {
+        return Ok(None);
+    }
+
+    let received = received as usize;
+    if received > 1 && payload[..received - 1].contains(&0) {
+        return Ok(None);
+    }
+
+    let text_bytes = if payload[received - 1] == 0 {
+        &payload[..received - 1]
+    } else {
+        &payload[..received]
+    };
+    let Ok(text) = std::str::from_utf8(text_bytes) else {
+        return Ok(None);
+    };
+
+    Ok(Some((
+        NotificationMessage::parse(text.to_owned()),
+        sender.expect("sender checked above"),
+    )))
+}
+
 // ── Core API ───────────────────────────────────────────────────────────────
 
 /// Fork a child process and block until it signals readiness via
@@ -330,7 +529,7 @@ pub fn fork_notify_with_timeout(argv: &[String], timeout: Duration) -> Result<Fo
     let socket_path = make_socket_path();
     let socket = UnixDatagram::bind(&socket_path)?;
     let mut socket_path_cleanup = SocketPathCleanup::new(socket_path.clone());
-    socket.set_read_timeout(Some(timeout))?;
+    enable_sender_credentials(&socket)?;
     socket.set_nonblocking(false)?;
 
     let mut command = Command::new(&argv[0]);
@@ -344,29 +543,51 @@ pub fn fork_notify_with_timeout(argv: &[String], timeout: Duration) -> Result<Fo
     let child_pid = child.id();
 
     let readiness = (|| {
-        // Receive and validate the notification from the child.
-        let msg = match notify_recv(&socket) {
-            Ok(m) => m,
-            Err(NotifyError::Io(io::ErrorKind::TimedOut)) => {
-                // On timeout, check if the child is still alive.
-                match child.try_wait()? {
-                    Some(status) => return Err(exit_status_to_error(child_pid, status)),
-                    None => return Err(ForkNotifyError::ChildNotReady { pid: child_pid }),
-                }
+        let started = Instant::now();
+        loop {
+            if let Some(status) = child.try_wait()? {
+                return Err(exit_status_to_error(child_pid, status));
             }
-            Err(NotifyError::Io(io::ErrorKind::WouldBlock)) => match child.try_wait()? {
-                Some(status) => return Err(exit_status_to_error(child_pid, status)),
-                None => return Err(ForkNotifyError::ChildNotReady { pid: child_pid }),
-            },
-            Err(e) => {
-                return Err(ForkNotifyError::Io(io::Error::new(io::ErrorKind::Other, e)));
-            }
-        };
 
-        // The notification socket doesn't carry sender PID credentials in our
-        // pure-Rust implementation (the C version uses SO_PEERCRED). We treat
-        // the child PID as the sender.
-        validate_notification(&msg, child_pid, child_pid)
+            let Some(remaining) = timeout.checked_sub(started.elapsed()) else {
+                return Err(ForkNotifyError::ChildNotReady { pid: child_pid });
+            };
+            if remaining.is_zero() {
+                return Err(ForkNotifyError::ChildNotReady { pid: child_pid });
+            }
+            socket.set_read_timeout(Some(remaining))?;
+
+            let received = match recv_notification_with_sender(&socket) {
+                Ok(Some(message)) => message,
+                Ok(None) => continue,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                    ) =>
+                {
+                    match child.try_wait()? {
+                        Some(status) => {
+                            return Err(exit_status_to_error(child_pid, status));
+                        }
+                        None => {
+                            return Err(ForkNotifyError::ChildNotReady { pid: child_pid });
+                        }
+                    }
+                }
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(ForkNotifyError::Io(error)),
+            };
+
+            match validate_notification(&received.0, child_pid, received.1) {
+                Ok(()) => return Ok(()),
+                // The C event handler ignores unrelated and non-ready
+                // datagrams and keeps waiting for the child.
+                Err(ForkNotifyError::UnexpectedSender { .. })
+                | Err(ForkNotifyError::ChildNotReady { .. }) => continue,
+                Err(error) => return Err(error),
+            }
+        }
     })();
 
     if let Err(error) = readiness {

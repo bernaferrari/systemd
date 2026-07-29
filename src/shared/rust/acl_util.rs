@@ -252,13 +252,26 @@ impl std::fmt::Display for AclParseError {
 
 impl std::error::Error for AclParseError {}
 
+/// Split ACL fields with the exact delimiter treatment used by C `parse_acl()`.
+///
+/// This is equivalent to `strv_split_full(..., ":",
+/// EXTRACT_DONT_COALESCE_SEPARATORS | EXTRACT_RETAIN_ESCAPE)`: adjacent and
+/// trailing delimiters produce empty fields, and a backslash is an ordinary
+/// character. In particular, `\\:` is *not* an escaped colon; it remains a
+/// backslash followed by a field delimiter. Keeping that deliberately small
+/// grammar prevents this pure Rust helper from accepting ACL text that the C
+/// implementation would reject before it reaches libacl.
+fn split_acl_entry_fields(text: &str) -> Vec<&str> {
+    text.split(':').collect()
+}
+
 /// Parse a single ACL text entry (e.g., "user::rwx", "default:user:foo:rw", "group:bar:r-x").
 ///
 /// Uppercase `X` is retained so that [`classify_acl_entry`] can route the entry
 /// through the conditional-execute path before a future libacl boundary
 /// normalizes it, matching `parse_acl()` in the C implementation.
 pub fn parse_acl_entry(text: &str) -> Result<AclTextEntry, AclParseError> {
-    let parts: Vec<&str> = text.split(':').collect();
+    let parts = split_acl_entry_fields(text);
 
     if parts.len() < 3 || parts.len() > 4 {
         return Err(AclParseError::InvalidFieldCount(parts.len()));
@@ -684,6 +697,19 @@ mod tests {
         assert_eq!(
             parse_acl_entry("invalid:user::rwx"),
             Err(AclParseError::InvalidDefaultPrefix("invalid".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_acl_entry_retains_backslashes_without_escaping_delimiters() {
+        let entry = parse_acl_entry(r"user:alice\\ops:rwx").unwrap();
+        assert_eq!(entry.qualifier, r"alice\\ops");
+
+        // `parse_acl()` uses EXTRACT_RETAIN_ESCAPE, which deliberately makes
+        // the colon below a separator instead of treating it as escaped.
+        assert_eq!(
+            parse_acl_entry(r"user:alice\:ops:rwx"),
+            Err(AclParseError::InvalidDefaultPrefix("user".to_string()))
         );
     }
 
