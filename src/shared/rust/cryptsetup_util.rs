@@ -2,20 +2,34 @@
 //
 // PORT-SYNC: src/shared/cryptsetup-util.c, src/shared/cryptsetup-util.h
 //
-// PORT-GAP: `CryptDevice` and `CryptsetupLibrary` are injected behavioral
-// seams; they do not yet own libcryptsetup's opaque objects or publish C's
-// process-global symbol table. C's HAVE_LIBCRYPTSETUP-aware
-// `dlopen_cryptsetup()` therefore remains the production loader authority.
+// PORT-GAP: `CryptDevice` and `CryptsetupLibrary` remain injected behavioral
+// seams; they do not yet own libcryptsetup's opaque objects. Production
+// loading delegates to C's HAVE_LIBCRYPTSETUP-aware `dlopen_cryptsetup()` and
+// leaves its process-global symbol table and library handle entirely in C.
 
 use std::collections::BTreeMap;
 use std::env;
 use std::fmt;
+use std::sync::Mutex;
 
 use systemd_basic_rs::sha256_hmac::hmac_sha256;
 
 use crate::ffi::Errno;
 
 pub type Result<T> = std::result::Result<T, CryptsetupError>;
+
+// SAFETY: Exact cryptsetup-util.h declaration. C owns the process-global
+// dlopen handle and every function pointer initialized by this call.
+unsafe extern "C" {
+    #[link_name = "dlopen_cryptsetup"]
+    safe fn c_dlopen_cryptsetup(log_level: libc::c_int) -> libc::c_int;
+}
+
+/// Serializes safe Rust calls that initialize C's process-global loader state.
+///
+/// C callers retain their existing synchronization contract; this lock only
+/// prevents two safe Rust callers from entering the mutable loader together.
+static CRYPTSETUP_LOAD_LOCK: Mutex<()> = Mutex::new(());
 
 pub const CRYPT_ANY_TOKEN: i32 = -1;
 pub const CRYPT_KDF_PBKDF2: &str = "pbkdf2";
@@ -116,6 +130,49 @@ pub enum DlopenCryptsetupResult {
     AlreadyLoaded,
     NewlyLoaded,
 }
+
+/// An exact negative errno returned by C's authoritative libcryptsetup loader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CryptsetupLoaderError {
+    neg_errno: libc::c_int,
+}
+
+impl CryptsetupLoaderError {
+    fn from_neg_errno(neg_errno: libc::c_int) -> Self {
+        debug_assert!(neg_errno < 0);
+        Self { neg_errno }
+    }
+
+    /// Returns C's negative errno without normalization or loss of detail.
+    pub fn as_neg_errno(self) -> libc::c_int {
+        self.neg_errno
+    }
+
+    /// Returns the corresponding positive errno when it is representable.
+    pub fn errno(self) -> Option<libc::c_int> {
+        self.neg_errno.checked_neg()
+    }
+}
+
+impl fmt::Display for CryptsetupLoaderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.errno() {
+            Some(errno) => write!(
+                f,
+                "C dlopen_cryptsetup() failed with errno {}: {}",
+                errno,
+                std::io::Error::from_raw_os_error(errno),
+            ),
+            None => write!(
+                f,
+                "C dlopen_cryptsetup() returned invalid negative errno {}",
+                self.neg_errno,
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CryptsetupLoaderError {}
 
 pub trait CryptDevice {
     fn set_log_callback(&mut self, callback: Option<CryptLogCallback>);
@@ -277,6 +334,41 @@ pub fn cryptsetup_get_volume_key_id<D: CryptDevice>(
     Ok(hex_encode(&digest))
 }
 
+/// Loads libcryptsetup through C's authoritative process-global loader.
+///
+/// This convenience form uses C's normal debug-level diagnostics. The return
+/// value distinguishes C's cached success (`AlreadyLoaded`) from the call
+/// which initialized the symbol table (`NewlyLoaded`).
+pub fn dlopen_libcryptsetup() -> std::result::Result<DlopenCryptsetupResult, CryptsetupLoaderError>
+{
+    dlopen_libcryptsetup_full(libc::LOG_DEBUG)
+}
+
+/// Loads libcryptsetup through C with the requested systemd log level.
+///
+/// This preserves C's exact `HAVE_LIBCRYPTSETUP`, `dlopen_safe()`, required
+/// and optional symbol policy, global logging setup, external-token-path
+/// handling, and process-lifetime handle ownership. Failures retain the exact
+/// negative errno returned by C and are not cached by Rust, so callers may
+/// retry.
+pub fn dlopen_libcryptsetup_full(
+    log_level: libc::c_int,
+) -> std::result::Result<DlopenCryptsetupResult, CryptsetupLoaderError> {
+    let _lock = CRYPTSETUP_LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    match c_dlopen_cryptsetup(log_level) {
+        result if result < 0 => Err(CryptsetupLoaderError::from_neg_errno(result)),
+        0 => Ok(DlopenCryptsetupResult::AlreadyLoaded),
+        _ => Ok(DlopenCryptsetupResult::NewlyLoaded),
+    }
+}
+
+/// Exercises cryptsetup behavior against an injected implementation.
+///
+/// Production code should use [`dlopen_libcryptsetup`]; this seam intentionally
+/// does not initialize C's process-global libcryptsetup symbol table.
 pub fn dlopen_cryptsetup<L: CryptsetupLibrary>(
     state: &mut CryptsetupLoadState,
     library: Option<&mut L>,
@@ -286,6 +378,8 @@ pub fn dlopen_cryptsetup<L: CryptsetupLibrary>(
     dlopen_cryptsetup_with_env(state, library, debug_logging, env_path.as_deref())
 }
 
+/// Injected variant of [`dlopen_cryptsetup`] with an explicit environment
+/// value, primarily for deterministic behavioral tests.
 pub fn dlopen_cryptsetup_with_env<L: CryptsetupLibrary>(
     state: &mut CryptsetupLoadState,
     library: Option<&mut L>,

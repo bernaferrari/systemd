@@ -8,7 +8,7 @@ publish = false
 path = "lib.rs"
 
 [dependencies]
-systemd-shared-rs = { path = "../../shared/rust" }
+systemd-basic-rs = { path = "../../basic/rust" }
 
 [[bin]]
 name = "bootctl"

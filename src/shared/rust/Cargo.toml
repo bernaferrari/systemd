@@ -18,7 +18,6 @@ edition = "2024"
 bitflags = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true, features = ["zerocopy"] }
-openssl = "0.10"
 systemd-basic-rs = { path = "../../basic/rust" }
 systemd-libsystemd-rs = { path = "../../libsystemd/rust" }
 systemd-platform-rs = { path = "../../platform/rust" }

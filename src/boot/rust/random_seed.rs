@@ -8,6 +8,8 @@
 // the UEFI implementation. It deliberately does not pretend that mutating an
 // in-memory model has performed the EFI file and configuration-table updates.
 
+use systemd_basic_rs::sha256_hmac::sha256;
+
 // ── Constants ─────────────────────────────────────────────────────────────
 
 pub const RANDOM_MAX_SIZE_MIN: usize = 32;
@@ -233,10 +235,6 @@ fn append_framed(transcript: &mut Vec<u8>, value: Option<&[u8]>) -> Result<(), R
     transcript.extend_from_slice(&value.len().to_ne_bytes());
     transcript.extend_from_slice(value);
     Ok(())
-}
-
-fn sha256(input: &[u8]) -> [u8; HASH_VALUE_SIZE] {
-    systemd_shared_rs::pcrextend_util::sha256(input)
 }
 
 /// Derive the two seeds using the exact framing in `src/boot/random-seed.c`.

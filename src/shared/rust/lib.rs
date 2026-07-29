@@ -155,7 +155,6 @@ pub mod numa_util;
 pub mod openssl_util;
 pub mod output_mode;
 pub mod pam_util;
-pub mod pcrextend_util;
 pub mod pkcs11_util;
 pub mod pkcs7_util;
 pub mod printk_util;
