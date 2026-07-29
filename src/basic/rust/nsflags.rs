@@ -145,8 +145,9 @@ fn namespace_flags_from_bytes(name: &[u8]) -> Result<u64, i32> {
 }
 
 /// Reproduce `extract_first_word(..., NULL, 0)` for this tiny fixed namespace
-/// vocabulary. With zero flags, that C helper treats the complete C
-/// `WHITESPACE` set as separators and strips a backslash before the next byte.
+/// vocabulary. With zero flags, that C helper uses `WHITESPACE` (space, tab,
+/// newline, and carriage return) as separators and strips a backslash before
+/// the next byte.
 fn parse_namespace_word<'a>(input: &'a [u8], offset: &mut usize) -> Result<&'a [u8], i32> {
     const MAX_NAMESPACE_NAME_LEN: usize = 6; // "cgroup"
     let mut word = [0; MAX_NAMESPACE_NAME_LEN];
@@ -183,7 +184,7 @@ fn parse_namespace_word<'a>(input: &'a [u8], offset: &mut usize) -> Result<&'a [
 
 #[inline]
 const fn c_whitespace(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
+    matches!(byte, b' ' | b'\t' | b'\n' | b'\r')
 }
 
 #[inline]
@@ -564,6 +565,16 @@ mod tests {
             namespace_flags_from_string("  mnt   net  "),
             Ok(CLONE_NEWNS | CLONE_NEWNET)
         );
+    }
+
+    #[test]
+    fn test_flags_from_string_uses_c_whitespace() {
+        assert_eq!(
+            namespace_flags_from_string("\tmnt\nnet\ruser "),
+            Ok(CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWUSER)
+        );
+        assert_eq!(namespace_flags_from_string("mnt\u{b}net"), Err(EINVAL));
+        assert_eq!(namespace_flags_from_string("mnt\u{c}net"), Err(EINVAL));
     }
 
     #[test]

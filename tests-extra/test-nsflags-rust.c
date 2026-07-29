@@ -149,7 +149,8 @@ static void test_namespace_flags_to_strv(void) {
 /* -- namespace_flags_from_string ------------------------------------------ */
 
 static void test_namespace_flags_from_string(void) {
-        static const char c_whitespace[] = "\tmnt\nnet\vuser\futs\r";
+        static const char c_whitespace[] = "\tmnt\nnet\ruser uts\r";
+        static const char non_c_whitespace[] = "mnt\vnet\fuser";
         static const char escaped_names[] = "m\\nt n\\et";
         static const char invalid_utf8[] = { 'n', 'e', 't', (char) 0xff, 0 };
         unsigned long c_flags, rs_flags;
@@ -195,7 +196,7 @@ static void test_namespace_flags_from_string(void) {
         assert_se(r == -EINVAL);
         assert_se(c_flags == rs_flags);
 
-        /* extract_first_word() uses C ASCII whitespace, not Unicode rules. */
+        /* extract_first_word() uses WHITESPACE: space, tab, LF, and CR. */
         r = namespace_flags_from_string(c_whitespace, &c_flags);
         assert_se(r >= 0);
         r = rs_namespace_flags_from_string(c_whitespace, &rs_flags);
@@ -203,7 +204,16 @@ static void test_namespace_flags_from_string(void) {
         assert_se(c_flags == rs_flags);
         assert_se(c_flags == (CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWUSER | CLONE_NEWUTS));
 
-        /* With zero extract flags, a backslash escapes the next byte. */
+        /* Vertical tab and form feed are ordinary bytes, not separators. */
+        c_flags = 0xdeadUL;
+        rs_flags = 0xdeadUL;
+        r = namespace_flags_from_string(non_c_whitespace, &c_flags);
+        assert_se(r == -EINVAL);
+        r = rs_namespace_flags_from_string(non_c_whitespace, &rs_flags);
+        assert_se(r == -EINVAL);
+        assert_se(c_flags == rs_flags);
+
+        /* With zero extract flags, a backslash quotes the next byte. */
         r = namespace_flags_from_string(escaped_names, &c_flags);
         assert_se(r >= 0);
         r = rs_namespace_flags_from_string(escaped_names, &rs_flags);

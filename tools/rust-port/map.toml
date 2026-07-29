@@ -1403,8 +1403,8 @@ tier = 1
 symbols = 4
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/nsflags.c" = "b852221c6757f595b49f3611604ab36a6c5ce9a7", "src/shared/nsflags.h" = "eae199d73fa3deb7610bf89a781990f1f821a7fb", "src/basic/namespace-util.c" = "72e7005c946133b8e693fb8ac5817f8a8ed90ada", "src/basic/namespace-util.h" = "d0eff636a9d2b921da859e0f98cf449785b7be8a" }
-last_reviewed_rust_blobs = { "src/basic/rust/nsflags.rs" = "5c9ece426655fec022d6e8f64710836bb622c282", "src/shared/rust/nsflags.h" = "3d64d407b1e49e141fd206db0e0ede68293c9694" }
-notes = "Reviewed static namespace-flag ABI slice 2026-07-28; no build/tests/VM. Four facades preserve native unsigned-long flags, ordered namespace names, full C WHITESPACE/backslash parsing, output-on-success, borrowed static names, and libc-compatible string/strv ownership. Namespace FD, pidref, userns, mount, and syscall operations remain C-only. C remains the production authority; runtime parity is unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/nsflags.rs" = "348a4902487ebbc2f01c426133c775c715dd1df0", "src/shared/rust/nsflags.h" = "3d64d407b1e49e141fd206db0e0ede68293c9694" }
+notes = "Reviewed namespace-flag ABI slice 2026-07-29; the C/R Meson shadow passed in the Ubuntu Lima guest. Four facades preserve native unsigned-long flags, ordered namespace names, C WHITESPACE (space/tab/LF/CR) and backslash parsing, output-on-success, borrowed static names, and libc-compatible string/strv ownership. Namespace FD, pidref, userns, mount, and syscall operations remain C-only. C remains the production authority; broader runtime parity remains P2."
 
 [pe_binary]
 c_paths = ["src/shared/pe-binary.c", "src/shared/pe-binary.h"]

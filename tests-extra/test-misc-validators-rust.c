@@ -154,8 +154,8 @@ static void test_image_name_is_valid(void) {
         assert_se(image_name_is_valid("image/with/slash") == rs_image_name_is_valid("image/with/slash"));
         assert_se(image_name_is_valid("image/with/slash") == false);
 
-        assert_se(image_name_is_valid("image\x01bad") == rs_image_name_is_valid("image\x01bad"));
-        assert_se(image_name_is_valid("image\x01bad") == false);
+        assert_se(image_name_is_valid("image\x01" "bad") == rs_image_name_is_valid("image\x01" "bad"));
+        assert_se(image_name_is_valid("image\x01" "bad") == false);
 }
 
 /* -- valid_gecos ---------------------------------------------------------- */
