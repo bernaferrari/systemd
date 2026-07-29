@@ -2,8 +2,9 @@
 //
 // systemd-shared-rs: conservative Rust shadow modules for src/shared/
 //
-// This crate intentionally starts small. The Meson input list below mirrors the
-// module declarations here so the shadow port stays mechanically trackable.
+// This IDE-only crate is not currently built by Meson. Its module declarations
+// are an inventory, not evidence of a linked Rust production or shadow-test
+// path; map.toml records the actual port/review state for each module.
 
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]

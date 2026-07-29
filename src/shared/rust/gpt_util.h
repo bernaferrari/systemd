@@ -13,6 +13,7 @@ int rs_partition_verity_hash_to_data(int d);
 int rs_partition_verity_sig_to_data(int d);
 int rs_partition_verity_to_data(int d);
 const char *rs_partition_mountpoint_to_string(int d);
+int rs_gpt_partition_label_valid(const char *s);
 
 /* vlan-util.c */
 int rs_parse_vlanid(const char *p, unsigned short *ret);

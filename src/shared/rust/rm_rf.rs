@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/rm-rf.c, src/shared/rm-rf.h
+// PORT-GAP: scope=shared.rm-rf; authority=src/shared/rm-rf.c,src/shared/rm-rf.h
+// This Rust-native prototype is not Meson-wired and exports no C ABI. It must
+// not be treated as a production replacement or parity-tested shadow until it
+// preserves raw pathname bytes, exact negative errno values, current-C
+// physical-filesystem policy, and btrfs subvolume behavior.
 //
 // Recursive file/directory removal utilities.
 //

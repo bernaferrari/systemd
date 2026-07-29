@@ -137,8 +137,11 @@ static void test_prioq_indices(void) {
         assert_se(*(int*) prioq_peek_by_index(c, 0) == *(int*) rs_prioq_peek_by_index(r, 0));
 
         assert_se(*(int*) prioq_pop(c) == *(int*) rs_prioq_pop(r));
-        assert_se(c_indices[1] == PRIOQ_IDX_NULL);
-        assert_se(r_indices[1] == PRIOQ_IDX_NULL);
+        /* The reshuffled value at slot 0 became the heap root, so pop()
+         * invalidates its own caller-provided index—not whichever item happened
+         * to have been inserted second. */
+        assert_se(c_indices[0] == PRIOQ_IDX_NULL);
+        assert_se(r_indices[0] == PRIOQ_IDX_NULL);
 
         prioq_free(c);
         rs_prioq_free(r);

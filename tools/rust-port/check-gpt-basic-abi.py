@@ -51,6 +51,7 @@ SHARED_EXPECTED = {
         "rs_partition_verity_sig_to_data",
         "rs_partition_verity_to_data",
         "rs_partition_mountpoint_to_string",
+        "rs_gpt_partition_label_valid",
         "rs_parse_vlanid",
     )
 }

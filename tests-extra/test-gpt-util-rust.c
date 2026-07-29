@@ -288,9 +288,9 @@ static void test_gpt_partition_label_valid(void) {
         assert_se(cv == 0); /* false: 37 > 36 */
 
         /* Multi-byte UTF-8 chars — each becomes one UTF-16 code unit */
-        /* 18 two-byte UTF-8 chars = 18 UTF-16 code units, within limit */
+        /* 20 two-byte UTF-8 chars = 20 UTF-16 code units, within limit */
         cv = gpt_partition_label_valid("äöüéèêàâîôûäöüéèêàâî");
-        rv = rs_gpt_partition_label_valid("äöüéèêàâî");
+        rv = rs_gpt_partition_label_valid("äöüéèêàâîôûäöüéèêàâî");
         assert_se(cv == rv);
         assert_se(cv > 0); /* true */
 }
