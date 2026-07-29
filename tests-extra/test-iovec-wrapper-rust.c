@@ -3,19 +3,37 @@
 
 #include <string.h>
 
+#include "alloc-util.h"
 #include "iovec-wrapper.h"
 #include "rust/iovec_wrapper.h"
+#include "tests.h"
+
+/* RUST-CONTRACT: iovec-wrapper-cleanup */
+/* RUST-CONTRACT: iovec-wrapper-put */
+/* RUST-CONTRACT: iovec-wrapper-rebase */
+/* RUST-CONTRACT: iovec-wrapper-query */
+
+_Static_assert(sizeof(struct iovec_wrapper) == sizeof(struct rs_IoVecWrapper));
+_Static_assert(_Alignof(struct iovec_wrapper) == _Alignof(struct rs_IoVecWrapper));
+
+static struct iovec_wrapper* new_c_wrapper(void) {
+        return new0(struct iovec_wrapper, 1);
+}
+
+static struct rs_IoVecWrapper* new_rust_wrapper(void) {
+        return new0(struct rs_IoVecWrapper, 1);
+}
 
 /* Helper: cast const C iovec_wrapper to rs_IoVecWrapper (same layout) */
 static const struct rs_IoVecWrapper* to_rs_c(const struct iovec_wrapper *w) {
         return (const struct rs_IoVecWrapper*) w;
 }
 
-/* ── iovw_new / iovw_free / iovw_free_free ──────────────────────────────── */
+/* ── iovw_free / iovw_free_free ─────────────────────────────────────────── */
 
 static void test_iovw_new_free(void) {
-        struct iovec_wrapper *c_w = iovw_new();
-        struct rs_IoVecWrapper *r_w = rs_iovw_new();
+        struct iovec_wrapper *c_w = new_c_wrapper();
+        struct rs_IoVecWrapper *r_w = new_rust_wrapper();
 
         assert_se(c_w != NULL);
         assert_se(r_w != NULL);
@@ -33,8 +51,8 @@ static void test_iovw_new_free(void) {
 }
 
 static void test_iovw_free_free(void) {
-        struct iovec_wrapper *c_w = iovw_new();
-        struct rs_IoVecWrapper *r_w = rs_iovw_new();
+        struct iovec_wrapper *c_w = new_c_wrapper();
+        struct rs_IoVecWrapper *r_w = new_rust_wrapper();
 
         iovw_put(c_w, strdup("hello"), 5);
         rs_iovw_put(r_w, strdup("hello"), 5);
@@ -54,8 +72,8 @@ static void test_iovw_put_size(void) {
         char a[] = "hello";
         char b[] = "world";
 
-        struct iovec_wrapper *c_w = iovw_new();
-        struct rs_IoVecWrapper *r_w = rs_iovw_new();
+        struct iovec_wrapper *c_w = new_c_wrapper();
+        struct rs_IoVecWrapper *r_w = new_rust_wrapper();
 
         /* Empty */
         assert_se(iovw_isempty(c_w));
@@ -91,8 +109,8 @@ static void test_iovw_put_size(void) {
 
 static void test_iovw_done(void) {
         char data[] = "hello";
-        struct iovec_wrapper *c_w = iovw_new();
-        struct rs_IoVecWrapper *r_w = rs_iovw_new();
+        struct iovec_wrapper *c_w = new_c_wrapper();
+        struct rs_IoVecWrapper *r_w = new_rust_wrapper();
 
         iovw_put(c_w, data, 5);
         rs_iovw_put(r_w, data, 5);
@@ -120,24 +138,23 @@ static void test_iovw_done(void) {
 /* ── iovw_rebase ──────────────────────────────────────────────────────── */
 
 static void test_iovw_rebase(void) {
-        char buf[64];
-        struct iovec_wrapper *c_w = iovw_new();
-        struct rs_IoVecWrapper *r_w = rs_iovw_new();
+        char old_buf[64], new_buf[64];
+        struct iovec_wrapper *c_w = new_c_wrapper();
+        struct rs_IoVecWrapper *r_w = new_rust_wrapper();
 
-        /* Point iovec entries into buf */
-        iovw_put(c_w, buf + 10, 5);
-        iovw_put(c_w, buf + 30, 5);
-        rs_iovw_put(r_w, buf + 10, 5);
-        rs_iovw_put(r_w, buf + 30, 5);
+        /* Point iovec entries into old_buf. */
+        iovw_put(c_w, old_buf + 10, 5);
+        iovw_put(c_w, old_buf + 30, 5);
+        rs_iovw_put(r_w, old_buf + 10, 5);
+        rs_iovw_put(r_w, old_buf + 30, 5);
 
-        /* Rebase: old=buf → new=buf+100 */
-        iovw_rebase(c_w, buf, buf + 100);
-        rs_iovw_rebase(r_w, buf, buf + 100);
+        iovw_rebase(c_w, old_buf, new_buf);
+        rs_iovw_rebase(r_w, old_buf, new_buf);
 
-        assert_se(c_w->iovec[0].iov_base == buf + 110);
-        assert_se(r_w->iovec[0].iov_base == buf + 110);
-        assert_se(c_w->iovec[1].iov_base == buf + 130);
-        assert_se(r_w->iovec[1].iov_base == buf + 130);
+        assert_se(c_w->iovec[0].iov_base == new_buf + 10);
+        assert_se(r_w->iovec[0].iov_base == new_buf + 10);
+        assert_se(c_w->iovec[1].iov_base == new_buf + 30);
+        assert_se(r_w->iovec[1].iov_base == new_buf + 30);
 
         iovw_free(c_w);
         rs_iovw_free(r_w);

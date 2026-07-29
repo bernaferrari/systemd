@@ -349,29 +349,107 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "hexdecoct": (
-            basic_rust / "hexdecoct.h",
-            basic_rust / "hexdecoct.rs",
+        "bitmap": (
+            basic_rust / "bitmap.h",
+            basic_rust / "bitmap.rs",
             frozenset(
                 {
-                    "rs_octchar",
-                    "rs_unoctchar",
-                    "rs_decchar",
-                    "rs_undecchar",
-                    "rs_hexchar",
-                    "rs_unhexchar",
-                    "rs_base32hexchar",
-                    "rs_unbase32hexchar",
-                    "rs_base64char",
-                    "rs_urlsafe_base64char",
-                    "rs_unbase64char",
-                    "rs_hexmem",
-                    "rs_unhexmem_full",
-                    "rs_base32hexmem",
-                    "rs_unbase32hexmem",
-                    "rs_base64mem_full",
-                    "rs_unbase64mem_full",
-                    "rs_base64_append",
+                    "rs_bitmap_isset",
+                    "rs_bitmap_isclear",
+                    "rs_bitmap_equal",
+                    "rs_bitmap_new",
+                    "rs_bitmap_copy",
+                    "rs_bitmap_free",
+                    "rs_bitmap_ensure_allocated",
+                    "rs_bitmap_set",
+                    "rs_bitmap_unset",
+                    "rs_bitmap_clear",
+                    "rs_bitmap_iterate",
+                }
+            ),
+        ),
+        "iovec_wrapper": (
+            basic_rust / "iovec_wrapper.h",
+            basic_rust / "iovec_wrapper.rs",
+            frozenset(
+                {
+                    "rs_iovw_done",
+                    "rs_iovw_done_free",
+                    "rs_iovw_free",
+                    "rs_iovw_free_free",
+                    "rs_iovw_put",
+                    "rs_iovw_rebase",
+                    "rs_iovw_size",
+                    "rs_iovw_isempty",
+                }
+            ),
+        ),
+        "prioq": (
+            basic_rust / "prioq.h",
+            basic_rust / "prioq.rs",
+            frozenset(
+                {
+                    "rs_prioq_new",
+                    "rs_prioq_free",
+                    "rs_prioq_put",
+                    "rs_prioq_remove",
+                    "rs_prioq_reshuffle",
+                    "rs_prioq_peek_by_index",
+                    "rs_prioq_pop",
+                    "rs_prioq_size",
+                    "rs_prioq_isempty",
+                }
+            ),
+        ),
+        "image_policy_util": (
+            basic_rust / "image_policy_util.h",
+            basic_rust / "image_policy_util.rs",
+            frozenset(
+                {
+                    "rs_partition_policy_flags_extend",
+                    "rs_partition_policy_flags_reduce",
+                    "rs_partition_policy_flags_from_string",
+                    "rs_partition_policy_flags_to_string",
+                }
+            ),
+        ),
+        "socket_util": (
+            basic_rust / "socket_util.h",
+            basic_rust / "socket_util.rs",
+            frozenset(
+                {
+                    "rs_ifname_valid_char",
+                    "rs_ifname_valid_full",
+                    "rs_ifname_valid",
+                }
+            ),
+        ),
+        "sort_util": (
+            basic_rust / "sort_util.h",
+            basic_rust / "sort_util.rs",
+            frozenset(
+                {
+                    "rs_xbsearch_r",
+                    "rs_qsort_safe",
+                    "rs_qsort_r_safe",
+                    "rs_bsearch_safe_internal",
+                    "rs_cmp_int",
+                    "rs_cmp_uint16",
+                }
+            ),
+        ),
+        "time_util_conversion": (
+            basic_rust / "time_util.h",
+            basic_rust / "time_util/conversion.rs",
+            frozenset(
+                {
+                    "rs_map_clock_usec_raw",
+                    "rs_timespec_load",
+                    "rs_timespec_load_nsec",
+                    "rs_timespec_store",
+                    "rs_timespec_store_nsec",
+                    "rs_timeval_load",
+                    "rs_timeval_store",
                 }
             ),
         ),
@@ -1316,6 +1394,13 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "sha256_hmac": (tests_extra / "test-sha256-hmac-rust.c",),
         "siphash24": (tests_extra / "test-siphash24-rust.c",),
         "dns_domain_validators": (tests_extra / "test-dns-label-rust.c",),
+        "bitmap": (tests_extra / "test-bitmap-rust.c",),
+        "iovec_wrapper": (tests_extra / "test-iovec-wrapper-rust.c",),
+        "prioq": (tests_extra / "test-prioq-rust.c",),
+        "image_policy_util": (tests_extra / "test-image-policy-rust.c",),
+        "socket_util": (tests_extra / "test-socket-util-rust.c",),
+        "sort_util": (tests_extra / "test-sort-util-rust.c",),
+        "time_util_conversion": (tests_extra / "test-time-util-rust.c",),
         "time_util_formatting": (tests_extra / "test-parse-extra-rust.c",),
         "time_util_arithmetic": (tests_extra / "test-time-util-extra2-rust.c",),
         "install_change": (tests_extra / "test-install-rust.c",),
@@ -1603,6 +1688,36 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "dns_domain_validators": (
             root / "src/shared/dns-domain.c",
             root / "src/shared/dns-domain.h",
+        ),
+        "bitmap": (
+            root / "src/shared/bitmap.c",
+            root / "src/shared/bitmap.h",
+            root / "src/basic/iterator.h",
+        ),
+        "iovec_wrapper": (
+            root / "src/basic/iovec-wrapper.c",
+            root / "src/basic/iovec-wrapper.h",
+            root / "src/basic/iovec-util.c",
+            root / "src/basic/iovec-util.h",
+            root / "src/basic/alloc-util.c",
+            root / "src/basic/alloc-util.h",
+        ),
+        "prioq": (root / "src/basic/prioq.c", root / "src/basic/prioq.h"),
+        "image_policy_util": (
+            root / "src/shared/image-policy.c",
+            root / "src/shared/image-policy.h",
+        ),
+        "socket_util": (
+            root / "src/basic/socket-util.c",
+            root / "src/basic/socket-util.h",
+        ),
+        "sort_util": (
+            root / "src/basic/sort-util.c",
+            root / "src/basic/sort-util.h",
+        ),
+        "time_util_conversion": (
+            root / "src/basic/time-util.c",
+            root / "src/basic/time-util.h",
         ),
         "time_util_formatting": (
             root / "src/basic/time-util.c",

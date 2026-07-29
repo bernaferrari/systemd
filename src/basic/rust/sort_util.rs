@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/sort-util.c
+// PORT-SYNC: scope=basic.sort-util; authority=src/basic/sort-util.c,src/basic/sort-util.h
 
 use std::cmp::Ordering;
+use std::ffi::c_void;
+
+use libc::c_int;
 
 fn ordering_to_c_value(ordering: Ordering) -> i32 {
     match ordering {
@@ -86,6 +89,256 @@ where
     }
 
     None
+}
+
+// ── Raw C ABI facades ────────────────────────────────────────────────────
+
+/// Exact C callback types. Callback arguments deliberately stay raw: callers
+/// decide the element layout through the `size` argument, just as in C.
+pub type ComparisonFn = Option<unsafe extern "C" fn(*const c_void, *const c_void) -> c_int>;
+pub type ComparisonUserdataFn =
+    Option<unsafe extern "C" fn(*const c_void, *const c_void, *mut c_void) -> c_int>;
+
+/// # Safety
+///
+/// `base` must start a live `nmemb * size` byte array, and `index < nmemb`.
+/// The multiplication has been checked by the caller.
+unsafe fn element_at(base: *const u8, index: usize, size: usize) -> *const c_void {
+    // SAFETY: upheld by this helper's contract; the offset is checked before
+    // the caller enters the search or sort loop.
+    unsafe { base.add(index * size).cast() }
+}
+
+/// Binary-search raw C elements using the exact lower/upper-bound algorithm
+/// from C `xbsearch_r()`.
+///
+/// # Safety
+///
+/// When `nmemb > 0`, `key` and `base` must be live and `base` must name
+/// `nmemb * size` readable bytes. `compar` must be a live C callback that does
+/// not retain its borrowed pointers; `arg` follows that callback's contract.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_xbsearch_r(
+    key: *const c_void,
+    base: *const c_void,
+    nmemb: usize,
+    size: usize,
+    compar: ComparisonUserdataFn,
+    arg: *mut c_void,
+) -> *mut c_void {
+    if nmemb == 0 {
+        return std::ptr::null_mut();
+    }
+    let Some(compar) = compar else {
+        return std::ptr::null_mut();
+    };
+    if size == 0 || nmemb.checked_mul(size).is_none() || key.is_null() || base.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let mut lower = 0usize;
+    let mut upper = nmemb;
+    let base = base.cast::<u8>();
+    while lower < upper {
+        let index = (lower + upper) / 2;
+        // SAFETY: checked total byte size and index bounds make this an
+        // in-allocation element pointer for the synchronous callback.
+        let element = unsafe { element_at(base, index, size) };
+        // SAFETY: caller supplies a valid C comparator and its userdata.
+        let comparison = unsafe { compar(key, element, arg) };
+        if comparison < 0 {
+            upper = index;
+        } else if comparison > 0 {
+            lower = index + 1;
+        } else {
+            return element.cast_mut();
+        }
+    }
+    std::ptr::null_mut()
+}
+
+/// Sort raw fixed-width C elements without interpreting their layout.
+///
+/// # Safety
+///
+/// For `nmemb > 1`, `base` must name a unique, writable `nmemb * size` byte
+/// array, `size` must be nonzero, and `compar` must be a live strict-weak C
+/// comparator that neither retains nor mutates its borrowed element pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_qsort_safe(
+    base: *mut c_void,
+    nmemb: usize,
+    size: usize,
+    compar: ComparisonFn,
+) {
+    if nmemb <= 1 {
+        return;
+    }
+    let Some(compar) = compar else {
+        return;
+    };
+    if base.is_null() || size == 0 || nmemb.checked_mul(size).is_none() {
+        return;
+    }
+
+    let base = base.cast::<u8>();
+    for index in 1..nmemb {
+        let mut cursor = index;
+        while cursor > 0 {
+            // SAFETY: the checked array extent and loop bounds produce two
+            // distinct, in-allocation elements for the callback and swap.
+            let (left, right) = unsafe {
+                (
+                    element_at(base.cast_const(), cursor - 1, size),
+                    element_at(base.cast_const(), cursor, size),
+                )
+            };
+            // SAFETY: the comparator contract covers these borrowed elements.
+            if unsafe { compar(left, right) } <= 0 {
+                break;
+            }
+            // SAFETY: left/right denote distinct `size`-byte elements in the
+            // uniquely writable array; swapping preserves opaque bytes.
+            unsafe {
+                std::ptr::swap_nonoverlapping(
+                    base.add((cursor - 1) * size),
+                    base.add(cursor * size),
+                    size,
+                )
+            };
+            cursor -= 1;
+        }
+    }
+}
+
+/// Raw-byte userdata sort equivalent to C `qsort_r_safe()`.
+///
+/// # Safety
+///
+/// This has the same array requirements as [`rs_qsort_safe`]. `compar` and
+/// `userdata` must additionally satisfy `comparison_userdata_fn_t` and must
+/// not retain, free, or re-enter the array during comparison.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_qsort_r_safe(
+    base: *mut c_void,
+    nmemb: usize,
+    size: usize,
+    compar: ComparisonUserdataFn,
+    userdata: *mut c_void,
+) {
+    if nmemb <= 1 {
+        return;
+    }
+    let Some(compar) = compar else {
+        return;
+    };
+    if base.is_null() || size == 0 || nmemb.checked_mul(size).is_none() {
+        return;
+    }
+
+    let base = base.cast::<u8>();
+    for index in 1..nmemb {
+        let mut cursor = index;
+        while cursor > 0 {
+            // SAFETY: the checked extent and loop bounds keep both elements
+            // within the array and distinct.
+            let (left, right) = unsafe {
+                (
+                    element_at(base.cast_const(), cursor - 1, size),
+                    element_at(base.cast_const(), cursor, size),
+                )
+            };
+            // SAFETY: caller upholds the callback and userdata contract.
+            if unsafe { compar(left, right, userdata) } <= 0 {
+                break;
+            }
+            // SAFETY: distinct fixed-width elements of a unique byte array.
+            unsafe {
+                std::ptr::swap_nonoverlapping(
+                    base.add((cursor - 1) * size),
+                    base.add(cursor * size),
+                    size,
+                )
+            };
+            cursor -= 1;
+        }
+    }
+}
+
+/// Search raw C elements. The returned pointer aliases `base` and is never
+/// allocated or transferred.
+///
+/// # Safety
+///
+/// When `nmemb > 0`, `key` and `base` must be live and `base` must name
+/// `nmemb * size` readable bytes. `compar` must be a live synchronous C
+/// comparator for the supplied opaque elements.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_bsearch_safe_internal(
+    key: *const c_void,
+    base: *const c_void,
+    nmemb: usize,
+    size: usize,
+    compar: ComparisonFn,
+) -> *mut c_void {
+    if nmemb == 0 {
+        return std::ptr::null_mut();
+    }
+    let Some(compar) = compar else {
+        return std::ptr::null_mut();
+    };
+    if size == 0 || nmemb.checked_mul(size).is_none() || key.is_null() || base.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let mut lower = 0usize;
+    let mut upper = nmemb;
+    let base = base.cast::<u8>();
+    while lower < upper {
+        let index = (lower + upper) / 2;
+        // SAFETY: checked total byte size and index bounds identify the raw element.
+        let element = unsafe { element_at(base, index, size) };
+        // SAFETY: caller supplies a valid comparator for this key/element pair.
+        let comparison = unsafe { compar(key, element) };
+        if comparison < 0 {
+            upper = index;
+        } else if comparison > 0 {
+            lower = index + 1;
+        } else {
+            return element.cast_mut();
+        }
+    }
+    std::ptr::null_mut()
+}
+
+/// Compare two native C `int` values without subtraction overflow.
+///
+/// # Safety
+///
+/// `a` and `b` must be aligned, initialized, live `int` objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_cmp_int(a: *const c_int, b: *const c_int) -> c_int {
+    if a.is_null() || b.is_null() {
+        return 0;
+    }
+    // SAFETY: upheld by this export's operand contract.
+    let (a, b) = unsafe { (*a, *b) };
+    ordering_to_c_value(a.cmp(&b))
+}
+
+/// Compare two native C `uint16_t` values without subtraction overflow.
+///
+/// # Safety
+///
+/// `a` and `b` must be aligned, initialized, live `uint16_t` objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_cmp_uint16(a: *const u16, b: *const u16) -> c_int {
+    if a.is_null() || b.is_null() {
+        return 0;
+    }
+    // SAFETY: upheld by this export's operand contract.
+    let (a, b) = unsafe { (*a, *b) };
+    ordering_to_c_value(a.cmp(&b))
 }
 
 #[cfg(test)]

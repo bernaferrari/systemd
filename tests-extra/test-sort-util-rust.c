@@ -15,6 +15,7 @@
 #include "tests.h"
 
 /* ── cmp_int / cmp_uint16 ─────────────────────────────────────────────── */
+/* RUST-CONTRACT: sort-comparators */
 
 TEST(cmp_int_c_vs_rs) {
         int a = 1, b = 2;
@@ -41,6 +42,7 @@ TEST(cmp_uint16_c_vs_rs) {
 }
 
 /* ── qsort_safe ───────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: sort-qsort-safe */
 
 static int cmp_int_ptr(const void *a, const void *b) {
         int va = *(const int*)a, vb = *(const int*)b;
@@ -102,6 +104,7 @@ TEST(qsort_safe_large_c_vs_rs) {
 }
 
 /* ── qsort_r_safe ─────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: sort-qsort-r-safe */
 
 static int cmp_int_userdata(const int *a, const int *b, void *userdata) {
         int reverse = *(int*)userdata;
@@ -135,6 +138,7 @@ TEST(qsort_r_safe_reverse_c_vs_rs) {
 }
 
 /* ── xbsearch_r ───────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: sort-xbsearch-r */
 
 static int cmp_int_search(const int *key, const int *elem, void *userdata) {
         return (*key < *elem) ? -1 : (*key > *elem) ? 1 : 0;
@@ -144,7 +148,7 @@ TEST(xbsearch_r_found_c_vs_rs) {
         int arr[] = { 10, 20, 30, 40, 50 };
         int key = 30;
 
-        int *c_result = typesafe_bsearch_r(&key, arr, 5, cmp_int_search, NULL);
+        int *c_result = xbsearch_r(&key, arr, 5, sizeof(int), (comparison_userdata_fn_t) cmp_int_search, NULL);
         int *rs_result = (int*)rs_xbsearch_r(&key, arr, 5, sizeof(int), (comparison_userdata_fn_t)cmp_int_search, NULL);
 
         if (c_result)
@@ -160,7 +164,7 @@ TEST(xbsearch_r_not_found_c_vs_rs) {
         int arr[] = { 10, 20, 30, 40, 50 };
         int key = 25;
 
-        int *c_result = typesafe_bsearch_r(&key, arr, 5, cmp_int_search, NULL);
+        int *c_result = xbsearch_r(&key, arr, 5, sizeof(int), (comparison_userdata_fn_t) cmp_int_search, NULL);
         int *rs_result = (int*)rs_xbsearch_r(&key, arr, 5, sizeof(int), (comparison_userdata_fn_t)cmp_int_search, NULL);
 
         ASSERT_NULL(c_result);
@@ -171,7 +175,7 @@ TEST(xbsearch_r_first_c_vs_rs) {
         int arr[] = { 10, 20, 30, 40, 50 };
         int key = 10;
 
-        int *c_result = typesafe_bsearch_r(&key, arr, 5, cmp_int_search, NULL);
+        int *c_result = xbsearch_r(&key, arr, 5, sizeof(int), (comparison_userdata_fn_t) cmp_int_search, NULL);
         int *rs_result = (int*)rs_xbsearch_r(&key, arr, 5, sizeof(int), (comparison_userdata_fn_t)cmp_int_search, NULL);
 
         ASSERT_NOT_NULL(c_result);
@@ -183,7 +187,7 @@ TEST(xbsearch_r_last_c_vs_rs) {
         int arr[] = { 10, 20, 30, 40, 50 };
         int key = 50;
 
-        int *c_result = typesafe_bsearch_r(&key, arr, 5, cmp_int_search, NULL);
+        int *c_result = xbsearch_r(&key, arr, 5, sizeof(int), (comparison_userdata_fn_t) cmp_int_search, NULL);
         int *rs_result = (int*)rs_xbsearch_r(&key, arr, 5, sizeof(int), (comparison_userdata_fn_t)cmp_int_search, NULL);
 
         ASSERT_NOT_NULL(c_result);
@@ -193,7 +197,7 @@ TEST(xbsearch_r_last_c_vs_rs) {
 
 TEST(xbsearch_r_empty_c_vs_rs) {
         int key = 1;
-        int *c_result = typesafe_bsearch_r(&key, (int[]){}, 0, cmp_int_search, NULL);
+        int *c_result = xbsearch_r(&key, (int[]){}, 0, sizeof(int), (comparison_userdata_fn_t) cmp_int_search, NULL);
         int *rs_result = (int*)rs_xbsearch_r(&key, (int[]){}, 0, sizeof(int), (comparison_userdata_fn_t)cmp_int_search, NULL);
 
         ASSERT_NULL(c_result);
@@ -208,7 +212,7 @@ TEST(xbsearch_r_large_c_vs_rs) {
 
         for (int i = 0; i < 100; i++) {
                 int key = i * 2;
-                int *c_result = typesafe_bsearch_r(&key, arr, 100, cmp_int_search, NULL);
+                int *c_result = xbsearch_r(&key, arr, 100, sizeof(int), (comparison_userdata_fn_t) cmp_int_search, NULL);
                 int *rs_result = (int*)rs_xbsearch_r(&key, arr, 100, sizeof(int), (comparison_userdata_fn_t)cmp_int_search, NULL);
 
                 ASSERT_NOT_NULL(c_result);
@@ -218,7 +222,7 @@ TEST(xbsearch_r_large_c_vs_rs) {
 
         /* Not found cases */
         for (int key = 1; key < 200; key += 2) {
-                int *c_result = typesafe_bsearch_r(&key, arr, 100, cmp_int_search, NULL);
+                int *c_result = xbsearch_r(&key, arr, 100, sizeof(int), (comparison_userdata_fn_t) cmp_int_search, NULL);
                 int *rs_result = (int*)rs_xbsearch_r(&key, arr, 100, sizeof(int), (comparison_userdata_fn_t)cmp_int_search, NULL);
 
                 ASSERT_NULL(c_result);
@@ -227,6 +231,7 @@ TEST(xbsearch_r_large_c_vs_rs) {
 }
 
 /* ── bsearch_safe ─────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: sort-bsearch-safe */
 
 static int cmp_int_bsearch_typed(const int *a, const int *b) {
         return (*a < *b) ? -1 : (*a > *b) ? 1 : 0;
@@ -236,7 +241,7 @@ TEST(bsearch_safe_found_c_vs_rs) {
         int arr[] = { 10, 20, 30, 40, 50 };
         int key = 20;
 
-        int *c_result = typesafe_bsearch(&key, arr, 5, cmp_int_bsearch_typed);
+        int *c_result = bsearch_safe_internal(&key, arr, 5, sizeof(int), (comparison_fn_t) cmp_int_bsearch_typed);
         int *rs_result = (int*)rs_bsearch_safe_internal(&key, arr, 5, sizeof(int), (comparison_fn_t)cmp_int_bsearch_typed);
 
         ASSERT_NOT_NULL(c_result);
@@ -248,7 +253,7 @@ TEST(bsearch_safe_not_found_c_vs_rs) {
         int arr[] = { 10, 20, 30, 40, 50 };
         int key = 99;
 
-        int *c_result = typesafe_bsearch(&key, arr, 5, cmp_int_bsearch_typed);
+        int *c_result = bsearch_safe_internal(&key, arr, 5, sizeof(int), (comparison_fn_t) cmp_int_bsearch_typed);
         int *rs_result = (int*)rs_bsearch_safe_internal(&key, arr, 5, sizeof(int), (comparison_fn_t)cmp_int_bsearch_typed);
 
         ASSERT_NULL(c_result);
@@ -257,7 +262,7 @@ TEST(bsearch_safe_not_found_c_vs_rs) {
 
 TEST(bsearch_safe_empty_c_vs_rs) {
         int key = 42;
-        int *c_result = typesafe_bsearch(&key, (int[]){}, 0, cmp_int_bsearch_typed);
+        int *c_result = bsearch_safe_internal(&key, (int[]){}, 0, sizeof(int), (comparison_fn_t) cmp_int_bsearch_typed);
         int *rs_result = (int*)rs_bsearch_safe_internal(&key, (int[]){}, 0, sizeof(int), (comparison_fn_t)cmp_int_bsearch_typed);
 
         ASSERT_NULL(c_result);

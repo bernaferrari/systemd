@@ -1,0 +1,85 @@
+schema = 1
+module = "bitmap"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["BITMAP_FOREACH"]
+
+[authority]
+c_headers = ["src/shared/bitmap.h", "src/basic/iterator.h"]
+c_sources = ["src/shared/bitmap.c"]
+rust_headers = ["src/basic/rust/bitmap.h"]
+rust_sources = ["src/basic/rust/bitmap.rs"]
+
+[[surface]]
+id = "bitmap-queries"
+c_symbols = ["bitmap_isset", "bitmap_isclear", "bitmap_equal"]
+rust_symbols = ["rs_bitmap_isset", "rs_bitmap_isclear", "rs_bitmap_equal"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-bitmap-rust.c"
+meson_target = "test-bitmap-rust"
+labels = ["bitmap-queries"]
+
+[[surface]]
+id = "bitmap-allocation"
+c_symbols = ["bitmap_new", "bitmap_copy", "bitmap_free", "bitmap_ensure_allocated"]
+rust_symbols = ["rs_bitmap_new", "rs_bitmap_copy", "rs_bitmap_free", "rs_bitmap_ensure_allocated"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "bitmap-copy-null-fail-closed"
+deviation_rationale = "Valid libc-owned Bitmap layout and cross-C/Rust allocation behavior are preserved. The Rust copy facade returns NULL for a malformed NULL input where C relies on its non-NULL precondition."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-bitmap-rust.c"
+meson_target = "test-bitmap-rust"
+labels = ["bitmap-allocation"]
+
+[[surface]]
+id = "bitmap-mutation"
+c_symbols = ["bitmap_set", "bitmap_unset", "bitmap_clear"]
+rust_symbols = ["rs_bitmap_set", "rs_bitmap_unset", "rs_bitmap_clear"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "bitmap-required-pointer-fail-closed"
+deviation_rationale = "For valid libc-owned Bitmap storage the resize, set, unset, and clear behavior is C-shaped. Rust returns -EINVAL or makes a no-op for C assertion-precondition violations instead of aborting."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-bitmap-rust.c"
+meson_target = "test-bitmap-rust"
+labels = ["bitmap-mutation"]
+
+[[surface]]
+id = "bitmap-iteration"
+c_symbols = ["bitmap_iterate"]
+rust_symbols = ["rs_bitmap_iterate"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "bitmap-iterator-null-fail-closed"
+deviation_rationale = "The iterator prefix, ordering, and output publication follow C for valid caller storage. Rust returns false for malformed required NULL iterator/output pointers instead of depending on C assertions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-bitmap-rust.c"
+meson_target = "test-bitmap-rust"
+labels = ["bitmap-iteration"]

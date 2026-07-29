@@ -13,6 +13,8 @@
  * Only used by shadow tests — production code uses the C originals.
  */
 
+/* PORT-SYNC: scope=basic.time-util-conversion; authority=src/basic/time-util.c,src/basic/time-util.h */
+
 usec_t rs_map_clock_usec_raw(usec_t from, usec_t from_base, usec_t to_base);
 usec_t rs_timespec_load(const struct timespec *ts);
 nsec_t rs_timespec_load_nsec(const struct timespec *ts);

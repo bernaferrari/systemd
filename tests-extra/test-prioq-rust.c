@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C prioq vs Rust rs_prioq */
+/* RUST-CONTRACT: prioq-lifecycle */
+/* RUST-CONTRACT: prioq-index-tracking */
 
 #include <stdlib.h>
 #include <string.h>
@@ -109,6 +111,41 @@ static void test_prioq_peek(void) {
         rs_prioq_free(r);
 }
 
+static void test_prioq_indices(void) {
+        Prioq *c = prioq_new(int_compare);
+        struct rs_Prioq *r = rs_prioq_new(int_compare);
+        int c_values[] = { 5, 1, 3 };
+        int r_values[] = { 5, 1, 3 };
+        unsigned c_indices[] = { PRIOQ_IDX_NULL, PRIOQ_IDX_NULL, PRIOQ_IDX_NULL };
+        unsigned r_indices[] = { PRIOQ_IDX_NULL, PRIOQ_IDX_NULL, PRIOQ_IDX_NULL };
+
+        for (size_t i = 0; i < 3; i++) {
+                assert_se(prioq_put(c, &c_values[i], &c_indices[i]) == 0);
+                assert_se(rs_prioq_put(r, &r_values[i], &r_indices[i]) == 0);
+        }
+
+        for (size_t i = 0; i < 3; i++) {
+                assert_se(c_indices[i] == r_indices[i]);
+                assert_se(prioq_peek_by_index(c, c_indices[i]) == &c_values[i]);
+                assert_se(rs_prioq_peek_by_index(r, r_indices[i]) == &r_values[i]);
+        }
+
+        c_values[0] = 0;
+        r_values[0] = 0;
+        prioq_reshuffle(c, &c_values[0], &c_indices[0]);
+        rs_prioq_reshuffle(r, &r_values[0], &r_indices[0]);
+        assert_se(*(int*) prioq_peek_by_index(c, 0) == *(int*) rs_prioq_peek_by_index(r, 0));
+
+        assert_se(*(int*) prioq_pop(c) == *(int*) rs_prioq_pop(r));
+        assert_se(c_indices[1] == PRIOQ_IDX_NULL);
+        assert_se(r_indices[1] == PRIOQ_IDX_NULL);
+
+        prioq_free(c);
+        rs_prioq_free(r);
+        for (size_t i = 0; i < 3; i++)
+                assert_se(c_indices[i] == r_indices[i]);
+}
+
 /* ── Main ─────────────────────────────────────────────────────────────── */
 
 int main(int argc, char **argv) {
@@ -116,6 +153,7 @@ int main(int argc, char **argv) {
         test_prioq_put_pop();
         test_prioq_remove();
         test_prioq_peek();
+        test_prioq_indices();
 
         return 0;
 }

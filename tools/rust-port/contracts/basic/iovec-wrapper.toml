@@ -1,0 +1,85 @@
+schema = 1
+module = "iovec-wrapper"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["iovw_compare", "iovw_equal", "iovw_put_full", "iovw_put_iov_full", "iovw_put_iovw_full", "iovw_consume_full", "iovw_consume_iov_full", "iovw_extend_full", "iovw_extend_iov_full", "iovw_extend_iovw_full", "iovw_put_string_field_full", "iovw_put_string_fieldf_full", "iovw_put_string_field_free", "iovw_concat", "iovw_to_cstring", "iovec_split", "iovw_merge"]
+
+[authority]
+c_headers = ["src/basic/iovec-wrapper.h", "src/basic/iovec-util.h", "src/basic/alloc-util.h"]
+c_sources = ["src/basic/iovec-wrapper.c", "src/basic/iovec-util.c", "src/basic/alloc-util.c"]
+rust_headers = ["src/basic/rust/iovec_wrapper.h"]
+rust_sources = ["src/basic/rust/iovec_wrapper.rs"]
+
+[[surface]]
+id = "iovec-wrapper-cleanup"
+c_symbols = ["iovw_done", "iovw_done_free", "iovw_free", "iovw_free_free"]
+rust_symbols = ["rs_iovw_done", "rs_iovw_done_free", "rs_iovw_free", "rs_iovw_free_free"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "iovec-wrapper-null-fail-closed"
+deviation_rationale = "The valid repr(C) iovec array and libc release behavior match C. Rust treats malformed NULL cleanup inputs as no-ops rather than relying on assertion-precondition behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-wrapper-rust.c"
+meson_target = "test-iovec-wrapper-rust"
+labels = ["iovec-wrapper-cleanup"]
+
+[[surface]]
+id = "iovec-wrapper-put"
+c_symbols = ["iovw_put"]
+rust_symbols = ["rs_iovw_put"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "iovec-wrapper-put-null-fail-closed"
+deviation_rationale = "For valid wrapper storage, borrowed data retention, zero-length behavior, capacity limits, and success publication follow C. Rust returns -EINVAL for a NULL required wrapper instead of C assertion failure."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-wrapper-rust.c"
+meson_target = "test-iovec-wrapper-rust"
+labels = ["iovec-wrapper-put"]
+
+[[surface]]
+id = "iovec-wrapper-rebase"
+c_symbols = ["iovw_rebase"]
+rust_symbols = ["rs_iovw_rebase"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "iovec-wrapper-rebase-provenance"
+deviation_rationale = "Valid same-allocation rebasing preserves C pointer offsets. Rust skips malformed entries that violate C pointer-provenance preconditions rather than performing undefined pointer arithmetic."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-wrapper-rust.c"
+meson_target = "test-iovec-wrapper-rust"
+labels = ["iovec-wrapper-rebase"]
+
+[[surface]]
+id = "iovec-wrapper-query"
+c_symbols = ["iovw_size", "iovw_isempty"]
+rust_symbols = ["rs_iovw_size", "rs_iovw_isempty"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-iovec-wrapper-rust.c"
+meson_target = "test-iovec-wrapper-rust"
+labels = ["iovec-wrapper-query"]

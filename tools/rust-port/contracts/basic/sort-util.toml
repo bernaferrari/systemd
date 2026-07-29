@@ -1,0 +1,107 @@
+schema = 1
+module = "sort-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["cmp_unsigned"]
+
+[authority]
+c_headers = ["src/basic/sort-util.h"]
+c_sources = ["src/basic/sort-util.c"]
+rust_headers = ["src/basic/rust/sort_util.h"]
+rust_sources = ["src/basic/rust/sort_util.rs"]
+
+[[surface]]
+id = "sort-comparators"
+c_symbols = ["cmp_int", "cmp_uint16"]
+rust_symbols = ["rs_cmp_int", "rs_cmp_uint16"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "sort-comparator-null-fail-closed"
+deviation_rationale = "Valid pointed scalar ordering preserves C comparison results. Rust returns equality for malformed NULL comparator inputs instead of C's invalid dereference contract."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-sort-util-rust.c"
+meson_target = "test-sort-util-rust"
+labels = ["sort-comparators"]
+
+[[surface]]
+id = "sort-qsort-safe"
+c_symbols = ["qsort_safe"]
+rust_symbols = ["rs_qsort_safe"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "sort-required-pointer-fail-closed"
+deviation_rationale = "For valid raw element spans and synchronous C callbacks, Rust performs byte-wise swaps without typed reinterpretation or libc delegation. Invalid required pointers, zero element size, a missing callback, and overflow are no-ops rather than C assertion or undefined behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-sort-util-rust.c"
+meson_target = "test-sort-util-rust"
+labels = ["sort-qsort-safe"]
+
+[[surface]]
+id = "sort-qsort-r-safe"
+c_symbols = ["qsort_r_safe"]
+rust_symbols = ["rs_qsort_r_safe"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "sort-r-required-pointer-fail-closed"
+deviation_rationale = "For valid raw element spans and synchronous C callbacks, Rust performs byte-wise userdata sorting without typed reinterpretation or libc delegation. Invalid required pointers, zero element size, a missing callback, and overflow are no-ops rather than C assertion or undefined behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-sort-util-rust.c"
+meson_target = "test-sort-util-rust"
+labels = ["sort-qsort-r-safe"]
+
+[[surface]]
+id = "sort-xbsearch-r"
+c_symbols = ["xbsearch_r"]
+rust_symbols = ["rs_xbsearch_r"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+deviation_id = "sort-search-required-pointer-fail-closed"
+deviation_rationale = "For valid raw element spans and synchronous C callbacks, the Rust binary search uses C-equivalent pointer arithmetic and returns a borrowed interior alias. Invalid required pointers, zero element size, a missing callback, and overflow return NULL rather than C assertion or undefined behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-sort-util-rust.c"
+meson_target = "test-sort-util-rust"
+labels = ["sort-xbsearch-r"]
+
+[[surface]]
+id = "sort-bsearch-safe"
+c_symbols = ["bsearch_safe_internal"]
+rust_symbols = ["rs_bsearch_safe_internal"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+deviation_id = "sort-bsearch-required-pointer-fail-closed"
+deviation_rationale = "For valid raw element spans and synchronous C callbacks, the Rust binary search returns a borrowed interior alias. Invalid required pointers, zero element size, a missing callback, and overflow return NULL rather than C assertion or undefined behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-sort-util-rust.c"
+meson_target = "test-sort-util-rust"
+labels = ["sort-bsearch-safe"]

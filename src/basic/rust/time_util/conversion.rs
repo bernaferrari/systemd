@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
+// PORT-SYNC: scope=basic.time-util-conversion; authority=src/basic/time-util.c,src/basic/time-util.h
+//
 // Clock-domain conversion and libc timestamp conversion primitives.
 
 use super::types::{
@@ -10,7 +12,8 @@ use super::types::{
 
 // ── map_clock_usec_raw ────────────────────────────────────────────────────
 
-pub fn rs_map_clock_usec_raw(from: u64, from_base: u64, to_base: u64) -> u64 {
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_map_clock_usec_raw(from: u64, from_base: u64, to_base: u64) -> u64 {
     if from >= from_base {
         // Future: to_base + (from - from_base)
         let delta = from - from_base;
@@ -38,7 +41,8 @@ pub fn rs_map_clock_usec_raw(from: u64, from_base: u64, to_base: u64) -> u64 {
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_timespec_load(ts: *const LibcTimespec) -> u64 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_timespec_load(ts: *const LibcTimespec) -> u64 {
     if ts.is_null() {
         return 0;
     }
@@ -66,7 +70,8 @@ pub unsafe fn rs_timespec_load(ts: *const LibcTimespec) -> u64 {
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_timespec_load_nsec(ts: *const LibcTimespec) -> u64 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_timespec_load_nsec(ts: *const LibcTimespec) -> u64 {
     if ts.is_null() {
         return 0;
     }
@@ -94,7 +99,8 @@ pub unsafe fn rs_timespec_load_nsec(ts: *const LibcTimespec) -> u64 {
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_timespec_store(ts: *mut LibcTimespec, u: u64) -> *mut LibcTimespec {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_timespec_store(ts: *mut LibcTimespec, u: u64) -> *mut LibcTimespec {
     if ts.is_null() {
         return std::ptr::null_mut();
     }
@@ -121,7 +127,11 @@ pub unsafe fn rs_timespec_store(ts: *mut LibcTimespec, u: u64) -> *mut LibcTimes
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_timespec_store_nsec(ts: *mut LibcTimespec, n: u64) -> *mut LibcTimespec {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_timespec_store_nsec(
+    ts: *mut LibcTimespec,
+    n: u64,
+) -> *mut LibcTimespec {
     if ts.is_null() {
         return std::ptr::null_mut();
     }
@@ -148,7 +158,8 @@ pub unsafe fn rs_timespec_store_nsec(ts: *mut LibcTimespec, n: u64) -> *mut Libc
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_timeval_load(tv: *const LibcTimeval) -> u64 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_timeval_load(tv: *const LibcTimeval) -> u64 {
     if tv.is_null() {
         return 0;
     }
@@ -176,7 +187,8 @@ pub unsafe fn rs_timeval_load(tv: *const LibcTimeval) -> u64 {
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_timeval_store(tv: *mut LibcTimeval, u: u64) -> *mut LibcTimeval {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_timeval_store(tv: *mut LibcTimeval, u: u64) -> *mut LibcTimeval {
     if tv.is_null() {
         return std::ptr::null_mut();
     }

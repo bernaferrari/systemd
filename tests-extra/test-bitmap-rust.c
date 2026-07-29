@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C bitmap vs Rust rs_bitmap_* */
+/* RUST-CONTRACT: bitmap-queries */
+/* RUST-CONTRACT: bitmap-allocation */
+/* RUST-CONTRACT: bitmap-mutation */
+/* RUST-CONTRACT: bitmap-iteration */
 
 #include <stdlib.h>
 #include <string.h>

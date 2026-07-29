@@ -9,6 +9,7 @@
 #include "rust/image_policy_util.h"
 
 /* ── partition_policy_flags_extend ─────────────────────────────────────── */
+/* RUST-CONTRACT: image-policy-flags-extend */
 
 TEST(partition_policy_flags_extend_zero) {
         int cr, rr;
@@ -39,6 +40,7 @@ TEST(partition_policy_flags_extend_negative) {
 }
 
 /* ── partition_policy_flags_reduce ─────────────────────────────────────── */
+/* RUST-CONTRACT: image-policy-flags-reduce */
 
 TEST(partition_policy_flags_reduce_zero) {
         assert_se(partition_policy_flags_reduce(0) == rs_partition_policy_flags_reduce(0));
@@ -57,6 +59,7 @@ TEST(partition_policy_flags_reduce_partial) {
 }
 
 /* ── partition_policy_flags_from_string ────────────────────────────────── */
+/* RUST-CONTRACT: image-policy-flags-from-string */
 
 TEST(flags_from_string_single) {
         int cr = partition_policy_flags_from_string("verity", false);
@@ -118,7 +121,20 @@ TEST(flags_from_string_empty) {
         assert_se(cr == 0);
 }
 
+TEST(flags_from_string_empty_segment) {
+        int cr = partition_policy_flags_from_string("verity++signed", false);
+        int rr = rs_partition_policy_flags_from_string("verity++signed", false);
+        assert_se(cr == rr);
+        assert_se(cr == -EBADRQC);
+
+        cr = partition_policy_flags_from_string("verity++signed", true);
+        rr = rs_partition_policy_flags_from_string("verity++signed", true);
+        assert_se(cr == rr);
+        assert_se(cr == (PARTITION_POLICY_VERITY | PARTITION_POLICY_SIGNED));
+}
+
 /* ── partition_policy_flags_to_string ──────────────────────────────────── */
+/* RUST-CONTRACT: image-policy-flags-to-string */
 
 TEST(flags_to_string_basic) {
         _cleanup_free_ char *cp = NULL, *rp = NULL;

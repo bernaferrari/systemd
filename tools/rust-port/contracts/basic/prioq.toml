@@ -1,0 +1,31 @@
+schema = 1
+module = "prioq"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["prioq_ensure_allocated", "_prioq_ensure_put"]
+
+[authority]
+c_headers = ["src/basic/prioq.h"]
+c_sources = ["src/basic/prioq.c"]
+rust_headers = ["src/basic/rust/prioq.h"]
+rust_sources = ["src/basic/rust/prioq.rs"]
+
+[[surface]]
+id = "prioq-lifecycle"
+c_symbols = ["prioq_new", "prioq_free", "prioq_put", "prioq_remove", "prioq_reshuffle", "prioq_peek_by_index", "prioq_pop", "prioq_size", "prioq_isempty"]
+rust_symbols = ["rs_prioq_new", "rs_prioq_free", "rs_prioq_put", "rs_prioq_remove", "rs_prioq_reshuffle", "rs_prioq_peek_by_index", "rs_prioq_pop", "rs_prioq_size", "rs_prioq_isempty"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "prioq-required-pointer-fail-closed"
+deviation_rationale = "For valid opaque-handle, callback, data, and tracked-index lifetimes, Rust preserves the C min-heap and index synchronization. A NULL constructor callback remains observable like C, but a later multi-item insertion is rejected rather than calling through it; malformed required queue inputs also fail closed rather than asserting or dereferencing invalid state."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-prioq-rust.c"
+meson_target = "test-prioq-rust"
+labels = ["prioq-lifecycle", "prioq-index-tracking"]

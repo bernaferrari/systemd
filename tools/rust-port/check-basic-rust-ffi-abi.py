@@ -87,6 +87,8 @@ C_TYPES = {
     # raw integers so invalid C discriminants remain defined/non-matching.
     "OutputMode": "i32",
     "RuntimeScope": "i32",
+    "PartitionPolicyFlags": "i32",
+    "IfnameValidFlags": "i32",
     "RateLimit *": "*mutRateLimit",
     "const RateLimit *": "*constRateLimit",
     # Packed PE records stay opaque in the Rust facade. Pointer representation
@@ -103,6 +105,29 @@ C_TYPES = {
     "struct rs_sha1_ctx *": "*mutSha1Ctx",
     "struct sha1_ctx *": "*mutSha1Ctx",
     "struct rs_siphash *": "*mutsiphash",
+    "const struct Bitmap *": "*constCBitmap",
+    "struct Bitmap *": "*mutCBitmap",
+    "struct Bitmap **": "*mut*mutCBitmap",
+    "struct Iterator *": "*mutCIterator",
+    "const Bitmap *": "*constCBitmap",
+    "Bitmap *": "*mutCBitmap",
+    "Bitmap **": "*mut*mutCBitmap",
+    "Iterator *": "*mutCIterator",
+    "struct rs_IoVecWrapper *": "*mutRsIoVecWrapper",
+    "const struct rs_IoVecWrapper *": "*constRsIoVecWrapper",
+    "struct iovec_wrapper *": "*mutRsIoVecWrapper",
+    "const struct iovec_wrapper *": "*constRsIoVecWrapper",
+    "struct rs_Prioq *": "*mutRsPrioq",
+    "const struct rs_Prioq *": "*constRsPrioq",
+    "Prioq *": "*mutRsPrioq",
+    "rs_prioq_compare_fn_t": "PrioqCompareFn",
+    "compare_func_t": "PrioqCompareFn",
+    "comparison_fn_t": "ComparisonFn",
+    "comparison_userdata_fn_t": "ComparisonUserdataFn",
+    "const struct timespec *": "*constLibcTimespec",
+    "struct timespec *": "*mutLibcTimespec",
+    "const struct timeval *": "*constLibcTimeval",
+    "struct timeval *": "*mutLibcTimeval",
     "ValidHostnameFlags": "i32",
     "SleepOperation": "i32",
     "bool": "bool",
@@ -135,6 +160,8 @@ C_TYPES = {
     "void **": "*mut*mutc_void",
     "const uint64_t *": "*constu64",
     "const uint8_t *": "*constu8",
+    "const uint16_t *": "*constu16",
+    "const int *": "*consti32",
     "const uint8_t": "u8",
     "const CapabilityQuintet *": "*constCapabilityQuintet",
     "const EdidHeader *": "*constEdidHeaderAbi",
@@ -1160,8 +1187,12 @@ def time_arithmetic_boundary_is_reviewed() -> bool:
     header_text = header.read_text()
     types = (ROOT / "src/basic/rust/time_util/types.rs").read_text()
     test = PARTIAL_SHADOW_TESTS["time_util_arithmetic"][0].read_text()
+    target_libc_time_layouts = (
+        "pub type LibcTimespec = libc::timespec;" in types
+        and "pub type LibcTimeval = libc::timeval;" in types
+    )
     return (
-        types.count("#[repr(C)]") >= 4
+        (types.count("#[repr(C)]") >= 4 or target_libc_time_layouts)
         and "pub struct DualTimestamp" in types
         and "pub struct TripleTimestamp" in types
         and '#include "time-util.h"' in header_text
@@ -3288,7 +3319,7 @@ def main() -> int:
         )
     if not time_arithmetic_boundary_is_reviewed():
         return fail(
-            "time_util arithmetic must keep repr-C timestamps, exact saturation, and explicit NULL-safe pointer contracts"
+            "time_util arithmetic must keep C-compatible timestamps, exact saturation, and explicit NULL-safe pointer contracts"
         )
     if not install_change_boundary_is_reviewed():
         return fail(

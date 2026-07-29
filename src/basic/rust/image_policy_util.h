@@ -7,6 +7,8 @@
 
 #include "image-policy.h"
 
+/* PORT-SYNC: scope=shared.image-policy; authority=src/shared/image-policy.c,src/shared/image-policy.h */
+
 /* Flags manipulation */
 int rs_partition_policy_flags_extend(int flags);
 int rs_partition_policy_flags_reduce(int flags);

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/image-policy.c
+// PORT-SYNC: scope=shared.image-policy; authority=src/shared/image-policy.c,src/shared/image-policy.h
 
 use crate::ffi::Errno;
+use std::ffi::{CStr, CString};
+use std::ptr;
 
 const EBADRQC: i32 = 56;
 const EBADSLT: i32 = 57;
@@ -645,6 +647,134 @@ pub fn partition_policy_flags_to_string(flags: i32, simplify: bool) -> Result<St
     } else {
         Ok(parts.join("+"))
     }
+}
+
+// ── C ABI facades: standalone partition-policy flags ─────────────────────
+
+#[inline]
+fn ascii_strstrip(bytes: &[u8]) -> &[u8] {
+    let is_space = |byte: u8| matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c);
+    let start = bytes
+        .iter()
+        .position(|byte| !is_space(*byte))
+        .unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .rposition(|byte| !is_space(*byte))
+        .map_or(start, |index| index + 1);
+    &bytes[start..end]
+}
+
+#[inline]
+fn policy_flag_from_bytes(bytes: &[u8]) -> Option<i32> {
+    Some(match bytes {
+        b"verity" => PARTITION_POLICY_VERITY,
+        b"signed" => PARTITION_POLICY_SIGNED,
+        b"encrypted" => PARTITION_POLICY_ENCRYPTED,
+        b"encryptedwithintegrity" => PARTITION_POLICY_ENCRYPTEDWITHINTEGRITY,
+        b"unprotected" => PARTITION_POLICY_UNPROTECTED,
+        b"unused" => PARTITION_POLICY_UNUSED,
+        b"absent" => PARTITION_POLICY_ABSENT,
+        b"open" => PARTITION_POLICY_OPEN,
+        b"ignore" => PARTITION_POLICY_IGNORE,
+        b"read-only-on" => PARTITION_POLICY_READ_ONLY_ON,
+        b"read-only-off" => PARTITION_POLICY_READ_ONLY_OFF,
+        b"growfs-on" => PARTITION_POLICY_GROWFS_ON,
+        b"growfs-off" => PARTITION_POLICY_GROWFS_OFF,
+        b"btrfs" => PARTITION_POLICY_BTRFS,
+        b"erofs" => PARTITION_POLICY_EROFS,
+        b"ext4" => PARTITION_POLICY_EXT4,
+        b"f2fs" => PARTITION_POLICY_F2FS,
+        b"squashfs" => PARTITION_POLICY_SQUASHFS,
+        b"vfat" => PARTITION_POLICY_VFAT,
+        b"xfs" => PARTITION_POLICY_XFS,
+        _ => return None,
+    })
+}
+
+/// C ABI facade for `partition_policy_flags_extend()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_partition_policy_flags_extend(flags: i32) -> i32 {
+    partition_policy_flags_extend(flags)
+}
+
+/// C ABI facade for `partition_policy_flags_reduce()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_partition_policy_flags_reduce(flags: i32) -> i32 {
+    partition_policy_flags_reduce(flags)
+}
+
+/// Parse an ASCII partition-policy flag list with C's exact empty-field and
+/// ASCII-stripping rules. Unknown flags have C's recognizable `-EBADRQC`
+/// result unless `graceful` is true.
+///
+/// # Safety
+///
+/// `s` must be a live NUL-terminated C string for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_partition_policy_flags_from_string(
+    s: *const libc::c_char,
+    graceful: bool,
+) -> i32 {
+    if s.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    // SAFETY: upheld by this export's C-string contract.
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    if bytes.is_empty() || bytes == b"-" {
+        return 0;
+    }
+
+    let mut flags = 0;
+    for raw_flag in bytes.split(|byte| *byte == b'+') {
+        match policy_flag_from_bytes(ascii_strstrip(raw_flag)) {
+            Some(flag) => flags |= flag,
+            None if graceful => {}
+            None => return -EBADRQC,
+        }
+    }
+    flags
+}
+
+/// Format flags into a C-allocator-owned policy string. The result pointer is
+/// published only after the string has been allocated successfully.
+///
+/// # Safety
+///
+/// `ret` must be a writable pointer slot. On success it receives a fresh
+/// `strdup(3)` allocation that the caller must release with `free(3)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_partition_policy_flags_to_string(
+    flags: i32,
+    simplify: bool,
+    ret: *mut *mut libc::c_char,
+) -> i32 {
+    if ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    let rendered = match partition_policy_flags_to_string(flags, simplify) {
+        Ok(rendered) => rendered,
+        Err(error) => return error,
+    };
+    let count = if rendered == "-" {
+        0
+    } else {
+        (rendered.bytes().filter(|byte| *byte == b'+').count() + 1) as i32
+    };
+    let rendered = match CString::new(rendered) {
+        Ok(rendered) => rendered,
+        Err(_) => return Errno::EINVAL.to_neg_errno(),
+    };
+    // SAFETY: `rendered` is live and NUL-terminated; strdup returns memory in
+    // the C allocator family required by the public header.
+    let output = unsafe { crate::ffi::strdup(rendered.as_ptr()) };
+    if output.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
+    // SAFETY: `ret` is writable by this export's contract and publication
+    // happens only after a complete C-allocator string was obtained.
+    unsafe { ptr::write(ret, output) };
+    count
 }
 
 fn policy_intersect_or_union(

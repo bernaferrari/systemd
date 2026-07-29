@@ -11,6 +11,7 @@
 #include "rust/time_util.h"
 
 /* ── map_clock_usec_raw ─────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-map-clock-usec-raw */
 
 TEST(map_clock_usec_raw_future) {
         /* from > from_base, simple addition */
@@ -51,6 +52,7 @@ TEST(map_clock_usec_raw_underflow) {
 }
 
 /* ── timespec_load ──────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-timespec-load */
 
 TEST(timespec_load_normal) {
         struct timespec ts = { .tv_sec = 5, .tv_nsec = 500000 };
@@ -83,6 +85,7 @@ TEST(timespec_load_no_nsec) {
 }
 
 /* ── timespec_load_nsec ─────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-timespec-load-nsec */
 
 TEST(timespec_load_nsec_normal) {
         struct timespec ts = { .tv_sec = 2, .tv_nsec = 500000000 };
@@ -97,6 +100,7 @@ TEST(timespec_load_nsec_negative) {
 }
 
 /* ── timespec_store ─────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-timespec-store */
 
 TEST(timespec_store_normal) {
         struct timespec c_ts, rs_ts;
@@ -129,6 +133,7 @@ TEST(timespec_store_zero) {
 }
 
 /* ── timespec_store_nsec ────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-timespec-store-nsec */
 
 TEST(timespec_store_nsec_normal) {
         struct timespec c_ts, rs_ts;
@@ -140,6 +145,7 @@ TEST(timespec_store_nsec_normal) {
 }
 
 /* ── timeval_load ────────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-timeval-load */
 
 TEST(timeval_load_normal) {
         struct timeval tv = { .tv_sec = 5, .tv_usec = 500000 };
@@ -166,6 +172,7 @@ TEST(timeval_load_zero) {
 }
 
 /* ── timeval_store ──────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-timeval-store */
 
 TEST(timeval_store_normal) {
         struct timeval c_tv, rs_tv;

@@ -4,19 +4,6 @@
       "rs_get_color_mode",
       "rs_underline_enabled"
     ],
-    "src/basic/rust/bitmap.h": [
-      "rs_bitmap_clear",
-      "rs_bitmap_copy",
-      "rs_bitmap_ensure_allocated",
-      "rs_bitmap_equal",
-      "rs_bitmap_free",
-      "rs_bitmap_isclear",
-      "rs_bitmap_isset",
-      "rs_bitmap_iterate",
-      "rs_bitmap_new",
-      "rs_bitmap_set",
-      "rs_bitmap_unset"
-    ],
     "src/basic/rust/exec_util.h": [],
     "src/basic/rust/exit_status.h": [
       "rs_exit_status_set_free",
@@ -39,38 +26,12 @@
       "rs_image_policy_intersect",
       "rs_image_policy_to_string",
       "rs_image_policy_union",
-      "rs_partition_policy_determine_fstype",
-      "rs_partition_policy_flags_extend",
-      "rs_partition_policy_flags_from_string",
-      "rs_partition_policy_flags_reduce",
-      "rs_partition_policy_flags_to_string"
-    ],
-    "src/basic/rust/iovec_wrapper.h": [
-      "rs_iovw_done",
-      "rs_iovw_done_free",
-      "rs_iovw_free",
-      "rs_iovw_free_free",
-      "rs_iovw_isempty",
-      "rs_iovw_new",
-      "rs_iovw_put",
-      "rs_iovw_rebase",
-      "rs_iovw_size"
+      "rs_partition_policy_determine_fstype"
     ],
     "src/basic/rust/mempool.h": [],
     "src/basic/rust/parse_util.h": [],
     "src/basic/rust/path_util.h": [],
     "src/basic/rust/pe_binary.h": [],
-    "src/basic/rust/prioq.h": [
-      "rs_prioq_free",
-      "rs_prioq_isempty",
-      "rs_prioq_new",
-      "rs_prioq_peek_by_index",
-      "rs_prioq_pop",
-      "rs_prioq_put",
-      "rs_prioq_remove",
-      "rs_prioq_reshuffle",
-      "rs_prioq_size"
-    ],
     "src/basic/rust/ratelimit.h": [],
     "src/basic/rust/serialize.h": [],
     "src/basic/rust/sha1.h": [],
@@ -82,9 +43,6 @@
     ],
     "src/basic/rust/siphash24.h": [],
     "src/basic/rust/socket_util.h": [
-      "rs_ifname_valid",
-      "rs_ifname_valid_char",
-      "rs_ifname_valid_full",
       "rs_sockaddr_equal",
       "rs_sockaddr_in_addr",
       "rs_sockaddr_len",
@@ -102,14 +60,6 @@
       "rs_vsock_parse_cid",
       "rs_vsock_parse_port"
     ],
-    "src/basic/rust/sort_util.h": [
-      "rs_bsearch_safe_internal",
-      "rs_cmp_int",
-      "rs_cmp_uint16",
-      "rs_qsort_r_safe",
-      "rs_qsort_safe",
-      "rs_xbsearch_r"
-    ],
     "src/basic/rust/strbuf.h": [],
     "src/basic/rust/strv.h": [
       "rs_strv_find_closest_by_levenshtein",
@@ -118,19 +68,12 @@
     ],
     "src/basic/rust/syslog_util.h": [],
     "src/basic/rust/time_util.h": [
-      "rs_map_clock_usec_raw",
       "rs_parse_sec",
       "rs_parse_sec_def_infinity",
       "rs_parse_sec_fix_0",
       "rs_parse_time",
-      "rs_timespec_load",
-      "rs_timespec_load_nsec",
-      "rs_timespec_store",
-      "rs_timespec_store_nsec",
       "rs_timestamp_style_from_string",
       "rs_timestamp_style_to_string",
-      "rs_timeval_load",
-      "rs_timeval_store",
       "rs_triple_timestamp_by_clock"
     ],
     "src/basic/rust/uid_range.h": [

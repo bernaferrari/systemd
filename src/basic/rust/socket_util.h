@@ -1,11 +1,17 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.socket-util; authority=src/basic/socket-util.c,src/basic/socket-util.h */
 #pragma once
 
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
 
-/* Shadow FFI — socket-util pure functions */
+/*
+ * Shadow FFI. The ifname validators are byte-oriented C-string predicates;
+ * malformed NULL or invalid-flag inputs fail closed. The remaining sockaddr
+ * and SocketAddress declarations stay deferred until their platform layouts
+ * and ownership contracts are individually reviewed.
+ */
 bool rs_ifname_valid_char(char a);
 bool rs_ifname_valid_full(const char *p, int flags);
 bool rs_ifname_valid(const char *p);

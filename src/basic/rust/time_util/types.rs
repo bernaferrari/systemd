@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // Shared ABI types and units from src/basic/time-util.h.
+// PORT-SYNC: scope=basic.time-util-conversion; authority=src/basic/time-util.c,src/basic/time-util.h
 
 pub const USEC_PER_SEC: u64 = 1_000_000;
 pub(crate) const USEC_PER_MSEC: u64 = 1_000;
@@ -16,17 +17,17 @@ pub(crate) const USEC_INFINITY: u64 = u64::MAX;
 pub(crate) const NSEC_INFINITY: u64 = u64::MAX;
 pub(crate) const TIME_T_MAX: u64 = i64::MAX as u64;
 
-#[repr(C)]
-pub struct LibcTimespec {
-    pub tv_sec: i64,
-    pub tv_nsec: i64,
-}
+/// Target C `struct timespec` layout supplied by the `libc` crate.
+///
+/// Keeping this as a target-specific alias, rather than hard-coding two
+/// 64-bit fields, preserves the ABI on supported 32-bit targets too.
+pub type LibcTimespec = libc::timespec;
 
-#[repr(C)]
-pub struct LibcTimeval {
-    pub tv_sec: i64,
-    pub tv_usec: i64,
-}
+/// Target C `struct timeval` layout supplied by the `libc` crate.
+///
+/// Keeping this as a target-specific alias, rather than hard-coding two
+/// 64-bit fields, preserves the ABI on supported 32-bit targets too.
+pub type LibcTimeval = libc::timeval;
 
 #[repr(C)]
 pub struct DualTimestamp {

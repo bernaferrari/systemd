@@ -107,9 +107,8 @@ jobs:
   #   version byte ordering: test-strverscmp-rust
   #   non-UTF-8 extras: test-header-inline-rust, string/escape/errno fixtures
   #
-  # Intentionally NOT listed until their C ABI exports exist (no_mangle/export_name):
-  #   test-time-util-rust, test-time-util-extra-rust
-  #   — see tools/rust-port/PRIORITY_RUNTIME_SET.md
+  # `test-time-util-extra-rust` remains deferred; the independently reviewed
+  # conversion facade is covered by `test-time-util-rust` below.
   rust-meson-reviewed-shadows:
     name: Meson-reviewed Rust C shadows
     runs-on: ubuntu-24.04
@@ -164,6 +163,12 @@ jobs:
           test-sha256-hmac-rust
           test-siphash24-rust
           test-dns-label-rust
+          test-bitmap-rust
+          test-iovec-wrapper-rust
+          test-prioq-rust
+          test-image-policy-rust
+          test-sort-util-rust
+          test-time-util-rust
           test-efivars-rust
           test-efi-guid-rust
           test-serialize-rust
@@ -321,6 +326,12 @@ jobs:
           test-sha256-hmac-rust
           test-siphash24-rust
           test-dns-label-rust
+          test-bitmap-rust
+          test-iovec-wrapper-rust
+          test-prioq-rust
+          test-image-policy-rust
+          test-sort-util-rust
+          test-time-util-rust
           test-efivars-rust
           test-efi-guid-rust
           test-serialize-rust

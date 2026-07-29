@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C socket-util functions vs Rust */
+/* RUST-CONTRACT: ifname-valid-char */
+/* RUST-CONTRACT: ifname-valid-full */
+/* RUST-CONTRACT: ifname-valid */
 
 #include "tests.h"
 #include "in-addr-util.h"

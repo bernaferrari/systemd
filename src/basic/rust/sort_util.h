@@ -12,6 +12,8 @@
 
 #include "basic-forward.h"
 
+/* PORT-SYNC: scope=basic.sort-util; authority=src/basic/sort-util.c,src/basic/sort-util.h */
+
 void *rs_xbsearch_r(const void *key, const void *base, size_t nmemb, size_t size,
                     comparison_userdata_fn_t compar, void *arg);
 

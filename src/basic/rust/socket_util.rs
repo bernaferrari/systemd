@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/socket-util.c (ifname_valid_char, ifname_valid_full,
-//            vsock_parse_port, vsock_parse_cid, sockaddr_port, sockaddr_in_addr,
-//            sockaddr_set_in_addr, sockaddr_equal, sockaddr_ll_len, sockaddr_un_len,
-//            sockaddr_len, sockaddr_un_set_path, socket_address_verify,
-//            socket_address_can_accept, socket_address_get_path,
-//            socket_address_parse_unix, socket_address_parse_vsock,
-//            socket_address_equal_unix)
+// PORT-SYNC: scope=basic.socket-util; authority=src/basic/socket-util.c,src/basic/socket-util.h
+
+use std::ffi::CStr;
+
+use libc::c_char;
 
 use crate::ffi::Errno;
 
@@ -22,6 +20,8 @@ pub const VMADDR_CID_HOST: u32 = 2;
 pub const IFNAME_VALID_ALTERNATIVE: u32 = 1 << 0;
 pub const IFNAME_VALID_NUMERIC: u32 = 1 << 1;
 pub const IFNAME_VALID_SPECIAL: u32 = 1 << 2;
+const IFNAME_VALID_ALL: u32 =
+    IFNAME_VALID_ALTERNATIVE | IFNAME_VALID_NUMERIC | IFNAME_VALID_SPECIAL;
 
 const ARPHRD_ETHER: u16 = 1;
 const ARPHRD_INFINIBAND: u16 = 32;
@@ -138,6 +138,75 @@ pub fn ifname_valid_full(p: &str, flags: u32) -> bool {
     }
 
     !numeric
+}
+
+fn ifname_valid_char_byte(byte: u8) -> bool {
+    (33..127).contains(&byte) && !matches!(byte, b':' | b'/' | b'%')
+}
+
+fn ifname_valid_full_bytes(p: &[u8], flags: u32, is_valid_ifindex: bool) -> bool {
+    if p.is_empty() {
+        return false;
+    }
+    if is_valid_ifindex {
+        return flags & IFNAME_VALID_NUMERIC != 0;
+    }
+    let limit = if flags & IFNAME_VALID_ALTERNATIVE != 0 {
+        ALTIFNAMSIZ
+    } else {
+        IFNAMSIZ
+    };
+    if p.len() >= limit || matches!(p, b"." | b"..") {
+        return false;
+    }
+    if flags & IFNAME_VALID_SPECIAL == 0 && matches!(p, b"all" | b"default") {
+        return false;
+    }
+    let mut numeric = true;
+    for byte in p {
+        if !ifname_valid_char_byte(*byte) {
+            return false;
+        }
+        numeric &= byte.is_ascii_digit();
+    }
+    !numeric
+}
+
+/// Exact scalar C ABI shadow of `ifname_valid_char()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_ifname_valid_char(a: c_char) -> bool {
+    ifname_valid_char_byte(a as u8)
+}
+
+/// Exact byte-oriented C ABI shadow of `ifname_valid_full()`.
+///
+/// # Safety
+/// `p`, when non-null, must point to a readable NUL-terminated C string for
+/// the duration of the call. Invalid flag bits are a C assertion precondition;
+/// this shadow rejects them rather than aborting.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_ifname_valid_full(p: *const c_char, flags: i32) -> bool {
+    if p.is_null() || flags < 0 || (flags as u32 & !IFNAME_VALID_ALL) != 0 {
+        return false;
+    }
+    // SAFETY: required by this FFI boundary's C-string contract.
+    let bytes = unsafe { CStr::from_ptr(p) }.to_bytes();
+    let mut ifindex = 0;
+    // SAFETY: `p` is a live C string and `ifindex` is writable local storage.
+    let parsed_ifindex =
+        unsafe { crate::parse_util::rs_safe_atoi(p, &mut ifindex) } == 0 && ifindex > 0;
+    ifname_valid_full_bytes(bytes, flags as u32, parsed_ifindex)
+}
+
+/// Exact C ABI shadow of the inline `ifname_valid()` convenience wrapper.
+///
+/// # Safety
+/// `p`, when non-null, must point to a readable NUL-terminated C string for
+/// the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_ifname_valid(p: *const c_char) -> bool {
+    // SAFETY: this wrapper forwards the documented C-string contract unchanged.
+    unsafe { rs_ifname_valid_full(p, 0) }
 }
 
 pub fn vsock_parse_port(s: &str) -> Result<u32, i32> {
