@@ -1,7 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
-#include <fcntl.h>
-
 #include "fdisk-util.h"
 #include "log.h"
 
@@ -78,60 +76,6 @@ DLSYM_PROTOTYPE(fdisk_unref_parttype) = NULL;
 DLSYM_PROTOTYPE(fdisk_unref_table) = NULL;
 DLSYM_PROTOTYPE(fdisk_write_disklabel) = NULL;
 #endif
-
-int fdisk_new_read_only_context_at(
-                int dir_fd,
-                const char *path,
-                uint32_t sector_size,
-                struct fdisk_context **ret) {
-
-        assert(dir_fd >= 0 || dir_fd == AT_FDCWD);
-        assert(ret);
-
-#if HAVE_LIBFDISK
-        return fdisk_new_context_at(dir_fd, path, /* read_only= */ true, sector_size, ret);
-#else
-        *ret = NULL;
-        return -EOPNOTSUPP;
-#endif
-}
-
-void fdisk_context_unref(struct fdisk_context *context) {
-#if HAVE_LIBFDISK
-        if (context)
-                sym_fdisk_unref_context(context);
-#else
-        (void) context;
-#endif
-}
-
-int fdisk_context_get_info(struct fdisk_context *context, FdiskContextInfo *ret) {
-#if HAVE_LIBFDISK
-        int has_label;
-#endif
-
-        assert(context);
-        assert(ret);
-
-#if HAVE_LIBFDISK
-        has_label = sym_fdisk_has_label(context);
-        if (has_label < 0)
-                return has_label;
-
-        *ret = (FdiskContextInfo) {
-                .sector_size = sym_fdisk_get_sector_size(context),
-                .grain_size = sym_fdisk_get_grain_size(context),
-                .n_sectors = sym_fdisk_get_nsectors(context),
-                .first_lba = sym_fdisk_get_first_lba(context),
-                .last_lba = sym_fdisk_get_last_lba(context),
-                .n_partitions = sym_fdisk_get_npartitions(context),
-                .has_label = has_label,
-        };
-        return 0;
-#else
-        return -EOPNOTSUPP;
-#endif
-}
 
 int dlopen_fdisk(int log_level) {
 #if HAVE_LIBFDISK

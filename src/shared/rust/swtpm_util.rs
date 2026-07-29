@@ -216,7 +216,7 @@ fn strverscmp_improved(a: &str, b: &str) -> i32 {
 //
 // Hand-written recursive-descent parser for the subset of JSON produced by
 // `swtpm_setup --print-profiles`.  Follows the same approach used elsewhere
-// in this crate (see userdb_dropin.rs, cryptsetup_tpm2.rs, user_record_show.rs).
+// in this crate (see userdb_dropin.rs and user_record_show.rs).
 
 /// A raw JSON value from the minimal parser.
 #[derive(Debug, Clone)]

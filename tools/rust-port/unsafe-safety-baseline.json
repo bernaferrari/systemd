@@ -1180,16 +1180,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 3
     },
-    "src/shared/rust/cryptsetup_tpm2.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 9
-    },
-    "src/shared/rust/cryptsetup_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
     "src/shared/rust/daemon_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1272,11 +1262,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
-    },
-    "src/shared/rust/fdisk_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 10
     },
     "src/shared/rust/fdset.rs": {
       "missing_safety": 0,
