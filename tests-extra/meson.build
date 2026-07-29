@@ -1779,7 +1779,7 @@ if get_option('rust').enabled()
                 files('test-pkcs11-rust.c'),
                 include_directories : includes,
                 link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
+                dependencies : [userspace, libp11kit_cflags],
                 c_args : test_cflags,
                 link_depends : runtest_env,
         )

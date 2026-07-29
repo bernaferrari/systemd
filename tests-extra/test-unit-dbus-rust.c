@@ -100,19 +100,52 @@ static void test_unit_name_from_dbus_path(void) {
         assert_se(streq(c_r, rs_r));
         free(c_r); free(rs_r);
 
-        /* Invalid prefix */
+        /* Invalid prefix leaves the output pointer untouched. */
+        char c_unchanged = 0, rs_unchanged = 0;
+        c_r = &c_unchanged;
+        rs_r = &rs_unchanged;
         c_ret = unit_name_from_dbus_path("/org/freedesktop/something/unit/foo.service", &c_r);
         rs_ret = rs_unit_name_from_dbus_path("/org/freedesktop/something/unit/foo.service", &rs_r);
         assert_se(c_ret == rs_ret);
         assert_se(c_ret < 0);
+        assert_se(c_r == &c_unchanged);
+        assert_se(rs_r == &rs_unchanged);
 
-        /* Invalid escapes remain literal, as bus_label_unescape() specifies. */
+        /* Empty suffixes are valid decoded names. */
+        c_r = rs_r = NULL;
+        c_ret = unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/", &c_r);
+        rs_ret = rs_unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/", &rs_r);
+        assert_se(c_ret == rs_ret);
+        assert_se(c_ret == 0);
+        assert_se(streq(c_r, ""));
+        assert_se(streq(c_r, rs_r));
+        free(c_r); c_r = NULL; free(rs_r); rs_r = NULL;
+
+        c_ret = unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/_", &c_r);
+        rs_ret = rs_unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/_", &rs_r);
+        assert_se(c_ret == rs_ret);
+        assert_se(c_ret == 0);
+        assert_se(streq(c_r, ""));
+        assert_se(streq(c_r, rs_r));
+        free(c_r); c_r = NULL; free(rs_r); rs_r = NULL;
+
+        /* `_ba` is a valid hexadecimal bus-label escape followed by `d`. */
         c_ret = unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/foo_bad", &c_r);
         rs_ret = rs_unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/foo_bad", &rs_r);
         assert_se(c_ret == rs_ret);
         assert_se(c_ret == 0);
+        static const char escaped_expected[] = { 'f', 'o', 'o', (char) 0xba, 'd', 0 };
+        assert_se(memcmp(c_r, rs_r, sizeof(escaped_expected)) == 0);
+        assert_se(memcmp(c_r, escaped_expected, sizeof(escaped_expected)) == 0);
+        free(c_r); c_r = NULL; free(rs_r); rs_r = NULL;
+
+        /* Non-hex escape bytes stay literal, exactly as bus_label_unescape() specifies. */
+        c_ret = unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/foo_xz", &c_r);
+        rs_ret = rs_unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/foo_xz", &rs_r);
+        assert_se(c_ret == rs_ret);
+        assert_se(c_ret == 0);
         assert_se(streq(c_r, rs_r));
-        assert_se(streq(c_r, "foo_bad"));
+        assert_se(streq(c_r, "foo_xz"));
         free(c_r); c_r = NULL; free(rs_r); rs_r = NULL;
 
         /* Decoding _00 retains bytes after the embedded NUL in the allocation. */
