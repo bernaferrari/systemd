@@ -57,6 +57,9 @@ fn errno_is_valid(e: i32) -> bool {
 // ── Private helpers ────────────────────────────────────────────────────────
 
 /// Skip leading whitespace.
+///
+/// # Safety
+/// If non-null, `s` must point to a live NUL-terminated C string readable for this call.
 unsafe fn skip_whitespace(s: *const c_char) -> *const c_char {
     let mut p = s;
     while !p.is_null()
@@ -72,6 +75,9 @@ unsafe fn skip_whitespace(s: *const c_char) -> *const c_char {
 }
 
 /// Case-insensitive comparison of a C string against a set of literals.
+///
+/// # Safety
+/// If non-null, `s` must point to a live NUL-terminated C string readable for this call.
 unsafe fn strcase_in_set(s: *const c_char, set: &[&CStr]) -> bool {
     if s.is_null() {
         return false;
@@ -103,6 +109,9 @@ unsafe fn strcase_in_set(s: *const c_char, set: &[&CStr]) -> bool {
 
 /// Check if string starts with one of the given prefixes (case-sensitive).
 /// Returns pointer past the prefix, or null.
+///
+/// # Safety
+/// If non-null, `s` must point to a live NUL-terminated C string readable for this call.
 unsafe fn startswith_set(s: *const c_char, prefixes: &[&CStr]) -> *const c_char {
     if s.is_null() {
         return std::ptr::null();
@@ -120,6 +129,9 @@ unsafe fn startswith_set(s: *const c_char, prefixes: &[&CStr]) -> *const c_char 
 }
 
 /// Mangle base: handle Python 3 style "0b"/"0B" and "0o"/"0O" prefixes.
+///
+/// # Safety
+/// `s` must point to a live NUL-terminated C string readable for this call.
 unsafe fn mangle_base(s: *const c_char, base: &mut u32) -> *const c_char {
     // If base is already explicitly specified (non-zero actual base), don't mangle.
     if safe_ato_mask_flags(*base) != 0 {
@@ -162,6 +174,8 @@ fn in_set<T: PartialEq>(value: T, set: &[T]) -> bool {
 static TRUE_VALUES: [&CStr; 6] = [c"1", c"yes", c"y", c"true", c"t", c"on"];
 static FALSE_VALUES: [&CStr; 6] = [c"0", c"no", c"n", c"false", c"f", c"off"];
 
+/// # Safety
+/// If non-null, `v` must point to a live NUL-terminated C string readable for this call.
 unsafe fn parse_boolean_inner(v: *const c_char) -> i32 {
     if v.is_null() {
         return Errno::EINVAL.to_neg_errno();

@@ -37,6 +37,8 @@ fn htobe32(x: u32) -> u32 {
 
 /// Check if all u32 elements are zero.
 #[inline]
+/// # Safety
+/// `data` must be valid and properly aligned for reading `nelem` initialized `u32` values.
 unsafe fn eqzero(data: *const u32, nelem: usize) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -74,6 +76,8 @@ pub struct In6Addr {
 
 /// Access the s6_addr32 view of an In6Addr (overlapping union in C).
 #[inline]
+/// # Safety
+/// `a` must be non-null, valid, and properly aligned for an `In6Addr` while the result is used.
 unsafe fn s6_addr32(a: *const In6Addr) -> *const [u32; 4] {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -461,6 +465,9 @@ pub unsafe fn rs_in_addr_is_localhost_one(family: i32, u: *const InAddrUnion) ->
 }
 
 /// ::1 loopback check for IPv6.
+///
+/// # Safety
+/// `a` must be non-null and valid for reading an initialized, properly aligned `In6Addr`.
 unsafe fn in6_addr_is_loopback(a: *const In6Addr) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -1374,6 +1381,9 @@ const EAFNOSUPPORT: i32 = 97;
 
 use crate::ffi::{free, malloc};
 
+/// # Safety
+/// A non-null `src` must be a valid NUL-terminated C string. For `AF_INET`/`AF_INET6`,
+/// a non-null `dst` must be writable for 4/16 bytes, respectively.
 unsafe fn parse_ip_string(family: i32, src: *const c_char, dst: *mut u8) -> Result<(), i32> {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -1403,6 +1413,9 @@ unsafe fn parse_ip_string(family: i32, src: *const c_char, dst: *mut u8) -> Resu
     }
 }
 
+/// # Safety
+/// For a non-null `src`, `AF_INET`/`AF_INET6` require 4/16 initialized readable bytes,
+/// respectively.
 unsafe fn ip_to_string(family: i32, src: *const u8) -> Result<String, i32> {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -1419,6 +1432,9 @@ unsafe fn ip_to_string(family: i32, src: *const u8) -> Result<String, i32> {
     }
 }
 
+/// # Safety
+/// When writing succeeds, `buf` must be writable for `text.len() + 1` bytes and not overlap
+/// `text`.
 unsafe fn write_text_to_c_buf(buf: *mut c_char, buf_len: usize, text: &str) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.

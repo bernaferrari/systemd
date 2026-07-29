@@ -19,6 +19,8 @@ mod table_core;
 use table_core::{from_bytes, input_bytes, static_cstr, static_cstr_ptr};
 
 #[inline]
+// SAFETY: `s` must be a live NUL-terminated C string; `table_entry` is static
+// NUL-terminated table storage.
 unsafe fn cstr_eq_static(s: *const c_char, table_entry: &'static [u8]) -> bool {
     // SAFETY: propagated from the caller; this is the sole inbound C-string
     // borrow used by the table facade.
@@ -26,6 +28,8 @@ unsafe fn cstr_eq_static(s: *const c_char, table_entry: &'static [u8]) -> bool {
 }
 
 #[inline]
+// SAFETY: `s` must be a live NUL-terminated C string; `table_entry` is static
+// NUL-terminated table storage.
 unsafe fn cstr_eq_ignore_ascii_case_static(s: *const c_char, table_entry: &'static [u8]) -> bool {
     // SAFETY: propagated from the caller; see `table_core::input_bytes`.
     unsafe { input_bytes(s) }
@@ -566,10 +570,13 @@ string_table!(
 
 // ── Helper: parse_boolean (returns 1, 0, or negative errno) ─────────────
 
+// SAFETY: `v` must be null or a live NUL-terminated C string for the duration
+// of this call.
 unsafe fn parse_boolean(v: *const c_char) -> i32 {
     if v.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
+    // SAFETY: `s` must be a live NUL-terminated C string for each comparison.
     unsafe fn is_true(s: *const c_char) -> bool {
         // SAFETY: the caller guarantees s is a live NUL-terminated C string.
         unsafe {
@@ -581,6 +588,7 @@ unsafe fn parse_boolean(v: *const c_char) -> i32 {
                 || cstr_eq_ignore_ascii_case_static(s, b"on\0")
         }
     }
+    // SAFETY: `s` must be a live NUL-terminated C string for each comparison.
     unsafe fn is_false(s: *const c_char) -> bool {
         // SAFETY: the caller guarantees s is a live NUL-terminated C string.
         unsafe {
@@ -603,6 +611,8 @@ unsafe fn parse_boolean(v: *const c_char) -> i32 {
     Errno::EINVAL.to_neg_errno()
 }
 
+// SAFETY: `s` must be null or readable through its terminating NUL while this
+// parser traverses it.
 unsafe fn parse_uint_result(s: *const c_char) -> Result<i32, i32> {
     if s.is_null() {
         return Err(Errno::EINVAL.to_neg_errno());
@@ -826,6 +836,8 @@ use crate::ffi::malloc;
 use libc::snprintf;
 
 /// Duplicate a NUL-terminated C string (caller frees with libc free).
+// SAFETY: `s` must be null or readable through its terminating NUL; the caller
+// owns the returned allocation and must release it with the matching C allocator.
 unsafe fn rust_strdup(s: *const c_char) -> *mut c_char {
     if s.is_null() {
         return std::ptr::null_mut();
@@ -851,6 +863,8 @@ unsafe fn rust_strdup(s: *const c_char) -> *mut c_char {
 
 /// Parse a non-negative decimal integer from a NUL-terminated C string.
 /// Returns the parsed value on success, or -1 on failure.
+// SAFETY: `s` must be null or readable through its terminating NUL while it is
+// forwarded to `parse_uint_result`.
 unsafe fn parse_uint(s: *const c_char) -> i32 {
     // SAFETY: the caller supplies the C string required by parse_uint_result.
     unsafe { parse_uint_result(s) }.unwrap_or(-1)

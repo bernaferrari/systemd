@@ -410,6 +410,8 @@ impl Condition {
                 parent.as_os_str().as_bytes()
             })
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "path contains NUL"))?;
+            // SAFETY: `parent_cstr` is a live, NUL-terminated path, and
+            // access(2) only reads that path during this call.
             if unsafe { libc::access(parent_cstr.as_ptr(), libc::F_OK) } < 0 {
                 return Ok(false);
             }
@@ -460,7 +462,11 @@ impl Condition {
             std::ffi::CString::new(path.as_os_str().as_bytes())
                 .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "path contains NUL"))?
         };
+        // SAFETY: `libc::stat` is a plain C output struct for which a
+        // zeroed initial value is valid before stat(2) overwrites it.
         let mut path_stat: libc::stat = unsafe { std::mem::zeroed() };
+        // SAFETY: `path_cstr` is NUL-terminated and `path_stat` is a valid,
+        // writable output buffer for the duration of stat(2).
         if unsafe { libc::stat(path_cstr.as_ptr(), &mut path_stat) } < 0 {
             return Ok(false);
         }
@@ -471,7 +477,11 @@ impl Condition {
             std::ffi::CString::new(parent.as_os_str().as_bytes())
                 .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "path contains NUL"))?
         };
+        // SAFETY: `libc::stat` is a plain C output struct for which a
+        // zeroed initial value is valid before stat(2) overwrites it.
         let mut parent_stat: libc::stat = unsafe { std::mem::zeroed() };
+        // SAFETY: `parent_cstr` is NUL-terminated and `parent_stat` is a
+        // valid, writable output buffer for the duration of stat(2).
         if unsafe { libc::stat(parent_cstr.as_ptr(), &mut parent_stat) } < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -619,6 +629,8 @@ impl Condition {
         if unsafe { libc::uname(&mut utsname) } < 0 {
             return Err(io::Error::last_os_error());
         }
+        // SAFETY: successful uname(2) initializes `machine` as a
+        // NUL-terminated field in the live `utsname` buffer.
         let machine =
             unsafe { std::ffi::CStr::from_ptr(utsname.machine.as_ptr()).to_string_lossy() };
         let machine = machine.as_ref();

@@ -103,6 +103,7 @@ fn checked_escape_allocation(length: usize, suffix: usize) -> Option<usize> {
 
 /// Allocate a NUL-terminated copy of the first `n` bytes of `s`.
 /// Returns null on OOM or null input. Caller must free.
+// SAFETY: when non-null, `s` must point to a live NUL-terminated C string.
 unsafe fn strndup_owned(s: *const c_char, n: usize) -> *mut c_char {
     if s.is_null() {
         return ptr::null_mut();
@@ -128,6 +129,8 @@ unsafe fn strndup_owned(s: *const c_char, n: usize) -> *mut c_char {
 }
 
 /// Write a malloc'd copy of `s` into `*ret`. Returns 0 on success, negative errno on failure.
+// SAFETY: when non-null, `ret` must be writable and `s` must be a live
+// NUL-terminated C string.
 unsafe fn strdup_to(ret: *mut *mut c_char, s: *const c_char) -> i32 {
     if ret.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -148,6 +151,7 @@ unsafe fn strdup_to(ret: *mut *mut c_char, s: *const c_char) -> i32 {
 }
 
 /// Concatenate three NUL-terminated C strings. Returns null on OOM or null input.
+// SAFETY: every non-null input must point to a live NUL-terminated C string.
 unsafe fn strjoin3(a: *const c_char, b: *const c_char, c: *const c_char) -> *mut c_char {
     if a.is_null() || b.is_null() || c.is_null() {
         return ptr::null_mut();
@@ -175,6 +179,8 @@ unsafe fn strjoin3(a: *const c_char, b: *const c_char, c: *const c_char) -> *mut
 }
 
 /// Compare two byte sequences of given lengths.
+// SAFETY: `a` and `b` must be readable for `alen` and `blen` bytes,
+// respectively, whenever those lengths are non-zero.
 unsafe fn memcmp_nn(a: *const c_char, alen: usize, b: *const c_char, blen: usize) -> i32 {
     let min_len = alen.min(blen);
     if min_len > 0 {
@@ -213,6 +219,7 @@ const UNIT_TYPE_TABLE: &[(&[u8], i32)] = &[
     (b"scope\0", UNIT_SCOPE),
 ];
 
+// SAFETY: `s` must point to a live NUL-terminated C string.
 unsafe fn unit_type_from_string(s: *const c_char) -> i32 {
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -243,6 +250,7 @@ fn unit_type_to_string(t: i32) -> *const c_char {
 
 // ── Internal: unit_name_is_valid ─────────────────────────────────────────
 
+// SAFETY: when non-null, `n` must point to a live NUL-terminated C string.
 unsafe fn unit_name_is_valid_internal(n: *const c_char, flags: i32) -> bool {
     if flags == 0 {
         return false;
@@ -940,6 +948,7 @@ pub unsafe extern "C" fn rs_slice_build_subslice(
 
 // ── FFI exports: escape/unescape ─────────────────────────────────────────
 
+// SAFETY: `t` must point to at least four writable bytes.
 unsafe fn do_escape_char(c: u8, t: *mut u8) -> *mut u8 {
     // SAFETY: the caller reserves four writable bytes at `t`.
     unsafe {
@@ -951,6 +960,8 @@ unsafe fn do_escape_char(c: u8, t: *mut u8) -> *mut u8 {
     }
 }
 
+// SAFETY: `f` must be a live NUL-terminated C string, and `t` must have four
+// writable bytes for each input byte that can be escaped.
 unsafe fn do_escape(f: *const c_char, t: *mut u8) -> *mut u8 {
     let mut ft = f;
     let mut tt = t;
@@ -1219,6 +1230,7 @@ pub unsafe fn rs_unit_name_replace_instance(
     unsafe { rs_unit_name_replace_instance_full(original, instance, false, ret) }
 }
 
+// SAFETY: when non-null, `s` must point to a live NUL-terminated C string.
 unsafe fn c_string_is_glob(s: *const c_char) -> bool {
     if s.is_null() {
         return false;
@@ -1238,6 +1250,7 @@ unsafe fn c_string_is_glob(s: *const c_char) -> bool {
     false
 }
 
+// SAFETY: when non-null, `s` must point to a live NUL-terminated C string.
 unsafe fn c_string_in_charset(s: *const c_char, charset: &[u8]) -> bool {
     if s.is_null() {
         return false;
@@ -1257,6 +1270,8 @@ unsafe fn c_string_in_charset(s: *const c_char, charset: &[u8]) -> bool {
     true
 }
 
+// SAFETY: `f` must be a live NUL-terminated C string, and `t` must provide
+// four writable bytes per input byte plus one byte for the terminator.
 unsafe fn do_escape_mangle(f: *const c_char, allow_globs: bool, t: *mut u8) -> bool {
     let mut ff = f;
     let mut tt = t;
@@ -1297,6 +1312,8 @@ unsafe fn do_escape_mangle(f: *const c_char, allow_globs: bool, t: *mut u8) -> b
     mangled
 }
 
+// SAFETY: `path` must be a live NUL-terminated C string and `ret` must be
+// writable for one pointer value.
 unsafe fn unit_name_path_escape_simple(path: *const c_char, ret: *mut *mut c_char) -> i32 {
     let mut simplified: *mut c_char = ptr::null_mut();
     // SAFETY: the caller guarantees that `path` is a live C string; the local
@@ -1347,6 +1364,8 @@ unsafe fn unit_name_path_escape_simple(path: *const c_char, ret: *mut *mut c_cha
     0
 }
 
+// SAFETY: `path` and `suffix` must be live NUL-terminated C strings, and
+// `ret` must be writable for one pointer value.
 unsafe fn unit_name_from_path_simple(
     path: *const c_char,
     suffix: *const c_char,

@@ -166,15 +166,8 @@
       "unsafe_sites": 17
     },
     "src/basic/rust/in_addr_util.rs": {
-      "missing_safety": 6,
-      "missing_safety_sites": [
-        "40:1:unsafe fn eqzero(data: *const u32, nelem: usize) -> bool {",
-        "77:1:unsafe fn s6_addr32(a: *const In6Addr) -> *const [u32; 4] {",
-        "464:1:unsafe fn in6_addr_is_loopback(a: *const In6Addr) -> bool {",
-        "1377:1:unsafe fn parse_ip_string(family: i32, src: *const c_char, dst: *mut u8) -> Result<(), i32> {",
-        "1406:1:unsafe fn ip_to_string(family: i32, src: *const u8) -> Result<String, i32> {",
-        "1422:1:unsafe fn write_text_to_c_buf(buf: *mut c_char, buf_len: usize, text: &str) -> i32 {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 145
     },
     "src/basic/rust/iovec_util.rs": {
@@ -213,17 +206,8 @@
       "unsafe_sites": 3
     },
     "src/basic/rust/netdev_str_tables.rs": {
-      "missing_safety": 8,
-      "missing_safety_sites": [
-        "22:1:unsafe fn cstr_eq_static(s: *const c_char, table_entry: &'static [u8]) -> bool {",
-        "29:1:unsafe fn cstr_eq_ignore_ascii_case_static(s: *const c_char, table_entry: &'static [u8]) -> bool {",
-        "569:1:unsafe fn parse_boolean(v: *const c_char) -> i32 {",
-        "573:5:unsafe fn is_true(s: *const c_char) -> bool {",
-        "584:5:unsafe fn is_false(s: *const c_char) -> bool {",
-        "606:1:unsafe fn parse_uint_result(s: *const c_char) -> Result<i32, i32> {",
-        "829:1:unsafe fn rust_strdup(s: *const c_char) -> *mut c_char {",
-        "854:1:unsafe fn parse_uint(s: *const c_char) -> i32 {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 44
     },
     "src/basic/rust/netdev_str_tables/core.rs": {
@@ -257,28 +241,13 @@
       "unsafe_sites": 18
     },
     "src/basic/rust/parse_util.rs": {
-      "missing_safety": 5,
-      "missing_safety_sites": [
-        "60:1:unsafe fn skip_whitespace(s: *const c_char) -> *const c_char {",
-        "75:1:unsafe fn strcase_in_set(s: *const c_char, set: &[&CStr]) -> bool {",
-        "106:1:unsafe fn startswith_set(s: *const c_char, prefixes: &[&CStr]) -> *const c_char {",
-        "123:1:unsafe fn mangle_base(s: *const c_char, base: &mut u32) -> *const c_char {",
-        "165:1:unsafe fn parse_boolean_inner(v: *const c_char) -> i32 {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 232
     },
     "src/basic/rust/path_util.rs": {
-      "missing_safety": 8,
-      "missing_safety_sites": [
-        "25:1:unsafe fn startswith(s: *const c_char, p: *const c_char) -> bool {",
-        "36:1:unsafe fn endswith(s: *const c_char, p: *const c_char) -> bool {",
-        "52:1:unsafe fn str_in_set(s: *const c_char, candidates: &[*const c_char]) -> bool {",
-        "67:1:unsafe fn endswith_set(s: *const c_char, suffixes: &[*const c_char]) -> bool {",
-        "81:1:unsafe fn streq(a: *const c_char, b: *const c_char) -> bool {",
-        "89:1:unsafe fn skip_slash_or_dot(mut p: *const c_char) -> *const c_char {",
-        "110:1:unsafe fn rs_path_is_valid_full(p: *const c_char, accept_dot_dot: bool) -> bool {",
-        "136:1:unsafe fn isempty(s: *const c_char) -> bool {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 110
     },
     "src/basic/rust/path_util/byte_abi.rs": {
@@ -467,14 +436,8 @@
       "unsafe_sites": 17
     },
     "src/basic/rust/strv.rs": {
-      "missing_safety": 5,
-      "missing_safety_sites": [
-        "49:1:unsafe fn strv_iter(l: *const *const c_char) -> StrvIter<'static> {",
-        "80:1:unsafe fn strcmp_ptr(a: *const c_char, b: *const c_char) -> i32 {",
-        "108:1:unsafe fn strv_isempty(l: *const *const c_char) -> bool {",
-        "643:1:unsafe fn startswith_internal(s: *const c_char, prefix: *const c_char) -> *const c_char {",
-        "662:1:unsafe fn endswith_internal(s: *const c_char, suffix: *const c_char) -> *const c_char {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 307
     },
     "src/basic/rust/strv/allocating_transforms.rs": {
@@ -538,22 +501,8 @@
       "unsafe_sites": 14
     },
     "src/basic/rust/unit_name.rs": {
-      "missing_safety": 13,
-      "missing_safety_sites": [
-        "106:1:unsafe fn strndup_owned(s: *const c_char, n: usize) -> *mut c_char {",
-        "131:1:unsafe fn strdup_to(ret: *mut *mut c_char, s: *const c_char) -> i32 {",
-        "151:1:unsafe fn strjoin3(a: *const c_char, b: *const c_char, c: *const c_char) -> *mut c_char {",
-        "178:1:unsafe fn memcmp_nn(a: *const c_char, alen: usize, b: *const c_char, blen: usize) -> i32 {",
-        "216:1:unsafe fn unit_type_from_string(s: *const c_char) -> i32 {",
-        "246:1:unsafe fn unit_name_is_valid_internal(n: *const c_char, flags: i32) -> bool {",
-        "943:1:unsafe fn do_escape_char(c: u8, t: *mut u8) -> *mut u8 {",
-        "954:1:unsafe fn do_escape(f: *const c_char, t: *mut u8) -> *mut u8 {",
-        "1222:1:unsafe fn c_string_is_glob(s: *const c_char) -> bool {",
-        "1241:1:unsafe fn c_string_in_charset(s: *const c_char, charset: &[u8]) -> bool {",
-        "1260:1:unsafe fn do_escape_mangle(f: *const c_char, allow_globs: bool, t: *mut u8) -> bool {",
-        "1300:1:unsafe fn unit_name_path_escape_simple(path: *const c_char, ret: *mut *mut c_char) -> i32 {",
-        "1350:1:unsafe fn unit_name_from_path_simple("
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 306
     },
     "src/basic/rust/user_util.rs": {
@@ -597,13 +546,8 @@
       "unsafe_sites": 14
     },
     "src/core/rust/runtime_manager/service_runtime.rs": {
-      "missing_safety": 4,
-      "missing_safety_sites": [
-        "436:25:let _ = unsafe { libc::write(fd.as_raw_fd(), b\"\\x1bc\\n\".as_ptr().cast(), 4) };",
-        "445:29:let _ = unsafe { libc::ioctl(fd.as_raw_fd(), TIOCVHANGUP_IOCTL, 0) };",
-        "454:25:let _ = unsafe { libc::ioctl(fd.as_raw_fd(), VT_DISALLOCATE, 0) };",
-        "491:21:unsafe { libc::waitpid(-1, &mut status as *mut libc::c_int, libc::WNOHANG) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
     },
     "src/core/rust/runtime_manager/tests.rs": {
@@ -842,15 +786,8 @@
       "unsafe_sites": 19
     },
     "src/shared/rust/condition.rs": {
-      "missing_safety": 6,
-      "missing_safety_sites": [
-        "413:16:if unsafe { libc::access(parent_cstr.as_ptr(), libc::F_OK) } < 0 {",
-        "463:41:let mut path_stat: libc::stat = unsafe { std::mem::zeroed() };",
-        "464:12:if unsafe { libc::stat(path_cstr.as_ptr(), &mut path_stat) } < 0 {",
-        "474:43:let mut parent_stat: libc::stat = unsafe { std::mem::zeroed() };",
-        "475:12:if unsafe { libc::stat(parent_cstr.as_ptr(), &mut parent_stat) } < 0 {",
-        "623:13:unsafe { std::ffi::CStr::from_ptr(utsname.machine.as_ptr()).to_string_lossy() };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 15
     },
     "src/shared/rust/copy.rs": {
@@ -1170,7 +1107,7 @@
     }
   },
   "totals": {
-    "missing_safety": 55,
+    "missing_safety": 0,
     "unsafe_sites": 4999
   },
   "version": 2,

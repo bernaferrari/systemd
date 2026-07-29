@@ -22,6 +22,8 @@ const PATH_MAX_VAL: usize = 4096;
 // ── Internal helpers ──────────────────────────────────────────────────────
 
 /// Check if byte string s starts with prefix p.
+// SAFETY: `s` and `p` must each be live, NUL-terminated C strings readable for
+// the duration of this call.
 unsafe fn startswith(s: *const c_char, p: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -33,6 +35,8 @@ unsafe fn startswith(s: *const c_char, p: *const c_char) -> bool {
 }
 
 /// Check if byte string s ends with suffix p.
+// SAFETY: `s` and `p` must each be live, NUL-terminated C strings readable for
+// the duration of this call.
 unsafe fn endswith(s: *const c_char, p: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -49,6 +53,8 @@ unsafe fn endswith(s: *const c_char, p: *const c_char) -> bool {
 }
 
 /// Check if string is in a set of candidates.
+// SAFETY: `s` and every pointer in `candidates` must be live, NUL-terminated
+// C strings readable for the duration of this call.
 unsafe fn str_in_set(s: *const c_char, candidates: &[*const c_char]) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -64,6 +70,8 @@ unsafe fn str_in_set(s: *const c_char, candidates: &[*const c_char]) -> bool {
 }
 
 /// Check if string ends with any of the given suffixes.
+// SAFETY: `s` and every pointer in `suffixes` must be live, NUL-terminated C
+// strings readable for the duration of this call.
 unsafe fn endswith_set(s: *const c_char, suffixes: &[*const c_char]) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -78,6 +86,8 @@ unsafe fn endswith_set(s: *const c_char, suffixes: &[*const c_char]) -> bool {
 }
 
 /// streq: fast check for string equality.
+// SAFETY: `a` and `b` must each be live, NUL-terminated C strings readable for
+// the duration of this call.
 unsafe fn streq(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -86,6 +96,8 @@ unsafe fn streq(a: *const c_char, b: *const c_char) -> bool {
 
 /// Skip leading '/' and "./" sequences.
 /// Port of static skip_slash_or_dot() from path-util.c.
+// SAFETY: `p` must be a live, readable NUL-terminated C string; the returned
+// pointer borrows that string.
 unsafe fn skip_slash_or_dot(mut p: *const c_char) -> *const c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -107,6 +119,8 @@ unsafe fn skip_slash_or_dot(mut p: *const c_char) -> *const c_char {
 
 /// Check if path is valid, optionally accepting ".." components.
 /// Port of path_is_valid_full() from path-util.c.
+// SAFETY: when non-null, `p` must be a live, readable NUL-terminated C string
+// for the duration of this call.
 unsafe fn rs_path_is_valid_full(p: *const c_char, accept_dot_dot: bool) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -133,6 +147,8 @@ unsafe fn rs_path_is_valid_full(p: *const c_char, accept_dot_dot: bool) -> bool 
 }
 
 /// Internal: like C isempty for C string
+// SAFETY: when non-null, `s` must point to a live, readable `c_char` for the
+// duration of this call.
 unsafe fn isempty(s: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.

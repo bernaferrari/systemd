@@ -162,7 +162,7 @@ tier = 2
 symbols = 25
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
-last_reviewed_rust_blobs = { "src/basic/rust/parse_util.rs" = "7a9be9388c8cbf1ce3786b025f960fdde3710d25", "src/basic/rust/parse_util.h" = "4cd5b45632c538527caa7ae2d2d86bc3b2d0fb3a" }
+last_reviewed_rust_blobs = { "src/basic/rust/parse_util.rs" = "fb92ba4f5d1a40a298f802ebda51c765073e99c3", "src/basic/rust/parse_util.h" = "4cd5b45632c538527caa7ae2d2d86bc3b2d0fb3a" }
 notes = "Reviewed static parse ABI slice 2026-07-29; no build/tests/VM. Twenty-five C parser facades preserve opaque C-string inputs, target-width integer parsing, fractional cursor/output semantics, range checks, negative-errno errors, and success-only output publication. Header-inline/time formatting helpers and runtime/cross-target differential evidence remain P2."
 
 [time-util]
@@ -244,7 +244,7 @@ tier = 3
 symbols = 54
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/strv.c" = "eb3cd8d4b213f16d1d770b32d2c1f60b63acefd6", "src/basic/strv.h" = "2a0c2730d1ac46f2548996f04d15f7b120124795", "src/fundamental/strv.h" = "0ede9c3b796a1cac05e018c25fb9a94915531b8d" }
-last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "083c6b2a453044c55b92346db4df01fdf44e6d13", "src/basic/rust/strv/allocating_transforms.rs" = "0b0903050580da0f587d8e683ae96e3a754197d4", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "4ba2e30788318fccc50a66bfaab84fc2ea7af19f" }
+last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "9c21530e757854476664bddfea6176810c67b79f", "src/basic/rust/strv/allocating_transforms.rs" = "0b0903050580da0f587d8e683ae96e3a754197d4", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "4ba2e30788318fccc50a66bfaab84fc2ea7af19f" }
 notes = "Reviewed static behavior slice 2026-07-29; no build/tests/VM. Scope basic.strv owns the decomposed Rust leaves (strv.rs plus allocating_transforms/matching_escape) and rust/strv.h. Twenty-nine machine-checked surfaces cover 54 dual-compared ABI symbols across registered strv fixtures, including the function-shaped consuming replacement macro. The two private closest-match components are exported for Rust decomposition but remain C-static helpers, with indirect C/R fixture coverage through strv_find_closest. Borrowed-interior, borrowed-alias, libc-owned return, negative-errno, nullable, and boolean behaviors remain separate. Explicit exclusions cover free/print I/O, hashmap/set helpers, variadic constructors, and unreviewed helpers. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 
@@ -614,7 +614,7 @@ tier = 1
 symbols = 37
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5" }
-last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "07f7020b1b0460da17a4a41eb170e01b220dd08a", "src/basic/rust/path_util/byte_abi.rs" = "8adae62fb6f2e47b83b782d9af42ca12f81e2c06", "src/basic/rust/path_util.h" = "6c203f60db89a99ba099093e068ad1899b726743" }
+last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "99633f88e36cd53e5e17e93cbd5eb0bb432dcabc", "src/basic/rust/path_util/byte_abi.rs" = "8adae62fb6f2e47b83b782d9af42ca12f81e2c06", "src/basic/rust/path_util.h" = "6c203f60db89a99ba099093e068ad1899b726743" }
 notes = "Reviewed static behavior slice 2026-07-29; no build/tests/VM. Thirty-seven pure path byte, predicate, validation, and allocation facades are covered by machine-checked contracts with exact ABI, opaque C-string bytes, borrowed-interior offsets, allocator ownership, and success-only publication. Filesystem I/O APIs, remaining validators, and skip_dev_prefix remain excluded. Partial provenance with static-only evidence, not runtime parity."
 
 [bus-label]

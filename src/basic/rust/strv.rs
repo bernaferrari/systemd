@@ -46,6 +46,9 @@ impl<'a> Iterator for StrvIter<'a> {
     }
 }
 
+/// # Safety
+/// `l` must point to a readable, NULL-terminated vector of live C strings for
+/// as long as the returned iterator or any item yielded from it is used.
 unsafe fn strv_iter(l: *const *const c_char) -> StrvIter<'static> {
     StrvIter {
         ptr: l,
@@ -77,6 +80,10 @@ unsafe fn free_owned_strv(l: *mut *mut c_char) {
 }
 
 /// strcmp_ptr: NULL-aware strcmp. NULL < non-NULL.
+///
+/// # Safety
+/// Each non-null pointer must designate a live, NUL-terminated C string for
+/// the duration of the comparison.
 unsafe fn strcmp_ptr(a: *const c_char, b: *const c_char) -> i32 {
     if a == b {
         return 0;
@@ -105,6 +112,10 @@ fn cstr_startswith(s: &CStr, prefix: &CStr) -> Option<*const c_char> {
 }
 
 /// strv_isempty: true if l is NULL or points to a NULL entry.
+///
+/// # Safety
+/// If non-null, `l` must be valid and aligned for reading its first vector
+/// entry for the duration of this call.
 unsafe fn strv_isempty(l: *const *const c_char) -> bool {
     // SAFETY: the caller guarantees non-null l points to the first strv entry.
     l.is_null() || unsafe { (*l).is_null() }
@@ -640,6 +651,9 @@ pub unsafe extern "C" fn rs_strv_skip(mut l: *mut *mut c_char, n: usize) -> *mut
 
 // ── strv_find_closest_prefix ────────────────────────────────────────────
 
+/// # Safety
+/// Each non-null pointer must designate a live, NUL-terminated C string for
+/// the duration of the call.
 unsafe fn startswith_internal(s: *const c_char, prefix: *const c_char) -> *const c_char {
     if s.is_null() || prefix.is_null() {
         return std::ptr::null();
@@ -659,6 +673,9 @@ unsafe fn startswith_internal(s: *const c_char, prefix: *const c_char) -> *const
     }
 }
 
+/// # Safety
+/// Each non-null pointer must designate a live, NUL-terminated C string for
+/// the duration of the call.
 unsafe fn endswith_internal(s: *const c_char, suffix: *const c_char) -> *const c_char {
     if s.is_null() || suffix.is_null() {
         return std::ptr::null();

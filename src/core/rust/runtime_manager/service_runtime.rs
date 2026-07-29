@@ -433,6 +433,8 @@ impl RuntimeManager {
             .unwrap_or("/dev/console");
         if info.exec_context.tty_reset.unwrap_or(false) {
             if let Some(fd) = Self::open_write_fd(tty_path, false, false, false) {
+                // SAFETY: fd is owned and valid, and the escape sequence is a
+                // valid four-byte buffer for the duration of this call.
                 let _ = unsafe { libc::write(fd.as_raw_fd(), b"\x1bc\n".as_ptr().cast(), 4) };
             }
         }
@@ -442,6 +444,8 @@ impl RuntimeManager {
                 #[cfg(target_os = "linux")]
                 {
                     const TIOCVHANGUP_IOCTL: libc::c_ulong = 0x5437;
+                    // SAFETY: fd is owned and valid; this ioctl takes only an
+                    // integer argument and does not dereference the zero value.
                     let _ = unsafe { libc::ioctl(fd.as_raw_fd(), TIOCVHANGUP_IOCTL, 0) };
                 }
             }
@@ -451,6 +455,8 @@ impl RuntimeManager {
         if info.exec_context.tty_vt_disallocate.unwrap_or(false) {
             if let Some(fd) = Self::open_write_fd(tty_path, false, false, false) {
                 const VT_DISALLOCATE: libc::c_ulong = 0x5608;
+                // SAFETY: fd is owned and valid; this ioctl takes only an
+                // integer argument and does not dereference the zero value.
                 let _ = unsafe { libc::ioctl(fd.as_raw_fd(), VT_DISALLOCATE, 0) };
             }
         }
@@ -487,6 +493,8 @@ impl RuntimeManager {
             let mut changed = Vec::new();
             loop {
                 let mut status: libc::c_int = 0;
+                // SAFETY: status is a valid writable c_int for waitpid(), and
+                // -1 with WNOHANG is a valid request to poll any child process.
                 let pid =
                     unsafe { libc::waitpid(-1, &mut status as *mut libc::c_int, libc::WNOHANG) };
                 if pid > 0 {
