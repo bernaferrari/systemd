@@ -225,6 +225,156 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "ratelimit": (
+            basic_rust / "ratelimit.h",
+            basic_rust / "ratelimit.rs",
+            frozenset(
+                {
+                    "rs_ratelimit_below",
+                    "rs_ratelimit_num_dropped",
+                    "rs_ratelimit_end",
+                    "rs_ratelimit_left",
+                    "rs_ratelimit_reset",
+                    "rs_ratelimit_configured",
+                }
+            ),
+        ),
+        "extract_word": (
+            basic_rust / "extract_word.h",
+            basic_rust / "extract_word.rs",
+            frozenset({"rs_extract_first_word"}),
+        ),
+        "glob_util": (
+            shared_rust / "glob_util.h",
+            basic_rust / "glob_util.rs",
+            frozenset({"rs_string_is_glob", "rs_glob_non_glob_prefix"}),
+        ),
+        "user_shell_util": (
+            shared_rust / "user_shell_util.h",
+            basic_rust / "user_shell_util.rs",
+            frozenset(
+                {
+                    "rs_is_nologin_shell",
+                    "rs_shell_is_placeholder",
+                    "rs_parse_fractional_part_u",
+                }
+            ),
+        ),
+        "parse_util_fractional": (
+            basic_rust / "parse_util.h",
+            basic_rust / "user_shell_util.rs",
+            frozenset({"rs_parse_fractional_part_u"}),
+        ),
+        "strbuf": (
+            basic_rust / "strbuf.h",
+            basic_rust / "strbuf.rs",
+            frozenset(
+                {
+                    "rs_strbuf_new",
+                    "rs_strbuf_add_string_full",
+                    "rs_strbuf_complete",
+                    "rs_strbuf_free",
+                }
+            ),
+        ),
+        "mempool": (
+            basic_rust / "mempool.h",
+            basic_rust / "mempool.rs",
+            frozenset(
+                {
+                    "rs_mempool_alloc_tile",
+                    "rs_mempool_alloc0_tile",
+                    "rs_mempool_free_tile",
+                }
+            ),
+        ),
+        "pe_binary": (
+            basic_rust / "pe_binary.h",
+            basic_rust / "pe_binary.rs",
+            frozenset(
+                {
+                    "rs_pe_header_is_64bit",
+                    "rs_pe_section_table_find",
+                    "rs_pe_header_find_section",
+                    "rs_pe_is_uki",
+                    "rs_pe_is_addon",
+                    "rs_pe_is_native",
+                    "rs_pe_header_get_data_directory",
+                }
+            ),
+        ),
+        "sha1": (
+            basic_rust / "sha1.h",
+            basic_rust / "sha1.rs",
+            frozenset(
+                {
+                    "rs_sha1_init_ctx",
+                    "rs_sha1_process_bytes",
+                    "rs_sha1_finish_ctx",
+                }
+            ),
+        ),
+        "sha256_hmac": (
+            basic_rust / "sha256_hmac.h",
+            basic_rust / "sha256_hmac.rs",
+            frozenset(
+                {
+                    "rs_sha256_is_valid",
+                    "rs_parse_sha256",
+                    "rs_hmac_sha256",
+                }
+            ),
+        ),
+        "siphash24": (
+            basic_rust / "siphash24.h",
+            basic_rust / "siphash24.rs",
+            frozenset(
+                {
+                    "rs_siphash24_init",
+                    "rs_siphash24_compress",
+                    "rs_siphash24_compress_string",
+                    "rs_siphash24_finalize",
+                    "rs_siphash24",
+                    "rs_siphash24_string",
+                }
+            ),
+        ),
+        "dns_domain_validators": (
+            shared_rust / "dns_domain_validators.h",
+            basic_rust / "dns_domain_validators.rs",
+            frozenset(
+                {
+                    "rs_dns_service_name_is_valid",
+                    "rs_dns_subtype_name_is_valid",
+                }
+            ),
+        ),
+        "hexdecoct": (
+            basic_rust / "hexdecoct.h",
+            basic_rust / "hexdecoct.rs",
+            frozenset(
+                {
+                    "rs_octchar",
+                    "rs_unoctchar",
+                    "rs_decchar",
+                    "rs_undecchar",
+                    "rs_hexchar",
+                    "rs_unhexchar",
+                    "rs_base32hexchar",
+                    "rs_unbase32hexchar",
+                    "rs_base64char",
+                    "rs_urlsafe_base64char",
+                    "rs_unbase64char",
+                    "rs_hexmem",
+                    "rs_unhexmem_full",
+                    "rs_base32hexmem",
+                    "rs_unbase32hexmem",
+                    "rs_base64mem_full",
+                    "rs_unbase64mem_full",
+                    "rs_base64_append",
+                }
+            ),
+        ),
         "time_util_formatting": (
             basic_rust / "time_util.h",
             basic_rust / "time_util/formatting.rs",
@@ -783,6 +933,13 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_base64char",
                     "rs_urlsafe_base64char",
                     "rs_unbase64char",
+                    "rs_hexmem",
+                    "rs_unhexmem_full",
+                    "rs_base32hexmem",
+                    "rs_unbase32hexmem",
+                    "rs_base64mem_full",
+                    "rs_unbase64mem_full",
+                    "rs_base64_append",
                 }
             ),
         ),
@@ -1147,6 +1304,18 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "syslog_util": (tests_extra / "test-syslog-util-rust.c",),
         "exec_util": (tests_extra / "test-exec-util-rust.c",),
         "unit_dbus": (tests_extra / "test-unit-dbus-rust.c",),
+        "ratelimit": (tests_extra / "test-ratelimit-rust.c",),
+        "extract_word": (tests_extra / "test-extract-word-rust.c",),
+        "glob_util": (tests_extra / "test-glob-util-rust.c",),
+        "user_shell_util": (tests_extra / "test-user-shell-util-rust.c",),
+        "parse_util_fractional": (tests_extra / "test-user-shell-util-rust.c",),
+        "strbuf": (tests_extra / "test-strbuf-rust.c",),
+        "mempool": (tests_extra / "test-mempool-rust.c",),
+        "pe_binary": (tests_extra / "test-pe-binary-rust.c",),
+        "sha1": (tests_extra / "test-sha1-rust.c",),
+        "sha256_hmac": (tests_extra / "test-sha256-hmac-rust.c",),
+        "siphash24": (tests_extra / "test-siphash24-rust.c",),
+        "dns_domain_validators": (tests_extra / "test-dns-label-rust.c",),
         "time_util_formatting": (tests_extra / "test-parse-extra-rust.c",),
         "time_util_arithmetic": (tests_extra / "test-time-util-extra2-rust.c",),
         "install_change": (tests_extra / "test-install-rust.c",),
@@ -1396,6 +1565,45 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/bootspec.h",
         ),
         "unit_dbus": (root / "src/basic/unit-def.c", root / "src/basic/unit-def.h"),
+        "ratelimit": (root / "src/basic/ratelimit.c", root / "src/basic/ratelimit.h"),
+        "extract_word": (
+            root / "src/basic/extract-word.c",
+            root / "src/basic/extract-word.h",
+        ),
+        "glob_util": (root / "src/basic/glob-util.c", root / "src/basic/glob-util.h"),
+        "user_shell_util": (
+            root / "src/basic/user-util.c",
+            root / "src/basic/user-util.h",
+            root / "src/basic/parse-util.c",
+            root / "src/basic/parse-util.h",
+        ),
+        "parse_util_fractional": (
+            root / "src/basic/parse-util.c",
+            root / "src/basic/parse-util.h",
+        ),
+        "strbuf": (root / "src/basic/strbuf.c", root / "src/basic/strbuf.h"),
+        "mempool": (
+            root / "src/basic/mempool.c",
+            root / "src/basic/mempool.h",
+            root / "src/basic/memory-util.c",
+            root / "src/basic/memory-util.h",
+            root / "src/fundamental/memory-util.h",
+        ),
+        "pe_binary": (root / "src/shared/pe-binary.c", root / "src/shared/pe-binary.h"),
+        "sha1": (root / "src/fundamental/sha1.c", root / "src/fundamental/sha1.h"),
+        "sha256_hmac": (
+            root / "src/basic/sha256.c",
+            root / "src/basic/sha256.h",
+            root / "src/basic/hmac.c",
+            root / "src/basic/hmac.h",
+            root / "src/fundamental/sha256.c",
+            root / "src/fundamental/sha256.h",
+        ),
+        "siphash24": (root / "src/basic/siphash24.c", root / "src/basic/siphash24.h"),
+        "dns_domain_validators": (
+            root / "src/shared/dns-domain.c",
+            root / "src/shared/dns-domain.h",
+        ),
         "time_util_formatting": (
             root / "src/basic/time-util.c",
             root / "src/basic/time-util.h",

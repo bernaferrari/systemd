@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C PE binary functions vs Rust */
+/* RUST-CONTRACT: pe-binary-header */
+/* RUST-CONTRACT: pe-binary-sections */
+/* RUST-CONTRACT: pe-binary-classification */
+/* RUST-CONTRACT: pe-binary-data-directory */
 
 #include "tests.h"
 #include "pe-binary.h"

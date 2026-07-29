@@ -24,19 +24,8 @@
       "rs_exit_status_set_test",
       "rs_is_clean_exit"
     ],
-    "src/basic/rust/extract_word.h": [
-      "rs_extract_first_word",
-      "rs_extract_first_word_and_warn"
-    ],
-    "src/basic/rust/hexdecoct.h": [
-      "rs_base32hexmem",
-      "rs_base64_append",
-      "rs_base64mem_full",
-      "rs_hexmem",
-      "rs_unbase32hexmem",
-      "rs_unbase64mem_full",
-      "rs_unhexmem_full"
-    ],
+    "src/basic/rust/extract_word.h": [],
+    "src/basic/rust/hexdecoct.h": [],
     "src/basic/rust/image_policy_util.h": [
       "rs_image_policy_equal",
       "rs_image_policy_equiv_allow",
@@ -67,25 +56,10 @@
       "rs_iovw_rebase",
       "rs_iovw_size"
     ],
-    "src/basic/rust/mempool.h": [
-      "rs_mempool_alloc0_tile",
-      "rs_mempool_alloc_tile",
-      "rs_mempool_free_tile",
-      "rs_mempool_init"
-    ],
-    "src/basic/rust/parse_util.h": [
-      "rs_parse_fractional_part_u"
-    ],
+    "src/basic/rust/mempool.h": [],
+    "src/basic/rust/parse_util.h": [],
     "src/basic/rust/path_util.h": [],
-    "src/basic/rust/pe_binary.h": [
-      "rs_pe_header_find_section",
-      "rs_pe_header_get_data_directory",
-      "rs_pe_header_is_64bit",
-      "rs_pe_is_addon",
-      "rs_pe_is_native",
-      "rs_pe_is_uki",
-      "rs_pe_section_table_find"
-    ],
+    "src/basic/rust/pe_binary.h": [],
     "src/basic/rust/prioq.h": [
       "rs_prioq_free",
       "rs_prioq_isempty",
@@ -97,38 +71,16 @@
       "rs_prioq_reshuffle",
       "rs_prioq_size"
     ],
-    "src/basic/rust/ratelimit.h": [
-      "rs_ratelimit_below",
-      "rs_ratelimit_configured",
-      "rs_ratelimit_end",
-      "rs_ratelimit_left",
-      "rs_ratelimit_num_dropped",
-      "rs_ratelimit_reset"
-    ],
+    "src/basic/rust/ratelimit.h": [],
     "src/basic/rust/serialize.h": [],
-    "src/basic/rust/sha1.h": [
-      "rs_sha1_finish_ctx",
-      "rs_sha1_init_ctx",
-      "rs_sha1_process_bytes"
-    ],
-    "src/basic/rust/sha256_hmac.h": [
-      "rs_hmac_sha256",
-      "rs_parse_sha256",
-      "rs_sha256_is_valid"
-    ],
+    "src/basic/rust/sha1.h": [],
+    "src/basic/rust/sha256_hmac.h": [],
     "src/basic/rust/signal_util.h": [
       "rs_get_nsig",
       "rs_get_sigrtmax",
       "rs_get_sigrtmin"
     ],
-    "src/basic/rust/siphash24.h": [
-      "rs_siphash24",
-      "rs_siphash24_compress",
-      "rs_siphash24_compress_string",
-      "rs_siphash24_finalize",
-      "rs_siphash24_init",
-      "rs_siphash24_string"
-    ],
+    "src/basic/rust/siphash24.h": [],
     "src/basic/rust/socket_util.h": [
       "rs_ifname_valid",
       "rs_ifname_valid_char",
@@ -158,12 +110,7 @@
       "rs_qsort_safe",
       "rs_xbsearch_r"
     ],
-    "src/basic/rust/strbuf.h": [
-      "rs_strbuf_add_string_full",
-      "rs_strbuf_complete",
-      "rs_strbuf_free",
-      "rs_strbuf_new"
-    ],
+    "src/basic/rust/strbuf.h": [],
     "src/basic/rust/strv.h": [
       "rs_strv_find_closest_by_levenshtein",
       "rs_strv_find_closest_prefix",
@@ -207,9 +154,7 @@
     "src/basic/rust/unit_def.h": [],
     "src/basic/rust/utf8.h": [],
     "src/shared/rust/dns_domain_validators.h": [
-      "rs_dns_service_name_is_valid",
       "rs_dns_srv_type_is_valid",
-      "rs_dns_subtype_name_is_valid",
       "rs_dnssd_srv_type_is_valid"
     ],
     "src/shared/rust/dns_label.h": [
@@ -247,15 +192,8 @@
       "rs_dnssd_srv_type_is_valid"
     ],
     "src/shared/rust/exit_status.h": [],
-    "src/shared/rust/glob_util.h": [
-      "rs_glob_non_glob_prefix",
-      "rs_string_is_glob"
-    ],
-    "src/shared/rust/user_shell_util.h": [
-      "rs_is_nologin_shell",
-      "rs_parse_fractional_part_u",
-      "rs_shell_is_placeholder"
-    ],
+    "src/shared/rust/glob_util.h": [],
+    "src/shared/rust/user_shell_util.h": [],
     "src/shared/rust/xml_tokenizer.h": [
       "rs_xml_tokenize"
     ]

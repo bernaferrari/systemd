@@ -153,6 +153,17 @@ jobs:
           test-syslog-util-rust
           test-exec-util-rust
           test-unit-dbus-rust
+          test-ratelimit-rust
+          test-extract-word-rust
+          test-glob-util-rust
+          test-user-shell-util-rust
+          test-strbuf-rust
+          test-mempool-rust
+          test-pe-binary-rust
+          test-sha1-rust
+          test-sha256-hmac-rust
+          test-siphash24-rust
+          test-dns-label-rust
           test-efivars-rust
           test-efi-guid-rust
           test-serialize-rust
@@ -299,6 +310,17 @@ jobs:
           test-syslog-util-rust
           test-exec-util-rust
           test-unit-dbus-rust
+          test-ratelimit-rust
+          test-extract-word-rust
+          test-glob-util-rust
+          test-user-shell-util-rust
+          test-strbuf-rust
+          test-mempool-rust
+          test-pe-binary-rust
+          test-sha1-rust
+          test-sha256-hmac-rust
+          test-siphash24-rust
+          test-dns-label-rust
           test-efivars-rust
           test-efi-guid-rust
           test-serialize-rust

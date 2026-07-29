@@ -87,6 +87,22 @@ C_TYPES = {
     # raw integers so invalid C discriminants remain defined/non-matching.
     "OutputMode": "i32",
     "RuntimeScope": "i32",
+    "RateLimit *": "*mutRateLimit",
+    "const RateLimit *": "*constRateLimit",
+    # Packed PE records stay opaque in the Rust facade. Pointer representation
+    # is nevertheless C-exact, so map these C record pointers to the explicit
+    # c_void boundary rather than manufacturing mirrored packed types.
+    "const PeHeader *": "*constc_void",
+    "const IMAGE_SECTION_HEADER *": "*constc_void",
+    "const IMAGE_DATA_DIRECTORY *": "*constc_void",
+    "ExtractFlags": "u32",
+    "struct rs_Strbuf *": "*mutRsStrbuf",
+    "struct strbuf *": "*mutRsStrbuf",
+    "struct rs_Mempool *": "*mutMempool",
+    "struct mempool *": "*mutMempool",
+    "struct rs_sha1_ctx *": "*mutSha1Ctx",
+    "struct sha1_ctx *": "*mutSha1Ctx",
+    "struct rs_siphash *": "*mutsiphash",
     "ValidHostnameFlags": "i32",
     "SleepOperation": "i32",
     "bool": "bool",
@@ -119,6 +135,7 @@ C_TYPES = {
     "void **": "*mut*mutc_void",
     "const uint64_t *": "*constu64",
     "const uint8_t *": "*constu8",
+    "const uint8_t": "u8",
     "const CapabilityQuintet *": "*constCapabilityQuintet",
     "const EdidHeader *": "*constEdidHeaderAbi",
     "const dev_t *": "*constu64",
@@ -349,6 +366,7 @@ def c_parameter_type(parameter: str) -> str:
     parameter = parameter.replace("[static SD_ID128_STRING_MAX]", "[]")
     parameter = parameter.replace("[static SD_ID128_UUID_STRING_MAX]", "[]")
     parameter = parameter.replace("[static 8]", "[]")
+    parameter = re.sub(r"\[static (?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+)\]", "[]", parameter)
     parameter = re.sub(r"\bUnitNameFlags\b", "int", parameter)
     parameter = re.sub(r"\bUnitType\b", "int", parameter)
     parameter = re.sub(r"\bVirtualization\b", "int", parameter)
@@ -371,6 +389,8 @@ def c_parameter_type(parameter: str) -> str:
                 array_types = {
                     "char": "*mutc_char",
                     "char16_t": "*mutu16",
+                    "uint8_t": "*mutu8",
+                    "const uint8_t": "*constu8",
                     "char *": "*mut*mutc_char",
                     "const char *": "*mut*constc_char",
                 }

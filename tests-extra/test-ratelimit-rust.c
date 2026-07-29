@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: ratelimit-below */
+/* RUST-CONTRACT: ratelimit-state */
+/* RUST-CONTRACT: ratelimit-left */
 
 #include <string.h>
 
@@ -107,6 +110,18 @@ TEST(ratelimit_below_not_configured_zero_burst) {
 
         assert_se(cb == rb);
         assert_se(cb);
+}
+
+TEST(ratelimit_inline_state_helpers) {
+        RateLimit c = { .interval = 1000000, .burst = 3, .num = 2, .begin = 77 };
+        RateLimit r = c;
+
+        assert_se(ratelimit_configured(&c) == rs_ratelimit_configured(&r));
+        ratelimit_reset(&c);
+        rs_ratelimit_reset(&r);
+        assert_se(memcmp(&c, &r, sizeof(c)) == 0);
+        assert_se(!rs_ratelimit_configured(NULL));
+        rs_ratelimit_reset(NULL);
 }
 
 /* ── ratelimit_below burst exhaustion ────────────────────────────────── */

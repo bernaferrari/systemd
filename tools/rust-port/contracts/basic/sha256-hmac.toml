@@ -1,0 +1,69 @@
+schema = 1
+module = "sha256-hmac"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["sha256_fd"]
+
+[authority]
+c_headers = ["src/basic/sha256.h", "src/basic/hmac.h", "src/fundamental/sha256.h"]
+c_sources = ["src/basic/sha256.c", "src/basic/hmac.c", "src/fundamental/sha256.c"]
+rust_headers = ["src/basic/rust/sha256_hmac.h"]
+rust_sources = ["src/basic/rust/sha256_hmac.rs"]
+
+[[surface]]
+id = "sha256-validation"
+c_symbols = ["sha256_is_valid"]
+rust_symbols = ["rs_sha256_is_valid"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "sha256-validation-null-fail-closed"
+deviation_rationale = "Rust returns false for NULL where C relies on caller preconditions; valid raw C strings are evaluated with the C grammar."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-sha256-hmac-rust.c"
+meson_target = "test-sha256-hmac-rust"
+labels = ["sha256-validation"]
+
+[[surface]]
+id = "sha256-parsing"
+c_symbols = ["parse_sha256"]
+rust_symbols = ["rs_parse_sha256"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "sha256-parse-null-fail-closed"
+deviation_rationale = "Rust preserves valid parse and success-only output behavior, while rejecting unusable NULL arguments instead of reaching C assertion paths."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-sha256-hmac-rust.c"
+meson_target = "test-sha256-hmac-rust"
+labels = ["sha256-parsing"]
+
+[[surface]]
+id = "hmac-sha256"
+c_symbols = ["hmac_sha256"]
+rust_symbols = ["rs_hmac_sha256"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "hmac-null-fail-closed"
+deviation_rationale = "Rust refuses unusable NULL pointer/length combinations and leaves output unchanged rather than relying on C assertions; valid HMAC processing matches C's block algorithm."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-sha256-hmac-rust.c"
+meson_target = "test-sha256-hmac-rust"
+labels = ["hmac-sha256"]

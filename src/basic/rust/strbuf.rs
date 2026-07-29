@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/strbuf.c, src/basic/strbuf.h
+// PORT-SYNC: scope=basic.strbuf; authority=src/basic/strbuf.c,src/basic/strbuf.h
 //
 // strbuf: trie-based string buffer with deduplication.
 
@@ -33,6 +33,14 @@ pub struct Strbuf {
     pub in_len: usize,
     pub dedup_len: usize,
     pub dedup_count: usize,
+}
+
+/// Opaque ABI handle. Its storage contains a Rust [`Strbuf`], but C only ever
+/// receives this incomplete pointer type and must return it to
+/// `rs_strbuf_free()` rather than calling `free(3)` directly.
+#[repr(C)]
+pub struct RsStrbuf {
+    _opaque: [u8; 0],
 }
 
 impl Strbuf {
@@ -114,7 +122,7 @@ impl Strbuf {
     pub fn complete(&mut self) {
         self.root_idx = None;
         self.nodes.clear();
-        self.nodes_count = 0;
+        // C frees the trie but retains this cumulative diagnostic counter.
     }
 
     fn search(&self, len: usize, s: &[u8]) -> SearchOutcome {
@@ -191,6 +199,115 @@ fn find_child_index(children: &[StrbufChildEntry], c: u8) -> Option<usize> {
         Ok(idx) => Some(children[idx].child_idx),
         Err(_) => None,
     }
+}
+
+// ── C ABI facades ────────────────────────────────────────────────────────
+
+/// Allocate an opaque strbuf handle.
+///
+/// The exposed handle itself uses malloc(3), so it follows the same allocator
+/// family as C's `strbuf_new()`. Its Rust-owned internals are released only by
+/// `rs_strbuf_free()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_strbuf_new() -> *mut RsStrbuf {
+    // SAFETY: malloc accepts this nonzero layout size and returns storage from
+    // the C allocator used for the opaque handle's final release.
+    let storage = unsafe { libc::malloc(std::mem::size_of::<Strbuf>()) }.cast::<Strbuf>();
+    if storage.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let value = match Strbuf::new() {
+        Ok(value) => value,
+        Err(_) => {
+            // SAFETY: `storage` was allocated above and has not been initialized.
+            unsafe { libc::free(storage.cast()) };
+            return std::ptr::null_mut();
+        }
+    };
+    // SAFETY: malloc returned storage sized and aligned for Strbuf; it is
+    // uninitialized and uniquely owned at this point.
+    unsafe { std::ptr::write(storage, value) };
+    storage.cast::<RsStrbuf>()
+}
+
+/// Append `len` opaque bytes and return their strbuf offset, or a negative
+/// errno. `usize::MAX` has C's SIZE_MAX meaning: derive the length from the
+/// NUL-terminated input.
+///
+/// # Safety
+///
+/// `str` must be a live handle returned by `rs_strbuf_new()`.  For explicit
+/// nonzero `len`, `s` must reference at least `len` readable bytes; those bytes
+/// need not be valid UTF-8 or NUL-terminated. For `SIZE_MAX`, `s` must be a
+/// live NUL-terminated C string. The handle must not be concurrently accessed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strbuf_add_string_full(
+    str: *mut RsStrbuf,
+    s: *const libc::c_char,
+    len: usize,
+) -> isize {
+    if str.is_null() || (s.is_null() && len != 0) {
+        return -(libc::EINVAL as isize);
+    }
+
+    let bytes: &[u8] = if len == usize::MAX {
+        if s.is_null() {
+            return -(libc::EINVAL as isize);
+        }
+        // SAFETY: required by the SIZE_MAX branch of this export's contract.
+        unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes()
+    } else if len == 0 {
+        &[]
+    } else {
+        // SAFETY: required by the explicit-length branch of this export's contract.
+        unsafe { std::slice::from_raw_parts(s.cast::<u8>(), len) }
+    };
+
+    // SAFETY: the opaque handle's allocation was initialized by rs_strbuf_new.
+    let buffer = unsafe { &mut *str.cast::<Strbuf>() };
+    match buffer.add_string_full(bytes, len) {
+        Ok(offset) if offset <= isize::MAX as usize => offset as isize,
+        Ok(_) => -(libc::EOVERFLOW as isize),
+        Err(error) => error as isize,
+    }
+}
+
+/// Discard the trie while retaining string storage. A null handle is a no-op,
+/// exactly as C `strbuf_complete()`.
+///
+/// # Safety
+///
+/// A non-null `str` must be a live, exclusive handle returned by
+/// `rs_strbuf_new()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strbuf_complete(str: *mut RsStrbuf) {
+    if str.is_null() {
+        return;
+    }
+    // SAFETY: upheld by this export's opaque-handle contract.
+    unsafe { (&mut *str.cast::<Strbuf>()).complete() };
+}
+
+/// Destroy an opaque handle and return null, matching the C cleanup helper.
+///
+/// # Safety
+///
+/// A non-null `str` must be the unique, still-live pointer returned by
+/// `rs_strbuf_new()`. It must not be used after this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strbuf_free(str: *mut RsStrbuf) -> *mut RsStrbuf {
+    if str.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: the handle was initialized in malloc(3) storage by
+    // rs_strbuf_new. Dropping releases Rust-owned Vec allocations before the
+    // C-allocator storage for the opaque handle itself is returned to libc.
+    unsafe {
+        std::ptr::drop_in_place(str.cast::<Strbuf>());
+        libc::free(str.cast());
+    }
+    std::ptr::null_mut()
 }
 
 #[cfg(test)]

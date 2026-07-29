@@ -1,0 +1,69 @@
+schema = 1
+module = "siphash24"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["siphash24_compress_iovec"]
+
+[authority]
+c_headers = ["src/basic/siphash24.h"]
+c_sources = ["src/basic/siphash24.c"]
+rust_headers = ["src/basic/rust/siphash24.h"]
+rust_sources = ["src/basic/rust/siphash24.rs"]
+
+[[surface]]
+id = "siphash24-one-shot"
+c_symbols = ["siphash24"]
+rust_symbols = ["rs_siphash24"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "siphash-null-fail-closed"
+deviation_rationale = "Rust rejects unusable NULL state, key, and pointer/length combinations instead of evaluating C assertion preconditions; valid SipHash state and outputs match the C algorithm."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-siphash24-rust.c"
+meson_target = "test-siphash24-rust"
+labels = ["siphash24-one-shot"]
+
+[[surface]]
+id = "siphash24-string"
+c_symbols = ["siphash24_string"]
+rust_symbols = ["rs_siphash24_string"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "siphash-string-null-fail-closed"
+deviation_rationale = "Rust returns zero for NULL strings or keys rather than following C assertions; valid NUL-inclusive string hashing matches C."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-siphash24-rust.c"
+meson_target = "test-siphash24-rust"
+labels = ["siphash24-string"]
+
+[[surface]]
+id = "siphash24-incremental"
+c_symbols = ["siphash24_init", "siphash24_compress", "siphash24_compress_string", "siphash24_finalize"]
+rust_symbols = ["rs_siphash24_init", "rs_siphash24_compress", "rs_siphash24_compress_string", "rs_siphash24_finalize"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "siphash-state-null-fail-closed"
+deviation_rationale = "Rust makes NULL state operations no-ops or returns zero while preserving valid repr(C) streaming state behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-siphash24-rust.c"
+meson_target = "test-siphash24-rust"
+labels = ["siphash24-incremental"]

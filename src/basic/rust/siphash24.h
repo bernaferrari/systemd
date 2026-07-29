@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+/* PORT-SYNC: scope=basic.siphash24; authority=src/basic/siphash24.c,src/basic/siphash24.h */
+
 /*
  * Rust FFI declarations for shadow testing.
  * These mirror the C functions in siphash24.h with rs_ prefix.

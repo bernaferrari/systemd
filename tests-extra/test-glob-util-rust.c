@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: glob-classifier */
+/* RUST-CONTRACT: glob-prefix */
 /* Shadow test: C glob-util.c vs Rust */
 
 #include <assert.h>

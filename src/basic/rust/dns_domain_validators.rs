@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/dns-domain.c (dns_service_name_is_valid, dns_subtype_name_is_valid)
+// PORT-SYNC: scope=shared.dns-domain-validators; authority=src/shared/dns-domain.c,src/shared/dns-domain.h
 //
 // DNS domain name validators. Implements RFC 6763 Section 4.1.1 and Section 7.2.
 // Note: dns_srv_type_is_valid and dnssd_srv_type_is_valid are in dns_label.rs.
@@ -58,7 +58,8 @@ use std::ffi::CStr;
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_dns_service_name_is_valid(name: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_service_name_is_valid(name: *const c_char) -> bool {
     if name.is_null() {
         return false;
     }
@@ -74,6 +75,22 @@ pub unsafe fn rs_dns_service_name_is_valid(name: *const c_char) -> bool {
 /// and be 1–63 bytes long.
 pub fn dns_subtype_name_is_valid(name: &str) -> bool {
     dns_label_name_is_valid(name)
+}
+
+/// C ABI shadow of `dns_subtype_name_is_valid()`.
+///
+/// # Safety
+/// `name` must be NULL or point to a live, NUL-terminated C string borrowed
+/// for this call. Invalid UTF-8 fails closed, matching the service-name facade.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_subtype_name_is_valid(name: *const c_char) -> bool {
+    if name.is_null() {
+        return false;
+    }
+
+    // SAFETY: the entry point contract requires a live NUL-terminated string.
+    let value = unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("");
+    dns_subtype_name_is_valid(value)
 }
 
 #[cfg(test)]

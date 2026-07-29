@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/ratelimit.c
+// PORT-SYNC: scope=basic.ratelimit; authority=src/basic/ratelimit.c,src/basic/ratelimit.h
 //
 // Rate limiting utilities, modelled after Linux' lib/ratelimit.c.
 
@@ -29,16 +29,25 @@ fn usec_sub_unsigned(timestamp: u64, delta: u64) -> u64 {
     timestamp.saturating_sub(delta)
 }
 
-fn now_monotonic_usec() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_micros() as u64)
-        .unwrap_or(0)
+fn now_boottime_usec() -> u64 {
+    let mut timestamp = std::mem::MaybeUninit::<libc::timespec>::uninit();
+    // SAFETY: timestamp points to sufficient initialized output storage and
+    // CLOCK_BOOTTIME is the exact clock used by the C authority.
+    if unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, timestamp.as_mut_ptr()) } < 0 {
+        return 0;
+    }
+    // SAFETY: clock_gettime succeeded and initialized timestamp.
+    let timestamp = unsafe { timestamp.assume_init() };
+    let seconds = u64::try_from(timestamp.tv_sec).unwrap_or(0);
+    let nanoseconds = u64::try_from(timestamp.tv_nsec).unwrap_or(0);
+    seconds
+        .saturating_mul(1_000_000)
+        .saturating_add(nanoseconds / 1_000)
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct RateLimit {
     pub interval: u64,
@@ -71,7 +80,7 @@ impl RateLimit {
             return true;
         }
 
-        let ts = now_monotonic_usec();
+        let ts = now_boottime_usec();
 
         if self.begin == 0 || usec_sub_unsigned(ts, self.begin) > self.interval {
             self.begin = ts;
@@ -106,8 +115,79 @@ impl RateLimit {
             return 0;
         }
         let end = usec_add(self.begin, self.interval);
-        usec_sub_unsigned(end, now_monotonic_usec())
+        usec_sub_unsigned(end, now_boottime_usec())
     }
+}
+
+/// C ABI facade for `ratelimit_below()`.
+///
+/// # Safety
+/// `rl` must point to a writable C-compatible `RateLimit` for the duration of
+/// the call. A NULL pointer is rejected instead of following C's assertion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_ratelimit_below(rl: *mut RateLimit) -> bool {
+    if rl.is_null() {
+        return false;
+    }
+    // SAFETY: the FFI contract requires a valid writable RateLimit.
+    unsafe { (&mut *rl).below() }
+}
+
+/// C ABI facade for `ratelimit_num_dropped()`.
+///
+/// # Safety
+/// `rl` must point to a readable C-compatible `RateLimit`; NULL fails closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_ratelimit_num_dropped(rl: *const RateLimit) -> u32 {
+    // SAFETY: null is explicitly rejected; the remaining pointer is readable
+    // under this facade's C ABI contract.
+    unsafe { rl.as_ref().map_or(0, RateLimit::num_dropped) }
+}
+
+/// C ABI facade for `ratelimit_end()`.
+///
+/// # Safety
+/// `rl` must point to a readable C-compatible `RateLimit`; NULL fails closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_ratelimit_end(rl: *const RateLimit) -> u64 {
+    // SAFETY: null is explicitly rejected; the remaining pointer is readable
+    // under this facade's C ABI contract.
+    unsafe { rl.as_ref().map_or(0, RateLimit::end) }
+}
+
+/// C ABI facade for `ratelimit_left()`.
+///
+/// # Safety
+/// `rl` must point to a readable C-compatible `RateLimit`; NULL fails closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_ratelimit_left(rl: *const RateLimit) -> u64 {
+    // SAFETY: null is explicitly rejected; the remaining pointer is readable
+    // under this facade's C ABI contract.
+    unsafe { rl.as_ref().map_or(0, RateLimit::left) }
+}
+
+/// C ABI facade for the header-inline `ratelimit_reset()`.
+///
+/// # Safety
+/// `rl` must point to writable C-compatible `RateLimit` storage; NULL is a
+/// no-op instead of following C's invalid-pointer behavior.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_ratelimit_reset(rl: *mut RateLimit) {
+    // SAFETY: a non-NULL FFI pointer is writable RateLimit storage.
+    if let Some(rl) = unsafe { rl.as_mut() } {
+        rl.reset();
+    }
+}
+
+/// C ABI facade for the header-inline `ratelimit_configured()`.
+///
+/// # Safety
+/// `rl` must point to readable C-compatible `RateLimit` storage; NULL fails closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_ratelimit_configured(rl: *const RateLimit) -> bool {
+    // SAFETY: null is explicitly rejected; the remaining pointer is readable
+    // under this facade's C ABI contract.
+    unsafe { rl.as_ref().is_some_and(RateLimit::configured) }
 }
 
 #[cfg(test)]

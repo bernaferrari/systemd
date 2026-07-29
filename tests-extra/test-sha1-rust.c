@@ -9,6 +9,11 @@
 #include "sha1.h"
 #include "rust/sha1.h"
 
+/* RUST-CONTRACT: sha1-incremental */
+
+_Static_assert(sizeof(struct sha1_ctx) == sizeof(struct rs_sha1_ctx));
+_Static_assert(_Alignof(struct sha1_ctx) == _Alignof(struct rs_sha1_ctx));
+
 /* Known test vectors from FIPS 180-1 */
 
 static void test_sha1_empty(void) {
@@ -28,10 +33,13 @@ static void test_sha1_empty(void) {
         struct rs_sha1_ctx r_ctx;
         uint8_t r_result[20];
         rs_sha1_init_ctx(&r_ctx);
-        rs_sha1_finish_ctx(&r_ctx, r_result);
+        assert_se(memcmp(c_ctx.state, r_ctx.state, sizeof(c_ctx.state)) == 0);
+        assert_se(memcmp(c_ctx.count, r_ctx.count, sizeof(c_ctx.count)) == 0);
+        assert_se(rs_sha1_finish_ctx(&r_ctx, r_result) == r_result);
         assert_se(memcmp(r_result, expected, 20) == 0);
 
         assert_se(memcmp(c_result, r_result, 20) == 0);
+        assert_se(memcmp(&r_ctx, &(struct rs_sha1_ctx) {}, sizeof(r_ctx)) == 0);
 }
 
 static void test_sha1_abc(void) {
@@ -54,10 +62,11 @@ static void test_sha1_abc(void) {
         uint8_t r_result[20];
         rs_sha1_init_ctx(&r_ctx);
         rs_sha1_process_bytes(input, strlen(input), &r_ctx);
-        rs_sha1_finish_ctx(&r_ctx, r_result);
+        assert_se(rs_sha1_finish_ctx(&r_ctx, r_result) == r_result);
         assert_se(memcmp(r_result, expected, 20) == 0);
 
         assert_se(memcmp(c_result, r_result, 20) == 0);
+        assert_se(memcmp(&r_ctx, &(struct rs_sha1_ctx) {}, sizeof(r_ctx)) == 0);
 }
 
 static void test_sha1_long(void) {

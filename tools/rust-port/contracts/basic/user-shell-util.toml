@@ -1,0 +1,69 @@
+schema = 1
+module = "user_shell_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["default_root_shell"]
+
+[authority]
+c_headers = ["src/basic/user-util.h", "src/basic/parse-util.h"]
+c_sources = ["src/basic/user-util.c", "src/basic/parse-util.c"]
+rust_headers = ["src/shared/rust/user_shell_util.h"]
+rust_sources = ["src/basic/rust/user_shell_util.rs"]
+
+[[surface]]
+id = "user-shell-nologin"
+c_symbols = ["is_nologin_shell"]
+rust_symbols = ["rs_is_nologin_shell"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "nologin-null-fail-closed"
+deviation_rationale = "Rust returns false for NULL rather than relying on C caller preconditions; valid shell comparison behavior follows C."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-user-shell-util-rust.c"
+meson_target = "test-user-shell-util-rust"
+labels = ["user-shell-nologin"]
+
+[[surface]]
+id = "user-shell-placeholder"
+c_symbols = ["shell_is_placeholder"]
+rust_symbols = ["rs_shell_is_placeholder"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "placeholder-null-fail-closed"
+deviation_rationale = "Rust returns false for NULL rather than relying on C caller preconditions; valid shell classification follows C."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-user-shell-util-rust.c"
+meson_target = "test-user-shell-util-rust"
+labels = ["user-shell-placeholder"]
+
+[[surface]]
+id = "fractional-part"
+c_symbols = ["parse_fractional_part_u"]
+rust_symbols = ["rs_parse_fractional_part_u"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "fractional-null-fail-closed"
+deviation_rationale = "Rust rejects unusable NULL parser state and output pointers instead of hitting C assertions; valid digit consumption and unsigned wrapping behavior follow C."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-user-shell-util-rust.c"
+meson_target = "test-user-shell-util-rust"
+labels = ["fractional-part"]

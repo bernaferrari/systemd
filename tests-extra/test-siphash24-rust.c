@@ -9,6 +9,13 @@
 /* Rust FFI */
 #include "rust/siphash24.h"
 
+/* RUST-CONTRACT: siphash24-one-shot */
+/* RUST-CONTRACT: siphash24-string */
+/* RUST-CONTRACT: siphash24-incremental */
+
+_Static_assert(sizeof(struct siphash) == sizeof(struct rs_siphash));
+_Static_assert(_Alignof(struct siphash) == _Alignof(struct rs_siphash));
+
 /* ── Known-answer test vectors ─────────────────────────────────────────── */
 
 /* Key of 16 zero bytes */
@@ -19,6 +26,15 @@ static const uint8_t seq_key[16] = {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
         0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
 };
+
+static void assert_state_equal(const struct siphash *c, const struct rs_siphash *r) {
+        assert_se(c->v0 == r->v0);
+        assert_se(c->v1 == r->v1);
+        assert_se(c->v2 == r->v2);
+        assert_se(c->v3 == r->v3);
+        assert_se(c->padding == r->padding);
+        assert_se(c->inlen == r->inlen);
+}
 
 TEST(siphash24_empty) {
         uint64_t cr = siphash24("", 0, zero_key);
@@ -96,13 +112,16 @@ TEST(siphash24_incremental) {
 
         siphash24_init(&cs, seq_key);
         rs_siphash24_init(&rs, seq_key);
+        assert_state_equal(&cs, &rs);
 
         /* Compress in two chunks */
         siphash24_compress("hello", 5, &cs);
         rs_siphash24_compress("hello", 5, &rs);
+        assert_state_equal(&cs, &rs);
 
         siphash24_compress(" world", 6, &cs);
         rs_siphash24_compress(" world", 6, &rs);
+        assert_state_equal(&cs, &rs);
 
         uint64_t cr = siphash24_finalize(&cs);
         uint64_t rr = rs_siphash24_finalize(&rs);
@@ -140,6 +159,46 @@ TEST(siphash24_compress_string) {
         uint64_t rs3 = rs_siphash24_string("hello", zero_key);
         assert_se(cr != cs3);
         assert_se(rr != rs3);
+}
+
+TEST(siphash24_chunk_boundaries) {
+        uint8_t data[33];
+        struct siphash cs;
+        struct rs_siphash rs;
+        static const size_t chunks[] = { 7, 1, 9, 3, 8, 5 };
+        size_t offset = 0;
+
+        for (size_t i = 0; i < sizeof(data); i++)
+                data[i] = (uint8_t) (i * 11U);
+
+        siphash24_init(&cs, seq_key);
+        rs_siphash24_init(&rs, seq_key);
+        assert_state_equal(&cs, &rs);
+
+        for (size_t i = 0; i < ELEMENTSOF(chunks); i++) {
+                siphash24_compress(data + offset, chunks[i], &cs);
+                rs_siphash24_compress(data + offset, chunks[i], &rs);
+                assert_state_equal(&cs, &rs);
+                offset += chunks[i];
+        }
+
+        assert_se(offset == sizeof(data));
+        assert_se(siphash24_finalize(&cs) == rs_siphash24_finalize(&rs));
+}
+
+TEST(siphash24_compress_null_string) {
+        struct siphash cs, before;
+        struct rs_siphash rs;
+
+        siphash24_init(&cs, zero_key);
+        rs_siphash24_init(&rs, zero_key);
+        before = cs;
+
+        siphash24_compress_string(NULL, &cs);
+        rs_siphash24_compress_string(NULL, &rs);
+
+        assert_se(memcmp(&cs, &before, sizeof(cs)) == 0);
+        assert_state_equal(&cs, &rs);
 }
 
 /* ── main ────────────────────────────────────────────────────────────────── */

@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: dns-service-name */
+/* RUST-CONTRACT: dns-subtype-name */
 /* Shadow test: C dns-domain.c label/name functions vs Rust */
 
 #include <assert.h>

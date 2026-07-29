@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+/* PORT-SYNC: scope=basic.ratelimit; authority=src/basic/ratelimit.c,src/basic/ratelimit.h */
+
 #include <stdint.h>
 #include <stdbool.h>
 

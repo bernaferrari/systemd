@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: strbuf-lifecycle */
 /* Shadow test: C strbuf vs Rust rs_strbuf */
 
 #include <string.h>
@@ -122,6 +123,11 @@ static void test_strbuf_complete(void) {
 
         /* Buffer should still be readable */
         assert_se(strcmp(c->buf + 1, "hello") == 0);
+
+        /* Completion closes the trie in both implementations. New additions
+         * fail without changing the retained string buffer. */
+        assert_se(strbuf_add_string(c, "world") == -EINVAL);
+        assert_se(rs_strbuf_add_string_full(r, "world", SIZE_MAX) == -EINVAL);
 
         strbuf_free(c);
         rs_strbuf_free(r);

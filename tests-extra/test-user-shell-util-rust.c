@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: user-shell-nologin */
+/* RUST-CONTRACT: user-shell-placeholder */
+/* RUST-CONTRACT: fractional-part */
 /* Shadow test: C user-util.c / parse-util.c vs Rust */
 
 #include <assert.h>

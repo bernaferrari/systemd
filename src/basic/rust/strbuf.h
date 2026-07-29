@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* PORT-SYNC: scope=basic.strbuf; authority=src/basic/strbuf.c,src/basic/strbuf.h */
+
 struct rs_Strbuf;
 struct rs_Strbuf *rs_strbuf_new(void);
 ssize_t rs_strbuf_add_string_full(struct rs_Strbuf *str, const char *s, size_t len);

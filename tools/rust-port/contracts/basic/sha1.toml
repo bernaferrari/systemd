@@ -1,0 +1,31 @@
+schema = 1
+module = "sha1"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["sha1_do_transform"]
+
+[authority]
+c_headers = ["src/fundamental/sha1.h"]
+c_sources = ["src/fundamental/sha1.c"]
+rust_headers = ["src/basic/rust/sha1.h"]
+rust_sources = ["src/basic/rust/sha1.rs"]
+
+[[surface]]
+id = "sha1-incremental"
+c_symbols = ["sha1_init_ctx", "sha1_process_bytes", "sha1_finish_ctx"]
+rust_symbols = ["rs_sha1_init_ctx", "rs_sha1_process_bytes", "rs_sha1_finish_ctx"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "sha1-null-fail-closed"
+deviation_rationale = "Rust returns without dereferencing NULL state or data pointers that C treats as assertion preconditions; valid repr(C) state and digest behavior are preserved."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-sha1-rust.c"
+meson_target = "test-sha1-rust"
+labels = ["sha1-incremental"]

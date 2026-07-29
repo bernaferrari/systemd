@@ -11,6 +11,10 @@
  * Only used by shadow tests — production code uses the C originals.
  */
 
+/* PORT-SYNC: scope=basic.extract-word; authority=src/basic/extract-word.c,src/basic/extract-word.h */
+
 int rs_extract_first_word(const char **p, char **ret, const char *separators, unsigned flags);
-int rs_extract_first_word_and_warn(const char **p, char **ret, const char *separators, unsigned flags,
-                                   const char *unit, const char *filename, unsigned line, const char *rvalue);
+/* `extract_first_word_and_warn()` also owns systemd's syntax-logging contract
+ * (severity, source location, and message formatting).  It intentionally has
+ * no Rust ABI declaration until that externally observable contract can be
+ * reproduced, rather than silently dropping diagnostics in a shadow facade. */

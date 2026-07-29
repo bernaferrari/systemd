@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: LicenseRef-alg-sha1-public-domain
 //
-// PORT-SYNC: src/fundamental/sha1.c, src/fundamental/sha1.h
+// PORT-SYNC: scope=fundamental.sha1; authority=src/fundamental/sha1.c,src/fundamental/sha1.h
 //
 // SHA-1 hash implementation, faithful to the public domain SHA-1 by Steve Reid.
-// Pure Rust — no FFI, no unsafe outside of the transform block arithmetic.
+// The algorithm is safe Rust; unsafe code is confined to the documented C ABI facade.
+
+use libc::c_void;
+use std::{ptr, slice};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -12,6 +15,7 @@ pub const SHA1_DIGEST_SIZE: usize = 20;
 // ── Context ───────────────────────────────────────────────────────────────
 
 /// SHA-1 computation state, mirrors `struct sha1_ctx` from sha1.h.
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct Sha1Ctx {
     pub state: [u32; 5],
@@ -69,10 +73,6 @@ impl Sha1Ctx {
 
         let remaining = size - i;
         self.buffer[j..j + remaining].copy_from_slice(&data[i..i + remaining]);
-        // Zero out the rest of the buffer beyond what we just wrote
-        for b in &mut self.buffer[j + remaining..64] {
-            *b = 0;
-        }
     }
 
     /// Finalize the hash and return the 20-byte digest.
@@ -236,6 +236,80 @@ pub fn sha1(data: &[u8]) -> [u8; SHA1_DIGEST_SIZE] {
     let mut ctx = Sha1Ctx::new();
     ctx.update(data);
     ctx.finish()
+}
+
+// ── C ABI shadow facade ──────────────────────────────────────────────────
+
+/// Initialize a C-layout SHA-1 context.
+///
+/// # Safety
+///
+/// `ctx` must point to writable, properly aligned storage for one `Sha1Ctx`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_sha1_init_ctx(ctx: *mut Sha1Ctx) {
+    if ctx.is_null() {
+        return;
+    }
+
+    // SAFETY: required by this entry point's contract. `ptr::write` also
+    // permits the caller-provided storage to be uninitialized.
+    unsafe { ptr::write(ctx, Sha1Ctx::new()) };
+}
+
+/// Process `size` bytes into a C-layout SHA-1 context.
+///
+/// # Safety
+///
+/// `ctx` must point to a context initialized by `rs_sha1_init_ctx`. When
+/// called, `buffer` must be non-NULL and designate at least `size` readable
+/// bytes that do not overlap `ctx`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_sha1_process_bytes(
+    buffer: *const c_void,
+    size: usize,
+    ctx: *mut Sha1Ctx,
+) {
+    if ctx.is_null() || buffer.is_null() {
+        return;
+    }
+
+    let data = if size == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller guarantees a live region of `size` bytes.
+        unsafe { slice::from_raw_parts(buffer.cast::<u8>(), size) }
+    };
+    // SAFETY: the caller guarantees that `ctx` is live, aligned, initialized,
+    // and exclusively accessible for the duration of this call.
+    unsafe { &mut *ctx }.update(data);
+}
+
+/// Finalize a C-layout SHA-1 context and return `result`.
+///
+/// As in C, finalization erases the context.
+///
+/// # Safety
+///
+/// `ctx` must point to a context initialized by `rs_sha1_init_ctx`, and
+/// `result` must designate at least `SHA1_DIGEST_SIZE` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_sha1_finish_ctx(ctx: *mut Sha1Ctx, result: *mut u8) -> *mut c_void {
+    if ctx.is_null() || result.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: the caller guarantees a live, initialized, exclusive context.
+    // Moving the plain-data context local also avoids creating an exclusive
+    // Rust reference that could conflict if `result` points inside `ctx`.
+    let mut local = unsafe { ptr::read(ctx) };
+    let digest = local.finish();
+    // SAFETY: the caller provides a writable 20-byte result region. `copy`
+    // deliberately tolerates overlap with the context storage.
+    unsafe { ptr::copy(digest.as_ptr(), result, SHA1_DIGEST_SIZE) };
+    // SAFETY: `ctx` remains valid writable storage. Writing the erased context
+    // after the digest preserves C's ordering when the two regions overlap.
+    unsafe { ptr::write(ctx, local) };
+    result.cast()
 }
 
 #[cfg(test)]

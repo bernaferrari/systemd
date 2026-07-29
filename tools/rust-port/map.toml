@@ -59,11 +59,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-hexdecoct-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 11
+symbols = 18
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/hexdecoct.c" = "bbe624cc4f2ed9edb72ff364123372ad8e1992d3", "src/basic/hexdecoct.h" = "ed3c9dc39d8ecdcc4a5f3d0d0a0af3c5f30cec2e" }
-last_reviewed_rust_blobs = { "src/basic/rust/hexdecoct.rs" = "d7f5b7b843a95e3d6acb37385941dadfdf223f37", "src/basic/rust/hexdecoct.h" = "fce528c00a4d4c57c0e621744cb74ce38c5fd603" }
-notes = "Reviewed static scalar-codec slice 2026-07-28; no build/tests/VM. Eleven char/int facades preserve C masking, signed remainder, target c_char byte values, and -EINVAL decoding. Allocation, pointer/length, secure-wipe, and FILE* surfaces remain explicitly excluded. C remains the production authority; runtime parity is unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/hexdecoct.rs" = "332ccc07408c226312bd7fccb2a449eba5d8f209", "src/basic/rust/hexdecoct.h" = "3e8148f327859e62b6b33d0c972136b82333c5da" }
+notes = "Reviewed static codec ABI slice 2026-07-29; no build/tests/VM. Eighteen facades preserve scalar masking/decoding plus reviewed libc allocation, pointer/length, padding, line wrapping, secure-wipe, and success-only output publication. FILE* diagnostics remain C-only. C remains production authority; runtime parity remains P2."
 
 [sort-util]
 c_file = "src/basic/sort-util.c"
@@ -213,11 +213,24 @@ sync_status = "needs_review"
 notes = "Static audit only: the Rust facade preserves 27 public Rust symbols. The reviewed time_util.h shadow surface now also includes exact parse_gmtoff/format_timespan facades with current-C authority and direct registered fixture calls. Remaining C-only gaps include now/now_nsec/map_clock_usec; dual/triple timestamp constructors; format_timestamp_style/relative and weekday_to_string; parse_timestamp/parse_nsec; timezone discovery/validation/state; clock_supported/usec_shift_clock; localtime/mktime helpers; calendar parsing; jiffies conversion; in_utc_timezone; usleep_safe; and time_change_fd. Runtime differential execution remains P2."
 
 [extract-word]
-c_file = "src/basic/extract-word.c"
-rust_file = "src/basic/rust/extract_word.rs"
+c_paths = ["src/basic/extract-word.c", "src/basic/extract-word.h"]
+rust_paths = ["src/basic/rust/extract_word.rs", "src/basic/rust/extract_word.h"]
+scope = "basic.extract-word"
+rust_scope_paths = ["src/basic/rust/extract_word.rs"]
+rust_interface_paths = ["src/basic/rust/extract_word.h"]
+contract_file = "tools/rust-port/contracts/basic/extract-word.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/extract-word.c", rust_paths = ["src/basic/rust/extract_word.rs", "src/basic/rust/extract_word.h"] },
+    { kind = "direct", path = "src/basic/extract-word.h", rust_paths = ["src/basic/rust/extract_word.rs", "src/basic/rust/extract_word.h"] },
+]
+test_file = "tests-extra/test-extract-word-rust.c"
 status = "in-progress"
 tier = 2
-notes = "Historical record: 23 shadow tests passed; not rerun in the 2026-07-27 storage-constrained audit. One FFI export: rs_extract_first_word. C strings now use target libc::c_char; returned storage remains C-allocator owned. Skipped and_warn (variadic log_syntax) and many_words_internal (variadic)."
+symbols = 1
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/extract-word.c" = "5ebf67437c2c7d0fa4f4b9e2b47c58c60829a2f1", "src/basic/extract-word.h" = "2740de9189e4e3e7499ce33084d8ec6b9db28006" }
+last_reviewed_rust_blobs = { "src/basic/rust/extract_word.rs" = "27c196a22ef8e805f986608b30476d8718157160", "src/basic/rust/extract_word.h" = "12cbe4c512c884b86d1649d231bf4a6280cae581" }
+notes = "Reviewed static extract-word ABI slice 2026-07-29; no build/tests/VM. The first-word facade preserves raw C strings, cursor advancement, quoting, escaping, errors, and libc allocation. The logging variant is deliberately excluded because its observable syntax-logging contract is not yet faithfully ported. C remains production authority; runtime parity remains P2."
 
 [strv]
 c_paths = [
@@ -374,14 +387,24 @@ sync_status = "needs_review"
 notes = "Six parser exports plus six UINT32_SCALE_FROM/TO exact C ABI facades. Parser suffix/range logic is safe byte-oriented Rust; the safe_atoi boundary deliberately delegates target base-zero/locale/overflow grammar to libc strtol after systemd's 0b/0o mangle, avoiding a second drifting C parser. NULL and invalid bytes fail closed, and target-libc-sensitive prefixes are compared without hard-coded results. Scaling preserves clamping, u64 intermediates and rounding. Exact Rust-linked Meson/CI/static coverage exists; runtime is unclaimed."
 
 [siphash24]
-c_file = "src/basic/siphash24.c"
-rust_file = "src/basic/rust/siphash24.rs"
-header_file = "src/basic/siphash24.h"
+c_paths = ["src/basic/siphash24.c", "src/basic/siphash24.h"]
+rust_paths = ["src/basic/rust/siphash24.rs", "src/basic/rust/siphash24.h"]
+scope = "basic.siphash24"
+rust_scope_paths = ["src/basic/rust/siphash24.rs"]
+rust_interface_paths = ["src/basic/rust/siphash24.h"]
+contract_file = "tools/rust-port/contracts/basic/siphash24.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/siphash24.c", rust_paths = ["src/basic/rust/siphash24.rs", "src/basic/rust/siphash24.h"] },
+    { kind = "direct", path = "src/basic/siphash24.h", rust_paths = ["src/basic/rust/siphash24.rs", "src/basic/rust/siphash24.h"] },
+]
 test_file = "tests-extra/test-siphash24-rust.c"
 status = "in-progress"
 tier = 1
-sync_status = "needs_review"
-notes = "2026-07-27 source audit: the Rust file has no repr(C) state or rs_siphash24_* exports although the Rust header/fixture declares six. Current C also exposes iovec and typed helper paths that Rust lacks. State length uses checked Rust addition rather than documented C size_t wrapping, so an overflow can panic. Build a bounded repr(C) ABI facade and complete the streaming/helper audit before anchoring."
+symbols = 6
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/siphash24.c" = "b73ede34c8bc43c04697adb23f84db94473ab43a", "src/basic/siphash24.h" = "6da73fedaa41c21ed516779b978019ab6f9fcd33" }
+last_reviewed_rust_blobs = { "src/basic/rust/siphash24.rs" = "d17b12246fa7c3942560edf8665a9d50bf4e76cc", "src/basic/rust/siphash24.h" = "8e02b5d8e1bced44fd10fbd333043221a06d9cb9" }
+notes = "Reviewed static SipHash ABI slice 2026-07-29; no build/tests/VM. Six facades preserve the repr(C) streaming state, length wrapping, byte and C-string paths, and finalized output. IOVEC compression remains C-only. C remains production authority; runtime parity remains P2."
 
 [MurmurHash2]
 c_paths = [
@@ -579,18 +602,48 @@ last_reviewed_rust_blobs = { "src/basic/rust/ether_addr_util.rs" = "1f54e74a8abb
 notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. Sixteen fixed-layout and parser facades are split into 12 machine-checked contracts covering repr(C) ABI, opaque bytes, caller storage, error publication, and no allocator crossing. Six C callables and the hash-op variables remain outside the slice, so provenance is partial and runtime evidence is unclaimed."
 
 [ratelimit]
-c_file = "src/basic/ratelimit.c"
-rust_file = "src/basic/rust/ratelimit.rs"
+c_paths = ["src/basic/ratelimit.c", "src/basic/ratelimit.h"]
+rust_paths = ["src/basic/rust/ratelimit.rs", "src/basic/rust/ratelimit.h"]
+scope = "basic.ratelimit"
+rust_scope_paths = ["src/basic/rust/ratelimit.rs"]
+rust_interface_paths = ["src/basic/rust/ratelimit.h"]
+contract_file = "tools/rust-port/contracts/basic/ratelimit.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/ratelimit.c", rust_paths = ["src/basic/rust/ratelimit.rs", "src/basic/rust/ratelimit.h"] },
+    { kind = "direct", path = "src/basic/ratelimit.h", rust_paths = ["src/basic/rust/ratelimit.rs", "src/basic/rust/ratelimit.h"] },
+]
+test_file = "tests-extra/test-ratelimit-rust.c"
 status = "in-progress"
 tier = 1
-notes = "4 FFI exports: rs_ratelimit_below, rs_ratelimit_num_dropped, rs_ratelimit_end, rs_ratelimit_left. Calls C now() for monotonic clock. Inline usec_add/usec_sub_unsigned/saturate_add."
+symbols = 6
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/ratelimit.c" = "b4ef5470b052fdfa6f62473ec8f6986785d1d7e0", "src/basic/ratelimit.h" = "c70571340ad9ee08f2ac4bc7afafe8edd50950b5" }
+last_reviewed_rust_blobs = { "src/basic/rust/ratelimit.rs" = "7f461645fdfb3c2b6b0bc605ad9ea5d0aad2f612", "src/basic/rust/ratelimit.h" = "48159bb0161c42963e1514eae8b484d0d1422495" }
+notes = "Reviewed static RateLimit ABI slice 2026-07-29; no build/tests/VM. Six facades preserve the repr(C) state layout, C CLOCK_BOOTTIME source, saturation arithmetic, mutation, and header-inline helpers. NULL inputs fail closed instead of following C assertions; runtime parity remains P2."
 
 [sha256-hmac]
-c_file = "src/basic/sha256.c, src/basic/hmac.c"
-rust_file = "src/basic/rust/sha256_hmac.rs"
+c_paths = ["src/basic/sha256.c", "src/basic/sha256.h", "src/basic/hmac.c", "src/basic/hmac.h", "src/fundamental/sha256.c", "src/fundamental/sha256.h"]
+rust_paths = ["src/basic/rust/sha256_hmac.rs", "src/basic/rust/sha256_hmac.h"]
+scope = "basic.sha256-hmac"
+rust_scope_paths = ["src/basic/rust/sha256_hmac.rs"]
+rust_interface_paths = ["src/basic/rust/sha256_hmac.h"]
+contract_file = "tools/rust-port/contracts/basic/sha256-hmac.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/sha256.c", rust_paths = ["src/basic/rust/sha256_hmac.rs", "src/basic/rust/sha256_hmac.h"] },
+    { kind = "direct", path = "src/basic/sha256.h", rust_paths = ["src/basic/rust/sha256_hmac.rs", "src/basic/rust/sha256_hmac.h"] },
+    { kind = "direct", path = "src/basic/hmac.c", rust_paths = ["src/basic/rust/sha256_hmac.rs", "src/basic/rust/sha256_hmac.h"] },
+    { kind = "direct", path = "src/basic/hmac.h", rust_paths = ["src/basic/rust/sha256_hmac.rs", "src/basic/rust/sha256_hmac.h"] },
+    { kind = "direct", path = "src/fundamental/sha256.c", rust_paths = ["src/basic/rust/sha256_hmac.rs", "src/basic/rust/sha256_hmac.h"] },
+    { kind = "direct", path = "src/fundamental/sha256.h", rust_paths = ["src/basic/rust/sha256_hmac.rs", "src/basic/rust/sha256_hmac.h"] },
+]
+test_file = "tests-extra/test-sha256-hmac-rust.c"
 status = "in-progress"
 tier = 1
-notes = "3 FFI exports: rs_sha256_is_valid, rs_parse_sha256, rs_hmac_sha256. Calls C sha256_init_ctx/process_bytes/finish_ctx/direct via extern. Skipped sha256_fd (file I/O)."
+symbols = 3
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/sha256.c" = "ebefdc7540955bcd0c7f095b96889e6508876ddb", "src/basic/sha256.h" = "659a4addaab329dfcb7a8dfa6dc82c071c08e393", "src/basic/hmac.c" = "72cf59d468f2380978cf27587df85c66c8a74c0d", "src/basic/hmac.h" = "fd474f7649fea131c695f37e444878f57dabd2dd", "src/fundamental/sha256.c" = "ac514eddabbc2043463dd2ece3a12360915a05c7", "src/fundamental/sha256.h" = "dbb08e35e57e259256d01a8719731dc30c057583" }
+last_reviewed_rust_blobs = { "src/basic/rust/sha256_hmac.rs" = "1842d70e5503a8d0c6fd6a4c4e53653389430042", "src/basic/rust/sha256_hmac.h" = "0187e724193ffa6c9a4922a34736f24de1376d45" }
+notes = "Reviewed static SHA-256/HMAC ABI slice 2026-07-29; no build/tests/VM. Three facades preserve byte-oriented validation/parsing, fixed digest output, HMAC key processing, and volatile cleanup. File I/O hashing remains C-only; runtime parity remains P2."
 
 [path-util]
 c_paths = [
@@ -784,11 +837,24 @@ tier = 1
 notes = "3 shadow tests pass. 3 FFI exports: rs_memdup, rs_memdup_suffix0, rs_free_many. Skipped: greedy_realloc*, realloc0, malloc_sizeof_safe (depend on glibc malloc_usable_size)."
 
 [strbuf]
-c_file = "src/basic/strbuf.c"
-rust_file = "src/basic/rust/strbuf.rs"
+c_paths = ["src/basic/strbuf.c", "src/basic/strbuf.h"]
+rust_paths = ["src/basic/rust/strbuf.rs", "src/basic/rust/strbuf.h"]
+scope = "basic.strbuf"
+rust_scope_paths = ["src/basic/rust/strbuf.rs"]
+rust_interface_paths = ["src/basic/rust/strbuf.h"]
+contract_file = "tools/rust-port/contracts/basic/strbuf.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/strbuf.c", rust_paths = ["src/basic/rust/strbuf.rs", "src/basic/rust/strbuf.h"] },
+    { kind = "direct", path = "src/basic/strbuf.h", rust_paths = ["src/basic/rust/strbuf.rs", "src/basic/rust/strbuf.h"] },
+]
+test_file = "tests-extra/test-strbuf-rust.c"
 status = "in-progress"
 tier = 2
-notes = "5 shadow tests pass. 4 FFI exports: rs_strbuf_new, rs_strbuf_add_string_full, rs_strbuf_complete, rs_strbuf_free. Trie-based string deduplication. Uses doubling growth instead of GREEDY_REALLOC."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/strbuf.c" = "b54dc8fedf777a7095cb278b4f1d3bfe4ba21cf1", "src/basic/strbuf.h" = "68baaffb40c6ffa2188336e637a50de922d469a4" }
+last_reviewed_rust_blobs = { "src/basic/rust/strbuf.rs" = "883d7beb62f4b7c46afb4b748e5be258625356b1", "src/basic/rust/strbuf.h" = "1ba68c32de8d40c05b709d87c5e4abfd68498636" }
+notes = "Reviewed static Strbuf ABI slice 2026-07-29; no build/tests/VM. Four facades preserve valid lifecycle, string de-duplication offsets, completion semantics, and libc release. C remains production authority; runtime parity remains P2."
 
 [prioq]
 c_file = "src/basic/prioq.c"
@@ -1478,13 +1544,23 @@ notes = "Reviewed static dirent classification ABI slice 2026-07-28; no build/te
 
 [dns_domain_validators]
 c_paths = ["src/shared/dns-domain.c", "src/shared/dns-domain.h"]
-rust_file = "src/basic/rust/dns_domain_validators.rs"
-header_file = "src/shared/dns-domain.h"
+rust_paths = ["src/basic/rust/dns_domain_validators.rs", "src/shared/rust/dns_domain_validators.h"]
+scope = "shared.dns-domain-validators"
+rust_scope_paths = ["src/basic/rust/dns_domain_validators.rs"]
+rust_interface_paths = ["src/shared/rust/dns_domain_validators.h"]
+contract_file = "tools/rust-port/contracts/basic/dns-domain-validators.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/dns-domain.c", rust_paths = ["src/basic/rust/dns_domain_validators.rs", "src/shared/rust/dns_domain_validators.h"] },
+    { kind = "direct", path = "src/shared/dns-domain.h", rust_paths = ["src/basic/rust/dns_domain_validators.rs", "src/shared/rust/dns_domain_validators.h"] },
+]
+test_file = "tests-extra/test-dns-label-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 6
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored service/subtype validation to current shared DNS-domain source/header; behavioral completion remains unclaimed."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/dns-domain.c" = "c90da5fc465f2d94981700e10a8df365ea6420e9", "src/shared/dns-domain.h" = "aabfaa502957546c53d1682c456e6400f6d101db" }
+last_reviewed_rust_blobs = { "src/basic/rust/dns_domain_validators.rs" = "df2998741f40c0049330ea3572db1f4b2b83ea5b", "src/shared/rust/dns_domain_validators.h" = "0e338a0b24ba8c2b6916388c669013ab2e71ef51" }
+notes = "Reviewed static DNS-domain validator slice 2026-07-29; no build/tests/VM. Two facades preserve valid UTF-8 service/subtype limits. DNS SRV/DNS-SD label classification and other DNS name parsing remain separately tracked; C remains production authority and runtime parity remains P2."
 
 [dns_label]
 c_paths = ["src/shared/dns-domain.c", "src/shared/dns-domain.h"]
@@ -1699,15 +1775,24 @@ last_reviewed_rust_blobs = { "src/basic/rust/fstype_util.rs" = "8cc861b5efba03eb
 notes = "Reviewed static filesystem predicate slice 2026-07-28; no build/tests/VM. Eight byte-preserving facades track generated filesystem sets, fuse-prefix handling, API-VFS path boundaries, the corrected uid/gid versus ownership distinction, and native flexible-layout file-handle equality. Mount/syscall behavior remains C-only. C remains production authority; runtime parity is unclaimed."
 
 [glob_util]
-c_file = "src/basic/glob-util.c"
-rust_file = "src/basic/rust/glob_util.rs"
-header_file = "src/basic/glob-util.h"
-test_file = "src/test/test-glob.c"
+c_paths = ["src/basic/glob-util.c", "src/basic/glob-util.h"]
+rust_paths = ["src/basic/rust/glob_util.rs", "src/shared/rust/glob_util.h"]
+scope = "basic.glob-util"
+rust_scope_paths = ["src/basic/rust/glob_util.rs"]
+rust_interface_paths = ["src/shared/rust/glob_util.h"]
+contract_file = "tools/rust-port/contracts/basic/glob-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/glob-util.c", rust_paths = ["src/basic/rust/glob_util.rs", "src/shared/rust/glob_util.h"] },
+    { kind = "direct", path = "src/basic/glob-util.h", rust_paths = ["src/basic/rust/glob_util.rs", "src/shared/rust/glob_util.h"] },
+]
+test_file = "tests-extra/test-glob-util-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 3
-sync_status = "needs_review"
-notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-glob.c); re-anchor to current upstream files before claiming completion."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/glob-util.c" = "eadfbb02215179780cdd0c5eacf850a97ee760c3", "src/basic/glob-util.h" = "ea3e8693198437435c598eeb5728b8553562b0bc" }
+last_reviewed_rust_blobs = { "src/basic/rust/glob_util.rs" = "7c0f7ddf8ed4b1c9d141bf5af260893eaaf89993", "src/shared/rust/glob_util.h" = "199a804ceb4122a8f977a7696594651745e88b2f" }
+notes = "Reviewed static glob utility ABI slice 2026-07-29; no build/tests/VM. Byte-wise glob recognition and libc-owned non-glob prefix allocation are covered; glob expansion remains C-only. C remains production authority; runtime parity remains P2."
 
 [gpt_util]
 c_file = "src/shared/gpt.c"
@@ -1839,13 +1924,27 @@ last_reviewed_rust_blobs = { "src/basic/rust/ioprio_util.rs" = "7b6dfab341a280c2
 notes = "Reviewed static I/O-priority ABI slice 2026-07-28; no build/tests/VM. Four scalar facades preserve UAPI bit masks, hints, reserved class handling, and normalization. Parsing and string-table APIs remain C-only. C remains the production authority; runtime parity is unclaimed."
 
 [mempool]
-c_file = "src/basic/mempool.c"
-rust_file = "src/basic/rust/mempool.rs"
-header_file = "src/basic/mempool.h"
+c_paths = ["src/basic/mempool.c", "src/basic/mempool.h", "src/basic/memory-util.c", "src/basic/memory-util.h", "src/fundamental/memory-util.h"]
+rust_paths = ["src/basic/rust/mempool.rs", "src/basic/rust/mempool.h"]
+scope = "basic.mempool"
+rust_scope_paths = ["src/basic/rust/mempool.rs"]
+rust_interface_paths = ["src/basic/rust/mempool.h"]
+contract_file = "tools/rust-port/contracts/basic/mempool.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/mempool.c", rust_paths = ["src/basic/rust/mempool.rs", "src/basic/rust/mempool.h"] },
+    { kind = "direct", path = "src/basic/mempool.h", rust_paths = ["src/basic/rust/mempool.rs", "src/basic/rust/mempool.h"] },
+    { kind = "direct", path = "src/basic/memory-util.c", rust_paths = ["src/basic/rust/mempool.rs", "src/basic/rust/mempool.h"] },
+    { kind = "direct", path = "src/basic/memory-util.h", rust_paths = ["src/basic/rust/mempool.rs", "src/basic/rust/mempool.h"] },
+    { kind = "direct", path = "src/fundamental/memory-util.h", rust_paths = ["src/basic/rust/mempool.rs", "src/basic/rust/mempool.h"] },
+]
+test_file = "tests-extra/test-mempool-rust.c"
 status = "in-progress"
 tier = 2
-symbols = 6
-sync_status = "needs_review"
+symbols = 3
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/mempool.c" = "8ed3b7e551a04834b52f3d8bedb642107f71ded3", "src/basic/mempool.h" = "3817b0c5b969914d7e1dad7b2552ecaa3939d659", "src/basic/memory-util.c" = "10a5157ca64666934769ffea67ccfba54ecb508e", "src/basic/memory-util.h" = "7a73e76c94ef3c096cc0cbed39873c087ceaf9f0", "src/fundamental/memory-util.h" = "55ed19e15ca8e6e0e6b5bcd99290d42f4a93f843" }
+last_reviewed_rust_blobs = { "src/basic/rust/mempool.rs" = "cd268856c8b399bb7ce1b1b7278806195b440e93", "src/basic/rust/mempool.h" = "33283f1e0552035dc6371a6a35dbc129eacac8cb" }
+notes = "Reviewed static mempool ABI slice 2026-07-29; no build/tests/VM. Three repr(C) allocator/free-list facades preserve valid page-sized pool allocation, reuse, zeroing, and libc ownership. Descriptor initialization is C static-data setup, not an invented function ABI; trim and enable policy remain C-only. C remains production authority; runtime parity remains P2."
 
 [misc_validators]
 c_paths = ["src/basic/parse-util.c", "src/basic/os-util.c", "src/shared/hostname-setup.c", "src/shared/bus-print-properties.c", "src/basic/user-util.c", "src/shared/reboot-util.c", "src/basic/syslog-util.c", "src/basic/socket-util.c"]
@@ -1978,13 +2077,23 @@ notes = "Reviewed static namespace-flag ABI slice 2026-07-28; no build/tests/VM.
 
 [pe_binary]
 c_paths = ["src/shared/pe-binary.c", "src/shared/pe-binary.h"]
-rust_file = "src/basic/rust/pe_binary.rs"
-header_file = "src/shared/pe-binary.h"
+rust_paths = ["src/basic/rust/pe_binary.rs", "src/basic/rust/pe_binary.h"]
+scope = "basic.pe-binary"
+rust_scope_paths = ["src/basic/rust/pe_binary.rs"]
+rust_interface_paths = ["src/basic/rust/pe_binary.h"]
+contract_file = "tools/rust-port/contracts/basic/pe-binary.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/pe-binary.c", rust_paths = ["src/basic/rust/pe_binary.rs", "src/basic/rust/pe_binary.h"] },
+    { kind = "direct", path = "src/shared/pe-binary.h", rust_paths = ["src/basic/rust/pe_binary.rs", "src/basic/rust/pe_binary.h"] },
+]
+test_file = "tests-extra/test-pe-binary-rust.c"
 status = "in-progress"
 tier = 2
-symbols = 4
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored PE parsing behavior to current shared source/header; behavioral completion remains unclaimed."
+symbols = 7
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/pe-binary.c" = "fc6576a875770ecc877cd5102f1dce4724403598", "src/shared/pe-binary.h" = "4b5dc243fe77f7a4505d306ecde7b5133f082ccb" }
+last_reviewed_rust_blobs = { "src/basic/rust/pe_binary.rs" = "72453927e74fa8af4251d43ab121994c62cc6b8c", "src/basic/rust/pe_binary.h" = "b7f3b21e23401613061ca5270da20e87e675ffe0" }
+notes = "Reviewed static PE binary inspection slice 2026-07-29; no build/tests/VM. Seven borrowed packed-header/section facades cover classification, lookup, and data-directory inspection. File I/O, allocation, hashing, and checksums remain C-only. C remains production authority; runtime parity remains P2."
 
 [procfs_util]
 c_file = "src/basic/procfs-util.c"
@@ -2111,14 +2220,23 @@ notes = "Reviewed static serialization ABI slice 2026-07-28; no build/tests/VM. 
 
 [sha1]
 c_paths = ["src/fundamental/sha1.c", "src/fundamental/sha1.h"]
-rust_file = "src/basic/rust/sha1.rs"
-header_file = "src/fundamental/sha1.h"
-test_file = "src/test/test-sha1.c"
+rust_paths = ["src/basic/rust/sha1.rs", "src/basic/rust/sha1.h"]
+scope = "fundamental.sha1"
+rust_scope_paths = ["src/basic/rust/sha1.rs"]
+rust_interface_paths = ["src/basic/rust/sha1.h"]
+contract_file = "tools/rust-port/contracts/basic/sha1.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/fundamental/sha1.c", rust_paths = ["src/basic/rust/sha1.rs", "src/basic/rust/sha1.h"] },
+    { kind = "direct", path = "src/fundamental/sha1.h", rust_paths = ["src/basic/rust/sha1.rs", "src/basic/rust/sha1.h"] },
+]
+test_file = "tests-extra/test-sha1-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 5
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored SHA-1 behavior to current fundamental source/header and existing test fixture; behavioral completion remains unclaimed."
+symbols = 3
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/fundamental/sha1.c" = "1d48d6874afd8d27f5c5205e6818c099ac9adf56", "src/fundamental/sha1.h" = "3577ad5809f6af1f747983f022728704eed49d92" }
+last_reviewed_rust_blobs = { "src/basic/rust/sha1.rs" = "3b26959aa068a9c7762485c5e8c56823640086e6", "src/basic/rust/sha1.h" = "bb1e58c623b377ccefb811c3fa8543ba2c903270" }
+notes = "Reviewed static SHA-1 ABI slice 2026-07-29; no build/tests/VM. Three repr(C) incremental hashing facades preserve byte input, state layout, counters, finalization, and caller-owned digest storage. C remains production authority; runtime parity remains P2."
 
 [shared_lookup_facades]
 c_paths = ["src/shared/condition.c", "src/shared/condition.h", "src/shared/resolve-util.c", "src/shared/resolve-util.h", "src/shared/netif-util.c", "src/shared/netif-util.h", "src/basic/compress.c", "src/basic/compress.h", "src/basic/socket-util.c", "src/basic/socket-util.h", "src/shared/output-mode.c", "src/shared/output-mode.h"]
@@ -2305,13 +2423,25 @@ sync_status = "needs_review"
 
 [user_shell_util]
 c_paths = ["src/basic/user-util.c", "src/basic/user-util.h", "src/basic/parse-util.c", "src/basic/parse-util.h"]
-rust_file = "src/basic/rust/user_shell_util.rs"
-header_file = "src/basic/user-util.h"
+rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"]
+scope = "basic.user-shell-util"
+rust_scope_paths = ["src/basic/rust/user_shell_util.rs"]
+rust_interface_paths = ["src/shared/rust/user_shell_util.h"]
+contract_file = "tools/rust-port/contracts/basic/user-shell-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/user-util.c", rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"] },
+    { kind = "direct", path = "src/basic/user-util.h", rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"] },
+    { kind = "direct", path = "src/basic/parse-util.c", rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"] },
+    { kind = "direct", path = "src/basic/parse-util.h", rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"] },
+]
+test_file = "tests-extra/test-user-shell-util-rust.c"
 status = "in-progress"
 tier = 3
 symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit maps shell classification and fractional parsing to their current basic authorities; behavioral completion remains unclaimed."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/user-util.c" = "fe4c0e6a36858f6b915705f50219a00c104a50f1", "src/basic/user-util.h" = "8355548b00ca3cd41ad52990f7f66f0807e47bc0", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
+last_reviewed_rust_blobs = { "src/basic/rust/user_shell_util.rs" = "084a88fababae3baf7a1d2c8ba314948e50dd54c", "src/shared/rust/user_shell_util.h" = "e9fe96b83badbc5f42470335a4445146b8546804" }
+notes = "Reviewed static shell and fractional parser ABI slice 2026-07-29; no build/tests/VM. Three raw-byte helpers preserve valid classification and fractional parser cursor/output behavior. User lookup and shell selection remain C-only. C remains production authority; runtime parity remains P2."
 
 [user_util]
 c_file = "src/basic/user-util.c"

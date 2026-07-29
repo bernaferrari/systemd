@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
-#include <stdint.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
-/* Rust FFI declarations for sha256/hmac module.
- * PORT-SYNC: src/basic/sha256.c, src/basic/hmac.c */
+/* PORT-SYNC: scope=basic.sha256-hmac; authority=src/basic/hmac.c,src/basic/hmac.h,src/basic/sha256.c,src/basic/sha256.h,src/fundamental/sha256.c,src/fundamental/sha256.h */
+
+/* Rust FFI declarations for sha256/hmac module. */
 
 bool rs_sha256_is_valid(const char *s);
 int rs_parse_sha256(const char *s, uint8_t ret[static 32]);

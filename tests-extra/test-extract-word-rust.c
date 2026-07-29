@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
+/* RUST-CONTRACT: extract-first-word */
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -345,6 +347,23 @@ TEST(extract_first_word_empty_quotes) {
         assert_se(cr == rr && cr == 1);
         assert_se(streq(c_word, rs_word));
         assert_se(streq(c_word, ""));
+        free(c_word);
+        free(rs_word);
+}
+
+/* The C API leaves the caller's output ownership intact on an invalid escape
+ * and advances the input cursor to the offending byte. */
+TEST(extract_first_word_error_publication) {
+        const char *c_input = "bad\\q";
+        const char *rs_input = "bad\\q";
+        char *c_word = strdup("sentinel"), *rs_word = strdup("sentinel");
+
+        assert_se(c_word && rs_word);
+        int cr = extract_first_word(&c_input, &c_word, NULL, EXTRACT_CUNESCAPE);
+        int rr = rs_extract_first_word(&rs_input, &rs_word, NULL, EXTRACT_CUNESCAPE);
+        assert_se(cr == rr && cr == -EINVAL);
+        assert_se(streq(c_word, "sentinel") && streq(rs_word, "sentinel"));
+        assert_se(streq(c_input, rs_input) && streq(c_input, "q"));
         free(c_word);
         free(rs_word);
 }

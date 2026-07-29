@@ -1,0 +1,50 @@
+schema = 1
+module = "glob_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["safe_glob_full"]
+
+[authority]
+c_headers = ["src/basic/glob-util.h"]
+c_sources = ["src/basic/glob-util.c"]
+rust_headers = ["src/shared/rust/glob_util.h"]
+rust_sources = ["src/basic/rust/glob_util.rs"]
+
+[[surface]]
+id = "glob-classifier"
+c_symbols = ["string_is_glob"]
+rust_symbols = ["rs_string_is_glob"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "glob-null-fail-closed"
+deviation_rationale = "Rust returns false for NULL instead of C's caller precondition; valid byte-wise glob classification matches C."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-glob-util-rust.c"
+meson_target = "test-glob-util-rust"
+labels = ["glob-classifier"]
+
+[[surface]]
+id = "glob-prefix"
+c_symbols = ["glob_non_glob_prefix"]
+rust_symbols = ["rs_glob_non_glob_prefix"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "glob-prefix-null-fail-closed"
+deviation_rationale = "Rust rejects unusable NULL arguments instead of C assertion paths; valid prefix allocation and error behavior follow C."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-glob-util-rust.c"
+meson_target = "test-glob-util-rust"
+labels = ["glob-prefix"]

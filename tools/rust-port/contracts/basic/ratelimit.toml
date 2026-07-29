@@ -1,0 +1,69 @@
+schema = 1
+module = "ratelimit"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["RATELIMIT_OFF"]
+
+[authority]
+c_headers = ["src/basic/ratelimit.h"]
+c_sources = ["src/basic/ratelimit.c"]
+rust_headers = ["src/basic/rust/ratelimit.h"]
+rust_sources = ["src/basic/rust/ratelimit.rs"]
+
+[[surface]]
+id = "ratelimit-below"
+c_symbols = ["ratelimit_below"]
+rust_symbols = ["rs_ratelimit_below"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "kernel"
+verification = "static-only"
+deviation_id = "ratelimit-null-fail-closed"
+deviation_rationale = "C asserts a non-NULL RateLimit pointer. The Rust facade returns false for NULL while preserving the C CLOCK_BOOTTIME algorithm and valid-pointer mutation behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-ratelimit-rust.c"
+meson_target = "test-ratelimit-rust"
+labels = ["ratelimit-below"]
+
+[[surface]]
+id = "ratelimit-state"
+c_symbols = ["ratelimit_num_dropped", "ratelimit_end", "ratelimit_reset", "ratelimit_configured"]
+rust_symbols = ["rs_ratelimit_num_dropped", "rs_ratelimit_end", "rs_ratelimit_reset", "rs_ratelimit_configured"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "ratelimit-state-null-fail-closed"
+deviation_rationale = "The C state helpers require non-NULL storage. Rust returns scalar zero/false or makes reset a no-op for NULL, while preserving valid-pointer layout and state behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-ratelimit-rust.c"
+meson_target = "test-ratelimit-rust"
+labels = ["ratelimit-state"]
+
+[[surface]]
+id = "ratelimit-left"
+c_symbols = ["ratelimit_left"]
+rust_symbols = ["rs_ratelimit_left"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "kernel"
+verification = "static-only"
+deviation_id = "ratelimit-left-null-fail-closed"
+deviation_rationale = "C asserts a non-NULL RateLimit pointer. Rust returns zero for NULL and otherwise uses the C CLOCK_BOOTTIME source and saturating arithmetic."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-ratelimit-rust.c"
+meson_target = "test-ratelimit-rust"
+labels = ["ratelimit-left"]

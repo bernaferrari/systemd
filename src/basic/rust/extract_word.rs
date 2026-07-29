@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/extract-word.c
+// PORT-SYNC: scope=basic.extract-word; authority=src/basic/extract-word.c,src/basic/extract-word.h
 //
 // Word extraction from strings with quoting and escaping support.
 // Pure Rust — cunescape and UTF-8 encoding implemented inline.
@@ -588,14 +588,182 @@ mod tests {
     }
 }
 
-use std::ffi::{CStr, CString};
-use std::os::raw::c_void;
+use std::ffi::CStr;
+use std::ptr;
 
-/// C-compatible wrapper around `extract_first_word`.
-/// Takes `*mut *const c_char` for input (updated in place),
-/// `*mut *mut c_char` for the output word (caller must free),
-/// a separator string pointer (may be null for default whitespace),
-/// and flags. Returns 1 on success, 0 on end, negative on error.
+/// Byte-oriented result used at the C ABI boundary.  Unlike the ergonomic
+/// Rust API above, this never treats a C string as UTF-8: C accepts arbitrary
+/// non-NUL bytes in both input and output words.
+enum ExtractBytesResult {
+    NoWord,
+    Word { word: Vec<u8>, next: Option<usize> },
+}
+
+/// Implement the pointer-visible part of C `extract_first_word()` over the
+/// bytes before a C string's terminating NUL.  `Err` carries the input offset
+/// at which C leaves `*p` on a parsing failure.
+fn extract_first_word_bytes(
+    input: &[u8],
+    separators: &[u8],
+    flags: u32,
+) -> Result<ExtractBytesResult, (Errno, usize)> {
+    if flags_set(flags, EXTRACT_KEEP_QUOTE) && flags_set(flags, EXTRACT_UNQUOTE) {
+        return Err((Errno::EINVAL, 0));
+    }
+
+    let mut p = 0usize;
+    let mut word = Vec::new();
+
+    /* This follows the two loops in extract-word.c rather than using the
+     * UTF-8 `String` facade.  In particular, quoting is active only for
+     * EXTRACT_KEEP_QUOTE/EXTRACT_UNQUOTE, as in C. */
+    loop {
+        if p == input.len() {
+            return Ok(ExtractBytesResult::NoWord);
+        }
+        if separators.contains(&input[p]) {
+            if flags_set(flags, EXTRACT_DONT_COALESCE_SEPARATORS) {
+                if !flags_set(flags, EXTRACT_RETAIN_SEPARATORS) {
+                    p += 1;
+                }
+                return Ok(ExtractBytesResult::Word {
+                    word,
+                    next: (p < input.len()).then_some(p),
+                });
+            }
+            p += 1;
+        } else {
+            break;
+        }
+    }
+
+    let mut quote = 0u8;
+    let mut backslash = false;
+    loop {
+        if backslash {
+            if p == input.len() {
+                if (flags_set(flags, EXTRACT_UNESCAPE_RELAX)
+                    && (quote == 0 || flags_set(flags, EXTRACT_RELAX)))
+                    || flags_set(flags, EXTRACT_RELAX)
+                {
+                    if flags_set(flags, EXTRACT_UNESCAPE_RELAX) {
+                        word.push(b'\\');
+                    }
+                    return Ok(ExtractBytesResult::Word { word, next: None });
+                }
+                return Err((Errno::EINVAL, p));
+            }
+
+            let c = input[p];
+            if flags_set(flags, EXTRACT_CUNESCAPE | EXTRACT_UNESCAPE_SEPARATORS) {
+                if flags_set(flags, EXTRACT_CUNESCAPE) {
+                    if let Some((consumed, output)) = cunescape_one(&input[p..], false) {
+                        match output {
+                            CunescapeOut::Byte(byte) => word.push(byte),
+                            CunescapeOut::Char(ch) => {
+                                word.extend_from_slice(&utf8_encode_unichar(ch))
+                            }
+                        }
+                        p += consumed;
+                        backslash = false;
+                        continue;
+                    }
+                }
+
+                if flags_set(flags, EXTRACT_UNESCAPE_SEPARATORS)
+                    && (separators.contains(&c) || c == b'\\')
+                {
+                    word.push(c);
+                } else if flags_set(flags, EXTRACT_UNESCAPE_RELAX) {
+                    word.extend_from_slice(&[b'\\', c]);
+                } else {
+                    return Err((Errno::EINVAL, p));
+                }
+            } else {
+                word.push(c);
+            }
+
+            backslash = false;
+            p += 1;
+            continue;
+        }
+
+        if quote != 0 {
+            if p == input.len() {
+                if flags_set(flags, EXTRACT_RELAX) {
+                    return Ok(ExtractBytesResult::Word { word, next: None });
+                }
+                return Err((Errno::EINVAL, p));
+            }
+
+            let c = input[p];
+            if c == quote {
+                quote = 0;
+                if flags_set(flags, EXTRACT_UNQUOTE) {
+                    p += 1;
+                    continue;
+                }
+                word.push(c);
+                p += 1;
+                continue;
+            }
+            if c == b'\\' && !flags_set(flags, EXTRACT_RETAIN_ESCAPE) {
+                backslash = true;
+                p += 1;
+                continue;
+            }
+            word.push(c);
+            p += 1;
+            continue;
+        }
+
+        if p == input.len() {
+            return Ok(ExtractBytesResult::Word { word, next: None });
+        }
+        let c = input[p];
+        if (c == b'\'' || c == b'"') && flags_set(flags, EXTRACT_KEEP_QUOTE | EXTRACT_UNQUOTE) {
+            quote = c;
+            if flags_set(flags, EXTRACT_UNQUOTE) {
+                p += 1;
+                continue;
+            }
+            word.push(c);
+            p += 1;
+            continue;
+        }
+        if c == b'\\' && !flags_set(flags, EXTRACT_RETAIN_ESCAPE) {
+            backslash = true;
+            p += 1;
+            continue;
+        }
+        if separators.contains(&c) {
+            if flags_set(flags, EXTRACT_DONT_COALESCE_SEPARATORS) {
+                if !flags_set(flags, EXTRACT_RETAIN_SEPARATORS) {
+                    p += 1;
+                }
+                return Ok(ExtractBytesResult::Word {
+                    word,
+                    next: (p < input.len()).then_some(p),
+                });
+            }
+            if !flags_set(flags, EXTRACT_RETAIN_SEPARATORS) {
+                while p < input.len() && separators.contains(&input[p]) {
+                    p += 1;
+                }
+            }
+            return Ok(ExtractBytesResult::Word {
+                word,
+                next: (p < input.len()).then_some(p),
+            });
+        }
+        word.push(c);
+        p += 1;
+    }
+}
+
+/// C-compatible byte-preserving wrapper around `extract_first_word`.
+/// Returns C-allocator storage in `*word` on success and publishes neither
+/// output pointer on parsing/allocation failure, matching extract-word.c.
 ///
 /// # Safety
 /// Every non-null input pointer must be valid and properly aligned for all
@@ -603,7 +771,8 @@ use std::os::raw::c_void;
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_extract_first_word(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_extract_first_word(
     p: *mut *const c_char,
     word: *mut *mut c_char,
     separators: *const c_char,
@@ -612,43 +781,54 @@ pub unsafe fn rs_extract_first_word(
     if p.is_null() || word.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
-    *word = std::ptr::null_mut();
-    if (*p).is_null() {
+    // SAFETY: `p` and `word` are writable under this export's contract.
+    let input = unsafe { *p };
+    if input.is_null() {
+        // SAFETY: successful end-of-input clears both C outputs.
+        unsafe { *word = ptr::null_mut() };
         return 0;
     }
-    let input_str = match CStr::from_ptr(*p).to_str() {
-        Ok(s) => s,
-        Err(_) => return Errno::EINVAL.to_neg_errno(),
-    };
-
-    let sep_opt = if separators.is_null() {
-        None
+    // SAFETY: the contract supplies live NUL-terminated C strings.
+    let input_bytes = unsafe { CStr::from_ptr(input) }.to_bytes();
+    let separator_bytes = if separators.is_null() {
+        DEFAULT_SEPARATORS
     } else {
-        match CStr::from_ptr(separators).to_str() {
-            Ok(s) => Some(s),
-            Err(_) => return Errno::EINVAL.to_neg_errno(),
-        }
+        // SAFETY: the contract supplies a live NUL-terminated separator string.
+        unsafe { CStr::from_ptr(separators) }.to_bytes()
     };
 
-    match extract_first_word(input_str, sep_opt, flags as u32) {
-        Ok(Some((extracted, remaining))) => {
-            let c_word = match CString::new(extracted.as_str()) {
-                // SAFETY: `cs` is a live NUL-terminated string and `strdup`
-                // returns ownership from the C allocator expected by callers.
-                Ok(cs) => unsafe { crate::ffi::strdup(cs.as_ptr()) },
-                Err(_) => return Errno::EINVAL.to_neg_errno(),
+    match extract_first_word_bytes(input_bytes, separator_bytes, flags) {
+        Ok(ExtractBytesResult::NoWord) => {
+            // SAFETY: successful end-of-input clears both C outputs.
+            unsafe {
+                *p = ptr::null();
+                *word = ptr::null_mut();
+            }
+            0
+        }
+        Ok(ExtractBytesResult::Word { word: bytes, next }) => {
+            let Some(allocation) = bytes.len().checked_add(1) else {
+                return Errno::ENOMEM.to_neg_errno();
             };
-            if c_word.is_null() {
+            let allocated = crate::ffi::malloc(allocation).cast::<c_char>();
+            if allocated.is_null() {
                 return Errno::ENOMEM.to_neg_errno();
             }
-            *word = c_word;
-            // Update input pointer to point to remaining
-            // We need to compute the offset from the original string
-            let offset = input_str.len() - remaining.len();
-            *p = (*p).add(offset);
+            // SAFETY: `allocated` names `bytes.len() + 1` writable C-allocator
+            // bytes, and `bytes` has no interior NUL because the parser rejects
+            // escaped NUL.  The input pointer is advanced only after allocation.
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), allocated.cast::<u8>(), bytes.len());
+                *allocated.add(bytes.len()) = 0;
+                *word = allocated;
+                *p = next.map_or(ptr::null(), |offset| input.add(offset));
+            }
             1
         }
-        Ok(None) => 0,
-        Err(e) => e.to_neg_errno(),
+        Err((error, offset)) => {
+            // SAFETY: the reported offset is within the source C string.
+            unsafe { *p = input.add(offset) };
+            error.to_neg_errno()
+        }
     }
 }

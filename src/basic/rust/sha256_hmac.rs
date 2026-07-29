@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/sha256.c, src/basic/sha256.h, src/basic/hmac.c, src/basic/hmac.h
+// PORT-SYNC: scope=basic.sha256-hmac; authority=src/basic/hmac.c,src/basic/hmac.h,src/basic/sha256.c,src/basic/sha256.h,src/fundamental/sha256.c,src/fundamental/sha256.h
 //
 // SHA-256 hash, validation/parsing, and HMAC-SHA-256 computation.
 // Pure Rust implementation; no dependency on C sha256-fundamental.
+
+use libc::{c_char, c_int, c_void};
+use std::{
+    ffi::CStr,
+    ptr, slice,
+    sync::atomic::{Ordering, compiler_fence},
+};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -40,6 +47,26 @@ struct Sha256Ctx {
     total: u64,
     buf: [u8; 64],
     buflen: usize,
+}
+
+fn erase_bytes(bytes: &mut [u8]) {
+    for byte in bytes {
+        // SAFETY: every `byte` is a unique live byte in the supplied slice.
+        // Volatile writes prevent removal of this key-material cleanup.
+        unsafe { ptr::write_volatile(byte, 0) };
+    }
+    compiler_fence(Ordering::SeqCst);
+}
+
+fn erase_sha256_ctx(ctx: &mut Sha256Ctx) {
+    let size = std::mem::size_of::<Sha256Ctx>();
+    let bytes = ptr::from_mut(ctx).cast::<u8>();
+    for offset in 0..size {
+        // SAFETY: offsets below the object size remain within `ctx`; byte
+        // writes are valid for every part of an object's representation.
+        unsafe { ptr::write_volatile(bytes.add(offset), 0) };
+    }
+    compiler_fence(Ordering::SeqCst);
 }
 
 fn sha256_init_ctx() -> Sha256Ctx {
@@ -135,11 +162,11 @@ fn sha256_process_bytes(ctx: &mut Sha256Ctx, data: &[u8]) {
         ctx.buflen = remaining;
     }
 
-    ctx.total += data.len() as u64;
+    ctx.total = ctx.total.wrapping_add(data.len() as u64);
 }
 
 fn sha256_finish_ctx(ctx: &mut Sha256Ctx) -> [u8; 32] {
-    let total_bits = ctx.total * 8;
+    let total_bits = ctx.total.wrapping_mul(8);
 
     ctx.buf[ctx.buflen] = 0x80;
     ctx.buflen += 1;
@@ -184,18 +211,21 @@ fn is_hexdigit(c: u8) -> bool {
     unhexchar(c).is_some()
 }
 
-fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
-    let bytes = s.as_bytes();
-    if bytes.len() % 2 != 0 {
+fn parse_sha256_bytes(bytes: &[u8]) -> Option<[u8; SHA256_DIGEST_SIZE]> {
+    if bytes.len() != SHA256_DIGEST_SIZE * 2 {
         return None;
     }
-    let mut result = Vec::with_capacity(bytes.len() / 2);
-    for i in (0..bytes.len()).step_by(2) {
-        let hi = unhexchar(bytes[i])?;
-        let lo = unhexchar(bytes[i + 1])?;
-        result.push((hi << 4) | lo);
+    let mut result = [0u8; SHA256_DIGEST_SIZE];
+    for (output, pair) in result.iter_mut().zip(bytes.chunks_exact(2)) {
+        let hi = unhexchar(pair[0])?;
+        let lo = unhexchar(pair[1])?;
+        *output = (hi << 4) | lo;
     }
     Some(result)
+}
+
+fn sha256_bytes_is_valid(bytes: &[u8]) -> bool {
+    bytes.len() == SHA256_DIGEST_SIZE * 2 && bytes.iter().all(|&c| is_hexdigit(c))
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -203,22 +233,13 @@ fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
 /// Check if a string is a valid SHA-256 hex string (exactly 64 hex chars).
 /// Equivalent to C sha256_is_valid().
 pub fn sha256_is_valid(s: &str) -> bool {
-    s.len() == SHA256_DIGEST_SIZE * 2 && s.as_bytes().iter().all(|&c| is_hexdigit(c))
+    sha256_bytes_is_valid(s.as_bytes())
 }
 
 /// Parse a SHA-256 hex string into 32 bytes.
 /// Equivalent to C parse_sha256(). Returns Err(-22) on failure.
 pub fn parse_sha256(s: &str) -> Result<[u8; 32], i32> {
-    if !sha256_is_valid(s) {
-        return Err(-22); // -EINVAL
-    }
-    let data = hex_to_bytes(s).ok_or(-22)?;
-    if data.len() != SHA256_DIGEST_SIZE {
-        return Err(-22);
-    }
-    let mut result = [0u8; 32];
-    result.copy_from_slice(&data);
-    Ok(result)
+    parse_sha256_bytes(s.as_bytes()).ok_or(-libc::EINVAL)
 }
 
 /// Compute HMAC-SHA-256 per FIPS 198.
@@ -230,11 +251,13 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
 }
 
 pub fn hmac_sha256(key: &[u8], input: &[u8]) -> [u8; 32] {
-    let mut actual_key = key.to_vec();
-    if actual_key.len() > HMAC_BLOCK_SIZE {
-        actual_key = sha256_direct(key).to_vec();
-    }
-
+    let mut replacement_key = [0u8; SHA256_DIGEST_SIZE];
+    let actual_key = if key.len() > HMAC_BLOCK_SIZE {
+        replacement_key = sha256_direct(key);
+        replacement_key.as_slice()
+    } else {
+        key
+    };
     let mut inner_padding = [0u8; HMAC_BLOCK_SIZE];
     let mut outer_padding = [0u8; HMAC_BLOCK_SIZE];
 
@@ -251,12 +274,96 @@ pub fn hmac_sha256(key: &[u8], input: &[u8]) -> [u8; 32] {
     sha256_process_bytes(&mut ctx, &inner_padding);
     sha256_process_bytes(&mut ctx, input);
     let mut res = sha256_finish_ctx(&mut ctx);
+    erase_sha256_ctx(&mut ctx);
 
     // Second pass: hash outer padding + first result
     let mut ctx2 = sha256_init_ctx();
     sha256_process_bytes(&mut ctx2, &outer_padding);
     sha256_process_bytes(&mut ctx2, &res);
-    sha256_finish_ctx(&mut ctx2)
+    let result = sha256_finish_ctx(&mut ctx2);
+    erase_sha256_ctx(&mut ctx2);
+
+    erase_bytes(&mut replacement_key);
+    erase_bytes(&mut inner_padding);
+    erase_bytes(&mut outer_padding);
+    erase_bytes(&mut res);
+    result
+}
+
+// ── C ABI shadow facade ──────────────────────────────────────────────────
+
+/// Byte-oriented C facade for `sha256_is_valid()`.
+///
+/// # Safety
+///
+/// `s`, when non-NULL, must point to a live NUL-terminated C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_sha256_is_valid(s: *const c_char) -> bool {
+    if s.is_null() {
+        return false;
+    }
+
+    // SAFETY: required by this entry point's C-string contract.
+    sha256_bytes_is_valid(unsafe { CStr::from_ptr(s) }.to_bytes())
+}
+
+/// Byte-oriented C facade for `parse_sha256()`.
+///
+/// On failure `ret` is left untouched, matching C.
+///
+/// # Safety
+///
+/// `s`, when non-NULL, must point to a live NUL-terminated C string. `ret`
+/// must designate at least 32 writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_sha256(s: *const c_char, ret: *mut u8) -> c_int {
+    if s.is_null() || ret.is_null() {
+        return -libc::EINVAL;
+    }
+
+    // SAFETY: required by this entry point's C-string contract.
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let Some(digest) = parse_sha256_bytes(bytes) else {
+        return -libc::EINVAL;
+    };
+
+    // SAFETY: the caller guarantees a writable 32-byte result region. `copy`
+    // permits the result to overlap the input string, as C's final memcpy can.
+    unsafe { ptr::copy(digest.as_ptr(), ret, SHA256_DIGEST_SIZE) };
+    0
+}
+
+/// C facade for `hmac_sha256()`.
+///
+/// # Safety
+///
+/// `key` must designate `key_size > 0` readable bytes, `input` must be non-NULL
+/// and designate `input_size` readable bytes, and `res` must designate 32
+/// writable bytes. Invalid pointers are rejected by leaving `res` untouched.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_hmac_sha256(
+    key: *const c_void,
+    key_size: usize,
+    input: *const c_void,
+    input_size: usize,
+    res: *mut u8,
+) {
+    if key.is_null() || key_size == 0 || input.is_null() || res.is_null() {
+        return;
+    }
+
+    // SAFETY: the caller guarantees a readable key region.
+    let key = unsafe { slice::from_raw_parts(key.cast::<u8>(), key_size) };
+    let input = if input_size == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller guarantees a readable input region.
+        unsafe { slice::from_raw_parts(input.cast::<u8>(), input_size) }
+    };
+    let digest = hmac_sha256(key, input);
+    // SAFETY: the caller guarantees a writable 32-byte result region. `copy`
+    // permits result/input overlap after the digest has been fully computed.
+    unsafe { ptr::copy(digest.as_ptr(), res, SHA256_DIGEST_SIZE) };
 }
 
 #[cfg(test)]

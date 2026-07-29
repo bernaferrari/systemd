@@ -615,6 +615,728 @@ fn base64_encode_into(input: &[u8], output: &mut [u8]) {
     }
 }
 
+fn base32_encoded_len(input_len: usize, padding: bool) -> Result<usize, i32> {
+    if padding {
+        input_len
+            .checked_add(4)
+            .map(|length| length / 5)
+            .and_then(|groups| groups.checked_mul(8))
+            .ok_or(Errno::ENOMEM.to_neg_errno())
+    } else {
+        let tail = match input_len % 5 {
+            0 => 0,
+            1 => 2,
+            2 => 4,
+            3 => 5,
+            _ => 7,
+        };
+        input_len
+            .checked_div(5)
+            .and_then(|groups| groups.checked_mul(8))
+            .and_then(|length| length.checked_add(tail))
+            .ok_or(Errno::ENOMEM.to_neg_errno())
+    }
+}
+
+fn base32_encode_into(input: &[u8], output: &mut [u8], padding: bool) {
+    let mut read = 0;
+    let mut written = 0;
+    while input.len() - read >= 5 {
+        let block = &input[read..read + 5];
+        output[written..written + 8].copy_from_slice(&[
+            base32hexchar((block[0] >> 3).into()) as u8,
+            base32hexchar((((block[0] & 7) << 2) | (block[1] >> 6)).into()) as u8,
+            base32hexchar(((block[1] & 63) >> 1).into()) as u8,
+            base32hexchar((((block[1] & 1) << 4) | (block[2] >> 4)).into()) as u8,
+            base32hexchar((((block[2] & 15) << 1) | (block[3] >> 7)).into()) as u8,
+            base32hexchar(((block[3] & 127) >> 2).into()) as u8,
+            base32hexchar((((block[3] & 3) << 3) | (block[4] >> 5)).into()) as u8,
+            base32hexchar((block[4] & 31).into()) as u8,
+        ]);
+        read += 5;
+        written += 8;
+    }
+
+    let tail = &input[read..];
+    let mut append = |value: u8| {
+        output[written] = value;
+        written += 1;
+    };
+    match tail.len() {
+        4 => {
+            append(base32hexchar((tail[0] >> 3).into()) as u8);
+            append(base32hexchar((((tail[0] & 7) << 2) | (tail[1] >> 6)).into()) as u8);
+            append(base32hexchar(((tail[1] & 63) >> 1).into()) as u8);
+            append(base32hexchar((((tail[1] & 1) << 4) | (tail[2] >> 4)).into()) as u8);
+            append(base32hexchar((((tail[2] & 15) << 1) | (tail[3] >> 7)).into()) as u8);
+            append(base32hexchar(((tail[3] & 127) >> 2).into()) as u8);
+            append(base32hexchar(((tail[3] & 3) << 3).into()) as u8);
+            if padding {
+                append(b'=');
+            }
+        }
+        3 => {
+            append(base32hexchar((tail[0] >> 3).into()) as u8);
+            append(base32hexchar((((tail[0] & 7) << 2) | (tail[1] >> 6)).into()) as u8);
+            append(base32hexchar(((tail[1] & 63) >> 1).into()) as u8);
+            append(base32hexchar((((tail[1] & 1) << 4) | (tail[2] >> 4)).into()) as u8);
+            append(base32hexchar(((tail[2] & 15) << 1).into()) as u8);
+            if padding {
+                for _ in 0..3 {
+                    append(b'=');
+                }
+            }
+        }
+        2 => {
+            append(base32hexchar((tail[0] >> 3).into()) as u8);
+            append(base32hexchar((((tail[0] & 7) << 2) | (tail[1] >> 6)).into()) as u8);
+            append(base32hexchar(((tail[1] & 63) >> 1).into()) as u8);
+            append(base32hexchar(((tail[1] & 1) << 4).into()) as u8);
+            if padding {
+                for _ in 0..4 {
+                    append(b'=');
+                }
+            }
+        }
+        1 => {
+            append(base32hexchar((tail[0] >> 3).into()) as u8);
+            append(base32hexchar(((tail[0] & 7) << 2).into()) as u8);
+            if padding {
+                for _ in 0..6 {
+                    append(b'=');
+                }
+            }
+        }
+        _ => {}
+    }
+    debug_assert_eq!(written, output.len());
+}
+
+fn unbase32hex_byte(byte: u8) -> Result<u8, i32> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'A'..=b'V' => Ok(byte - b'A' + 10),
+        _ => Err(Errno::EINVAL.to_neg_errno()),
+    }
+}
+
+fn unbase32_decode_into(input: &[u8], output: &mut [u8]) -> Result<usize, i32> {
+    let mut read = 0;
+    let mut written = 0;
+    while input.len() - read >= 8 {
+        let mut values = [0u8; 8];
+        for (slot, byte) in values.iter_mut().zip(&input[read..read + 8]) {
+            *slot = unbase32hex_byte(*byte)?;
+        }
+        output[written..written + 5].copy_from_slice(&[
+            (values[0] << 3) | (values[1] >> 2),
+            (values[1] << 6) | (values[2] << 1) | (values[3] >> 4),
+            (values[3] << 4) | (values[4] >> 1),
+            (values[4] << 7) | (values[5] << 2) | (values[6] >> 3),
+            (values[6] << 5) | values[7],
+        ]);
+        read += 8;
+        written += 5;
+    }
+
+    let tail = &input[read..];
+    let mut values = [0u8; 7];
+    for (slot, byte) in values.iter_mut().zip(tail) {
+        *slot = unbase32hex_byte(*byte)?;
+    }
+    match tail.len() {
+        0 => {}
+        7 => {
+            if values[6] & 7 != 0 {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            output[written..written + 4].copy_from_slice(&[
+                (values[0] << 3) | (values[1] >> 2),
+                (values[1] << 6) | (values[2] << 1) | (values[3] >> 4),
+                (values[3] << 4) | (values[4] >> 1),
+                (values[4] << 7) | (values[5] << 2) | (values[6] >> 3),
+            ]);
+            written += 4;
+        }
+        5 => {
+            if values[4] & 1 != 0 {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            output[written..written + 3].copy_from_slice(&[
+                (values[0] << 3) | (values[1] >> 2),
+                (values[1] << 6) | (values[2] << 1) | (values[3] >> 4),
+                (values[3] << 4) | (values[4] >> 1),
+            ]);
+            written += 3;
+        }
+        4 => {
+            if values[3] & 15 != 0 {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            output[written..written + 2].copy_from_slice(&[
+                (values[0] << 3) | (values[1] >> 2),
+                (values[1] << 6) | (values[2] << 1) | (values[3] >> 4),
+            ]);
+            written += 2;
+        }
+        2 => {
+            if values[1] & 3 != 0 {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            output[written] = (values[0] << 3) | (values[1] >> 2);
+            written += 1;
+        }
+        _ => return Err(Errno::EINVAL.to_neg_errno()),
+    }
+    Ok(written)
+}
+
+fn base64_encoded_len_with_breaks(input_len: usize, line_break: usize) -> Result<usize, i32> {
+    let encoded = base64_encoded_len(input_len)?;
+    if encoded == 0 || line_break == usize::MAX {
+        return Ok(encoded);
+    }
+    let breaks = (encoded - 1) / line_break;
+    encoded
+        .checked_add(breaks)
+        .ok_or(Errno::ENOMEM.to_neg_errno())
+}
+
+fn base64_encode_with_breaks_into(
+    input: &[u8],
+    output: &mut [u8],
+    line_break: usize,
+) -> Result<(), i32> {
+    let encoded_len = base64_encoded_len(input.len())?;
+    let mut encoded = Vec::new();
+    encoded
+        .try_reserve_exact(encoded_len)
+        .map_err(|_| Errno::ENOMEM.to_neg_errno())?;
+    encoded.resize(encoded_len, 0);
+    base64_encode_into(input, &mut encoded);
+
+    let mut written = 0;
+    for byte in encoded {
+        if line_break != usize::MAX && written % (line_break + 1) == line_break {
+            output[written] = b'\n';
+            written += 1;
+        }
+        output[written] = byte;
+        written += 1;
+    }
+    debug_assert_eq!(written, output.len());
+    Ok(())
+}
+
+/// Borrow an explicit byte range, or the C string selected by the `SIZE_MAX`
+/// sentinel used by the C codec APIs.
+///
+/// # Safety
+/// For an explicit length, `p` must be readable for that many bytes when the
+/// length is non-zero. For `SIZE_MAX`, it must be a readable NUL-terminated C
+/// string. A null pointer is accepted only with an explicit zero length.
+unsafe fn codec_input_bytes<'a>(p: *const c_void, l: usize) -> Result<&'a [u8], i32> {
+    if p.is_null() {
+        return if l == 0 {
+            Ok(&[])
+        } else {
+            Err(Errno::EINVAL.to_neg_errno())
+        };
+    }
+    if l == usize::MAX {
+        // SAFETY: the helper's contract requires a readable NUL-terminated C string.
+        return Ok(unsafe { CStr::from_ptr(p.cast::<c_char>()) }.to_bytes());
+    }
+    // SAFETY: the helper's contract requires `p` to reference `l` readable bytes.
+    Ok(unsafe { std::slice::from_raw_parts(p.cast::<u8>(), l) })
+}
+
+/// Erase the requested allocation prefix before returning it to libc.
+///
+/// # Safety
+/// `allocation` must be live for `wipe_len` bytes and must not have escaped.
+unsafe fn codec_free(allocation: *mut u8, wipe_len: usize, secure: bool) {
+    if secure {
+        for offset in 0..wipe_len {
+            // SAFETY: the helper's contract guarantees every byte in this range is live.
+            unsafe { std::ptr::write_volatile(allocation.add(offset), 0) };
+        }
+    }
+    // SAFETY: the helper's contract guarantees libc allocated and still owns this pointer.
+    unsafe { libc::free(allocation.cast::<c_void>()) };
+}
+
+/// Hex-encode an explicit byte range with C-allocator-owned output.
+///
+/// # Safety
+/// `p` must point to `l` readable bytes when `l` is non-zero. The returned
+/// allocation has libc ownership and must be released with `free()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_hexmem(p: *const c_void, l: usize) -> *mut c_char {
+    // SAFETY: this FFI boundary documents the readable-range precondition.
+    let input = match unsafe { codec_input_bytes(p, l) } {
+        Ok(input) => input,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let output_len = match input.len().checked_mul(2) {
+        Some(length) => length,
+        None => return std::ptr::null_mut(),
+    };
+    let allocation_len = match output_len.checked_add(1) {
+        Some(length) => length,
+        None => return std::ptr::null_mut(),
+    };
+    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
+    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
+    if allocation.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: the allocation is live for the encoded bytes plus a terminator.
+    unsafe {
+        let output = std::slice::from_raw_parts_mut(allocation, output_len);
+        for (byte, pair) in input.iter().zip(output.chunks_exact_mut(2)) {
+            pair[0] = hexchar((byte >> 4).into()) as u8;
+            pair[1] = hexchar((byte & 15).into()) as u8;
+        }
+        *allocation.add(output_len) = 0;
+    }
+    allocation.cast::<c_char>()
+}
+
+/// Decode a hexadecimal byte range with C-allocator-owned output.
+///
+/// # Safety
+/// `p` must be readable for `l` bytes when `l` is explicit and non-zero, or a
+/// readable NUL-terminated C string for `SIZE_MAX`. Each non-null output must
+/// point to writable storage of its C type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_unhexmem_full(
+    p: *const c_char,
+    l: usize,
+    secure: bool,
+    ret_data: *mut *mut c_void,
+    ret_size: *mut usize,
+) -> i32 {
+    // SAFETY: this FFI boundary documents both explicit and sentinel input modes.
+    let input = match unsafe { codec_input_bytes(p.cast::<c_void>(), l) } {
+        Ok(input) => input,
+        Err(error) => return error,
+    };
+    let decoded_capacity = match input.len().checked_add(1).map(|length| length / 2) {
+        Some(length) => length,
+        None => return Errno::ENOMEM.to_neg_errno(),
+    };
+    let allocation_len = match decoded_capacity.checked_add(1) {
+        Some(length) => length,
+        None => return Errno::ENOMEM.to_neg_errno(),
+    };
+    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
+    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
+    if allocation.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
+    // SAFETY: the allocation is live for the decoder's advertised capacity.
+    let result = unsafe {
+        unhex_decode_into(
+            input,
+            std::slice::from_raw_parts_mut(allocation, decoded_capacity),
+        )
+    };
+    let decoded_len = match result {
+        Ok(length) => length,
+        Err(error) => {
+            // SAFETY: this local allocation has not escaped.
+            unsafe { codec_free(allocation, allocation_len, secure) };
+            return error;
+        }
+    };
+    // SAFETY: the C allocation includes one terminator byte past decoded output.
+    unsafe { *allocation.add(decoded_len) = 0 };
+    if !ret_size.is_null() {
+        // SAFETY: required by this FFI boundary's output-pointer contract.
+        unsafe { *ret_size = decoded_len };
+    }
+    if !ret_data.is_null() {
+        // SAFETY: required by this FFI boundary's output-pointer contract.
+        unsafe { *ret_data = allocation.cast::<c_void>() };
+    } else {
+        // SAFETY: ownership remains local when no data output is requested.
+        unsafe { codec_free(allocation, allocation_len, secure) };
+    }
+    0
+}
+
+/// Base32hex-encode an explicit byte range with C-allocator-owned output.
+///
+/// # Safety
+/// `p` must point to `l` readable bytes when `l` is non-zero. The returned
+/// allocation has libc ownership and must be released with `free()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_base32hexmem(p: *const c_void, l: usize, padding: bool) -> *mut c_char {
+    // SAFETY: this FFI boundary documents the readable-range precondition.
+    let input = match unsafe { codec_input_bytes(p, l) } {
+        Ok(input) => input,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let output_len = match base32_encoded_len(input.len(), padding) {
+        Ok(length) => length,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let allocation_len = match output_len.checked_add(1) {
+        Some(length) => length,
+        None => return std::ptr::null_mut(),
+    };
+    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
+    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
+    if allocation.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: the allocation is live for the encoded bytes plus a terminator.
+    unsafe {
+        base32_encode_into(
+            input,
+            std::slice::from_raw_parts_mut(allocation, output_len),
+            padding,
+        );
+        *allocation.add(output_len) = 0;
+    }
+    allocation.cast::<c_char>()
+}
+
+/// Decode a base32hex byte range with C-allocator-owned output.
+///
+/// # Safety
+/// `p` must be readable for `l` bytes when `l` is explicit and non-zero, or a
+/// readable NUL-terminated C string for `SIZE_MAX`. `mem` and `len` must be
+/// non-null writable output locations. On success, `*mem` has libc ownership.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_unbase32hexmem(
+    p: *const c_char,
+    l: usize,
+    padding: bool,
+    mem: *mut *mut c_void,
+    len: *mut usize,
+) -> i32 {
+    if mem.is_null() || len.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    // SAFETY: this FFI boundary documents both explicit and sentinel input modes.
+    let input = match unsafe { codec_input_bytes(p.cast::<c_void>(), l) } {
+        Ok(input) => input,
+        Err(error) => return error,
+    };
+    if padding && input.len() % 8 != 0 {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    let mut encoded_len = input.len();
+    if padding {
+        let mut stripped = 0;
+        while encoded_len > 0 && input[encoded_len - 1] == b'=' && stripped < 7 {
+            encoded_len -= 1;
+            stripped += 1;
+        }
+    }
+    let decoded_capacity = match encoded_len % 8 {
+        0 => encoded_len
+            .checked_div(8)
+            .and_then(|groups| groups.checked_mul(5)),
+        2 => encoded_len
+            .checked_div(8)
+            .and_then(|groups| groups.checked_mul(5))
+            .and_then(|length| length.checked_add(1)),
+        4 => encoded_len
+            .checked_div(8)
+            .and_then(|groups| groups.checked_mul(5))
+            .and_then(|length| length.checked_add(2)),
+        5 => encoded_len
+            .checked_div(8)
+            .and_then(|groups| groups.checked_mul(5))
+            .and_then(|length| length.checked_add(3)),
+        7 => encoded_len
+            .checked_div(8)
+            .and_then(|groups| groups.checked_mul(5))
+            .and_then(|length| length.checked_add(4)),
+        _ => return Errno::EINVAL.to_neg_errno(),
+    };
+    let Some(decoded_capacity) = decoded_capacity else {
+        return Errno::ENOMEM.to_neg_errno();
+    };
+    let Some(allocation_len) = decoded_capacity.checked_add(1) else {
+        return Errno::ENOMEM.to_neg_errno();
+    };
+    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
+    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
+    if allocation.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
+    // SAFETY: the allocation is live for the decoder's advertised capacity.
+    let decoded_len = match unsafe {
+        unbase32_decode_into(
+            &input[..encoded_len],
+            std::slice::from_raw_parts_mut(allocation, decoded_capacity),
+        )
+    } {
+        Ok(length) => length,
+        Err(error) => {
+            // SAFETY: this local allocation has not escaped.
+            unsafe { codec_free(allocation, allocation_len, false) };
+            return error;
+        }
+    };
+    // SAFETY: the allocation includes one terminator byte past decoded output.
+    unsafe {
+        *allocation.add(decoded_len) = 0;
+        *mem = allocation.cast::<c_void>();
+        *len = decoded_len;
+    }
+    0
+}
+
+/// Base64-encode a byte range with optional line breaks and libc-owned output.
+///
+/// # Safety
+/// `p` must point to `l` readable bytes when `l` is non-zero, and `ret` must
+/// point to writable `char *` storage. On success, `*ret` has libc ownership.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_base64mem_full(
+    p: *const c_void,
+    l: usize,
+    line_break: usize,
+    ret: *mut *mut c_char,
+) -> isize {
+    if ret.is_null() || line_break == 0 {
+        return Errno::EINVAL.to_neg_errno() as isize;
+    }
+    // SAFETY: this FFI boundary documents the readable-range precondition.
+    let input = match unsafe { codec_input_bytes(p, l) } {
+        Ok(input) => input,
+        Err(error) => return error as isize,
+    };
+    let output_len = match base64_encoded_len_with_breaks(input.len(), line_break) {
+        Ok(length) if length <= isize::MAX as usize => length,
+        _ => return Errno::ENOMEM.to_neg_errno() as isize,
+    };
+    let Some(allocation_len) = output_len.checked_add(1) else {
+        return Errno::ENOMEM.to_neg_errno() as isize;
+    };
+    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
+    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
+    if allocation.is_null() {
+        return Errno::ENOMEM.to_neg_errno() as isize;
+    }
+    // SAFETY: the allocation is live for the encoder's exact output capacity.
+    let result = unsafe {
+        base64_encode_with_breaks_into(
+            input,
+            std::slice::from_raw_parts_mut(allocation, output_len),
+            line_break,
+        )
+    };
+    if let Err(error) = result {
+        // SAFETY: this local allocation has not escaped.
+        unsafe { codec_free(allocation, allocation_len, false) };
+        return error as isize;
+    }
+    // SAFETY: the allocation includes one terminator byte past encoded output,
+    // and `ret` satisfies this FFI boundary's output-pointer contract.
+    unsafe {
+        *allocation.add(output_len) = 0;
+        *ret = allocation.cast::<c_char>();
+    }
+    output_len as isize
+}
+
+/// Decode a base64 byte range with C-allocator-owned output.
+///
+/// # Safety
+/// `p` must be readable for `l` bytes when `l` is explicit and non-zero, or a
+/// readable NUL-terminated C string for `SIZE_MAX`. Each non-null output must
+/// point to writable storage of its C type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_unbase64mem_full(
+    p: *const c_char,
+    l: usize,
+    secure: bool,
+    ret_data: *mut *mut c_void,
+    ret_size: *mut usize,
+) -> i32 {
+    // SAFETY: this FFI boundary documents both explicit and sentinel input modes.
+    let input = match unsafe { codec_input_bytes(p.cast::<c_void>(), l) } {
+        Ok(input) => input,
+        Err(error) => return error,
+    };
+    let decoded_capacity = match input
+        .len()
+        .checked_div(4)
+        .and_then(|groups| groups.checked_mul(3))
+        .and_then(|groups| {
+            let remainder = input.len() % 4;
+            groups.checked_add(if remainder == 0 { 0 } else { remainder - 1 })
+        }) {
+        Some(length) => length,
+        None => return Errno::ENOMEM.to_neg_errno(),
+    };
+    let Some(allocation_len) = decoded_capacity.checked_add(1) else {
+        return Errno::ENOMEM.to_neg_errno();
+    };
+    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
+    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
+    if allocation.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
+    // SAFETY: the allocation is live for the decoder's advertised capacity.
+    let decoded_len = match unsafe {
+        unbase64_decode_into(
+            input,
+            std::slice::from_raw_parts_mut(allocation, decoded_capacity),
+        )
+    } {
+        Ok(length) => length,
+        Err(error) => {
+            // SAFETY: C erases only the decoded-capacity prefix for this API.
+            unsafe { codec_free(allocation, decoded_capacity, secure) };
+            return error;
+        }
+    };
+    // SAFETY: the allocation includes one terminator byte past decoded output.
+    unsafe { *allocation.add(decoded_len) = 0 };
+    if !ret_size.is_null() {
+        // SAFETY: required by this FFI boundary's output-pointer contract.
+        unsafe { *ret_size = decoded_len };
+    }
+    if !ret_data.is_null() {
+        // SAFETY: required by this FFI boundary's output-pointer contract.
+        unsafe { *ret_data = allocation.cast::<c_void>() };
+    } else {
+        // SAFETY: ownership remains local when no data output is requested.
+        unsafe { codec_free(allocation, decoded_capacity, secure) };
+    }
+    0
+}
+
+/// Append base64 text to a libc allocation using the C line-wrapping policy.
+///
+/// # Safety
+/// `prefix` must be writable. If `*prefix` is non-null it must be a libc
+/// allocation containing at least `plen` initialized bytes; if it is null,
+/// `plen` must be zero. `p` must point to `l` readable bytes when non-zero.
+/// On success, `*prefix` remains libc-owned and may have moved via `realloc()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_base64_append(
+    prefix: *mut *mut c_char,
+    plen: usize,
+    p: *const c_void,
+    l: usize,
+    indent: usize,
+    width: usize,
+) -> isize {
+    if prefix.is_null() {
+        return Errno::EINVAL.to_neg_errno() as isize;
+    }
+    // SAFETY: required by this FFI boundary's prefix-pointer contract.
+    let old_prefix = unsafe { *prefix };
+    if old_prefix.is_null() && plen != 0 {
+        return Errno::EINVAL.to_neg_errno() as isize;
+    }
+    // SAFETY: this FFI boundary documents the readable-range precondition.
+    let input = match unsafe { codec_input_bytes(p, l) } {
+        Ok(input) => input,
+        Err(error) => return error as isize,
+    };
+    let encoded_len = match base64_encoded_len(input.len()) {
+        Ok(length) => length,
+        Err(error) => return error as isize,
+    };
+    if encoded_len == 0 {
+        return if plen <= isize::MAX as usize {
+            plen as isize
+        } else {
+            Errno::ENOMEM.to_neg_errno() as isize
+        };
+    }
+    let needs_newline = plen > width / 2
+        || match plen.checked_add(indent) {
+            Some(sum) => sum > width,
+            None => true,
+        };
+    let (separator, effective_indent, effective_width) = if needs_newline {
+        let Some(effective_width) = width.checked_sub(indent) else {
+            return Errno::EINVAL.to_neg_errno() as isize;
+        };
+        (b'\n', indent, effective_width)
+    } else {
+        let Some(effective_indent) = plen.checked_add(1) else {
+            return Errno::ENOMEM.to_neg_errno() as isize;
+        };
+        let Some(effective_width) = width
+            .checked_sub(plen)
+            .and_then(|value| value.checked_sub(1))
+        else {
+            return Errno::EINVAL.to_neg_errno() as isize;
+        };
+        (b' ', effective_indent, effective_width)
+    };
+    if effective_width == 0 {
+        return Errno::EINVAL.to_neg_errno() as isize;
+    }
+    let lines = match encoded_len
+        .checked_add(effective_width - 1)
+        .map(|length| length / effective_width)
+    {
+        Some(lines) => lines,
+        None => return Errno::ENOMEM.to_neg_errno() as isize,
+    };
+    let per_line = match effective_indent
+        .checked_add(effective_width)
+        .and_then(|value| value.checked_add(1))
+    {
+        Some(value) => value,
+        None => return Errno::ENOMEM.to_neg_errno() as isize,
+    };
+    let allocation_len = match lines
+        .checked_mul(per_line)
+        .and_then(|value| value.checked_add(plen))
+        .and_then(|value| value.checked_add(2))
+    {
+        Some(length) if length <= isize::MAX as usize => length,
+        _ => return Errno::ENOMEM.to_neg_errno() as isize,
+    };
+    let mut encoded = Vec::new();
+    if encoded.try_reserve_exact(encoded_len).is_err() {
+        return Errno::ENOMEM.to_neg_errno() as isize;
+    }
+    encoded.resize(encoded_len, 0);
+    base64_encode_into(input, &mut encoded);
+    // SAFETY: `old_prefix` is either null or a libc allocation, and the new
+    // checked size is non-zero. `realloc` preserves the first `plen` bytes.
+    let allocation =
+        unsafe { libc::realloc(old_prefix.cast::<c_void>(), allocation_len) }.cast::<u8>();
+    if allocation.is_null() {
+        return Errno::ENOMEM.to_neg_errno() as isize;
+    }
+    // SAFETY: the successful realloc result is live for `allocation_len` bytes.
+    let output = unsafe { std::slice::from_raw_parts_mut(allocation, allocation_len) };
+    let mut written = plen;
+    for line in 0..lines {
+        let amount = (encoded_len - line * effective_width).min(effective_width);
+        if written > 0 {
+            output[written] = if line == 0 { separator } else { b'\n' };
+            written += 1;
+            if output[written - 1] == b'\n' {
+                output[written..written + effective_indent].fill(b' ');
+                written += effective_indent;
+            }
+        }
+        let offset = line * effective_width;
+        output[written..written + amount].copy_from_slice(&encoded[offset..offset + amount]);
+        written += amount;
+    }
+    output[written] = 0;
+    // SAFETY: successful completion publishes the potentially moved allocation.
+    unsafe { *prefix = allocation.cast::<c_char>() };
+    written as isize
+}
+
 /// Decode a NUL-terminated hexadecimal string with C-allocator ownership.
 ///
 /// # Safety

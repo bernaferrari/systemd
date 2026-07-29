@@ -1,0 +1,88 @@
+schema = 1
+module = "pe_binary"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["pe_load_headers"]
+
+[authority]
+c_headers = ["src/shared/pe-binary.h"]
+c_sources = ["src/shared/pe-binary.c"]
+rust_headers = ["src/basic/rust/pe_binary.h"]
+rust_sources = ["src/basic/rust/pe_binary.rs"]
+
+[[surface]]
+id = "pe-binary-header"
+c_symbols = ["pe_header_is_64bit"]
+rust_symbols = ["rs_pe_header_is_64bit"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "pe-null-fail-closed"
+deviation_rationale = "Rust returns false for NULL and malformed borrowed packed-header pointers rather than reaching C assertion preconditions; valid field inspection follows C."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-pe-binary-rust.c"
+meson_target = "test-pe-binary-rust"
+labels = ["pe-binary-header"]
+
+[[surface]]
+id = "pe-binary-sections"
+c_symbols = ["pe_section_table_find", "pe_header_find_section"]
+rust_symbols = ["rs_pe_section_table_find", "rs_pe_header_find_section"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+deviation_id = "pe-section-null-fail-closed"
+deviation_rationale = "Rust rejects unusable borrowed pointers rather than C assertion paths; valid section lookup returns an interior borrowed pointer like C."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-pe-binary-rust.c"
+meson_target = "test-pe-binary-rust"
+labels = ["pe-binary-sections"]
+
+[[surface]]
+id = "pe-binary-classification"
+c_symbols = ["pe_is_uki", "pe_is_addon", "pe_is_native"]
+rust_symbols = ["rs_pe_is_uki", "rs_pe_is_addon", "rs_pe_is_native"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "pe-classification-null-fail-closed"
+deviation_rationale = "Rust returns false for malformed NULL borrowed inputs while valid PE classification follows C."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-pe-binary-rust.c"
+meson_target = "test-pe-binary-rust"
+labels = ["pe-binary-classification"]
+
+[[surface]]
+id = "pe-binary-data-directory"
+c_symbols = ["pe_header_get_data_directory"]
+rust_symbols = ["rs_pe_header_get_data_directory"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+deviation_id = "pe-directory-null-fail-closed"
+deviation_rationale = "Rust returns NULL for malformed headers or out-of-range indices rather than relying on C assertions; valid directory pointers remain borrowed interiors."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-pe-binary-rust.c"
+meson_target = "test-pe-binary-rust"
+labels = ["pe-binary-data-directory"]

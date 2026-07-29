@@ -1,0 +1,31 @@
+schema = 1
+module = "strbuf"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["strbuf_add_string"]
+
+[authority]
+c_headers = ["src/basic/strbuf.h"]
+c_sources = ["src/basic/strbuf.c"]
+rust_headers = ["src/basic/rust/strbuf.h"]
+rust_sources = ["src/basic/rust/strbuf.rs"]
+
+[[surface]]
+id = "strbuf-lifecycle"
+c_symbols = ["strbuf_new", "strbuf_add_string_full", "strbuf_complete", "strbuf_free"]
+rust_symbols = ["rs_strbuf_new", "rs_strbuf_add_string_full", "rs_strbuf_complete", "rs_strbuf_free"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "strbuf-null-fail-closed"
+deviation_rationale = "Rust preserves valid allocation, de-duplication, completion, and libc release behavior while treating malformed NULL ownership inputs as no-ops or errors instead of relying on C assertions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-strbuf-rust.c"
+meson_target = "test-strbuf-rust"
+labels = ["strbuf-lifecycle"]

@@ -1,0 +1,31 @@
+schema = 1
+module = "mempool"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["mempool_trim"]
+
+[authority]
+c_headers = ["src/basic/mempool.h", "src/basic/memory-util.h", "src/fundamental/memory-util.h"]
+c_sources = ["src/basic/mempool.c", "src/basic/memory-util.c"]
+rust_headers = ["src/basic/rust/mempool.h"]
+rust_sources = ["src/basic/rust/mempool.rs"]
+
+[[surface]]
+id = "mempool-lifecycle"
+c_symbols = ["mempool_alloc_tile", "mempool_alloc0_tile", "mempool_free_tile"]
+rust_symbols = ["rs_mempool_alloc_tile", "rs_mempool_alloc0_tile", "rs_mempool_free_tile"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+deviation_id = "mempool-null-fail-closed"
+deviation_rationale = "Rust rejects malformed NULL pool state and allocation overflow before mutation while preserving valid repr(C) free-list layout, zeroing, and libc allocation/free ownership."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-mempool-rust.c"
+meson_target = "test-mempool-rust"
+labels = ["mempool-lifecycle"]

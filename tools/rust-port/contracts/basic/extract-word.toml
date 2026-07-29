@@ -1,0 +1,31 @@
+schema = 1
+module = "extract-word"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["extract_first_word_and_warn"]
+
+[authority]
+c_headers = ["src/basic/extract-word.h"]
+c_sources = ["src/basic/extract-word.c"]
+rust_headers = ["src/basic/rust/extract_word.h"]
+rust_sources = ["src/basic/rust/extract_word.rs"]
+
+[[surface]]
+id = "extract-first-word"
+c_symbols = ["extract_first_word"]
+rust_symbols = ["rs_extract_first_word"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "extract-word-null-fail-closed"
+deviation_rationale = "Rust rejects unusable pointer arguments instead of relying on C assertions while preserving cursor advancement, quoting, escaping, libc allocation, and valid-input output publication."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-extract-word-rust.c"
+meson_target = "test-extract-word-rust"
+labels = ["extract-first-word"]

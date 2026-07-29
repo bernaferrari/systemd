@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/mempool.c, src/basic/mempool.h
+// PORT-SYNC: scope=basic.mempool; authority=src/basic/mempool.c,src/basic/mempool.h,src/basic/memory-util.c,src/basic/memory-util.h,src/fundamental/memory-util.h
 //
 // Memory pool: fixed-size tile allocator with freelist.
 // Skipped: mempool_trim (uses log_debug/FORMAT_BYTES).
 
-use std::alloc::{Layout, alloc};
+use libc::c_void;
 use std::ptr;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
 const EINVAL: i32 = 22;
 const ENOMEM: i32 = 12;
-const POOL_ALIGN: usize = 16;
 
 // ── Internal pool structure ───────────────────────────────────────────────
 
@@ -33,10 +32,21 @@ pub struct Mempool {
 
 // ── Internal helpers ──────────────────────────────────────────────────────
 
-fn align_up(val: usize, align: usize) -> usize {
-    (val + align - 1) & !(align - 1)
+fn align_up_checked(value: usize, alignment: usize) -> Option<usize> {
+    if !alignment.is_power_of_two() {
+        return None;
+    }
+    value
+        .checked_add(alignment - 1)
+        .map(|sum| sum & !(alignment - 1))
 }
 
+/// Return the first byte after a pool header.
+///
+/// # Safety
+///
+/// `p` must be NULL or point to a live, properly aligned `Pool` allocation
+/// whose tile payload immediately follows its header.
 unsafe fn pool_ptr(p: *mut Pool) -> *mut u8 {
     if p.is_null() {
         return ptr::null_mut();
@@ -70,14 +80,15 @@ pub fn mempool_alloc_tile(mp: &mut Mempool) -> Result<*mut u8, i32> {
 
     if !mp.freelist.is_null() {
         let t = mp.freelist;
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
-            mp.freelist = *(t as *const *mut u8);
-        }
+        // SAFETY: the freelist invariant says the first pointer-sized bytes
+        // contain the next entry. Unaligned access also safely handles a
+        // caller-selected tile size that is not a pointer-size multiple.
+        mp.freelist = unsafe { ptr::read_unaligned(t.cast::<*mut u8>()) };
         return Ok(t);
     }
 
-    // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
+    // SAFETY: fields are dereferenced only after the null check. Every pool
+    // stored here was allocated and initialized by this function.
     unsafe {
         if mp.first_pool.is_null() || (*mp.first_pool).n_used >= (*mp.first_pool).n_tiles {
             let n = if mp.first_pool.is_null() {
@@ -85,13 +96,25 @@ pub fn mempool_alloc_tile(mp: &mut Mempool) -> Result<*mut u8, i32> {
             } else {
                 (*mp.first_pool).n_tiles
             };
-            let n = mp.at_least.max(n * 2);
-            let pool_size = align_up(std::mem::size_of::<Pool>(), POOL_ALIGN);
-            let size = pool_size + n * mp.tile_size;
+            let doubled = n.checked_mul(2).ok_or(-ENOMEM)?;
+            let n = mp.at_least.max(doubled);
+            let pool_size = align_up_checked(
+                std::mem::size_of::<Pool>(),
+                std::mem::size_of::<*mut c_void>(),
+            )
+            .ok_or(-ENOMEM)?;
+            let requested = n
+                .checked_mul(mp.tile_size)
+                .and_then(|tiles| pool_size.checked_add(tiles))
+                .ok_or(-ENOMEM)?;
+            let page_size = crate::memory_util::page_size().map_err(|_| -ENOMEM)?;
+            let size = align_up_checked(requested, page_size).ok_or(-ENOMEM)?;
             let actual_n = (size - pool_size) / mp.tile_size;
 
-            let layout = Layout::from_size_align(size, POOL_ALIGN).map_err(|_| -ENOMEM)?;
-            let p = alloc(layout) as *mut Pool;
+            // SAFETY: `size` is nonzero and representable. libc allocation is
+            // the C authority's allocator and remains compatible with a future
+            // `mempool_trim()` facade that releases whole pools with `free()`.
+            let p = libc::malloc(size).cast::<Pool>();
             if p.is_null() {
                 return Err(-ENOMEM);
             }
@@ -114,7 +137,7 @@ pub fn mempool_alloc_tile(mp: &mut Mempool) -> Result<*mut u8, i32> {
 /// Like mempool_alloc_tile but zeroes the allocated tile.
 pub fn mempool_alloc0_tile(mp: &mut Mempool) -> Result<*mut u8, i32> {
     let p = mempool_alloc_tile(mp)?;
-    // SAFETY: the destination pointer is valid, properly aligned, and not aliased for this write.
+    // SAFETY: `p` is a fresh tile of exactly `mp.tile_size` writable bytes.
     unsafe {
         ptr::write_bytes(p, 0u8, mp.tile_size);
     }
@@ -133,11 +156,68 @@ pub unsafe fn mempool_free_tile(mp: &mut Mempool, p: Option<*mut u8>) {
         Some(p) if !p.is_null() => p,
         _ => return,
     };
-    // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-    unsafe {
-        *(p as *mut *mut u8) = mp.freelist;
-        mp.freelist = p;
+    // SAFETY: the function contract provides a writable pointer-sized prefix.
+    // Unaligned access avoids adding an alignment precondition absent from the
+    // public C declaration.
+    unsafe { ptr::write_unaligned(p.cast::<*mut u8>(), mp.freelist) };
+    mp.freelist = p;
+}
+
+// ── C ABI shadow facade ──────────────────────────────────────────────────
+
+/// Allocate one tile, returning NULL on invalid configuration or allocation
+/// failure.
+///
+/// # Safety
+///
+/// `mp` must point to a live, initialized, exclusively accessible `Mempool`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_mempool_alloc_tile(mp: *mut Mempool) -> *mut c_void {
+    if mp.is_null() {
+        return ptr::null_mut();
     }
+
+    // SAFETY: the caller guarantees a live, initialized, exclusive pool.
+    mempool_alloc_tile(unsafe { &mut *mp })
+        .map(|tile| tile.cast())
+        .unwrap_or(ptr::null_mut())
+}
+
+/// Allocate and zero one tile, returning NULL on invalid configuration or
+/// allocation failure.
+///
+/// # Safety
+///
+/// `mp` must point to a live, initialized, exclusively accessible `Mempool`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_mempool_alloc0_tile(mp: *mut Mempool) -> *mut c_void {
+    if mp.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: the caller guarantees a live, initialized, exclusive pool.
+    mempool_alloc0_tile(unsafe { &mut *mp })
+        .map(|tile| tile.cast())
+        .unwrap_or(ptr::null_mut())
+}
+
+/// Return a tile to the pool's LIFO freelist and return NULL.
+///
+/// # Safety
+///
+/// `mp` must point to a live, initialized, exclusively accessible `Mempool`.
+/// A non-NULL `p` must be a live tile allocated from this exact pool, writable
+/// for at least one pointer value, and not already present in its freelist.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_mempool_free_tile(mp: *mut Mempool, p: *mut c_void) -> *mut c_void {
+    if mp.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: this entry point forwards the documented pool/tile ownership
+    // contract after validating the pool pointer itself.
+    unsafe { mempool_free_tile(&mut *mp, Some(p.cast())) };
+    ptr::null_mut()
 }
 
 #[cfg(test)]

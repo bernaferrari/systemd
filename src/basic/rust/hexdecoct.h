@@ -30,10 +30,13 @@ char rs_urlsafe_base64char(int x);
 int rs_unbase64char(char c);
 
 /*
- * Deferred allocation and pointer/length surfaces. These declarations remain
- * an explicit port inventory, but are not part of the reviewed scalar fixture
- * and must not be called until ownership, failure publication, and secure-wipe
- * behavior have been reviewed independently.
+ * Reviewed allocation and pointer/length shadows. Returned strings, decoded
+ * buffers, and base64_append() results use libc allocation ownership and must
+ * be released with free(). On decoder success, optional data/size outputs are
+ * published only after the complete result exists; error paths leave caller
+ * output storage untouched.
+ * The `secure` decoder variants erase their not-yet-published allocation before
+ * returning it to libc. Production code continues to use the C originals.
  */
 char* rs_hexmem(const void *p, size_t l);
 int rs_unhexmem_full(const char *p, size_t l, bool secure, void **ret_data, size_t *ret_size);

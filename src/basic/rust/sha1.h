@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* PORT-SYNC: scope=fundamental.sha1; authority=src/fundamental/sha1.c,src/fundamental/sha1.h */
+
 /* Shadow FFI for SHA-1 functions from src/fundamental/sha1.c */
 
 #define RS_SHA1_DIGEST_SIZE 20
@@ -16,4 +18,4 @@ struct rs_sha1_ctx {
 
 void rs_sha1_init_ctx(struct rs_sha1_ctx *ctx);
 void rs_sha1_process_bytes(const void *buffer, size_t size, struct rs_sha1_ctx *ctx);
-void *rs_sha1_finish_ctx(struct rs_sha1_ctx *ctx, uint8_t result[RS_SHA1_DIGEST_SIZE]);
+void *rs_sha1_finish_ctx(struct rs_sha1_ctx *ctx, uint8_t result[static RS_SHA1_DIGEST_SIZE]);

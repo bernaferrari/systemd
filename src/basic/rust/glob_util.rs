@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/glob-util.c (string_is_glob, glob_non_glob_prefix)
+// PORT-SYNC: scope=basic.glob-util; authority=src/basic/glob-util.c,src/basic/glob-util.h
 //
 // Glob pattern utility functions — pure string operations.
+
+use std::ffi::CStr;
+use std::ptr;
+
+use libc::c_char;
 
 use crate::ffi::Errno;
 
@@ -44,6 +49,74 @@ pub fn glob_non_glob_prefix(path: &str) -> Result<String, Errno> {
     }
 
     Ok(path[..n].to_owned())
+}
+
+// ── C ABI facades ────────────────────────────────────────────────────────
+
+/// Check whether a byte C string contains one of C `GLOB_CHARS`.
+///
+/// # Safety
+///
+/// `p` must be a live, NUL-terminated C string for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_string_is_glob(p: *const c_char) -> bool {
+    if p.is_null() {
+        return false;
+    }
+    // SAFETY: upheld by this export's C-string contract.
+    unsafe { CStr::from_ptr(p) }
+        .to_bytes()
+        .iter()
+        .any(|byte| GLOB_CHARS.contains(byte))
+}
+
+/// Return the malloc(3)-owned prefix before the first glob component.
+/// On error, `*ret` is deliberately left untouched, as in C.
+///
+/// # Safety
+///
+/// `path` must be a live NUL-terminated C string and `ret` must point to one
+/// writable pointer slot.  On success, the caller owns the published pointer
+/// and must release it with `free(3)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_glob_non_glob_prefix(
+    path: *const c_char,
+    ret: *mut *mut c_char,
+) -> i32 {
+    if path.is_null() || ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: upheld by this export's C-string contract.
+    let bytes = unsafe { CStr::from_ptr(path) }.to_bytes();
+    let mut length = bytes
+        .iter()
+        .position(|byte| GLOB_CHARS.contains(byte))
+        .unwrap_or(bytes.len());
+    if length < bytes.len() {
+        while length > 0 && bytes[length - 1] != b'/' {
+            length -= 1;
+        }
+    }
+    if length == 0 {
+        return Errno::ENOENT.to_neg_errno();
+    }
+
+    let Some(allocation) = length.checked_add(1) else {
+        return Errno::ENOMEM.to_neg_errno();
+    };
+    let output = crate::ffi::malloc(allocation).cast::<c_char>();
+    if output.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
+    // SAFETY: `output` owns `length + 1` bytes and `path` supplies at least
+    // `length` readable bytes.  Publishing occurs only after the copy succeeds.
+    unsafe {
+        ptr::copy_nonoverlapping(path.cast::<u8>(), output.cast::<u8>(), length);
+        *output.add(length) = 0;
+        *ret = output;
+    }
+    0
 }
 
 #[cfg(test)]

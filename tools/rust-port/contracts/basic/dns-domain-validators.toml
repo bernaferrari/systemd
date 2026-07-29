@@ -1,0 +1,50 @@
+schema = 1
+module = "dns_domain_validators"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["dns_name_equal"]
+
+[authority]
+c_headers = ["src/shared/dns-domain.h"]
+c_sources = ["src/shared/dns-domain.c"]
+rust_headers = ["src/shared/rust/dns_domain_validators.h"]
+rust_sources = ["src/basic/rust/dns_domain_validators.rs"]
+
+[[surface]]
+id = "dns-service-name"
+c_symbols = ["dns_service_name_is_valid"]
+rust_symbols = ["rs_dns_service_name_is_valid"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "dns-utf8-fail-closed"
+deviation_rationale = "C validates UTF-8 bytes; Rust rejects malformed UTF-8 while preserving valid UTF-8 length and control-character policy."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-label-rust.c"
+meson_target = "test-dns-label-rust"
+labels = ["dns-service-name"]
+
+[[surface]]
+id = "dns-subtype-name"
+c_symbols = ["dns_subtype_name_is_valid"]
+rust_symbols = ["rs_dns_subtype_name_is_valid"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "dns-subtype-utf8-fail-closed"
+deviation_rationale = "C validates UTF-8 bytes; Rust rejects malformed UTF-8 while preserving valid UTF-8 subtype length and control-character policy."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-label-rust.c"
+meson_target = "test-dns-label-rust"
+labels = ["dns-subtype-name"]

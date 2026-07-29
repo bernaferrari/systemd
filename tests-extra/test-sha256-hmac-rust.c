@@ -9,6 +9,10 @@
 /* Rust FFI */
 #include "rust/sha256_hmac.h"
 
+/* RUST-CONTRACT: sha256-validation */
+/* RUST-CONTRACT: sha256-parsing */
+/* RUST-CONTRACT: hmac-sha256 */
+
 /* ── sha256_is_valid ─────────────────────────────────────────────────── */
 
 TEST(sha256_is_valid_correct) {
@@ -57,6 +61,17 @@ TEST(sha256_is_valid_empty) {
         assert_se(!sha256_is_valid(""));
 }
 
+TEST(sha256_is_valid_non_utf8) {
+        char s[65];
+
+        memset(s, '0', sizeof(s) - 1);
+        s[17] = (char) 0x80;
+        s[64] = '\0';
+
+        assert_se(sha256_is_valid(s) == rs_sha256_is_valid(s));
+        assert_se(!sha256_is_valid(s));
+}
+
 /* ── parse_sha256 ────────────────────────────────────────────────────── */
 
 TEST(parse_sha256_correct) {
@@ -75,11 +90,15 @@ TEST(parse_sha256_invalid) {
         const char *hex = "not-a-sha256";
         uint8_t c_ret[32], r_ret[32];
 
+        memset(c_ret, 0xa5, sizeof(c_ret));
+        memset(r_ret, 0xa5, sizeof(r_ret));
+
         int cr = parse_sha256(hex, c_ret);
         int rr = rs_parse_sha256(hex, r_ret);
 
         assert_se(cr == rr);
         assert_se(cr < 0);
+        assert_se(memcmp(c_ret, r_ret, sizeof(c_ret)) == 0);
 }
 
 TEST(parse_sha256_empty_string) {
@@ -168,6 +187,21 @@ TEST(hmac_sha256_empty_input) {
         rs_hmac_sha256(key, strlen(key), "", 0, r_res);
 
         assert_se(memcmp(c_res, r_res, 32) == 0);
+}
+
+TEST(hmac_sha256_binary_boundaries) {
+        uint8_t key[64], data[65];
+        uint8_t c_res[32], r_res[32];
+
+        for (size_t i = 0; i < sizeof(key); i++)
+                key[i] = (uint8_t) (i * 3U);
+        for (size_t i = 0; i < sizeof(data); i++)
+                data[i] = (uint8_t) (255U - i);
+
+        hmac_sha256(key, sizeof(key), data, sizeof(data), c_res);
+        rs_hmac_sha256(key, sizeof(key), data, sizeof(data), r_res);
+
+        assert_se(memcmp(c_res, r_res, sizeof(c_res)) == 0);
 }
 
 /* ── main ────────────────────────────────────────────────────────────── */
