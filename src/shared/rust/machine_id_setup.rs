@@ -6,27 +6,72 @@
 // D-Bus, credentials, container UUID, firmware (DMI/SMBIOS), or a
 // random generator.  Supports transient (tmpfs bind-mount) and
 // persistent modes, and can commit a transient ID to disk.
+//
+// PORT-GAP: The explicit `credential_value` integration seam has not yet been
+// connected to C's encrypted credential store, and the D-Bus fallback still
+// uses a metadata-then-read sequence instead of C's descriptor-pinned
+// `chase_and_open()` path. Both gaps remain explicit rather than imitating
+// their security-sensitive details with a partial Rust substitute.
 
 use crate::ffi::*;
-use std::ffi::CString;
+use std::ffi::{CStr, CString, c_char};
 use std::fmt;
 use std::fs;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::ptr::NonNull;
 
-// SAFETY: Exact virt.h/id128-util.h declarations; the safe helper provides
-// `c_id128_get_product` a valid unique output and neither C call retains it.
+// SAFETY: Exact process-util.h and id128-util.h declarations. The wrappers
+// below uphold the pointer/ownership contracts for `getenv_for_pid` and
+// `c_id128_get_product`.
 unsafe extern "C" {
     #[link_name = "detect_vm"]
-    fn c_detect_vm() -> libc::c_int;
+    safe fn c_detect_vm() -> libc::c_int;
 
     #[link_name = "running_in_chroot"]
-    fn c_running_in_chroot() -> libc::c_int;
+    safe fn c_running_in_chroot() -> libc::c_int;
+
+    #[link_name = "detect_container"]
+    safe fn c_detect_container() -> libc::c_int;
+
+    #[link_name = "getenv_for_pid"]
+    fn c_getenv_for_pid(
+        pid: libc::pid_t,
+        field: *const c_char,
+        ret: *mut *mut c_char,
+    ) -> libc::c_int;
 
     #[link_name = "id128_get_product"]
     fn c_id128_get_product(ret: *mut SdId128) -> libc::c_int;
+}
+
+/// A NUL-terminated string allocated by systemd's C allocator.
+///
+/// `getenv_for_pid()` returns this ownership only with a positive result.
+/// Keeping it in a dedicated guard makes its `free(3)` allocation boundary
+/// explicit and prevents `/proc/1/environ` values from becoming Rust-owned.
+struct CAllocatedCString(NonNull<c_char>);
+
+impl CAllocatedCString {
+    /// Borrow the C helper's valid NUL-terminated string until this guard is
+    /// dropped.
+    fn as_c_str(&self) -> &CStr {
+        // SAFETY: `getenv_for_pid()` returned a positive result and its
+        // documented contract gives us a newly allocated NUL-terminated
+        // string. `self` owns that allocation for this borrow's lifetime.
+        unsafe { CStr::from_ptr(self.0.as_ptr()) }
+    }
+}
+
+impl Drop for CAllocatedCString {
+    fn drop(&mut self) {
+        // SAFETY: this guard owns exactly the allocator-compatible string
+        // returned by C's `strdup_to_full()` path in `getenv_for_pid()`.
+        // It is dropped once and C `free(NULL)` is not needed here.
+        unsafe { libc::free(self.0.as_ptr().cast()) };
+    }
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -343,17 +388,19 @@ pub fn id128_write_file(path: &Path, id: SdId128) -> MachineIdResult<()> {
 fn acquire_from_dbus(root: &Path) -> MachineIdResult<Option<(SdId128, MachineIdSource)>> {
     let dbus_path = root.join(DBUS_MACHINE_ID.trim_start_matches('/'));
 
-    // Only accept regular files (not symlinks) — mirrors `CHASE_NOFOLLOW | CHASE_MUST_BE_REGULAR`.
-    let meta = match fs::metadata(&dbus_path) {
+    // Only accept a non-symlink regular file — mirrors C's
+    // `CHASE_NOFOLLOW | CHASE_MUST_BE_REGULAR` filter. The C compound
+    // condition intentionally treats every lookup/open/read rejection as a
+    // fallthrough, so this probe must not make acquisition fail.
+    let meta = match fs::symlink_metadata(&dbus_path) {
         Ok(m) => m,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(MachineIdError::Io(e)),
+        Err(_) => return Ok(None),
     };
     if !meta.is_file() {
         return Ok(None);
     }
 
-    match id128_read_file(&dbus_path)? {
+    match id128_read_file(&dbus_path).ok().flatten() {
         Some(id) => Ok(Some((id, MachineIdSource::DbusMachineId))),
         None => Ok(None),
     }
@@ -385,19 +432,61 @@ fn acquire_from_credential(
     }
 }
 
-/// Try to obtain a machine-id from a container UUID environment variable.
+/// Read one environment variable from the process selected by C's procfs
+/// policy.
+///
+/// This is deliberately a narrow bridge to `getenv_for_pid()` instead of a
+/// Rust `/proc` parser: the C helper owns PID validation, procfs error mapping,
+/// size limits, NUL-record parsing, and its special treatment of the current
+/// process. A positive result transfers one `free(3)` allocation to the guard.
+fn getenv_for_pid(pid: libc::pid_t, field: &CStr) -> Result<Option<CAllocatedCString>, i32> {
+    let mut value = std::ptr::null_mut();
+    // SAFETY: `field` is NUL-terminated, `value` is valid writable storage for
+    // one output pointer, and C does not retain either pointer. The result's
+    // positive ownership contract is represented by `CAllocatedCString`.
+    let result = unsafe { c_getenv_for_pid(pid, field.as_ptr(), &mut value) };
+    let value = NonNull::new(value).map(CAllocatedCString);
+
+    if result < 0 {
+        // An unexpected allocation on an error path is still owned by this
+        // local guard and freed before the errno is returned.
+        return Err(result);
+    }
+    if result == 0 {
+        return Ok(None);
+    }
+
+    value.ok_or(-libc::EIO).map(Some)
+}
+
+/// Try to obtain a machine-id from PID 1's `container_uuid` environment.
+///
+/// C intentionally ignores inaccessible, malformed, non-UTF-8, and null
+/// values here, then falls through to the VM/firmware or random sources. Keep
+/// that fallthrough behavior rather than surfacing host-environment failures
+/// to the caller.
 fn acquire_from_container_uuid() -> MachineIdResult<Option<(SdId128, MachineIdSource)>> {
-    // In production: read /proc/1/environ for `container_uuid`.
-    // For testability we check the current process environment.
-    let uuid_str = match std::env::var("container_uuid") {
-        Ok(v) => v,
+    let value = match getenv_for_pid(1, c"container_uuid") {
+        Ok(Some(value)) => value,
+        Ok(None) | Err(_) => return Ok(None),
+    };
+    let uuid_str = match value.as_c_str().to_str() {
+        Ok(value) => value,
         Err(_) => return Ok(None),
     };
 
-    match id128_from_string(&uuid_str) {
+    match id128_from_string(uuid_str) {
         Ok(id) if !id.is_nil() => Ok(Some((id, MachineIdSource::ContainerUuid))),
         _ => Ok(None),
     }
+}
+
+/// Return whether C considers the current process outside a chroot.
+///
+/// The helper's non-positive error behavior is intentional: both C call sites
+/// use `running_in_chroot() <= 0` as their gate.
+fn not_in_chroot() -> bool {
+    c_running_in_chroot() <= 0
 }
 
 /// Return the firmware product UUID when C considers this machine eligible.
@@ -407,10 +496,9 @@ fn acquire_from_container_uuid() -> MachineIdResult<Option<(SdId128, MachineIdSo
 /// authority. Like C's `acquire_machine_id()`, all product lookup failures are
 /// fallthroughs to the random source rather than user-visible setup failures.
 fn acquire_from_firmware(force_firmware: bool) -> Option<SdId128> {
-    // SAFETY: `detect_vm()` has no pointer arguments and returns its C enum
-    // value synchronously. A negative detection error is intentionally not a
-    // match, exactly as C's `IN_SET(detect_vm(), ...)` condition behaves.
-    let vm = unsafe { c_detect_vm() };
+    // A negative detection error is intentionally not a match, exactly as
+    // C's `IN_SET(detect_vm(), ...)` condition behaves.
+    let vm = c_detect_vm();
     let vm_has_product_uuid = matches!(
         vm,
         VIRTUALIZATION_KVM
@@ -434,14 +522,19 @@ fn acquire_from_firmware(force_firmware: bool) -> Option<SdId128> {
 /// Acquire a machine-id by trying several sources in priority order.
 ///
 /// Mirrors the C `acquire_machine_id()` function:
-/// 1. /run/machine-id (reuse on soft-reboot)
+/// 1. /run/machine-id (reuse on soft-reboot, outside a chroot)
 /// 2. D-Bus machine-id (regular file only)
-/// 3. System credential (if provided)
-/// 4. Container UUID (if in container)
-/// 5. Firmware / SMBIOS (if in VM)
+/// 3. System credential (if provided, outside a chroot)
+/// 4. PID 1's container UUID (if in a container, outside a chroot)
+/// 5. Firmware / SMBIOS (if in an eligible VM, outside a chroot)
 /// 6. Random
 ///
 /// Returns `(id, source)` on success.
+///
+/// `credential_value` is an explicit test/integration seam, not a replacement
+/// for C's encrypted credential-store lookup. `Some("firmware")` retains the
+/// C credential's force-firmware meaning; `None` means this Rust surface does
+/// not supply a credential and therefore falls through normally.
 pub fn acquire_machine_id(
     root: &Path,
     force_firmware: bool,
@@ -449,10 +542,13 @@ pub fn acquire_machine_id(
 ) -> MachineIdResult<(SdId128, MachineIdSource)> {
     let root_empty = root.as_os_str().is_empty();
 
-    // 1. Try /run/machine-id for reuse (only when root is "/" and not in chroot).
-    if root_empty {
+    // 1. Try /run/machine-id for reuse (only for an empty host root and not
+    // in a chroot).
+    if root_empty && not_in_chroot() {
         let run_path = Path::new(RUN_MACHINE_ID);
-        if let Some(id) = id128_read_file(run_path)? {
+        // `id128_read()` failures are non-fatal in C and fall through to the
+        // D-Bus/credential chain, including unreadable or malformed files.
+        if let Ok(Some(id)) = id128_read_file(run_path) {
             return Ok((id, MachineIdSource::RunMachineId));
         }
     }
@@ -462,25 +558,29 @@ pub fn acquire_machine_id(
         return Ok(pair);
     }
 
-    // 3–5. Credential, container UUID, firmware (only when root is "/").
-    if root_empty {
+    // 3–5. C performs all remaining host-only probes only outside a chroot.
+    if root_empty && not_in_chroot() {
         // 3. Credential
+        let credential_requests_firmware = credential_value == Some("firmware");
         if let Some((id, src)) = acquire_from_credential("system.machine_id", credential_value)? {
             return Ok((id, src));
         }
 
-        // 4. Container UUID
-        if let Some(pair) = acquire_from_container_uuid()? {
-            return Ok(pair);
-        }
-
-        // 5. Firmware. C does not use host product metadata from a chroot.
-        // Its helper owns the remaining platform/container-specific product
-        // UUID acquisition; failures intentionally fall through.
-        // SAFETY: `running_in_chroot()` has no pointer arguments and returns
-        // its errno-style result synchronously, retaining no Rust state.
-        if unsafe { c_running_in_chroot() } <= 0 {
-            if let Some(id) = acquire_from_firmware(force_firmware) {
+        // 4–5. `detect_container() > 0` chooses the container-UUID branch;
+        // every other result (including a negative detection error) follows
+        // C's VM/firmware branch. Do not infer this from local environment
+        // variables: the C detector is authoritative for namespaces and
+        // runtime markers.
+        if c_detect_container() > 0 {
+            if let Some(pair) = acquire_from_container_uuid()? {
+                return Ok(pair);
+            }
+        } else {
+            // C does not use host product metadata from a chroot. Its helper
+            // owns the remaining product UUID source ordering and failures
+            // intentionally fall through to the random source.
+            if let Some(id) = acquire_from_firmware(force_firmware || credential_requests_firmware)
+            {
                 return Ok((id, MachineIdSource::Firmware));
             }
         }
@@ -543,6 +643,10 @@ fn open_etc_machine_id(root: &Path) -> MachineIdResult<(PathBuf, bool)> {
 /// If the persistent file is writable the ID is written there directly.
 /// Otherwise a transient file is written to `/run/machine-id` and bind-mounted
 /// over `/etc/machine-id`.
+///
+/// `credential_value` has the same explicit test/integration semantics as
+/// [`acquire_machine_id`]; the C encrypted credential store remains outside
+/// this safe Rust surface.
 ///
 /// Returns the effective machine-id.
 pub fn machine_id_setup(
@@ -848,6 +952,24 @@ mod tests {
 
         fs::write(&path, " 33221100445566778899aabbccddeeff\n").unwrap();
         assert!(id128_read_file(&path).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_acquire_from_dbus_rejects_symlinks_and_falls_through_on_bad_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dbus_dir = tmp.path().join("var/lib/dbus");
+        fs::create_dir_all(&dbus_dir).unwrap();
+        let dbus_id = dbus_dir.join("machine-id");
+        let target = tmp.path().join("machine-id-target");
+        fs::write(&target, "33221100445566778899aabbccddeeff\n").unwrap();
+
+        std::os::unix::fs::symlink(&target, &dbus_id).unwrap();
+        assert!(acquire_from_dbus(tmp.path()).unwrap().is_none());
+
+        fs::remove_file(&dbus_id).unwrap();
+        fs::write(&dbus_id, "not-a-machine-id\n").unwrap();
+        assert!(acquire_from_dbus(tmp.path()).unwrap().is_none());
     }
 
     #[test]

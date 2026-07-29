@@ -259,6 +259,25 @@ static int verify_esp_udev(
         return 0;
 }
 
+int verify_esp_partition(
+                dev_t devid,
+                int unprivileged_mode,
+                int searching,
+                uint32_t *ret_part,
+                uint64_t *ret_pstart,
+                uint64_t *ret_psize,
+                sd_id128_t *ret_uuid) {
+
+        VerifyESPFlags flags =
+                (searching ? VERIFY_ESP_SEARCHING : 0) |
+                (unprivileged_mode ? VERIFY_ESP_UNPRIVILEGED_MODE : 0);
+
+        if (unprivileged_mode)
+                return verify_esp_udev(devid, flags, ret_part, ret_pstart, ret_psize, ret_uuid);
+
+        return verify_esp_blkid(devid, flags, ret_part, ret_pstart, ret_psize, ret_uuid);
+}
+
 static int verify_fsroot_dir(
                 const char *path,
                 int fd,
@@ -387,10 +406,14 @@ static int verify_esp(
                  * emergency recovery tool that should also work when udev isn't up (i.e. from the emergency shell),
                  * however blkid can't work if we have no privileges to access block devices directly, which is why
                  * we use udev in that case. */
-                if (unprivileged_mode)
-                        r = verify_esp_udev(devid, flags, ret_part, ret_pstart, ret_psize, ret_uuid);
-                else
-                        r = verify_esp_blkid(devid, flags, ret_part, ret_pstart, ret_psize, ret_uuid);
+                r = verify_esp_partition(
+                                devid,
+                                unprivileged_mode,
+                                searching,
+                                ret_part,
+                                ret_pstart,
+                                ret_psize,
+                                ret_uuid);
                 if (r < 0)
                         return r;
         }
@@ -720,6 +743,22 @@ static int verify_xbootldr_udev(
         return 0;
 }
 
+int verify_xbootldr_partition(
+                dev_t devid,
+                int unprivileged_mode,
+                int searching,
+                sd_id128_t *ret_uuid) {
+
+        VerifyESPFlags flags =
+                (searching ? VERIFY_ESP_SEARCHING : 0) |
+                (unprivileged_mode ? VERIFY_ESP_UNPRIVILEGED_MODE : 0);
+
+        if (unprivileged_mode)
+                return verify_xbootldr_udev(devid, flags, ret_uuid);
+
+        return verify_xbootldr_blkid(devid, flags, ret_uuid);
+}
+
 static int verify_xbootldr(
                 int rfd,
                 const char *path,
@@ -764,10 +803,7 @@ static int verify_xbootldr(
                                               "\nHint: set $SYSTEMD_RELAX_XBOOTLDR_CHECKS=yes environment variable "
                                               "to bypass this and further verifications for the directory.");
 
-                if (unprivileged_mode)
-                        r = verify_xbootldr_udev(devid, flags, ret_uuid);
-                else
-                        r = verify_xbootldr_blkid(devid, flags, ret_uuid);
+                r = verify_xbootldr_partition(devid, unprivileged_mode, searching, ret_uuid);
                 if (r < 0)
                         return r;
         }

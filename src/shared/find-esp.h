@@ -4,6 +4,21 @@
 
 #include "forward.h"
 
+int verify_esp_partition(
+                dev_t devid,
+                int unprivileged_mode,
+                int searching,
+                uint32_t *ret_part,
+                uint64_t *ret_pstart,
+                uint64_t *ret_psize,
+                sd_id128_t *ret_uuid);
+
+int verify_xbootldr_partition(
+                dev_t devid,
+                int unprivileged_mode,
+                int searching,
+                sd_id128_t *ret_uuid);
+
 int find_esp_and_warn_at_full(int rfd, const char *path, int unprivileged_mode, char **ret_path, int *ret_fd, uint32_t *ret_part, uint64_t *ret_pstart, uint64_t *ret_psize, sd_id128_t *ret_uuid, dev_t *ret_devid);
 int find_esp_and_warn_full(const char *root, const char *path, int unprivileged_mode, char **ret_path, int *ret_fd, uint32_t *ret_part, uint64_t *ret_pstart, uint64_t *ret_psize, sd_id128_t *ret_uuid, dev_t *ret_devid);
 

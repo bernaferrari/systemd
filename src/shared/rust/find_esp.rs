@@ -12,8 +12,8 @@
 //
 // Verification pins the candidate directory, confirms its filesystem type and
 // mount-root status, and obtains its backing device. GPT/DOS partition metadata
-// probing via blkid/udev remains a deliberately tracked porting gap and is not
-// represented as discovered partition metadata by this safe model.
+// probing delegates to the narrow C authority shared with find-esp.c so blkid,
+// udev, optional-feature, and errno behavior cannot drift.
 
 use crate::btrfs_util::btrfs_get_block_device_fd;
 use crate::ffi::*;
@@ -24,8 +24,33 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
+use systemd_basic_rs::devnum_util::{devnum_from_major_minor, devnum_major, devnum_minor};
+use systemd_basic_rs::id128_util::SdId128;
 use systemd_basic_rs::virt::{detect_container, virtualization_is_container};
+
+// SAFETY: These are the exact declarations from find-esp.h. The safe wrappers
+// below pass an encoded Linux dev_t and valid, uniquely borrowed output slots;
+// C neither retains pointers nor transfers ownership.
+unsafe extern "C" {
+    #[link_name = "verify_esp_partition"]
+    fn c_verify_esp_partition(
+        devid: libc::dev_t,
+        unprivileged_mode: libc::c_int,
+        searching: libc::c_int,
+        ret_part: *mut u32,
+        ret_pstart: *mut u64,
+        ret_psize: *mut u64,
+        ret_uuid: *mut SdId128,
+    ) -> libc::c_int;
+
+    #[link_name = "verify_xbootldr_partition"]
+    fn c_verify_xbootldr_partition(
+        devid: libc::dev_t,
+        unprivileged_mode: libc::c_int,
+        searching: libc::c_int,
+        ret_uuid: *mut SdId128,
+    ) -> libc::c_int;
+}
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -167,9 +192,9 @@ pub struct EspInfo {
     pub path: Option<PathBuf>,
     /// Partition number on the block device.
     pub partition: Option<u32>,
-    /// Partition offset (in bytes from start of disk).
+    /// Partition offset in the partition table's sector units.
     pub partition_start: Option<u64>,
-    /// Partition size in bytes.
+    /// Partition size in the partition table's sector units.
     pub partition_size: Option<u64>,
     /// Partition UUID (128-bit).
     pub partition_uuid: Option<[u8; 16]>,
@@ -454,6 +479,89 @@ fn check_fat_filesystem_fd(path: &Path, fd: BorrowedFd<'_>) -> Result<(), FindEs
     Ok(())
 }
 
+fn partition_probe_result(result: libc::c_int) -> Result<(), FindEspError> {
+    if result == 0 {
+        return Ok(());
+    }
+
+    let errno = if result < 0 {
+        result.checked_neg().unwrap_or(libc::EIO)
+    } else {
+        libc::EIO
+    };
+    Err(FindEspError::Io(io::Error::from_raw_os_error(errno)))
+}
+
+fn verify_esp_partition_metadata(
+    device: (u32, u32),
+    flags: VerifyEspFlags,
+) -> Result<(u32, u64, u64, [u8; 16]), FindEspError> {
+    let mut partition = 0;
+    let mut partition_start = 0;
+    let mut partition_size = 0;
+    let mut partition_uuid = SdId128::NULL;
+
+    // SAFETY: devnum_from_major_minor supplies the target-authoritative dev_t
+    // representation. Every output points to live, initialized, uniquely
+    // borrowed storage and the C helper retains none of it.
+    let result = unsafe {
+        c_verify_esp_partition(
+            devnum_from_major_minor(device.0, device.1) as libc::dev_t,
+            if flags.contains(VerifyEspFlags::UNPRIVILEGED_MODE) {
+                1
+            } else {
+                0
+            },
+            if flags.contains(VerifyEspFlags::SEARCHING) {
+                1
+            } else {
+                0
+            },
+            &mut partition,
+            &mut partition_start,
+            &mut partition_size,
+            &mut partition_uuid,
+        )
+    };
+    partition_probe_result(result)?;
+
+    Ok((
+        partition,
+        partition_start,
+        partition_size,
+        partition_uuid.bytes,
+    ))
+}
+
+fn verify_xbootldr_partition_metadata(
+    device: (u32, u32),
+    flags: VerifyEspFlags,
+) -> Result<Option<[u8; 16]>, FindEspError> {
+    let mut partition_uuid = SdId128::NULL;
+
+    // SAFETY: the encoded dev_t is target-authoritative, partition_uuid is a
+    // live unique output slot with sd_id128_t layout, and C retains no pointer.
+    let result = unsafe {
+        c_verify_xbootldr_partition(
+            devnum_from_major_minor(device.0, device.1) as libc::dev_t,
+            if flags.contains(VerifyEspFlags::UNPRIVILEGED_MODE) {
+                1
+            } else {
+                0
+            },
+            if flags.contains(VerifyEspFlags::SEARCHING) {
+                1
+            } else {
+                0
+            },
+            &mut partition_uuid,
+        )
+    };
+    partition_probe_result(result)?;
+
+    Ok((!partition_uuid.is_null()).then_some(partition_uuid.bytes))
+}
+
 // ── ESP verification ────────────────────────────────────────────────────────
 
 /// Verify that a directory is a valid EFI System Partition.
@@ -521,14 +629,17 @@ fn verify_esp_at(
         return Err(FindEspError::NoBackingDevice(resolved));
     }
 
-    // P2 parity gap: C obtains this information from blkid (privileged) or
-    // udev (unprivileged) and rejects a non-ESP partition. Do not present
-    // placeholder zeroes as probe results while that authority is absent.
-    Ok(EspInfo {
-        path: Some(resolved),
-        device_id: Some((dev_major, dev_minor)),
-        ..Default::default()
-    })
+    let (partition, partition_start, partition_size, partition_uuid) =
+        verify_esp_partition_metadata((dev_major, dev_minor), flags)?;
+
+    Ok(EspInfo::from_partition_details(
+        resolved,
+        partition,
+        partition_start,
+        partition_size,
+        partition_uuid,
+        (dev_major, dev_minor),
+    ))
 }
 
 /// Attempt to canonicalise a path, falling back to resolving it via openat.
@@ -617,10 +728,12 @@ fn is_search_miss(error: &FindEspError) -> bool {
         | FindEspError::NotGpt(_)
         | FindEspError::WrongPartitionType(_)
         | FindEspError::NoBackingDevice(_) => true,
-        FindEspError::PathResolution { source, .. } | FindEspError::Io(source) => matches!(
-            source.raw_os_error(),
-            Some(libc::ENOENT | libc::ENOTDIR | libc::ENOTTY)
-        ),
+        FindEspError::PathResolution { source, .. } | FindEspError::Io(source) => {
+            matches!(
+                source.raw_os_error(),
+                Some(libc::ENOENT | libc::EADDRNOTAVAIL | libc::ENOTDIR | libc::ENOTTY)
+            )
+        }
         FindEspError::General(_) => false,
     }
 }
@@ -809,12 +922,11 @@ fn verify_xbootldr_at(
         return Err(FindEspError::NoBackingDevice(resolved));
     }
 
-    // P2 parity gap: C uses blkid/udev to verify either the GPT XBOOTLDR GUID
-    // or DOS 0xea type and to return the GPT UUID. Keep those unavailable
-    // fields absent rather than claiming a verified partition.
+    let partition_uuid = verify_xbootldr_partition_metadata((dev_major, dev_minor), flags)?;
+
     Ok(XBootLdrInfo {
         path: Some(resolved),
-        partition_uuid: None,
+        partition_uuid,
         device_id: Some((dev_major, dev_minor)),
     })
 }

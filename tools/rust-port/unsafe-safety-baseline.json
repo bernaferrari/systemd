@@ -1188,7 +1188,7 @@
     "src/shared/rust/daemon_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 12
+      "unsafe_sites": 11
     },
     "src/shared/rust/data_fd_util.rs": {
       "missing_safety": 23,
@@ -1291,7 +1291,7 @@
     "src/shared/rust/find_esp.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 17
+      "unsafe_sites": 20
     },
     "src/shared/rust/fork_notify.rs": {
       "missing_safety": 0,
@@ -1462,7 +1462,7 @@
     "src/shared/rust/machine_id_setup.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 9
+      "unsafe_sites": 10
     },
     "src/shared/rust/mkfs_util.rs": {
       "missing_safety": 0,
@@ -1870,7 +1870,7 @@
   },
   "totals": {
     "missing_safety": 347,
-    "unsafe_sites": 5660
+    "unsafe_sites": 5663
   },
   "version": 2,
   "window": 3

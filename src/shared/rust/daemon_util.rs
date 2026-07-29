@@ -1,21 +1,34 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/daemon-util.c, src/shared/daemon-util.h
+// PORT-SYNC: src/shared/daemon-util.c, src/shared/daemon-util.h,
+// src/libsystemd/sd-daemon/sd-daemon.c, src/systemd/sd-daemon.h
 //
 // Daemon notification utilities for communicating with the systemd service manager
 // via the sd_notify protocol (NOTIFY_SOCKET).
 
 use std::env;
-use std::ffi::OsString;
+use std::ffi::CString;
 use std::fmt;
 use std::io;
 use std::mem::MaybeUninit;
 use std::os::fd::RawFd;
-use std::os::unix::ffi::OsStrExt;
 #[cfg(test)]
 use std::os::unix::net::UnixDatagram;
 use std::sync::OnceLock;
-use systemd_basic_rs::socket_util::sockaddr_un_from_path_bytes;
+
+// SAFETY: This declaration exactly matches sd-daemon.h. The safe wrappers
+// below provide a live C string, a bounded descriptor array (or NULL for an
+// empty one), and retain both for the duration of the synchronous call.
+unsafe extern "C" {
+    #[link_name = "sd_pid_notify_with_fds"]
+    fn c_sd_pid_notify_with_fds(
+        pid: libc::pid_t,
+        unset_environment: libc::c_int,
+        state: *const libc::c_char,
+        fds: *const libc::c_int,
+        n_fds: libc::c_uint,
+    ) -> libc::c_int;
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -162,56 +175,14 @@ pub fn fdstore_detected() -> bool {
 
 // ── Core sd_notify ────────────────────────────────────────────────────────
 
-fn notify_socket_path() -> io::Result<OsString> {
-    env::var_os("NOTIFY_SOCKET")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "NOTIFY_SOCKET not set"))
-}
-
-/// Parse `NOTIFY_SOCKET` exactly as systemd's AF_UNIX address parser does.
-///
-/// `@name` denotes a Linux abstract socket; `/path` denotes a filesystem
-/// socket. Keeping the returned address length avoids both pathname
-/// truncation and the incorrect full-`sockaddr_un` length used by the old
-/// hand-built FD-store sender.
-fn notify_unix_socket_address() -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
-    // P2: sd_notify's C implementation also accepts VSOCK destinations. This
-    // Rust helper deliberately handles the Unix subset until the port has a
-    // safe, fully tested VSOCK sender with C's stream/seqpacket fallback.
-    let path = notify_socket_path()?;
-    let (address, length) = sockaddr_un_from_path_bytes(path.as_os_str().as_bytes())
-        .map_err(|error| io::Error::from_raw_os_error(-error))?;
-    let length = libc::socklen_t::try_from(length).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "NOTIFY_SOCKET address length does not fit socklen_t",
-        )
-    })?;
-    Ok((address, length))
-}
-
 fn send_datagram(payload: &[u8]) -> io::Result<()> {
     send_fd_datagram(payload, &[])
-}
-
-/// Match sd-daemon's credential behavior for a process whose real and
-/// effective credentials differ. This keeps the manager's sender identity
-/// tied to the real credentials instead of accidentally reporting the
-/// effective (possibly privileged) identity.
-#[cfg(target_os = "linux")]
-fn notification_needs_credentials() -> bool {
-    // SAFETY: these credential queries take no pointers and only read the
-    // calling process's kernel-maintained credentials.
-    unsafe { libc::getuid() != libc::geteuid() || libc::getgid() != libc::getegid() }
 }
 
 /// Send a notification without changing the process environment.
 pub fn sd_notify_preserve_environment(state: &str) -> io::Result<bool> {
     validate_c_string(state)?;
-    match send_datagram(state.as_bytes()) {
-        Ok(()) => Ok(true),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(e),
-    }
+    notify_with_fds(state.as_bytes(), &[])
 }
 
 /// Send a notification via the sd_notify protocol.
@@ -302,11 +273,19 @@ pub fn notify_start<'a>(start: Option<&str>, stop: Option<&'a str>) -> Option<&'
     stop
 }
 
-// ── Internal: fd-passing via sendmsg ──────────────────────────────────────
+// ── Internal: C-authoritative notification transport ──────────────────────
 
 fn send_fd_datagram(message: &[u8], fds: &[RawFd]) -> io::Result<()> {
+    notify_with_fds(message, fds).map(|_| ())
+}
+
+/// Delegate the transport boundary to sd-daemon.c.
+///
+/// This intentionally keeps AF_UNIX/AF_VSOCK parsing, socket-type fallback,
+/// credential and descriptor ancillary data, partial stream writes, and VSOCK
+/// shutdown/EOF behavior under their single C authority.
+fn notify_with_fds(message: &[u8], fds: &[RawFd]) -> io::Result<bool> {
     // Match the kernel's SCM_RIGHTS limit before sizing the ancillary buffer.
-    // This also makes all byte-count conversions below trivially bounded.
     const SCM_MAX_FD: usize = 253;
     if fds.len() > SCM_MAX_FD {
         return Err(io::Error::from_raw_os_error(libc::E2BIG));
@@ -314,107 +293,22 @@ fn send_fd_datagram(message: &[u8], fds: &[RawFd]) -> io::Result<()> {
     if fds.iter().any(|fd| *fd < 0) {
         return Err(invalid_input_error());
     }
-    let (mut address, address_length) = notify_unix_socket_address()?;
-    #[cfg(target_os = "linux")]
-    let send_credentials = notification_needs_credentials();
+    let message = CString::new(message).map_err(|_| invalid_input_error())?;
+    let n_fds = libc::c_uint::try_from(fds.len()).map_err(|_| invalid_input_error())?;
+    let fds = if fds.is_empty() {
+        std::ptr::null()
+    } else {
+        fds.as_ptr()
+    };
 
-    // SAFETY: the validated address, iov, and ancillary buffers remain live
-    // for this synchronous sendmsg call; CloseGuard owns the socket.
-    unsafe {
-        let sock = libc::socket(libc::AF_UNIX, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0);
-        if sock < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let _guard = CloseGuard(sock);
-
-        let iov = libc::iovec {
-            iov_base: message.as_ptr() as *mut libc::c_void,
-            iov_len: message.len(),
-        };
-
-        let fds_byte_len = std::mem::size_of::<RawFd>() * fds.len();
-        let fds_cmsg_space = if fds.is_empty() {
-            0
-        } else {
-            libc::CMSG_SPACE(fds_byte_len as u32) as usize
-        };
-        #[cfg(target_os = "linux")]
-        let credentials_cmsg_space = if send_credentials {
-            libc::CMSG_SPACE(std::mem::size_of::<libc::ucred>() as u32) as usize
-        } else {
-            0
-        };
-        #[cfg(not(target_os = "linux"))]
-        let credentials_cmsg_space = 0;
-        let cmsg_space = fds_cmsg_space + credentials_cmsg_space;
-        // A Vec<u8> has only byte alignment, whereas CMSG_DATA may hold an
-        // int or ucred. C-long words provide the same suitable alignment as
-        // C's alloca0() control buffer.
-        let cmsg_words = cmsg_space.div_ceil(std::mem::size_of::<libc::c_long>());
-        let mut cmsg_buf = vec![0 as libc::c_long; cmsg_words];
-
-        let mut hdr: libc::msghdr = std::mem::zeroed();
-        hdr.msg_name = (&mut address as *mut libc::sockaddr_un).cast::<libc::c_void>();
-        hdr.msg_namelen = address_length;
-        hdr.msg_iov = &iov as *const _ as *mut _;
-        hdr.msg_iovlen = 1;
-
-        if cmsg_space > 0 {
-            hdr.msg_control = cmsg_buf.as_mut_ptr().cast::<libc::c_void>();
-            hdr.msg_controllen = cmsg_space;
-
-            let mut cmsg = libc::CMSG_FIRSTHDR(&hdr);
-            if cmsg.is_null() {
-                return Err(invalid_input_error());
-            }
-
-            if !fds.is_empty() {
-                (*cmsg).cmsg_level = libc::SOL_SOCKET;
-                (*cmsg).cmsg_type = libc::SCM_RIGHTS;
-                (*cmsg).cmsg_len = libc::CMSG_LEN(fds_byte_len as u32);
-                let dst = libc::CMSG_DATA(cmsg) as *mut RawFd;
-                std::ptr::copy_nonoverlapping(fds.as_ptr(), dst, fds.len());
-                cmsg = libc::CMSG_NXTHDR(&hdr, cmsg);
-            }
-
-            #[cfg(target_os = "linux")]
-            if send_credentials {
-                if cmsg.is_null() {
-                    return Err(invalid_input_error());
-                }
-                (*cmsg).cmsg_level = libc::SOL_SOCKET;
-                (*cmsg).cmsg_type = libc::SCM_CREDENTIALS;
-                (*cmsg).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<libc::ucred>() as u32);
-                (libc::CMSG_DATA(cmsg) as *mut libc::ucred).write(libc::ucred {
-                    pid: libc::getpid(),
-                    uid: libc::getuid(),
-                    gid: libc::getgid(),
-                });
-            }
-        }
-
-        let r = libc::sendmsg(sock, &hdr, libc::MSG_NOSIGNAL);
-        if r < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        if r as usize != message.len() {
-            return Err(io::Error::from_raw_os_error(libc::EIO));
-        }
-    }
-
-    Ok(())
-}
-
-struct CloseGuard(RawFd);
-
-impl Drop for CloseGuard {
-    fn drop(&mut self) {
-        if self.0 >= 0 {
-            // SAFETY: close(2) is a POSIX syscall.
-            unsafe {
-                libc::close(self.0);
-            }
-        }
+    // SAFETY: message is a live NUL-terminated C string, fds is either NULL
+    // for zero elements or points to n_fds live integers, and false preserves
+    // the process environment. The call does not retain either pointer.
+    let result = unsafe { c_sd_pid_notify_with_fds(0, 0, message.as_ptr(), fds, n_fds) };
+    if result < 0 {
+        Err(io::Error::from_raw_os_error(-result))
+    } else {
+        Ok(result > 0)
     }
 }
 
@@ -567,21 +461,19 @@ mod tests {
     #[test]
     fn test_notify_remove_fd_warn_no_socket() {
         let r = notify_remove_fd_warn("test");
-        assert!(r.is_err());
-        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::NotFound);
+        assert!(r.is_ok());
     }
 
     #[test]
     fn test_notify_reloading_no_socket() {
         let r = notify_reloading();
-        assert!(r.is_err());
-        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::NotFound);
+        assert!(r.is_ok());
     }
 
     #[test]
     fn test_notify_reloading_full_no_socket() {
         let r = notify_reloading_full(Some("custom"));
-        assert!(r.is_err());
+        assert!(r.is_ok());
     }
 
     #[test]
@@ -599,7 +491,7 @@ mod tests {
     #[test]
     fn test_notify_push_fd_no_socket() {
         let r = notify_push_fd(42, "bar");
-        assert!(r.is_err());
+        assert!(r.is_ok());
     }
 
     #[test]
@@ -613,21 +505,19 @@ mod tests {
     #[test]
     fn test_notify_store_fd_no_socket() {
         let r = notify_store_fd(42);
-        assert!(r.is_err());
-        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::NotFound);
+        assert!(r.is_ok());
     }
 
     #[test]
     fn test_notify_remove_fd_warnf_format() {
         let r = notify_remove_fd_warnf(format_args!("fd-{}", 3));
-        assert!(r.is_err());
-        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::NotFound);
+        assert!(r.is_ok());
     }
 
     #[test]
     fn test_notify_push_fdf_format() {
         let r = notify_push_fdf(99, format_args!("item-{}", "test"));
-        assert!(r.is_err());
+        assert!(r.is_ok());
     }
 
     #[test]
