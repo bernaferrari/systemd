@@ -14,6 +14,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use systemd_basic_rs::bus_label::bus_label_escape_bytes;
+
 // ── State ──────────────────────────────────────────────────────────────────
 
 /// Overall state of the unit-waiting operation.
@@ -453,27 +455,15 @@ impl BusWaitForUnits {
 
 /// Escape a unit name for use as a D-Bus path label.
 ///
-/// Characters outside `[A-Za-z0-9_]` are replaced with `_xx` (two
-/// lowercase hex digits).  A leading digit is prefixed with `_`.
+/// This delegates the byte policy to the basic Rust mirror of C's
+/// `bus_label_escape()`: ASCII letters are preserved, later digits remain
+/// literal, and every other byte is encoded as lowercase `_xx`.
 fn bus_label_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() * 2);
-    let mut chars = s.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c.is_ascii_alphanumeric() || c == '_' {
-            if out.is_empty() && c.is_ascii_digit() {
-                // Leading digit: hex-encode the digit character
-                out.push('_');
-                out.push_str(&format!("{:02x}", c as u32));
-            } else {
-                out.push(c);
-            }
-        } else {
-            out.push('_');
-            out.push_str(&format!("{:02x}", c as u32));
-        }
-    }
-    out
+    let escaped = bus_label_escape_bytes(s.as_bytes())
+        .expect("String allocation is the API's established out-of-memory behavior");
+    // `bus_label_escape_bytes()` only emits ASCII labels, regardless of the
+    // UTF-8 input bytes, so this conversion cannot fail.
+    String::from_utf8(escaped).expect("bus label escape output is ASCII")
 }
 
 /// Build the D-Bus object path for a systemd unit name.
@@ -666,7 +656,9 @@ mod tests {
         assert_eq!(bus_label_escape("a@b"), "a_40b");
         assert_eq!(bus_label_escape("a\\b"), "a_5cb");
         assert_eq!(bus_label_escape("123"), "_3123");
-        assert_eq!(bus_label_escape("_"), "_");
+        assert_eq!(bus_label_escape("_"), "_5f");
+        assert_eq!(bus_label_escape(""), "_");
+        assert_eq!(bus_label_escape("é"), "_c3_a9");
     }
 
     // ── handle_get_all_error ──────────────────────────────────────

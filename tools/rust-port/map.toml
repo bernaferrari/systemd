@@ -2057,7 +2057,7 @@ status = "in-progress"
 tier = 3
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: D-Bus unit wait/progress behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-29 static source review: D-Bus unit wait/progress behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Its unit-path label construction delegates to the byte-faithful basic bus-label mirror, eliminating a duplicate encoder that disagreed with C for underscores and UTF-8. Completion claim removed; runtime parity is unclaimed."
 
 [calendarspec]
 c_file = "src/shared/calendarspec.c"
