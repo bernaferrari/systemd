@@ -1612,10 +1612,8 @@
       "unsafe_sites": 23
     },
     "src/sulogin-shell/rust/main.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "53:9:unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/udev/rust/ata_id/ata_id.rs": {

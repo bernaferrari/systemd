@@ -49,7 +49,11 @@ fn main() {
         let c_args: Vec<std::ffi::CString> = std::iter::once(c_program.clone())
             .chain(argv.iter().map(|a| std::ffi::CString::new(*a).unwrap()))
             .collect();
-        let c_args_ptrs: Vec<*const std::ffi::c_char> = c_args.iter().map(|a| a.as_ptr()).collect();
+        let mut c_args_ptrs: Vec<*const std::ffi::c_char> =
+            c_args.iter().map(|arg| arg.as_ptr()).collect();
+        c_args_ptrs.push(std::ptr::null());
+        // SAFETY: `c_program` and every element of `c_args` remain live for this call, and
+        // `c_args_ptrs` is terminated with the null sentinel required by execvp(3).
         unsafe {
             libc::execvp(c_program.as_ptr(), c_args_ptrs.as_ptr());
         }
