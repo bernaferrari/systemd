@@ -1,0 +1,46 @@
+schema = 1
+module = "sysctl_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "sysctl_write_full",
+    "sysctl_writef",
+    "sysctl_write_ip_property",
+    "sysctl_write_ip_property_boolean",
+    "sysctl_write_ip_neighbor_property",
+    "sysctl_write_ip_neighbor_property_uint32",
+    "sysctl_read",
+    "sysctl_read_ip_property",
+    "sysctl_read_ip_property_int",
+    "sysctl_read_ip_property_uint32",
+]
+
+[authority]
+c_headers = ["src/basic/sysctl-util.h"]
+c_sources = ["src/basic/sysctl-util.c"]
+rust_headers = ["src/basic/rust/sysctl_util.h"]
+rust_sources = ["src/basic/rust/sysctl_util.rs"]
+
+[[surface]]
+id = "sysctl-normalize"
+c_symbols = ["sysctl_normalize"]
+rust_symbols = ["rs_sysctl_normalize"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "caller-storage"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-sysctl-util-rust.c"
+meson_target = "test-sysctl-util-rust"
+labels = ["sysctl-normalize"]

@@ -1,0 +1,52 @@
+schema = 1
+module = "recovery_key"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["make_recovery_key"]
+
+[authority]
+c_headers = ["src/shared/recovery-key.h"]
+c_sources = ["src/shared/recovery-key.c"]
+rust_headers = ["src/basic/rust/recovery_key.h"]
+rust_sources = ["src/basic/rust/recovery_key.rs"]
+
+[[surface]]
+id = "recovery-key-decode"
+c_symbols = ["decode_modhex_char"]
+rust_symbols = ["rs_decode_modhex_char"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-recovery-key-rust.c"
+meson_target = "test-recovery-key-rust"
+labels = ["recovery-key-decode"]
+
+[[surface]]
+id = "recovery-key-normalize"
+c_symbols = ["normalize_recovery_key"]
+rust_symbols = ["rs_normalize_recovery_key"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-recovery-key-rust.c"
+meson_target = "test-recovery-key-rust"
+labels = ["recovery-key-normalize"]

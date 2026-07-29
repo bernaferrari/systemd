@@ -12,6 +12,7 @@
 #include "rust/sysctl_util.h"
 
 static void test_sysctl_normalize(void) {
+        /* RUST-CONTRACT: sysctl-normalize */
         char c_buf[256], r_buf[256];
         char *cr, *rr;
 
@@ -20,8 +21,31 @@ static void test_sysctl_normalize(void) {
         strcpy(r_buf, "kernel/domainname");
         cr = sysctl_normalize(c_buf);
         rr = rs_sysctl_normalize(r_buf);
+        assert_se(cr == c_buf);
+        assert_se(rr == r_buf);
         assert_se(cr && rr);
         assert_se(streq(cr, rr));
+
+        /* Opaque bytes stay in caller storage; dot-first swapping also turns
+         * the later slash into a dot. */
+        char c_opaque[] = { 'n', 'e', 't', '.', (char) 0xff, '/', 'x', 0 };
+        char r_opaque[] = { 'n', 'e', 't', '.', (char) 0xff, '/', 'x', 0 };
+        cr = sysctl_normalize(c_opaque);
+        rr = rs_sysctl_normalize(r_opaque);
+        assert_se(cr == c_opaque);
+        assert_se(rr == r_opaque);
+        assert_se(memcmp(cr, rr, sizeof(c_opaque)) == 0);
+
+        /* A leading `...` is an ordinary component, not a `..` component
+         * eligible for absolute-path stripping by path_simplify(). */
+        strcpy(c_buf, "/...");
+        strcpy(r_buf, "/...");
+        cr = sysctl_normalize(c_buf);
+        rr = rs_sysctl_normalize(r_buf);
+        assert_se(cr == c_buf);
+        assert_se(rr == r_buf);
+        assert_se(streq(cr, rr));
+        assert_se(streq(rr, "..."));
 
         /* Dot-style (dot first): dots become slashes, slashes become dots */
         strcpy(c_buf, "net.ipv4.conf.lo.forwarding");

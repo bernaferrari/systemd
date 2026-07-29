@@ -145,6 +145,7 @@ C_TYPES = {
     "uint64_t *": "*mutu64",
     "int32_t *": "*muti32",
     "int *": "*muti32",
+    "unsigned *": "*mutu32",
     "unsigned long *": "*mutc_ulong",
     "long *": "*mutc_long",
     "size_t *": "*mutusize",

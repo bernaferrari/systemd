@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+/* PORT-SYNC: scope=basic.bootspec-util; authority=src/shared/bootspec.c,src/shared/bootspec.h,src/fundamental/bootspec.c,src/fundamental/bootspec.h */
+
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 

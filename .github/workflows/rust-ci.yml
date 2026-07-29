@@ -217,6 +217,10 @@ jobs:
           test-argv-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
+          test-bootspec-rust
+          test-log-target-rust
+          test-recovery-key-rust
+          test-sysctl-util-rust
           test-confidential-virt-rust
           test-hexdecoct-rust
           test-env-util-rust
@@ -339,6 +343,10 @@ jobs:
           test-argv-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
+          test-bootspec-rust
+          test-log-target-rust
+          test-recovery-key-rust
+          test-sysctl-util-rust
           test-confidential-virt-rust
           test-hexdecoct-rust
           test-env-util-rust

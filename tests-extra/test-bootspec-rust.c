@@ -41,6 +41,7 @@ static void test_extract_both(
 }
 
 static void test_boot_filename_extract_tries(void) {
+        /* RUST-CONTRACT: bootspec-filename-tries */
         /* No tries in filename */
         test_extract_both("foo.conf", 0, "foo.conf", UINT_MAX, UINT_MAX);
 
@@ -98,6 +99,7 @@ static void test_boot_filename_extract_tries(void) {
 }
 
 static void test_bootspec_pick_name_version_sort_key(void) {
+        /* RUST-CONTRACT: bootspec-name-version-sort-key */
         const char *cr_name, *cr_version, *cr_sort_key;
         const char *rr_name, *rr_version, *rr_sort_key;
         bool cr, rr;

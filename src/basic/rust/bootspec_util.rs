@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/bootspec.c, src/shared/bootspec.h,
-//            src/fundamental/bootspec.c,
-//            src/fundamental/bootspec.h
+// PORT-SYNC: scope=basic.bootspec-util; authority=src/shared/bootspec.c,src/shared/bootspec.h,src/fundamental/bootspec.c,src/fundamental/bootspec.h
 //
 // Boot specification utilities: filename try-count extraction and
 // os-release field selection for boot entry metadata.
+
+use std::ffi::{CStr, c_char};
+use std::ptr;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -197,6 +198,245 @@ pub fn bootspec_pick_name_version_sort_key<'a>(
     }
 
     Ok((good_name, good_version, good_sort_key))
+}
+
+// ── C ABI facades ─────────────────────────────────────────────────────────
+
+/// Parse the consecutive ASCII decimal digits at the start of `bytes`.
+///
+/// This is the allocation-free equivalent of the small `strndup()` plus
+/// `safe_atou_full()` sequence in C's private `parse_tries()` helper.  The
+/// caller receives the number of consumed bytes, not Unicode scalar values:
+/// the C authority accepts opaque C-string bytes.
+fn parse_tries_bytes(bytes: &[u8]) -> Result<(u32, usize), BootFilenameError> {
+    let digits = bytes
+        .iter()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if digits == 0 {
+        return Ok((TRIES_UNSET, 0));
+    }
+
+    let mut value = 0_u64;
+    for &byte in &bytes[..digits] {
+        value = value
+            .checked_mul(10)
+            .and_then(|value| value.checked_add(u64::from(byte - b'0')))
+            .ok_or(BootFilenameError::OutOfRange)?;
+        if value > TRIES_MAX {
+            return Err(BootFilenameError::OutOfRange);
+        }
+    }
+
+    Ok((value as u32, digits))
+}
+
+/// Publish C's `nothing:` fallback result.
+///
+/// # Safety
+///
+/// `fname` must be a live NUL-terminated C string and `ret_stripped` must be
+/// writable. Optional counter outputs must be writable when non-NULL.
+unsafe fn publish_no_tries(
+    fname: *const c_char,
+    ret_stripped: *mut *mut c_char,
+    ret_tries_left: *mut u32,
+    ret_tries_done: *mut u32,
+) -> i32 {
+    // SAFETY: required by this helper's documented C-string contract.
+    let output = unsafe { libc::strdup(fname) };
+    if output.is_null() {
+        return -libc::ENOMEM;
+    }
+    // SAFETY: required writable output and any non-NULL optional outputs are
+    // part of this helper's contract. Preserve C's publication order.
+    unsafe {
+        *ret_stripped = output;
+        if !ret_tries_left.is_null() {
+            *ret_tries_left = TRIES_UNSET;
+        }
+        if !ret_tries_done.is_null() {
+            *ret_tries_done = TRIES_UNSET;
+        }
+    }
+    0
+}
+
+/// C ABI for `boot_filename_extract_tries()`.
+///
+/// This stays byte-oriented rather than passing through Rust `str`, because
+/// the C API accepts arbitrary non-NUL filename bytes. Successful outputs use
+/// the C allocator, so callers free `*ret_stripped` with `free(3)`.
+///
+/// # Safety
+///
+/// `fname` must be a live NUL-terminated C string. `ret_stripped` must point
+/// to writable pointer storage. Optional counter outputs, when non-NULL, must
+/// likewise be writable. The C authority asserts the first two requirements;
+/// this boundary returns `-EINVAL` for a null required pointer instead.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_boot_filename_extract_tries(
+    fname: *const c_char,
+    ret_stripped: *mut *mut c_char,
+    ret_tries_left: *mut u32,
+    ret_tries_done: *mut u32,
+) -> i32 {
+    if fname.is_null() || ret_stripped.is_null() {
+        return -libc::EINVAL;
+    }
+
+    // SAFETY: required by this entry point's documented C-string contract.
+    let filename = unsafe { CStr::from_ptr(fname) }.to_bytes();
+
+    let Some(suffix) = filename.iter().rposition(|&byte| byte == b'.') else {
+        // SAFETY: all helper preconditions were validated by this boundary.
+        return unsafe { publish_no_tries(fname, ret_stripped, ret_tries_left, ret_tries_done) };
+    };
+
+    let Some(marker) = filename[..suffix].iter().rposition(|&byte| byte == b'+') else {
+        // SAFETY: all helper preconditions were validated by this boundary.
+        return unsafe { publish_no_tries(fname, ret_stripped, ret_tries_left, ret_tries_done) };
+    };
+
+    let mut position = marker + 1;
+    let (tries_left, consumed) = match parse_tries_bytes(&filename[position..]) {
+        Ok(parsed) => parsed,
+        Err(BootFilenameError::OutOfRange) => return -libc::ERANGE,
+        Err(_) => return -libc::ENOMEM,
+    };
+    if consumed == 0 {
+        // SAFETY: all helper preconditions were validated by this boundary.
+        return unsafe { publish_no_tries(fname, ret_stripped, ret_tries_left, ret_tries_done) };
+    }
+    position += consumed;
+
+    let mut tries_done = TRIES_UNSET;
+    if filename.get(position) == Some(&b'-') {
+        position += 1;
+        let (parsed, consumed) = match parse_tries_bytes(&filename[position..]) {
+            Ok(parsed) => parsed,
+            Err(BootFilenameError::OutOfRange) => return -libc::ERANGE,
+            Err(_) => return -libc::ENOMEM,
+        };
+        if consumed == 0 {
+            // SAFETY: all helper preconditions were validated by this boundary.
+            return unsafe {
+                publish_no_tries(fname, ret_stripped, ret_tries_left, ret_tries_done)
+            };
+        }
+        tries_done = parsed;
+        position += consumed;
+    }
+
+    if position != suffix {
+        // SAFETY: all helper preconditions were validated by this boundary.
+        return unsafe { publish_no_tries(fname, ret_stripped, ret_tries_left, ret_tries_done) };
+    }
+
+    let Some(output_length) = marker.checked_add(filename.len() - suffix) else {
+        return -libc::ENOMEM;
+    };
+    let Some(allocation_size) = output_length.checked_add(1) else {
+        return -libc::ENOMEM;
+    };
+    // SAFETY: the checked allocation has room for the two non-overlapping
+    // source ranges plus a NUL and uses the C allocator expected by callers.
+    let output = unsafe {
+        let output = libc::malloc(allocation_size).cast::<c_char>();
+        if !output.is_null() {
+            ptr::copy_nonoverlapping(filename.as_ptr().cast::<c_char>(), output, marker);
+            ptr::copy_nonoverlapping(
+                filename[suffix..].as_ptr().cast::<c_char>(),
+                output.add(marker),
+                filename.len() - suffix,
+            );
+            *output.add(output_length) = 0;
+        }
+        output
+    };
+    if output.is_null() {
+        return -libc::ENOMEM;
+    }
+
+    // SAFETY: all documented writable outputs are updated only after the
+    // allocation succeeds, as the C authority does. Preserve C's write order.
+    unsafe {
+        *ret_stripped = output;
+        if !ret_tries_left.is_null() {
+            *ret_tries_left = tries_left;
+        }
+        if !ret_tries_done.is_null() {
+            *ret_tries_done = tries_done;
+        }
+    }
+    0
+}
+
+/// C ABI for `bootspec_pick_name_version_sort_key()`.
+///
+/// The authority only selects among borrowed input pointers; it performs no
+/// string reads or allocations. This preserves opaque-byte behavior and the
+/// input lifetime/ownership relationship exactly.
+///
+/// # Safety
+///
+/// Any non-NULL output pointer must be writable for the call. Selected input
+/// strings must outlive every use of an output pointer that aliases them.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_bootspec_pick_name_version_sort_key(
+    os_pretty_name: *const c_char,
+    os_image_id: *const c_char,
+    os_name: *const c_char,
+    os_id: *const c_char,
+    os_image_version: *const c_char,
+    os_version: *const c_char,
+    os_version_id: *const c_char,
+    os_build_id: *const c_char,
+    ret_name: *mut *const c_char,
+    ret_version: *mut *const c_char,
+    ret_sort_key: *mut *const c_char,
+) -> bool {
+    let good_name = if !os_pretty_name.is_null() {
+        os_pretty_name
+    } else if !os_image_id.is_null() {
+        os_image_id
+    } else if !os_name.is_null() {
+        os_name
+    } else {
+        os_id
+    };
+    if good_name.is_null() {
+        return false;
+    }
+    let good_version = if !os_image_version.is_null() {
+        os_image_version
+    } else if !os_version.is_null() {
+        os_version
+    } else if !os_version_id.is_null() {
+        os_version_id
+    } else {
+        os_build_id
+    };
+    let good_sort_key = if !os_image_id.is_null() {
+        os_image_id
+    } else {
+        os_id
+    };
+
+    // SAFETY: every non-NULL output is writable by this entry point's
+    // contract. Keep C's name/version/sort-key publication order.
+    unsafe {
+        if !ret_name.is_null() {
+            *ret_name = good_name;
+        }
+        if !ret_version.is_null() {
+            *ret_version = good_version;
+        }
+        if !ret_sort_key.is_null() {
+            *ret_sort_key = good_sort_key;
+        }
+    }
+    true
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────

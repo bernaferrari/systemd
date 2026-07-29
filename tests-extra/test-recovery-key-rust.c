@@ -1,19 +1,36 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
 #include <assert.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "recovery-key.h"
 #include "tests.h"
 #include "rust/recovery_key.h"
 
-/* C functions are in libshared (not linkable), so use expected-value assertions */
-
 /* Recovery key: 32 bytes = 64 modhex chars (no dashes) or 71 chars (with dashes) */
+
+static void assert_normalize_parity(const char *input) {
+        _cleanup_free_ char *c_result = NULL;
+        _cleanup_free_ char *r_result = NULL;
+        int c, r;
+
+        c = normalize_recovery_key(input, &c_result);
+        r = rs_normalize_recovery_key(input, &r_result);
+        assert_se(c == r);
+        if (c >= 0)
+                ASSERT_STREQ(c_result, r_result);
+        else {
+                assert_se(c_result == NULL);
+                assert_se(r_result == NULL);
+        }
+}
 
 /* ── decode_modhex_char ────────────────────────────────────────────────── */
 
 static void test_decode_modhex_char_lowercase(void) {
+        /* RUST-CONTRACT: recovery-key-decode */
         assert_se(rs_decode_modhex_char('c') == 0);
         assert_se(rs_decode_modhex_char('b') == 1);
         assert_se(rs_decode_modhex_char('d') == 2);
@@ -49,6 +66,13 @@ static void test_decode_modhex_char_invalid(void) {
         assert_se(rs_decode_modhex_char('-') < 0);
 }
 
+static void test_decode_modhex_char_c_parity(void) {
+        static const char inputs[] = "cbdefghijklnrtuvCBDEFGHIJKLNRTUVxza0 -";
+
+        for (size_t i = 0; i < STRLEN(inputs); i++)
+                assert_se(decode_modhex_char(inputs[i]) == rs_decode_modhex_char(inputs[i]));
+}
+
 /* ── normalize_recovery_key ────────────────────────────────────────────── */
 
 static void test_normalize_null_args(void) {
@@ -66,8 +90,17 @@ static void test_normalize_wrong_length(void) {
 
 static void test_normalize_invalid_char(void) {
         char *ret = NULL;
-        /* 71 chars with invalid 'x' modhex chars */
-        assert_se(rs_normalize_recovery_key("xxxxxxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx-xxxxxxxxx", &ret) < 0);
+        /* 64 invalid modhex characters exercises validation after allocation. */
+        assert_se(rs_normalize_recovery_key("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", &ret) == -EINVAL);
+        assert_se(ret == NULL);
+}
+
+static void test_normalize_error_does_not_publish_output(void) {
+        char sentinel[] = "unchanged";
+        char *ret = sentinel;
+
+        assert_se(rs_normalize_recovery_key("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", &ret) == -EINVAL);
+        assert_se(ret == sentinel);
 }
 
 static void test_normalize_valid_with_dashes(void) {
@@ -128,13 +161,31 @@ static void test_normalize_all_fs(void) {
         free(ret);
 }
 
+static void test_normalize_c_parity(void) {
+        char c_sentinel[] = "unchanged", r_sentinel[] = "unchanged";
+        char *c_result = c_sentinel, *r_result = r_sentinel;
+
+        /* RUST-CONTRACT: recovery-key-normalize */
+        assert_normalize_parity("cbcdcbcdcbcdcbcdcbcdcbcdcbcdcbcdcbcdcbcdcbcdcbcdcbcdcbcdcbcdcbcd");
+        assert_normalize_parity("CBCDCBCD-CBCDCBCD-CBCDCBCD-CBCDCBCD-CBCDCBCD-CBCDCBCD-CBCDCBCD-CBCDCBCD");
+        assert_normalize_parity("short");
+        assert_normalize_parity("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+
+        assert_se(normalize_recovery_key("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", &c_result) == -EINVAL);
+        assert_se(rs_normalize_recovery_key("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", &r_result) == -EINVAL);
+        assert_se(c_result == c_sentinel);
+        assert_se(r_result == r_sentinel);
+}
+
 int main(int argc, char *argv[]) {
         test_decode_modhex_char_lowercase();
         test_decode_modhex_char_uppercase();
         test_decode_modhex_char_invalid();
+        test_decode_modhex_char_c_parity();
         test_normalize_null_args();
         test_normalize_wrong_length();
         test_normalize_invalid_char();
+        test_normalize_error_does_not_publish_output();
         test_normalize_valid_with_dashes();
         test_normalize_valid_without_dashes();
         test_normalize_uppercase();
@@ -142,6 +193,7 @@ int main(int argc, char *argv[]) {
         test_normalize_missing_dash();
         test_normalize_all_zeros();
         test_normalize_all_fs();
+        test_normalize_c_parity();
 
         return 0;
 }

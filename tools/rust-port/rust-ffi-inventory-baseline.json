@@ -21,10 +21,6 @@
       "rs_bitmap_set",
       "rs_bitmap_unset"
     ],
-    "src/basic/rust/bootspec_util.h": [
-      "rs_boot_filename_extract_tries",
-      "rs_bootspec_pick_name_version_sort_key"
-    ],
     "src/basic/rust/bus_label.h": [
       "rs_bus_label_escape",
       "rs_bus_label_unescape_n"
@@ -112,10 +108,6 @@
       "rs_iovw_rebase",
       "rs_iovw_size"
     ],
-    "src/basic/rust/log_target.h": [
-      "rs_log_target_from_string",
-      "rs_log_target_to_string"
-    ],
     "src/basic/rust/mempool.h": [
       "rs_mempool_alloc0_tile",
       "rs_mempool_alloc_tile",
@@ -193,10 +185,6 @@
       "rs_ratelimit_left",
       "rs_ratelimit_num_dropped",
       "rs_ratelimit_reset"
-    ],
-    "src/basic/rust/recovery_key.h": [
-      "rs_decode_modhex_char",
-      "rs_normalize_recovery_key"
     ],
     "src/basic/rust/replace_var.h": [
       "rs_replace_var"
@@ -280,9 +268,6 @@
       "rs_strv_find_closest_by_levenshtein",
       "rs_strv_find_closest_prefix",
       "rs_strv_free_and_replace"
-    ],
-    "src/basic/rust/sysctl_util.h": [
-      "rs_sysctl_normalize"
     ],
     "src/basic/rust/syslog_util.h": [
       "rs_log_facility_unshifted_from_string",

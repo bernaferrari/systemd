@@ -850,11 +850,25 @@ last_reviewed_rust_blobs = { "src/basic/rust/confidential_virt.rs" = "fad0db904d
 notes = "Reviewed static string-table slice 2026-07-28; no build/tests/VM. Two facades share one NUL-backed static table, preserve borrowed process-lifetime output, opaque inbound bytes, and NULL/-EINVAL behavior. CPUID/MSR/filesystem detection remains explicitly excluded. C remains the production authority; runtime parity is unclaimed."
 
 [log-target]
-c_file = "src/basic/log.c"
-rust_file = "src/basic/rust/log_target.rs"
+c_paths = ["src/basic/log.c", "src/basic/log.h", "src/basic/string-table.h"]
+rust_paths = ["src/basic/rust/log_target.rs", "src/basic/rust/log_target.h"]
+scope = "basic.log-target"
+rust_scope_paths = ["src/basic/rust/log_target.rs"]
+rust_interface_paths = ["src/basic/rust/log_target.h"]
+contract_file = "tools/rust-port/contracts/basic/log-target.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/log.c", rust_paths = ["src/basic/rust/log_target.rs", "src/basic/rust/log_target.h"] },
+    { kind = "direct", path = "src/basic/log.h", rust_paths = ["src/basic/rust/log_target.rs", "src/basic/rust/log_target.h"] },
+    { kind = "direct", path = "src/basic/string-table.h", rust_paths = ["src/basic/rust/log_target.rs", "src/basic/rust/log_target.h"] },
+]
+test_file = "tests-extra/test-log-target-rust.c"
 status = "in-progress"
 tier = 1
-notes = "4 shadow tests pass (in batch3). 2 FFI exports: rs_log_target_to_string, rs_log_target_from_string. 9-entry table (CONSOLE=0..NULL=8). Skipped: all logging functions (log_struct, log_meta, etc.)."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/log.c" = "17ea26d8a410ee2bdf145253a920ce9273ae8b41", "src/basic/log.h" = "c8e98ac8d96f1eec1ab8dab5cfeaeb8ebb3c14d6", "src/basic/string-table.h" = "38704ac6f358515ae38174719c7a451b95bc9bbf" }
+last_reviewed_rust_blobs = { "src/basic/rust/log_target.rs" = "b49ba51e63a28b9bbbfb4eb702173ceb3a7a6fdc", "src/basic/rust/log_target.h" = "f445dcf3ae4c19c512df2911c95d7ddd6c053efe" }
+notes = "Reviewed static log-target ABI slice 2026-07-28; no build/tests/VM. Two facades preserve the nine-entry C table, static borrowed output, raw C-string matching, and NULL/-EINVAL parsing behavior. Logging state, output, formatting, and environment handling remain C-only. C remains the production authority; runtime parity is unclaimed."
 
 [unit-def]
 c_file = "src/basic/unit-def.c"
@@ -1102,13 +1116,25 @@ notes = "2026-07-27 provenance audit re-anchored the bitmap slice to current sha
 
 [bootspec_util]
 c_paths = ["src/shared/bootspec.c", "src/shared/bootspec.h", "src/fundamental/bootspec.c", "src/fundamental/bootspec.h"]
-rust_file = "src/basic/rust/bootspec_util.rs"
-header_file = "src/shared/bootspec.h"
+rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"]
+scope = "basic.bootspec-util"
+rust_scope_paths = ["src/basic/rust/bootspec_util.rs"]
+rust_interface_paths = ["src/basic/rust/bootspec_util.h"]
+contract_file = "tools/rust-port/contracts/basic/bootspec-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/bootspec.c", rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"] },
+    { kind = "direct", path = "src/shared/bootspec.h", rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"] },
+    { kind = "direct", path = "src/fundamental/bootspec.c", rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"] },
+    { kind = "direct", path = "src/fundamental/bootspec.h", rust_paths = ["src/basic/rust/bootspec_util.rs", "src/basic/rust/bootspec_util.h"] },
+]
+test_file = "tests-extra/test-bootspec-rust.c"
 status = "in-progress"
-tier = 3
-symbols = 7
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit maps filename-tries and boot-entry metadata behavior to the current shared and fundamental bootspec authorities; behavioral completion remains unclaimed."
+tier = 2
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/bootspec.c" = "17a3b826d88054d6237b3301cfecd8a1f51bf3b1", "src/shared/bootspec.h" = "3f62726b25d803640325524fa58e01f6836dfc72", "src/fundamental/bootspec.c" = "6daf48479deb7236a8c388a683dfce62447c17ff", "src/fundamental/bootspec.h" = "50722d2b345349835121239e4ad1955dd9a0297a" }
+last_reviewed_rust_blobs = { "src/basic/rust/bootspec_util.rs" = "bf0d37f3916dc73512e269c848af821c0a5ad43b", "src/basic/rust/bootspec_util.h" = "da25b79a7677685094dbe384ac822423d58ee5d9" }
+notes = "Reviewed static bootspec ABI slice 2026-07-28; no build/tests/VM. Two facades preserve raw filename-byte parsing, C-owned stripped-name allocation, output-on-success, and borrowed os-release selection pointers. Boot-config parsing, file I/O, EFI handling, and JSON remain C-only. C remains the production authority; runtime parity is unclaimed."
 
 [btrfs_util]
 c_paths = ["src/basic/btrfs-util.c", "src/basic/btrfs-util.h"]
@@ -1734,13 +1760,23 @@ notes = "All seven current C surfaces (the six procfs runtime APIs plus meminfo 
 
 [recovery_key]
 c_paths = ["src/shared/recovery-key.c", "src/shared/recovery-key.h"]
-rust_file = "src/basic/rust/recovery_key.rs"
-header_file = "src/shared/recovery-key.h"
+rust_paths = ["src/basic/rust/recovery_key.rs", "src/basic/rust/recovery_key.h"]
+scope = "shared.recovery-key"
+rust_scope_paths = ["src/basic/rust/recovery_key.rs"]
+rust_interface_paths = ["src/basic/rust/recovery_key.h"]
+contract_file = "tools/rust-port/contracts/basic/recovery-key.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/recovery-key.c", rust_paths = ["src/basic/rust/recovery_key.rs", "src/basic/rust/recovery_key.h"] },
+    { kind = "direct", path = "src/shared/recovery-key.h", rust_paths = ["src/basic/rust/recovery_key.rs", "src/basic/rust/recovery_key.h"] },
+]
+test_file = "tests-extra/test-recovery-key-rust.c"
 status = "in-progress"
 tier = 2
-symbols = 5
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored recovery-key encoding behavior to current shared source/header; behavioral completion remains unclaimed."
+symbols = 2
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/recovery-key.c" = "df8c7e8b23ac08f695681df744d52649cb268ce0", "src/shared/recovery-key.h" = "ec7090a1c223a027bc493128bc344d4e99aa9e11" }
+last_reviewed_rust_blobs = { "src/basic/rust/recovery_key.rs" = "19cba5c23b71d21928f29fdd8a665561c78cb4c6", "src/basic/rust/recovery_key.h" = "d0ca739f526199a17558c988d5d651cca6ffd661" }
+notes = "Reviewed static recovery-key ABI slice 2026-07-28; no build/tests/VM. Decode and normalization preserve modhex spelling, 64/71-byte syntax, 8-character grouping, C-owned output, output-on-success, and allocator-before-validation ordering. Random key generation remains C-only. C remains the production authority; runtime parity is unclaimed."
 
 [replace_var]
 c_file = "src/basic/replace-var.c"
@@ -1879,13 +1915,24 @@ last_reviewed_rust_blobs = { "src/basic/rust/strverscmp.rs" = "94bc24156cf381520
 notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The exact C ABI adapter preserves nullable-as-empty inputs, arbitrary non-UTF-8 bytes, ignored-byte boundaries, ASCII segment classification, and normalized -1/0/1 ordering without allocation. The registered dual C fixture pins RPM ordering, separators, invalid bytes, NULL inputs, and byte opacity. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 [sysctl_util]
-c_file = "src/basic/sysctl-util.c"
-rust_file = "src/basic/rust/sysctl_util.rs"
-header_file = "src/basic/sysctl-util.h"
+c_paths = ["src/basic/sysctl-util.c", "src/basic/sysctl-util.h"]
+rust_paths = ["src/basic/rust/sysctl_util.rs", "src/basic/rust/sysctl_util.h"]
+scope = "basic.sysctl-util"
+rust_scope_paths = ["src/basic/rust/sysctl_util.rs"]
+rust_interface_paths = ["src/basic/rust/sysctl_util.h"]
+contract_file = "tools/rust-port/contracts/basic/sysctl-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/sysctl-util.c", rust_paths = ["src/basic/rust/sysctl_util.rs", "src/basic/rust/sysctl_util.h"] },
+    { kind = "direct", path = "src/basic/sysctl-util.h", rust_paths = ["src/basic/rust/sysctl_util.rs", "src/basic/rust/sysctl_util.h"] },
+]
+test_file = "tests-extra/test-sysctl-util-rust.c"
 status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "needs_review"
+tier = 2
+symbols = 1
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/sysctl-util.c" = "7bec823f4218eeb918d649e9d6da2677dc3209de", "src/basic/sysctl-util.h" = "a65c40b43f9de4665cadba1485761bef740ecbd0" }
+last_reviewed_rust_blobs = { "src/basic/rust/sysctl_util.rs" = "e741ab793f59a75f33156e7e1e9d48254c22c83a", "src/basic/rust/sysctl_util.h" = "92a6b4477ae035c5d8d0e39c6a96cdf9b78a0ae3" }
+notes = "Reviewed static sysctl-normalize ABI slice 2026-07-28; no build/tests/VM. The facade performs C-compatible raw-byte dot/slash selection and in-place simplification, preserves caller allocation identity, and has no allocator crossing. Sysctl filesystem I/O remains C-only. C remains the production authority; runtime parity is unclaimed."
 
 [terminal_util]
 c_paths = [

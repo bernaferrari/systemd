@@ -10,6 +10,7 @@
 /* ── log_target_to_string ──────────────────────────────────────────────── */
 
 static void test_log_target_to_string_all(void) {
+        /* RUST-CONTRACT: log-target-to-string */
         static const struct {
                 int target;
                 const char *expected;
@@ -47,6 +48,7 @@ static void test_log_target_to_string_invalid(void) {
 /* ── log_target_from_string ────────────────────────────────────────────── */
 
 static void test_log_target_from_string_all(void) {
+        /* RUST-CONTRACT: log-target-from-string */
         static const struct {
                 const char *name;
                 int expected;
@@ -79,6 +81,16 @@ static void test_log_target_from_string_invalid(void) {
 
         r_c = log_target_from_string("CONSOLE");
         r_r = rs_log_target_from_string("CONSOLE");
+        assert_se(r_c == r_r);
+        assert_se(r_c < 0);
+
+        r_c = log_target_from_string(NULL);
+        r_r = rs_log_target_from_string(NULL);
+        assert_se(r_c == r_r);
+        assert_se(r_c < 0);
+
+        r_c = log_target_from_string("\xff");
+        r_r = rs_log_target_from_string("\xff");
         assert_se(r_c == r_r);
         assert_se(r_c < 0);
 }

@@ -42,6 +42,11 @@
       ],
       "unsafe_sites": 20
     },
+    "src/basic/rust/bootspec_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 14
+    },
     "src/basic/rust/btrfs_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -245,6 +250,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 4
     },
+    "src/basic/rust/log_target.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
     "src/basic/rust/iovec_util.rs": {
       "missing_safety": 2,
       "missing_safety_sites": [
@@ -384,6 +394,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 14
     },
+    "src/basic/rust/recovery_key.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
+    },
     "src/basic/rust/rlimit_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -418,6 +433,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 4
+    },
+    "src/basic/rust/sysctl_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
     },
     "src/basic/rust/stat_util.rs": {
       "missing_safety": 0,
@@ -2041,7 +2061,7 @@
   },
   "totals": {
     "missing_safety": 632,
-    "unsafe_sites": 4930
+    "unsafe_sites": 4957
   },
   "version": 2,
   "window": 3

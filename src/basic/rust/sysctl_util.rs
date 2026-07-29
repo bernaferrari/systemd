@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/sysctl-util.c (sysctl_normalize)
+// PORT-SYNC: scope=basic.sysctl-util; authority=src/basic/sysctl-util.c,src/basic/sysctl-util.h
 //
 // Sysctl path normalization utility.
+
+use std::ffi::{CStr, c_char};
 
 // ── Internal helpers ────────────────────────────────────────────────────
 
@@ -67,6 +69,148 @@ fn path_simplify(s: &str) -> String {
 }
 
 // ── Public API ──────────────────────────────────────────────────────────
+
+/// Return the first byte after a run of `/` and `./` path separators.
+///
+/// This is the byte-for-byte rule used by `path_find_first_component()` for
+/// the `path_simplify()` call in `sysctl_normalize()`.
+fn skip_slash_or_dot(bytes: &[u8], mut cursor: usize, end: usize) -> usize {
+    while cursor < end {
+        if bytes[cursor] == b'/' {
+            cursor += 1;
+        } else if bytes[cursor] == b'.' && cursor + 1 < end && bytes[cursor + 1] == b'/' {
+            cursor += 1;
+        } else {
+            break;
+        }
+    }
+    cursor
+}
+
+/// In-place `path_simplify(path)` for a single NUL-terminated byte buffer.
+///
+/// The broader path facade has its own public ABI, but sysctl normalization
+/// needs this exact C helper behavior locally: in particular, a component
+/// longer than `NAME_MAX` copies the remaining original bytes unchanged, and
+/// only a complete leading `..` component is discarded from an absolute path.
+fn simplify_path_in_place(bytes: &mut [u8]) {
+    let end = bytes
+        .iter()
+        .position(|&byte| byte == 0)
+        .expect("C-string boundary includes a terminator");
+    if end == 0 {
+        return;
+    }
+
+    let absolute = bytes[0] == b'/';
+    let mut write = usize::from(absolute);
+    let mut cursor = write;
+    let mut add_slash = false;
+    let mut beginning = true;
+
+    loop {
+        let first = skip_slash_or_dot(bytes, cursor, end);
+        if first == end {
+            break;
+        }
+        if first + 1 == end && bytes[first] == b'.' {
+            break;
+        }
+
+        let mut component_end = first;
+        while component_end < end && bytes[component_end] != b'/' {
+            component_end += 1;
+        }
+        let component_len = component_end - first;
+
+        // This is C's path_find_first_component() error path. It copies from
+        // the pre-skip cursor, retaining any original separators and dots.
+        if component_len > libc::NAME_MAX as usize {
+            if add_slash {
+                bytes[write] = b'/';
+                write += 1;
+            }
+            bytes.copy_within(cursor..=end, write);
+            return;
+        }
+
+        let next = skip_slash_or_dot(bytes, component_end, end);
+        cursor = if next < end && next + 1 == end && bytes[next] == b'.' {
+            next + 1
+        } else {
+            next
+        };
+
+        // `path_startswith(e, "..")` in C compares complete components, not
+        // the `..` prefix of an ordinary component such as `...`.
+        if absolute && beginning && component_len == 2 && &bytes[first..component_end] == b".." {
+            continue;
+        }
+
+        beginning = false;
+        if add_slash {
+            bytes[write] = b'/';
+            write += 1;
+        }
+        bytes.copy_within(first..component_end, write);
+        write += component_len;
+        add_slash = true;
+    }
+
+    if write == 0 {
+        bytes[write] = b'.';
+        write += 1;
+    }
+    bytes[write] = 0;
+}
+
+/// C ABI mirror of `sysctl_normalize()`.
+///
+/// # Safety
+/// `s` must be a non-null, writable, NUL-terminated C byte string whose full
+/// current extent remains writable. The function modifies that storage in
+/// place, preserves opaque non-UTF-8 bytes, and returns the original pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_sysctl_normalize(s: *mut c_char) -> *mut c_char {
+    // `sysctl_normalize()` has the same assert(s) precondition. Keeping this
+    // assertion makes a violated C contract terminate rather than inventing a
+    // nullable success case at the ABI boundary.
+    assert!(!s.is_null());
+
+    // SAFETY: the entry contract guarantees a live NUL-terminated C string.
+    let length = unsafe { CStr::from_ptr(s).to_bytes().len() };
+    // SAFETY: the entry contract makes the entire current C-string extent
+    // writable, including its terminating NUL byte.
+    let bytes = unsafe { std::slice::from_raw_parts_mut(s.cast::<u8>(), length + 1) };
+    let swap_separators = bytes[..length]
+        .iter()
+        .find(|&&byte| matches!(byte, b'/' | b'.'))
+        == Some(&b'.');
+
+    if swap_separators {
+        for byte in &mut bytes[..length] {
+            *byte = match *byte {
+                b'.' => b'/',
+                b'/' => b'.',
+                _ => *byte,
+            };
+        }
+    }
+
+    simplify_path_in_place(bytes);
+
+    // C uses memmove(s, s + 1, strlen(s)) so the copied range includes the
+    // terminating NUL while retaining the original allocation and pointer.
+    let simplified_length = bytes
+        .iter()
+        .position(|&byte| byte == 0)
+        .expect("path simplification preserves the C-string terminator");
+    if bytes[0] == b'/' && simplified_length > 1 {
+        bytes.copy_within(1..=simplified_length, 0);
+    }
+
+    s
+}
 
 /// Normalize a sysctl path string.
 ///

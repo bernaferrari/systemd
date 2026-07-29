@@ -815,6 +815,31 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "dirent_util.rs",
             frozenset({"rs_dirent_is_file", "rs_dirent_is_file_with_suffix"}),
         ),
+        "bootspec_util": (
+            basic_rust / "bootspec_util.h",
+            basic_rust / "bootspec_util.rs",
+            frozenset(
+                {
+                    "rs_boot_filename_extract_tries",
+                    "rs_bootspec_pick_name_version_sort_key",
+                }
+            ),
+        ),
+        "log_target": (
+            basic_rust / "log_target.h",
+            basic_rust / "log_target.rs",
+            frozenset({"rs_log_target_to_string", "rs_log_target_from_string"}),
+        ),
+        "recovery_key": (
+            basic_rust / "recovery_key.h",
+            basic_rust / "recovery_key.rs",
+            frozenset({"rs_decode_modhex_char", "rs_normalize_recovery_key"}),
+        ),
+        "sysctl_util": (
+            basic_rust / "sysctl_util.h",
+            basic_rust / "sysctl_util.rs",
+            frozenset({"rs_sysctl_normalize"}),
+        ),
     }
     partial_extra_sources = {
         "escape": (
@@ -995,6 +1020,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "nulstr_util": (tests_extra / "test-nulstr-util-rust.c",),
         "hostname_setup": (tests_extra / "test-hostname-setup-rust.c",),
         "dirent_util": (tests_extra / "test-dirent-util-rust.c",),
+        "bootspec_util": (tests_extra / "test-bootspec-rust.c",),
+        "log_target": (tests_extra / "test-log-target-rust.c",),
+        "recovery_key": (tests_extra / "test-recovery-key-rust.c",),
+        "sysctl_util": (tests_extra / "test-sysctl-util-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -1334,6 +1363,21 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/dirent-util.h",
             root / "src/basic/path-util.c",
             root / "src/basic/path-util.h",
+        ),
+        "bootspec_util": (
+            root / "src/shared/bootspec.c",
+            root / "src/shared/bootspec.h",
+            root / "src/fundamental/bootspec.c",
+            root / "src/fundamental/bootspec.h",
+        ),
+        "log_target": (root / "src/basic/log.c", root / "src/basic/log.h"),
+        "recovery_key": (
+            root / "src/shared/recovery-key.c",
+            root / "src/shared/recovery-key.h",
+        ),
+        "sysctl_util": (
+            root / "src/basic/sysctl-util.c",
+            root / "src/basic/sysctl-util.h",
         ),
     }
     return BasicFfiReviewCatalog(

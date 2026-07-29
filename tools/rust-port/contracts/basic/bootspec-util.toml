@@ -1,0 +1,87 @@
+schema = 1
+module = "bootspec_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "boot_config_free",
+    "boot_loader_read_conf",
+    "boot_config_load_type1",
+    "boot_config_finalize",
+    "boot_config_load",
+    "boot_config_load_auto",
+    "boot_config_augment_from_loader",
+    "boot_config_select_special_entries",
+    "show_boot_entry",
+    "show_boot_entries",
+    "boot_entry_to_json",
+    "pe_find_uki_sections",
+    "bootspec_extract_osrelease",
+]
+
+[authority]
+c_headers = ["src/shared/bootspec.h", "src/fundamental/bootspec.h"]
+c_sources = ["src/shared/bootspec.c", "src/fundamental/bootspec.c"]
+rust_headers = ["src/basic/rust/bootspec_util.h"]
+rust_sources = ["src/basic/rust/bootspec_util.rs"]
+
+[[surface]]
+id = "bootspec-filename-tries"
+c_symbols = ["boot_filename_extract_tries"]
+rust_symbols = ["rs_boot_filename_extract_tries"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret_stripped"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-bootspec-rust.c"
+meson_target = "test-bootspec-rust"
+labels = ["bootspec-filename-tries"]
+
+[[surface]]
+id = "bootspec-name-version-sort-key"
+c_symbols = ["bootspec_pick_name_version_sort_key"]
+rust_symbols = ["rs_bootspec_pick_name_version_sort_key"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret_name"
+ownership = "borrowed"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+arg = "ret_version"
+ownership = "borrowed"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+arg = "ret_sort_key"
+ownership = "borrowed"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-bootspec-rust.c"
+meson_target = "test-bootspec-rust"
+labels = ["bootspec-name-version-sort-key"]

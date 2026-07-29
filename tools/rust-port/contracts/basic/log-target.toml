@@ -1,0 +1,59 @@
+schema = 1
+module = "log-target"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "log_open",
+    "log_close",
+    "log_set_target",
+    "log_set_target_from_string",
+    "log_internal",
+    "log_struct_internal",
+    "log_parse_environment",
+]
+
+[authority]
+c_headers = ["src/basic/log.h", "src/basic/string-table.h"]
+c_sources = ["src/basic/log.c"]
+rust_headers = ["src/basic/rust/log_target.h"]
+rust_sources = ["src/basic/rust/log_target.rs"]
+
+[[surface]]
+id = "log-target-to-string"
+c_symbols = ["log_target_to_string"]
+rust_symbols = ["rs_log_target_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-log-target-rust.c"
+meson_target = "test-log-target-rust"
+labels = ["log-target-to-string"]
+
+[[surface]]
+id = "log-target-from-string"
+c_symbols = ["log_target_from_string"]
+rust_symbols = ["rs_log_target_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-log-target-rust.c"
+meson_target = "test-log-target-rust"
+labels = ["log-target-from-string"]
