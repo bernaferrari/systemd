@@ -387,15 +387,12 @@ python3 tools/rust-port/check-string-table-abi.py
 ```
 
 11. Verify that reviewed Rust shadow headers are backed by unique explicit C
-    exports with exact signatures and C-shadow coverage. Keep the unbuilt
-    shared TPM2 shadow fail-closed until it has authoritative Meson
-    configuration:
+    exports with exact signatures and C-shadow coverage:
 
 ```sh
 python3 tools/rust-port/check-string-util-abi.py
 python3 tools/rust-port/check-basic-rust-ffi-abi.py
 python3 tools/rust-port/check-seccomp-basic-abi.py
-python3 tools/rust-port/check-tpm2-util-abi.py
 python3 tools/rust-port/check-tests-extra-header-includes.py
 ```
 

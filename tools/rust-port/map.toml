@@ -3059,16 +3059,6 @@ symbols = 6
 sync_status = "needs_review"
 notes = "2026-07-27 static source review: shared bitmap parsing/serialization behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
 
-[blkid_util]
-c_file = "src/shared/blkid-util.c"
-rust_file = "src/shared/rust/blkid_util.rs"
-header_file = "src/shared/blkid-util.h"
-status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: blkid probe/ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
-
 [blockdev_util]
 c_file = "src/shared/blockdev-util.c"
 rust_file = "src/shared/rust/blockdev_util.rs"
@@ -4013,12 +4003,3 @@ tier = 3
 symbols = 0
 sync_status = "needs_review"
 notes = "Acyclic wire/validation/index/records/graph implementation with checked disk parsing, canonical layout constants, secure file opens, machine ownership checks, and fail-closed sealed writes. Remaining gaps include compression, full backlink/hash graph proof, FSPRG/HMAC authentication, crash-ordering/mmap lifecycle, old-header recovery, and canonical traversal."
-
-[tpm2_util]
-c_file = "src/shared/tpm2-util.c"
-rust_file = "src/shared/rust/tpm2_util.rs"
-status = "in-progress"
-tier = 1
-symbols = 0
-sync_status = "needs_review"
-notes = "The shared Rust crate is IDE-only and not an authoritative Meson build input. The former three-symbol rust/tpm2_util.h ABI and its unregistered C test were removed fail-closed: the C helpers are HAVE_TPM2-conditional but the IDE crate receives no matching Meson configuration, so exporting its unconditional lookup core from the basic static library would be false parity. check-tpm2-util-abi.py enforces no stale header, export, baseline entry, or test registration. The IDE core's TPM2 OFB/ECB constants were corrected to 0x0041/0x0044. Tracked follow-up: systemd-2bjs."

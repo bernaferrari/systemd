@@ -696,8 +696,6 @@ jobs:
         run: python3 tools/rust-port/check-seccomp-basic-abi.py
       - name: Verify Rust errno target-build authority
         run: python3 tools/rust-port/check-errno-target-authority.py
-      - name: Keep unbuilt TPM2 Rust C ABI fail-closed
-        run: python3 tools/rust-port/check-tpm2-util-abi.py
       - name: Verify registered Rust C-test project headers resolve
         run: python3 tools/rust-port/check-tests-extra-header-includes.py
 

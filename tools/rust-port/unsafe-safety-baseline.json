@@ -1058,11 +1058,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 3
     },
-    "src/shared/rust/blkid_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
     "src/shared/rust/blockdev_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1371,11 +1366,6 @@
       ],
       "unsafe_sites": 16
     },
-    "src/shared/rust/libmount_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 21
-    },
     "src/shared/rust/log_assert_critical.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1508,11 +1498,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
-    },
-    "src/shared/rust/qrcode_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 8
     },
     "src/shared/rust/quota_util.rs": {
       "missing_safety": 0,

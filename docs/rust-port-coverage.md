@@ -13,17 +13,17 @@ Scope: `src`
 ## Snapshot Totals
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1447**
+- All `src` Rust files: **1444**
 - Rust metadata adapters: **30**
 - Rust test/fuzz support files: **95**
-- Unverified Rust behavior candidates: **1322**
+- Unverified Rust behavior candidates: **1319**
 
 Excluding `src/test`:
 - C files: **1569**
-- Rust files: **1447**
+- Rust files: **1444**
 - Rust metadata adapters: **30**
 - Rust test/fuzz support files: **95**
-- Unverified Rust behavior candidates: **1322**
+- Unverified Rust behavior candidates: **1319**
 
 ## Per-Subsystem Inventory
 
@@ -119,7 +119,7 @@ Excluding `src/test`:
 | `run` | 2 | 3 | 0 | 0 | 3 |
 | `run-generator` | 1 | 3 | 0 | 0 | 3 |
 | `sbsign` | 2 | 0 | 0 | 0 | 0 |
-| `shared` | 283 | 294 | 0 | 6 | 288 |
+| `shared` | 283 | 291 | 0 | 6 | 285 |
 | `shutdown` | 7 | 0 | 0 | 0 | 0 |
 | `sleep` | 3 | 0 | 0 | 0 | 0 |
 | `socket-activate` | 1 | 3 | 0 | 0 | 3 |

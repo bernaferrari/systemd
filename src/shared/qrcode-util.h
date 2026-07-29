@@ -14,18 +14,6 @@ int print_qrcode_full(
                 unsigned tty_height,
                 bool check_tty);
 
-/* Like print_qrcode_full(), but creates and destroys a FILE* around a
- * duplicate of fd. The caller retains ownership of fd. */
-int print_qrcode_full_fd(
-                int fd,
-                const char *header,
-                const char *string,
-                unsigned row,
-                unsigned column,
-                unsigned tty_width,
-                unsigned tty_height,
-                bool check_tty);
-
 int dlopen_qrencode(int log_level) _dlopen_loader_;
 
 static inline int print_qrcode(FILE *out, const char *header, const char *string) {

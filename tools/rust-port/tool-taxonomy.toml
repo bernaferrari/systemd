@@ -131,7 +131,6 @@ paths = [
     "tools/rust-port/check-string-table-source-parity.py",
     "tools/rust-port/check-string-util-abi.py",
     "tools/rust-port/check-tests-extra-header-includes.py",
-    "tools/rust-port/check-tpm2-util-abi.py",
     "tools/rust-port/rust-ffi-inventory-gate.py",
     "tools/rust-port/rust-fixture-catalog.toml",
     "tools/rust-port/test-rust-fixture-catalog.py",
