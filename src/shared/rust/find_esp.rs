@@ -15,6 +15,7 @@
 // probing via blkid/udev remains a deliberately tracked porting gap.
 
 use crate::ffi::*;
+use std::ffi::{CString, OsStr};
 use std::fmt;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
@@ -312,12 +313,14 @@ pub fn path_is_valid_absolute(p: &str) -> bool {
     path.is_absolute() && p.chars().all(|c| c != '\0')
 }
 
-/// Extract the filename component from a path, if any.
+/// Extract the filename component from a path, if any, without requiring UTF-8.
 ///
 /// Returns `None` for paths like `/` that have no filename component
-/// (mirrors C's `-EADDRNOTAVAIL` case).
-pub fn path_extract_filename(p: &Path) -> Option<&str> {
-    p.file_name()?.to_str()
+/// (mirrors C's `-EADDRNOTAVAIL` case). Linux path components are byte
+/// strings, so returning `OsStr` prevents a valid non-UTF-8 filename from
+/// being mistaken for an absent component.
+pub fn path_extract_filename(p: &Path) -> Option<&OsStr> {
+    p.file_name()
 }
 
 // ── Filesystem root directory check ─────────────────────────────────────────
@@ -558,6 +561,31 @@ fn resolve_path_at(root_fd: Option<BorrowedFd<'_>>, p: &Path) -> io::Result<Path
     }
 }
 
+/// Whether a failed candidate should be ignored while searching well-known
+/// ESP/XBOOTLDR locations.
+///
+/// This is the Rust equivalent of C's `IN_SET(r, -ENOENT,
+/// -EADDRNOTAVAIL, -ENOTDIR, -ENOTTY)`: a missing path, a candidate that
+/// fails ESP verification, a non-directory, or an unsuitable filesystem does
+/// not stop discovery at later standard locations. All other I/O errors stay
+/// fatal so permission and integrity failures are not hidden.
+fn is_search_miss(error: &FindEspError) -> bool {
+    match error {
+        FindEspError::NotFound
+        | FindEspError::NotADirectory(_)
+        | FindEspError::NotFsRoot(_)
+        | FindEspError::NotFatFs(_)
+        | FindEspError::NotGpt(_)
+        | FindEspError::WrongPartitionType(_)
+        | FindEspError::NoBackingDevice(_) => true,
+        FindEspError::PathResolution { source, .. } | FindEspError::Io(source) => matches!(
+            source.raw_os_error(),
+            Some(libc::ENOENT | libc::ENOTDIR | libc::ENOTTY)
+        ),
+        FindEspError::General(_) => false,
+    }
+}
+
 /// Open a path (directory) with O_PATH.
 fn open_path(p: &Path) -> io::Result<OwnedFd> {
     let c_path = CString::new(p.as_os_str().as_bytes())?;
@@ -656,11 +684,7 @@ fn find_esp_and_warn_at(
         let p = Path::new(dir);
         match verify_esp_at(root_fd, p, flags | VerifyEspFlags::SEARCHING) {
             Ok(info) => return Ok(info),
-            Err(FindEspError::NotFound)
-            | Err(FindEspError::NotFatFs(_))
-            | Err(FindEspError::NotFsRoot(_))
-            | Err(FindEspError::NotGpt(_))
-            | Err(FindEspError::WrongPartitionType(_)) => {
+            Err(error) if is_search_miss(&error) => {
                 // Try next candidate.
                 continue;
             }
@@ -816,10 +840,7 @@ fn find_xbootldr_and_warn_at(
         flags | VerifyEspFlags::SEARCHING,
     ) {
         Ok(info) => Ok(info),
-        Err(FindEspError::NotFound)
-        | Err(FindEspError::NotFsRoot(_))
-        | Err(FindEspError::NotGpt(_))
-        | Err(FindEspError::WrongPartitionType(_)) => Err(FindEspError::NotFound),
+        Err(error) if is_search_miss(&error) => Err(FindEspError::NotFound),
         Err(e) => Err(e),
     }
 }
@@ -871,16 +892,13 @@ pub fn verify_xbootldr_automount(path: &Path) -> Result<XBootLdrInfo, FindEspErr
     verify_xbootldr(path, flags)
 }
 
-// ── Re-export CString at module level ───────────────────────────────────────
-
-use std::ffi::CString;
-
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tests::TestEnvironment;
+    use std::ffi::OsStr;
 
     // ── Error display ──
 
@@ -1015,10 +1033,44 @@ mod tests {
 
     #[test]
     fn test_path_extract_filename() {
-        assert_eq!(path_extract_filename(Path::new("/boot/efi")), Some("efi"));
-        assert_eq!(path_extract_filename(Path::new("/boot")), Some("boot"));
+        assert_eq!(
+            path_extract_filename(Path::new("/boot/efi")),
+            Some(OsStr::new("efi"))
+        );
+        assert_eq!(
+            path_extract_filename(Path::new("/boot")),
+            Some(OsStr::new("boot"))
+        );
         // Root has no filename component.
         assert_eq!(path_extract_filename(Path::new("/")), None);
+    }
+
+    #[test]
+    fn test_path_extract_filename_preserves_non_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let path = Path::new(OsStr::from_bytes(b"/boot/\xffefi"));
+        assert_eq!(
+            path_extract_filename(path).map(OsStr::as_bytes),
+            Some(b"\xffefi".as_slice())
+        );
+    }
+
+    #[test]
+    fn test_search_miss_matches_c_error_precedence() {
+        assert!(is_search_miss(&FindEspError::NotADirectory(PathBuf::from(
+            "/efi"
+        ))));
+        assert!(is_search_miss(&FindEspError::NoBackingDevice(
+            PathBuf::from("/efi")
+        )));
+        assert!(is_search_miss(&FindEspError::PathResolution {
+            path: PathBuf::from("/efi"),
+            source: io::Error::from_raw_os_error(libc::ENOTTY),
+        }));
+        assert!(!is_search_miss(&FindEspError::Io(
+            io::Error::from_raw_os_error(libc::EACCES,)
+        )));
     }
 
     // ── Parse env bool ──

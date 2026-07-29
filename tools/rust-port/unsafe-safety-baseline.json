@@ -1068,15 +1068,9 @@
       "unsafe_sites": 6
     },
     "src/shared/rust/bpf_dlopen.rs": {
-      "missing_safety": 5,
-      "missing_safety_sites": [
-        "176:18:let handle = unsafe { dlopen_library(lib_name) }?;",
-        "209:23:let ptr = unsafe { resolve_symbol(handle, &c_sym) };",
-        "225:1:unsafe fn dlopen_library(lib_name: &str) -> Result<*mut c_void, BpfError> {",
-        "241:1:unsafe fn resolve_symbol(handle: *mut c_void, symbol: &CStr) -> *mut c_void {",
-        "248:5:unsafe {"
-      ],
-      "unsafe_sites": 7
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 5
     },
     "src/shared/rust/bpf_program.rs": {
       "missing_safety": 5,
@@ -1461,15 +1455,9 @@
       "unsafe_sites": 21
     },
     "src/shared/rust/libfido2_util.rs": {
-      "missing_safety": 5,
-      "missing_safety_sites": [
-        "419:18:let handle = unsafe {",
-        "425:23:let err = unsafe { CStr::from_ptr(libc::dlerror()) };",
-        "437:19:let ptr = unsafe {",
-        "443:23:let err = unsafe { CStr::from_ptr(libc::dlerror()) };",
-        "446:13:unsafe {"
-      ],
-      "unsafe_sites": 5
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 10
     },
     "src/shared/rust/libmount_util.rs": {
       "missing_safety": 18,
@@ -2042,8 +2030,8 @@
     }
   },
   "totals": {
-    "missing_safety": 505,
-    "unsafe_sites": 5745
+    "missing_safety": 495,
+    "unsafe_sites": 5748
   },
   "version": 2,
   "window": 3

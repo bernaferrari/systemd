@@ -5,12 +5,15 @@
 // Daemon notification utilities for communicating with the systemd service manager
 // via the sd_notify protocol (NOTIFY_SOCKET).
 
-use crate::ffi::*;
 use std::env;
+use std::ffi::OsString;
 use std::fmt;
 use std::io;
 use std::os::fd::RawFd;
+use std::os::unix::ffi::OsStrExt;
+#[cfg(test)]
 use std::os::unix::net::UnixDatagram;
+use systemd_basic_rs::socket_util::sockaddr_un_from_path_bytes;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -40,23 +43,35 @@ fn build_reloading_message(status: Option<&str>) -> String {
 
 // ── Core sd_notify ────────────────────────────────────────────────────────
 
-fn notify_socket_path() -> io::Result<String> {
-    env::var("NOTIFY_SOCKET")
-        .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "NOTIFY_SOCKET not set"))
+fn notify_socket_path() -> io::Result<OsString> {
+    env::var_os("NOTIFY_SOCKET")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "NOTIFY_SOCKET not set"))
+}
+
+/// Parse `NOTIFY_SOCKET` exactly as systemd's AF_UNIX address parser does.
+///
+/// `@name` denotes a Linux abstract socket; `/path` denotes a filesystem
+/// socket. Keeping the returned address length avoids both pathname
+/// truncation and the incorrect full-`sockaddr_un` length used by the old
+/// hand-built FD-store sender.
+fn notify_unix_socket_address() -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
+    // P2: sd_notify's C implementation also accepts VSOCK destinations. This
+    // Rust helper deliberately handles the Unix subset until the port has a
+    // safe, fully tested VSOCK sender with C's stream/seqpacket fallback.
+    let path = notify_socket_path()?;
+    let (address, length) = sockaddr_un_from_path_bytes(path.as_os_str().as_bytes())
+        .map_err(|error| io::Error::from_raw_os_error(-error))?;
+    let length = libc::socklen_t::try_from(length).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "NOTIFY_SOCKET address length does not fit socklen_t",
+        )
+    })?;
+    Ok((address, length))
 }
 
 fn send_datagram(payload: &[u8]) -> io::Result<()> {
-    let path = notify_socket_path()?;
-    if path.starts_with('@') {
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "abstract notify sockets not supported in this port",
-        ));
-    }
-    let sock = UnixDatagram::unbound()?;
-    sock.connect(&path)?;
-    sock.send(payload)?;
-    Ok(())
+    send_fd_datagram(payload, &[])
 }
 
 /// Send a notification without changing the process environment.
@@ -115,12 +130,12 @@ pub fn close_and_notify_warn(fd: RawFd, name: Option<&str>) -> io::Result<()> {
 /// Any existing fd with the same name is removed first.
 pub fn notify_push_fd(fd: RawFd, name: &str) -> io::Result<()> {
     let _ = notify_remove_fd_warn(name);
-    send_fd_datagram(&build_fdstore_push_message(name), &[fd])
+    send_fd_datagram(build_fdstore_push_message(name).as_bytes(), &[fd])
 }
 
 /// Push an unnamed file descriptor into the service manager's fd store.
 pub fn notify_store_fd(fd: RawFd) -> io::Result<()> {
-    send_fd_datagram(build_fdstore_store_message(), &[fd])
+    send_fd_datagram(build_fdstore_store_message().as_bytes(), &[fd])
 }
 
 /// Push a file descriptor into the fd store (format-string variant).
@@ -152,30 +167,23 @@ pub fn notify_start<'a>(start: Option<&str>, stop: Option<&'a str>) -> Option<&'
 
 // ── Internal: fd-passing via sendmsg ──────────────────────────────────────
 
-fn send_fd_datagram(message: &str, fds: &[RawFd]) -> io::Result<()> {
-    let path = notify_socket_path()?;
-    if path.starts_with('@') {
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "abstract notify sockets not supported in this port",
-        ));
+fn send_fd_datagram(message: &[u8], fds: &[RawFd]) -> io::Result<()> {
+    // Match the kernel's SCM_RIGHTS limit before sizing the ancillary buffer.
+    // This also makes all byte-count conversions below trivially bounded.
+    const SCM_MAX_FD: usize = 253;
+    if fds.len() > SCM_MAX_FD {
+        return Err(io::Error::from_raw_os_error(libc::E2BIG));
     }
+    let (mut address, address_length) = notify_unix_socket_address()?;
 
-    // SAFETY: socket(2) and sendmsg(2) are POSIX syscalls.
+    // SAFETY: the validated address, iov, and ancillary buffers remain live
+    // for this synchronous sendmsg call; CloseGuard owns the socket.
     unsafe {
-        let sock = libc::socket(libc::AF_UNIX, libc::SOCK_DGRAM | SOCK_CLOEXEC, 0);
+        let sock = libc::socket(libc::AF_UNIX, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0);
         if sock < 0 {
             return Err(io::Error::last_os_error());
         }
         let _guard = CloseGuard(sock);
-
-        let mut addr: libc::sockaddr_un = std::mem::zeroed();
-        addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
-        let path_bytes = path.as_bytes();
-        let copy_len = path_bytes.len().min(addr.sun_path.len() - 1);
-        for (i, &b) in path_bytes.iter().enumerate().take(copy_len) {
-            addr.sun_path[i] = b as libc::c_char;
-        }
 
         let iov = libc::iovec {
             iov_base: message.as_ptr() as *mut libc::c_void,
@@ -187,8 +195,8 @@ fn send_fd_datagram(message: &str, fds: &[RawFd]) -> io::Result<()> {
         let mut cmsg_buf = vec![0u8; cmsg_space];
 
         let mut hdr: libc::msghdr = std::mem::zeroed();
-        hdr.msg_name = &mut addr as *mut _ as *mut libc::c_void;
-        hdr.msg_namelen = std::mem::size_of::<libc::sockaddr_un>() as u32;
+        hdr.msg_name = (&mut address as *mut libc::sockaddr_un).cast::<libc::c_void>();
+        hdr.msg_namelen = address_length;
         hdr.msg_iov = &iov as *const _ as *mut _;
         hdr.msg_iovlen = 1;
 
@@ -197,18 +205,22 @@ fn send_fd_datagram(message: &str, fds: &[RawFd]) -> io::Result<()> {
             hdr.msg_controllen = cmsg_buf.len() as u32;
 
             let cmsg = libc::CMSG_FIRSTHDR(&hdr);
+            if cmsg.is_null() {
+                return Err(io::Error::from_raw_os_error(libc::EINVAL));
+            }
             (*cmsg).cmsg_level = libc::SOL_SOCKET;
             (*cmsg).cmsg_type = libc::SCM_RIGHTS;
             (*cmsg).cmsg_len = libc::CMSG_LEN(fds_byte_len as u32);
             let dst = libc::CMSG_DATA(cmsg) as *mut RawFd;
-            for (i, &fd) in fds.iter().enumerate() {
-                *dst.add(i) = fd;
-            }
+            std::ptr::copy_nonoverlapping(fds.as_ptr(), dst, fds.len());
         }
 
-        let r = libc::sendmsg(sock, &hdr, 0);
+        let r = libc::sendmsg(sock, &hdr, libc::MSG_NOSIGNAL);
         if r < 0 {
             return Err(io::Error::last_os_error());
+        }
+        if r as usize != message.len() {
+            return Err(io::Error::from_raw_os_error(libc::EIO));
         }
     }
 

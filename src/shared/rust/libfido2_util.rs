@@ -10,10 +10,13 @@
 // All libfido2 symbols are resolved through dlopen so the module gracefully
 // degrades when the library is absent.
 
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::fmt;
-use std::os::raw::c_void;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::ptr::NonNull;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::ffi::Errno;
 
@@ -72,6 +75,7 @@ const REQUIRED_SYMBOLS: &[&str] = &[
     "fido_dev_free",
     "fido_dev_get_assert",
     "fido_dev_get_cbor_info",
+    "fido_dev_get_retry_count",
     "fido_dev_info_free",
     "fido_dev_info_manifest",
     "fido_dev_info_manufacturer_string",
@@ -187,20 +191,23 @@ impl From<Fido2Error> for i32 {
     fn from(e: Fido2Error) -> i32 {
         match e {
             Fido2Error::Unsupported => Errno::EOPNOTSUPP.to_neg_errno(),
-            Fido2Error::DlopenFailed(_) | Fido2Error::SymbolNotFound(_) => {
-                Errno::ENOENT.to_neg_errno()
-            }
+            // Keep the lazy-load failures distinguishable, just like C's
+            // dlopen_many_sym_or_warn(): an unavailable library is not the
+            // same thing as a library with an incompatible ABI.
+            Fido2Error::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
+            Fido2Error::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
             Fido2Error::ApiError(_) | Fido2Error::IoError(_) => Errno::EIO.to_neg_errno(),
             Fido2Error::InvalidArgument(_) => Errno::EINVAL.to_neg_errno(),
-            Fido2Error::NotFound | Fido2Error::CredentialMismatch => Errno::ENOLINK.to_neg_errno(),
+            Fido2Error::NotFound => Errno::ENOLINK.to_neg_errno(),
+            Fido2Error::CredentialMismatch => -(libc::EBADSLT as i32),
             Fido2Error::NotUnique => Errno::ENOTUNIQ.to_neg_errno(),
             Fido2Error::NotFido2 => Errno::ENODEV.to_neg_errno(),
             Fido2Error::PermissionDenied(_) => Errno::EPERM.to_neg_errno(),
-            Fido2Error::PinRequired => Errno::ENOLCK.to_neg_errno(),
+            Fido2Error::PinRequired => -(libc::ENOANO as i32),
             Fido2Error::PinInvalid => Errno::ENOLCK.to_neg_errno(),
             Fido2Error::PinAuthBlocked | Fido2Error::UvBlocked => Errno::EOWNERDEAD.to_neg_errno(),
             Fido2Error::UpRequired => Errno::EMEDIUMTYPE.to_neg_errno(),
-            Fido2Error::ActionTimeout => Errno::ETIMEDOUT.to_neg_errno(),
+            Fido2Error::ActionTimeout => -(libc::ENOSTR as i32),
             Fido2Error::FeatureNotSupported(_) => Errno::EHWPOISON.to_neg_errno(),
             Fido2Error::AlgorithmNotSupported(_) => Errno::EOPNOTSUPP.to_neg_errno(),
             Fido2Error::OutOfMemory => Errno::ENOMEM.to_neg_errno(),
@@ -390,72 +397,135 @@ pub enum Fido2Operation {
 /// Global flag: has `dlopen_libfido2` been called successfully?
 static LIBFIDO2_LOADED: AtomicBool = AtomicBool::new(false);
 
+/// Serializes lazy initialization so concurrent callers cannot each retain a
+/// process-lifetime loader reference after resolving the same symbols.
+static LIBFIDO2_LOAD_LOCK: Mutex<()> = Mutex::new(());
+
 /// Check whether the library is currently loaded.
 pub fn is_libfido2_loaded() -> bool {
-    LIBFIDO2_LOADED.load(Ordering::Relaxed)
+    LIBFIDO2_LOADED.load(Ordering::Acquire)
 }
 
 /// Mark the library as loaded (for testing).
 fn mark_loaded(loaded: bool) {
-    LIBFIDO2_LOADED.store(loaded, Ordering::Relaxed);
+    LIBFIDO2_LOADED.store(loaded, Ordering::Release);
 }
 
 // ── dlopen ────────────────────────────────────────────────────────────────
 
 /// Dynamically load libfido2 and resolve all required symbols.
 ///
-/// This is the Rust equivalent of `dlopen_libfido2()` from the C code.
-/// It uses `dlopen`/`dlsym` under the hood, which requires `unsafe`.
+/// This checks the same symbol set as C's `dlopen_libfido2()` before retaining
+/// the library for the process lifetime.
 ///
 /// Returns `Ok(())` on success, or an error describing the failure.
 pub fn dlopen_libfido2() -> Result<(), Fido2Error> {
-    if LIBFIDO2_LOADED.load(Ordering::Relaxed) {
+    if LIBFIDO2_LOADED.load(Ordering::Acquire) {
         return Ok(());
     }
 
-    let lib_name = CString::new(LIBFIDO2_NAME)
-        .map_err(|_| Fido2Error::DlopenFailed("library name contains NUL byte".into()))?;
+    // A poisoned lock cannot invalidate the process-wide dynamic loader. Keep
+    // the mutex usable after an unrelated panic while preserving serialization.
+    let _load_lock = LIBFIDO2_LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    let handle = unsafe {
-        // SAFETY: dlopen with RTLD_LAZY | RTLD_NOW is safe as long as the
-        // library path is valid and the platform supports dlopen. We only
-        // proceed to call dlsym on the returned handle.
-        let raw = libc::dlopen(lib_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL);
-        if raw.is_null() {
-            let err = unsafe { CStr::from_ptr(libc::dlerror()) };
-            let desc = err.to_string_lossy().into_owned();
-            return Err(Fido2Error::DlopenFailed(desc));
-        }
-        raw
-    };
-
-    // Resolve all required symbols
-    for &sym_name in REQUIRED_SYMBOLS {
-        let sym_cstr =
-            CString::new(sym_name).unwrap_or_else(|_| CString::new("<invalid>").unwrap());
-
-        let ptr = unsafe {
-            // SAFETY: dlsym on a valid dlopen handle is safe.
-            libc::dlsym(handle, sym_cstr.as_ptr())
-        };
-
-        if ptr.is_null() {
-            let err = unsafe { CStr::from_ptr(libc::dlerror()) };
-            let desc = err.to_string_lossy().into_owned();
-            // Close the library on failure
-            unsafe {
-                // SAFETY: dlclose on a valid handle is safe.
-                libc::dlclose(handle);
-            }
-            return Err(Fido2Error::SymbolNotFound(format!(
-                "{}: {}",
-                sym_name, desc
-            )));
-        }
+    if LIBFIDO2_LOADED.load(Ordering::Acquire) {
+        return Ok(());
     }
 
-    LIBFIDO2_LOADED.store(true, Ordering::Relaxed);
+    let handle = dlopen_wrapper(LIBFIDO2_NAME)?;
+    for symbol in REQUIRED_SYMBOLS {
+        resolve_required_symbol(&handle, symbol)?;
+    }
+
+    // Match dlopen_many_sym_or_warn(): a fully validated library is retained
+    // for the process lifetime. `DlHandle` still releases a partial load on
+    // every error path above.
+    handle.leak();
+    LIBFIDO2_LOADED.store(true, Ordering::Release);
     Ok(())
+}
+
+/// An owned dynamic-loader reference.
+///
+/// A successful load is deliberately leaked only after all required symbols
+/// resolve. Failed partial loads drop normally and release their reference.
+struct DlHandle(NonNull<c_void>);
+
+impl DlHandle {
+    fn as_ptr(&self) -> *mut c_void {
+        self.0.as_ptr()
+    }
+
+    fn leak(self) {
+        std::mem::forget(self);
+    }
+}
+
+impl Drop for DlHandle {
+    fn drop(&mut self) {
+        // SAFETY: `DlHandle` is created only from a successful `dlopen()` and
+        // owns exactly one loader reference until it is deliberately leaked.
+        unsafe { libc::dlclose(self.as_ptr()) };
+    }
+}
+
+/// Open a shared library with C's eager, non-unloadable policy.
+///
+/// P2: this must eventually use a shared Rust equivalent of `dlopen_safe()`
+/// so static builds and C's process-wide `block_dlopen()` policy are honored.
+fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, Fido2Error> {
+    let name = CString::new(lib_name)
+        .map_err(|_| Fido2Error::DlopenFailed("library name contains NUL byte".into()))?;
+    // SAFETY: `name` is NUL-terminated and remains live for the call.
+    let handle = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_NOW | libc::RTLD_NODELETE) };
+    NonNull::new(handle)
+        .map(DlHandle)
+        .ok_or_else(|| Fido2Error::DlopenFailed(dlerror_string()))
+}
+
+/// Look up one required symbol in an already-opened library handle.
+///
+/// Clearing and then checking `dlerror()` is required by POSIX: a null value
+/// returned by `dlsym()` alone does not distinguish a missing symbol.
+fn resolve_required_symbol(handle: &DlHandle, symbol: &str) -> Result<(), Fido2Error> {
+    let name = CString::new(symbol)
+        .map_err(|_| Fido2Error::SymbolNotFound("symbol name contains an interior NUL".into()))?;
+
+    // SAFETY: `dlerror()` has no arguments and accesses only this thread's
+    // dynamic-loader diagnostic state.
+    unsafe { libc::dlerror() };
+    // SAFETY: `handle` owns a live `dlopen()` reference and `name` remains
+    // NUL-terminated and live for this lookup.
+    let pointer = unsafe { libc::dlsym(handle.as_ptr(), name.as_ptr()) };
+    // SAFETY: as above, this reads the calling thread's loader diagnostic.
+    let error = unsafe { libc::dlerror() };
+
+    if !error.is_null() {
+        // SAFETY: a non-null `dlerror()` value is a borrowed NUL-terminated
+        // diagnostic valid until the next loader operation in this thread.
+        let detail = unsafe { CStr::from_ptr(error) }.to_string_lossy();
+        return Err(Fido2Error::SymbolNotFound(format!("{symbol}: {detail}")));
+    }
+
+    NonNull::new(pointer).ok_or_else(|| Fido2Error::SymbolNotFound(symbol.into()))?;
+    Ok(())
+}
+
+fn dlerror_string() -> String {
+    // SAFETY: `dlerror()` has no arguments and returns either null or a
+    // borrowed, NUL-terminated diagnostic valid until the next loader call.
+    let error = unsafe { libc::dlerror() };
+    if error.is_null() {
+        "unknown error".into()
+    } else {
+        // SAFETY: checked non-null above; the dynamic loader guarantees a
+        // NUL-terminated diagnostic string.
+        unsafe { CStr::from_ptr(error) }
+            .to_string_lossy()
+            .into_owned()
+    }
 }
 
 // ── FIDO2 error translation ──────────────────────────────────────────────
@@ -669,14 +739,28 @@ impl CredentialPresence {
 }
 
 /// Result of an HMAC-secret assertion operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct HmacResult {
     /// The HMAC secret bytes.
     pub hmac: Vec<u8>,
 }
 
+impl fmt::Debug for HmacResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HmacResult")
+            .field("hmac_len", &self.hmac.len())
+            .finish()
+    }
+}
+
+impl Drop for HmacResult {
+    fn drop(&mut self) {
+        erase_sensitive_bytes(&mut self.hmac);
+    }
+}
+
 /// Result of a credential generation (enrollment) operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct EnrollResult {
     /// The credential ID bytes.
     pub cred_id: Vec<u8>,
@@ -686,6 +770,49 @@ pub struct EnrollResult {
     pub used_pin: Option<String>,
     /// The actual lock flags that were applied.
     pub locked_with: Fido2EnrollFlags,
+}
+
+impl fmt::Debug for EnrollResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EnrollResult")
+            .field("cred_id_len", &self.cred_id.len())
+            .field("secret_len", &self.secret.len())
+            .field("used_pin", &self.used_pin.as_ref().map(|_| "<redacted>"))
+            .field("locked_with", &self.locked_with)
+            .finish()
+    }
+}
+
+impl Drop for EnrollResult {
+    fn drop(&mut self) {
+        erase_sensitive_bytes(&mut self.secret);
+        if let Some(pin) = &mut self.used_pin {
+            erase_sensitive_string(pin);
+        }
+    }
+}
+
+/// Erase initialized secret bytes before their owning allocation is released.
+///
+/// C's FIDO helpers use `erase_and_freep()` for these values. Volatile stores
+/// keep the compiler from removing the clear as dead work immediately before
+/// Rust drops the allocation.
+fn erase_sensitive_bytes(bytes: &mut [u8]) {
+    for byte in bytes {
+        // SAFETY: `byte` is initialized, uniquely borrowed storage. Writing
+        // zero preserves the byte's validity and `write_volatile` keeps this
+        // security clear observable to the optimizer.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
+}
+
+/// Erase the initialized bytes of a PIN while retaining `String`'s UTF-8
+/// invariant (an all-NUL byte sequence is valid UTF-8).
+fn erase_sensitive_string(value: &mut String) {
+    // SAFETY: replacing every byte with NUL preserves UTF-8, so this mutation
+    // upholds `String::as_mut_vec()`'s invariant for the eventual destructor.
+    let bytes = unsafe { value.as_mut_vec() };
+    erase_sensitive_bytes(bytes);
 }
 
 /// Information about a discovered FIDO2 device.
@@ -790,9 +917,19 @@ mod tests {
             i32::from(Fido2Error::NotFido2),
             Errno::ENODEV.to_neg_errno()
         );
+        assert_eq!(i32::from(Fido2Error::PinRequired), -(libc::ENOANO as i32));
         assert_eq!(
-            i32::from(Fido2Error::PinRequired),
-            Errno::ENOLCK.to_neg_errno()
+            i32::from(Fido2Error::CredentialMismatch),
+            -(libc::EBADSLT as i32)
+        );
+        assert_eq!(i32::from(Fido2Error::ActionTimeout), -(libc::ENOSTR as i32));
+        assert_eq!(
+            i32::from(Fido2Error::DlopenFailed("missing".into())),
+            Errno::EOPNOTSUPP.to_neg_errno()
+        );
+        assert_eq!(
+            i32::from(Fido2Error::SymbolNotFound("missing".into())),
+            Errno::ELIBBAD.to_neg_errno()
         );
         assert_eq!(
             i32::from(Fido2Error::UpRequired),
@@ -1183,9 +1320,10 @@ mod tests {
     #[test]
     fn test_hmac_result() {
         let r = HmacResult {
-            hmac: vec![0u8; 32],
+            hmac: vec![0x5a; 32],
         };
         assert_eq!(r.hmac.len(), 32);
+        assert!(!format!("{r:?}").contains("5a"));
     }
 
     #[test]
@@ -1200,6 +1338,20 @@ mod tests {
         assert_eq!(r.secret, vec![4, 5, 6]);
         assert_eq!(r.used_pin.as_deref(), Some("1234"));
         assert!(r.locked_with.contains(Fido2EnrollFlags::PIN));
+        let debug = format!("{r:?}");
+        assert!(!debug.contains("[4, 5, 6]"));
+        assert!(!debug.contains("1234"));
+    }
+
+    #[test]
+    fn test_sensitive_erasure_helpers_clear_initialized_bytes() {
+        let mut bytes = vec![0x5a; 3];
+        erase_sensitive_bytes(&mut bytes);
+        assert_eq!(bytes, [0, 0, 0]);
+
+        let mut pin = String::from("1234");
+        erase_sensitive_string(&mut pin);
+        assert_eq!(pin.as_bytes(), [0, 0, 0, 0]);
     }
 
     #[test]

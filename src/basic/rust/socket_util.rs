@@ -806,14 +806,23 @@ pub unsafe extern "C" fn rs_sockaddr_len(sa: *const c_void) -> usize {
     }
 }
 
-/// # Safety
-/// `path` must be null or point to a readable NUL-terminated C string.
-unsafe fn sockaddr_un_from_path(path: *const c_char) -> Result<(libc::sockaddr_un, usize), i32> {
-    if path.is_null() {
+/// Construct an AF_UNIX socket address using systemd's `@name` convention for
+/// the Linux abstract namespace and `/path` convention for filesystem sockets.
+///
+/// The returned length is the exact `sockaddr_un` length required by
+/// `bind(2)`, `connect(2)`, or `sendmsg(2)`: it excludes the trailing NUL for
+/// abstract names and includes it for filesystem paths. This is the safe Rust
+/// counterpart of C's `sockaddr_un_set_path()`.
+///
+/// Errors use systemd's negative errno convention: `-EINVAL` for malformed
+/// paths or oversized abstract names and `-ENAMETOOLONG` for oversized
+/// filesystem paths.
+pub fn sockaddr_un_from_path_bytes(path: &[u8]) -> Result<(libc::sockaddr_un, usize), i32> {
+    if path.contains(&0) {
         return Err(Errno::EINVAL.to_neg_errno());
     }
-    // SAFETY: required by this helper's C-string contract.
-    let bytes = unsafe { CStr::from_ptr(path) }.to_bytes();
+
+    let bytes = path;
     let first = *bytes.first().ok_or_else(|| Errno::EINVAL.to_neg_errno())?;
     if bytes.len() < 2 || !matches!(first, b'/' | b'@') {
         return Err(Errno::EINVAL.to_neg_errno());
@@ -849,6 +858,16 @@ unsafe fn sockaddr_un_from_path(path: *const c_char) -> Result<(libc::sockaddr_u
             offset_of!(libc::sockaddr_un, sun_path) + bytes.len() + 1,
         ))
     }
+}
+
+/// # Safety
+/// `path` must be null or point to a readable NUL-terminated C string.
+unsafe fn sockaddr_un_from_path(path: *const c_char) -> Result<(libc::sockaddr_un, usize), i32> {
+    if path.is_null() {
+        return Err(Errno::EINVAL.to_neg_errno());
+    }
+    // SAFETY: required by this helper's C-string contract.
+    sockaddr_un_from_path_bytes(unsafe { CStr::from_ptr(path) }.to_bytes())
 }
 
 /// # Safety
@@ -1189,6 +1208,49 @@ mod tests {
         let address = socket_address_parse_unix("/run/test.sock").unwrap();
         assert_eq!(socket_address_get_path(&address), Some("/run/test.sock"));
         assert!(socket_address_verify(&address, true).is_ok());
+    }
+
+    #[test]
+    fn sockaddr_un_bytes_preserves_abstract_and_filesystem_lengths() {
+        let (abstract_address, abstract_length) = sockaddr_un_from_path_bytes(b"@notify").unwrap();
+        assert_eq!(abstract_address.sun_path[0], 0);
+        assert_eq!(
+            abstract_address.sun_path[1..7]
+                .iter()
+                .map(|byte| *byte as u8)
+                .collect::<Vec<_>>(),
+            b"notify"
+        );
+        assert_eq!(
+            abstract_length,
+            offset_of!(libc::sockaddr_un, sun_path) + b"@notify".len()
+        );
+
+        let (filesystem_address, filesystem_length) =
+            sockaddr_un_from_path_bytes(b"/run/notify").unwrap();
+        assert_eq!(
+            filesystem_address.sun_path[..11]
+                .iter()
+                .map(|byte| *byte as u8)
+                .collect::<Vec<_>>(),
+            b"/run/notify"
+        );
+        assert_eq!(
+            filesystem_length,
+            offset_of!(libc::sockaddr_un, sun_path) + b"/run/notify".len() + 1
+        );
+    }
+
+    #[test]
+    fn sockaddr_un_bytes_rejects_embedded_nul_and_relative_names() {
+        assert_eq!(
+            sockaddr_un_from_path_bytes(b"/run\0notify"),
+            Err(Errno::EINVAL.to_neg_errno())
+        );
+        assert_eq!(
+            sockaddr_un_from_path_bytes(b"notify"),
+            Err(Errno::EINVAL.to_neg_errno())
+        );
     }
 
     #[test]

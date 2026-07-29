@@ -9,9 +9,13 @@
 // skeletons), and error-code translation for kernel-internal BPF errors.
 
 use std::collections::HashSet;
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::ptr::{self, NonNull};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::ffi::Errno;
 
@@ -52,8 +56,8 @@ impl From<BpfError> for i32 {
     fn from(e: BpfError) -> i32 {
         match e {
             BpfError::Unsupported => Errno::EOPNOTSUPP.to_neg_errno(),
-            BpfError::DlopenFailed(_) => Errno::ENOENT.to_neg_errno(),
-            BpfError::SymbolNotFound(_) => Errno::ENOENT.to_neg_errno(),
+            BpfError::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
+            BpfError::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
             BpfError::InvalidArgument(_) => Errno::EINVAL.to_neg_errno(),
         }
     }
@@ -84,6 +88,7 @@ const COMMON_SYMBOLS: &[&str] = &[
     "bpf_map_get_fd_by_id",
     "bpf_map_lookup_elem",
     "bpf_map_update_elem",
+    "bpf_obj_get_info_by_fd",
     "bpf_object__attach_skeleton",
     "bpf_object__destroy_skeleton",
     "bpf_object__detach_skeleton",
@@ -95,6 +100,7 @@ const COMMON_SYMBOLS: &[&str] = &[
     "bpf_program__attach_cgroup",
     "bpf_program__attach_lsm",
     "bpf_program__name",
+    "bpf_program__set_autoload",
     "libbpf_get_error",
     "libbpf_set_print",
     "ring_buffer__epoll_fd",
@@ -103,11 +109,16 @@ const COMMON_SYMBOLS: &[&str] = &[
     "ring_buffer__poll",
 ];
 
-/// Extra symbols available from libbpf >= 0.7.0 (present in libbpf.so.1).
-const V07_SYMBOLS: &[&str] = &["bpf_map_create", "bpf_object__next_map"];
-
-/// Compat symbols removed in libbpf 1.0 (only in libbpf.so.0).
-const LEGACY_SYMBOLS: &[&str] = &["bpf_create_map"];
+/// Optional compatibility/features symbols resolved by the C implementation.
+///
+/// Their absence does not reject an otherwise usable libbpf. The C globals
+/// retain null or fallback initializers when these lookups fail.
+const OPTIONAL_SYMBOLS: &[&str] = &[
+    "bpf_create_map",
+    "bpf_map_create",
+    "bpf_object__next_map",
+    "bpf_token_create",
+];
 
 // ── Kernel error translation ───────────────────────────────────────────────
 
@@ -131,6 +142,11 @@ pub fn bpf_get_error_translated(raw_error: i32) -> i32 {
 /// Global flag: has `dlopen_bpf()` been called and completed?
 static BPF_LOADED: AtomicBool = AtomicBool::new(false);
 
+/// C's loader caches its first failed load attempt as well. Keep that
+/// observable behavior while also serializing initialization so successful
+/// racing callers cannot each leak a process-lifetime library reference.
+static BPF_LOAD_STATE: Mutex<Option<BpfError>> = Mutex::new(None);
+
 /// Convenience wrapper — calls `dlopen_bpf_full` with `log_level = 0`.
 pub fn dlopen_bpf() -> Result<(), BpfError> {
     dlopen_bpf_full(0)
@@ -139,9 +155,8 @@ pub fn dlopen_bpf() -> Result<(), BpfError> {
 /// Attempt to dynamically load libbpf.
 ///
 /// This function is idempotent: after the first successful call it returns
-/// `Ok(())` immediately. If neither `libbpf.so.1` nor `libbpf.so.0` can be
-/// found the result is cached as an error so that subsequent calls return
-/// `Err` without retrying.
+/// `Ok(())` immediately. Caches the first failure too, exactly as C's
+/// `dlopen_bpf()` does, so later calls return the same error without retrying.
 ///
 /// `log_level` controls the verbosity of log messages emitted on failure
 /// (0 = silent, higher = more verbose).
@@ -150,50 +165,53 @@ pub fn dlopen_bpf_full(log_level: i32) -> Result<(), BpfError> {
         return Ok(());
     }
 
-    let mut last_err = String::new();
+    // A poisoned lock cannot invalidate dynamic-loader state. Recover the
+    // stored result so an unrelated panic does not reopen the load race.
+    let mut load_state = BPF_LOAD_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    for (idx, lib) in LIBBPF_CANDIDATES.iter().enumerate() {
-        match try_load_libbpf(lib, idx == 0, log_level) {
+    if BPF_LOADED.load(Ordering::Acquire) {
+        return Ok(());
+    }
+    if let Some(error) = &*load_state {
+        return Err(error.clone());
+    }
+
+    let mut last_error = None;
+
+    for lib in LIBBPF_CANDIDATES {
+        match try_load_libbpf(lib, log_level) {
             Ok(()) => {
                 BPF_LOADED.store(true, Ordering::Release);
                 return Ok(());
             }
             Err(e) => {
-                last_err = e.to_string();
+                // Even after block_dlopen(), C tries the next soname: it may
+                // already be resident and therefore accepted with RTLD_NOLOAD.
+                last_error = Some(e);
             }
         }
     }
 
-    Err(BpfError::DlopenFailed(last_err))
+    let error = last_error
+        .unwrap_or_else(|| BpfError::DlopenFailed("no libbpf loader candidates configured".into()));
+    *load_state = Some(error.clone());
+    Err(error)
 }
 
 /// Try to open a single libbpf candidate and resolve all required symbols.
 ///
-/// `is_modern` is true for `libbpf.so.1` (expects v0.7+ symbols and
-/// *not* legacy compat symbols) and false for `libbpf.so.0` (expects
-/// legacy symbols and skips v0.7+ symbols).
-fn try_load_libbpf(lib_name: &str, is_modern: bool, _log_level: i32) -> Result<(), BpfError> {
-    let handle = unsafe { dlopen_library(lib_name) }?;
+fn try_load_libbpf(lib_name: &str, _log_level: i32) -> Result<(), BpfError> {
+    let handle = dlopen_library(lib_name)?;
 
-    let missing = find_missing_symbols(handle, COMMON_SYMBOLS);
+    let missing = find_missing_symbols(&handle, COMMON_SYMBOLS);
     if !missing.is_empty() {
         return Err(BpfError::SymbolNotFound(missing.join(", ")));
     }
 
-    let extra_symbols = if is_modern {
-        V07_SYMBOLS
-    } else {
-        LEGACY_SYMBOLS
-    };
-
-    let missing_extra = find_missing_symbols(handle, extra_symbols);
-    if !missing_extra.is_empty() {
-        return Err(BpfError::SymbolNotFound(missing_extra.join(", ")));
-    }
-
-    // Intentionally keep `handle` open for the lifetime of the process.
-    // dlclose() is deliberately skipped — the symbols remain valid.
-    let _ = handle;
+    // The resolved symbols are process-lifetime state, matching the C loader.
+    handle.leak();
 
     Ok(())
 }
@@ -201,12 +219,12 @@ fn try_load_libbpf(lib_name: &str, is_modern: bool, _log_level: i32) -> Result<(
 // ── Symbol resolution helpers ──────────────────────────────────────────────
 
 /// Check which symbols from `names` are missing in the loaded library.
-fn find_missing_symbols(handle: *mut c_void, names: &[&str]) -> Vec<String> {
+fn find_missing_symbols(handle: &DlHandle, names: &[&str]) -> Vec<String> {
     names
         .iter()
         .filter_map(|&sym| {
             let c_sym = CString::new(sym).unwrap_or_default();
-            let ptr = unsafe { resolve_symbol(handle, &c_sym) };
+            let ptr = resolve_symbol(handle, &c_sym);
             if ptr.is_null() {
                 Some(sym.to_string())
             } else {
@@ -218,40 +236,85 @@ fn find_missing_symbols(handle: *mut c_void, names: &[&str]) -> Vec<String> {
 
 // ── Platform dlopen / dlsym wrappers ────────────────────────────────────────
 
-/// Open a shared library, returning the handle on success.
+// SAFETY: calls to this imported C helper must supply a live NUL-terminated
+// filename and writable out-pointers, which `dlopen_library()` establishes.
+unsafe extern "C" {
+    #[link_name = "dlopen_safe"]
+    fn c_dlopen_safe(
+        filename: *const c_char,
+        ret: *mut *mut c_void,
+        reterr_dlerror: *mut *const c_char,
+    ) -> libc::c_int;
+}
+
+/// An owned dynamic-loader reference for a not-yet-published library.
 ///
-/// Wraps `dlopen()` with `RTLD_LAZY | RTLD_LOCAL` and translates errors
-/// into `BpfError::DlopenFailed`.
-unsafe fn dlopen_library(lib_name: &str) -> Result<*mut c_void, BpfError> {
+/// Required-symbol failure closes the loader reference. A completely resolved
+/// handle is deliberately leaked because the published symbols are valid for
+/// the remainder of the process, matching `dlopen_many_sym_or_warn()`.
+struct DlHandle(NonNull<c_void>);
+
+impl DlHandle {
+    fn as_ptr(&self) -> *mut c_void {
+        self.0.as_ptr()
+    }
+
+    fn leak(self) {
+        std::mem::forget(self);
+    }
+}
+
+impl Drop for DlHandle {
+    fn drop(&mut self) {
+        // SAFETY: this type owns exactly one reference returned by
+        // `dlopen_safe()` until it is either dropped or deliberately leaked.
+        unsafe { libc::dlclose(self.as_ptr()) };
+    }
+}
+
+/// Open a shared library through the C project's authoritative loader policy.
+///
+/// `dlopen_safe()` supplies `RTLD_NOW | RTLD_NODELETE`, rejects new loads
+/// after `block_dlopen()`, and returns `EOPNOTSUPP` in static builds.
+fn dlopen_library(lib_name: &str) -> Result<DlHandle, BpfError> {
     let c_name = CString::new(lib_name)
         .map_err(|e| BpfError::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: c_name is NUL-terminated and remains live for the call.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-    if handle.is_null() {
-        let detail = dlerror_string();
-        Err(BpfError::DlopenFailed(format!("{}: {}", lib_name, detail)))
-    } else {
-        Ok(handle)
+
+    let mut handle = ptr::null_mut();
+    let mut loader_error = ptr::null();
+    // SAFETY: `c_name` remains NUL-terminated and live, and both out-pointers
+    // refer to writable local storage for the duration of the call.
+    let result = unsafe { c_dlopen_safe(c_name.as_ptr(), &mut handle, &mut loader_error) };
+    if result < 0 {
+        if result == -libc::EOPNOTSUPP || result == -libc::EPERM {
+            return Err(BpfError::Unsupported);
+        }
+
+        let detail = if loader_error.is_null() {
+            std::io::Error::from_raw_os_error(-result).to_string()
+        } else {
+            // SAFETY: on failure `dlopen_safe()` returns either null or a
+            // borrowed NUL-terminated loader diagnostic. Copy it before any
+            // subsequent dynamic-loader call invalidates the buffer.
+            unsafe { CStr::from_ptr(loader_error) }
+                .to_string_lossy()
+                .into_owned()
+        };
+        return Err(BpfError::DlopenFailed(format!("{lib_name}: {detail}")));
     }
+
+    NonNull::new(handle)
+        .map(DlHandle)
+        .ok_or_else(|| BpfError::DlopenFailed(format!("{lib_name}: loader returned a null handle")))
 }
 
 /// Look up a symbol in an already-opened library handle.
 ///
 /// Returns a null pointer if the symbol is not found (caller checks).
-unsafe fn resolve_symbol(handle: *mut c_void, symbol: &CStr) -> *mut c_void {
-    // SAFETY: the caller supplies a live dlopen handle and symbol is NUL-terminated.
-    unsafe { libc::dlsym(handle, symbol.as_ptr()) }
-}
-
-/// Retrieve the last `dlerror()` message as a Rust `String`.
-fn dlerror_string() -> String {
-    unsafe {
-        let ptr = libc::dlerror();
-        if ptr.is_null() {
-            return "unknown error".to_string();
-        }
-        CStr::from_ptr(ptr).to_string_lossy().into_owned()
-    }
+fn resolve_symbol(handle: &DlHandle, symbol: &CStr) -> *mut c_void {
+    // SAFETY: `handle` owns a live loader reference and `symbol` is
+    // NUL-terminated and remains live for the lookup.
+    unsafe { libc::dlsym(handle.as_ptr(), symbol.as_ptr()) }
 }
 
 // ── Query helpers ───────────────────────────────────────────────────────────
@@ -262,13 +325,17 @@ pub fn bpf_is_loaded() -> bool {
     BPF_LOADED.load(Ordering::Acquire)
 }
 
-/// Reset the loaded state. Useful for tests.
+/// Reset the cached load result. Useful for tests.
 ///
 /// Only call from tests. Calling this while BPF symbols are in use is
 /// undefined behaviour.
 #[cfg(test)]
 pub fn reset_bpf_loaded() {
     BPF_LOADED.store(false, Ordering::Release);
+    let mut state = BPF_LOAD_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *state = None;
 }
 
 // ── Feature description (for external consumers) ────────────────────────────
@@ -286,30 +353,17 @@ pub fn bpf_library_candidates() -> &'static [&'static str] {
 
 // ── Symbol name introspection ───────────────────────────────────────────────
 
-/// Returns the full set of symbol names that must be resolved for a
-/// successful load of libbpf >= 0.7 (the modern path).
+/// Returns the full set of symbols required from a modern libbpf.
+///
+/// The required set is soname-independent; compatibility and newer feature
+/// entry points are optional in the C implementation.
 pub fn bpf_required_symbols_modern() -> HashSet<&'static str> {
-    let mut set = HashSet::new();
-    for &s in COMMON_SYMBOLS {
-        set.insert(s);
-    }
-    for &s in V07_SYMBOLS {
-        set.insert(s);
-    }
-    set
+    COMMON_SYMBOLS.iter().copied().collect()
 }
 
-/// Returns the full set of symbol names that must be resolved when
-/// loading libbpf.so.0 (the legacy / compat path).
+/// Returns the full set of symbols required from a legacy libbpf.
 pub fn bpf_required_symbols_legacy() -> HashSet<&'static str> {
-    let mut set = HashSet::new();
-    for &s in COMMON_SYMBOLS {
-        set.insert(s);
-    }
-    for &s in LEGACY_SYMBOLS {
-        set.insert(s);
-    }
-    set
+    COMMON_SYMBOLS.iter().copied().collect()
 }
 
 // ── BpfMapType enumeration ──────────────────────────────────────────────────
@@ -404,13 +458,13 @@ mod tests {
     #[test]
     fn test_bpf_error_into_c_int_dlopen_failed() {
         let val: i32 = BpfError::DlopenFailed("x".into()).into();
-        assert_eq!(val, Errno::ENOENT.to_neg_errno());
+        assert_eq!(val, Errno::EOPNOTSUPP.to_neg_errno());
     }
 
     #[test]
     fn test_bpf_error_into_c_int_symbol_not_found() {
         let val: i32 = BpfError::SymbolNotFound("x".into()).into();
-        assert_eq!(val, Errno::ENOENT.to_neg_errno());
+        assert_eq!(val, Errno::ELIBBAD.to_neg_errno());
     }
 
     #[test]
@@ -453,18 +507,21 @@ mod tests {
     #[test]
     fn test_bpf_required_symbols_modern_count() {
         let syms = bpf_required_symbols_modern();
-        assert_eq!(syms.len(), COMMON_SYMBOLS.len() + V07_SYMBOLS.len());
+        assert_eq!(syms.len(), COMMON_SYMBOLS.len());
         assert!(syms.contains("bpf_map__fd"));
-        assert!(syms.contains("bpf_map_create"));
-        assert!(syms.contains("bpf_object__next_map"));
+        assert!(syms.contains("bpf_obj_get_info_by_fd"));
+        assert!(syms.contains("bpf_program__set_autoload"));
+        assert!(!syms.contains("bpf_map_create"));
     }
 
     #[test]
     fn test_bpf_required_symbols_legacy_count() {
         let syms = bpf_required_symbols_legacy();
-        assert_eq!(syms.len(), COMMON_SYMBOLS.len() + LEGACY_SYMBOLS.len());
+        assert_eq!(syms.len(), COMMON_SYMBOLS.len());
         assert!(syms.contains("bpf_map__fd"));
-        assert!(syms.contains("bpf_create_map"));
+        assert!(syms.contains("bpf_obj_get_info_by_fd"));
+        assert!(syms.contains("bpf_program__set_autoload"));
+        assert!(!syms.contains("bpf_create_map"));
         assert!(!syms.contains("bpf_map_create"));
     }
 
@@ -515,25 +572,14 @@ mod tests {
     }
 
     #[test]
-    fn test_v07_symbols_not_empty() {
-        assert!(!V07_SYMBOLS.is_empty());
-    }
-
-    #[test]
-    fn test_legacy_symbols_not_empty() {
-        assert!(!LEGACY_SYMBOLS.is_empty());
-    }
-
-    #[test]
-    fn test_symbol_sets_disjoint() {
+    fn test_optional_symbols_are_not_required() {
         let common: HashSet<_> = COMMON_SYMBOLS.iter().copied().collect();
-        let v07: HashSet<_> = V07_SYMBOLS.iter().copied().collect();
-        let legacy: HashSet<_> = LEGACY_SYMBOLS.iter().copied().collect();
-        for s in &v07 {
-            assert!(!common.contains(s), "V07 symbol {} also in COMMON", s);
-        }
-        for s in &legacy {
-            assert!(!common.contains(s), "Legacy symbol {} also in COMMON", s);
+        assert!(!OPTIONAL_SYMBOLS.is_empty());
+        for symbol in OPTIONAL_SYMBOLS {
+            assert!(
+                !common.contains(symbol),
+                "optional symbol {symbol} also in COMMON"
+            );
         }
     }
 
