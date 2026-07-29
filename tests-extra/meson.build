@@ -4,7 +4,9 @@
 # This directory is intentionally separate from src/test/ so that it can be
 # maintained independently when pulling upstream changes.
 
-simple_tests += files(
+# Keep the C coverage suite dormant when this directory is entered for the
+# Rust C/R shadow targets below.
+simple_tests += get_option('rust').enabled() ? [] : files(
         'test-alternative-names-policy-extra.c',
         'test-ansi-color.c',
         'test-architecture-extra.c',

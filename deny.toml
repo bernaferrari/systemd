@@ -21,6 +21,10 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 [licenses]
 version = 2
 confidence-threshold = 0.8
+# Rust port crates are workspace-internal build artifacts (`publish = false`).
+# Their license is governed by the repository SPDX policy; continue checking
+# every third-party dependency while excluding these non-distributed members.
+private = { ignore = true }
 allow = [
     "Apache-2.0",
     "BSD-2-Clause",

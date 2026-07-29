@@ -25,6 +25,12 @@ pub struct Sha256State {
 
 pub type Digest = [u8; 32];
 
+impl Default for Sha256State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sha256State {
     pub fn new() -> Self {
         Self {

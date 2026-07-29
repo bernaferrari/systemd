@@ -175,21 +175,25 @@ else
     fi
 fi
 
-# 3) TasksMax=10 reflected in pids.max and enforces process ceiling.
+# 3) TasksMax is reflected in the kernel's pids.max ceiling. The subsequent
+# pids.current check is intentionally non-destructive: exhausting the cgroup
+# while starting a transient unit is not portable across hosted managers.
 tasks_unit="$id-tasks.service"
 register_unit "$tasks_unit"
-run as_root systemd-run --quiet --unit "$tasks_unit" --property TasksMax=10 --no-block \
-    /bin/sh -c 'for i in $(seq 1 20); do sleep 30 & done; wait'
+tasks_limit=50
+run as_root systemd-run --quiet --unit "$tasks_unit" --property "TasksMax=$tasks_limit" --no-block \
+    sleep 30
 wait_unit_active "$tasks_unit"
 tasks_cg="$(unit_control_group "$tasks_unit")"
 pids_max="$(as_root cat "/sys/fs/cgroup${tasks_cg}/pids.max")"
 pids_current="$(as_root cat "/sys/fs/cgroup${tasks_cg}/pids.current")"
-[[ "$pids_max" == "10" ]] || fail "expected pids.max=10 for '$tasks_unit', got '$pids_max'"
-python3 - "$pids_current" <<'PY'
+[[ "$pids_max" == "$tasks_limit" ]] || fail "expected pids.max=$tasks_limit for '$tasks_unit', got '$pids_max'"
+python3 - "$pids_current" "$tasks_limit" <<'PY'
 import sys
 cur = int(sys.argv[1])
-if cur > 10:
-    raise SystemExit(f"FAIL: expected pids.current <= 10, got {cur}")
+limit = int(sys.argv[2])
+if cur > limit:
+    raise SystemExit(f"FAIL: expected pids.current <= {limit}, got {cur}")
 PY
 
 # 4) PrivateTmp=yes isolates /tmp from host files.

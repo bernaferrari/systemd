@@ -159,7 +159,9 @@ cat >"$tmpdir/$sock_socket" <<EOF
 Description=Rust port socket activation smoke socket
 [Socket]
 ListenStream=$sock_path
-SocketMode=0600
+# The client is intentionally the unprivileged CI user, while the transient
+# service runs as root, so this test needs a connectable disposable socket.
+SocketMode=0666
 EOF
 
 cat >"$tmpdir/sock-handler.py" <<EOF

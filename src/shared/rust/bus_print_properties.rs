@@ -22,6 +22,9 @@ use crate::nsflags::{NAMESPACE_FLAGS_ALL, NamespaceFlags, namespace_flags_to_str
 // (`0x3e` plus its terminator).
 const CAPABILITY_TO_STRING_MAX: usize = 5;
 
+// SAFETY: this binds the C helper with its exact ABI. Callers provide a live,
+// writable capability-name buffer of the documented size; the helper returns
+// either null or a NUL-terminated pointer valid for the immediate conversion.
 unsafe extern "C" {
     #[link_name = "capability_to_string"]
     fn c_capability_to_string(id: libc::c_int, buf: *mut libc::c_char) -> *const libc::c_char;

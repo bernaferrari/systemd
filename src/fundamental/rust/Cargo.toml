@@ -12,6 +12,9 @@ name = "systemd-fundamental-rs"
 version = "0.0.1"
 edition = "2024"
 
+[features]
+alloc = []
+
 [lib]
 crate-type = ["lib"]
 name = "systemd_fundamental_rs"

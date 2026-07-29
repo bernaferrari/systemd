@@ -4,8 +4,6 @@
 //
 // EFI variable feature flags and secure boot mode decoding.
 
-use crate::macro_fundamental::cmp;
-
 // ── Loader features ─────────────────────────────────────────────────────
 
 pub const EFI_LOADER_FEATURE_CONFIG_TIMEOUT: u64 = 1 << 0;
@@ -74,7 +72,7 @@ const SECURE_BOOT_TABLE: [&str; SECURE_BOOT_MAX as usize] = [
 
 pub fn secure_boot_mode_to_string(m: SecureBootMode) -> &'static str {
     let idx = m as i32;
-    if idx >= 0 && idx < SECURE_BOOT_MAX {
+    if (0..SECURE_BOOT_MAX).contains(&idx) {
         SECURE_BOOT_TABLE[idx as usize]
     } else {
         SECURE_BOOT_TABLE[SecureBootMode::Unknown as usize]

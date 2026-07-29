@@ -14,6 +14,12 @@ pub struct Sha1State {
 
 pub type Digest = [u8; 20];
 
+impl Default for Sha1State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sha1State {
     pub fn new() -> Self {
         Self {

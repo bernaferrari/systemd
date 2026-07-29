@@ -67,6 +67,24 @@ class RustSafetyLintPolicyGateTests(unittest.TestCase):
 
         self.assertEqual(inventory.unsafe_op_weakening_errors, ())
 
+    def test_explicit_unpublished_test_member_has_no_release_target(self) -> None:
+        self.write(
+            "Cargo.toml",
+            '[workspace]\nmembers = ["test/fuzz"]\nresolver = "2"\n',
+        )
+        self.write(
+            "test/fuzz/Cargo.toml",
+            "[package]\nname = \"fuzz\"\nversion = \"0.1.0\"\n"
+            "edition = \"2024\"\npublish = false\nautobins = false\n\n"
+            "[package.metadata.systemd-rust]\ndev-only = true\n\n"
+            "[[test]]\nname = \"smoke\"\npath = \"smoke.rs\"\n",
+        )
+        self.write("test/fuzz/smoke.rs", "#[test]\nfn smoke() {}\n")
+
+        inventory = GATE.collect_inventory(self.root)
+
+        self.assertEqual(inventory.release_targets, ())
+
 
 if __name__ == "__main__":
     unittest.main()

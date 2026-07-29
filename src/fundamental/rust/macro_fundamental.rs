@@ -64,7 +64,7 @@ pub fn clamp<T: Ord>(x: T, low: T, high: T) -> T {
 
 #[inline]
 pub const fn div_round_up(x: u64, y: u64) -> u64 {
-    x / y + if x % y != 0 { 1 } else { 0 }
+    x.div_ceil(y)
 }
 
 #[inline]
@@ -78,7 +78,7 @@ pub const fn round_up(x: u64, y: u64) -> u64 {
 
 #[inline]
 pub const fn less_by(a: u64, b: u64) -> u64 {
-    if a > b { a - b } else { 0 }
+    a.saturating_sub(b)
 }
 
 #[inline]

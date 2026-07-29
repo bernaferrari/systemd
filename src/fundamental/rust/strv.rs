@@ -16,7 +16,7 @@ pub fn strv_foreach<'a>(l: &'a [&'a str]) -> impl Iterator<Item = &'a str> {
 
 /// Check if a string vector contains a given string.
 pub fn strv_contains(l: &[&str], s: &str) -> bool {
-    l.iter().any(|&item| item == s)
+    l.contains(&s)
 }
 
 /// Check if a string vector is empty or NULL.

@@ -5,7 +5,6 @@
 // Selected string utility helpers in safe Rust.
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,7 +40,7 @@ pub fn split_pair(s: &str, separator: char) -> Result<(&str, &str)> {
 
 pub fn parse_hex(s: &str) -> Result<Vec<u8>> {
     let filtered: String = s.chars().filter(|c| !c.is_ascii_whitespace()).collect();
-    if filtered.len() % 2 != 0 {
+    if !filtered.len().is_multiple_of(2) {
         return Err(StringUtilError::InvalidHex);
     }
     filtered
@@ -75,6 +74,7 @@ pub fn cescape_length(s: &str) -> usize {
 mod tests {
     extern crate std;
     use super::*;
+    use alloc::vec;
     #[test]
     fn option_string_comparison_matches_none_semantics() {
         assert!(streq_ptr(None, None));

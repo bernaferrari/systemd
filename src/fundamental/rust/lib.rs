@@ -45,7 +45,7 @@ pub mod unaligned;
 pub const EFI_PAGE_SIZE: usize = 4096;
 
 pub const fn efi_size_to_pages(bytes: usize) -> usize {
-    (bytes + EFI_PAGE_SIZE - 1) / EFI_PAGE_SIZE
+    bytes.div_ceil(EFI_PAGE_SIZE)
 }
 
 pub const EFI_MAX_CONFIGURATION_TABLES: usize = 256;
@@ -56,7 +56,7 @@ pub const CHAR16_NULL: u16 = 0;
 
 #[inline]
 pub const fn div_round_up(n: usize, d: usize) -> usize {
-    (n + d - 1) / d
+    n.div_ceil(d)
 }
 
 pub fn const_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_const_time_eq_single_byte_diff() {
-        let mut a = [0u8; 32];
+        let a = [0u8; 32];
         let mut b = [0u8; 32];
         b[31] = 1;
         assert!(!const_time_eq(&a, &b));

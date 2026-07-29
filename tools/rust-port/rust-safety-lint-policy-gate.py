@@ -21,6 +21,7 @@ SAFETY_LINTS = frozenset(
 UNSAFE_OP_LINT = "unsafe_op_in_unsafe_fn"
 UNSAFE_CODE_LINT = "unsafe_code"
 SAFETY_LINT_RATIONALE = "SAFETY-LINT:"
+DEV_ONLY_METADATA_KEY = "systemd-rust"
 CRITICAL_ROOT_DENIES = {
     "src/basic/rust/lib.rs": SAFETY_LINTS,
     "src/shared/rust/lib.rs": SAFETY_LINTS,
@@ -136,6 +137,30 @@ def add_target(targets: set[str], root: Path, member: str, target: str) -> None:
     targets.add(relative)
 
 
+def is_declared_dev_only(member: str, manifest: dict[str, object]) -> bool:
+    """Accept only explicit, unpublished test-only workspace members."""
+
+    package = manifest.get("package", {})
+    if not isinstance(package, dict):
+        raise SystemExit(f"invalid [package] table in {member}/Cargo.toml")
+    metadata = package.get("metadata", {})
+    if not isinstance(metadata, dict):
+        raise SystemExit(f"invalid package metadata in {member}/Cargo.toml")
+    systemd_metadata = metadata.get(DEV_ONLY_METADATA_KEY, {})
+    if not isinstance(systemd_metadata, dict):
+        raise SystemExit(
+            f"invalid {DEV_ONLY_METADATA_KEY} metadata in {member}/Cargo.toml"
+        )
+    if systemd_metadata.get("dev-only") is not True:
+        return False
+    if package.get("publish") is not False:
+        raise SystemExit(f"dev-only workspace member must set publish = false: {member}")
+    tests = manifest.get("test", [])
+    if not isinstance(tests, list) or not tests:
+        raise SystemExit(f"dev-only workspace member must declare a test target: {member}")
+    return True
+
+
 def release_targets(root: Path, members: tuple[str, ...]) -> tuple[str, ...]:
     targets: set[str] = set()
     for member in members:
@@ -143,12 +168,13 @@ def release_targets(root: Path, members: tuple[str, ...]) -> tuple[str, ...]:
         manifest = tomllib.loads(
             (member_dir / "Cargo.toml").read_text(encoding="utf-8")
         )
+        member_targets: set[str] = set()
 
         library = manifest.get("lib")
         if isinstance(library, dict):
-            add_target(targets, root, member, str(library.get("path", "src/lib.rs")))
+            add_target(member_targets, root, member, str(library.get("path", "src/lib.rs")))
         elif (member_dir / "src/lib.rs").is_file():
-            add_target(targets, root, member, "src/lib.rs")
+            add_target(member_targets, root, member, "src/lib.rs")
 
         bins = manifest.get("bin", [])
         if not isinstance(bins, list):
@@ -157,30 +183,40 @@ def release_targets(root: Path, members: tuple[str, ...]) -> tuple[str, ...]:
             if not isinstance(binary, dict) or not isinstance(binary.get("name"), str):
                 raise SystemExit(f"invalid [[bin]] entry in {member}/Cargo.toml")
             default_path = f"src/bin/{binary['name']}.rs"
-            add_target(targets, root, member, str(binary.get("path", default_path)))
+            add_target(member_targets, root, member, str(binary.get("path", default_path)))
 
         package = manifest.get("package", {})
         if not isinstance(package, dict):
             raise SystemExit(f"invalid [package] table in {member}/Cargo.toml")
         if package.get("autobins", True):
             if (member_dir / "src/main.rs").is_file():
-                add_target(targets, root, member, "src/main.rs")
+                add_target(member_targets, root, member, "src/main.rs")
             bin_dir = member_dir / "src/bin"
             if bin_dir.is_dir():
                 for candidate in sorted(bin_dir.glob("*.rs")):
                     add_target(
-                        targets, root, member, candidate.relative_to(member_dir).as_posix()
+                        member_targets,
+                        root,
+                        member,
+                        candidate.relative_to(member_dir).as_posix(),
                     )
                 for candidate in sorted(bin_dir.glob("*/main.rs")):
                     add_target(
-                        targets, root, member, candidate.relative_to(member_dir).as_posix()
+                        member_targets,
+                        root,
+                        member,
+                        candidate.relative_to(member_dir).as_posix(),
                     )
 
-        if not any(
-            target == member or target.startswith(member.rstrip("/") + "/")
-            for target in targets
-        ):
+        if is_declared_dev_only(member, manifest):
+            if member_targets:
+                raise SystemExit(
+                    f"dev-only workspace member must not declare a release target: {member}"
+                )
+            continue
+        if not member_targets:
             raise SystemExit(f"workspace member has no release target: {member}")
+        targets.update(member_targets)
 
     return tuple(sorted(targets))
 

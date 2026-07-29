@@ -5,6 +5,12 @@ name = "systemd-rust-fuzz-smoke"
 version = "0.0.1"
 edition = "2024"
 publish = false
+autobins = false
+
+[package.metadata.systemd-rust]
+# This package contains only developer fuzz-smoke test targets; it is not a
+# release artifact and the policy gate verifies that it stays unpublished.
+dev-only = true
 
 [[test]]
 name = "parser_fuzz"

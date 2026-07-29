@@ -45,8 +45,6 @@ macro_rules! define_string_table {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum TestEnum {
         Alpha,

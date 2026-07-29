@@ -106,10 +106,10 @@ pub const CHID_SMBIOS_TABLE: [u32; CHID_TYPES_MAX] = {
         | (1 << ChidSmbiosFields::BaseboardManufacturer as u32)
         | (1 << ChidSmbiosFields::BaseboardProduct as u32);
 
-    table[14] = (1 << ChidSmbiosFields::Manufacturer as u32);
+    table[14] = 1 << ChidSmbiosFields::Manufacturer as u32;
 
     // Extra non-standard CHIDs
-    table[EXTRA_CHID_BASE + 0] = (1 << ChidSmbiosFields::Manufacturer as u32)
+    table[EXTRA_CHID_BASE] = (1 << ChidSmbiosFields::Manufacturer as u32)
         | (1 << ChidSmbiosFields::Family as u32)
         | (1 << ChidSmbiosFields::ProductName as u32)
         | (1 << ChidSmbiosFields::EdidPanel as u32);
@@ -137,12 +137,16 @@ fn get_chid(smbios_fields: &[Option<&[u16]>], mask: u32) -> EfiGuid {
     let mut ctx = Sha1State::new();
     ctx.update(&CHID_NAMESPACE);
 
-    for i in 0..CHID_SMBIOS_FIELDS_MAX {
+    for (i, field) in smbios_fields
+        .iter()
+        .enumerate()
+        .take(CHID_SMBIOS_FIELDS_MAX)
+    {
         if mask & (1 << i) == 0 {
             continue;
         }
 
-        let Some(field) = smbios_fields[i] else {
+        let Some(field) = field else {
             // Missing SMBIOS field — return zero GUID per spec
             return EfiGuid::new(0, 0, 0, [0; 8]);
         };

@@ -35,35 +35,53 @@ pub fn sbat_stub_section_text(project: &str, version: &str, url: &str) -> alloc:
 }
 
 /// SBAT section text with distro information.
-pub fn sbat_with_distro(
-    project: &str,
-    version: &str,
-    url: &str,
-    distro: &str,
-    distro_generation: u32,
-    distro_summary: &str,
-    distro_pkgname: &str,
-    distro_version: &str,
-    distro_url: &str,
-    is_stub: bool,
-) -> alloc::string::String {
-    let component = if is_stub { "stub" } else { "boot" };
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SbatComponent {
+    Boot,
+    Stub,
+}
+
+impl SbatComponent {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Boot => "boot",
+            Self::Stub => "stub",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SbatDistroInput<'a> {
+    pub project: &'a str,
+    pub version: &'a str,
+    pub url: &'a str,
+    pub distro: &'a str,
+    pub distro_generation: u32,
+    pub distro_summary: &'a str,
+    pub distro_pkgname: &'a str,
+    pub distro_version: &'a str,
+    pub distro_url: &'a str,
+    pub component: SbatComponent,
+}
+
+pub fn sbat_with_distro(input: SbatDistroInput<'_>) -> alloc::string::String {
+    let component = input.component.as_str();
     alloc::format!(
         "{}{}-{},1,The systemd Developers,{},{},{}\n{}-{}.{},{},{},{},{},{}\n",
         SBAT_MAGIC,
-        project,
+        input.project,
         component,
-        project,
-        version,
-        url,
-        project,
+        input.project,
+        input.version,
+        input.url,
+        input.project,
         component,
-        distro,
-        distro_generation,
-        distro_summary,
-        distro_pkgname,
-        distro_version,
-        distro_url,
+        input.distro,
+        input.distro_generation,
+        input.distro_summary,
+        input.distro_pkgname,
+        input.distro_version,
+        input.distro_url,
     )
 }
 
@@ -92,6 +110,30 @@ mod tests {
     fn test_sbat_stub_section() {
         let text = sbat_stub_section_text("systemd", "255", "https://systemd.io");
         assert!(text.contains("systemd-stub"));
+    }
+
+    #[test]
+    fn test_sbat_with_distro_preserves_format() {
+        let text = sbat_with_distro(SbatDistroInput {
+            project: "systemd",
+            version: "255",
+            url: "https://systemd.io",
+            distro: "fedora",
+            distro_generation: 1,
+            distro_summary: "Fedora Linux",
+            distro_pkgname: "systemd",
+            distro_version: "40",
+            distro_url: "https://fedoraproject.org",
+            component: SbatComponent::Stub,
+        });
+        assert_eq!(
+            text,
+            concat!(
+                "sbat,1,SBAT Version,sbat,1,https://github.com/rhboot/shim/blob/main/SBAT.md\n",
+                "systemd-stub,1,The systemd Developers,systemd,255,https://systemd.io\n",
+                "systemd-stub.fedora,1,Fedora Linux,systemd,40,https://fedoraproject.org\n",
+            )
+        );
     }
 
     #[test]

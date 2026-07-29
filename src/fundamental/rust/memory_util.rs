@@ -79,17 +79,17 @@ pub fn align_ptr_size(l: usize) -> usize {
 
 #[inline]
 pub fn is_aligned16(p: *const c_void) -> bool {
-    (p as usize) % core::mem::align_of::<u16>() == 0
+    (p as usize).is_multiple_of(core::mem::align_of::<u16>())
 }
 
 #[inline]
 pub fn is_aligned32(p: *const c_void) -> bool {
-    (p as usize) % core::mem::align_of::<u32>() == 0
+    (p as usize).is_multiple_of(core::mem::align_of::<u32>())
 }
 
 #[inline]
 pub fn is_aligned64(p: *const c_void) -> bool {
-    (p as usize) % core::mem::align_of::<u64>() == 0
+    (p as usize).is_multiple_of(core::mem::align_of::<u64>())
 }
 
 // ── Pointer alignment casting ────────────────────────────────────────────
@@ -122,8 +122,8 @@ pub fn memeqbyte(byte: u8, data: &[u8]) -> bool {
     }
 
     let check = 16.min(data.len());
-    for i in 0..check {
-        if data[i] != byte {
+    for item in data.iter().take(check) {
+        if *item != byte {
             return false;
         }
     }
@@ -379,8 +379,7 @@ mod tests {
 
     #[test]
     fn test_is_aligned() {
-        // SAFETY: the pointer is never dereferenced; it is only converted to an integer address for alignment checks.
-        let p16: *const u16 = unsafe { core::mem::align_of::<u16>() as *const u16 };
+        let p16 = core::ptr::dangling::<u16>();
         assert!(is_aligned16(p16 as *const c_void));
     }
 

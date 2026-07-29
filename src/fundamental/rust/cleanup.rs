@@ -5,8 +5,6 @@
 // RAII cleanup patterns for Rust. In Rust, Drop traits replace
 // __attribute__((__cleanup__(x))) from C.
 
-use alloc::boxed::Box;
-
 /// Cleanup guard that runs a closure when dropped.
 /// PORT-SYNC: mirrors CLEANUP_ERASE / DEFINE_TRIVIAL_CLEANUP_FUNC patterns.
 pub struct CleanupGuard<F: FnOnce()> {
@@ -94,7 +92,7 @@ pub fn take_struct<T: Default>(val: &mut T) -> T {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec::Vec;
+    use alloc::boxed::Box;
 
     #[test]
     fn test_cleanup_guard_runs_on_drop() {

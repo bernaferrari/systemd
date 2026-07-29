@@ -423,10 +423,10 @@ pub fn apply_numa_policy(policy: &NumaPolicy) -> Result<(), NumaError> {
 
     let (mode, maxnode, nodes) = policy.to_mempolicy();
 
-    // SAFETY: the raw syscall has the set_mempolicy(2) ABI. `nodes` either
-    // supplies a null pointer with `maxnode == 0`, or borrows the policy's
-    // contiguous node-mask words for the synchronous syscall. `maxnode`
-    // describes that same allocation.
+    // The raw syscall has the set_mempolicy(2) ABI.
+    // SAFETY: `nodes` either supplies a null pointer with `maxnode == 0`, or
+    // borrows the policy's contiguous node-mask words for the synchronous
+    // syscall. `maxnode` describes that same allocation.
     let ret = unsafe {
         libc::syscall(
             libc::SYS_set_mempolicy,

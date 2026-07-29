@@ -17,6 +17,9 @@ const XESCAPE_FORCE_ELLIPSIS: i32 = 1 << 1;
 const UTF8_ELLIPSIS: &[u8] = b"\xe2\x80\xa6";
 const ASCII_ELLIPSIS: &[u8] = b"...";
 
+// SAFETY: this declares the exact C ABI of the locale helper. It has no
+// pointer, ownership, or lifetime arguments; callers rely only on its boolean
+// result while the linked C implementation retains its locale state.
 unsafe extern "C" {
     /// Current C locale policy, including systemd's environment, thread, and
     /// cache behavior. `cellescape()` uses the same policy through

@@ -2304,6 +2304,11 @@ subdir('src/xdg-autostart-generator')
 subdir('src/systemd')
 
 subdir('src/test')
+# tests-extra also contains an unrelated, independently maintained C coverage
+# suite. Enter it only for the Rust C/R shadow targets.
+if get_option('rust').enabled()
+    subdir('tests-extra')
+endif
 subdir('src/fuzz')
 subdir('src/ukify/test')  # needs to be last for test_env variable
 subdir('test/fuzz')
