@@ -9,15 +9,14 @@
 // skeletons), and error-code translation for kernel-internal BPF errors.
 
 use std::collections::HashSet;
-use std::ffi::{CStr, CString, c_char, c_void};
 use std::fmt;
-use std::ptr::{self, NonNull};
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -211,7 +210,7 @@ fn try_load_libbpf(lib_name: &str, _log_level: i32) -> Result<(), BpfError> {
     }
 
     // The resolved symbols are process-lifetime state, matching the C loader.
-    handle.leak();
+    handle.publish();
 
     Ok(())
 }
@@ -219,102 +218,35 @@ fn try_load_libbpf(lib_name: &str, _log_level: i32) -> Result<(), BpfError> {
 // ── Symbol resolution helpers ──────────────────────────────────────────────
 
 /// Check which symbols from `names` are missing in the loaded library.
-fn find_missing_symbols(handle: &DlHandle, names: &[&str]) -> Vec<String> {
+fn find_missing_symbols(handle: &UnpublishedDlopenHandle, names: &[&str]) -> Vec<String> {
     names
         .iter()
-        .filter_map(|&sym| {
-            let c_sym = CString::new(sym).unwrap_or_default();
-            let ptr = resolve_symbol(handle, &c_sym);
-            if ptr.is_null() {
-                Some(sym.to_string())
-            } else {
-                None
-            }
+        .filter_map(|&symbol| {
+            handle
+                .resolve_required(symbol)
+                .err()
+                .map(|error| error.to_string())
         })
         .collect()
 }
 
 // ── Platform dlopen / dlsym wrappers ────────────────────────────────────────
 
-// SAFETY: calls to this imported C helper must supply a live NUL-terminated
-// filename and writable out-pointers, which `dlopen_library()` establishes.
-unsafe extern "C" {
-    #[link_name = "dlopen_safe"]
-    fn c_dlopen_safe(
-        filename: *const c_char,
-        ret: *mut *mut c_void,
-        reterr_dlerror: *mut *const c_char,
-    ) -> libc::c_int;
-}
-
-/// An owned dynamic-loader reference for a not-yet-published library.
-///
-/// Required-symbol failure closes the loader reference. A completely resolved
-/// handle is deliberately leaked because the published symbols are valid for
-/// the remainder of the process, matching `dlopen_many_sym_or_warn()`.
-struct DlHandle(NonNull<c_void>);
-
-impl DlHandle {
-    fn as_ptr(&self) -> *mut c_void {
-        self.0.as_ptr()
-    }
-
-    fn leak(self) {
-        std::mem::forget(self);
-    }
-}
-
-impl Drop for DlHandle {
-    fn drop(&mut self) {
-        // SAFETY: this type owns exactly one reference returned by
-        // `dlopen_safe()` until it is either dropped or deliberately leaked.
-        unsafe { libc::dlclose(self.as_ptr()) };
-    }
-}
-
 /// Open a shared library through the C project's authoritative loader policy.
 ///
 /// `dlopen_safe()` supplies `RTLD_NOW | RTLD_NODELETE`, rejects new loads
 /// after `block_dlopen()`, and returns `EOPNOTSUPP` in static builds.
-fn dlopen_library(lib_name: &str) -> Result<DlHandle, BpfError> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| BpfError::DlopenFailed(format!("Invalid library name: {}", e)))?;
+fn dlopen_library(lib_name: &str) -> Result<UnpublishedDlopenHandle, BpfError> {
+    match UnpublishedDlopenHandle::open(lib_name) {
+        Ok(handle) => Ok(handle),
+        Err(error) => {
+            if error.errno() == libc::EOPNOTSUPP || error.errno() == libc::EPERM {
+                return Err(BpfError::Unsupported);
+            }
 
-    let mut handle = ptr::null_mut();
-    let mut loader_error = ptr::null();
-    // SAFETY: `c_name` remains NUL-terminated and live, and both out-pointers
-    // refer to writable local storage for the duration of the call.
-    let result = unsafe { c_dlopen_safe(c_name.as_ptr(), &mut handle, &mut loader_error) };
-    if result < 0 {
-        if result == -libc::EOPNOTSUPP || result == -libc::EPERM {
-            return Err(BpfError::Unsupported);
+            Err(BpfError::DlopenFailed(error.to_string()))
         }
-
-        let detail = if loader_error.is_null() {
-            std::io::Error::from_raw_os_error(-result).to_string()
-        } else {
-            // SAFETY: on failure `dlopen_safe()` returns either null or a
-            // borrowed NUL-terminated loader diagnostic. Copy it before any
-            // subsequent dynamic-loader call invalidates the buffer.
-            unsafe { CStr::from_ptr(loader_error) }
-                .to_string_lossy()
-                .into_owned()
-        };
-        return Err(BpfError::DlopenFailed(format!("{lib_name}: {detail}")));
     }
-
-    NonNull::new(handle)
-        .map(DlHandle)
-        .ok_or_else(|| BpfError::DlopenFailed(format!("{lib_name}: loader returned a null handle")))
-}
-
-/// Look up a symbol in an already-opened library handle.
-///
-/// Returns a null pointer if the symbol is not found (caller checks).
-fn resolve_symbol(handle: &DlHandle, symbol: &CStr) -> *mut c_void {
-    // SAFETY: `handle` owns a live loader reference and `symbol` is
-    // NUL-terminated and remains live for the lookup.
-    unsafe { libc::dlsym(handle.as_ptr(), symbol.as_ptr()) }
 }
 
 // ── Query helpers ───────────────────────────────────────────────────────────

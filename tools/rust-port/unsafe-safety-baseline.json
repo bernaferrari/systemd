@@ -125,6 +125,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 7
     },
+    "src/basic/rust/dlfcn_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
+    },
     "src/basic/rust/dns_domain_validators.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1056,7 +1061,7 @@
     "src/shared/rust/blkid_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 9
+      "unsafe_sites": 1
     },
     "src/shared/rust/blockdev_util.rs": {
       "missing_safety": 3,
@@ -1066,11 +1071,6 @@
         "335:21:let minor = unsafe { libc::minor(stat.st_rdev) } as u32;"
       ],
       "unsafe_sites": 6
-    },
-    "src/shared/rust/bpf_dlopen.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
     },
     "src/shared/rust/bpf_program.rs": {
       "missing_safety": 5,
@@ -1096,7 +1096,7 @@
     "src/shared/rust/clean_ipc.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 9
+      "unsafe_sites": 15
     },
     "src/shared/rust/clock_util.rs": {
       "missing_safety": 0,
@@ -1187,7 +1187,7 @@
     "src/shared/rust/daemon_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 9
+      "unsafe_sites": 12
     },
     "src/shared/rust/data_fd_util.rs": {
       "missing_safety": 23,
@@ -1457,7 +1457,7 @@
     "src/shared/rust/libfido2_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 10
+      "unsafe_sites": 2
     },
     "src/shared/rust/libmount_util.rs": {
       "missing_safety": 18,
@@ -1661,11 +1661,6 @@
         "576:37:Some((unsafe { *ovec }, unsafe { *ovec.add(1) }))"
       ],
       "unsafe_sites": 21
-    },
-    "src/shared/rust/pkcs11_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 8
     },
     "src/shared/rust/plymouth_util.rs": {
       "missing_safety": 0,
@@ -2031,7 +2026,7 @@
   },
   "totals": {
     "missing_safety": 495,
-    "unsafe_sites": 5748
+    "unsafe_sites": 5736
   },
   "version": 2,
   "window": 3

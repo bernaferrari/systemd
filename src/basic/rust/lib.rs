@@ -77,6 +77,7 @@ pub mod credential_validators;
 pub mod device_nodes;
 pub mod devnum_util;
 pub mod dirent_util;
+pub mod dlfcn_util;
 pub mod dns_domain_validators;
 pub mod dns_label;
 pub mod dns_type_predicates;

@@ -10,15 +10,14 @@
 // All libfido2 symbols are resolved through dlopen so the module gracefully
 // degrades when the library is absent.
 
-use std::ffi::{CStr, CString, c_void};
 use std::fmt;
-use std::ptr::NonNull;
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -440,92 +439,28 @@ pub fn dlopen_libfido2() -> Result<(), Fido2Error> {
     }
 
     // Match dlopen_many_sym_or_warn(): a fully validated library is retained
-    // for the process lifetime. `DlHandle` still releases a partial load on
-    // every error path above.
-    handle.leak();
+    // for the process lifetime. The unpublished handle still releases a
+    // partial load on every error path above.
+    handle.publish();
     LIBFIDO2_LOADED.store(true, Ordering::Release);
     Ok(())
 }
 
-/// An owned dynamic-loader reference.
-///
-/// A successful load is deliberately leaked only after all required symbols
-/// resolve. Failed partial loads drop normally and release their reference.
-struct DlHandle(NonNull<c_void>);
-
-impl DlHandle {
-    fn as_ptr(&self) -> *mut c_void {
-        self.0.as_ptr()
-    }
-
-    fn leak(self) {
-        std::mem::forget(self);
-    }
-}
-
-impl Drop for DlHandle {
-    fn drop(&mut self) {
-        // SAFETY: `DlHandle` is created only from a successful `dlopen()` and
-        // owns exactly one loader reference until it is deliberately leaked.
-        unsafe { libc::dlclose(self.as_ptr()) };
-    }
-}
-
-/// Open a shared library with C's eager, non-unloadable policy.
-///
-/// P2: this must eventually use a shared Rust equivalent of `dlopen_safe()`
-/// so static builds and C's process-wide `block_dlopen()` policy are honored.
-fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, Fido2Error> {
-    let name = CString::new(lib_name)
-        .map_err(|_| Fido2Error::DlopenFailed("library name contains NUL byte".into()))?;
-    // SAFETY: `name` is NUL-terminated and remains live for the call.
-    let handle = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_NOW | libc::RTLD_NODELETE) };
-    NonNull::new(handle)
-        .map(DlHandle)
-        .ok_or_else(|| Fido2Error::DlopenFailed(dlerror_string()))
+/// Open a library through systemd's C-authoritative dynamic-loader policy.
+fn dlopen_wrapper(lib_name: &str) -> Result<UnpublishedDlopenHandle, Fido2Error> {
+    UnpublishedDlopenHandle::open(lib_name)
+        .map_err(|error| Fido2Error::DlopenFailed(error.to_string()))
 }
 
 /// Look up one required symbol in an already-opened library handle.
-///
-/// Clearing and then checking `dlerror()` is required by POSIX: a null value
-/// returned by `dlsym()` alone does not distinguish a missing symbol.
-fn resolve_required_symbol(handle: &DlHandle, symbol: &str) -> Result<(), Fido2Error> {
-    let name = CString::new(symbol)
-        .map_err(|_| Fido2Error::SymbolNotFound("symbol name contains an interior NUL".into()))?;
-
-    // SAFETY: `dlerror()` has no arguments and accesses only this thread's
-    // dynamic-loader diagnostic state.
-    unsafe { libc::dlerror() };
-    // SAFETY: `handle` owns a live `dlopen()` reference and `name` remains
-    // NUL-terminated and live for this lookup.
-    let pointer = unsafe { libc::dlsym(handle.as_ptr(), name.as_ptr()) };
-    // SAFETY: as above, this reads the calling thread's loader diagnostic.
-    let error = unsafe { libc::dlerror() };
-
-    if !error.is_null() {
-        // SAFETY: a non-null `dlerror()` value is a borrowed NUL-terminated
-        // diagnostic valid until the next loader operation in this thread.
-        let detail = unsafe { CStr::from_ptr(error) }.to_string_lossy();
-        return Err(Fido2Error::SymbolNotFound(format!("{symbol}: {detail}")));
-    }
-
-    NonNull::new(pointer).ok_or_else(|| Fido2Error::SymbolNotFound(symbol.into()))?;
-    Ok(())
-}
-
-fn dlerror_string() -> String {
-    // SAFETY: `dlerror()` has no arguments and returns either null or a
-    // borrowed, NUL-terminated diagnostic valid until the next loader call.
-    let error = unsafe { libc::dlerror() };
-    if error.is_null() {
-        "unknown error".into()
-    } else {
-        // SAFETY: checked non-null above; the dynamic loader guarantees a
-        // NUL-terminated diagnostic string.
-        unsafe { CStr::from_ptr(error) }
-            .to_string_lossy()
-            .into_owned()
-    }
+fn resolve_required_symbol(
+    handle: &UnpublishedDlopenHandle,
+    symbol: &str,
+) -> Result<(), Fido2Error> {
+    handle
+        .resolve_required(symbol)
+        .map(|_| ())
+        .map_err(|error| Fido2Error::SymbolNotFound(error.to_string()))
 }
 
 // ── FIDO2 error translation ──────────────────────────────────────────────

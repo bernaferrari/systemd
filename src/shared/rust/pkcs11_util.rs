@@ -11,15 +11,14 @@
 // through dlopen so the module gracefully degrades when the library is
 // absent.
 
-use std::ffi::{CStr, CString, c_void};
 use std::fmt;
-use std::ptr::NonNull;
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -119,8 +118,8 @@ impl From<Pkcs11Error> for i32 {
     fn from(e: Pkcs11Error) -> i32 {
         match e {
             Pkcs11Error::Unsupported => Errno::EOPNOTSUPP.to_neg_errno(),
-            Pkcs11Error::DlopenFailed(_) => Errno::ENOENT.to_neg_errno(),
-            Pkcs11Error::SymbolNotFound(_) => Errno::ENOENT.to_neg_errno(),
+            Pkcs11Error::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
+            Pkcs11Error::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
             Pkcs11Error::ApiError(_) => Errno::EIO.to_neg_errno(),
             Pkcs11Error::InvalidArgument(_) => Errno::EINVAL.to_neg_errno(),
             Pkcs11Error::NotFound => Errno::ENOENT.to_neg_errno(),
@@ -710,9 +709,9 @@ pub fn dlopen_p11kit() -> Result<(), Pkcs11Error> {
     }
 
     // Match dlopen_many_sym_or_warn(): resolved symbols belong to a library
-    // that remains loaded for the process lifetime. In contrast, `DlHandle`
+    // that remains loaded for the process lifetime. The unpublished handle
     // closes an incomplete load on every error path above.
-    handle.leak();
+    handle.publish();
 
     P11KIT_LOADED.store(true, Ordering::Release);
     Ok(())
@@ -734,87 +733,21 @@ pub fn reset_p11kit_loaded() {
 
 // ── Platform dlopen / dlsym wrappers ─────────────────────────────────────
 
-/// An owned dynamic-loader reference.
-///
-/// A successful load is deliberately leaked only after all required symbols
-/// resolve. Failed partial loads drop normally and release their reference.
-struct DlHandle(NonNull<c_void>);
-
-impl DlHandle {
-    fn as_ptr(&self) -> *mut c_void {
-        self.0.as_ptr()
-    }
-
-    fn leak(self) {
-        std::mem::forget(self);
-    }
-}
-
-impl Drop for DlHandle {
-    fn drop(&mut self) {
-        // SAFETY: `DlHandle` is created only from a successful `dlopen()` and
-        // owns exactly one loader reference until it is deliberately leaked.
-        unsafe { libc::dlclose(self.as_ptr()) };
-    }
-}
-
-/// Open a shared library, returning the handle on success.
-///
-/// Mirrors the C loader's `RTLD_NOW | RTLD_NODELETE` policy. The latter keeps
-/// the object mapped after a failed partial load is closed, while `DlHandle`
-/// still correctly accounts for and releases that loader reference.
-fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, Pkcs11Error> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| Pkcs11Error::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: c_name is NUL-terminated and remains live for the call.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_NOW | libc::RTLD_NODELETE) };
-    NonNull::new(handle)
-        .map(DlHandle)
-        .ok_or_else(|| Pkcs11Error::DlopenFailed(dlerror_string()))
+/// Open a library through systemd's C-authoritative dynamic-loader policy.
+fn dlopen_wrapper(lib_name: &str) -> Result<UnpublishedDlopenHandle, Pkcs11Error> {
+    UnpublishedDlopenHandle::open(lib_name)
+        .map_err(|error| Pkcs11Error::DlopenFailed(error.to_string()))
 }
 
 /// Look up a required symbol in an already-opened library handle.
-///
-/// Clearing and then checking `dlerror()` is required by POSIX: a null value
-/// returned by `dlsym()` alone does not distinguish a missing symbol.
-fn resolve_required_symbol(handle: &DlHandle, symbol: &str) -> Result<(), Pkcs11Error> {
-    let name = CString::new(symbol).map_err(|_| {
-        Pkcs11Error::InvalidArgument("required symbol name contains an interior NUL".into())
-    })?;
-
-    // SAFETY: `dlerror()` has no arguments and only accesses the calling
-    // thread's loader diagnostic state.
-    unsafe { libc::dlerror() };
-    // SAFETY: `handle` owns a live `dlopen()` reference and `name` remains
-    // NUL-terminated and live for the duration of this lookup.
-    let pointer = unsafe { libc::dlsym(handle.as_ptr(), name.as_ptr()) };
-    // SAFETY: as above, this reads the calling thread's loader diagnostic.
-    let error = unsafe { libc::dlerror() };
-
-    if !error.is_null() {
-        // SAFETY: a non-null value returned by `dlerror()` is a borrowed,
-        // NUL-terminated diagnostic valid until the next loader operation.
-        let detail = unsafe { CStr::from_ptr(error) }.to_string_lossy();
-        return Err(Pkcs11Error::SymbolNotFound(format!("{symbol}: {detail}")));
-    }
-
-    NonNull::new(pointer).ok_or_else(|| Pkcs11Error::SymbolNotFound(symbol.into()))?;
-    Ok(())
-}
-
-fn dlerror_string() -> String {
-    // SAFETY: `dlerror()` has no arguments and returns either null or a
-    // borrowed, NUL-terminated diagnostic valid until the next loader call.
-    let error = unsafe { libc::dlerror() };
-    if error.is_null() {
-        "unknown error".into()
-    } else {
-        // SAFETY: checked non-null above; the dynamic loader guarantees a
-        // NUL-terminated diagnostic string.
-        unsafe { CStr::from_ptr(error) }
-            .to_string_lossy()
-            .into_owned()
-    }
+fn resolve_required_symbol(
+    handle: &UnpublishedDlopenHandle,
+    symbol: &str,
+) -> Result<(), Pkcs11Error> {
+    handle
+        .resolve_required(symbol)
+        .map(|_| ())
+        .map_err(|error| Pkcs11Error::SymbolNotFound(error.to_string()))
 }
 
 // ── Query helpers ────────────────────────────────────────────────────────
@@ -1300,6 +1233,12 @@ mod tests {
     fn test_error_into_c_int() {
         let code: i32 = Pkcs11Error::Unsupported.into();
         assert_eq!(code, Errno::EOPNOTSUPP.to_neg_errno());
+
+        let code: i32 = Pkcs11Error::DlopenFailed("missing".into()).into();
+        assert_eq!(code, Errno::EOPNOTSUPP.to_neg_errno());
+
+        let code: i32 = Pkcs11Error::SymbolNotFound("missing".into()).into();
+        assert_eq!(code, Errno::ELIBBAD.to_neg_errno());
 
         let code: i32 = Pkcs11Error::NotFound.into();
         assert_eq!(code, Errno::ENOENT.to_neg_errno());

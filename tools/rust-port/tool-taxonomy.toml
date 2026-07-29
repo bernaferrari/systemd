@@ -96,7 +96,9 @@ paths = [
     "tools/rust-port/contracts/basic/terminal-util.toml",
     "tools/rust-port/contracts/basic/time-util.toml",
     "tools/rust-port/contracts/basic/unit-def.toml",
+    "tools/rust-port/contracts/basic/uid-range.toml",
     "tools/rust-port/contracts/basic/utf8.toml",
+    "tools/rust-port/contracts/shared/dns-label.toml",
     "tools/rust-port/check-behavior-contract.py",
     "tools/rust-port/test-behavior-contract.py",
 ]

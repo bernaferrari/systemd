@@ -6,12 +6,12 @@
 // (shared memory segments, message queues, semaphores) owned by
 // a given UID or GID.
 
-use std::ffi::{CString, OsStr};
-use std::fs::{self, File, OpenOptions, ReadDir};
+use std::ffi::{CStr, CString, OsStr, OsString};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::mem::MaybeUninit;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
@@ -350,13 +350,75 @@ fn openat_directory(parent_fd: RawFd, name: &OsStr) -> io::Result<OwnedFd> {
     }
 }
 
-fn read_dir_fd(fd: RawFd) -> io::Result<ReadDir> {
-    // Rust's standard library has no safe fdopendir/readdir interface. The
-    // procfs magic link reopens this pinned descriptor for iteration; all
-    // security-sensitive stat/open/remove operations below remain *at()-based.
-    // P2: replace this /proc dependency if a small safe directory-stream
-    // abstraction is introduced for the Rust port.
-    fs::read_dir(format!("/proc/self/fd/{fd}"))
+/// Owns a duplicate directory descriptor through a `DIR` stream.
+///
+/// The caller's descriptor remains available for the `*at()` operations that
+/// make this cleanup race-resistant. Keeping the stream on a duplicate also
+/// avoids reopening it through `/proc/self/fd`, which both added a procfs
+/// dependency and made the iteration path subtly different from the pinned
+/// descriptor used for the security-sensitive operations.
+struct DirStream(*mut libc::DIR);
+
+impl DirStream {
+    fn from_borrowed_fd(fd: RawFd) -> io::Result<Self> {
+        // SAFETY: fcntl borrows `fd` and returns a separately owned descriptor
+        // with close-on-exec set. The original descriptor remains open for the
+        // duration of the returned stream.
+        let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3) };
+        if duplicate < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // SAFETY: fdopendir takes ownership of `duplicate` only on success.
+        // On failure we close it below; on success Drop calls closedir exactly
+        // once, which closes its owned descriptor.
+        let stream = unsafe { libc::fdopendir(duplicate) };
+        if stream.is_null() {
+            let error = io::Error::last_os_error();
+            // SAFETY: fdopendir failed and therefore did not consume
+            // `duplicate`, which was returned by fcntl above.
+            unsafe { libc::close(duplicate) };
+            return Err(error);
+        }
+
+        Ok(Self(stream))
+    }
+
+    fn next_name(&mut self) -> io::Result<Option<OsString>> {
+        // readdir signals either end-of-directory or failure with a null
+        // pointer. Clearing thread-local errno first distinguishes the cases.
+        crate::ffi::clear_errno();
+
+        // SAFETY: self.0 is a live DIR stream and &mut self prevents a second
+        // readdir call from invalidating its entry storage concurrently.
+        let entry = unsafe { libc::readdir(self.0) };
+        if entry.is_null() {
+            let error = io::Error::last_os_error();
+            return if error.raw_os_error() == Some(0) {
+                Ok(None)
+            } else {
+                Err(error)
+            };
+        }
+
+        // SAFETY: successful readdir returns a dirent with a NUL-terminated
+        // d_name. Copy the byte-preserving name before the next readdir call
+        // invalidates the stream-owned storage.
+        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+        Ok(Some(OsString::from_vec(name.to_bytes().to_vec())))
+    }
+}
+
+impl Drop for DirStream {
+    fn drop(&mut self) {
+        // SAFETY: self.0 is exclusively owned by this wrapper after successful
+        // fdopendir and has not been passed to another owner.
+        unsafe { libc::closedir(self.0) };
+    }
+}
+
+fn read_dir_fd(fd: RawFd) -> io::Result<DirStream> {
+    DirStream::from_borrowed_fd(fd)
 }
 
 fn fstatat_nofollow(parent_fd: RawFd, name: &OsStr) -> io::Result<libc::stat> {
@@ -404,18 +466,12 @@ fn clean_posix_shm_dir(
     delete_gid: Option<libc::gid_t>,
     remove: bool,
 ) -> io::Result<IpcStatus> {
-    let entries = read_dir_fd(dir.as_raw_fd())?;
+    let mut entries = read_dir_fd(dir.as_raw_fd())?;
 
     let mut found = false;
     let mut last_error = None;
 
-    for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(e) => return Err(e),
-        };
-
-        let name = entry.file_name();
+    while let Some(name) = entries.next_name()? {
         if name.as_bytes() == b"." || name.as_bytes() == b".." {
             continue;
         }
@@ -504,18 +560,12 @@ fn clean_posix_mq(
         Err(e) if e.raw_os_error() == Some(libc::ENOENT) => return Ok(IpcStatus::NotFound),
         Err(e) => return Err(e),
     };
-    let entries = read_dir_fd(dir.as_raw_fd())?;
+    let mut entries = read_dir_fd(dir.as_raw_fd())?;
 
     let mut found = false;
     let mut last_error = None;
 
-    for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(e) => return Err(e),
-        };
-
-        let name = entry.file_name();
+    while let Some(name) = entries.next_name()? {
         if name.as_bytes() == b"." || name.as_bytes() == b".." {
             continue;
         }

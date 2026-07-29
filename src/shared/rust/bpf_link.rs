@@ -5,9 +5,10 @@
 // BPF link management — creation, cleanup, serialization, and ring-buffer
 // lifecycle helpers for BPF program attachment links.
 //
-// Provides safe Rust wrappers for libbpf link objects and ring buffers.
-// All cleanup is handled via RAII (Drop) and explicit free functions.
-// No unsafe extern "C" stubs — all FFI is confined to bpf_dlopen.rs.
+// Provides safe Rust value models for the error and serialization behavior
+// around libbpf link objects and ring buffers. Actual libbpf object ownership
+// remains C-owned until this module has typed, lifetime-safe calls through the
+// loader; an integer file descriptor alone is not a `struct bpf_link *`.
 
 use std::io::{self, Write};
 use std::mem;
@@ -62,11 +63,14 @@ impl From<BpfError> for BpfLinkError {
 
 // ── BpfLink ─────────────────────────────────────────────────────────────────
 
-/// A handle to a BPF link object managed by libbpf.
+/// A safe value model of a BPF link result.
 ///
-/// Wraps the kernel file descriptor for a BPF attachment link. When dropped,
-/// the underlying kernel resources are released (equivalent to
-/// `bpf_link__destroy` in C).
+/// This records the observable result of a libbpf operation for pure error
+/// handling and serialization. It deliberately does *not* own a libbpf
+/// `struct bpf_link`: `bpf_link__destroy()` requires that opaque pointer, and
+/// closing a copied descriptor would not faithfully replace it. A future
+/// production wrapper must retain the opaque handle and invoke the typed
+/// destructor from the validated dynamic-loader table.
 ///
 /// A `BpfLink` can be in one of three states:
 /// - **Valid**: `fd >= 0`, the link is active.
@@ -139,14 +143,12 @@ impl BpfLink {
         self.is_error_ptr
     }
 
-    /// Consume and destroy this link, returning `None`.
+    /// Consume this pure value model, returning `None`.
     ///
-    /// Equivalent to the C `_cleanup_(bpf_link_freep)` pattern.
-    /// The link's resources are released and `None` is returned.
+    /// This mirrors the ownership shape of the C cleanup helper without
+    /// claiming to destroy an opaque libbpf allocation (which this type does
+    /// not possess).
     pub fn free(self) -> Option<Self> {
-        // In the real implementation, this would call bpf_link__destroy
-        // via the dlopen'd libbpf. For the safe Rust wrapper, dropping
-        // self is sufficient (Drop impl handles cleanup).
         mem::drop(self);
         None
     }
@@ -160,10 +162,11 @@ impl Default for BpfLink {
 
 // ── RingBuffer ──────────────────────────────────────────────────────────────
 
-/// A handle to a BPF ring buffer managed by libbpf.
+/// A safe value model of a libbpf ring-buffer result.
 ///
-/// Wraps the kernel resources for consuming data from a BPF ring buffer map.
-/// When dropped, the ring buffer is freed (equivalent to `ring_buffer__free`).
+/// Like [`BpfLink`], this does not own the opaque libbpf allocation. It only
+/// carries a descriptor-like value for pure state handling until a typed
+/// ownership wrapper can call `ring_buffer__free` exactly once.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RingBuffer {
     /// Kernel file descriptor for the ring buffer's epoll fd, or sentinel.
@@ -209,7 +212,7 @@ impl RingBuffer {
         !self.is_valid
     }
 
-    /// Consume and free this ring buffer, returning `None`.
+    /// Consume this pure value model, returning `None`.
     ///
     /// Equivalent to the C `_cleanup_(bpf_ring_buffer_freep)` pattern.
     pub fn free(self) -> Option<Self> {
@@ -228,24 +231,24 @@ impl Default for RingBuffer {
 
 /// Free a BPF link (cleanup helper for Option<BpfLink>).
 ///
-/// Sets the option to `None`, releasing the link's resources.
-/// Mirrors the C `bpf_link_free()` / `bpf_link_freep` pattern.
+/// Sets the option to `None`. This does not call `bpf_link__destroy`, because
+/// [`BpfLink`] does not contain the required opaque libbpf pointer.
 pub fn bpf_link_free(link: &mut Option<BpfLink>) {
     *link = None;
 }
 
 /// Free a ring buffer (cleanup helper for Option<RingBuffer>).
 ///
-/// Sets the option to `None`, releasing the buffer's resources.
-/// Mirrors the C `bpf_ring_buffer_free()` / `bpf_ring_buffer_freep` pattern.
+/// Sets the option to `None`. This does not call `ring_buffer__free`, because
+/// [`RingBuffer`] does not contain the required opaque libbpf pointer.
 pub fn bpf_ring_buffer_free(buffer: &mut Option<RingBuffer>) {
     *buffer = None;
 }
 
 /// Unref (decrement reference) a BPF link.
 ///
-/// In the C implementation, this calls `bpf_link__destroy` on non-NULL links.
-/// In our safe Rust version, this simply drops the link.
+/// In C this calls `bpf_link__destroy` on non-NULL opaque pointers. Here it
+/// only drops the pure value model; see [`bpf_link_free`].
 pub fn bpf_link_unref(link: &mut Option<BpfLink>) {
     *link = None;
 }
@@ -328,9 +331,11 @@ pub fn bpf_serialize_link<W: Write>(
         if link.is_null() {
             return Err(BpfLinkError::NoLink);
         }
-        let code = bpf_get_error_translated(link.fd());
-        if code != 0 {
-            return Err(BpfLinkError::InvalidLink(code));
+        if link.is_error() {
+            // C's bpf_serialize_link() deliberately normalizes every libbpf
+            // error pointer to -EINVAL rather than leaking the kernel/libbpf
+            // diagnostic through its serialization contract.
+            return Err(BpfLinkError::InvalidLink(Errno::EINVAL.to_neg_errno()));
         }
         return Err(BpfLinkError::NoLink);
     }
@@ -499,7 +504,7 @@ mod tests {
         let mut output = Vec::new();
         let result = bpf_serialize_link(&mut output, "key", Some(&link));
         match result.unwrap_err() {
-            BpfLinkError::InvalidLink(code) => assert_eq!(code, -22),
+            BpfLinkError::InvalidLink(code) => assert_eq!(code, Errno::EINVAL.to_neg_errno()),
             other => panic!("Expected InvalidLink, got {:?}", other),
         }
     }

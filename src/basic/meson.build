@@ -316,6 +316,7 @@ if get_option('rust').enabled()
                 'rust/netdev_str_tables/tpm_bpf_wifi.rs',
                 'rust/netdev_str_tables/tests.rs',
                 'rust/dns_type_predicates.rs',
+                'rust/dlfcn_util.rs',
                 'rust/shared_facades/mod.rs',
                 'rust/shared_facades/validation.rs',
                 'rust/shared_facades/policy.rs',

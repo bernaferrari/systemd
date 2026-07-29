@@ -7,15 +7,18 @@
 // type string lookup.  All libblkid symbols are resolved through dlopen
 // so the module gracefully degrades when libblkid is absent.
 
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::CStr;
 use std::fmt;
-use std::ptr::NonNull;
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
+#[cfg(test)]
+use std::ffi::CString;
+
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -145,9 +148,9 @@ pub fn dlopen_libblkid() -> Result<(), BlkidError> {
     }
 
     // Match dlopen_many_sym_or_warn(): resolved symbols belong to a library
-    // that remains loaded for the process lifetime. In contrast, `DlHandle`
+    // that remains loaded for the process lifetime. The unpublished handle
     // closes an incomplete load on every error path above.
-    handle.leak();
+    handle.publish();
 
     BLKID_LOADED.store(true, Ordering::Release);
     Ok(())
@@ -160,90 +163,21 @@ pub fn have_blkid() -> bool {
 
 // ── Platform dlopen / dlsym wrappers ────────────────────────────────────────
 
-/// An owned dynamic-loader reference.
-///
-/// A successful load is deliberately leaked only after all required symbols
-/// resolve. Failed partial loads drop normally and release their reference.
-struct DlHandle(NonNull<c_void>);
-
-impl DlHandle {
-    fn as_ptr(&self) -> *mut c_void {
-        self.0.as_ptr()
-    }
-
-    fn leak(self) {
-        std::mem::forget(self);
-    }
-}
-
-impl Drop for DlHandle {
-    fn drop(&mut self) {
-        // SAFETY: `DlHandle` is created only from a successful `dlopen()` and
-        // owns exactly one loader reference until it is deliberately leaked.
-        unsafe { libc::dlclose(self.as_ptr()) };
-    }
-}
-
-/// Open a shared library, returning the handle on success.
-///
-/// Mirrors the C loader's `RTLD_NOW | RTLD_NODELETE` policy. The latter keeps
-/// the object mapped after a failed partial load is closed, while `DlHandle`
-/// still correctly accounts for and releases that loader reference.
-///
-/// P2: route this through a shared Rust equivalent of `dlopen_safe()` once one
-/// exists, so static builds and C's process-wide `block_dlopen()` policy are
-/// honored here too.
-fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, BlkidError> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| BlkidError::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: c_name is NUL-terminated and remains live for the call.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_NOW | libc::RTLD_NODELETE) };
-    NonNull::new(handle)
-        .map(DlHandle)
-        .ok_or_else(|| BlkidError::DlopenFailed(dlerror_string()))
+/// Open a library through systemd's C-authoritative dynamic-loader policy.
+fn dlopen_wrapper(lib_name: &str) -> Result<UnpublishedDlopenHandle, BlkidError> {
+    UnpublishedDlopenHandle::open(lib_name)
+        .map_err(|error| BlkidError::DlopenFailed(error.to_string()))
 }
 
 /// Look up a required symbol in an already-opened library handle.
-///
-/// Clearing and then checking `dlerror()` is required by POSIX: a null value
-/// returned by `dlsym()` alone does not distinguish a missing symbol.
-fn resolve_required_symbol(handle: &DlHandle, symbol: &str) -> Result<(), BlkidError> {
-    let name = CString::new(symbol)
-        .map_err(|_| BlkidError::SymbolNotFound("symbol name contains an interior NUL".into()))?;
-
-    // SAFETY: `dlerror()` has no arguments and only accesses the calling
-    // thread's loader diagnostic state.
-    unsafe { libc::dlerror() };
-    // SAFETY: `handle` owns a live `dlopen()` reference and `name` remains
-    // NUL-terminated and live for the duration of this lookup.
-    let pointer = unsafe { libc::dlsym(handle.as_ptr(), name.as_ptr()) };
-    // SAFETY: as above, this reads the calling thread's loader diagnostic.
-    let error = unsafe { libc::dlerror() };
-
-    if !error.is_null() {
-        // SAFETY: a non-null value returned by `dlerror()` is a borrowed,
-        // NUL-terminated diagnostic valid until the next loader operation.
-        let detail = unsafe { CStr::from_ptr(error) }.to_string_lossy();
-        return Err(BlkidError::SymbolNotFound(format!("{symbol}: {detail}")));
-    }
-
-    NonNull::new(pointer).ok_or_else(|| BlkidError::SymbolNotFound(symbol.into()))?;
-    Ok(())
-}
-
-fn dlerror_string() -> String {
-    // SAFETY: `dlerror()` has no arguments and returns either null or a
-    // borrowed, NUL-terminated diagnostic valid until the next loader call.
-    let error = unsafe { libc::dlerror() };
-    if error.is_null() {
-        "unknown error".into()
-    } else {
-        // SAFETY: checked non-null above; the dynamic loader guarantees a
-        // NUL-terminated diagnostic string.
-        unsafe { CStr::from_ptr(error) }
-            .to_string_lossy()
-            .into_owned()
-    }
+fn resolve_required_symbol(
+    handle: &UnpublishedDlopenHandle,
+    symbol: &str,
+) -> Result<(), BlkidError> {
+    handle
+        .resolve_required(symbol)
+        .map(|_| ())
+        .map_err(|error| BlkidError::SymbolNotFound(error.to_string()))
 }
 
 // ── Safeprobe return codes ──────────────────────────────────────────────────
