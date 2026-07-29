@@ -986,32 +986,6 @@ last_reviewed_upstream_blobs = { "src/basic/compress.c" = "0f62fb95f55905f556554
 last_reviewed_rust_blobs = { "src/basic/rust/compress_util.rs" = "817982df3da3617e2f5d69c58245197ba0371c6e", "src/basic/rust/compress_util.h" = "d4cee1feebe629c306b0c2d18186d46877ae4af7" }
 notes = "Reviewed static compression-table ABI slice 2026-07-28; no build/tests/VM. Five facades preserve all six current enum values, ordinary and uppercase C string tables, static borrowed pointers, raw C-string parsing, and Meson-derived codec feature availability. Invalid enum input to compression_supported() is an explicit fail-closed Rust extension; streaming/blob codec APIs remain excluded. C remains production authority; runtime parity is unclaimed."
 
-[locale-util]
-c_paths = [
-    "src/basic/locale-util.c",
-    "src/basic/locale-util.h",
-]
-rust_paths = [
-    "src/basic/rust/locale_util.rs",
-    "src/basic/rust/locale_util.h",
-]
-scope = "basic.locale-util"
-rust_scope_paths = ["src/basic/rust/locale_util.rs"]
-rust_interface_paths = ["src/basic/rust/locale_util.h"]
-contract_file = "tools/rust-port/contracts/basic/locale-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/locale-util.c", rust_paths = ["src/basic/rust/locale_util.rs", "src/basic/rust/locale_util.h"] },
-    { kind = "direct", path = "src/basic/locale-util.h", rust_paths = ["src/basic/rust/locale_util.rs", "src/basic/rust/locale_util.h"] },
-]
-test_file = "tests-extra/test-locale-util-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 3
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/locale-util.c" = "9dc74ef36f99c4356c36aae881b5eb784e991142", "src/basic/locale-util.h" = "673503590ab339f07d3bbdadce2424302873d5ff" }
-last_reviewed_rust_blobs = { "src/basic/rust/locale_util.rs" = "a60507e8a69c3a0735aeeacfd4d21112bf066d98", "src/basic/rust/locale_util.h" = "9e10455e5b1983a7910465103d1d5430da141449" }
-notes = "Reviewed static locale slice 2026-07-28; no build/tests/VM. Three facades preserve generated table lookup, borrowed static output, opaque C-string input, NULL/-EINVAL, strict locale filename rules, and C UTF-8/noncharacter policy. Locale enumeration, installed-locale I/O, thread-local locale state, and owned LocaleVariable memory helpers remain C-only. C remains the production authority; runtime parity is unclaimed."
-
 [virt]
 c_file = "src/basic/virt.c"
 rust_file = "src/basic/rust/virt.rs"
@@ -1132,35 +1106,9 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "3ad2acfa689e7119425a271d6df63729875911c5", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "6ac8933ece38245641177163fe2327b8efdf4858", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
-
-[argv_util]
-c_paths = [
-    "src/basic/argv-util.c",
-    "src/basic/argv-util.h",
-]
-rust_paths = [
-    "src/basic/rust/argv_util.rs",
-    "src/basic/rust/argv_util.h",
-]
-scope = "basic.argv-util"
-rust_scope_paths = ["src/basic/rust/argv_util.rs"]
-rust_interface_paths = ["src/basic/rust/argv_util.h"]
-contract_file = "tools/rust-port/contracts/basic/argv-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/argv-util.c", rust_paths = ["src/basic/rust/argv_util.rs", "src/basic/rust/argv_util.h"] },
-    { kind = "direct", path = "src/basic/argv-util.h", rust_paths = ["src/basic/rust/argv_util.rs", "src/basic/rust/argv_util.h"] },
-]
-test_file = "tests-extra/test-argv-util-rust.c"
-status = "in-progress"
-tier = 3
-symbols = 2
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/argv-util.c" = "20587f66ada203ec0b907674d51ac34beb5323f1", "src/basic/argv-util.h" = "a9526ef9360f3a61a1d0b50a1f0c863a6a8591f6" }
-last_reviewed_rust_blobs = { "src/basic/rust/argv_util.rs" = "b566e21a21ca18d43d0d61de3dafc6f73ca797aa", "src/basic/rust/argv_util.h" = "b16003b62f7aa60153f643d024b0e148bc4123ac" }
-notes = "Reviewed static argv-name/help slice 2026-07-28; no build/tests/VM. Two C ABI facades preserve opaque C-string bytes, trailing-slash basename semantics, secure-environment override handling, and null-terminated argv traversal. Process identity, argv mutation, and prctl/mmap behavior remain explicitly excluded. C remains the production authority; runtime parity is unclaimed."
 
 [arphrd_util]
 c_paths = [
@@ -1194,7 +1142,7 @@ status = "in-progress"
 tier = 1
 symbols = 3
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/arphrd-util.c" = "0c5a85edaa577ca45176c816d6de0f6e76f694eb", "src/basic/arphrd-util.h" = "97a1c0b248c5fed47e218f5fe703d779322c4b0f", "src/basic/arphrd-to-name.awk" = "302504b6510ddd7e2b90ae2097656b8d0ba86cb9", "src/basic/generate-arphrd-list.sh" = "be4c75d7e0b9a85c2ba4e12356888cbbd45466a2", "src/basic/meson.build" = "3ad2acfa689e7119425a271d6df63729875911c5", "src/include/uapi/linux/if_arp.h" = "12d06bb6d87d995d9f85449a64a3009ce43ca957", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/arphrd-util.c" = "0c5a85edaa577ca45176c816d6de0f6e76f694eb", "src/basic/arphrd-util.h" = "97a1c0b248c5fed47e218f5fe703d779322c4b0f", "src/basic/arphrd-to-name.awk" = "302504b6510ddd7e2b90ae2097656b8d0ba86cb9", "src/basic/generate-arphrd-list.sh" = "be4c75d7e0b9a85c2ba4e12356888cbbd45466a2", "src/basic/meson.build" = "6ac8933ece38245641177163fe2327b8efdf4858", "src/include/uapi/linux/if_arp.h" = "12d06bb6d87d995d9f85449a64a3009ce43ca957", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/arphrd_util.rs" = "ecab09b0791eea5d40480688fe54479adb94cbc4", "src/basic/rust/arphrd_util.h" = "0698e817471435bb4fda2dc612bcc708bbb45964" }
 notes = "Reviewed static ARPHRD table slice 2026-07-28; no build/tests/VM. Three facades preserve generated Linux-UAPI name lookup, gperf ASCII case folding, the HDLC/CISCO alias, borrowed static output, uint16_t width, and address-length mapping. Generator inputs and Meson’s --ignore-case setting are pinned. C remains the production authority; runtime parity is unclaimed."
 
@@ -1319,7 +1267,7 @@ status = "in-progress"
 tier = 1
 symbols = 4
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/capability-list.c" = "6c60888327c31046f46decb004f0b5ab11e04d46", "src/basic/capability-list.h" = "f60569a61abc131c3b2442adc4bdb5e0c0776a02", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890", "src/basic/generate-capability-list.sh" = "ab87f94f500dccf931ad42ce7b05a892f82fe9f7", "src/basic/capability-to-name.awk" = "bd8a28c2fe8e32e90ae3201e67e524440c90e7cb", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/uapi/linux/capability.h" = "60fd34309de01c518f1de2d384ea4cf09525b29f", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6", "src/basic/meson.build" = "3ad2acfa689e7119425a271d6df63729875911c5" }
+last_reviewed_upstream_blobs = { "src/basic/capability-list.c" = "6c60888327c31046f46decb004f0b5ab11e04d46", "src/basic/capability-list.h" = "f60569a61abc131c3b2442adc4bdb5e0c0776a02", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890", "src/basic/generate-capability-list.sh" = "ab87f94f500dccf931ad42ce7b05a892f82fe9f7", "src/basic/capability-to-name.awk" = "bd8a28c2fe8e32e90ae3201e67e524440c90e7cb", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/uapi/linux/capability.h" = "60fd34309de01c518f1de2d384ea4cf09525b29f", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6", "src/basic/meson.build" = "6ac8933ece38245641177163fe2327b8efdf4858" }
 last_reviewed_rust_blobs = { "src/basic/rust/capability_list.rs" = "466bd5573fec2f53213ad85eae4929e0428bbbf8", "src/basic/rust/capability_list.h" = "8284fb977e94a0044ee93b26c0975ff5bc182d3e" }
 notes = "Reviewed static capability-list ABI slice 2026-07-28; no build/tests/VM. Four facades preserve NUL-backed borrowed names, target-generated gperf ASCII case folding, safe_atoi numeric grammar, CAP_LIMIT bounds, and caller-buffer numeric rendering without allocation. The table is anchored to vendored UAPI and generation inputs; the Linux C-vs-Rust fixture deliberately detects a newer target table. Capability-set allocation/vector APIs remain C-only. C remains the production authority; runtime parity is unclaimed."
 
@@ -1357,36 +1305,6 @@ sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/creds-util.c" = "57eb8681f2c5eb53a2ae3083cbeb8a5c6a4eb07b", "src/shared/creds-util.h" = "c962a660d11a83e2c15777eb4385c810745e7923", "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5" }
 last_reviewed_rust_blobs = { "src/basic/rust/credential_validators.rs" = "65193d81433a484e59d5bb6c88df02a2e3f40454", "src/basic/rust/credential_validators.h" = "dd218f7b26a060916e0b9fc6d4c263d882dc59e4" }
 notes = "Reviewed static credential validator slice 2026-07-28; no build/tests/VM. Two byte-preserving facades combine C filename and descriptor-name constraints, trailing-star-only glob grammar, NULL rejection, and NAME_MAX boundaries. Device-node encoding, credential directory I/O, and ownership-returning credential helpers remain C-only. C remains the production authority; runtime parity is unclaimed."
-
-[dirent_util]
-c_paths = [
-    "src/basic/dirent-util.c",
-    "src/basic/dirent-util.h",
-    "src/basic/path-util.c",
-    "src/basic/path-util.h",
-]
-rust_paths = [
-    "src/basic/rust/dirent_util.rs",
-    "src/basic/rust/dirent_util.h",
-]
-scope = "basic.dirent-util"
-rust_scope_paths = ["src/basic/rust/dirent_util.rs"]
-rust_interface_paths = ["src/basic/rust/dirent_util.h"]
-contract_file = "tools/rust-port/contracts/basic/dirent-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/dirent-util.c", rust_paths = ["src/basic/rust/dirent_util.rs", "src/basic/rust/dirent_util.h"] },
-    { kind = "direct", path = "src/basic/dirent-util.h", rust_paths = ["src/basic/rust/dirent_util.rs", "src/basic/rust/dirent_util.h"] },
-    { kind = "direct", path = "src/basic/path-util.c", rust_paths = ["src/basic/rust/dirent_util.rs", "src/basic/rust/dirent_util.h"] },
-    { kind = "direct", path = "src/basic/path-util.h", rust_paths = ["src/basic/rust/dirent_util.rs", "src/basic/rust/dirent_util.h"] },
-]
-test_file = "tests-extra/test-dirent-util-rust.c"
-status = "in-progress"
-tier = 3
-symbols = 2
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/dirent-util.c" = "91a7040e408e7f39dfe619eba824e4d6d0beea91", "src/basic/dirent-util.h" = "44e751ba41438c7eccbccf0519534e1fcac24df9", "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44" }
-last_reviewed_rust_blobs = { "src/basic/rust/dirent_util.rs" = "c52d4da1da21fede3d80146b78d80b9b4fc2929e", "src/basic/rust/dirent_util.h" = "b2bb079efa3121e082f00319f04f362f1d00f03f" }
-notes = "Reviewed static dirent classification ABI slice 2026-07-28; no build/tests/VM. Two exact facades preserve raw directory-name bytes, DT_REG/DT_LNK/DT_UNKNOWN selection, C backup-name filtering, optional suffix matching, and the C assertion domain as a fail-closed NULL extension. Type resolution and DIR traversal remain C-only; C remains production authority and runtime parity is unclaimed."
 
 [dlfcn_util]
 c_paths = ["src/basic/dlfcn-util.c", "src/basic/dlfcn-util.h"]

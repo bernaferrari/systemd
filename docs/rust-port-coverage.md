@@ -13,17 +13,17 @@ Scope: `src`
 ## Snapshot Totals
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1345**
+- All `src` Rust files: **1342**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **90**
-- Unverified Rust behavior candidates: **1226**
+- Unverified Rust behavior candidates: **1223**
 
 Excluding `src/test`:
 - C files: **1569**
-- Rust files: **1345**
+- Rust files: **1342**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **90**
-- Unverified Rust behavior candidates: **1226**
+- Unverified Rust behavior candidates: **1223**
 
 ## Per-Subsystem Inventory
 
@@ -33,7 +33,7 @@ Excluding `src/test`:
 | `analyze` | 40 | 2 | 0 | 0 | 2 |
 | `ask-password` | 1 | 3 | 0 | 0 | 3 |
 | `backlight` | 1 | 3 | 0 | 0 | 3 |
-| `basic` | 119 | 141 | 0 | 2 | 139 |
+| `basic` | 119 | 138 | 0 | 2 | 136 |
 | `battery-check` | 1 | 3 | 0 | 0 | 3 |
 | `binfmt` | 1 | 2 | 0 | 0 | 2 |
 | `bless-boot` | 3 | 0 | 0 | 0 | 0 |

@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 12:15 UTC
+Generated: 2026-07-29 12:23 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **329**
+- Total modules audited: **326**
 - `genuine-rust`: **219**
-- `ffi-backed-rust`: **110**
+- `ffi-backed-rust`: **107**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -35,7 +35,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/af_list.rs` | 6 | 29 | 0 | 16 |
 | `src/basic/rust/alloc_util.rs` | 6 | 41 | 0 | 25 |
 | `src/basic/rust/ansi_color.rs` | 7 | 39 | 0 | 50 |
-| `src/basic/rust/argv_util.rs` | 2 | 34 | 0 | 15 |
 | `src/basic/rust/arphrd_util.rs` | 3 | 27 | 0 | 10 |
 | `src/basic/rust/basic_validators.rs` | 27 | 40 | 0 | 9 |
 | `src/basic/rust/bitmap.rs` | 11 | 35 | 0 | 55 |
@@ -49,7 +48,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/credential_validators.rs` | 2 | 35 | 0 | 9 |
 | `src/basic/rust/device_nodes.rs` | 2 | 13 | 0 | 26 |
 | `src/basic/rust/devnum_util.rs` | 7 | 36 | 1 | 63 |
-| `src/basic/rust/dirent_util.rs` | 2 | 31 | 0 | 9 |
 | `src/basic/rust/dlfcn_util.rs` | 1 | 16 | 2 | 27 |
 | `src/basic/rust/dns_domain_validators.rs` | 4 | 27 | 0 | 7 |
 | `src/basic/rust/dns_label.rs` | 30 | 52 | 0 | 271 |
@@ -77,7 +75,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/in_addr_util.rs` | 1 | 77 | 1 | 199 |
 | `src/basic/rust/iovec_util.rs` | 12 | 41 | 0 | 34 |
 | `src/basic/rust/iovec_wrapper.rs` | 8 | 36 | 0 | 34 |
-| `src/basic/rust/locale_util.rs` | 3 | 37 | 0 | 7 |
 | `src/basic/rust/memory_util.rs` | 9 | 28 | 0 | 35 |
 | `src/basic/rust/mempool.rs` | 3 | 25 | 0 | 16 |
 | `src/basic/rust/misc_validators.rs` | 11 | 64 | 0 | 38 |

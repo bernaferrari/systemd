@@ -3032,7 +3032,6 @@ def main() -> int:
                     "confidential_virtualization",
                     "ConfidentialVirtualization",
                 ),
-                "locale_util": ("locale_variable", "LocaleVariable"),
                 "image_class": ("image_class", "ImageClass"),
             }.get(name)
             if string_table_lookup is not None:

@@ -22,15 +22,12 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Pure hash | `test-murmurhash2-rust` | Native-endian block loading and zero/negative signed-length boundary |
 | Pure formatting | `test-format-util-rust` | Exact SI/IEC flags, bounded output, and `UINT64_MAX` sentinel |
 | Scalar codecs | `test-hexdecoct-rust` | All decoder byte values plus masked and signed-remainder encoder boundaries |
-| Argv classification | `test-argv-util-rust` | Opaque bytes, secure environment override, trailing slash, and null-terminated argv semantics |
 | Confidential-virt table | `test-confidential-virt-rust` | NUL-backed borrowed strings and NULL/-EINVAL reverse lookup |
 | Environment validators | `test-env-util-rust` | `ARG_MAX`, opaque invalid UTF-8, C-string vectors, and duplicate handling |
 | Credential validators | `test-credential-validators-rust` | Filename/fd-name composition, glob grammar, NULL, and `NAME_MAX` boundaries |
-| Locale tables and validator | `test-locale-util-rust` | NUL-backed lookup strings plus `.`, `..`, and invalid UTF-8 locale rejection |
 | Image-class tables | `test-image-class-rust` | NUL-backed lookup strings, invalid enums, and NULL/-EINVAL reverse lookup |
 | ARPHRD name and length tables | `test-arphrd-util-rust` | Generated Linux-UAPI names, ASCII case folding, HDLC/CISCO alias, and native-width lengths |
 | Filesystem predicates | `test-fstype-util-rust` | Opaque bytes, generated filesystem sets, fuse aliases, and API-VFS path boundaries |
-| Directory-entry classification | `test-dirent-util-rust` | Opaque entry-name bytes, file-like d_type values, backup filtering, and optional suffixes |
 | Glyph selection | `test-glyph-util-rust` | Static borrowed glyphs, locale/default selection, secure `SYSTEMD_UTF8`, ordinary `SYSTEMD_EMOJI`, and forced UTF-8 |
 | Hostname shortening | `test-hostname-setup-rust` | Raw-byte hostname validation, first-label/64-byte shortening, libc ownership, and errno publication |
 | NUL-string parsing | `test-nulstr-util-rust` | Borrowed interior list lookup and C-owned NULL-terminated `strv` construction |

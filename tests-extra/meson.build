@@ -1210,20 +1210,6 @@ if get_option('rust').enabled()
         test('test-compress-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-locale-util-rust',
-                files('test-locale-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-locale-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-str-tables-batch3-rust',
                 files('test-str-tables-batch3-rust.c'),
                 include_directories : includes,
@@ -1250,20 +1236,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-time-util-extra-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-argv-util-rust',
-                files('test-argv-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-argv-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-netdev-str-tables-rust',
@@ -2791,20 +2763,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-stat-util-inline-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-dirent-util-rust',
-                'test-dirent-util-rust.c',
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-dirent-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-dns-domain-rust',

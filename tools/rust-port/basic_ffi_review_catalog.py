@@ -1022,11 +1022,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "btrfs_util.rs",
             frozenset({"rs_btrfs_validate_subvolume_name"}),
         ),
-        "argv_util": (
-            basic_rust / "argv_util.h",
-            basic_rust / "argv_util.rs",
-            frozenset({"rs_argv_looks_like_help", "rs_invoked_as"}),
-        ),
         "hexdecoct": (
             basic_rust / "hexdecoct.h",
             basic_rust / "hexdecoct.rs",
@@ -1071,17 +1066,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "credential_validators.h",
             basic_rust / "credential_validators.rs",
             frozenset({"rs_credential_name_valid", "rs_credential_glob_valid"}),
-        ),
-        "locale_util": (
-            basic_rust / "locale_util.h",
-            basic_rust / "locale_util.rs",
-            frozenset(
-                {
-                    "rs_locale_variable_to_string",
-                    "rs_locale_variable_from_string",
-                    "rs_locale_is_valid",
-                }
-            ),
         ),
         "arphrd_util": (
             basic_rust / "arphrd_util.h",
@@ -1265,11 +1249,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "hostname_setup.h",
             basic_rust / "hostname_setup.rs",
             frozenset({"rs_shorten_overlong"}),
-        ),
-        "dirent_util": (
-            basic_rust / "dirent_util.h",
-            basic_rust / "dirent_util.rs",
-            frozenset({"rs_dirent_is_file", "rs_dirent_is_file_with_suffix"}),
         ),
         "bootspec_util": (
             basic_rust / "bootspec_util.h",
@@ -1468,13 +1447,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "resize_fs_util": (tests_extra / "test-resize-fs-rust.c",),
         "specifier_util": (tests_extra / "test-specifier-efi-rust.c",),
         "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
-        "argv_util": (tests_extra / "test-argv-util-rust.c",),
         "hexdecoct": (tests_extra / "test-hexdecoct-rust.c",),
         "env_util": (tests_extra / "test-env-util-rust.c",),
         "credential_validators": (
             tests_extra / "test-credential-validators-rust.c",
         ),
-        "locale_util": (tests_extra / "test-locale-util-rust.c",),
         "arphrd_util": (tests_extra / "test-arphrd-util-rust.c",),
         "fstype_util": (tests_extra / "test-fstype-util-rust.c",),
         "namespace_util": (tests_extra / "test-namespace-mountpoint-rust.c",),
@@ -1493,7 +1470,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "glyph_util": (tests_extra / "test-glyph-util-rust.c",),
         "nulstr_util": (tests_extra / "test-nulstr-util-rust.c",),
         "hostname_setup": (tests_extra / "test-hostname-setup-rust.c",),
-        "dirent_util": (tests_extra / "test-dirent-util-rust.c",),
         "bootspec_util": (tests_extra / "test-bootspec-rust.c",),
         "recovery_key": (tests_extra / "test-recovery-key-rust.c",),
     }
@@ -1841,16 +1817,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/btrfs-util.c",
             root / "src/basic/btrfs-util.h",
         ),
-        "argv_util": (root / "src/basic/argv-util.c", root / "src/basic/argv-util.h"),
         "hexdecoct": (root / "src/basic/hexdecoct.c", root / "src/basic/hexdecoct.h"),
         "env_util": (root / "src/basic/env-util.c", root / "src/basic/env-util.h"),
         "credential_validators": (
             root / "src/shared/creds-util.c",
             root / "src/shared/creds-util.h",
-        ),
-        "locale_util": (
-            root / "src/basic/locale-util.c",
-            root / "src/basic/locale-util.h",
         ),
         "arphrd_util": (
             root / "src/basic/arphrd-util.c",
@@ -1935,12 +1906,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/hostname-setup.h",
             root / "src/basic/hostname-util.c",
             root / "src/basic/hostname-util.h",
-        ),
-        "dirent_util": (
-            root / "src/basic/dirent-util.c",
-            root / "src/basic/dirent-util.h",
-            root / "src/basic/path-util.c",
-            root / "src/basic/path-util.h",
         ),
         "bootspec_util": (
             root / "src/shared/bootspec.c",

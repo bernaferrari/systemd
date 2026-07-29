@@ -6,7 +6,7 @@ use crate::ffi::*;
 use std::ffi::CString;
 use std::fs::{self, OpenOptions};
 use std::io;
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
@@ -164,19 +164,26 @@ fn mode_to_source_kind(mode: libc::mode_t) -> io::Result<SourceKind> {
 
 fn fstat(fd: RawFd) -> io::Result<libc::stat> {
     let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: st points to aligned, writable storage for one libc::stat, and
+    // fstat neither retains the pointer nor requires fd to be valid for memory safety.
     let r = unsafe { libc::fstat(fd, st.as_mut_ptr()) };
     if r < 0 {
         Err(io::Error::last_os_error())
     } else {
+        // SAFETY: a successful fstat fully initialized the stat object above.
         Ok(unsafe { st.assume_init() })
     }
 }
 
 fn dup_fd(fd: RawFd) -> io::Result<OwnedFd> {
+    // SAFETY: F_DUPFD_CLOEXEC takes only scalar arguments; an invalid borrowed
+    // descriptor is reported by the kernel without affecting Rust memory.
     let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
     if dup < 0 {
         Err(io::Error::last_os_error())
     } else {
+        // SAFETY: successful F_DUPFD_CLOEXEC returns a fresh descriptor whose
+        // ownership has not been transferred anywhere else.
         Ok(unsafe { OwnedFd::from_raw_fd(dup) })
     }
 }
@@ -188,6 +195,8 @@ fn copy_bytes_raw(src: RawFd, dst: RawFd, max_bytes: u64) -> io::Result<CopyProg
     while remaining > 0 {
         let request = remaining.min(buffer.len() as u64) as usize;
         let n_read = loop {
+            // SAFETY: buffer has writable capacity for request bytes, and read
+            // neither outlives this call nor retains its destination pointer.
             let n = unsafe { libc::read(src, buffer.as_mut_ptr().cast(), request) };
             if n < 0 {
                 let err = io::Error::last_os_error();
@@ -212,6 +221,8 @@ fn copy_bytes_raw(src: RawFd, dst: RawFd, max_bytes: u64) -> io::Result<CopyProg
 
 fn write_all_raw(fd: RawFd, mut buffer: &[u8]) -> io::Result<()> {
     while !buffer.is_empty() {
+        // SAFETY: buffer is readable for buffer.len() bytes, and write neither
+        // mutates nor retains the source slice.
         let n = unsafe { libc::write(fd, buffer.as_ptr().cast(), buffer.len()) };
         if n < 0 {
             let err = io::Error::last_os_error();
@@ -234,6 +245,8 @@ fn copy_all(src: RawFd, dst: RawFd) -> io::Result<()> {
 
     loop {
         let n_read = loop {
+            // SAFETY: buffer is valid writable storage for its full length, and
+            // read does not retain the pointer after returning.
             let n = unsafe { libc::read(src, buffer.as_mut_ptr().cast(), buffer.len()) };
             if n < 0 {
                 let err = io::Error::last_os_error();
@@ -254,6 +267,8 @@ fn copy_all(src: RawFd, dst: RawFd) -> io::Result<()> {
 }
 
 fn rewind_fd(fd: RawFd) -> io::Result<()> {
+    // SAFETY: lseek receives only the borrowed descriptor and scalar arguments;
+    // an invalid or non-seekable descriptor is returned as an OS error.
     let offset = unsafe { libc::lseek(fd, 0, libc::SEEK_SET) };
     if offset < 0 {
         return Err(io::Error::last_os_error());
@@ -343,10 +358,14 @@ fn create_named_memfd(_name: &str, _read_only: bool, _executable: bool) -> io::R
 #[cfg(target_os = "linux")]
 fn create_linux_memfd(name: &str, flags: u32) -> io::Result<OwnedFd> {
     let c_name = CString::new(name).map_err(|_| invalid_input_error())?;
+    // SAFETY: c_name is NUL-terminated and remains alive for the syscall, which
+    // reads but does not retain its pointer; the remaining arguments are scalars.
     let fd = unsafe { libc::syscall(libc::SYS_memfd_create, c_name.as_ptr(), flags) };
     if fd < 0 {
         Err(io::Error::last_os_error())
     } else {
+        // SAFETY: successful memfd_create returns a fresh descriptor whose
+        // ownership has not been transferred elsewhere.
         Ok(unsafe { OwnedFd::from_raw_fd(fd as RawFd) })
     }
 }
@@ -394,8 +413,12 @@ fn reopen_fd(fd: RawFd, flags: i32) -> io::Result<OwnedFd> {
 
     for candidate in [format!("/proc/self/fd/{fd}"), format!("/dev/fd/{fd}")] {
         let c_candidate = CString::new(candidate).map_err(|_| invalid_input_error())?;
+        // SAFETY: c_candidate is a live NUL-terminated path for the duration of
+        // open, which does not retain the pointer; flags contains no pointers.
         let reopened = unsafe { libc::open(c_candidate.as_ptr(), flags) };
         if reopened >= 0 {
+            // SAFETY: successful open returns a fresh descriptor whose ownership
+            // is transferred exactly once to this OwnedFd.
             return Ok(unsafe { OwnedFd::from_raw_fd(reopened) });
         }
         last_error = Some(io::Error::last_os_error());
@@ -405,6 +428,8 @@ fn reopen_fd(fd: RawFd, flags: i32) -> io::Result<OwnedFd> {
 }
 
 fn set_cloexec(fd: RawFd, enabled: bool) -> io::Result<()> {
+    // SAFETY: F_GETFD takes only a borrowed descriptor; invalid descriptors are
+    // reported by the kernel and do not violate Rust memory safety.
     let current = unsafe { libc::fcntl(fd, libc::F_GETFD) };
     if current < 0 {
         return Err(io::Error::last_os_error());
@@ -417,6 +442,8 @@ fn set_cloexec(fd: RawFd, enabled: bool) -> io::Result<()> {
     };
 
     if desired != current {
+        // SAFETY: F_SETFD takes only the borrowed descriptor and scalar flags,
+        // and does not alter or assume ownership of the descriptor.
         let r = unsafe { libc::fcntl(fd, libc::F_SETFD, desired) };
         if r < 0 {
             return Err(io::Error::last_os_error());
@@ -429,6 +456,8 @@ fn set_cloexec(fd: RawFd, enabled: bool) -> io::Result<()> {
 #[cfg(target_os = "linux")]
 fn seal_for_read_only(fd: &OwnedFd) -> io::Result<()> {
     let seals = F_SEAL_SEAL_CONST | F_SEAL_SHRINK_CONST | F_SEAL_GROW_CONST | F_SEAL_WRITE_CONST;
+    // SAFETY: F_ADD_SEALS takes the live borrowed descriptor and scalar seal
+    // mask only; it neither retains nor assumes ownership of the descriptor.
     let r = unsafe { libc::fcntl(fd.as_raw_fd(), F_ADD_SEALS_CONST, seals) };
     if r < 0 {
         Err(io::Error::last_os_error())
@@ -474,7 +503,7 @@ mod tests {
 
     fn read_fd_all(fd: &OwnedFd) -> Vec<u8> {
         let dup = dup_fd(fd.as_raw_fd()).unwrap();
-        let mut file = unsafe { File::from_raw_fd(dup.into_raw_fd()) };
+        let mut file = File::from(dup);
         file.seek(SeekFrom::Start(0)).unwrap();
         let mut data = Vec::new();
         file.read_to_end(&mut data).unwrap();
@@ -482,12 +511,16 @@ mod tests {
     }
 
     fn fd_flags(fd: &OwnedFd) -> i32 {
+        // SAFETY: fd is a live borrowed descriptor and F_GETFD has no pointer
+        // arguments or ownership effects.
         unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) }
     }
 
     fn assert_not_writable(fd: &OwnedFd) {
         let dup = dup_fd(fd.as_raw_fd()).unwrap();
         let byte = [0x7f_u8];
+        // SAFETY: byte is readable for byte.len() bytes, dup keeps the descriptor
+        // alive, and write does not retain the pointer.
         let r = unsafe { libc::write(dup.as_raw_fd(), byte.as_ptr().cast(), byte.len()) };
         assert_eq!(r, -1);
         let err = io::Error::last_os_error();
@@ -571,8 +604,14 @@ mod tests {
     #[test]
     fn copy_data_fd_copies_pipes() {
         let mut pipefds = [-1; 2];
+        // SAFETY: pipefds is aligned writable storage for exactly two RawFd
+        // values and pipe does not retain the pointer.
         assert_eq!(unsafe { libc::pipe(pipefds.as_mut_ptr()) }, 0);
+        // SAFETY: successful pipe initialized pipefds[0] as a fresh read-end,
+        // and ownership is transferred exactly once to reader.
         let reader = unsafe { OwnedFd::from_raw_fd(pipefds[0]) };
+        // SAFETY: successful pipe initialized pipefds[1] as a fresh write-end,
+        // and ownership is transferred exactly once to writer.
         let mut writer = unsafe { File::from_raw_fd(pipefds[1]) };
         let payload = b"pipe payload".repeat(512);
         writer.write_all(&payload).unwrap();
@@ -596,6 +635,8 @@ mod tests {
         let mut file = make_temp_file_with_len(7000);
         let original_len = file.as_file().metadata().unwrap().len() as i64;
         let _ = copy_data_fd(file.as_file().as_raw_fd()).unwrap();
+        // SAFETY: the temporary file keeps this borrowed descriptor live, and
+        // lseek takes only scalar arguments with no ownership effects.
         let pos = unsafe { libc::lseek(file.as_file().as_raw_fd(), 0, libc::SEEK_CUR) };
         assert_eq!(pos, original_len);
     }
@@ -628,8 +669,7 @@ mod tests {
     fn memfd_clone_fd_copies_read_write() {
         let file = make_temp_file_with_len(512);
         let cloned = memfd_clone_fd(file.as_file().as_raw_fd(), "clone", libc::O_RDWR).unwrap();
-        let mut reopened =
-            unsafe { File::from_raw_fd(dup_fd(cloned.as_raw_fd()).unwrap().into_raw_fd()) };
+        let mut reopened = File::from(dup_fd(cloned.as_raw_fd()).unwrap());
         reopened.seek(SeekFrom::Start(0)).unwrap();
         reopened.write_all(b"xy").unwrap();
         reopened.seek(SeekFrom::Start(0)).unwrap();

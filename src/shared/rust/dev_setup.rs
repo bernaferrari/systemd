@@ -188,10 +188,8 @@ fn debug_log(message: String) {
 
 fn libc_path_exists(path: &Path) -> Result<(), io::Error> {
     let path_c = cstring_from_path(path).map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
-    let rc = unsafe {
-        // SAFETY: `path_c` is a valid, NUL-terminated pathname.
-        libc::access(path_c.as_ptr(), libc::F_OK)
-    };
+    // SAFETY: `path_c` is a valid, NUL-terminated pathname.
+    let rc = unsafe { libc::access(path_c.as_ptr(), libc::F_OK) };
 
     if rc == 0 {
         Ok(())
@@ -217,10 +215,8 @@ fn lchown_nofollow(path: &Path, uid: libc::uid_t, gid: libc::gid_t) {
         return;
     };
 
-    let rc = unsafe {
-        // SAFETY: `path_c` is a valid, NUL-terminated pathname.
-        libc::lchown(path_c.as_ptr(), uid, gid)
-    };
+    // SAFETY: `path_c` is a valid, NUL-terminated pathname.
+    let rc = unsafe { libc::lchown(path_c.as_ptr(), uid, gid) };
 
     if rc < 0 {
         debug_log(format!(
@@ -234,10 +230,8 @@ fn lchown_nofollow(path: &Path, uid: libc::uid_t, gid: libc::gid_t) {
 fn open_parent_dir(path: &Path) -> Result<i32, DevSetupError> {
     let path_c =
         cstring_from_path(path).map_err(|_| DevSetupError::InvalidPath(path.to_path_buf()))?;
-    let fd = unsafe {
-        // SAFETY: `path_c` is a valid, NUL-terminated pathname.
-        libc::open(path_c.as_ptr(), open_parent_dir_flags(), 0)
-    };
+    // SAFETY: `path_c` is a valid, NUL-terminated pathname.
+    let fd = unsafe { libc::open(path_c.as_ptr(), open_parent_dir_flags(), 0) };
 
     if fd >= 0 {
         Ok(fd)
@@ -254,10 +248,8 @@ fn open_or_create_directory_at(
     let file_name_c = CString::new(file_name)
         .map_err(|_| DevSetupError::InvalidPath(PathBuf::from(file_name)))?;
 
-    let mkdir_rc = unsafe {
-        // SAFETY: `file_name_c` is valid and `parent_fd` refers to a directory.
-        libc::mkdirat(parent_fd, file_name_c.as_ptr(), mode)
-    };
+    // SAFETY: `file_name_c` is valid and `parent_fd` refers to a directory.
+    let mkdir_rc = unsafe { libc::mkdirat(parent_fd, file_name_c.as_ptr(), mode) };
     if mkdir_rc < 0 {
         let error = io::Error::last_os_error();
         if error.raw_os_error() != Some(libc::EEXIST) {
@@ -265,8 +257,8 @@ fn open_or_create_directory_at(
         }
     }
 
+    // SAFETY: `file_name_c` is valid and `parent_fd` refers to a directory.
     let fd = unsafe {
-        // SAFETY: `file_name_c` is valid and `parent_fd` refers to a directory.
         libc::openat(
             parent_fd,
             file_name_c.as_ptr(),
@@ -290,13 +282,11 @@ fn create_inaccessible_node(
     let file_name_c = CString::new(file_name).map_err(|_| libc::EINVAL)?;
 
     let rc = if (inode_type & libc::S_IFMT) == libc::S_IFDIR {
-        unsafe {
-            // SAFETY: `file_name_c` is valid and `dir_fd` refers to a directory.
-            libc::mkdirat(dir_fd, file_name_c.as_ptr(), 0)
-        }
+        // SAFETY: `file_name_c` is valid and `dir_fd` refers to a directory.
+        unsafe { libc::mkdirat(dir_fd, file_name_c.as_ptr(), 0) }
     } else {
+        // SAFETY: `file_name_c` is valid and `dir_fd` refers to a directory.
         unsafe {
-            // SAFETY: `file_name_c` is valid and `dir_fd` refers to a directory.
             libc::mknodat(
                 dir_fd,
                 file_name_c.as_ptr(),
@@ -318,8 +308,8 @@ fn create_inaccessible_node(
 fn fchmodat_nofollow(dir_fd: i32, file_name: &str, mode: libc::mode_t) -> Result<(), io::Error> {
     let file_name_c =
         CString::new(file_name).map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
+    // SAFETY: `file_name_c` is valid and `dir_fd` refers to a directory.
     let rc = unsafe {
-        // SAFETY: `file_name_c` is valid and `dir_fd` refers to a directory.
         libc::fchmodat(
             dir_fd,
             file_name_c.as_ptr(),
@@ -343,8 +333,8 @@ fn fchownat_nofollow(
 ) -> Result<(), io::Error> {
     let file_name_c =
         CString::new(file_name).map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
+    // SAFETY: `file_name_c` is valid and `dir_fd` refers to a directory.
     let rc = unsafe {
-        // SAFETY: `file_name_c` is valid and `dir_fd` refers to a directory.
         libc::fchownat(
             dir_fd,
             file_name_c.as_ptr(),
@@ -362,10 +352,8 @@ fn fchownat_nofollow(
 }
 
 fn fchmod_fd(fd: i32, mode: libc::mode_t) -> Result<(), io::Error> {
-    let rc = unsafe {
-        // SAFETY: `fd` is owned by the caller.
-        libc::fchmod(fd, mode)
-    };
+    // SAFETY: `fd` came from the live `FdGuard` held by the only caller.
+    let rc = unsafe { libc::fchmod(fd, mode) };
 
     if rc >= 0 {
         Ok(())
@@ -410,8 +398,8 @@ impl FdGuard {
 impl Drop for FdGuard {
     fn drop(&mut self) {
         if self.0 >= 0 {
+            // SAFETY: `self.0` is owned by this guard.
             unsafe {
-                // SAFETY: `self.0` is owned by this guard.
                 libc::close(self.0);
             }
         }
@@ -422,18 +410,16 @@ struct UmaskGuard(libc::mode_t);
 
 impl UmaskGuard {
     fn new(mask: libc::mode_t) -> Self {
-        let old = unsafe {
-            // SAFETY: `umask` is process-global and returns the previous mask.
-            libc::umask(mask)
-        };
+        // SAFETY: `umask` accepts the plain scalar `mask`; its returned mask is retained for Drop.
+        let old = unsafe { libc::umask(mask) };
         Self(old)
     }
 }
 
 impl Drop for UmaskGuard {
     fn drop(&mut self) {
+        // SAFETY: `self.0` is the scalar mode value returned by the preceding `umask` call.
         unsafe {
-            // SAFETY: restore the previously returned umask value.
             libc::umask(self.0);
         }
     }
@@ -647,30 +633,24 @@ mod tests {
 
     #[test]
     fn umask_guard_restores_previous_value() {
-        let before = unsafe {
-            // SAFETY: reading current umask by setting and restoring it.
-            libc::umask(0o022)
-        };
+        // SAFETY: `umask` accepts the scalar mode and the test immediately restores its result.
+        let before = unsafe { libc::umask(0o022) };
+        // SAFETY: `before` is the scalar mode value returned by the preceding `umask` call.
         unsafe {
-            // SAFETY: restore original value.
             libc::umask(before);
         }
 
         {
             let _guard = UmaskGuard::new(0);
-            let current = unsafe {
-                // SAFETY: reading current umask by setting and restoring it.
-                libc::umask(0o077)
-            };
+            // SAFETY: `umask` accepts the scalar mode and the guard restores its result on Drop.
+            let current = unsafe { libc::umask(0o077) };
             assert_eq!(current, 0);
         }
 
-        let after = unsafe {
-            // SAFETY: reading current umask by setting and restoring it.
-            libc::umask(0o077)
-        };
+        // SAFETY: `umask` accepts the scalar mode and the test immediately restores its result.
+        let after = unsafe { libc::umask(0o077) };
+        // SAFETY: `after` is the scalar mode value returned by the preceding `umask` call.
         unsafe {
-            // SAFETY: restore observed value.
             libc::umask(after);
         }
         assert_eq!(after, before);
@@ -696,7 +676,9 @@ mod tests {
         make_inaccessible_nodes(Some(dir.path()), UID_INVALID, GID_INVALID).unwrap();
 
         let metadata = fs::metadata(dir.path().join("inaccessible")).unwrap();
+        // SAFETY: `geteuid` takes no pointers and has no Rust aliasing requirements.
         assert_eq!(metadata.uid(), unsafe { libc::geteuid() });
+        // SAFETY: `getegid` takes no pointers and has no Rust aliasing requirements.
         assert_eq!(metadata.gid(), unsafe { libc::getegid() });
     }
 }

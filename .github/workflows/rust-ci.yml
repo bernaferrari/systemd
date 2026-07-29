@@ -237,7 +237,6 @@ jobs:
           test-shared-validators-rust
           test-mount-color-btrfs-rust
           test-btrfs-util-rust
-          test-argv-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
           test-bootspec-rust
@@ -253,10 +252,8 @@ jobs:
           test-strxcpyx-rust
           test-terminal-util-rust
           test-credential-validators-rust
-          test-locale-util-rust
           test-arphrd-util-rust
           test-fstype-util-rust
-          test-dirent-util-rust
           test-glyph-util-rust
           test-hostname-setup-rust
           test-nulstr-util-rust
@@ -385,7 +382,6 @@ jobs:
           test-shared-validators-rust
           test-mount-color-btrfs-rust
           test-btrfs-util-rust
-          test-argv-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
           test-bootspec-rust
@@ -401,10 +397,8 @@ jobs:
           test-strxcpyx-rust
           test-terminal-util-rust
           test-credential-validators-rust
-          test-locale-util-rust
           test-arphrd-util-rust
           test-fstype-util-rust
-          test-dirent-util-rust
           test-glyph-util-rust
           test-hostname-setup-rust
           test-nulstr-util-rust
