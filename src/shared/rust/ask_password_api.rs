@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-use crate::ffi::*;
 use std::collections::HashMap;
 use std::env;
-use std::ffi::{CStr, c_void};
 use std::fs;
-use std::io::{self, Read, Write};
-use std::mem::ManuallyDrop;
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
-use std::os::unix::fs::PermissionsExt;
+use std::io;
+use std::os::fd::{AsRawFd, RawFd};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
-use std::ptr;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
@@ -91,34 +87,39 @@ pub fn get_ask_password_directory_for_flags(flags: AskPasswordFlags) -> PathBuf 
 
 pub fn touch_ask_password_directory(flags: AskPasswordFlags) -> io::Result<()> {
     let path = get_ask_password_directory_for_flags(flags);
-    fs::create_dir_all(&path)?;
-
-    let now = std::time::SystemTime::now();
-    let metadata = fs::metadata(&path)?;
-    let modified = metadata.modified()?;
-    let _ = fs::set_permissions(&path, metadata.permissions());
-    if modified < now {
-        let _ = filetime_set_mtime(&path, now);
-    }
-
-    Ok(())
+    let directory = open_or_create_ask_password_directory(&path)?;
+    touch_directory(&directory)
 }
 
-fn filetime_set_mtime(path: &Path, time: std::time::SystemTime) -> io::Result<()> {
-    let duration = time
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = duration.as_secs() as i64;
-    let nsecs = duration.subsec_nanos() as i64;
-    let path_c = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap_or_default();
-    let mut times = [libc::timeval {
-        tv_sec: secs,
-        tv_usec: (nsecs / 1000) as _,
-    }; 2];
-    // utimes sets both atime and mtime from the array
-    let _ = times;
-    let path_ptr = path_c.as_ptr();
-    let r = unsafe { libc::utimes(path_ptr, ptr::null()) };
+/// Open the final ask-password directory, creating it with C's `0755` mode if absent.
+///
+/// `open_mkdir()` in the C implementation creates only the final component. Keeping the
+/// descriptor avoids a path re-resolution between creation and the timestamp update.
+fn open_or_create_ask_password_directory(path: &Path) -> io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(libc::O_CLOEXEC | libc::O_DIRECTORY);
+
+    match options.open(path) {
+        Ok(directory) => Ok(directory),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            match fs::create_dir(path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+            options.open(path)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Update the descriptor's timestamps exactly as C's `touch_fd(..., USEC_INFINITY)` does.
+fn touch_directory(directory: &fs::File) -> io::Result<()> {
+    // SAFETY: `directory` owns a live descriptor for the just-opened directory. A null
+    // timespec pointer is explicitly specified by futimens(3) to request the current time.
+    let r = unsafe { libc::futimens(directory.as_raw_fd(), std::ptr::null()) };
     if r < 0 {
         Err(io::Error::last_os_error())
     } else {
@@ -176,14 +177,23 @@ pub fn add_to_keyring(
         return Ok(false);
     }
 
-    MEMORY_CACHE
-        .lock()
-        .expect("ask-password cache mutex poisoned")
-        .entry(keyname.to_string())
-        .or_default()
-        .extend(passwords.iter().cloned());
+    if keyring_cache_timeout().is_zero() {
+        return Ok(false);
+    }
 
-    touch_ask_password_directory(flags)?;
+    let mut cache = MEMORY_CACHE
+        .lock()
+        .expect("ask-password cache mutex poisoned");
+    let cached = cache.entry(keyname.to_string()).or_default();
+    for password in passwords {
+        if !cached.contains(password) {
+            cached.push(password.clone());
+        }
+    }
+
+    // The C implementation treats this as a best-effort notification after the cache
+    // update, so a failure to touch the directory must not discard the cached password.
+    let _ = touch_ask_password_directory(flags);
     Ok(true)
 }
 
@@ -209,10 +219,7 @@ pub fn ask_password_keyring(
     flags: AskPasswordFlags,
 ) -> io::Result<Vec<String>> {
     if !flags.contains(AskPasswordFlags::ACCEPT_CACHED) {
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "ASK_PASSWORD_ACCEPT_CACHED not set",
-        ));
+        return Err(io::Error::from_raw_os_error(libc::EUNATCH));
     }
 
     let keyring = req
@@ -225,18 +232,16 @@ pub fn ask_password_keyring(
         return Ok(cached);
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        "no cached password found",
-    ))
+    Err(io::Error::from_raw_os_error(libc::ENOKEY))
 }
 
+/// Fill complete three-byte backspace sequences, up to the supplied buffer capacity.
+///
+/// The C helper allocates `3 * count` bytes itself. This safe slice-based equivalent
+/// deliberately stops at the available complete sequences rather than panicking on a
+/// shorter caller buffer.
 pub fn backspace_chars(buf: &mut [u8], count: usize) {
-    let to_write = 3 * count;
-    for (i, slot) in buf[..to_write].chunks_exact_mut(3).enumerate() {
-        if i >= count {
-            break;
-        }
+    for slot in buf.chunks_exact_mut(3).take(count) {
         slot.copy_from_slice(b"\x08 \x08");
     }
 }
@@ -302,36 +307,21 @@ pub fn ask_password_credential(
         .as_deref()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no credential specified"))?;
 
-    let cred_dir = env::var("CREDENTIALS_DIRECTORY")
-        .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "CREDENTIALS_DIRECTORY not set"))?;
+    // Reuse the shared credential capability: it validates the name, pins the
+    // directory FD, and bounds the read instead of allowing an absolute or
+    // traversal path to escape $CREDENTIALS_DIRECTORY.
+    let data = match crate::creds_util::read_credential(cred_name) {
+        Ok(data) => data,
+        Err(error) if error == -libc::ENXIO || error == -libc::ENOENT => {
+            return Err(io::Error::from_raw_os_error(libc::ENOKEY));
+        }
+        Err(error) => return Err(io::Error::from_raw_os_error(-error)),
+    };
 
-    let cred_path = PathBuf::from(&cred_dir).join(cred_name);
-    if !cred_path.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "credential not found",
-        ));
-    }
-
-    let data = fs::read(&cred_path)?;
-    if data.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "credential is empty",
-        ));
-    }
-
-    let passwords: Vec<String> = data
-        .split(|&b| b == 0)
-        .filter(|s| !s.is_empty())
-        .map(|s| String::from_utf8_lossy(s).into_owned())
-        .collect();
+    let passwords = parse_nulstr(data.as_ref());
 
     if passwords.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "no passwords in credential",
-        ));
+        return Err(io::Error::from_raw_os_error(libc::ENOKEY));
     }
 
     Ok(passwords)
@@ -344,18 +334,24 @@ pub fn ask_password_auto(
     if !flags.contains(AskPasswordFlags::NO_CREDENTIAL) && req.credential.is_some() {
         match ask_password_credential(req, flags) {
             Ok(result) => return Ok(result),
-            Err(_) => {}
+            Err(error) if error.raw_os_error() == Some(libc::ENOKEY) => {}
+            Err(error) => return Err(error),
         }
     }
 
-    if flags.contains(AskPasswordFlags::ACCEPT_CACHED) && req.keyring.is_some() {
+    if flags.contains(AskPasswordFlags::ACCEPT_CACHED)
+        && req.keyring.is_some()
+        && (flags.contains(AskPasswordFlags::NO_TTY) || !isatty_safe(libc::STDIN_FILENO))
+        && flags.contains(AskPasswordFlags::NO_AGENT)
+    {
         match ask_password_keyring(req, flags) {
             Ok(result) => return Ok(result),
-            Err(_) => {}
+            Err(error) if error.raw_os_error() == Some(libc::ENOKEY) => {}
+            Err(error) => return Err(error),
         }
     }
 
-    if !flags.contains(AskPasswordFlags::NO_TTY) && isatty_safe(std::io::stdin()) {
+    if !flags.contains(AskPasswordFlags::NO_TTY) && isatty_safe(libc::STDIN_FILENO) {
         return ask_password_tty(req, flags);
     }
 
@@ -363,19 +359,16 @@ pub fn ask_password_auto(
         return ask_password_agent(req, flags);
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "no password method available",
-    ))
+    Err(io::Error::from_raw_os_error(libc::EUNATCH))
 }
 
-fn isatty_safe<F: AsRawFd>(fd: F) -> bool {
-    let fd = fd.as_raw_fd();
+fn isatty_safe(fd: RawFd) -> bool {
     if fd < 0 {
         return false;
     }
-    let r = unsafe { libc::isatty(fd) };
-    r != 0
+    // SAFETY: isatty(3) only inspects this borrowed file-descriptor number and
+    // does not retain it or dereference Rust memory.
+    unsafe { libc::isatty(fd) != 0 }
 }
 
 pub fn source_lines() -> usize {

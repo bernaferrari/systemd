@@ -23,6 +23,8 @@ use crate::notify_recv::{NotificationMessage, NotifyError, notify_recv};
 pub enum ForkNotifyError {
     /// The argument list was empty.
     EmptyArgv,
+    /// The supplied PID cannot safely be passed to `kill(2)`.
+    InvalidPid { pid: u32 },
     /// The child process died before sending READY=1.
     ChildDiedBeforeReady {
         pid: u32,
@@ -42,6 +44,7 @@ impl std::fmt::Display for ForkNotifyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyArgv => write!(f, "argv must not be empty"),
+            Self::InvalidPid { pid } => write!(f, "invalid process identifier: {pid}"),
             Self::ChildDiedBeforeReady { pid, status } => {
                 write!(f, "child {pid} died before sending READY=1")?;
                 if let Some(s) = status {
@@ -340,8 +343,20 @@ pub fn fork_notify_terminate(child: &mut ForkNotifyChild) -> io::Result<()> {
 /// Returns `Ok(())` on success, or
 /// [`ForkNotifyError::ChildDiedBeforeReady`] if the process no longer
 /// exists (ESRCH).
+fn checked_pid(pid: u32) -> Result<libc::pid_t> {
+    if pid == 0 {
+        return Err(ForkNotifyError::InvalidPid { pid });
+    }
+
+    pid.try_into()
+        .map_err(|_| ForkNotifyError::InvalidPid { pid })
+}
+
 fn terminate_process(pid: u32) -> Result<()> {
-    let ret = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
+    let raw_pid = checked_pid(pid)?;
+    // SAFETY: kill(2) takes only scalar values, does not access Rust memory,
+    // and raw_pid is a checked, strictly positive process identifier.
+    let ret = unsafe { libc::kill(raw_pid, libc::SIGTERM) };
     if ret == 0 {
         return Ok(());
     }
@@ -357,7 +372,13 @@ fn terminate_process(pid: u32) -> Result<()> {
 /// This mirrors `fork_notify_terminate_internal` from the C code which
 /// kills and waits but does not consume the PidRef.
 pub fn fork_notify_terminate_pid(pid: u32) {
-    let ret = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
+    let Ok(raw_pid) = checked_pid(pid) else {
+        return;
+    };
+
+    // SAFETY: kill(2) takes only scalar values, does not access Rust memory,
+    // and raw_pid is a checked, strictly positive process identifier.
+    let ret = unsafe { libc::kill(raw_pid, libc::SIGTERM) };
     if ret != 0 {
         let errno = crate::ffi::get_errno();
         if errno != libc::ESRCH {
@@ -648,5 +669,18 @@ mod tests {
     fn test_terminate_many_empty() {
         // Should not panic on empty slice.
         fork_notify_terminate_many(&mut []);
+    }
+
+    #[test]
+    fn test_checked_pid_rejects_non_process_values() {
+        assert!(matches!(
+            checked_pid(0),
+            Err(ForkNotifyError::InvalidPid { pid: 0 })
+        ));
+        assert!(matches!(
+            checked_pid(u32::MAX),
+            Err(ForkNotifyError::InvalidPid { pid: u32::MAX })
+        ));
+        assert!(checked_pid(1).is_ok());
     }
 }

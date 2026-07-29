@@ -135,7 +135,7 @@ pub fn mode_is_read_only(mode: u32) -> bool {
 
 /// Strip write bits from a mode (equivalent to `mode & 0555`).
 pub fn mode_strip_write_bits(mode: u32) -> u32 {
-    mode & 0o5555
+    mode & 0o555
 }
 
 /// Check whether the owner-write bit is set in a mode.
@@ -354,16 +354,24 @@ pub enum FdReadOnlyResult {
 pub fn fd_acl_make_read_only_fallback(fd: impl AsRawFd) -> Result<FdReadOnlyResult, Errno> {
     let raw_fd = fd.as_raw_fd();
 
-    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
-    if unsafe { libc::fstat(raw_fd, &mut stat) } < 0 {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat` points to writable, properly aligned storage for a `libc::stat`.
+    // `raw_fd` is only borrowed for this syscall; an invalid or closed descriptor is
+    // reported by `fstat` as an error. On success, POSIX initializes the entire struct.
+    if unsafe { libc::fstat(raw_fd, stat.as_mut_ptr()) } < 0 {
         return Err(errno_from_raw(crate::ffi::get_errno()));
     }
+    // SAFETY: the successful `fstat` call above initialized `stat` completely.
+    let stat = unsafe { stat.assume_init() };
 
     let mode = stat.st_mode as u32;
     if mode_is_read_only(mode) {
         return Ok(FdReadOnlyResult::AlreadyReadOnly);
     }
 
+    // SAFETY: `raw_fd` is borrowed for this syscall and `mode_strip_write_bits()`
+    // produces a valid permission-bit mask. An invalid descriptor is reported by
+    // `fchmod` rather than dereferenced by Rust.
     if unsafe { libc::fchmod(raw_fd, mode_strip_write_bits(mode) as libc::mode_t) } < 0 {
         return Err(errno_from_raw(crate::ffi::get_errno()));
     }
@@ -385,16 +393,24 @@ pub enum FdWritableResult {
 pub fn fd_acl_make_writable_fallback(fd: impl AsRawFd) -> Result<FdWritableResult, Errno> {
     let raw_fd = fd.as_raw_fd();
 
-    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
-    if unsafe { libc::fstat(raw_fd, &mut stat) } < 0 {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat` points to writable, properly aligned storage for a `libc::stat`.
+    // `raw_fd` is only borrowed for this syscall; an invalid or closed descriptor is
+    // reported by `fstat` as an error. On success, POSIX initializes the entire struct.
+    if unsafe { libc::fstat(raw_fd, stat.as_mut_ptr()) } < 0 {
         return Err(errno_from_raw(crate::ffi::get_errno()));
     }
+    // SAFETY: the successful `fstat` call above initialized `stat` completely.
+    let stat = unsafe { stat.assume_init() };
 
     let mode = stat.st_mode as u32;
     if mode_has_owner_write(mode) {
         return Ok(FdWritableResult::AlreadyWritable);
     }
 
+    // SAFETY: `raw_fd` is borrowed for this syscall and `mode_add_owner_write()`
+    // preserves only mode bits accepted by `fchmod`. An invalid descriptor is
+    // reported by `fchmod` rather than dereferenced by Rust.
     if unsafe { libc::fchmod(raw_fd, mode_add_owner_write(mode) as libc::mode_t) } < 0 {
         return Err(errno_from_raw(crate::ffi::get_errno()));
     }
@@ -404,22 +420,8 @@ pub fn fd_acl_make_writable_fallback(fd: impl AsRawFd) -> Result<FdWritableResul
 
 // ── Errno conversion helper ────────────────────────────────────────────────
 
-/// Wrapper type to allow adding methods on `Errno` values from another crate.
 fn errno_from_raw(raw: i32) -> Errno {
-    match raw {
-        1 => Errno::EPERM,
-        2 => Errno::ENOENT,
-        9 => Errno::EBADF,
-        11 => Errno::EAGAIN,
-        12 => Errno::ENOMEM,
-        13 => Errno::EACCES,
-        22 => Errno::EINVAL,
-        28 => Errno::ENOSPC,
-        38 => Errno::ENOSYS,
-        39 => Errno::ENOTEMPTY,
-        95 => Errno::EOPNOTSUPP,
-        _ => Errno::EINVAL,
-    }
+    Errno::from_raw(raw).unwrap_or(Errno::EINVAL)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -554,6 +556,7 @@ mod tests {
         assert_eq!(mode_strip_write_bits(0o766), 0o544);
         assert_eq!(mode_strip_write_bits(0o644), 0o444);
         assert_eq!(mode_strip_write_bits(0o755), 0o555);
+        assert_eq!(mode_strip_write_bits(0o4755), 0o555);
 
         assert!(mode_has_owner_write(0o700));
         assert!(mode_has_owner_write(0o644));

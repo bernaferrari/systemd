@@ -1006,15 +1006,8 @@
       "unsafe_sites": 3
     },
     "src/shared/rust/acl_util.rs": {
-      "missing_safety": 6,
-      "missing_safety_sites": [
-        "357:32:let mut stat: libc::stat = unsafe { std::mem::zeroed() };",
-        "358:8:if unsafe { libc::fstat(raw_fd, &mut stat) } < 0 {",
-        "367:8:if unsafe { libc::fchmod(raw_fd, mode_strip_write_bits(mode) as libc::mode_t) } < 0 {",
-        "388:32:let mut stat: libc::stat = unsafe { std::mem::zeroed() };",
-        "389:8:if unsafe { libc::fstat(raw_fd, &mut stat) } < 0 {",
-        "398:8:if unsafe { libc::fchmod(raw_fd, mode_add_owner_write(mode) as libc::mode_t) } < 0 {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 6
     },
     "src/shared/rust/ask_password_agent.rs": {
@@ -1025,11 +1018,8 @@
       "unsafe_sites": 40
     },
     "src/shared/rust/ask_password_api.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "121:13:let r = unsafe { libc::utimes(path_ptr, ptr::null()) };",
-        "377:13:let r = unsafe { libc::isatty(fd) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 3
     },
     "src/shared/rust/async.rs": {
@@ -1365,11 +1355,8 @@
       "unsafe_sites": 15
     },
     "src/shared/rust/fork_notify.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "344:15:let ret = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };",
-        "360:15:let ret = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/shared/rust/hibernate_util.rs": {
@@ -2117,7 +2104,7 @@
     }
   },
   "totals": {
-    "missing_safety": 555,
+    "missing_safety": 545,
     "unsafe_sites": 5706
   },
   "version": 2,
