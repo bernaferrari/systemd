@@ -855,6 +855,7 @@ fn last_errno() -> i32 {
 /// The returned file descriptor is bound to the specified address.
 /// Uses unsafe only for the socket() and bind() syscalls.
 pub fn netlink_open(protocol: i32, pid: u32, groups: u32) -> Result<RawFd> {
+    // SAFETY: socket has no pointer arguments; the supplied domain and type are valid netlink constants.
     let fd = unsafe { libc::socket(AF_NETLINK, SOCK_RAW, protocol) };
     if fd < 0 {
         return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
@@ -864,6 +865,7 @@ pub fn netlink_open(protocol: i32, pid: u32, groups: u32) -> Result<RawFd> {
 
     let addr = SockAddrNl::new(pid, groups);
     if let Err(e) = netlink_bind(fd, &addr) {
+        // SAFETY: fd was returned by socket above and is still owned by this function.
         unsafe {
             libc::close(fd);
         }
@@ -875,6 +877,7 @@ pub fn netlink_open(protocol: i32, pid: u32, groups: u32) -> Result<RawFd> {
 
 /// Create an unbound netlink socket with the given protocol.
 pub fn netlink_socket(protocol: i32) -> Result<RawFd> {
+    // SAFETY: socket has no pointer arguments; the supplied domain and type are valid netlink constants.
     let fd = unsafe { libc::socket(AF_NETLINK, SOCK_RAW, protocol) };
     if fd < 0 {
         return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
@@ -888,6 +891,7 @@ pub fn netlink_socket(protocol: i32) -> Result<RawFd> {
 pub fn netlink_bind(fd: RawFd, addr: &SockAddrNl) -> Result<()> {
     let sa = addr.as_sockaddr();
     let sa_len = mem::size_of::<crate::ffi::sockaddr_nl>() as libc::socklen_t;
+    // SAFETY: sa is a valid sockaddr_nl that remains live for the call, and sa_len matches its size.
     let ret = unsafe {
         libc::bind(
             fd,
@@ -907,6 +911,7 @@ pub fn netlink_bind(fd: RawFd, addr: &SockAddrNl) -> Result<()> {
 pub fn netlink_send(fd: RawFd, buf: &[u8], addr: &SockAddrNl) -> Result<usize> {
     let sa = addr.as_sockaddr();
     let sa_len = mem::size_of::<crate::ffi::sockaddr_nl>() as libc::socklen_t;
+    // SAFETY: buf and sa are valid for their specified lengths and remain live for the synchronous call.
     let ret = unsafe {
         libc::sendto(
             fd,
@@ -927,6 +932,7 @@ pub fn netlink_send(fd: RawFd, buf: &[u8], addr: &SockAddrNl) -> Result<usize> {
 
 /// Receive data from a netlink socket.
 pub fn netlink_recv(fd: RawFd, buf: &mut [u8]) -> Result<usize> {
+    // SAFETY: buf is a valid, writable slice for buf.len() bytes throughout this synchronous call.
     let ret = unsafe { libc::recv(fd, buf.as_mut_ptr() as *mut c_void, buf.len(), 0) };
     if ret < 0 {
         return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
@@ -939,6 +945,7 @@ pub fn netlink_recv(fd: RawFd, buf: &mut [u8]) -> Result<usize> {
 /// Close a file descriptor safely (ignores invalid fds).
 pub fn safe_close_fd(fd: RawFd) {
     if fd >= 0 {
+        // SAFETY: close accepts any non-negative file descriptor; an invalid or already-closed one returns an error.
         unsafe {
             libc::close(fd);
         }
@@ -947,7 +954,9 @@ pub fn safe_close_fd(fd: RawFd) {
 
 /// Check if a file descriptor refers to a socket via fstat.
 pub fn fd_is_socket(fd: RawFd) -> Result<bool> {
+    // SAFETY: libc::stat is a C plain-data output structure, for which an all-zero initial value is valid.
     let mut stat_buf: libc::stat = unsafe { mem::zeroed() };
+    // SAFETY: stat_buf is valid, writable storage for a libc::stat and remains live for the call.
     let ret = unsafe { libc::fstat(fd, &mut stat_buf) };
     if ret < 0 {
         return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(

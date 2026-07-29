@@ -213,6 +213,7 @@ impl OpenInode {
     pub fn done(&mut self) {
         if self.path.is_some() {
             if let Some(fd) = self.fd.take() {
+                // SAFETY: `fd` is an owned file descriptor; `close` takes no pointers.
                 unsafe {
                     libc::close(fd);
                 }
@@ -245,11 +246,13 @@ impl OpenInode {
                     } else {
                         self.gid
                     };
+                    // SAFETY: `fchown` takes only scalar arguments; `raw` is this inode's fd.
                     if unsafe { libc::fchown(raw, uid, gid) } < 0 {
                         first_err.get_or_insert(TarError::from_errno(last_errno()));
                     }
                 }
                 if need_chmod {
+                    // SAFETY: `fchmod` takes only scalar arguments; `raw` is this inode's fd.
                     if unsafe { libc::fchmod(raw, (self.mode & 0o7777) as _) } < 0 {
                         first_err.get_or_insert(TarError::from_errno(last_errno()));
                     }
@@ -267,6 +270,7 @@ impl OpenInode {
                         tv_nsec: self.mtime_nsec as _,
                     },
                 ];
+                // SAFETY: `ts` is a live two-element timespec array, as futimens requires.
                 if unsafe { libc::futimens(raw, ts.as_ptr()) } < 0 {
                     first_err.get_or_insert(TarError::from_errno(last_errno()));
                 }
@@ -277,6 +281,7 @@ impl OpenInode {
                     Ok(n) => n,
                     Err(_) => continue,
                 };
+                // SAFETY: `c_name` is NUL-terminated and `xa.data` is live for its stated length.
                 let ret = unsafe {
                     #[cfg(target_os = "macos")]
                     {
@@ -401,6 +406,7 @@ pub fn overlayfs_fsetfattr(fd: RawFd, path: &str, name: &str, value: &str) -> Ta
         Err(_) => return Err(TarError::Generic(format!("invalid xattr key: {key}"))),
     };
 
+    // SAFETY: `c_key` is NUL-terminated and `value` is live for its stated byte length.
     let ret = unsafe {
         #[cfg(target_os = "macos")]
         {
@@ -502,6 +508,7 @@ impl MakeArchiveData {
 impl Drop for MakeArchiveData {
     fn drop(&mut self) {
         if let Some(fd) = self.hardlink_db_fd.take() {
+            // SAFETY: `fd` is an owned file descriptor; `close` takes no pointers.
             unsafe {
                 libc::close(fd);
             }
@@ -514,6 +521,7 @@ impl Drop for MakeArchiveData {
 /// `make_archive_data_done`).
 pub fn make_archive_data_done(data: &mut MakeArchiveData) {
     if let Some(fd) = data.hardlink_db_fd.take() {
+        // SAFETY: `fd` is an owned file descriptor; `close` takes no pointers.
         unsafe {
             libc::close(fd);
         }
@@ -531,10 +539,12 @@ pub fn archive_generate_sparse(fd: RawFd) -> TarResult<Vec<(i64, i64)>> {
     let mut cursor: i64 = 0;
 
     loop {
+        // SAFETY: `lseek` takes only scalar arguments and does not dereference Rust memory.
         let hole = unsafe { libc::lseek(fd, cursor, libc::SEEK_HOLE) };
         if hole < 0 {
             let errno = last_errno();
             if errno == libc::ENXIO {
+                // SAFETY: `lseek` takes only scalar arguments and does not dereference Rust memory.
                 let end = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };
                 if end < 0 {
                     return Err(TarError::from_errno(last_errno()));
@@ -551,6 +561,7 @@ pub fn archive_generate_sparse(fd: RawFd) -> TarResult<Vec<(i64, i64)>> {
             regions.push((cursor, hole - cursor));
         }
 
+        // SAFETY: `lseek` takes only scalar arguments and does not dereference Rust memory.
         cursor = unsafe { libc::lseek(fd, hole, libc::SEEK_DATA) };
         if cursor < 0 {
             let errno = last_errno();
@@ -561,6 +572,7 @@ pub fn archive_generate_sparse(fd: RawFd) -> TarResult<Vec<(i64, i64)>> {
         }
     }
 
+    // SAFETY: `lseek` takes only scalar arguments and does not dereference Rust memory.
     if unsafe { libc::lseek(fd, 0, libc::SEEK_SET) } < 0 {
         return Err(TarError::from_errno(last_errno()));
     }
@@ -1192,6 +1204,7 @@ mod tests {
     fn last_errno_returns_value() {
         // After a failed syscall, last_errno should return a non-zero value.
         // We force an error by calling close(-1).
+        // SAFETY: `close` takes no pointers; -1 intentionally exercises its error path.
         unsafe { libc::close(-1) };
         let e = last_errno();
         assert_ne!(e, 0);

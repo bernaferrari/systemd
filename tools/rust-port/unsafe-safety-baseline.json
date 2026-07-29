@@ -822,16 +822,8 @@
       "unsafe_sites": 18
     },
     "src/shared/rust/barrier.rs": {
-      "missing_safety": 7,
-      "missing_safety_sites": [
-        "272:13:unsafe {",
-        "281:17:unsafe {",
-        "999:19:match unsafe { libc::fork() } {",
-        "1023:19:match unsafe { libc::fork() } {",
-        "1049:19:match unsafe { libc::fork() } {",
-        "1068:19:match unsafe { libc::fork() } {",
-        "1093:19:match unsafe { libc::fork() } {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 20
     },
     "src/shared/rust/btrfs_util.rs": {
@@ -1189,18 +1181,8 @@
       "unsafe_sites": 24
     },
     "src/shared/rust/socket_netlink.rs": {
-      "missing_safety": 9,
-      "missing_safety_sites": [
-        "858:14:let fd = unsafe { libc::socket(AF_NETLINK, SOCK_RAW, protocol) };",
-        "867:9:unsafe {",
-        "878:14:let fd = unsafe { libc::socket(AF_NETLINK, SOCK_RAW, protocol) };",
-        "891:15:let ret = unsafe {",
-        "910:15:let ret = unsafe {",
-        "930:15:let ret = unsafe { libc::recv(fd, buf.as_mut_ptr() as *mut c_void, buf.len(), 0) };",
-        "942:9:unsafe {",
-        "950:36:let mut stat_buf: libc::stat = unsafe { mem::zeroed() };",
-        "951:15:let ret = unsafe { libc::fstat(fd, &mut stat_buf) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 9
     },
     "src/shared/rust/specifier.rs": {
@@ -1209,22 +1191,8 @@
       "unsafe_sites": 16
     },
     "src/shared/rust/tar_util.rs": {
-      "missing_safety": 13,
-      "missing_safety_sites": [
-        "216:17:unsafe {",
-        "248:24:if unsafe { libc::fchown(raw, uid, gid) } < 0 {",
-        "253:24:if unsafe { libc::fchmod(raw, (self.mode & 0o7777) as _) } < 0 {",
-        "270:20:if unsafe { libc::futimens(raw, ts.as_ptr()) } < 0 {",
-        "280:27:let ret = unsafe {",
-        "404:15:let ret = unsafe {",
-        "505:13:unsafe {",
-        "517:9:unsafe {",
-        "534:20:let hole = unsafe { libc::lseek(fd, cursor, libc::SEEK_HOLE) };",
-        "538:27:let end = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };",
-        "554:18:cursor = unsafe { libc::lseek(fd, hole, libc::SEEK_DATA) };",
-        "564:8:if unsafe { libc::lseek(fd, 0, libc::SEEK_SET) } < 0 {",
-        "1195:9:unsafe { libc::close(-1) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 13
     },
     "src/shared/rust/tests.rs": {
@@ -1248,15 +1216,8 @@
       "unsafe_sites": 1
     },
     "src/shared/rust/wifi_util.rs": {
-      "missing_safety": 6,
-      "missing_safety_sites": [
-        "436:18:let fd = unsafe { libc::socket(AF_NETLINK, libc::SOCK_RAW, NETLINK_GENERIC) };",
-        "461:17:let r = unsafe {",
-        "481:21:let r = unsafe {",
-        "548:17:let r = unsafe {",
-        "569:28:let received = unsafe {",
-        "616:9:unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 6
     },
     "src/socket-proxy/rust/runtime.rs": {
@@ -1296,7 +1257,7 @@
     }
   },
   "totals": {
-    "missing_safety": 174,
+    "missing_safety": 139,
     "unsafe_sites": 4999
   },
   "version": 2,

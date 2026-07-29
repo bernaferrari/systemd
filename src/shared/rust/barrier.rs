@@ -269,6 +269,7 @@ impl Barrier {
 
         let them = sys_eventfd(0, libc::O_CLOEXEC | libc::O_NONBLOCK);
         if them < 0 {
+            // SAFETY: me is a successfully created eventfd owned by this function.
             unsafe {
                 libc::close(me);
             }
@@ -278,6 +279,7 @@ impl Barrier {
         let pipe = match create_pipe() {
             Ok(p) => p,
             Err(e) => {
+                // SAFETY: both eventfds were successfully created and are owned by this function.
                 unsafe {
                     libc::close(me);
                     libc::close(them);
@@ -996,6 +998,7 @@ mod tests {
         #[test]
         fn test_fork_abort_both_sides() {
             let mut b = Barrier::create().unwrap();
+            // SAFETY: the test forks before creating additional threads and handles both processes.
             match unsafe { libc::fork() } {
                 -1 => panic!("fork failed"),
                 0 => {
@@ -1020,6 +1023,7 @@ mod tests {
         #[test]
         fn test_fork_sync_roundtrip() {
             let mut b = Barrier::create().unwrap();
+            // SAFETY: the test forks before creating additional threads and handles both processes.
             match unsafe { libc::fork() } {
                 -1 => panic!("fork failed"),
                 0 => {
@@ -1046,6 +1050,7 @@ mod tests {
         #[test]
         fn test_fork_place_and_sync() {
             let mut b = Barrier::create().unwrap();
+            // SAFETY: the test forks before creating additional threads and handles both processes.
             match unsafe { libc::fork() } {
                 -1 => panic!("fork failed"),
                 0 => {
@@ -1065,6 +1070,7 @@ mod tests {
         #[test]
         fn test_fork_sync_next_no_wait() {
             let mut b = Barrier::create().unwrap();
+            // SAFETY: the test forks before creating additional threads and handles both processes.
             match unsafe { libc::fork() } {
                 -1 => panic!("fork failed"),
                 0 => {
@@ -1090,6 +1096,7 @@ mod tests {
         #[test]
         fn test_fork_abort_cancels_sync() {
             let mut b = Barrier::create().unwrap();
+            // SAFETY: the test forks before creating additional threads and handles both processes.
             match unsafe { libc::fork() } {
                 -1 => panic!("fork failed"),
                 0 => {

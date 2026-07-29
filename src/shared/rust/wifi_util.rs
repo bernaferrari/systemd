@@ -433,6 +433,7 @@ struct GenericNetlinkSocket {
 
 impl GenericNetlinkSocket {
     fn open() -> Result<Self, i32> {
+        // SAFETY: socket() takes only scalar arguments and returns an owned descriptor on success.
         let fd = unsafe { libc::socket(AF_NETLINK, libc::SOCK_RAW, NETLINK_GENERIC) };
         if fd < 0 {
             return Err(last_errno());
@@ -458,6 +459,7 @@ impl GenericNetlinkSocket {
             nl_groups: 0,
         };
 
+        // SAFETY: self.fd is owned, and addr is a valid SockAddrNl for the duration of bind().
         let r = unsafe {
             libc::bind(
                 self.fd,
@@ -478,6 +480,7 @@ impl GenericNetlinkSocket {
         };
 
         for name in [SO_RCVTIMEO, SO_SNDTIMEO] {
+            // SAFETY: self.fd is owned and timeout is valid initialized storage of the supplied size.
             let r = unsafe {
                 libc::setsockopt(
                     self.fd,
@@ -545,6 +548,7 @@ impl GenericNetlinkSocket {
             nl_groups: 0,
         };
 
+        // SAFETY: self.fd is owned; request and addr remain valid for the duration of sendto().
         let r = unsafe {
             libc::sendto(
                 self.fd,
@@ -566,6 +570,7 @@ impl GenericNetlinkSocket {
 
         loop {
             let mut buffer = vec![0u8; NETLINK_BUFFER_SIZE];
+            // SAFETY: self.fd is owned and buffer provides writable storage for its stated length.
             let received = unsafe {
                 libc::recv(
                     self.fd,
@@ -613,6 +618,7 @@ impl GenericNetlinkSocket {
 
 impl Drop for GenericNetlinkSocket {
     fn drop(&mut self) {
+        // SAFETY: self.fd is the descriptor owned by this socket and is closed exactly once here.
         unsafe {
             libc::close(self.fd);
         }
