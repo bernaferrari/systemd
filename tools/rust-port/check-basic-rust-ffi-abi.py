@@ -1254,26 +1254,6 @@ def time_arithmetic_boundary_is_reviewed() -> bool:
     )
 
 
-def install_change_boundary_is_reviewed() -> bool:
-    header, source, _ = PARTIAL_SURFACES["install_change"]
-    header_text = header.read_text()
-    source_text = source.read_text()
-    test = PARTIAL_SHADOW_TESTS["install_change"][0].read_text()
-    return (
-        '#include "install.h"' in header_text
-        and "bool rs_install_changes_have_modification(const InstallChange *changes, size_t n_changes);" in header_text
-        and "#[repr(C)]\npub struct InstallChange" in source_text
-        and "#[unsafe(no_mangle)]\npub unsafe extern \"C\" fn rs_install_changes_have_modification(" in source_text
-        and "# Safety" in source_text
-        and "std::slice::from_raw_parts(changes, n_changes)" in source_text
-        and "Only its `type_` field is inspected." in source_text
-        and '#include "rust/install.h"' in test
-        and "RsInstallChange" not in test
-        and "bool rs_install_changes_have_modification(" not in test
-        and "INSTALL_CHANGE_IS_MASKED" in test
-        and "rs_install_changes_have_modification(NULL, 0)" in test
-    )
-
 def virt_boundary_is_reviewed() -> bool:
     source = SURFACES["virt"][1].read_text()
     header = SURFACES["virt"][0].read_text()
@@ -2672,16 +2652,14 @@ def path_byte_abi_boundary_is_reviewed() -> bool:
     )
 
 
-def gpt_unit_install_predicates_are_reviewed() -> bool:
-    """Pin raw C scalar/layout boundaries for the seven inline predicates."""
+def gpt_unit_predicates_are_reviewed() -> bool:
+    """Pin raw C scalar/layout boundaries for the six retained inline predicates."""
 
     gpt_header, gpt_source, _ = PARTIAL_SURFACES["gpt_partition_predicates"]
     unit_header, unit_source, _ = PARTIAL_SURFACES["unit_install_predicates"]
-    install_header, install_source, _ = PARTIAL_SURFACES["install_change_predicate"]
     test = PARTIAL_SHADOW_TESTS["gpt_partition_predicates"][0].read_text()
     gpt_text = gpt_source.read_text()
     unit_text = unit_source.read_text()
-    install_text = install_source.read_text()
     return (
         "#[repr(C)]" in gpt_text
         and "pub struct GptPartitionType" in gpt_text
@@ -2700,16 +2678,11 @@ def gpt_unit_install_predicates_are_reviewed() -> bool:
         and "#[unsafe(no_mangle)]\npub extern \"C\" fn rs_unit_type_may_template" in unit_text
         and "unit_type_may_alias_raw(type_)" in unit_text
         and "unit_type_may_template_raw(type_)" in unit_text
-        and "pub const fn install_change_type_valid_raw(type_: i32) -> bool" in install_text
-        and "INSTALL_CHANGE_ERRNO_MAX: i32 = -4095" in install_text
-        and "(INSTALL_CHANGE_ERRNO_MAX..INSTALL_CHANGE_TYPE_MAX).contains(&type_)" in install_text
         and "#include \"gpt.h\"" in gpt_header.read_text()
         and "bool rs_gpt_partition_type_knows_read_only(GptPartitionType type);" in gpt_header.read_text()
         and "bool rs_unit_type_may_alias(int type);" in unit_header.read_text()
-        and "bool rs_INSTALL_CHANGE_TYPE_VALID(int type);" in install_header.read_text()
         and '#include "rust/gpt_util.h"' in test
         and '#include "rust/unit_file.h"' in test
-        and '#include "rust/install.h"' in test
         and "Rust FFI — GPT functions" not in test
         and "gpt_from(-1)" in test
         and "unit_type_may_alias(-1)" in test
@@ -3310,9 +3283,9 @@ def main() -> int:
         return fail(
             "path byte ABI must preserve component bytes/cursors, borrowed offsets, in-place writes, native O_DIRECTORY, and C allocator ownership"
         )
-    if not gpt_unit_install_predicates_are_reviewed():
+    if not gpt_unit_predicates_are_reviewed():
         return fail(
-            "GPT/unit/install inline ABI must preserve raw enum handling, native GPT layout, exact sets, and canonical headers/tests"
+            "GPT/unit inline ABI must preserve raw enum handling, native GPT layout, exact sets, and canonical headers/tests"
         )
     if not strv_escape_and_fnmatch_boundary_is_reviewed():
         return fail(
@@ -3379,10 +3352,6 @@ def main() -> int:
     if not time_arithmetic_boundary_is_reviewed():
         return fail(
             "time_util arithmetic must keep C-compatible timestamps, exact saturation, and explicit NULL-safe pointer contracts"
-        )
-    if not install_change_boundary_is_reviewed():
-        return fail(
-            "install-change must use the canonical InstallChange C type, exact repr-C ABI, and a documented read-only pointer contract"
         )
     if not virt_boundary_is_reviewed():
         return fail(

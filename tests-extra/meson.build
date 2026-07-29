@@ -2262,20 +2262,6 @@ if get_option('rust').enabled()
         test('test-resolve-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-shared-validators2-rust',
-                files('test-shared-validators2-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-shared-validators2-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-seccomp-import-rust',
                 files('test-seccomp-import-rust.c'),
                 include_directories : includes,
@@ -2662,20 +2648,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-securebits-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-shared-validators3-rust',
-                'test-shared-validators3-rust.c',
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-shared-validators3-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-errno-classify-rust',
@@ -3110,20 +3082,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-stat-util-inline-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-install-rust',
-                'test-install-rust.c',
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-install-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-dirent-util-rust',

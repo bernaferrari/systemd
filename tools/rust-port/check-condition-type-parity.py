@@ -2,7 +2,7 @@
 """Fail closed if the shared Rust ConditionType declarations drift from C.
 
 This deliberately performs no build or execution: current C condition/Assert
-tables are compared with the Rust enum's declared order and name tables.
+tables and the reviewed Rust condition behavior are compared statically.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ ROOT = Path(__file__).resolve().parents[2]
 C_SOURCE = ROOT / "src/shared/condition.c"
 C_HEADER = ROOT / "src/shared/condition.h"
 RUST_SOURCE = ROOT / "src/shared/rust/condition.rs"
-BASIC_RUST_SOURCE = ROOT / "src/basic/rust/shared_facades/policy.rs"
 
 
 def block(text: str, start: int, open_: str, close: str) -> str:
@@ -82,7 +81,6 @@ def main() -> int:
     c_header = C_HEADER.read_text()
     c_order = c_enum_order(c_header)
     rust_source = RUST_SOURCE.read_text()
-    basic_rust_source = BASIC_RUST_SOURCE.read_text()
     variants = rust_enum(rust_source)
     condition_variants, condition_names = rust_table(rust_source, "CONDITION_TYPE_NAMES")
     assert_variants, assert_names = rust_table(rust_source, "ASSERT_TYPE_NAMES")
@@ -98,59 +96,6 @@ def main() -> int:
         errors.append("Rust AssertType names differ from current C _assert_type_table")
     if len(variants) != 37:
         errors.append(f"Rust ConditionType count is {len(variants)}, expected current C count 37")
-
-    c_takes_path = named_block(
-        c_header,
-        r"\bstatic\s+inline\s+bool\s+condition_takes_path\s*\(",
-        "{",
-        "}",
-    )
-    c_path_names = set(re.findall(r"\bCONDITION_[A-Z_]+\b", c_takes_path))
-    path_start = c_order.index("CONDITION_PATH_EXISTS")
-    path_end = c_order.index("CONDITION_FILE_IS_EXECUTABLE")
-    expected_path_names = {
-        "CONDITION_NEEDS_UPDATE",
-        *c_order[path_start : path_end + 1],
-    }
-    if c_path_names != expected_path_names:
-        errors.append("current C condition_takes_path is no longer needs-update plus the path range")
-
-    rust_discriminants = {
-        name: int(value)
-        for name, value in re.findall(
-            r"^const\s+(CONDITION_[A-Z_]+):\s+i32\s*=\s*(\d+);$",
-            basic_rust_source,
-            re.MULTILINE,
-        )
-    }
-    expected_discriminants = {
-        name: c_order.index(name)
-        for name in (
-            "CONDITION_NEEDS_UPDATE",
-            "CONDITION_PATH_EXISTS",
-            "CONDITION_FILE_IS_EXECUTABLE",
-        )
-    }
-    if any(rust_discriminants.get(name) != value for name, value in expected_discriminants.items()):
-        errors.append("basic Rust condition_takes_path discriminants differ from current C enum order")
-
-    rust_takes_path = re.sub(
-        r"\s+",
-        "",
-        named_block(
-            basic_rust_source,
-            r"\bpub\s+fn\s+condition_takes_path\s*\(",
-            "{",
-            "}",
-        ),
-    )
-    if (
-        "t==CONDITION_NEEDS_UPDATE" not in rust_takes_path
-        or "(CONDITION_PATH_EXISTS..=CONDITION_FILE_IS_EXECUTABLE).contains(&t)"
-        not in rust_takes_path
-        or "pubextern\"C\"fnrs_condition_takes_path" not in re.sub(r"\s+", "", basic_rust_source)
-    ):
-        errors.append("basic Rust condition_takes_path/export no longer expresses the reviewed C predicate")
 
     c_machine_tag = compact(
         named_block(c_source, r"\bcondition_test_machine_tag\s*\(", "{", "}")
@@ -246,8 +191,7 @@ def main() -> int:
 
     print(
         f"condition type parity: entries={len(variants)} "
-        f"path_predicates={len(c_path_names)} condition/assert=current-C "
-        "fraction/machine-tag=reviewed"
+        "condition/assert=current-C fraction/machine-tag=reviewed"
     )
     return 0
 

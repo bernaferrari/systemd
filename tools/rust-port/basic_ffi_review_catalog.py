@@ -618,33 +618,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "install_change": (
-            basic_rust / "install.h",
-            basic_rust / "install_change.rs",
-            frozenset({"rs_install_changes_have_modification"}),
-        ),
-        "condition_takes_path": (
-            basic_rust / "misc_validators.h",
-            basic_rust / "shared_facades/policy.rs",
-            frozenset({"rs_condition_takes_path"}),
-        ),
-        "shared_policy_facades": (
-            basic_rust / "shared_facades/policy.h",
-            basic_rust / "shared_facades/policy.rs",
-            frozenset(
-                {
-                    "rs_secure_bits_from_string",
-                    "rs_secure_bits_to_string_alloc",
-                    "rs_secure_bits_to_strv",
-                    "rs_ioprio_class_is_valid",
-                    "rs_ioprio_priority_is_valid",
-                    "rs_ioprio_parse_priority",
-                    "rs_vlanid_is_valid",
-                    "rs_parse_vid_range",
-                    "rs_keymap_is_valid",
-                }
-            ),
-        ),
         "image_name_is_valid": (
             basic_rust / "misc_validators.h",
             basic_rust / "misc_validators.rs",
@@ -896,17 +869,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "header_inline_predicates": (
-            basic_rust / "shared_facades/header_predicates.h",
-            basic_rust / "shared_facades/header_predicates.rs",
-            frozenset(
-                {
-                    "rs_ERRNO_IS_NEG_BAD_ACCOUNT",
-                    "rs_OUTPUT_MODE_IS_JSON",
-                    "rs_SLEEP_OPERATION_IS_HIBERNATION",
-                }
-            ),
-        ),
         "is_device_path": (
             basic_rust / "path_util.h",
             basic_rust / "path_util.rs",
@@ -982,11 +944,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "unit_file.h",
             basic_rust / "unit_inline_abi.rs",
             frozenset({"rs_unit_type_may_alias", "rs_unit_type_may_template"}),
-        ),
-        "install_change_predicate": (
-            basic_rust / "install.h",
-            basic_rust / "install_change.rs",
-            frozenset({"rs_INSTALL_CHANGE_TYPE_VALID"}),
         ),
         "misc_inline_abi": (
             basic_rust / "misc_inline_abi.h",
@@ -1561,14 +1518,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "time_util_parsing": (tests_extra / "test-time-util-rust.c",),
         "time_util_arithmetic": (tests_extra / "test-time-util-extra2-rust.c",),
-        "install_change": (tests_extra / "test-install-rust.c",),
-        "condition_takes_path": (
-            tests_extra / "test-inline-helpers-rust.c",
-            tests_extra / "test-shared-validators2-rust.c",
-        ),
-        "shared_policy_facades": (
-            tests_extra / "test-shared-validators2-rust.c",
-        ),
         "image_name_is_valid": (tests_extra / "test-image-name-rust.c",),
         "os_release_pretty_name": (tests_extra / "test-image-name-rust.c",),
         "alloc_util": (tests_extra / "test-alloc-util-rust.c",),
@@ -1621,7 +1570,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-misc-rust2.c",
             tests_extra / "test-misc-untested2-rust.c",
         ),
-        "header_inline_predicates": (tests_extra / "test-shared-validators3-rust.c",),
         "is_device_path": (tests_extra / "test-stat-verify-rust.c",),
         "path_byte_abi": (
             tests_extra / "test-path-funcs-rust.c",
@@ -1632,7 +1580,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "path_header_inline": (tests_extra / "test-header-inline-rust.c",),
         "gpt_partition_predicates": (tests_extra / "test-gpt-unit-install-rust.c",),
         "unit_install_predicates": (tests_extra / "test-gpt-unit-install-rust.c",),
-        "install_change_predicate": (tests_extra / "test-gpt-unit-install-rust.c",),
         "misc_inline_abi": (tests_extra / "test-misc-inline-rust.c",),
         "xattr_util": (tests_extra / "test-xattr-util-rust.c",),
         "misc_validator_registered": (tests_extra / "test-misc-validators-rust.c",),
@@ -1695,6 +1642,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     # parser. Keeping them here still makes the reviewed CI target set one
     # source of truth.
     ci_only_shadow_tests = (
+        tests_extra / "test-inline-helpers-rust.c",
         tests_extra / "test-string-util-fundamental-rust.c",
         tests_extra / "test-string-util-rust.c",
         tests_extra / "test-string-util-extra-rust.c",
@@ -1901,18 +1849,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/time-util.h",
         ),
         "time_util_arithmetic": (root / "src/basic/time-util.h",),
-        "install_change": (root / "src/shared/install.h",),
-        "condition_takes_path": (root / "src/shared/condition.h",),
-        "shared_policy_facades": (
-            root / "src/shared/securebits-util.c",
-            root / "src/shared/securebits-util.h",
-            root / "src/shared/ioprio-util.c",
-            root / "src/shared/ioprio-util.h",
-            root / "src/shared/vlan-util.c",
-            root / "src/shared/vlan-util.h",
-            root / "src/shared/kbd-util.c",
-            root / "src/shared/kbd-util.h",
-        ),
         "image_name_is_valid": (root / "src/basic/os-util.c",),
         "os_release_pretty_name": (root / "src/basic/os-util.c",),
         "alloc_util": (
@@ -1986,11 +1922,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/web-util.c",
             root / "src/shared/web-util.h",
         ),
-        "header_inline_predicates": (
-            root / "src/basic/user-util.h",
-            root / "src/shared/output-mode.h",
-            root / "src/shared/sleep-config.h",
-        ),
         "is_device_path": (root / "src/basic/path-util.c", root / "src/basic/path-util.h"),
         "path_byte_abi": (root / "src/basic/path-util.h", root / "src/basic/path-util.c"),
         "utf8_header_inline": (root / "src/basic/utf8.h",),
@@ -1998,7 +1929,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "path_header_inline": (root / "src/basic/path-util.h",),
         "gpt_partition_predicates": (root / "src/shared/gpt.c", root / "src/shared/gpt.h"),
         "unit_install_predicates": (root / "src/shared/unit-file.h",),
-        "install_change_predicate": (root / "src/shared/install.h", root / "src/basic/errno-list.h"),
         "misc_inline_abi": (
             root / "src/basic/devnum-util.h",
             root / "src/basic/format-util.c",

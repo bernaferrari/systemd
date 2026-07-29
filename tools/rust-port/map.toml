@@ -1321,7 +1321,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "aa1e683f95f98d772429f599786f7847553775d8", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "d0bab274888356208d31522b02f911f6edca5415", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
@@ -1383,7 +1383,7 @@ status = "in-progress"
 tier = 1
 symbols = 3
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/arphrd-util.c" = "0c5a85edaa577ca45176c816d6de0f6e76f694eb", "src/basic/arphrd-util.h" = "97a1c0b248c5fed47e218f5fe703d779322c4b0f", "src/basic/arphrd-to-name.awk" = "302504b6510ddd7e2b90ae2097656b8d0ba86cb9", "src/basic/generate-arphrd-list.sh" = "be4c75d7e0b9a85c2ba4e12356888cbbd45466a2", "src/basic/meson.build" = "aa1e683f95f98d772429f599786f7847553775d8", "src/include/uapi/linux/if_arp.h" = "12d06bb6d87d995d9f85449a64a3009ce43ca957", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/arphrd-util.c" = "0c5a85edaa577ca45176c816d6de0f6e76f694eb", "src/basic/arphrd-util.h" = "97a1c0b248c5fed47e218f5fe703d779322c4b0f", "src/basic/arphrd-to-name.awk" = "302504b6510ddd7e2b90ae2097656b8d0ba86cb9", "src/basic/generate-arphrd-list.sh" = "be4c75d7e0b9a85c2ba4e12356888cbbd45466a2", "src/basic/meson.build" = "d0bab274888356208d31522b02f911f6edca5415", "src/include/uapi/linux/if_arp.h" = "12d06bb6d87d995d9f85449a64a3009ce43ca957", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/arphrd_util.rs" = "ecab09b0791eea5d40480688fe54479adb94cbc4", "src/basic/rust/arphrd_util.h" = "0698e817471435bb4fda2dc612bcc708bbb45964" }
 notes = "Reviewed static ARPHRD table slice 2026-07-28; no build/tests/VM. Three facades preserve generated Linux-UAPI name lookup, gperf ASCII case folding, the HDLC/CISCO alias, borrowed static output, uint16_t width, and address-length mapping. Generator inputs and Meson’s --ignore-case setting are pinned. C remains the production authority; runtime parity is unclaimed."
 
@@ -1558,7 +1558,7 @@ status = "in-progress"
 tier = 1
 symbols = 4
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/capability-list.c" = "6c60888327c31046f46decb004f0b5ab11e04d46", "src/basic/capability-list.h" = "f60569a61abc131c3b2442adc4bdb5e0c0776a02", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890", "src/basic/generate-capability-list.sh" = "ab87f94f500dccf931ad42ce7b05a892f82fe9f7", "src/basic/capability-to-name.awk" = "bd8a28c2fe8e32e90ae3201e67e524440c90e7cb", "src/basic/meson.build" = "aa1e683f95f98d772429f599786f7847553775d8", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/uapi/linux/capability.h" = "60fd34309de01c518f1de2d384ea4cf09525b29f", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/capability-list.c" = "6c60888327c31046f46decb004f0b5ab11e04d46", "src/basic/capability-list.h" = "f60569a61abc131c3b2442adc4bdb5e0c0776a02", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890", "src/basic/generate-capability-list.sh" = "ab87f94f500dccf931ad42ce7b05a892f82fe9f7", "src/basic/capability-to-name.awk" = "bd8a28c2fe8e32e90ae3201e67e524440c90e7cb", "src/basic/meson.build" = "d0bab274888356208d31522b02f911f6edca5415", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/uapi/linux/capability.h" = "60fd34309de01c518f1de2d384ea4cf09525b29f", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/capability_list.rs" = "466bd5573fec2f53213ad85eae4929e0428bbbf8", "src/basic/rust/capability_list.h" = "8284fb977e94a0044ee93b26c0975ff5bc182d3e" }
 notes = "Reviewed static capability-list ABI slice 2026-07-28; no build/tests/VM. Four facades preserve NUL-backed borrowed names, target-generated gperf ASCII case folding, safe_atoi numeric grammar, CAP_LIMIT bounds, and caller-buffer numeric rendering without allocation. The table is anchored to vendored UAPI and generation inputs; the Linux C-vs-Rust fixture deliberately detects a newer target table. Capability-set allocation/vector APIs remain C-only. C remains the production authority; runtime parity is unclaimed."
 
@@ -2395,31 +2395,13 @@ symbols = 11
 sync_status = "needs_review"
 notes = "2026-07-27 provenance audit records the distinct parser, URL, color, boot-entry, PKCS#11, and blob-name authorities behind this aggregate facade; behavioral completion remains unclaimed."
 
-[shared_policy_facades]
-c_paths = ["src/shared/securebits-util.c", "src/shared/securebits-util.h", "src/shared/ioprio-util.h", "src/shared/vlan-util.c", "src/shared/vlan-util.h", "src/shared/condition.h", "src/shared/kbd-util.c", "src/shared/kbd-util.h"]
-rust_paths = ["src/basic/rust/shared_facades/policy.rs", "src/basic/rust/shared_facades/policy.h"]
-status = "in-progress"
-tier = 3
-symbols = 10
-sync_status = "needs_review"
-notes = "2026-07-27 exports all ten securebits, I/O-priority, VLAN, condition, and keymap shadow-test facades with a canonical Rust C header and current C authorities. Allocation outputs use C ownership and transactional publication; differential runtime parity remains P2."
-
-[header_inline_predicates]
-c_paths = ["src/shared/output-mode.h", "src/shared/sleep-config.h", "src/basic/user-util.h"]
-rust_paths = ["src/basic/rust/shared_facades/header_predicates.rs", "src/basic/rust/shared_facades/header_predicates.h"]
-status = "in-progress"
-tier = 3
-symbols = 7
-sync_status = "needs_review"
-notes = "The registered predicates are current header-inline behavior from output-mode, sleep-config, and user-util headers. 2026-07-27 provenance audit removes the nonexistent synthetic authority; runtime parity remains unclaimed."
-
 [shared_facades-root]
 rust_file = "src/basic/rust/shared_facades/mod.rs"
 status = "in-progress"
 tier = 3
 symbols = 0
 sync_status = "needs_review"
-notes = "Rust-only module index. Each child facade owns its exact C/H authority separately; this row prevents the directory root from becoming an implicit semantic authority."
+notes = "Rust-only compatibility-module index. Each child records exact C/H authority separately; the index itself adds no semantic authority."
 
 [specifier_util]
 c_paths = [
@@ -3129,16 +3111,6 @@ symbols = 4
 sync_status = "needs_review"
 notes = "2026-07-27 static source review: BPF program loading/kernel ownership behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
 
-[bridge_util]
-c_file = "src/shared/bridge-util.c"
-rust_file = "src/shared/rust/bridge_util.rs"
-header_file = "src/shared/bridge-util.h"
-status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: bridge netlink attribute behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
-
 [bus_get_properties]
 c_file = "src/shared/bus-get-properties.c"
 rust_file = "src/shared/rust/bus_get_properties.rs"
@@ -3329,16 +3301,6 @@ tier = 2
 symbols = 5
 sync_status = "needs_review"
 notes = "2026-07-27 static source review: clock adjustment/system-call behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
-
-[color_util]
-c_file = "src/shared/color-util.c"
-rust_file = "src/shared/rust/color_util.rs"
-header_file = "src/shared/color-util.h"
-status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: color parsing/terminal environment behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
 
 [common_signal]
 c_file = "src/shared/common-signal.c"
@@ -3592,37 +3554,6 @@ tier = 3
 symbols = 5
 sync_status = "needs_review"
 notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-fstab.c); re-anchor to current upstream files before claiming completion."
-
-[geneve_util]
-c_file = "src/shared/geneve-util.c"
-rust_file = "src/shared/rust/geneve_util.rs"
-header_file = "src/shared/geneve-util.h"
-status = "in-progress"
-tier = 2
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: GENEVE netlink option behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
-
-[ima_util]
-c_file = "src/shared/ima-util.c"
-rust_file = "src/shared/rust/ima_util.rs"
-header_file = "src/shared/ima-util.h"
-status = "in-progress"
-tier = 3
-symbols = 2
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: IMA measurement/kernel interface behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
-
-[ioprio_util_shared]
-c_file = "src/shared/ioprio-util.c"
-rust_file = "src/shared/rust/ioprio_util.rs"
-header_file = "src/shared/ioprio-util.h"
-test_file = "src/test/test-ioprio.c"
-status = "in-progress"
-tier = 1
-symbols = 4
-sync_status = "needs_review"
-notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-ioprio.c); re-anchor to current upstream files before claiming completion."
 
 [ipvlan_util]
 c_file = "src/shared/ipvlan-util.c"

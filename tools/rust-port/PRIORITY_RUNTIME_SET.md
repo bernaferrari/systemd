@@ -52,7 +52,7 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | Session classification | `test-file-classify-rust` | ASCII-only session IDs, NULL/empty rejection, and opaque non-UTF-8 bytes |
 | Strv ownership / allocation | `test-strv-rust`, `test-strv-extra-rust` … `test-strv-extra7-rust`, `test-strv-fnmatch-rust`, `test-string-util-extra6-rust` | Includes base vector search/mutation plus registered push/consume/split/join/fnmatch surface |
 | Stat | `test-stat-util-rust`, `test-stat-util-extra2-rust`, `test-stat-util-inline-rust`, `test-stat-verify-rust` | Includes non-UTF-8 inode type string |
-| Shared facades | `test-shared-validators-rust`, `test-shared-validators2-rust`, `test-shared-validators3-rust` (+ related validator fixtures in the same job) | Policy/validation facades |
+| Shared facades | `test-shared-validators-rust` (+ related validator fixtures in the same job) | Validation and lookup facades |
 | Parse / time (exported slices) | `test-parse-util-extra-rust`, `test-parse-extra-rust`, `test-parse-util-inline-rust`, `test-time-util-extra2-rust` | Partial parse/time surfaces only |
 | Allocator overflow | `test-alloc-util-extra2-rust` | `malloc_multiply` / `memdup_*_multiply` SIZE_MAX guards |
 | Non-UTF-8 (broader) | `test-header-inline-rust`, plus string/escape/errno fixtures already in the job | Byte-oriented invalid UTF-8 |

@@ -12,5 +12,4 @@ bool rs_valid_gecos(const char *d);
 bool rs_log_namespace_name_valid(const char *s);
 bool rs_valid_home(const char *p);
 bool rs_valid_shell(const char *p);
-bool rs_condition_takes_path(int t);
 bool rs_image_name_is_valid(const char *s);

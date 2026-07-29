@@ -99,7 +99,7 @@ jobs:
   #                         test-strv-fnmatch-rust, test-string-util-extra6-rust
   #   stat: test-stat-util-rust, test-stat-util-extra2-rust,
   #         test-stat-util-inline-rust, test-stat-verify-rust
-  #   shared facades: test-shared-validators{,2,3}-rust (+ related validators)
+  #   shared facades: test-shared-validators-rust (+ related validators)
   #   parse/time slices: test-parse-util-extra-rust, test-parse-extra-rust,
   #                      test-parse-util-inline-rust, test-time-util-extra-rust,
   #                      test-time-util-extra2-rust
@@ -177,7 +177,6 @@ jobs:
           test-capability-list-rust
           test-capability-util-rust
           test-unit-name-rust
-          test-install-rust
           test-string-util-rust
           test-string-util-fundamental-rust
           test-string-util-extra-rust
@@ -222,8 +221,6 @@ jobs:
           test-user-util-rust
           test-basic-validators-rust
           test-inline-helpers-rust
-          test-shared-validators2-rust
-          test-shared-validators3-rust
           test-dns-type-predicates-rust
           test-ether-addr-util-rust
           test-errno-util-rust
@@ -344,7 +341,6 @@ jobs:
           test-capability-list-rust
           test-capability-util-rust
           test-unit-name-rust
-          test-install-rust
           test-string-util-rust
           test-string-util-fundamental-rust
           test-string-util-extra-rust
@@ -389,8 +385,6 @@ jobs:
           test-user-util-rust
           test-basic-validators-rust
           test-inline-helpers-rust
-          test-shared-validators2-rust
-          test-shared-validators3-rust
           test-dns-type-predicates-rust
           test-ether-addr-util-rust
           test-errno-util-rust

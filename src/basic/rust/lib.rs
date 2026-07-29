@@ -107,7 +107,6 @@ pub mod image_class;
 pub mod image_policy_util;
 pub mod import_util;
 pub mod in_addr_util;
-pub mod install_change;
 pub mod ioprio_util;
 pub mod iovec_util;
 pub mod iovec_wrapper;

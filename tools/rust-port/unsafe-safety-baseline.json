@@ -292,11 +292,6 @@
       ],
       "unsafe_sites": 145
     },
-    "src/basic/rust/install_change.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
     "src/basic/rust/iovec_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -505,11 +500,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 26
-    },
-    "src/basic/rust/shared_facades/policy.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 28
     },
     "src/basic/rust/shared_facades/validation.rs": {
       "missing_safety": 0,
@@ -1237,11 +1227,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
-    },
-    "src/shared/rust/dm_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
     },
     "src/shared/rust/enable_mempool.rs": {
       "missing_safety": 0,

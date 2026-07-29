@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 10:53 UTC
+Generated: 2026-07-29 11:06 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **395**
-- `genuine-rust`: **266**
-- `ffi-backed-rust`: **129**
+- Total modules audited: **385**
+- `genuine-rust`: **257**
+- `ffi-backed-rust`: **128**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -84,7 +84,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/image_policy_util.rs` | 17 | 69 | 0 | 169 |
 | `src/basic/rust/import_util.rs` | 5 | 23 | 0 | 29 |
 | `src/basic/rust/in_addr_util.rs` | 1 | 77 | 1 | 199 |
-| `src/basic/rust/install_change.rs` | 2 | 3 | 0 | 2 |
 | `src/basic/rust/ioprio_util.rs` | 4 | 34 | 0 | 2 |
 | `src/basic/rust/iovec_util.rs` | 12 | 41 | 0 | 34 |
 | `src/basic/rust/iovec_wrapper.rs` | 8 | 36 | 0 | 34 |

@@ -13,7 +13,6 @@
 #include "rust/memory_util.h"
 #include "rust/ratelimit.h"
 #include "rust/gpt_util.h"
-bool rs_condition_takes_path(int t);
 
 /* ── memcpy_safe ──────────────────────────────────────────────────────── */
 
@@ -207,28 +206,6 @@ TEST(partition_designator_is_verity_sig) {
 TEST(partition_designator_is_verity) {
         assert_se(partition_designator_is_verity(PARTITION_ROOT_VERITY) == rs_partition_designator_is_verity(PARTITION_ROOT_VERITY));
         assert_se(partition_designator_is_verity(PARTITION_ROOT) == rs_partition_designator_is_verity(PARTITION_ROOT));
-}
-
-/* ── condition_takes_path ─────────────────────────────────────────────── */
-
-TEST(condition_takes_path_values) {
-        assert_se(condition_takes_path(CONDITION_PATH_EXISTS) == rs_condition_takes_path(CONDITION_PATH_EXISTS));
-        assert_se(condition_takes_path(CONDITION_PATH_EXISTS) == true);
-
-        assert_se(condition_takes_path(CONDITION_PATH_IS_DIRECTORY) == rs_condition_takes_path(CONDITION_PATH_IS_DIRECTORY));
-        assert_se(condition_takes_path(CONDITION_PATH_IS_DIRECTORY) == true);
-
-        assert_se(condition_takes_path(CONDITION_NEEDS_UPDATE) == rs_condition_takes_path(CONDITION_NEEDS_UPDATE));
-        assert_se(condition_takes_path(CONDITION_NEEDS_UPDATE) == true);
-
-        assert_se(condition_takes_path(CONDITION_ARCHITECTURE) == rs_condition_takes_path(CONDITION_ARCHITECTURE));
-        assert_se(condition_takes_path(CONDITION_ARCHITECTURE) == false);
-
-        assert_se(condition_takes_path(CONDITION_MEMORY) == rs_condition_takes_path(CONDITION_MEMORY));
-        assert_se(condition_takes_path(CONDITION_MEMORY) == false);
-
-        assert_se(condition_takes_path(CONDITION_USER) == rs_condition_takes_path(CONDITION_USER));
-        assert_se(condition_takes_path(CONDITION_USER) == false);
 }
 
 DEFINE_TEST_MAIN(LOG_INFO);
