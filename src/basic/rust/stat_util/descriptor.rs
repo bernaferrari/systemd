@@ -177,7 +177,7 @@ pub unsafe extern "C" fn rs_is_dir_at(
 pub unsafe extern "C" fn rs_is_dir(path: *const libc::c_char, follow: bool) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
     let path = unsafe { optional_c_path(path) };
-    if path.map_or(true, CStr::is_empty) {
+    if path.is_none_or(CStr::is_empty) {
         return -libc::EINVAL;
     }
     verify_stat_at(libc::AT_FDCWD, path, follow, Verification::Directory, false)
@@ -198,7 +198,7 @@ pub extern "C" fn rs_fd_verify_symlink(fd: libc::c_int) -> libc::c_int {
 pub unsafe extern "C" fn rs_is_symlink(path: *const libc::c_char) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
     let path = unsafe { optional_c_path(path) };
-    if path.map_or(true, CStr::is_empty) {
+    if path.is_none_or(CStr::is_empty) {
         return -libc::EINVAL;
     }
     verify_stat_at(libc::AT_FDCWD, path, false, Verification::Symlink, false)
@@ -219,7 +219,7 @@ pub extern "C" fn rs_fd_verify_socket(fd: libc::c_int) -> libc::c_int {
 pub unsafe extern "C" fn rs_is_socket(path: *const libc::c_char) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
     let path = unsafe { optional_c_path(path) };
-    if path.map_or(true, CStr::is_empty) {
+    if path.is_none_or(CStr::is_empty) {
         return -libc::EINVAL;
     }
     verify_stat_at(libc::AT_FDCWD, path, true, Verification::Socket, false)
@@ -248,7 +248,7 @@ pub extern "C" fn rs_fd_verify_block(fd: libc::c_int) -> libc::c_int {
 pub unsafe extern "C" fn rs_is_device_node(path: *const libc::c_char) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
     let path = unsafe { optional_c_path(path) };
-    if path.map_or(true, CStr::is_empty) {
+    if path.is_none_or(CStr::is_empty) {
         return -libc::EINVAL;
     }
     verify_stat_at(libc::AT_FDCWD, path, false, Verification::DeviceNode, false)

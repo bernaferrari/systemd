@@ -12,7 +12,6 @@ use std::ptr;
 use crate::ffi::Errno;
 
 pub const SECCOMP_ERROR_NUMBER_KILL: i32 = i32::MAX - 1;
-const ERRNO_MAX: i32 = 4095;
 
 // SCMP_ARCH_* is a stable public libseccomp ABI. Keep these values synchronized
 // with <seccomp.h>; unlike Linux AUDIT_ARCH_*, the MIPS N32 tokens include
@@ -308,6 +307,8 @@ pub unsafe extern "C" fn rs_seccomp_arch_from_string(name: *const c_char, ret: *
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ERRNO_MAX: i32 = 4095;
 
     #[test]
     fn errno_or_action_validation_matches_c_range() {

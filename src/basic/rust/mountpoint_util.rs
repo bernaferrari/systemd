@@ -90,7 +90,7 @@ pub fn mount_propagation_flag_from_string(name: &str) -> Result<MountPropagation
     mount_propagation_flag_from_bytes(name.as_bytes())
 }
 
-pub fn mount_propagation_flag_is_valid(flag: MountPropagationFlag) -> bool {
+pub fn mount_propagation_flag_is_valid(_flag: MountPropagationFlag) -> bool {
     true
 }
 

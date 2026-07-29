@@ -25,6 +25,19 @@ resolver so a newly added crate cannot silently weaken the language contract.
 The current dependency graph requires Rust 1.87 or newer; CI installs the
 current stable toolchain.
 
+Developer-only test crates still live in the canonical
+`src/<subsystem>/rust/` layout. A crate may declare
+`package.metadata.systemd-rust.dev-only = true` only when it is unpublished,
+has an explicit `[[test]]` target, and declares no library or binary release
+target. The architecture and safety-lint policy gates enforce those conditions;
+the deterministic parser fuzz smoke harness is the fuzz subsystem's example.
+When such a harness compiles source-level fixtures from another subsystem, its
+manifest must list every external `#[path]` source by canonical repository path
+(for example, `src/shared/rust/example.rs`). The architecture
+gate permits only existing canonical `src/<subsystem>/rust/**/*.rs` fixtures,
+so source-level test coverage cannot bypass crate ownership or dependency
+layering by adding an unreviewed path escape.
+
 The root `Cargo.lock` is the reproducible dependency authority. Direct
 requirements may live in a member manifest when their feature/API needs are
 crate-local, but they must resolve through that one lockfile. The repository's

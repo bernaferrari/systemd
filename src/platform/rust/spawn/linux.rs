@@ -1810,10 +1810,8 @@ fn spawn_service_inner(
             cloned_into_cgroup,
         } => {
             drop(status_write);
-            if !cloned_into_cgroup {
-                if let Some(cgroup_procs_fd) = launch.cgroup_procs_fd.as_ref() {
-                    parent_place_child_best_effort(cgroup_procs_fd.as_fd(), child);
-                }
+            if !cloned_into_cgroup && let Some(cgroup_procs_fd) = launch.cgroup_procs_fd.as_ref() {
+                parent_place_child_best_effort(cgroup_procs_fd.as_fd(), child);
             }
             if await_exec {
                 wait_for_exec_status(status_read, child, &identity)?;
@@ -1866,10 +1864,10 @@ fn spawn_service_inner(
             };
             drop(status_write);
 
-            if let Some(cgroup_procs_fd) = launch.cgroup_procs_fd.as_ref() {
-                if let Err(errno) = child_write_cgroup_procs(cgroup_procs_fd.as_raw_fd()) {
-                    child_report_failure(status_fd, ChildSpawnStage::Cgroup, errno);
-                }
+            if let Some(cgroup_procs_fd) = launch.cgroup_procs_fd.as_ref()
+                && let Err(errno) = child_write_cgroup_procs(cgroup_procs_fd.as_raw_fd())
+            {
+                child_report_failure(status_fd, ChildSpawnStage::Cgroup, errno);
             }
 
             if let Err(error) = duplicate_activation_fds(

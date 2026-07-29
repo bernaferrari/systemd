@@ -17,7 +17,7 @@ use crate::ffi::{Errno, calloc, free, malloc};
 
 pub(crate) fn alloc_empty_c_string() -> *mut c_char {
     // SAFETY: malloc(1) returns null or one writable byte owned by the caller.
-    let ptr = unsafe { malloc(1) }.cast::<c_char>();
+    let ptr = malloc(1).cast::<c_char>();
     if !ptr.is_null() {
         // SAFETY: successful malloc above provided exactly one writable byte.
         unsafe { *ptr = 0 };
@@ -207,7 +207,7 @@ pub unsafe fn rs_make_cstring(s: *const c_char, n: usize, mode: i32, ret: *mut *
             return 0;
         }
         // SAFETY: calloc returns null or a unique zeroed byte.
-        let value = unsafe { calloc(1, 1) }.cast::<c_char>();
+        let value = calloc(1, 1).cast::<c_char>();
         if value.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }

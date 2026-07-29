@@ -37,15 +37,6 @@ pub(crate) fn from_bytes(table: &'static [Entry], input: &[u8]) -> Option<i32> {
         .find_map(|&(value, name)| (static_cstr(name).to_bytes() == input).then_some(value))
 }
 
-#[inline]
-pub(crate) fn from_bytes_ignore_ascii_case(table: &'static [Entry], input: &[u8]) -> Option<i32> {
-    table.iter().find_map(|&(value, name)| {
-        input
-            .eq_ignore_ascii_case(static_cstr(name).to_bytes())
-            .then_some(value)
-    })
-}
-
 /// Borrow a caller-owned C string without taking ownership.
 ///
 /// # Safety

@@ -62,7 +62,6 @@ static DNS_SVC_PARAM_KEY_TABLE: &[(i32, &[u8])] = &[
 /// C ABI facade. Returns a borrowed static string or NULL for an unknown value.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_dns_svc_param_key_to_string(v: i32) -> *const c_char {
     for &(idx, name) in DNS_SVC_PARAM_KEY_TABLE {
@@ -111,7 +110,6 @@ static DNS_EDE_RCODE_TABLE: &[(i32, &[u8])] = &[
 /// C ABI facade. Returns a borrowed static string or NULL for an unknown value.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_dns_ede_rcode_to_string(v: i32) -> *const c_char {
     for &(idx, name) in DNS_EDE_RCODE_TABLE {
@@ -141,7 +139,6 @@ const DNS_EDE_RCODE_NSEC_MISSING: i32 = 12;
 /// C ABI facade. Accepts any integer DNS EDE code.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_dns_ede_rcode_is_dnssec(ede_rcode: i32) -> bool {
     matches!(
@@ -166,7 +163,6 @@ static DNS_CLASS_TABLE: &[(i32, &[u8])] = &[(1, b"IN\0"), (255, b"ANY\0")];
 /// C ABI facade. Returns a borrowed static string or NULL for an unknown value.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_dns_class_to_string(v: i32) -> *const c_char {
     for &(idx, name) in DNS_CLASS_TABLE {
@@ -180,7 +176,6 @@ pub extern "C" fn rs_dns_class_to_string(v: i32) -> *const c_char {
 /// C ABI facade. `s` must be null or a valid NUL-terminated C string.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_dns_class_from_string(s: *const c_char) -> i32 {
     if s.is_null() {

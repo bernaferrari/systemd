@@ -125,7 +125,7 @@ fn wol_options_string_alloc_formats_set_bits() {
 fn tpm2_hash_helpers_match_known_algorithms() {
     assert_eq!(
         // SAFETY: This test controls all input and output lifetimes; returned pointers are validated before dereference and C allocations are released exactly once.
-        unsafe { rs_tpm2_hash_alg_to_size(TPM2_ALG_SHA256) },
+        rs_tpm2_hash_alg_to_size(TPM2_ALG_SHA256),
         32
     );
     assert_eq!(
@@ -150,7 +150,7 @@ fn nl80211_tables_expose_expected_values() {
     );
     assert!(
         // SAFETY: this C ABI lookup takes no pointer input and returns only a borrowed static pointer.
-        unsafe { rs_nl80211_cmd_to_string(0) }.is_null()
+        rs_nl80211_cmd_to_string(0).is_null()
     );
 }
 

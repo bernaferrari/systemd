@@ -41,7 +41,6 @@ static SR_IOV_ATTRIBUTE_TABLE: &[(i32, &[u8])] = &[
 /// C ABI facade. Returns a borrowed static string or NULL for an unknown value.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_sr_iov_attribute_to_string(v: i32) -> *const c_char {
     for &(idx, name) in SR_IOV_ATTRIBUTE_TABLE {
@@ -139,7 +138,6 @@ static TPM2_PCR_INDEX_TABLE: &[(i32, &[u8])] = &[
 /// C ABI facade. Returns a borrowed static string or NULL for an unknown value.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_tpm2_pcr_index_to_string(v: i32) -> *const c_char {
     for &(idx, name) in TPM2_PCR_INDEX_TABLE {
@@ -154,7 +152,6 @@ pub extern "C" fn rs_tpm2_pcr_index_to_string(v: i32) -> *const c_char {
 /// C ABI facade. `s` must be null or a valid NUL-terminated C string.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_tpm2_pcr_index_from_string(s: *const c_char) -> i32 {
     // SAFETY: required by this C ABI entry point's contract.
@@ -190,7 +187,6 @@ const TPM2_PCRS_MAX: i32 = 24;
 /// C ABI facade. Accepts a TPM algorithm identifier.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_tpm2_hash_alg_to_size(alg: u16) -> i32 {
     match alg {
@@ -206,7 +202,6 @@ pub extern "C" fn rs_tpm2_hash_alg_to_size(alg: u16) -> i32 {
 /// C ABI facade. Returns a borrowed static string or NULL for an unknown value.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_tpm2_hash_alg_to_string(alg: u16) -> *const c_char {
     match alg {
@@ -222,7 +217,6 @@ pub extern "C" fn rs_tpm2_hash_alg_to_string(alg: u16) -> *const c_char {
 /// C ABI facade. `alg` must be null or a valid NUL-terminated C string.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_tpm2_hash_alg_from_string(alg: *const c_char) -> i32 {
     // SAFETY: the caller guarantees alg is null or a live NUL-terminated C string.
@@ -250,7 +244,6 @@ pub unsafe extern "C" fn rs_tpm2_hash_alg_from_string(alg: *const c_char) -> i32
 /// C ABI facade. Returns a borrowed static string or NULL for an unknown value.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_tpm2_asym_alg_to_string(alg: u16) -> *const c_char {
     match alg {
@@ -264,7 +257,6 @@ pub extern "C" fn rs_tpm2_asym_alg_to_string(alg: u16) -> *const c_char {
 /// C ABI facade. `alg` must be null or a valid NUL-terminated C string.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_tpm2_asym_alg_from_string(alg: *const c_char) -> i32 {
     // SAFETY: the caller guarantees alg is null or a live NUL-terminated C string.
@@ -286,7 +278,6 @@ pub unsafe extern "C" fn rs_tpm2_asym_alg_from_string(alg: *const c_char) -> i32
 /// C ABI facade. Returned storage is allocated with the C allocator and must be freed by C.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_tpm2_pcr_mask_to_string(mask: u32) -> *mut c_char {
     if mask == 0 {
@@ -350,7 +341,6 @@ pub extern "C" fn rs_tpm2_pcr_mask_to_string(mask: u32) -> *mut c_char {
 /// C ABI facade. `name` must be null or a valid NUL-terminated C string.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_tpm2_nvpcr_name_is_valid(name: *const c_char) -> bool {
     if name.is_null() {
@@ -527,7 +517,6 @@ static NL80211_CMD_TABLE: &[(i32, &[u8])] = &[
 /// C ABI facade. Returns a borrowed static string or NULL for an unknown value.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_nl80211_cmd_to_string(v: i32) -> *const c_char {
     for &(idx, name) in NL80211_CMD_TABLE {

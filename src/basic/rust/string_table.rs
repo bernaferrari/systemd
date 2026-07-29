@@ -28,7 +28,7 @@ pub fn parse_boolean(s: &str) -> Option<bool> {
 /// Parse an unsigned integer from a string (base 10).
 /// Returns `Ok(value)` on success, `Err(Errno::EINVAL)` on failure.
 pub fn safe_atou(s: &str) -> Result<u32, Errno> {
-    u32::from_str_radix(s.trim(), 10).map_err(|_| Errno::EINVAL)
+    s.trim().parse::<u32>().map_err(|_| Errno::EINVAL)
 }
 
 // ── string_table_lookup_to_string ─────────────────────────────────────────

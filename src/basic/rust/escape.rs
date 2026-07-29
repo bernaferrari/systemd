@@ -121,6 +121,7 @@ fn utf8_encode_unichar_into(g: u32, buf: &mut [u8; 4]) -> usize {
 }
 
 /// Encode a Unicode codepoint to an owned UTF-8 byte sequence.
+#[cfg(test)]
 fn utf8_encode_unichar(g: u32) -> Vec<u8> {
     let mut buf = [0u8; 4];
     let len = utf8_encode_unichar_into(g, &mut buf);
@@ -150,8 +151,8 @@ fn utf8_encoded_valid_unichar(s: &[u8]) -> i32 {
         return -1;
     }
     // Verify continuation bytes
-    for i in 1..len {
-        if s[i] & 0xC0 != 0x80 {
+    for &byte in &s[1..len] {
+        if byte & 0xC0 != 0x80 {
             return -1;
         }
     }

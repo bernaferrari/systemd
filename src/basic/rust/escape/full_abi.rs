@@ -86,7 +86,7 @@ fn try_xescape_full(
             .len()
             .checked_add(width)
             .and_then(|length| length.checked_add(ellipsis_length))
-            .map_or(true, |length| length > body_length)
+            .is_none_or(|length| length > body_length)
         {
             return Ok(with_ellipsis(result, body_length, previous, previous2));
         }
@@ -126,7 +126,7 @@ fn with_ellipsis(
         body_length - dots
     };
     result.truncate(offset);
-    result.extend(std::iter::repeat(b'.').take(dots));
+    result.extend(std::iter::repeat_n(b'.', dots));
     result
 }
 
@@ -335,7 +335,7 @@ pub unsafe extern "C" fn rs_quote_command_line(
         };
         match &mut result {
             Some(joined) => {
-                let additional = quoted.len().checked_add(1).unwrap_or(usize::MAX);
+                let additional = quoted.len().saturating_add(1);
                 if joined.try_reserve_exact(additional).is_err() {
                     return ptr::null_mut();
                 }

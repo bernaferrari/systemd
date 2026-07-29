@@ -19,7 +19,7 @@ const LINUX_HOST_NAME_MAX: usize = 64;
 
 // ── Flags ──────────────────────────────────────────────────────────────────
 
-/// Flags controlling hostname validation behavior.
+// Flags controlling hostname validation behavior.
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ValidHostnameFlags: u32 {

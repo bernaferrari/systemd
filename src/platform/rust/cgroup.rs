@@ -168,11 +168,11 @@ fn build_cgroup_path(path: &str, suffix: Option<&str>) -> io::Result<PathBuf> {
         full.push(component);
     }
 
-    if let Some(suffix) = suffix {
-        if !suffix.is_empty() {
-            for component in normalize_components(suffix)? {
-                full.push(component);
-            }
+    if let Some(suffix) = suffix
+        && !suffix.is_empty()
+    {
+        for component in normalize_components(suffix)? {
+            full.push(component);
         }
     }
 
@@ -425,10 +425,10 @@ pub fn cg_is_delegated(path: &str) -> io::Result<bool> {
 
     for key in ["cgroup.procs", "cgroup.subtree_control"] {
         let file = root.join(key);
-        if let Ok(md) = fs::metadata(file) {
-            if md.uid() != uid {
-                return Ok(false);
-            }
+        if let Ok(md) = fs::metadata(file)
+            && md.uid() != uid
+        {
+            return Ok(false);
         }
     }
 

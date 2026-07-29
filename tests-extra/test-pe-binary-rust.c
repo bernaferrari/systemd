@@ -224,6 +224,7 @@ static void build_pe_header_machine(
 
 static void test_pe_is_native(void) {
         uint8_t buf[256];
+        uint16_t non_native_machine = UINT16_C(0x8664);
         bool cb, rb;
 
 #ifdef _IMAGE_FILE_MACHINE_NATIVE
@@ -233,16 +234,17 @@ static void test_pe_is_native(void) {
         rb = rs_pe_is_native(buf);
         assert_se(cb == rb);
         assert_se(cb == true);
+
+        non_native_machine = _IMAGE_FILE_MACHINE_NATIVE == UINT16_C(0x8664) ?
+                UINT16_C(0xaa64) : UINT16_C(0x8664);
 #endif
 
-        /* Non-native machine (x86_64 = 0x8664) */
-        build_pe_header_machine(buf, 0x020B, 0x8664);
+        /* A machine type distinct from the native one */
+        build_pe_header_machine(buf, 0x020B, non_native_machine);
         cb = pe_is_native((const PeHeader *)buf);
         rb = rs_pe_is_native(buf);
         assert_se(cb == rb);
-#ifdef _IMAGE_FILE_MACHINE_NATIVE
         assert_se(cb == false);
-#endif
 }
 
 /* ── pe_header_get_data_directory ──────────────────────────────────────── */

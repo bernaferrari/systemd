@@ -287,7 +287,7 @@ pub(crate) fn try_utf8_escape_non_printable(
             }
             if display_width
                 .checked_add(1)
-                .map_or(true, |width| width > max_width)
+                .is_none_or(|width| width > max_width)
             {
                 output.truncate(previous);
             }
@@ -301,11 +301,11 @@ pub(crate) fn try_utf8_escape_non_printable(
                 let width = console_width(character);
                 if display_width
                     .checked_add(width)
-                    .map_or(true, |total| total > max_width)
+                    .is_none_or(|total| total > max_width)
                 {
                     if display_width
                         .checked_add(1)
-                        .map_or(true, |total| total > max_width)
+                        .is_none_or(|total| total > max_width)
                     {
                         output.truncate(previous);
                     }
@@ -319,11 +319,11 @@ pub(crate) fn try_utf8_escape_non_printable(
                 for _ in 0..length {
                     if display_width
                         .checked_add(4)
-                        .map_or(true, |total| total > max_width)
+                        .is_none_or(|total| total > max_width)
                     {
                         if display_width
                             .checked_add(1)
-                            .map_or(true, |total| total > max_width)
+                            .is_none_or(|total| total > max_width)
                         {
                             output.truncate(previous);
                         }
@@ -344,11 +344,11 @@ pub(crate) fn try_utf8_escape_non_printable(
         } else {
             if display_width
                 .checked_add(1)
-                .map_or(true, |total| total > max_width)
+                .is_none_or(|total| total > max_width)
             {
                 if display_width
                     .checked_add(1)
-                    .map_or(true, |total| total > max_width)
+                    .is_none_or(|total| total > max_width)
                 {
                     output.truncate(previous);
                 }

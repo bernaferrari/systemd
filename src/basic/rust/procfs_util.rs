@@ -340,7 +340,7 @@ fn procfs_cpu_get_usage_at(path: &Path) -> Result<u64, Errno> {
     let numerator_factor = NSEC_PER_SEC / gcd;
     let denominator_factor = ticks_per_second / gcd;
     let value = sum.wrapping_mul(numerator_factor);
-    Ok(value / denominator_factor + u64::from(value % denominator_factor != 0))
+    Ok(value / denominator_factor + u64::from(!value.is_multiple_of(denominator_factor)))
 }
 
 /// Parse a meminfo value string and convert to bytes.

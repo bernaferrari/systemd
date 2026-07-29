@@ -81,10 +81,10 @@ impl Sha1Ctx {
     /// extracts the digest, and wipes internal state.
     pub fn finish(&mut self) -> [u8; SHA1_DIGEST_SIZE] {
         let mut finalcount = [0u8; 8];
-        for i in 0..8usize {
+        for (i, byte) in finalcount.iter_mut().enumerate() {
             let idx = if i >= 4 { 0 } else { 1 };
             let shift = (3 - (i & 3)) * 8;
-            finalcount[i] = ((self.count[idx] >> shift) & 0xFF) as u8;
+            *byte = ((self.count[idx] >> shift) & 0xFF) as u8;
         }
 
         self.update(&[0x80]);
@@ -94,9 +94,9 @@ impl Sha1Ctx {
         self.update(&finalcount);
 
         let mut result = [0u8; SHA1_DIGEST_SIZE];
-        for i in 0..SHA1_DIGEST_SIZE {
+        for (i, byte) in result.iter_mut().enumerate() {
             let shift = (3 - (i & 3)) * 8;
-            result[i] = ((self.state[i >> 2] >> shift) & 0xFF) as u8;
+            *byte = ((self.state[i >> 2] >> shift) & 0xFF) as u8;
         }
 
         // Wipe context and temp
@@ -112,7 +112,7 @@ impl Sha1Ctx {
 // ── Core transform ────────────────────────────────────────────────────────
 
 const fn rol(value: u32, bits: u32) -> u32 {
-    (value << bits) | (value >> (32 - bits))
+    value.rotate_left(bits)
 }
 
 /// SHA-1 block transform for a single 512-bit (64-byte) block.
@@ -122,9 +122,9 @@ const fn rol(value: u32, bits: u32) -> u32 {
 /// and message schedule expansion.
 fn sha1_do_transform(state: &mut [u32; 5], buffer: &[u8; 64]) {
     let mut w = [0u32; 16];
-    for i in 0..16 {
+    for (i, word) in w.iter_mut().enumerate() {
         let off = i * 4;
-        w[i] = u32::from_be_bytes([
+        *word = u32::from_be_bytes([
             buffer[off],
             buffer[off + 1],
             buffer[off + 2],
@@ -135,10 +135,10 @@ fn sha1_do_transform(state: &mut [u32; 5], buffer: &[u8; 64]) {
     let (mut a, mut b, mut c, mut d, mut e) = (state[0], state[1], state[2], state[3], state[4]);
 
     // Rounds 0-15: R0 — z += ((w & (x ^ y)) ^ y) + blk0(i) + 0x5A827999
-    for i in 0..16 {
+    for word in &w {
         let temp = e
             .wrapping_add((b & (c ^ d)) ^ d)
-            .wrapping_add(w[i])
+            .wrapping_add(*word)
             .wrapping_add(0x5A827999)
             .wrapping_add(rol(a, 5));
         e = d;

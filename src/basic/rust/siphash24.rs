@@ -10,7 +10,7 @@ use std::{ffi::CStr, ptr, slice};
 // ── Struct ────────────────────────────────────────────────────────────────
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SipHash {
     pub v0: u64,
     pub v1: u64,
@@ -25,25 +25,11 @@ pub struct SipHash {
 #[allow(non_camel_case_types)]
 pub type siphash = SipHash;
 
-impl Default for SipHash {
-    fn default() -> Self {
-        SipHash {
-            v0: 0,
-            v1: 0,
-            v2: 0,
-            v3: 0,
-            padding: 0,
-            inlen: 0,
-        }
-    }
-}
-
 // ── Internal helpers ───────────────────────────────────────────────────────
 
 #[inline(always)]
 fn rotate_left(x: u64, b: u8) -> u64 {
-    let b = b & 63;
-    (x << b) | (x >> (64 - b))
+    x.rotate_left(u32::from(b))
 }
 
 fn sipround(state: &mut SipHash) {

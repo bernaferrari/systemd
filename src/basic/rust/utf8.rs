@@ -200,7 +200,7 @@ fn calloc_bytes(nmemb: usize, size: usize) -> *mut c_void {
     };
 
     // SAFETY: malloc accepts the checked finite allocation size.
-    let p = unsafe { malloc(total) };
+    let p = malloc(total);
     if p.is_null() {
         return ptr::null_mut();
     }

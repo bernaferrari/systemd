@@ -75,7 +75,7 @@ pub unsafe extern "C" fn rs_string_truncate_lines(
         // SAFETY: `s` is a readable NUL-terminated input string by contract.
         let length = unsafe { strlen(s) };
         // SAFETY: allocation includes the terminator copied below.
-        let value = unsafe { malloc(length + 1) }.cast::<c_char>();
+        let value = malloc(length + 1).cast::<c_char>();
         if value.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
@@ -103,7 +103,7 @@ pub unsafe extern "C" fn rs_string_truncate_lines(
         }
         truncated = !only_newlines;
         // SAFETY: allocation includes the copied prefix and its trailing NUL.
-        let value = unsafe { malloc(end + 1) }.cast::<c_char>();
+        let value = malloc(end + 1).cast::<c_char>();
         if value.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
@@ -149,7 +149,7 @@ pub unsafe extern "C" fn rs_string_extract_line(
             if has_newline {
                 let length = end - cursor;
                 // SAFETY: allocation includes the selected line and trailing NUL.
-                let value = unsafe { malloc(length + 1) }.cast::<c_char>();
+                let value = malloc(length + 1).cast::<c_char>();
                 if value.is_null() {
                     return Errno::ENOMEM.to_neg_errno();
                 }

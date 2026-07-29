@@ -47,12 +47,11 @@ impl Strbuf {
     /// Create a new empty strbuf.
     /// Equivalent to C strbuf_new().
     pub fn new() -> Result<Self, i32> {
-        let mut nodes = Vec::new();
-        nodes.push(StrbufNode {
+        let nodes = vec![StrbufNode {
             value_off: 0,
             value_len: 0,
             children: Vec::new(),
-        });
+        }];
         let mut buf = Vec::with_capacity(64);
         buf.push(0);
         Ok(Strbuf {

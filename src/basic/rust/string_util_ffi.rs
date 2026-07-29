@@ -253,8 +253,7 @@ pub extern "C" fn rs_ascii_isalpha(value: c_char) -> bool {
 /// value and has no pointer or ownership preconditions.
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_ascii_tolower(x: c_char) -> c_char {
-    // SAFETY: `rs_ascii_tolower` has no pointer preconditions.
-    unsafe { core::rs_ascii_tolower(x) }
+    core::rs_ascii_tolower(x)
 }
 
 /// C ABI for `ascii_toupper()`.
@@ -264,8 +263,7 @@ pub extern "C" fn rs_ascii_tolower(x: c_char) -> c_char {
 /// value and has no pointer or ownership preconditions.
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_ascii_toupper(x: c_char) -> c_char {
-    // SAFETY: `rs_ascii_toupper` has no pointer preconditions.
-    unsafe { core::rs_ascii_toupper(x) }
+    core::rs_ascii_toupper(x)
 }
 
 /// C ABI for `char_is_cc()`.

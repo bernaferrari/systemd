@@ -116,7 +116,6 @@ static MDI_TABLE: &[(i32, &[u8])] = &[
 /// C ABI facade. Returns a borrowed static string or NULL for an unknown value.
 /// # Safety
 /// The caller must satisfy the pointer validity, lifetime, and ownership contract documented by the corresponding C header.
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_mdi_to_string(v: i32) -> *const c_char {
     table_core::to_cstr(MDI_TABLE, v).map_or(std::ptr::null(), |name| name.as_ptr())

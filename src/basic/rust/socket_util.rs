@@ -1024,8 +1024,7 @@ pub unsafe extern "C" fn rs_socket_address_get_path(a: *const c_void) -> *const 
 unsafe fn socket_address_from_un(un: libc::sockaddr_un, size: usize) -> CSocketAddress {
     // SAFETY: all-zero is valid for the C aggregate before assigning its union member.
     let mut address: CSocketAddress = unsafe { zeroed() };
-    // SAFETY: the union has a `sockaddr_un` member with exactly this C layout.
-    unsafe { address.sockaddr.un = un };
+    address.sockaddr.un = un;
     address.size = size as libc::socklen_t;
     address
 }
@@ -1120,16 +1119,13 @@ pub unsafe extern "C" fn rs_socket_address_parse_vsock(
     unsafe { libc::free(cid_string.cast()) };
     // SAFETY: all-zero is valid for the C aggregate before assigning its union member.
     let mut address: CSocketAddress = unsafe { zeroed() };
-    // SAFETY: `CSockaddrVm` is the selected C union member.
-    unsafe {
-        address.sockaddr.vm = CSockaddrVm {
-            svm_family: AF_VSOCK as libc::sa_family_t,
-            svm_reserved1: 0,
-            svm_port: port,
-            svm_cid: cid,
-            svm_flags: 0,
-            svm_zero: [0; 3],
-        }
+    address.sockaddr.vm = CSockaddrVm {
+        svm_family: AF_VSOCK as libc::sa_family_t,
+        svm_reserved1: 0,
+        svm_port: port,
+        svm_cid: cid,
+        svm_flags: 0,
+        svm_zero: [0; 3],
     };
     address.size = size_of::<CSockaddrVm>() as libc::socklen_t;
     address.type_ = type_;

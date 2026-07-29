@@ -37,8 +37,8 @@ pub fn read_be32(bytes: &[u8]) -> u32 {
 /// Panics if slice is shorter than 8 bytes.
 pub fn read_be64(bytes: &[u8]) -> u64 {
     let mut v: u64 = 0;
-    for i in 0..8 {
-        v = (v << 8) | (bytes[i] as u64);
+    for &byte in &bytes[..8] {
+        v = (v << 8) | u64::from(byte);
     }
     v
 }
@@ -104,8 +104,8 @@ pub fn read_le32(bytes: &[u8]) -> u32 {
 /// Panics if slice is shorter than 8 bytes.
 pub fn read_le64(bytes: &[u8]) -> u64 {
     let mut v: u64 = 0;
-    for i in 0..8 {
-        v |= (bytes[i] as u64) << (i * 8);
+    for (i, &byte) in bytes[..8].iter().enumerate() {
+        v |= u64::from(byte) << (i * 8);
     }
     v
 }

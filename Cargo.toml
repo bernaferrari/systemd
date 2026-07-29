@@ -23,7 +23,7 @@ members = [
     "src/cgls/rust",
     "src/cgtop/rust",
     "src/core/rust",
-    "test/rust-fuzz-smoke",
+    "src/fuzz/rust",
     "src/creds/rust",
     "src/debug-generator/rust",
     "src/delta/rust",

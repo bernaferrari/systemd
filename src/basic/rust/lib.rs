@@ -28,7 +28,6 @@
 #![allow(clippy::ptr_eq)]
 #![allow(clippy::needless_return)]
 #![allow(clippy::duplicated_attributes)]
-#![allow(clippy::redundant_bool_assert)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::needless_late_init)]
 #![allow(clippy::indexing_slicing)]

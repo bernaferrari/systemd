@@ -16,6 +16,18 @@ from typing import Any
 CHRONOLOGICAL_MODULE_RE = re.compile(
     r"^(?:shared_validators|shared_str_tables|misc_validators|misc_rust)\d+\.rs$"
 )
+DEV_ONLY_METADATA_KEY = "systemd-rust"
+PATH_ATTRIBUTE_RE = re.compile(
+    r"""
+    \#\s*\[\s*path\s*=\s*
+    (?:
+        "(?P<quoted>(?:\\.|[^"\\])*)"
+        | r(?P<raw_hashes>\#*)"(?P<raw>.*?)"(?P=raw_hashes)
+    )
+    \s*\]
+    """,
+    re.MULTILINE | re.DOTALL | re.VERBOSE,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,6 +39,11 @@ def parse_args() -> argparse.Namespace:
         "--large-file-policy",
         default="tools/rust-port/large-rust-files.toml",
         help="Production Rust file-size debt policy, relative to the repository root",
+    )
+    parser.add_argument(
+        "--large-file-baseline",
+        default="tools/rust-port/large-rust-files-baseline.toml",
+        help="Immutable baseline authority for raised Rust file-size debt caps",
     )
     parser.add_argument(
         "--layer-policy",
@@ -78,6 +95,58 @@ def explicit_targets(manifest: dict[str, Any]) -> list[str]:
         if isinstance(binary, dict) and isinstance(binary.get("path"), str):
             targets.append(binary["path"])
     return targets
+
+
+def explicit_test_targets(manifest: dict[str, Any]) -> list[str]:
+    tests = manifest.get("test", [])
+    if isinstance(tests, dict):
+        tests = [tests]
+    return [
+        test["path"]
+        for test in tests
+        if isinstance(test, dict) and isinstance(test.get("path"), str)
+    ]
+
+
+def is_declared_dev_only(member: str, manifest: dict[str, Any]) -> bool:
+    """Recognize the narrow, unpublished test-only crate exception."""
+
+    package = manifest.get("package", {})
+    if not isinstance(package, dict):
+        return False
+    metadata = package.get("metadata", {})
+    if not isinstance(metadata, dict):
+        return False
+    systemd_metadata = metadata.get(DEV_ONLY_METADATA_KEY, {})
+    if not isinstance(systemd_metadata, dict):
+        return False
+    if systemd_metadata.get("dev-only") is not True:
+        return False
+    if package.get("publish") is not False:
+        raise ValueError(f"{member}: developer-only crate must set package.publish = false")
+    return True
+
+
+def declared_source_fixtures(member: str, manifest: dict[str, Any]) -> list[str]:
+    """Return the audited out-of-crate sources used by a dev-only test crate."""
+
+    package = manifest.get("package", {})
+    metadata = package.get("metadata", {}) if isinstance(package, dict) else {}
+    systemd_metadata = (
+        metadata.get(DEV_ONLY_METADATA_KEY, {}) if isinstance(metadata, dict) else {}
+    )
+    fixtures = (
+        systemd_metadata.get("source-fixtures", [])
+        if isinstance(systemd_metadata, dict)
+        else []
+    )
+    if not isinstance(fixtures, list) or not all(
+        isinstance(fixture, str) and fixture for fixture in fixtures
+    ):
+        raise ValueError(f"{member}: source-fixtures must be a string array")
+    if len(fixtures) != len(set(fixtures)):
+        raise ValueError(f"{member}: source-fixtures must not contain duplicates")
+    return fixtures
 
 
 def explicit_binary_names(manifest: dict[str, Any]) -> list[str]:
@@ -212,6 +281,108 @@ def validate_target_path(
         failures.append(f"{member}: target path escapes its Rust crate: {target}")
 
 
+def validate_dev_only_source_fixtures(
+    root: Path,
+    member: str,
+    manifest: dict[str, Any],
+    manifest_path: Path,
+    targets: list[str],
+    failures: list[str],
+) -> None:
+    """Keep source-level fuzz fixtures explicit, canonical, and test-only.
+
+    Fuzz smoke tests deliberately compile parser entry points from several
+    subsystems without turning them into Cargo release dependencies. Those
+    `#[path]` edges must therefore be declared in the manifest and may point
+    only at canonical Rust source files below `src/<subsystem>/rust`.
+    """
+
+    root = root.resolve()
+    try:
+        declared = declared_source_fixtures(member, manifest)
+    except ValueError as exc:
+        failures.append(str(exc))
+        return
+
+    declared_set = set(declared)
+    observed: set[str] = set()
+    scanned: set[Path] = set()
+    crate_root = manifest_path.parent.resolve()
+    source_root = (root / "src").resolve()
+    pending = [crate_root / target for target in targets]
+
+    while pending:
+        source = pending.pop()
+        resolved_source = source.resolve()
+        if resolved_source in scanned or not resolved_source.is_file():
+            continue
+        scanned.add(resolved_source)
+        for match in PATH_ATTRIBUTE_RE.finditer(
+            resolved_source.read_text(encoding="utf-8")
+        ):
+            fixture = match.group("quoted") or match.group("raw")
+            if match.group("quoted") is not None and "\\" in fixture:
+                failures.append(
+                    f"{member}: source fixture path must not use string escapes: {fixture}"
+                )
+                continue
+            if "\n" in fixture or "\r" in fixture:
+                failures.append(
+                    f"{member}: source fixture path must not contain a newline: {fixture!r}"
+                )
+                continue
+            fixture_path = Path(fixture)
+            if fixture_path.is_absolute():
+                failures.append(
+                    f"{member}: source fixture path must be relative: {fixture}"
+                )
+                continue
+            candidate = (resolved_source.parent / fixture_path).resolve()
+            is_external = ".." in fixture_path.parts
+            if is_external:
+                canonical = (
+                    candidate.relative_to(root).as_posix()
+                    if candidate.is_relative_to(root)
+                    else None
+                )
+                if canonical is None:
+                    failures.append(
+                        f"{member}: source fixture escapes the repository: {fixture}"
+                    )
+                    continue
+                observed.add(canonical)
+                if canonical not in declared_set:
+                    failures.append(
+                        f"{member}: external #[path] source fixture is not declared: {canonical}"
+                    )
+                    continue
+            try:
+                relative = candidate.relative_to(source_root)
+            except ValueError:
+                if is_external:
+                    failures.append(
+                        f"{member}: source fixture escapes src/: {fixture}"
+                    )
+                continue
+            if is_external and (
+                len(relative.parts) < 3
+                or relative.parts[1] != "rust"
+                or candidate.suffix != ".rs"
+            ):
+                failures.append(
+                    f"{member}: source fixture is not canonical Rust source: {fixture}"
+                )
+            elif is_external and not candidate.is_file():
+                failures.append(f"{member}: declared source fixture does not exist: {fixture}")
+            elif candidate.is_file():
+                pending.append(candidate)
+
+    for fixture in sorted(declared_set - observed):
+        failures.append(
+            f"{member}: declared source fixture is not used by an explicit test target: {fixture}"
+        )
+
+
 def validate_dependency_layers(
     manifests: dict[str, dict[str, Any]],
     member_names: dict[str, str],
@@ -259,8 +430,49 @@ def validate_language_contract(
             )
 
 
+def load_large_file_baseline(baseline_path: Path) -> dict[str, int]:
+    """Load the independent, stable authority for acknowledged cap growth."""
+
+    baseline = tomllib.loads(baseline_path.read_text(encoding="utf-8"))
+    files = baseline.get("files", {})
+    if not isinstance(files, dict):
+        raise ValueError("files must be a table")
+    result: dict[str, int] = {}
+    for path, entry in files.items():
+        if not isinstance(path, str) or not isinstance(entry, dict):
+            raise ValueError("files must contain named tables")
+        cap = entry.get("max_lines")
+        if not isinstance(cap, int) or cap <= 0:
+            raise ValueError(f"{path}: max_lines must be a positive integer")
+        result[path] = cap
+    return result
+
+
+def validate_large_file_baseline_history(
+    root: Path, baseline_path: Path, failures: list[str]
+) -> None:
+    """Reject changing the baseline once it has landed in repository history."""
+
+    relative = baseline_path.relative_to(root).as_posix()
+    previous = subprocess.run(
+        ["git", "show", f"HEAD^:{relative}"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if previous.returncode != 0:
+        return
+    if previous.stdout != baseline_path.read_text(encoding="utf-8"):
+        failures.append(
+            f"{relative}: immutable large-file baseline differs from its Git parent"
+        )
+
+
 def validate_large_rust_files(
-    root: Path, policy_path: Path, failures: list[str]
+    root: Path,
+    policy_path: Path,
+    failures: list[str],
+    baseline_path: Path | None = None,
 ) -> tuple[int, int]:
     policy = tomllib.loads(policy_path.read_text(encoding="utf-8"))
     max_lines = policy.get("policy", {}).get("max_lines")
@@ -271,6 +483,16 @@ def validate_large_rust_files(
     if not isinstance(allowed, dict):
         failures.append(f"{policy_path.relative_to(root)}: files must be a table")
         return max_lines, 0
+    baseline: dict[str, int] = {}
+    if baseline_path is not None:
+        try:
+            baseline = load_large_file_baseline(baseline_path)
+        except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+            failures.append(
+                f"{baseline_path.relative_to(root)}: cannot load large-file baseline: {exc}"
+            )
+        else:
+            validate_large_file_baseline_history(root, baseline_path, failures)
 
     observed: dict[str, int] = {}
     for path in (root / "src").rglob("*.rs"):
@@ -284,7 +506,8 @@ def validate_large_rust_files(
         ):
             continue
 
-        line_count = sum(1 for _ in path.open(encoding="utf-8"))
+        with path.open(encoding="utf-8") as source:
+            line_count = sum(1 for _ in source)
         if line_count <= max_lines:
             continue
         relative_text = relative.as_posix()
@@ -297,6 +520,8 @@ def validate_large_rust_files(
             )
             continue
         cap = entry.get("max_lines")
+        baseline_cap = entry.get("baseline_max_lines")
+        growth_reason = entry.get("growth_reason")
         issue = entry.get("issue")
         reason = entry.get("reason")
         if not isinstance(cap, int) or cap < line_count:
@@ -307,10 +532,43 @@ def validate_large_rust_files(
             failures.append(f"{relative_text}: debt entry needs a tracking issue")
         if not isinstance(reason, str) or not reason:
             failures.append(f"{relative_text}: debt entry needs a decomposition rationale")
+        if baseline_cap is not None:
+            if not isinstance(baseline_cap, int) or baseline_cap <= 0:
+                failures.append(f"{relative_text}: baseline_max_lines must be a positive integer")
+            elif not isinstance(cap, int) or baseline_cap >= cap:
+                failures.append(
+                    f"{relative_text}: baseline_max_lines must be lower than max_lines"
+                )
+            elif line_count <= baseline_cap:
+                failures.append(
+                    f"{relative_text}: growth allowance is stale; reduce max_lines to the baseline"
+                )
+            if not isinstance(growth_reason, str) or not growth_reason:
+                failures.append(
+                    f"{relative_text}: raised debt cap needs an explicit growth_reason"
+                )
+            if baseline_path is not None:
+                authority_cap = baseline.get(relative_text)
+                if authority_cap is None:
+                    failures.append(
+                        f"{relative_text}: raised debt cap is missing from the immutable baseline"
+                    )
+                elif baseline_cap != authority_cap:
+                    failures.append(
+                        f"{relative_text}: baseline_max_lines differs from the immutable baseline"
+                    )
+        elif growth_reason is not None:
+            failures.append(
+                f"{relative_text}: growth_reason requires baseline_max_lines"
+            )
 
     for relative_text in sorted(set(allowed) - set(observed)):
         failures.append(
             f"{policy_path.relative_to(root)}: stale large-file debt entry {relative_text}"
+        )
+    for relative_text in sorted(set(baseline) - set(allowed)):
+        failures.append(
+            f"{baseline_path.relative_to(root)}: baseline entry lacks a current debt entry {relative_text}"
         )
 
     return max_lines, len(observed)
@@ -324,6 +582,9 @@ def main() -> int:
     layer_policy_path = Path(args.layer_policy)
     if not layer_policy_path.is_absolute():
         layer_policy_path = root / layer_policy_path
+    large_file_baseline_path = Path(args.large_file_baseline)
+    if not large_file_baseline_path.is_absolute():
+        large_file_baseline_path = root / large_file_baseline_path
 
     workspace = tomllib.loads(workspace_path.read_text(encoding="utf-8"))
     lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
@@ -349,7 +610,7 @@ def main() -> int:
     validate_member_layout(root, members, assigned_layers, failures)
     validate_module_names(root, failures)
     large_file_limit, acknowledged_large_files = validate_large_rust_files(
-        root, root / args.large_file_policy, failures
+        root, root / args.large_file_policy, failures, large_file_baseline_path
     )
     meson_texts: dict[Path, str] = {
         path: path.read_text(encoding="utf-8", errors="ignore")
@@ -419,13 +680,33 @@ def main() -> int:
                     + ", ".join(sorted(missing))
                 )
 
+        try:
+            dev_only = is_declared_dev_only(member, manifest)
+        except ValueError as exc:
+            failures.append(str(exc))
+            dev_only = False
+
         targets = explicit_targets(manifest)
-        if not targets:
+        if dev_only:
+            if targets:
+                failures.append(
+                    f"{member}: developer-only crate must not declare a library or binary release target"
+                )
+            targets = explicit_test_targets(manifest)
+            if not targets:
+                failures.append(
+                    f"{member}: developer-only crate must declare an explicit test target"
+                )
+        elif not targets:
             failures.append(f"{member}: manifest has no explicit library or binary target")
         for target in targets:
             validate_target_path(member, manifest_path, target, failures)
             if not (manifest_path.parent / target).is_file():
                 failures.append(f"{member}: declared target does not exist: {target}")
+        if dev_only:
+            validate_dev_only_source_fixtures(
+                root, member, manifest, manifest_path, targets, failures
+            )
 
         for binary_name in explicit_binary_names(manifest):
             previous_member = binary_names.get(binary_name)

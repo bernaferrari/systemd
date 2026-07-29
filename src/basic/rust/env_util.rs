@@ -277,11 +277,8 @@ pub unsafe extern "C" fn rs_strv_env_is_valid(entries: *const *mut c_char) -> bo
             .expect("validated environment assignment contains '='");
 
         let mut following = index + 1;
-        loop {
-            // SAFETY: as above, including every later vector slot.
-            let Some(other) = (unsafe { strv_entry(entries, following) }) else {
-                break;
-            };
+        // SAFETY: as above, including every later vector slot.
+        while let Some(other) = unsafe { strv_entry(entries, following) } {
             if other.get(name_len) == Some(&b'=') && other[..name_len] == entry[..name_len] {
                 return false;
             }
@@ -309,11 +306,8 @@ pub unsafe extern "C" fn rs_strv_env_name_is_valid(names: *const *mut c_char) ->
         }
 
         let mut following = index + 1;
-        loop {
-            // SAFETY: as above, including every later vector slot.
-            let Some(other) = (unsafe { strv_entry(names, following) }) else {
-                break;
-            };
+        // SAFETY: as above, including every later vector slot.
+        while let Some(other) = unsafe { strv_entry(names, following) } {
             if other == name {
                 return false;
             }
@@ -343,11 +337,8 @@ pub unsafe extern "C" fn rs_strv_env_name_or_assignment_is_valid(
         }
 
         let mut following = index + 1;
-        loop {
-            // SAFETY: as above, including every later vector slot.
-            let Some(other) = (unsafe { strv_entry(entries, following) }) else {
-                break;
-            };
+        // SAFETY: as above, including every later vector slot.
+        while let Some(other) = unsafe { strv_entry(entries, following) } {
             if other == entry {
                 return false;
             }

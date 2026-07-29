@@ -180,12 +180,9 @@ fn unhex_next(chars: &[char], index: &mut usize) -> Result<Option<i32>, i32> {
 pub fn unhexmem_full(s: &str) -> Result<Vec<u8>, i32> {
     let chars: Vec<char> = s.chars().collect();
     let mut index = 0;
-    let mut out = Vec::with_capacity((chars.len() + 1) / 2);
+    let mut out = Vec::with_capacity(chars.len().div_ceil(2));
 
-    loop {
-        let Some(a) = unhex_next(&chars, &mut index)? else {
-            break;
-        };
+    while let Some(a) = unhex_next(&chars, &mut index)? {
         let Some(b) = unhex_next(&chars, &mut index)? else {
             return Err(-libc::EPIPE);
         };
@@ -237,7 +234,7 @@ pub fn base32hexmem(data: &[u8], padding: bool) -> String {
 
 pub fn unbase32hexmem(s: &str, padding: bool) -> Result<Vec<u8>, i32> {
     let mut input = s.trim().to_string();
-    if padding && input.len() % 8 != 0 {
+    if padding && !input.len().is_multiple_of(8) {
         return Err(Errno::EINVAL.to_neg_errno());
     }
     if padding {
@@ -278,7 +275,7 @@ pub fn unbase32hexmem(s: &str, padding: bool) -> Result<Vec<u8>, i32> {
                 out.push(((padded[6] << 5) | padded[7]) as u8);
             }
             7 => {
-                if (padded[6] & 7) != 0 {
+                if padded[6] & 7 != 0 {
                     return Err(Errno::EINVAL.to_neg_errno());
                 }
                 out.push(((padded[0] << 3) | (padded[1] >> 2)) as u8);
@@ -287,7 +284,7 @@ pub fn unbase32hexmem(s: &str, padding: bool) -> Result<Vec<u8>, i32> {
                 out.push(((padded[4] << 7) | (padded[5] << 2) | (padded[6] >> 3)) as u8);
             }
             5 => {
-                if (padded[4] & 1) != 0 {
+                if padded[4] & 1 != 0 {
                     return Err(Errno::EINVAL.to_neg_errno());
                 }
                 out.push(((padded[0] << 3) | (padded[1] >> 2)) as u8);
@@ -295,14 +292,14 @@ pub fn unbase32hexmem(s: &str, padding: bool) -> Result<Vec<u8>, i32> {
                 out.push(((padded[3] << 4) | (padded[4] >> 1)) as u8);
             }
             4 => {
-                if (padded[3] & 15) != 0 {
+                if padded[3] & 15 != 0 {
                     return Err(Errno::EINVAL.to_neg_errno());
                 }
                 out.push(((padded[0] << 3) | (padded[1] >> 2)) as u8);
                 out.push(((padded[1] << 6) | (padded[2] << 1) | (padded[3] >> 4)) as u8);
             }
             2 => {
-                if (padded[1] & 3) != 0 {
+                if padded[1] & 3 != 0 {
                     return Err(Errno::EINVAL.to_neg_errno());
                 }
                 out.push(((padded[0] << 3) | (padded[1] >> 2)) as u8);
@@ -324,8 +321,8 @@ pub fn base64mem_full(data: &[u8], line_break: usize) -> Result<String, i32> {
     let mut out = String::new();
     let mut emitted = 0usize;
 
-    let mut push = |ch: char, out: &mut String, emitted: &mut usize| {
-        if line_break != usize::MAX && *emitted > 0 && *emitted % line_break == 0 {
+    let push = |ch: char, out: &mut String, emitted: &mut usize| {
+        if line_break != usize::MAX && *emitted > 0 && (*emitted).is_multiple_of(line_break) {
             out.push('\n');
         }
         out.push(ch);
@@ -394,10 +391,7 @@ pub fn unbase64mem_full(s: &str) -> Result<Vec<u8>, i32> {
     let mut index = 0;
     let mut out = Vec::new();
 
-    loop {
-        let Some(a) = unbase64_next(&chars, &mut index)? else {
-            break;
-        };
+    while let Some(a) = unbase64_next(&chars, &mut index)? {
         let Some(a) = a else {
             return Err(Errno::EINVAL.to_neg_errno());
         };
@@ -419,14 +413,14 @@ pub fn unbase64mem_full(s: &str) -> Result<Vec<u8>, i32> {
         match (c, d) {
             (None, Some(_)) => return Err(Errno::EINVAL.to_neg_errno()),
             (None, None) => {
-                if (b & 15) != 0 || chars[index..].iter().any(|ch| !ch.is_ascii_whitespace()) {
+                if b & 15 != 0 || chars[index..].iter().any(|ch| !ch.is_ascii_whitespace()) {
                     return Err(Errno::EINVAL.to_neg_errno());
                 }
                 out.push(((a << 2) | (b >> 4)) as u8);
                 break;
             }
             (Some(c), None) => {
-                if (c & 3) != 0 || chars[index..].iter().any(|ch| !ch.is_ascii_whitespace()) {
+                if c & 3 != 0 || chars[index..].iter().any(|ch| !ch.is_ascii_whitespace()) {
                     return Err(Errno::EINVAL.to_neg_errno());
                 }
                 out.push(((a << 2) | (b >> 4)) as u8);
@@ -584,8 +578,8 @@ fn base64_encode_into(input: &[u8], output: &mut [u8]) {
         let c = input[read + 2];
         output[written..written + 4].copy_from_slice(&[
             TABLE[(a >> 2) as usize],
-            TABLE[(((a & 3) << 4 | b >> 4) as usize)],
-            TABLE[(((b & 15) << 2 | c >> 6) as usize)],
+            TABLE[((a & 3) << 4 | b >> 4) as usize],
+            TABLE[((b & 15) << 2 | c >> 6) as usize],
             TABLE[(c & 63) as usize],
         ]);
         read += 3;
@@ -597,7 +591,7 @@ fn base64_encode_into(input: &[u8], output: &mut [u8]) {
             let b = input[read + 1];
             output[written..written + 4].copy_from_slice(&[
                 TABLE[(a >> 2) as usize],
-                TABLE[(((a & 3) << 4 | b >> 4) as usize)],
+                TABLE[((a & 3) << 4 | b >> 4) as usize],
                 TABLE[((b & 15) << 2) as usize],
                 b'=',
             ]);
@@ -1406,7 +1400,7 @@ pub unsafe extern "C" fn rs_unhexmem(
 /// point to writable `char *` storage.
 #[unsafe(export_name = "rs_base64mem")]
 pub unsafe extern "C" fn rs_base64mem(p: *const c_void, l: usize, ret: *mut *mut c_char) -> isize {
-    if (p.is_null() && l != 0) || ret.is_null() {
+    if p.is_null() && l != 0 || ret.is_null() {
         return Errno::EINVAL.to_neg_errno() as isize;
     }
     let output_len = match base64_encoded_len(l) {

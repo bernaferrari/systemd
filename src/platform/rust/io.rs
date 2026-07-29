@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 use std::io;
+#[cfg(target_os = "linux")]
 use std::io::{IoSlice, IoSliceMut};
-use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
+#[cfg(target_os = "linux")]
+use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::fd::{BorrowedFd, OwnedFd};
 
 pub type RawFd = i32;
 

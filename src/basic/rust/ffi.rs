@@ -274,6 +274,10 @@ pub unsafe fn strspn(s: *const c_char, accept: *const c_char) -> usize {
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
+///
+/// Keep this wrapper out of line so LLVM cannot replace a fixed-size call
+/// with a sign-normalized comparison when C exposes libc's exact result.
+#[inline(never)]
 pub unsafe fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> c_int {
     if n == 0 {
         return 0;

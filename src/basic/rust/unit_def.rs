@@ -25,6 +25,7 @@ pub enum UnitType {
 impl UnitType {
     const COUNT: usize = 11;
 
+    #[cfg(test)]
     fn from_index(i: usize) -> Option<Self> {
         match i {
             0 => Some(UnitType::Service),

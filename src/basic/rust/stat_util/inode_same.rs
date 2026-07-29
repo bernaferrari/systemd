@@ -272,7 +272,7 @@ fn native_fstatat(
 
 #[inline]
 fn path_is_empty(path: Option<&CStr>) -> bool {
-    path.map_or(true, CStr::is_empty)
+    path.is_none_or(CStr::is_empty)
 }
 
 fn handle_flags(flags: libc::c_int) -> libc::c_int {

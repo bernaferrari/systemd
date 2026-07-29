@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# Stable authority for the original approved caps of large Rust-port files.
+# The architecture gate compares raised caps against this file and rejects any
+# later mutation after this baseline has landed in Git history.
+
+[files."src/basic/rust/strv.rs"]
+max_lines = 2401
+
+[files."src/basic/rust/parse_util.rs"]
+max_lines = 2031
+
+[files."src/basic/rust/dns_label.rs"]
+max_lines = 2337
+
+[files."src/basic/rust/path_util.rs"]
+max_lines = 2048
+
+[files."src/basic/rust/in_addr_util.rs"]
+max_lines = 2111
+
+[files."src/basic/rust/unit_name.rs"]
+max_lines = 2200

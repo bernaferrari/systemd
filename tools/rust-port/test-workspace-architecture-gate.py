@@ -61,6 +61,231 @@ class WorkspaceArchitectureGateTests(unittest.TestCase):
             ["src/example/rust: target path escapes its Rust crate: ../outside.rs"],
         )
 
+    def test_dev_only_crate_uses_an_explicit_test_not_a_release_target(self) -> None:
+        manifest = {
+            "package": {
+                "publish": False,
+                "metadata": {"systemd-rust": {"dev-only": True}},
+            },
+            "test": [{"name": "smoke", "path": "parser_fuzz.rs"}],
+        }
+
+        self.assertTrue(GATE.is_declared_dev_only("src/fuzz/rust", manifest))
+        self.assertEqual(GATE.explicit_targets(manifest), [])
+        self.assertEqual(GATE.explicit_test_targets(manifest), ["parser_fuzz.rs"])
+
+    def test_dev_only_crate_must_remain_unpublished(self) -> None:
+        manifest = {"package": {"metadata": {"systemd-rust": {"dev-only": True}}}}
+
+        with self.assertRaisesRegex(ValueError, "must set package.publish = false"):
+            GATE.is_declared_dev_only("src/fuzz/rust", manifest)
+
+    def test_dev_only_source_fixture_must_be_explicit_and_canonical(self) -> None:
+        target = self.manifest.parent / "parser_fuzz.rs"
+        target.write_text(
+            '#[path = "../../shared/rust/fuzz.rs"]\nmod fuzz;\n', encoding="utf-8"
+        )
+        fixture = self.root / "src/shared/rust/fuzz.rs"
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text("// fixture\n", encoding="utf-8")
+        manifest = {
+            "package": {
+                "metadata": {
+                    "systemd-rust": {
+                        "dev-only": True,
+                        "source-fixtures": ["src/shared/rust/fuzz.rs"],
+                    }
+                }
+            }
+        }
+        failures: list[str] = []
+        GATE.validate_dev_only_source_fixtures(
+            self.root,
+            "src/fuzz/rust",
+            manifest,
+            self.manifest,
+            ["parser_fuzz.rs"],
+            failures,
+        )
+        self.assertEqual(failures, [])
+
+    def test_dev_only_source_fixture_rejects_an_unlisted_escape(self) -> None:
+        target = self.manifest.parent / "parser_fuzz.rs"
+        target.write_text(
+            '#[path = "../../shared/rust/fuzz.rs"]\nmod fuzz;\n', encoding="utf-8"
+        )
+        manifest = {
+            "package": {"metadata": {"systemd-rust": {"dev-only": True}}}
+        }
+        failures: list[str] = []
+        GATE.validate_dev_only_source_fixtures(
+            self.root,
+            "src/fuzz/rust",
+            manifest,
+            self.manifest,
+            ["parser_fuzz.rs"],
+            failures,
+        )
+        self.assertEqual(
+            failures,
+            [
+                "src/fuzz/rust: external #[path] source fixture is not declared: "
+                "src/shared/rust/fuzz.rs"
+            ],
+        )
+
+    def test_dev_only_source_fixture_recursively_rejects_nested_escape(self) -> None:
+        target = self.manifest.parent / "parser_fuzz.rs"
+        target.write_text(
+            '#[path = "../../shared/rust/fuzz.rs"]\nmod fuzz;\n', encoding="utf-8"
+        )
+        fixture = self.root / "src/shared/rust/fuzz.rs"
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text(
+            '#[path = "../../core/rust/hidden.rs"]\nmod hidden;\n',
+            encoding="utf-8",
+        )
+        hidden = self.root / "src/core/rust/hidden.rs"
+        hidden.parent.mkdir(parents=True)
+        hidden.write_text("// hidden\n", encoding="utf-8")
+        manifest = {
+            "package": {
+                "metadata": {
+                    "systemd-rust": {
+                        "dev-only": True,
+                        "source-fixtures": ["src/shared/rust/fuzz.rs"],
+                    }
+                }
+            }
+        }
+        failures: list[str] = []
+        GATE.validate_dev_only_source_fixtures(
+            self.root,
+            "src/fuzz/rust",
+            manifest,
+            self.manifest,
+            ["parser_fuzz.rs"],
+            failures,
+        )
+        self.assertEqual(
+            failures,
+            [
+                "src/fuzz/rust: external #[path] source fixture is not declared: "
+                "src/core/rust/hidden.rs"
+            ],
+        )
+
+    def test_dev_only_source_fixture_rejects_raw_string_escape(self) -> None:
+        target = self.manifest.parent / "parser_fuzz.rs"
+        target.write_text(
+            '#[path = r##"../../shared/rust/fuzz.rs"##]\nmod fuzz;\n',
+            encoding="utf-8",
+        )
+        manifest = {
+            "package": {"metadata": {"systemd-rust": {"dev-only": True}}}
+        }
+        failures: list[str] = []
+        GATE.validate_dev_only_source_fixtures(
+            self.root,
+            "src/fuzz/rust",
+            manifest,
+            self.manifest,
+            ["parser_fuzz.rs"],
+            failures,
+        )
+        self.assertEqual(
+            failures,
+            [
+                "src/fuzz/rust: external #[path] source fixture is not declared: "
+                "src/shared/rust/fuzz.rs"
+            ],
+        )
+
+    def test_raised_large_file_cap_needs_a_growth_reason(self) -> None:
+        source = self.root / "src/example/rust/large.rs"
+        source.write_text("line\n" * 2002, encoding="utf-8")
+        policy = self.root / "large-files.toml"
+        policy.write_text(
+            """
+[policy]
+max_lines = 2000
+
+[files."src/example/rust/large.rs"]
+max_lines = 2003
+baseline_max_lines = 2001
+issue = "systemd-example"
+reason = "Split the example."
+""",
+            encoding="utf-8",
+        )
+        failures: list[str] = []
+        GATE.validate_large_rust_files(self.root, policy, failures)
+        self.assertEqual(
+            failures,
+            ["src/example/rust/large.rs: raised debt cap needs an explicit growth_reason"],
+        )
+
+    def test_raised_large_file_cap_requires_an_unchanged_baseline(self) -> None:
+        source = self.root / "src/example/rust/large.rs"
+        source.write_text("line\n" * 2002, encoding="utf-8")
+        policy = self.root / "large-files.toml"
+        policy.write_text(
+            """
+[policy]
+max_lines = 2000
+
+[files."src/example/rust/large.rs"]
+max_lines = 2003
+previous_max_lines = 2001
+issue = "systemd-example"
+reason = "Split the example."
+growth_reason = "An old rolling allowance."
+""",
+            encoding="utf-8",
+        )
+        failures: list[str] = []
+        GATE.validate_large_rust_files(self.root, policy, failures)
+        self.assertEqual(
+            failures,
+            ["src/example/rust/large.rs: growth_reason requires baseline_max_lines"],
+        )
+
+    def test_raised_large_file_cap_must_match_the_baseline_authority(self) -> None:
+        source = self.root / "src/example/rust/large.rs"
+        source.write_text("line\n" * 2002, encoding="utf-8")
+        policy = self.root / "large-files.toml"
+        policy.write_text(
+            """
+[policy]
+max_lines = 2000
+
+[files."src/example/rust/large.rs"]
+max_lines = 2003
+baseline_max_lines = 2001
+issue = "systemd-example"
+reason = "Split the example."
+growth_reason = "The present audited source exceeds the original cap."
+""",
+            encoding="utf-8",
+        )
+        baseline = self.root / "baseline.toml"
+        baseline.write_text(
+            """
+[files."src/example/rust/large.rs"]
+max_lines = 2000
+""",
+            encoding="utf-8",
+        )
+        failures: list[str] = []
+        GATE.validate_large_rust_files(self.root, policy, failures, baseline)
+        self.assertEqual(
+            failures,
+            [
+                "src/example/rust/large.rs: baseline_max_lines differs from "
+                "the immutable baseline"
+            ],
+        )
+
     def test_chronological_module_name_is_rejected(self) -> None:
         chronological = self.root / "src/example/rust/shared_validators4.rs"
         chronological.write_text("// batch four\n", encoding="utf-8")

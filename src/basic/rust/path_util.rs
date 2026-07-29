@@ -183,12 +183,8 @@ fn cmp_int(a: i32, b: i32) -> i32 {
 /// `p` must be null or the original base pointer of a still-live allocation
 /// obtained from this crate's C-compatible allocation helpers.
 unsafe fn libc_free(p: *mut c_char) {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        // SAFETY: upheld by this helper's contract.
-        unsafe { free(p as *mut std::ffi::c_void) };
-    }
+    // SAFETY: upheld by this helper's contract.
+    unsafe { free(p as *mut std::ffi::c_void) };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -397,7 +393,7 @@ pub unsafe extern "C" fn rs_hidden_or_backup_file(filename: *const c_char) -> bo
         ];
 
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        let suffix_cstr = unsafe { CStr::from_ptr(suffix) };
+        let suffix_cstr = CStr::from_ptr(suffix);
         for &s in SUFFIXES {
             if suffix_cstr.to_bytes() == s {
                 return true;
@@ -640,16 +636,12 @@ fn is_device_path_bytes(path: &[u8]) -> bool {
 /// this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_device_path(path: *const c_char) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if path.is_null() {
-            return false;
-        }
-
-        // SAFETY: guaranteed by the entry-point contract after the null check.
-        is_device_path_bytes(unsafe { CStr::from_ptr(path) }.to_bytes())
+    if path.is_null() {
+        return false;
     }
+
+    // SAFETY: guaranteed by the entry-point contract after the null check.
+    is_device_path_bytes(unsafe { CStr::from_ptr(path) }.to_bytes())
 }
 
 /// Check if path starts with /dev/ or /run/systemd/inaccessible/, is normalized, and does not end with /.

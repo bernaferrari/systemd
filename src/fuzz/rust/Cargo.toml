@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+[package]
+name = "systemd-rust-fuzz-smoke"
+version = "0.0.1"
+edition = "2024"
+publish = false
+autobins = false
+
+[package.metadata.systemd-rust]
+# This package contains only developer fuzz-smoke test targets; it is not a
+# release artifact and the policy gates verify that it stays unpublished.
+dev-only = true
+# Source-level parser fixtures intentionally exercise entry points from their
+# owning subsystems. The architecture gate requires this exact audited list.
+source-fixtures = [
+    "src/shared/rust/calendarspec.rs",
+    "src/shared/rust/fuzz_calendarspec.rs",
+    "src/resolve/rust/fuzz-dns-packet.rs",
+    "src/journal/rust/fuzz_journald_native.rs",
+    "src/journal/rust/fuzz_journald_native_fd.rs",
+    "src/network/rust/fuzz_netdev_parser.rs",
+    "src/network/rust/fuzz_network_parser.rs",
+    "src/udev/rust/fuzz-udev-rules.rs",
+    "src/core/rust/fuzz_unit_file.rs",
+]
+
+[[test]]
+name = "parser_fuzz"
+path = "parser_fuzz.rs"

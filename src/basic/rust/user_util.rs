@@ -132,9 +132,7 @@ fn capsule_name_is_valid_str(text: &str) -> i32 {
     let Some(length) = text.len().checked_add(2) else {
         return 0;
     };
-    if length <= LOGIN_NAME_MAX
-        && length <= NAME_MAX_VAL
-        && length < UT_NAMESIZE
+    if length < UT_NAMESIZE
         && text
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))

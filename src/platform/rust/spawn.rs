@@ -117,7 +117,7 @@ impl ProcessIdentity {
     pub fn signal(&self, signal: i32) -> Result<(), String> {
         #[cfg(target_os = "linux")]
         {
-            return linux::signal_process_identity(self, signal);
+            linux::signal_process_identity(self, signal)
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -249,7 +249,7 @@ impl ProcessTracker {
     pub fn acquire_identity(pid: u32) -> Result<ProcessIdentity, String> {
         #[cfg(target_os = "linux")]
         {
-            return linux::acquire_process_identity(pid);
+            linux::acquire_process_identity(pid)
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -769,10 +769,10 @@ fn expand_syscall_token(
 
 #[cfg(target_os = "linux")]
 fn parse_errno_token(token: &str) -> Option<u32> {
-    if let Ok(value) = token.parse::<i32>() {
-        if value > 0 {
-            return Some(value as u32);
-        }
+    if let Ok(value) = token.parse::<i32>()
+        && value > 0
+    {
+        return Some(value as u32);
     }
 
     Some(match token.to_ascii_uppercase().as_str() {
@@ -839,10 +839,10 @@ fn syscall_support_cache() -> &'static Mutex<BTreeMap<String, bool>> {
 #[cfg(target_os = "linux")]
 fn is_syscall_supported(arch: TargetArch, syscall: &str) -> bool {
     let key = format!("{:?}:{syscall}", arch);
-    if let Ok(cache) = syscall_support_cache().lock() {
-        if let Some(cached) = cache.get(&key) {
-            return *cached;
-        }
+    if let Ok(cache) = syscall_support_cache().lock()
+        && let Some(cached) = cache.get(&key)
+    {
+        return *cached;
     }
 
     let probe_json = format!(
@@ -888,7 +888,7 @@ fn prepare_system_call_filter(
         let mut expanded = Vec::new();
         expand_syscall_token(name, &mut expanded, &mut visiting)?;
         for syscall in expanded {
-            if (!invert) == allow_list {
+            if invert != allow_list {
                 selected.insert(syscall);
             } else {
                 selected.remove(&syscall);

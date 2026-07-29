@@ -26,7 +26,7 @@ TEST(memcpy_safe_basic) {
 }
 
 TEST(memcpy_safe_zero) {
-        char dst_c[1], dst_r[1];
+        unsigned char dst_c[1], dst_r[1];
         memset(dst_c, 0xFF, sizeof(dst_c));
         memset(dst_r, 0xFF, sizeof(dst_r));
         assert_se(memcpy_safe(dst_c, NULL, 0) == dst_c);
