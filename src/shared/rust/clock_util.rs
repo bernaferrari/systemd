@@ -7,6 +7,7 @@
 
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
+use std::mem::MaybeUninit;
 use std::path::Path;
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -68,7 +69,10 @@ pub fn clock_is_localtime<P: AsRef<Path>>(adjtime_path: Option<P>) -> io::Result
 
     // The third line contains "UTC", "LOCAL", or nothing.
     match lines.next() {
-        Some(Ok(line)) => Ok(line.trim() == "LOCAL"),
+        // `read_line()` in the C authority removes only the line terminator;
+        // `streq()` then requires an exact `LOCAL` token. Do not accept
+        // leading or trailing whitespace here.
+        Some(Ok(line)) => Ok(line == "LOCAL"),
         Some(Err(e)) => Err(e),
         None => Ok(false), // fewer than three lines → default to UTC
     }
@@ -108,18 +112,25 @@ pub struct TimezoneInfo {
 /// `ErrorKind::Unsupported`.
 #[cfg(target_os = "linux")]
 pub fn clock_set_timezone() -> io::Result<TimezoneInfo> {
+    // SAFETY: `time(NULL)` has no pointer precondition and the returned
+    // scalar is checked for its documented error sentinel before use.
     let now_epoch = unsafe { libc::time(std::ptr::null_mut()) };
     if now_epoch == -1 {
         return Err(io::Error::last_os_error());
     }
 
-    let raw_tm = unsafe { libc::localtime(&now_epoch) };
+    let mut tm = MaybeUninit::<libc::tm>::uninit();
+    // SAFETY: `now_epoch` and the uninitialized output storage both live for
+    // the full call; `localtime_r()` initializes the storage on non-null
+    // success and avoids `localtime()`'s shared static buffer.
+    let raw_tm = unsafe { libc::localtime_r(&now_epoch, tm.as_mut_ptr()) };
     if raw_tm.is_null() {
         return Err(io::Error::last_os_error());
     }
 
-    // SAFETY: localtime returned a non-null pointer to a static struct tm.
-    let tm = unsafe { &*raw_tm };
+    // SAFETY: the successful `localtime_r()` result above guarantees that
+    // the `MaybeUninit<tm>` output is fully initialized.
+    let tm = unsafe { tm.assume_init() };
     let minutes_delta = (tm.tm_gmtoff / 60) as i32;
 
     let tz = libc::timezone {
@@ -127,6 +138,8 @@ pub fn clock_set_timezone() -> io::Result<TimezoneInfo> {
         tz_dsttime: 0, // DST_NONE
     };
 
+    // SAFETY: the null timeval requests no clock update and `tz` is a live,
+    // correctly initialized timezone structure for the duration of the call.
     let ret = unsafe { libc::settimeofday(std::ptr::null(), &tz) };
     if ret < 0 {
         return Err(io::Error::last_os_error());
@@ -207,9 +220,7 @@ mod tests {
     #[test]
     fn test_localtime_third_line_with_whitespace() {
         let f = write_adjtime(Some("  LOCAL  "));
-        // The C code uses streq (exact match), but our Rust version trims.
-        // Faithful to the C spirit: trimmed comparison.
-        assert_eq!(clock_is_localtime(Some(f.path())).unwrap(), true);
+        assert_eq!(clock_is_localtime(Some(f.path())).unwrap(), false);
     }
 
     #[test]

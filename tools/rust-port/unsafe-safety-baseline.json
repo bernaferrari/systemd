@@ -942,14 +942,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 4
     },
-    "src/modules-load/rust/modules_load.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "163:15:let ret = unsafe {",
-        "174:17:let errno = unsafe { *libc::__errno_location() };"
-      ],
-      "unsafe_sites": 2
-    },
     "src/platform/rust/cgroup.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1163,12 +1155,8 @@
       "unsafe_sites": 4
     },
     "src/shared/rust/clock_util.rs": {
-      "missing_safety": 3,
-      "missing_safety_sites": [
-        "111:21:let now_epoch = unsafe { libc::time(std::ptr::null_mut()) };",
-        "116:18:let raw_tm = unsafe { libc::localtime(&now_epoch) };",
-        "130:15:let ret = unsafe { libc::settimeofday(std::ptr::null(), &tz) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 4
     },
     "src/shared/rust/common_signal.rs": {
@@ -1319,10 +1307,8 @@
       "unsafe_sites": 4
     },
     "src/shared/rust/dm_util.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "93:19:let ret = unsafe {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/shared/rust/enable_mempool.rs": {
@@ -1869,14 +1855,9 @@
       "unsafe_sites": 1
     },
     "src/shared/rust/resize_fs.rs": {
-      "missing_safety": 4,
-      "missing_safety_sites": [
-        "134:26:let mut statfs_buf = unsafe { std::mem::zeroed::<libc::statfs>() };",
-        "135:14:let rc = unsafe { libc::fstatfs(fd, &mut statfs_buf) };",
-        "144:26:let mut statfs_buf = unsafe { std::mem::zeroed::<libc::statfs>() };",
-        "145:14:let rc = unsafe { libc::fstatfs(fd, &mut statfs_buf) };"
-      ],
-      "unsafe_sites": 8
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 6
     },
     "src/shared/rust/rm_rf.rs": {
       "missing_safety": 51,
@@ -2186,8 +2167,8 @@
     }
   },
   "totals": {
-    "missing_safety": 608,
-    "unsafe_sites": 5720
+    "missing_safety": 598,
+    "unsafe_sites": 5716
   },
   "version": 2,
   "window": 3

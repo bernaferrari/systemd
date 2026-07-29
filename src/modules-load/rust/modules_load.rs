@@ -21,6 +21,15 @@ impl std::fmt::Display for Errno {
 
 impl std::error::Error for Errno {}
 
+impl From<std::io::Error> for Errno {
+    fn from(error: std::io::Error) -> Self {
+        // Process-spawn failures normally carry the kernel errno. Errors
+        // without one are not expected here, but EIO is a better fallback
+        // than reporting a made-up ENOENT.
+        Self(error.raw_os_error().unwrap_or(libc::EIO))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Errno>;
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -155,35 +164,11 @@ pub fn conf_file_dirs() -> &'static [&'static str] {
 }
 
 #[cfg(target_os = "linux")]
-pub fn load_module(module: &str) -> Result<()> {
-    use std::ffi::CString;
-    use std::ptr;
-
-    let c_name = CString::new(module).map_err(|_| Errno(22))?;
-    let ret = unsafe {
-        libc::syscall(
-            libc::SYS_init_module,
-            ptr::null::<u8>(),
-            0_usize,
-            c_name.as_ptr(),
-        )
-    };
-    if ret == 0 {
-        return Ok(());
-    }
-    let errno = unsafe { *libc::__errno_location() };
-    if errno == libc::EEXIST {
-        return Ok(());
-    }
-    Err(Errno(errno))
-}
-
-#[cfg(target_os = "linux")]
 pub fn load_module_via_modprobe(module: &str) -> Result<()> {
     let status = std::process::Command::new("/sbin/modprobe")
         .arg(module)
         .status()
-        .map_err(|_| Errno(2))?;
+        .map_err(Errno::from)?;
     if status.success() {
         Ok(())
     } else {
@@ -193,9 +178,6 @@ pub fn load_module_via_modprobe(module: &str) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 pub fn load_module_best_effort(module: &str) -> Result<()> {
-    if load_module(module).is_ok() {
-        return Ok(());
-    }
     load_module_via_modprobe(module)
 }
 

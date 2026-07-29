@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/resize-fs.c, src/shared/resize-fs.h
+// PORT-SYNC: src/shared/resize-fs.c, src/shared/resize-fs.h,
+//            src/include/uapi/linux/btrfs.h, src/include/override/linux/xfs.h
 //
 // Filesystem resize utilities for ext4, btrfs, and xfs.
 //
@@ -10,6 +11,7 @@
 
 use std::fs::File;
 use std::io;
+use std::mem::{MaybeUninit, size_of};
 use std::os::unix::io::AsRawFd;
 
 // ── Filesystem magic numbers (linux/magic.h) ───────────────────────────────
@@ -32,14 +34,25 @@ pub const XFS_MINIMAL_SIZE: u64 = 300 * 1024 * 1024;
 
 // ── Ioctl request codes ─────────────────────────────────────────────────────
 
-// EXT4_IOC_RESIZE_FS — takes a pointer to __u64 (block count).
-const EXT4_IOC_RESIZE_FS: u64 = 0x4008_6610;
-// BTRFS_IOC_RESIZE — takes btrfs_ioctl_vol_args.
-const BTRFS_IOC_RESIZE: u64 = 0x5000_9400;
-// XFS_IOC_FSGEOMETRY — fills xfs_fsop_geom_t.
-const XFS_IOC_FSGEOMETRY: u64 = 0xC018_5842;
-// XFS_IOC_FSGROWFSDATA — takes xfs_growfs_data_t.
-const XFS_IOC_FSGROWFSDATA: u64 = 0x4018_5845;
+// Linux `_IOC` encoding, from `linux/ioctl.h`.
+const IOC_NRSHIFT: libc::c_ulong = 0;
+const IOC_TYPESHIFT: libc::c_ulong = 8;
+const IOC_SIZESHIFT: libc::c_ulong = 16;
+const IOC_DIRSHIFT: libc::c_ulong = 30;
+const IOC_WRITE: libc::c_ulong = 1;
+const IOC_READ: libc::c_ulong = 2;
+
+const fn ioc_request(
+    direction: libc::c_ulong,
+    ioctl_type: u8,
+    number: u8,
+    size: usize,
+) -> libc::c_ulong {
+    (direction << IOC_DIRSHIFT)
+        | ((size as libc::c_ulong) << IOC_SIZESHIFT)
+        | ((ioctl_type as libc::c_ulong) << IOC_TYPESHIFT)
+        | ((number as libc::c_ulong) << IOC_NRSHIFT)
+}
 
 // ── Kernel ioctl structs (repr(C) for FFI) ─────────────────────────────────
 
@@ -59,12 +72,15 @@ struct XfsFsopGeom {
     rtblocks: u64,
     rtextents: u64,
     logstart: u64,
-    inodelog: u32,
-    agblklog: u32,
-    rextslog: u32,
-    inprogress: u32,
+    uuid: [u8; 16],
     sunit: u32,
     swidth: u32,
+    version: i32,
+    flags: u32,
+    logsectsize: u32,
+    rtsectsize: u32,
+    dirblocksize: u32,
+    logsunit: u32,
 }
 
 /// `xfs_growfs_data_t` — XFS growfs data space parameters.
@@ -73,19 +89,50 @@ struct XfsFsopGeom {
 struct XfsGrowfsData {
     newblocks: u64,
     imaxpct: u32,
-    sunit: u32,
-    swidth: u32,
 }
 
 /// `btrfs_ioctl_vol_args` — Btrfs resize ioctl argument.
 /// `name` carries the target size as a decimal string.
 #[repr(C)]
 struct BtrfsIoctlVolArgs {
+    fd: i64,
     name: [libc::c_char; BTRFS_VOL_ARGS_NAME_LEN],
 }
 
 /// Size of the `name` field in `btrfs_ioctl_vol_args`.
-const BTRFS_VOL_ARGS_NAME_LEN: usize = 4096;
+const BTRFS_VOL_ARGS_NAME_LEN: usize = 4088;
+
+// EXT4_IOC_RESIZE_FS — `_IOW('f', 16, __u64)`.
+const EXT4_IOC_RESIZE_FS: libc::c_ulong = ioc_request(IOC_WRITE, b'f', 16, size_of::<u64>());
+// BTRFS_IOC_RESIZE — `_IOW(BTRFS_IOCTL_MAGIC, 3, struct btrfs_ioctl_vol_args)`.
+const BTRFS_IOC_RESIZE: libc::c_ulong =
+    ioc_request(IOC_WRITE, 0x94, 3, size_of::<BtrfsIoctlVolArgs>());
+// XFS_IOC_FSGEOMETRY — `_IOR('X', 124, struct xfs_fsop_geom)`.
+const XFS_IOC_FSGEOMETRY: libc::c_ulong =
+    ioc_request(IOC_READ, b'X', 124, size_of::<XfsFsopGeom>());
+// XFS_IOC_FSGROWFSDATA — `_IOW('X', 110, struct xfs_growfs_data)`.
+const XFS_IOC_FSGROWFSDATA: libc::c_ulong =
+    ioc_request(IOC_WRITE, b'X', 110, size_of::<XfsGrowfsData>());
+
+// Keep the Rust ioctl mirrors tied to the checked-in Linux UAPI headers even
+// when the runtime-only tests are not executed.
+const _: [(); 4096] = [(); size_of::<BtrfsIoctlVolArgs>()];
+const _: [(); 0] = [(); std::mem::offset_of!(BtrfsIoctlVolArgs, fd)];
+const _: [(); 8] = [(); std::mem::offset_of!(BtrfsIoctlVolArgs, name)];
+const _: [(); 0x5000_9403] = [(); BTRFS_IOC_RESIZE as usize];
+const _: [(); 112] = [(); size_of::<XfsFsopGeom>()];
+const _: [(); 32] = [(); std::mem::offset_of!(XfsFsopGeom, datablocks)];
+const _: [(); 64] = [(); std::mem::offset_of!(XfsFsopGeom, uuid)];
+const _: [(); 80] = [(); std::mem::offset_of!(XfsFsopGeom, sunit)];
+const _: [(); 108] = [(); std::mem::offset_of!(XfsFsopGeom, logsunit)];
+const _: [(); 0x8070_587c] = [(); XFS_IOC_FSGEOMETRY as usize];
+const _: [(); 0] = [(); std::mem::offset_of!(XfsGrowfsData, newblocks)];
+const _: [(); 8] = [(); std::mem::offset_of!(XfsGrowfsData, imaxpct)];
+
+#[cfg(target_pointer_width = "64")]
+const _: [(); 16] = [(); size_of::<XfsGrowfsData>()];
+#[cfg(target_pointer_width = "64")]
+const _: [(); 0x4010_586e] = [(); XFS_IOC_FSGROWFSDATA as usize];
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -127,26 +174,28 @@ impl From<io::Error> for ResizeFsError {
 
 // ── Filesystem type detection ───────────────────────────────────────────────
 
-/// Reads the filesystem magic number via `fstatfs(2)`.
-///
-/// Returns the `f_type` field (filesystem type identifier) on success.
-fn fs_magic(fd: i32) -> io::Result<u64> {
-    let mut statfs_buf = unsafe { std::mem::zeroed::<libc::statfs>() };
-    let rc = unsafe { libc::fstatfs(fd, &mut statfs_buf) };
-    if rc < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(statfs_buf.f_type as u64)
+/// Filesystem attributes used by the resize ioctls.
+struct FsInfo {
+    magic: libc::c_long,
+    block_size: u64,
 }
 
-/// Reads the filesystem block size via `fstatfs(2)`.
-fn fs_bsize(fd: i32) -> io::Result<u64> {
-    let mut statfs_buf = unsafe { std::mem::zeroed::<libc::statfs>() };
-    let rc = unsafe { libc::fstatfs(fd, &mut statfs_buf) };
+/// Reads the filesystem type and block size via one `fstatfs(2)` call.
+fn fs_info(fd: i32) -> io::Result<FsInfo> {
+    let mut statfs_buf = MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: statfs_buf provides valid writable storage for fstatfs(). On success, fstatfs()
+    // initializes the complete struct before it is read below.
+    let rc = unsafe { libc::fstatfs(fd, statfs_buf.as_mut_ptr()) };
     if rc < 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok(statfs_buf.f_bsize as u64)
+
+    // SAFETY: the successful fstatfs() call above initialized statfs_buf.
+    let statfs_buf = unsafe { statfs_buf.assume_init() };
+    Ok(FsInfo {
+        magic: statfs_buf.f_type as libc::c_long,
+        block_size: statfs_buf.f_bsize as u64,
+    })
 }
 
 // ── Raw ioctl helpers (unsafe, syscall wrappers) ────────────────────────────
@@ -195,21 +244,19 @@ fn ioctl_xfs_growfs(fd: i32, data: &mut XfsGrowfsData) -> io::Result<()> {
 
 /// Resize an ext4 filesystem. Rounds `sz` down to the block size.
 /// Returns the actual size after rounding.
-fn resize_ext4(fd: i32, sz: u64) -> io::Result<u64> {
-    let bsize = fs_bsize(fd)?;
-    let mut block_count = sz / bsize;
-    // SAFETY: fd is a valid file descriptor, block_count is a valid u64 pointer.
+fn resize_ext4(fd: i32, sz: u64, block_size: u64) -> io::Result<u64> {
+    let mut block_count = sz / block_size;
     ioctl_ext4_resize(fd, &mut block_count)?;
-    Ok(block_count * bsize)
+    Ok(block_count * block_size)
 }
 
 /// Resize a btrfs filesystem. Rounds `sz` down to the block size.
 /// Returns the actual size after rounding.
-fn resize_btrfs(fd: i32, sz: u64) -> io::Result<u64> {
-    let bsize = fs_bsize(fd)?;
-    let actual_sz = sz - (sz % bsize);
+fn resize_btrfs(fd: i32, sz: u64, block_size: u64) -> io::Result<u64> {
+    let actual_sz = sz - (sz % block_size);
 
     let mut args = BtrfsIoctlVolArgs {
+        fd: 0,
         name: [0; BTRFS_VOL_ARGS_NAME_LEN],
     };
     let sz_str = format!("{actual_sz}");
@@ -218,7 +265,6 @@ fn resize_btrfs(fd: i32, sz: u64) -> io::Result<u64> {
     for (i, &b) in bytes[..copy_len].iter().enumerate() {
         args.name[i] = b as libc::c_char;
     }
-    // SAFETY: fd is a valid file descriptor, args is a valid stack-allocated struct.
     ioctl_btrfs_resize(fd, &args)?;
     Ok(actual_sz)
 }
@@ -226,7 +272,6 @@ fn resize_btrfs(fd: i32, sz: u64) -> io::Result<u64> {
 /// Resize an XFS filesystem. Returns the actual size after block-size rounding.
 fn resize_xfs(fd: i32, sz: u64) -> io::Result<u64> {
     let mut geo = XfsFsopGeom::default();
-    // SAFETY: fd is valid, geo is a valid mutable pointer.
     ioctl_xfs_geometry(fd, &mut geo)?;
 
     let blocksize = geo.blocksize as u64;
@@ -235,7 +280,6 @@ fn resize_xfs(fd: i32, sz: u64) -> io::Result<u64> {
         newblocks: sz / blocksize,
         ..Default::default()
     };
-    // SAFETY: fd is valid, data is a valid mutable pointer.
     ioctl_xfs_growfs(fd, &mut data)?;
     Ok(data.newblocks * blocksize)
 }
@@ -261,22 +305,22 @@ pub fn resize_fs(file: &File, sz: u64) -> Result<u64, ResizeFsError> {
     }
 
     let fd = file.as_raw_fd();
-    let magic = fs_magic(fd)?;
+    let fs_info = fs_info(fd)?;
 
-    let actual_size = match magic {
-        EXT4_SUPER_MAGIC => {
+    let actual_size = match fs_info.magic {
+        magic if magic == EXT4_SUPER_MAGIC as libc::c_long => {
             if sz < EXT4_MINIMAL_SIZE {
                 return Err(ResizeFsError::OutOfRange);
             }
-            resize_ext4(fd, sz)?
+            resize_ext4(fd, sz, fs_info.block_size)?
         }
-        BTRFS_SUPER_MAGIC => {
+        magic if magic == BTRFS_SUPER_MAGIC as libc::c_long => {
             if sz < BTRFS_MINIMAL_SIZE {
                 return Err(ResizeFsError::OutOfRange);
             }
-            resize_btrfs(fd, sz)?
+            resize_btrfs(fd, sz, fs_info.block_size)?
         }
-        XFS_SUPER_MAGIC => {
+        magic if magic == XFS_SUPER_MAGIC as libc::c_long => {
             if sz < XFS_MINIMAL_SIZE {
                 return Err(ResizeFsError::OutOfRange);
             }
@@ -448,6 +492,34 @@ mod tests {
         // Must be at least long enough to hold the string representation
         // of any u64 value (max 20 digits for u64::MAX = 18446744073709551615).
         assert!(BTRFS_VOL_ARGS_NAME_LEN >= 20);
+    }
+
+    #[test]
+    fn test_ioctl_abi_matches_linux_headers() {
+        assert_eq!(size_of::<BtrfsIoctlVolArgs>(), 4096);
+        assert_eq!(std::mem::offset_of!(BtrfsIoctlVolArgs, fd), 0);
+        assert_eq!(std::mem::offset_of!(BtrfsIoctlVolArgs, name), 8);
+        assert_eq!(BTRFS_IOC_RESIZE, 0x5000_9403);
+
+        assert_eq!(size_of::<XfsFsopGeom>(), 112);
+        assert_eq!(std::mem::offset_of!(XfsFsopGeom, datablocks), 32);
+        assert_eq!(std::mem::offset_of!(XfsFsopGeom, uuid), 64);
+        assert_eq!(std::mem::offset_of!(XfsFsopGeom, sunit), 80);
+        assert_eq!(std::mem::offset_of!(XfsFsopGeom, logsunit), 108);
+        assert_eq!(XFS_IOC_FSGEOMETRY, 0x8070_587c);
+
+        assert_eq!(std::mem::offset_of!(XfsGrowfsData, newblocks), 0);
+        assert_eq!(std::mem::offset_of!(XfsGrowfsData, imaxpct), 8);
+        assert_eq!(
+            XFS_IOC_FSGROWFSDATA,
+            ioc_request(IOC_WRITE, b'X', 110, size_of::<XfsGrowfsData>())
+        );
+
+        #[cfg(target_pointer_width = "64")]
+        {
+            assert_eq!(size_of::<XfsGrowfsData>(), 16);
+            assert_eq!(XFS_IOC_FSGROWFSDATA, 0x4010_586e);
+        }
     }
 
     // ── Error display ────────────────────────────────────────────────────

@@ -4,12 +4,16 @@
 //
 // Device mapper utilities (deferred remove cancel, name validation).
 
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::OpenOptionsExt;
+
 // ── Constants ─────────────────────────────────────────────────────────────
 
 const DM_CONTROL_PATH: &str = "/dev/mapper/control";
 const DM_DEFERRED_REMOVE_MSG: &str = "@cancel_deferred_remove";
-const DM_IOCTL: u8 = 0xfd;
-const DM_TARGET_MSG: u8 = 0x0e;
+const DM_DEFERRED_REMOVE_MSG_LEN: usize = DM_DEFERRED_REMOVE_MSG.len() + 1;
+const DM_IOCTL: u32 = 0xfd;
+const DM_TARGET_MSG_CMD: u32 = 14;
 const DM_VERSION_MAJOR: u32 = 4;
 const DM_VERSION_MINOR: u32 = 47;
 const DM_VERSION_PATCHLEVEL: u32 = 0;
@@ -25,7 +29,6 @@ pub fn dm_name_is_valid(name: &str) -> bool {
 
 /// Matches kernel `struct dm_ioctl` — fields must match kernel ABI layout exactly.
 #[repr(C)]
-#[derive(Copy, Clone)]
 struct DmIoctl {
     version: [u32; 3],
     data_size: u32,
@@ -42,10 +45,26 @@ struct DmIoctl {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
 struct DmTargetMsg {
     sector: u64,
 }
+
+/// Complete in/out buffer for `DM_TARGET_MSG`.
+///
+/// The kernel locates `dm_target_msg` through `dm_ioctl.data_start` and then
+/// reads the NUL-terminated text immediately after it, so all three fields must
+/// be part of the same allocation.
+#[repr(C)]
+struct DmTargetMessage {
+    dm_ioctl: DmIoctl,
+    dm_target_msg: DmTargetMsg,
+    text: [u8; DM_DEFERRED_REMOVE_MSG_LEN],
+}
+
+const _: [(); 312] = [(); std::mem::size_of::<DmIoctl>()];
+const _: [(); 344] = [(); std::mem::size_of::<DmTargetMessage>()];
+const _: [(); 312] = [(); std::mem::offset_of!(DmTargetMessage, dm_target_msg)];
+const _: [(); 320] = [(); std::mem::offset_of!(DmTargetMessage, text)];
 
 // ── Deferred remove cancel ────────────────────────────────────────────────
 
@@ -54,51 +73,60 @@ pub fn dm_deferred_remove_cancel(name: &str) -> Result<(), i32> {
         return Err(crate::ffi::Errno::ENODEV.to_neg_errno());
     }
 
-    let fd = std::fs::File::open(DM_CONTROL_PATH).map_err(|e| {
-        if let Some(errno) = e.raw_os_error() {
-            -errno
-        } else {
-            crate::ffi::Errno::EIO.to_neg_errno()
-        }
-    })?;
+    let fd = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_CLOEXEC)
+        .open(DM_CONTROL_PATH)
+        .map_err(|e| {
+            if let Some(errno) = e.raw_os_error() {
+                -errno
+            } else {
+                crate::ffi::Errno::EIO.to_neg_errno()
+            }
+        })?;
 
     let name_bytes = name.as_bytes();
     let msg_bytes = DM_DEFERRED_REMOVE_MSG.as_bytes();
 
-    let mut dm_ioctl = DmIoctl {
-        version: [DM_VERSION_MAJOR, DM_VERSION_MINOR, DM_VERSION_PATCHLEVEL],
-        data_size: 0,
-        data_start: 0,
-        target_count: 0,
-        open_count: 0,
-        flags: 0,
-        event_nr: 0,
-        padding1: 0,
-        dev: 0,
-        name: [0u8; DM_NAME_LEN],
-        uuid: [0u8; 129],
-        data: [0u8; 7],
+    let mut message = DmTargetMessage {
+        dm_ioctl: DmIoctl {
+            version: [DM_VERSION_MAJOR, DM_VERSION_MINOR, DM_VERSION_PATCHLEVEL],
+            data_size: std::mem::size_of::<DmTargetMessage>() as u32,
+            data_start: std::mem::size_of::<DmIoctl>() as u32,
+            target_count: 0,
+            open_count: 0,
+            flags: 0,
+            event_nr: 0,
+            padding1: 0,
+            dev: 0,
+            name: [0u8; DM_NAME_LEN],
+            uuid: [0u8; 129],
+            data: [0u8; 7],
+        },
+        dm_target_msg: DmTargetMsg { sector: 0 },
+        text: [0u8; DM_DEFERRED_REMOVE_MSG_LEN],
     };
 
-    let copy_len = name_bytes.len().min(DM_NAME_LEN);
-    dm_ioctl.name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
-
-    dm_ioctl.data_start = std::mem::size_of_val(&dm_ioctl) as u32;
-    dm_ioctl.data_size = (std::mem::size_of_val(&dm_ioctl)
-        + std::mem::size_of::<DmTargetMsg>()
-        + msg_bytes.len()) as u32;
+    message.dm_ioctl.name[..name_bytes.len()].copy_from_slice(name_bytes);
+    message.text[..msg_bytes.len()].copy_from_slice(msg_bytes);
 
     #[cfg(target_os = "linux")]
     {
+        // SAFETY: `fd` stays alive for the call, the request code describes
+        // `DmIoctl`, and `message` is a writable, ABI-checked contiguous buffer
+        // whose `data_size` covers the target header and NUL-terminated text.
         let ret = unsafe {
             libc::ioctl(
-                libc::dup(fd.as_raw_fd()),
-                libc::ioctl_request_code!(DM_IOCTL, DM_TARGET_MSG, i32),
-                &mut dm_ioctl as *mut _,
+                fd.as_raw_fd(),
+                libc::_IOWR::<DmIoctl>(DM_IOCTL, DM_TARGET_MSG_CMD),
+                &mut message as *mut DmTargetMessage,
             )
         };
         if ret < 0 {
-            return Err(crate::ffi::Errno::EOPNOTSUPP.to_neg_errno());
+            return Err(std::io::Error::last_os_error()
+                .raw_os_error()
+                .map_or(crate::ffi::Errno::EIO.to_neg_errno(), |errno| -errno));
         }
     }
 
