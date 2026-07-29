@@ -32,71 +32,11 @@ pub mod fuzz_journald_stream;
 #[path = "fuzz_journald_syslog.rs"]
 pub mod fuzz_journald_syslog;
 
-#[path = "fuzz_journald_util.rs"]
-pub mod fuzz_journald_util;
-
 #[path = "journalctl_filter.rs"]
 pub mod journalctl_filter;
 
 #[path = "journalctl.rs"]
 pub mod journalctl;
 
-#[path = "journald_audit.rs"]
-pub mod journald_audit;
-
-#[path = "journald_client.rs"]
-pub mod journald_client;
-
-#[path = "journald_config.rs"]
-pub mod journald_config;
-
-#[path = "journald_console.rs"]
-pub mod journald_console;
-
-#[path = "journald_context.rs"]
-pub mod journald_context;
-
-#[path = "journald_kmsg.rs"]
-pub mod journald_kmsg;
-
-#[path = "journald_manager.rs"]
-pub mod journald_manager;
-
-#[path = "journald_native.rs"]
-pub mod journald_native;
-
 #[path = "journald_runtime.rs"]
 pub mod journald_runtime;
-
-#[path = "journald_rate_limit.rs"]
-pub mod journald_rate_limit;
-
-#[path = "journald_socket.rs"]
-pub mod journald_socket;
-
-#[path = "journald_stream.rs"]
-pub mod journald_stream;
-
-#[path = "journald_sync.rs"]
-pub mod journald_sync;
-
-#[path = "journald_syslog.rs"]
-pub mod journald_syslog;
-
-#[path = "journald_varlink.rs"]
-pub mod journald_varlink;
-
-#[path = "journald_wall.rs"]
-pub mod journald_wall;
-
-#[path = "test_journald_config.rs"]
-pub mod test_journald_config;
-
-#[path = "test_journald_rate_limit.rs"]
-pub mod test_journald_rate_limit;
-
-#[path = "test_journald_syslog.rs"]
-pub mod test_journald_syslog;
-
-#[path = "test_journald_tables.rs"]
-pub mod test_journald_tables;

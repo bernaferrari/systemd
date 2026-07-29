@@ -13,17 +13,17 @@ Scope: `src`
 ## Snapshot Totals
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1388**
+- All `src` Rust files: **1359**
 - Rust metadata adapters: **30**
-- Rust test/fuzz support files: **95**
-- Unverified Rust behavior candidates: **1263**
+- Rust test/fuzz support files: **90**
+- Unverified Rust behavior candidates: **1239**
 
 Excluding `src/test`:
 - C files: **1569**
-- Rust files: **1388**
+- Rust files: **1359**
 - Rust metadata adapters: **30**
-- Rust test/fuzz support files: **95**
-- Unverified Rust behavior candidates: **1263**
+- Rust test/fuzz support files: **90**
+- Unverified Rust behavior candidates: **1239**
 
 ## Per-Subsystem Inventory
 
@@ -33,7 +33,7 @@ Excluding `src/test`:
 | `analyze` | 40 | 2 | 0 | 0 | 2 |
 | `ask-password` | 1 | 3 | 0 | 0 | 3 |
 | `backlight` | 1 | 3 | 0 | 0 | 3 |
-| `basic` | 119 | 146 | 0 | 2 | 144 |
+| `basic` | 119 | 145 | 0 | 2 | 143 |
 | `battery-check` | 1 | 3 | 0 | 0 | 3 |
 | `binfmt` | 1 | 2 | 0 | 0 | 2 |
 | `bless-boot` | 3 | 0 | 0 | 0 | 0 |
@@ -74,7 +74,7 @@ Excluding `src/test`:
 | `imds` | 5 | 0 | 0 | 0 | 0 |
 | `import` | 22 | 26 | 0 | 3 | 23 |
 | `integritysetup` | 3 | 0 | 0 | 0 | 0 |
-| `journal` | 41 | 48 | 1 | 14 | 33 |
+| `journal` | 41 | 28 | 1 | 9 | 18 |
 | `journal-remote` | 11 | 0 | 0 | 0 | 0 |
 | `kernel-install` | 1 | 3 | 0 | 0 | 3 |
 | `keyutil` | 1 | 3 | 0 | 0 | 3 |
@@ -119,7 +119,7 @@ Excluding `src/test`:
 | `run` | 2 | 3 | 0 | 0 | 3 |
 | `run-generator` | 1 | 3 | 0 | 0 | 3 |
 | `sbsign` | 2 | 0 | 0 | 0 | 0 |
-| `shared` | 283 | 259 | 0 | 6 | 253 |
+| `shared` | 283 | 251 | 0 | 6 | 245 |
 | `shutdown` | 7 | 0 | 0 | 0 | 0 |
 | `sleep` | 3 | 0 | 0 | 0 | 0 |
 | `socket-activate` | 1 | 3 | 0 | 0 | 3 |

@@ -147,7 +147,6 @@ pub mod syslog_util;
 pub mod terminal_util;
 pub mod time_util;
 pub mod udev_util;
-pub mod uid_range;
 pub mod unaligned;
 pub mod unit_def;
 pub mod unit_name;

@@ -513,30 +513,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "uid_range": (
-            basic_rust / "uid_range.h",
-            basic_rust / "uid_range.rs",
-            frozenset(
-                {
-                    "rs_uid_range_free",
-                    "rs_uid_range_add_internal",
-                    "rs_uid_range_add_str_full",
-                    "rs_uid_range_covers",
-                    "rs_uid_range_contains",
-                    "rs_uid_range_overlaps",
-                    "rs_uid_range_size",
-                    "rs_uid_range_is_empty",
-                    "rs_uid_range_equal",
-                    "rs_uid_range_base",
-                    "rs_uid_range_next_lower",
-                    "rs_uid_range_clip",
-                    "rs_uid_range_copy",
-                    "rs_uid_range_remove",
-                    "rs_uid_range_partition",
-                    "rs_uid_range_translate",
-                }
-            ),
-        ),
         "sort_util": (
             basic_rust / "sort_util.h",
             basic_rust / "sort_util.rs",
@@ -1425,7 +1401,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "prioq": (tests_extra / "test-prioq-rust.c",),
         "image_policy_util": (tests_extra / "test-image-policy-rust.c",),
         "socket_util": (tests_extra / "test-socket-util-rust.c",),
-        "uid_range": (tests_extra / "test-uid-range-rust.c",),
         "sort_util": (tests_extra / "test-sort-util-rust.c",),
         "time_util_conversion": (tests_extra / "test-time-util-rust.c",),
         "time_util_formatting": (
@@ -1728,7 +1703,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/socket-util.c",
             root / "src/basic/socket-util.h",
         ),
-        "uid_range": (root / "src/basic/uid-range.c", root / "src/basic/uid-range.h"),
         "sort_util": (
             root / "src/basic/sort-util.c",
             root / "src/basic/sort-util.h",

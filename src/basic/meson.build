@@ -296,7 +296,6 @@ if get_option('rust').enabled()
                 'rust/cgroup_util_str_tables.rs',
                 'rust/locale_util.rs',
                 'rust/process_util_str_tables.rs',
-                'rust/uid_range.rs',
                 'rust/unit_def.rs',
                 'rust/virt.rs',
                 'rust/netdev_str_tables.rs',

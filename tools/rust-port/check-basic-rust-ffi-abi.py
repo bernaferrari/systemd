@@ -97,12 +97,6 @@ C_TYPES = {
     "const ImagePolicy *": "*constCImagePolicy",
     "ImagePolicy *": "*mutCImagePolicy",
     "ImagePolicy **": "*mut*mutCImagePolicy",
-    # UIDRange is a C-owned pointer/length allocation. The native Rust Vec
-    # type intentionally stays outside this ABI and is represented instead by
-    # the dedicated repr(C) CUIDRange boundary mirror.
-    "const UIDRange *": "*constCUIDRange",
-    "UIDRange *": "*mutCUIDRange",
-    "UIDRange **": "*mut*mutCUIDRange",
     # Socket ABI facades keep the platform union/aggregate representation
     # opaque in the generated C header while their Rust implementation owns
     # the private repr(C) mirrors. This is still a C-exact pointer ABI.

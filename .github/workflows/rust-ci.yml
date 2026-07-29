@@ -267,7 +267,6 @@ jobs:
           test-misc-rust2
           test-misc-rust3
           test-misc-untested2-rust
-          test-uid-range-rust
           test-unaligned-rust
           test-safe-math-rust
           test-alloc-util-rust
@@ -419,7 +418,6 @@ jobs:
           test-misc-rust2
           test-misc-rust3
           test-misc-untested2-rust
-          test-uid-range-rust
           test-unaligned-rust
           test-safe-math-rust
           test-alloc-util-rust

@@ -804,20 +804,6 @@ if get_option('rust').enabled()
         test('test-hostname-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-uid-range-rust',
-                files('test-uid-range-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-uid-range-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-ether-addr-util-rust',
                 files('test-ether-addr-util-rust.c'),
                 include_directories : includes,
