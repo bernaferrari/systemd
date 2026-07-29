@@ -101,14 +101,13 @@ jobs:
   #         test-stat-util-inline-rust, test-stat-verify-rust
   #   shared facades: test-shared-validators{,2,3}-rust (+ related validators)
   #   parse/time slices: test-parse-util-extra-rust, test-parse-extra-rust,
-  #                      test-parse-util-inline-rust, test-time-util-extra2-rust
+  #                      test-parse-util-inline-rust, test-time-util-extra-rust,
+  #                      test-time-util-extra2-rust
   #   allocator ownership/overflow: test-alloc-util-rust,
   #                                 test-alloc-util-extra2-rust
   #   version byte ordering: test-strverscmp-rust
   #   non-UTF-8 extras: test-header-inline-rust, string/escape/errno fixtures
   #
-  # `test-time-util-extra-rust` remains deferred; the independently reviewed
-  # conversion facade is covered by `test-time-util-rust` below.
   rust-meson-reviewed-shadows:
     name: Meson-reviewed Rust C shadows
     runs-on: ubuntu-24.04
@@ -169,6 +168,7 @@ jobs:
           test-image-policy-rust
           test-sort-util-rust
           test-time-util-rust
+          test-time-util-extra-rust
           test-efivars-rust
           test-efi-guid-rust
           test-serialize-rust
@@ -332,6 +332,7 @@ jobs:
           test-image-policy-rust
           test-sort-util-rust
           test-time-util-rust
+          test-time-util-extra-rust
           test-efivars-rust
           test-efi-guid-rust
           test-serialize-rust

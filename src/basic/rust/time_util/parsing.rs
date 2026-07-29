@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
+// PORT-SYNC: scope=basic.time-util; authority=src/basic/time-util.c,src/basic/time-util.h
+//
 // Duration parsing and its byte-oriented C-string helpers.
 
 use libc::c_char;
@@ -21,9 +23,28 @@ unsafe fn parse_nonnegative_decimal(p: *const c_char) -> Result<(u64, *const c_c
         return Err(Errno::EINVAL.to_neg_errno());
     }
 
+    let start = p;
     let mut q = p;
+    // strtoll(), used by the C authority, accepts the full C-locale
+    // whitespace set even though skip_leading_chars() above intentionally
+    // uses systemd's narrower WHITESPACE definition.
+    while matches!(
+        // SAFETY: the caller guarantees q remains within a live NUL-terminated string.
+        unsafe { *q } as u8,
+        b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c
+    ) {
+        q = q.wrapping_add(1);
+    }
+
+    // SAFETY: q remains within the caller's live C string.
+    let sign = unsafe { *q };
+    let negative = sign == b'-' as c_char;
+    if negative || sign == b'+' as c_char {
+        q = q.wrapping_add(1);
+    }
+
+    let digits_start = q;
     let mut value = 0_u64;
-    let mut seen_digit = false;
 
     // SAFETY: the caller guarantees q remains within a live NUL-terminated string.
     while unsafe { *q } != 0 {
@@ -33,7 +54,6 @@ unsafe fn parse_nonnegative_decimal(p: *const c_char) -> Result<(u64, *const c_c
             break;
         }
 
-        seen_digit = true;
         value = value
             .checked_mul(10)
             .and_then(|v| v.checked_add((c - b'0') as u64))
@@ -43,8 +63,14 @@ unsafe fn parse_nonnegative_decimal(p: *const c_char) -> Result<(u64, *const c_c
         q = unsafe { q.add(1) };
     }
 
-    if !seen_digit {
-        return Err(Errno::EINVAL.to_neg_errno());
+    if q == digits_start {
+        // strtoll() reports no conversion by leaving endptr at the original
+        // input. The caller needs that distinction to accept ".5" while
+        // rejecting inputs such as "+.5".
+        return Ok((0, start));
+    }
+    if negative {
+        return Err(Errno::ERANGE.to_neg_errno());
     }
 
     Ok((value, q))
@@ -292,7 +318,8 @@ unsafe fn extract_multiplier(p: *const c_char, ret_multiplier: *mut u64) -> *con
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_time(t: *const c_char, ret: *mut u64, default_unit: u64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_time(t: *const c_char, ret: *mut u64, default_unit: u64) -> i32 {
     if t.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
@@ -367,14 +394,14 @@ pub unsafe fn rs_parse_time(t: *const c_char, ret: *mut u64, default_unit: u64) 
         // SAFETY: p remains within the caller's C string.
         let ws_len = unsafe { strspn_chars(p, WHITESPACE) };
         // SAFETY: ws_len was measured from p within the same string.
+        let before_whitespace = p;
         let mut p2 = unsafe { p.add(ws_len) };
-        let before = p2;
         // SAFETY: p2 is in-bounds and multiplier is a live writable u64.
         p2 = unsafe { extract_multiplier(p2, &mut multiplier) };
 
         // Don't allow '12.34.56', but accept '12.34 .56' or '12.34s.56'
         // SAFETY: p2 is an in-bounds pointer returned by extract_multiplier.
-        if p2 == before && unsafe { *p2 } != 0 {
+        if p2 == before_whitespace && unsafe { *p2 } != 0 {
             return Errno::EINVAL.to_neg_errno();
         }
 
@@ -404,9 +431,6 @@ pub unsafe fn rs_parse_time(t: *const c_char, ret: *mut u64, default_unit: u64) 
                 // SAFETY: b currently points before the terminating NUL.
                 let c = unsafe { *b } as u8;
                 if c < b'0' || c > b'9' {
-                    break;
-                }
-                if m == 0 {
                     break;
                 }
                 let k = (c - b'0') as u64 * m;
@@ -444,7 +468,8 @@ pub unsafe fn rs_parse_time(t: *const c_char, ret: *mut u64, default_unit: u64) 
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_sec(t: *const c_char, ret: *mut u64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_sec(t: *const c_char, ret: *mut u64) -> i32 {
     // SAFETY: the caller supplies the input and optional output contracts forwarded here.
     unsafe { rs_parse_time(t, ret, USEC_PER_SEC) }
 }
@@ -471,7 +496,8 @@ pub fn parse_sec(value: &str) -> Result<u64, i32> {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_sec_fix_0(t: *const c_char, ret: *mut u64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_sec_fix_0(t: *const c_char, ret: *mut u64) -> i32 {
     if t.is_null() || ret.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
@@ -497,7 +523,8 @@ pub unsafe fn rs_parse_sec_fix_0(t: *const c_char, ret: *mut u64) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_sec_def_infinity(t: *const c_char, ret: *mut u64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_sec_def_infinity(t: *const c_char, ret: *mut u64) -> i32 {
     if t.is_null() || ret.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }

@@ -8,6 +8,9 @@
 #include "tests.h"
 
 /* signal_util.rs keeps these target constants behind a narrow test-only C ABI. */
+int rs_get_sigrtmin(void);
+int rs_get_sigrtmax(void);
+int rs_get_nsig(void);
 int rs_get_sigrtmin(void) {
         return SIGRTMIN;
 }

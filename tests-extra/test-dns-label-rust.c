@@ -404,6 +404,7 @@ static void test_dns_name_count_labels(void) {
         assert_se(cv == rv);
 }
 
+/* RUST-CONTRACT: dns-srv-type */
 /* ── dns_srv_type_is_valid ────────────────────────────────────────────── */
 
 static void test_dns_srv_type_is_valid(void) {
@@ -459,6 +460,7 @@ static void test_dns_srv_type_is_valid(void) {
         assert_se(cv == rv);
 }
 
+/* RUST-CONTRACT: dnssd-srv-type */
 /* ── dnssd_srv_type_is_valid ──────────────────────────────────────────── */
 
 static void test_dnssd_srv_type_is_valid(void) {

@@ -10,6 +10,9 @@
 #include <stdio.h>
 
 /* C helpers needed by Rust signal_util module (runtime signal constants) */
+int rs_get_sigrtmin(void);
+int rs_get_sigrtmax(void);
+int rs_get_nsig(void);
 int rs_get_sigrtmin(void) { return SIGRTMIN; }
 int rs_get_sigrtmax(void) { return SIGRTMAX; }
 int rs_get_nsig(void) { return _NSIG; }

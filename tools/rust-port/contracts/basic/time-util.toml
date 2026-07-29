@@ -1,0 +1,309 @@
+# One directory-scoped owner keeps the shared time_util C ABI visible while
+# individual surfaces retain their own C authority and comparison fixture.
+schema = 1
+module = "time-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["now", "now_nsec", "map_clock_usec", "parse_nsec", "format_timestamp_style", "format_timestamp_relative_full", "weekday_to_string"]
+
+[authority]
+c_headers = ["src/basic/time-util.h"]
+c_sources = ["src/basic/time-util.c"]
+rust_headers = ["src/basic/rust/time_util.h"]
+rust_sources = ["src/basic/rust/time_util/conversion.rs", "src/basic/rust/time_util/formatting.rs", "src/basic/rust/time_util/parsing.rs", "src/basic/rust/time_util/types.rs"]
+
+[[surface]]
+id = "time-map-clock-usec-raw"
+c_symbols = ["map_clock_usec_raw"]
+rust_symbols = ["rs_map_clock_usec_raw"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-map-clock-usec-raw"]
+
+[[surface]]
+id = "time-timespec-load"
+c_symbols = ["timespec_load"]
+rust_symbols = ["rs_timespec_load"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-timespec-load-null-fail-closed"
+deviation_rationale = "The valid timespec conversion and infinity sentinel behavior follows C. Rust returns zero for malformed NULL input storage rather than relying on C's required-pointer contract."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-timespec-load"]
+
+[[surface]]
+id = "time-timespec-load-nsec"
+c_symbols = ["timespec_load_nsec"]
+rust_symbols = ["rs_timespec_load_nsec"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-timespec-load-nsec-null-fail-closed"
+deviation_rationale = "The valid timespec nanosecond conversion and infinity sentinel behavior follows C. Rust returns zero for malformed NULL input storage rather than relying on C's required-pointer contract."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-timespec-load-nsec"]
+
+[[surface]]
+id = "time-timespec-store"
+c_symbols = ["timespec_store"]
+rust_symbols = ["rs_timespec_store"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-timespec-store-null-fail-closed"
+deviation_rationale = "The valid timespec sentinel and scalar conversion behavior follows C. Rust returns NULL for malformed NULL output storage rather than relying on C's required-pointer contract."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-timespec-store"]
+
+[[surface]]
+id = "time-timespec-store-nsec"
+c_symbols = ["timespec_store_nsec"]
+rust_symbols = ["rs_timespec_store_nsec"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-timespec-store-nsec-null-fail-closed"
+deviation_rationale = "The valid timespec sentinel and nanosecond conversion behavior follows C. Rust returns NULL for malformed NULL output storage rather than relying on C's required-pointer contract."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-timespec-store-nsec"]
+
+[[surface]]
+id = "time-timeval-load"
+c_symbols = ["timeval_load"]
+rust_symbols = ["rs_timeval_load"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-timeval-load-null-fail-closed"
+deviation_rationale = "The valid timeval conversion and infinity sentinel behavior follows C. Rust returns zero for malformed NULL input storage rather than relying on C's required-pointer contract."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-timeval-load"]
+
+[[surface]]
+id = "time-timeval-store"
+c_symbols = ["timeval_store"]
+rust_symbols = ["rs_timeval_store"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-timeval-store-null-fail-closed"
+deviation_rationale = "The valid timeval sentinel and microsecond conversion behavior follows C. Rust returns NULL for malformed NULL output storage rather than relying on C's required-pointer contract."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-timeval-store"]
+
+[[surface]]
+id = "time-triple-timestamp-by-clock"
+c_symbols = ["triple_timestamp_by_clock"]
+rust_symbols = ["rs_triple_timestamp_by_clock"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-triple-timestamp-by-clock-null-fail-closed"
+deviation_rationale = "For valid target-layout triple_timestamp storage, Rust preserves the clock selection and infinity fallback. NULL returns zero rather than reaching C's required-pointer assertion."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-triple-timestamp-by-clock"]
+
+[[surface]]
+id = "time-parse-time"
+c_symbols = ["parse_time"]
+rust_symbols = ["rs_parse_time"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-parse-time-invalid-preconditions-fail-closed"
+deviation_rationale = "For valid C strings, optional output storage, and positive default units, Rust mirrors C's duration grammar, result, errno, and success-only output publication. NULL input and a zero default unit return -EINVAL rather than reaching C assertion preconditions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-parse-time"]
+
+[[surface]]
+id = "time-parse-sec"
+c_symbols = ["parse_sec"]
+rust_symbols = ["rs_parse_sec"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-parse-sec-null-fail-closed"
+deviation_rationale = "For valid C strings and optional output storage, Rust delegates to the audited parse_time facade with C's USEC_PER_SEC default. NULL input returns -EINVAL rather than reaching C's assertion precondition."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-parse-sec"]
+
+[[surface]]
+id = "time-parse-sec-fix-0"
+c_symbols = ["parse_sec_fix_0"]
+rust_symbols = ["rs_parse_sec_fix_0"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-parse-sec-fix-0-null-fail-closed"
+deviation_rationale = "For valid input and output storage, Rust preserves C's zero-to-infinity conversion, parser errors, and output publication. NULL arguments return -EINVAL rather than reaching C assertion preconditions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-parse-sec-fix-0"]
+
+[[surface]]
+id = "time-parse-sec-def-infinity"
+c_symbols = ["parse_sec_def_infinity"]
+rust_symbols = ["rs_parse_sec_def_infinity"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-parse-sec-def-infinity-null-fail-closed"
+deviation_rationale = "For valid input and output storage, Rust preserves C's whitespace-only infinity default, parser errors, and output publication. NULL arguments return -EINVAL rather than reaching C assertion preconditions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-rust.c"
+meson_target = "test-time-util-rust"
+labels = ["time-parse-sec-def-infinity"]
+
+[[surface]]
+id = "time-parse-gmtoff"
+c_symbols = ["parse_gmtoff"]
+rust_symbols = ["rs_parse_gmtoff"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-parse-gmtoff-null-fail-closed"
+deviation_rationale = "For valid C strings and optional output storage, Rust preserves C-compatible timezone offsets and parse errors. NULL input returns -EINVAL rather than reaching C's assertion precondition."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-parse-extra-rust.c"
+meson_target = "test-parse-extra-rust"
+labels = ["time-parse-gmtoff"]
+
+[[surface]]
+id = "time-format-timespan"
+c_symbols = ["format_timespan"]
+rust_symbols = ["rs_format_timespan"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+deviation_id = "time-format-timespan-invalid-output-fail-closed"
+deviation_rationale = "For valid writable output buffers, Rust preserves C's bounded formatting. NULL or zero-length output storage returns NULL rather than reaching C assertion preconditions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-parse-extra-rust.c"
+meson_target = "test-parse-extra-rust"
+labels = ["time-format-timespan"]
+
+[[surface]]
+id = "time-timestamp-style-to-string"
+c_symbols = ["timestamp_style_to_string"]
+rust_symbols = ["rs_timestamp_style_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-extra-rust.c"
+meson_target = "test-time-util-extra-rust"
+labels = ["time-timestamp-style-to-string"]
+
+[[surface]]
+id = "time-timestamp-style-from-string"
+c_symbols = ["timestamp_style_from_string"]
+rust_symbols = ["rs_timestamp_style_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-time-util-extra-rust.c"
+meson_target = "test-time-util-extra-rust"
+labels = ["time-timestamp-style-from-string"]

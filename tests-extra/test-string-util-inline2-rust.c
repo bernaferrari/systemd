@@ -11,6 +11,9 @@
 #include "rust/string_util.h"
 
 /* C helpers for runtime signal constants (needed by Rust FFI) */
+int rs_get_sigrtmin(void);
+int rs_get_sigrtmax(void);
+int rs_get_nsig(void);
 int rs_get_sigrtmin(void) { return SIGRTMIN; }
 int rs_get_sigrtmax(void) { return SIGRTMAX; }
 int rs_get_nsig(void) { return _NSIG; }

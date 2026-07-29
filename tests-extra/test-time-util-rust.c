@@ -202,6 +202,7 @@ TEST(timeval_store_zero) {
 }
 
 /* ── triple_timestamp_by_clock ──────────────────────────────────────────── */
+/* RUST-CONTRACT: time-triple-timestamp-by-clock */
 
 TEST(triple_timestamp_by_clock_realtime) {
         triple_timestamp ts = { .realtime = 100, .monotonic = 200, .boottime = 300 };
@@ -234,6 +235,7 @@ TEST(triple_timestamp_by_clock_unknown) {
 }
 
 /* ── parse_time ───────────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-parse-time */
 
 TEST(parse_time_seconds) {
         usec_t c_val, r_val;
@@ -340,6 +342,7 @@ TEST(parse_time_weeks) {
 }
 
 /* ── parse_sec ─────────────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-parse-sec */
 
 TEST(parse_sec_basic) {
         usec_t c_val, r_val;
@@ -366,6 +369,7 @@ TEST(parse_sec_infinity) {
 }
 
 /* ── parse_sec_fix_0 ──────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-parse-sec-fix-0 */
 
 TEST(parse_sec_fix_0_nonzero) {
         usec_t c_val, r_val;
@@ -384,6 +388,7 @@ TEST(parse_sec_fix_0_zero) {
 }
 
 /* ── parse_sec_def_infinity ─────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-parse-sec-def-infinity */
 
 TEST(parse_sec_def_infinity_empty) {
         usec_t c_val, r_val;

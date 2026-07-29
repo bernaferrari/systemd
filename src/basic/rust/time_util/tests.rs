@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
+// PORT-SYNC: scope=basic.time-util; authority=src/basic/time-util.c,src/basic/time-util.h
+//
 // Tests for the time utility shadow subset.
 
 #[cfg(test)]
@@ -310,73 +312,73 @@ mod tests {
 
     #[test]
     fn test_triple_timestamp_by_clock_realtime() {
-        let ts = TripleTimestamp {
+        let mut ts = TripleTimestamp {
             realtime: 1000,
             monotonic: 2000,
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&ts, CLOCK_REALTIME) };
+        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_REALTIME) };
         assert_eq!(result, 1000);
     }
 
     #[test]
     fn test_triple_timestamp_by_clock_monotonic() {
-        let ts = TripleTimestamp {
+        let mut ts = TripleTimestamp {
             realtime: 1000,
             monotonic: 2000,
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&ts, CLOCK_MONOTONIC) };
+        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_MONOTONIC) };
         assert_eq!(result, 2000);
     }
 
     #[test]
     fn test_triple_timestamp_by_clock_boottime() {
-        let ts = TripleTimestamp {
+        let mut ts = TripleTimestamp {
             realtime: 1000,
             monotonic: 2000,
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&ts, CLOCK_BOOTTIME) };
+        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_BOOTTIME) };
         assert_eq!(result, 3000);
     }
 
     #[test]
     fn test_triple_timestamp_by_clock_realtime_alarm() {
-        let ts = TripleTimestamp {
+        let mut ts = TripleTimestamp {
             realtime: 1000,
             monotonic: 2000,
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&ts, CLOCK_REALTIME_ALARM) };
+        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_REALTIME_ALARM) };
         assert_eq!(result, 1000);
     }
 
     #[test]
     fn test_triple_timestamp_by_clock_boottime_alarm() {
-        let ts = TripleTimestamp {
+        let mut ts = TripleTimestamp {
             realtime: 1000,
             monotonic: 2000,
             boottime: 3000,
         };
         // SAFETY: the raw pointer is derived from a live stack value.
-        let result = unsafe { rs_triple_timestamp_by_clock(&ts, CLOCK_BOOTTIME_ALARM) };
+        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_BOOTTIME_ALARM) };
         assert_eq!(result, 3000);
     }
 
     #[test]
     fn test_triple_timestamp_by_clock_invalid() {
-        let ts = TripleTimestamp {
+        let mut ts = TripleTimestamp {
             realtime: 1000,
             monotonic: 2000,
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&ts, 999) };
+        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, 999) };
         assert_eq!(result, USEC_INFINITY);
     }
 
@@ -1329,6 +1331,46 @@ mod tests {
         let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_PER_SEC + USEC_PER_SEC / 2);
+    }
+
+    #[test]
+    fn test_parse_time_leading_decimal_like_c_strtoll() {
+        let s = CString::new(".22s").unwrap();
+        let mut ret = 0;
+        // SAFETY: s is NUL-terminated and ret is a live writable u64.
+        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        assert_eq!(result, 0);
+        assert_eq!(ret, 220_000);
+    }
+
+    #[test]
+    fn test_parse_time_leading_plus_like_c_strtoll() {
+        let s = CString::new("+3.1s").unwrap();
+        let mut ret = 0;
+        // SAFETY: s is NUL-terminated and ret is a live writable u64.
+        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        assert_eq!(result, 0);
+        assert_eq!(ret, 3_100_000);
+    }
+
+    #[test]
+    fn test_parse_time_whitespace_separated_unsuffixed_fraction() {
+        let s = CString::new("3.1 .2s").unwrap();
+        let mut ret = 0;
+        // SAFETY: s is NUL-terminated and ret is a live writable u64.
+        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        assert_eq!(result, 0);
+        assert_eq!(ret, 3_300_000);
+    }
+
+    #[test]
+    fn test_parse_time_fraction_below_default_unit_precision() {
+        let s = CString::new(".7").unwrap();
+        let mut ret = u64::MAX;
+        // SAFETY: s is NUL-terminated and ret is a live writable u64.
+        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, 1) };
+        assert_eq!(result, 0);
+        assert_eq!(ret, 0);
     }
 
     #[test]

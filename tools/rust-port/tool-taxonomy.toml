@@ -93,7 +93,7 @@ paths = [
     "tools/rust-port/contracts/basic/syslog-util.toml",
     "tools/rust-port/contracts/basic/strv.toml",
     "tools/rust-port/contracts/basic/terminal-util.toml",
-    "tools/rust-port/contracts/basic/time-util-conversion.toml",
+    "tools/rust-port/contracts/basic/time-util.toml",
     "tools/rust-port/contracts/basic/unit-def.toml",
     "tools/rust-port/contracts/basic/utf8.toml",
     "tools/rust-port/check-behavior-contract.py",

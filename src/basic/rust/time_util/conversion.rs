@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: scope=basic.time-util-conversion; authority=src/basic/time-util.c,src/basic/time-util.h
+// PORT-SYNC: scope=basic.time-util; authority=src/basic/time-util.c,src/basic/time-util.h
 //
 // Clock-domain conversion and libc timestamp conversion primitives.
 
@@ -215,7 +215,8 @@ pub unsafe extern "C" fn rs_timeval_store(tv: *mut LibcTimeval, u: u64) -> *mut 
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_triple_timestamp_by_clock(ts: *const TripleTimestamp, clock: i32) -> u64 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_triple_timestamp_by_clock(ts: *mut TripleTimestamp, clock: i32) -> u64 {
     if ts.is_null() {
         return 0;
     }

@@ -130,7 +130,7 @@
     "src/basic/rust/dns_domain_validators.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 4
+      "unsafe_sites": 8
     },
     "src/basic/rust/env_util.rs": {
       "missing_safety": 0,
@@ -520,7 +520,7 @@
     "src/basic/rust/socket_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 5
+      "unsafe_sites": 14
     },
     "src/basic/rust/sort_util.rs": {
       "missing_safety": 0,
@@ -691,12 +691,12 @@
     "src/basic/rust/time_util/parsing.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 52
+      "unsafe_sites": 54
     },
     "src/basic/rust/time_util/tests.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 163
+      "unsafe_sites": 167
     },
     "src/basic/rust/udev_util.rs": {
       "missing_safety": 0,

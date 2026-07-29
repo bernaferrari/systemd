@@ -346,6 +346,21 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 {
                     "rs_dns_service_name_is_valid",
                     "rs_dns_subtype_name_is_valid",
+                    "rs_dns_srv_type_is_valid",
+                    "rs_dnssd_srv_type_is_valid",
+                }
+            ),
+        ),
+        # dns_label.h predates the dedicated validator header and retains the
+        # same two declarations for existing consumers. The single exported
+        # facade is deliberately checked against both advertised headers.
+        "dns_label_srv_type_abi": (
+            shared_rust / "dns_label.h",
+            basic_rust / "dns_domain_validators.rs",
+            frozenset(
+                {
+                    "rs_dns_srv_type_is_valid",
+                    "rs_dnssd_srv_type_is_valid",
                 }
             ),
         ),
@@ -421,6 +436,8 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_ifname_valid_char",
                     "rs_ifname_valid_full",
                     "rs_ifname_valid",
+                    "rs_vsock_parse_port",
+                    "rs_vsock_parse_cid",
                 }
             ),
         ),
@@ -450,13 +467,33 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_timespec_store_nsec",
                     "rs_timeval_load",
                     "rs_timeval_store",
+                    "rs_triple_timestamp_by_clock",
                 }
             ),
         ),
         "time_util_formatting": (
             basic_rust / "time_util.h",
             basic_rust / "time_util/formatting.rs",
-            frozenset({"rs_parse_gmtoff", "rs_format_timespan"}),
+            frozenset(
+                {
+                    "rs_parse_gmtoff",
+                    "rs_format_timespan",
+                    "rs_timestamp_style_to_string",
+                    "rs_timestamp_style_from_string",
+                }
+            ),
+        ),
+        "time_util_parsing": (
+            basic_rust / "time_util.h",
+            basic_rust / "time_util/parsing.rs",
+            frozenset(
+                {
+                    "rs_parse_time",
+                    "rs_parse_sec",
+                    "rs_parse_sec_fix_0",
+                    "rs_parse_sec_def_infinity",
+                }
+            ),
         ),
         "time_util_arithmetic": (
             basic_rust / "time_util.h",
@@ -1394,6 +1431,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "sha256_hmac": (tests_extra / "test-sha256-hmac-rust.c",),
         "siphash24": (tests_extra / "test-siphash24-rust.c",),
         "dns_domain_validators": (tests_extra / "test-dns-label-rust.c",),
+        "dns_label_srv_type_abi": (tests_extra / "test-dns-label-rust.c",),
         "bitmap": (tests_extra / "test-bitmap-rust.c",),
         "iovec_wrapper": (tests_extra / "test-iovec-wrapper-rust.c",),
         "prioq": (tests_extra / "test-prioq-rust.c",),
@@ -1401,7 +1439,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "socket_util": (tests_extra / "test-socket-util-rust.c",),
         "sort_util": (tests_extra / "test-sort-util-rust.c",),
         "time_util_conversion": (tests_extra / "test-time-util-rust.c",),
-        "time_util_formatting": (tests_extra / "test-parse-extra-rust.c",),
+        "time_util_formatting": (
+            tests_extra / "test-parse-extra-rust.c",
+            tests_extra / "test-time-util-extra-rust.c",
+        ),
+        "time_util_parsing": (tests_extra / "test-time-util-rust.c",),
         "time_util_arithmetic": (tests_extra / "test-time-util-extra2-rust.c",),
         "install_change": (tests_extra / "test-install-rust.c",),
         "condition_takes_path": (
@@ -1689,6 +1731,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/dns-domain.c",
             root / "src/shared/dns-domain.h",
         ),
+        "dns_label_srv_type_abi": (
+            root / "src/shared/dns-domain.c",
+            root / "src/shared/dns-domain.h",
+        ),
         "bitmap": (
             root / "src/shared/bitmap.c",
             root / "src/shared/bitmap.h",
@@ -1720,6 +1766,10 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/time-util.h",
         ),
         "time_util_formatting": (
+            root / "src/basic/time-util.c",
+            root / "src/basic/time-util.h",
+        ),
+        "time_util_parsing": (
             root / "src/basic/time-util.c",
             root / "src/basic/time-util.h",
         ),

@@ -18,10 +18,7 @@ bool rs_signal_is_valid(int signo);
 const char *rs_signal_to_string_with_check(int signo);
 bool rs_si_code_from_process(int si_code);
 
-/* C helpers for runtime signal constants.
- * SIGRTMIN/SIGRTMAX are function calls on glibc (__libc_current_sigrtmin/max).
- * _NSIG may vary between kernel configurations.
- * Definitions provided by test files (not inline — must be visible to linker). */
-int rs_get_sigrtmin(void);
-int rs_get_sigrtmax(void);
-int rs_get_nsig(void);
+/* Runtime signal-bound shims are private Rust imports supplied only by the
+ * C shadow fixtures. They are deliberately not part of this public Rust ABI:
+ * current systemd exposes SIGRTMIN/SIGRTMAX/_NSIG as target-specific macros,
+ * not callable C functions. */

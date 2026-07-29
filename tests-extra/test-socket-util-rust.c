@@ -3,6 +3,8 @@
 /* RUST-CONTRACT: ifname-valid-char */
 /* RUST-CONTRACT: ifname-valid-full */
 /* RUST-CONTRACT: ifname-valid */
+/* RUST-CONTRACT: vsock-parse-port */
+/* RUST-CONTRACT: vsock-parse-cid */
 
 #include "tests.h"
 #include "in-addr-util.h"
@@ -218,14 +220,19 @@ static void test_vsock_parse_cid(void) {
         rc = vsock_parse_cid("42", &cr); rrr = rs_vsock_parse_cid("42", &rr);
         assert_se(rc == rrr); assert_se(rc == 0); assert_se(cr == rr);
 
+        rc = vsock_parse_cid("any", &cr); rrr = rs_vsock_parse_cid("any", &rr);
+        assert_se(rc == rrr); assert_se(rc == 0); assert_se(cr == rr);
+        assert_se(cr == VMADDR_CID_ANY);
+
+        rc = vsock_parse_cid("-1", &cr); rrr = rs_vsock_parse_cid("-1", &rr);
+        assert_se(rc == rrr); assert_se(rc == 0); assert_se(cr == rr);
+        assert_se(cr == VMADDR_CID_ANY);
+
         /* Invalid: non-numeric */
         rc = vsock_parse_cid("abc", &cr); rrr = rs_vsock_parse_cid("abc", &rr);
         assert_se(rc == rrr); assert_se(rc < 0);
 
         rc = vsock_parse_cid("", &cr); rrr = rs_vsock_parse_cid("", &rr);
-        assert_se(rc == rrr); assert_se(rc < 0);
-
-        rc = vsock_parse_cid("-1", &cr); rrr = rs_vsock_parse_cid("-1", &rr);
         assert_se(rc == rrr); assert_se(rc < 0);
 }
 

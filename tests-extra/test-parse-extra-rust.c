@@ -176,6 +176,7 @@ static void test_loadavg_fixed_point(void) {
 }
 
 /* ── parse_gmtoff ──────────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-parse-gmtoff */
 
 static void test_parse_gmtoff(void) {
         long cr, rr;
@@ -229,6 +230,7 @@ static void test_parse_gmtoff(void) {
 }
 
 /* ── format_timespan ──────────────────────────────────────────────────────── */
+/* RUST-CONTRACT: time-format-timespan */
 
 static void test_format_timespan(void) {
         char cbuf[256];

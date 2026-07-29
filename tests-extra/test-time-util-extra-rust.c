@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C timestamp_style vs Rust rs_timestamp_style */
+/* RUST-CONTRACT: time-timestamp-style-to-string */
+/* RUST-CONTRACT: time-timestamp-style-from-string */
 
 #include <assert.h>
 #include <errno.h>

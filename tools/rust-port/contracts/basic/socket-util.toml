@@ -3,7 +3,7 @@ module = "socket-util"
 semantic_coverage = "partial"
 source_structure = "independent"
 deviation_policy = "explicit-only"
-excluded_c_symbols = ["vsock_parse_port", "vsock_parse_cid", "sockaddr_port", "sockaddr_in_addr", "sockaddr_set_in_addr", "sockaddr_equal", "sockaddr_ll_len", "sockaddr_un_len", "sockaddr_len", "sockaddr_un_set_path", "socket_address_verify", "socket_address_can_accept", "socket_address_get_path", "socket_address_parse_unix", "socket_address_parse_vsock", "socket_address_equal_unix"]
+excluded_c_symbols = ["sockaddr_port", "sockaddr_in_addr", "sockaddr_set_in_addr", "sockaddr_equal", "sockaddr_ll_len", "sockaddr_un_len", "sockaddr_len", "sockaddr_un_set_path", "socket_address_verify", "socket_address_can_accept", "socket_address_get_path", "socket_address_parse_unix", "socket_address_parse_vsock", "socket_address_equal_unix"]
 
 [authority]
 c_headers = ["src/basic/socket-util.h"]
@@ -64,3 +64,41 @@ deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
 file = "tests-extra/test-socket-util-rust.c"
 meson_target = "test-socket-util-rust"
 labels = ["ifname-valid"]
+
+[[surface]]
+id = "vsock-parse-port"
+c_symbols = ["vsock_parse_port"]
+rust_symbols = ["rs_vsock_parse_port"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "vsock-parse-port-null-fail-closed"
+deviation_rationale = "For valid C strings and output storage, Rust preserves C's base-zero numeric grammar, VMADDR_PORT_ANY rejection, errno result, and success-only publication. NULL output storage returns -EINVAL rather than reaching C's assertion precondition."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-socket-util-rust.c"
+meson_target = "test-socket-util-rust"
+labels = ["vsock-parse-port"]
+
+[[surface]]
+id = "vsock-parse-cid"
+c_symbols = ["vsock_parse_cid"]
+rust_symbols = ["rs_vsock_parse_cid"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "vsock-parse-cid-null-fail-closed"
+deviation_rationale = "For valid C strings and output storage, Rust preserves the named CIDs, `any`/`-1` aliases, base-zero numeric parser, errno result, and success-only publication. NULL output storage returns -EINVAL rather than reaching C's assertion precondition."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-socket-util-rust.c"
+meson_target = "test-socket-util-rust"
+labels = ["vsock-parse-cid"]

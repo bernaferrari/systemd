@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // Shared ABI types and units from src/basic/time-util.h.
-// PORT-SYNC: scope=basic.time-util-conversion; authority=src/basic/time-util.c,src/basic/time-util.h
+// PORT-SYNC: scope=basic.time-util; authority=src/basic/time-util.c,src/basic/time-util.h
 
 pub const USEC_PER_SEC: u64 = 1_000_000;
 pub(crate) const USEC_PER_MSEC: u64 = 1_000;

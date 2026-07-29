@@ -2,7 +2,7 @@
 //
 // PORT-SYNC: scope=basic.socket-util; authority=src/basic/socket-util.c,src/basic/socket-util.h
 
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 
 use libc::c_char;
 
@@ -210,20 +210,87 @@ pub unsafe extern "C" fn rs_ifname_valid(p: *const c_char) -> bool {
 }
 
 pub fn vsock_parse_port(s: &str) -> Result<u32, i32> {
-    let value = s.parse::<u32>().map_err(|_| Errno::EINVAL.to_neg_errno())?;
-    if value == VMADDR_PORT_ANY {
-        return Err(Errno::EINVAL.to_neg_errno());
-    }
-    Ok(value)
+    let s = CString::new(s).map_err(|_| Errno::EINVAL.to_neg_errno())?;
+    let mut port = 0;
+    // SAFETY: `s` owns a live NUL-terminated buffer and `port` is writable
+    // local storage. Sharing the ABI implementation keeps this safe facade
+    // aligned with C's base-zero numeric grammar and range errors.
+    let r = unsafe { rs_vsock_parse_port(s.as_ptr(), &mut port) };
+    if r < 0 { Err(r) } else { Ok(port) }
 }
 
 pub fn vsock_parse_cid(s: &str) -> Result<u32, i32> {
-    match s {
-        "hypervisor" => Ok(VMADDR_CID_HYPERVISOR),
-        "local" => Ok(VMADDR_CID_LOCAL),
-        "host" => Ok(VMADDR_CID_HOST),
-        _ => s.parse::<u32>().map_err(|_| Errno::EINVAL.to_neg_errno()),
+    let s = CString::new(s).map_err(|_| Errno::EINVAL.to_neg_errno())?;
+    let mut cid = 0;
+    // SAFETY: `s` owns a live NUL-terminated buffer and `cid` is writable
+    // local storage. This also preserves C's `any` and `-1` aliases.
+    let r = unsafe { rs_vsock_parse_cid(s.as_ptr(), &mut cid) };
+    if r < 0 { Err(r) } else { Ok(cid) }
+}
+
+/// Exact C ABI shadow of `vsock_parse_port()`.
+///
+/// # Safety
+/// `s` must point to a readable NUL-terminated C string for the duration of
+/// the call, and `ret` must point to writable `unsigned` storage. As a safe
+/// boundary policy, null arguments return `-EINVAL` rather than reaching the
+/// C implementation's assertion precondition. On every error path `ret` is
+/// left untouched.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_vsock_parse_port(s: *const c_char, ret: *mut u32) -> i32 {
+    if s.is_null() || ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
     }
+
+    let mut port = 0;
+    // SAFETY: `s` is a live C string under this export's contract and `port`
+    // is a writable local. This reuses the C-authoritative `safe_atou()`
+    // grammar, including whitespace, sign, base-prefix, and errno behavior.
+    let r = unsafe { crate::parse_util::rs_safe_atou(s, &mut port) };
+    if r < 0 {
+        return r;
+    }
+    if port == VMADDR_PORT_ANY {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: the non-null `ret` pointer is writable by this export's contract.
+    unsafe { *ret = port };
+    0
+}
+
+/// Exact C ABI shadow of `vsock_parse_cid()`.
+///
+/// # Safety
+/// `s` must point to a readable NUL-terminated C string for the duration of
+/// the call, and `ret` must point to writable `unsigned` storage. As a safe
+/// boundary policy, null arguments return `-EINVAL` rather than reaching the
+/// C implementation's assertion precondition. On every error path `ret` is
+/// left untouched.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_vsock_parse_cid(s: *const c_char, ret: *mut u32) -> i32 {
+    if s.is_null() || ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: `s` is a live C string under this export's contract.
+    let value = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let cid = match value {
+        b"hypervisor" => Some(VMADDR_CID_HYPERVISOR),
+        b"local" => Some(VMADDR_CID_LOCAL),
+        b"host" => Some(VMADDR_CID_HOST),
+        b"any" | b"-1" => Some(VMADDR_CID_ANY),
+        _ => None,
+    };
+    if let Some(cid) = cid {
+        // SAFETY: the non-null `ret` pointer is writable by this export's contract.
+        unsafe { *ret = cid };
+        return 0;
+    }
+
+    // SAFETY: `s` is a live C string and `ret` is writable by this export's
+    // contract. The numeric branch is exactly the C `safe_atou()` call.
+    unsafe { crate::parse_util::rs_safe_atou(s, ret) }
 }
 
 pub fn sockaddr_port(sa: &SocketAddress) -> Result<u32, i32> {

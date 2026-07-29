@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
+// PORT-SYNC: scope=basic.time-util; authority=src/basic/time-util.c,src/basic/time-util.h
+//
 // String-table, timezone-offset, and timespan formatting helpers.
 
 use std::ffi::c_long;
@@ -44,7 +46,8 @@ unsafe fn streq_ptr(a: *const c_char, b: *const c_char) -> bool {
 
 // SAFETY: This validates only the scalar index and returns either null or a
 // pointer to immutable static NUL-terminated storage; no caller memory is read.
-pub fn rs_timestamp_style_to_string(t: i32) -> *const c_char {
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_timestamp_style_to_string(t: i32) -> *const c_char {
     let idx = t as usize;
     if idx < TIMESTAMP_STYLE_NAMES.len() {
         return TIMESTAMP_STYLE_NAMES[idx].as_ptr() as *const c_char;
@@ -61,7 +64,8 @@ pub fn rs_timestamp_style_to_string(t: i32) -> *const c_char {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_timestamp_style_from_string(s: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_timestamp_style_from_string(s: *const c_char) -> i32 {
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }

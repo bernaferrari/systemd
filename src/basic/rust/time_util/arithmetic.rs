@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
+// PORT-SYNC: scope=basic.time-util; authority=src/basic/time-util.c,src/basic/time-util.h
+//
 // Timestamp predicates and saturating microsecond arithmetic.
 
 use super::types::{DualTimestamp, TripleTimestamp, USEC_INFINITY};

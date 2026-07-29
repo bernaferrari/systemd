@@ -216,32 +216,33 @@ last_reviewed_rust_blobs = { "src/basic/rust/parse_util.rs" = "96c7795e4357f2aa3
 notes = "Reviewed static parse ABI slice 2026-07-29; no build/tests/VM. Twenty-four C parser facades preserve opaque C-string inputs, target-width integer parsing, range checks, negative-errno errors, and success-only output publication. Header-inline/time formatting helpers and runtime/cross-target differential evidence remain P2."
 
 [time-util]
-c_file = "src/basic/time-util.c"
-rust_file = "src/basic/rust/time_util.rs"
-status = "in-progress"
-tier = 2
-sync_status = "needs_review"
-notes = "Static audit only: the Rust facade preserves 27 public Rust symbols. The reviewed time_util.h shadow surface now also includes exact parse_gmtoff/format_timespan facades with current-C authority and direct registered fixture calls. Remaining C-only gaps include now/now_nsec/map_clock_usec; dual/triple timestamp constructors; format_timestamp_style/relative and weekday_to_string; parse_timestamp/parse_nsec; timezone discovery/validation/state; clock_supported/usec_shift_clock; localtime/mktime helpers; calendar parsing; jiffies conversion; in_utc_timezone; usleep_safe; and time_change_fd. Runtime differential execution remains P2."
-
-[time-util-conversion]
 c_paths = ["src/basic/time-util.c", "src/basic/time-util.h"]
-rust_paths = ["src/basic/rust/time_util/conversion.rs", "src/basic/rust/time_util/types.rs", "src/basic/rust/time_util.h"]
-scope = "basic.time-util-conversion"
-rust_scope_paths = ["src/basic/rust/time_util/conversion.rs", "src/basic/rust/time_util/types.rs"]
+rust_paths = [
+    "src/basic/rust/time_util.rs",
+    "src/basic/rust/time_util/arithmetic.rs",
+    "src/basic/rust/time_util/conversion.rs",
+    "src/basic/rust/time_util/formatting.rs",
+    "src/basic/rust/time_util/parsing.rs",
+    "src/basic/rust/time_util/tests.rs",
+    "src/basic/rust/time_util/types.rs",
+    "src/basic/rust/time_util.h",
+]
+scope = "basic.time-util"
+rust_scope_paths = ["src/basic/rust/time_util.rs", "src/basic/rust/time_util"]
 rust_interface_paths = ["src/basic/rust/time_util.h"]
-contract_file = "tools/rust-port/contracts/basic/time-util-conversion.toml"
+contract_file = "tools/rust-port/contracts/basic/time-util.toml"
 c_provenance_edges = [
-    { kind = "direct", path = "src/basic/time-util.c", rust_paths = ["src/basic/rust/time_util/conversion.rs", "src/basic/rust/time_util/types.rs", "src/basic/rust/time_util.h"] },
-    { kind = "direct", path = "src/basic/time-util.h", rust_paths = ["src/basic/rust/time_util/conversion.rs", "src/basic/rust/time_util/types.rs", "src/basic/rust/time_util.h"] },
+    { kind = "direct", path = "src/basic/time-util.c", rust_paths = ["src/basic/rust/time_util.rs", "src/basic/rust/time_util/arithmetic.rs", "src/basic/rust/time_util/conversion.rs", "src/basic/rust/time_util/formatting.rs", "src/basic/rust/time_util/parsing.rs", "src/basic/rust/time_util/tests.rs", "src/basic/rust/time_util/types.rs", "src/basic/rust/time_util.h"] },
+    { kind = "direct", path = "src/basic/time-util.h", rust_paths = ["src/basic/rust/time_util.rs", "src/basic/rust/time_util/arithmetic.rs", "src/basic/rust/time_util/conversion.rs", "src/basic/rust/time_util/formatting.rs", "src/basic/rust/time_util/parsing.rs", "src/basic/rust/time_util/tests.rs", "src/basic/rust/time_util/types.rs", "src/basic/rust/time_util.h"] },
 ]
 test_file = "tests-extra/test-time-util-rust.c"
 status = "in-progress"
 tier = 2
-symbols = 7
+symbols = 16
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/time-util.c" = "44c53067411741027580f465c9873e673db03028", "src/basic/time-util.h" = "3b341911a364c7901dda704467af8426621edc09" }
-last_reviewed_rust_blobs = { "src/basic/rust/time_util/conversion.rs" = "3c2c5a7f28fdf8e08fe7dae35d747eb492ee6420", "src/basic/rust/time_util/types.rs" = "820c1d05b53ed3edfc6a4fd59a959a39ce729ee1", "src/basic/rust/time_util.h" = "2d0adc813c9846abea4a9f12eb50b6d496dd86ad" }
-notes = "Reviewed static time-conversion ABI slice 2026-07-29; no build/tests/VM. Seven C facades preserve scalar clock mapping and target-libc timespec/timeval sentinel conversions. C remains production authority; runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/time_util.rs" = "093b3e7708263912c2a760990b8452257a239406", "src/basic/rust/time_util/arithmetic.rs" = "2fdc47042ea8b0d259412ee6ca4041255bdba5c4", "src/basic/rust/time_util/conversion.rs" = "009ccd51ea6ffad5b68c4a9c10a378e123ee936c", "src/basic/rust/time_util/formatting.rs" = "000c9f73aca0f1812e37e04d6bfa943bf1179784", "src/basic/rust/time_util/parsing.rs" = "15e10ac412477a4360af247f31e2893e6bedd60d", "src/basic/rust/time_util/tests.rs" = "f6f2cf361147313847a5e3f87aa87453e1a69117", "src/basic/rust/time_util/types.rs" = "4435e137117480d65bece8965a267b77da3fd6d8", "src/basic/rust/time_util.h" = "56680ad07ec9167195d38fa8297a4c0d107477a2" }
+notes = "Reviewed static time-utility directory slice 2026-07-29; no build/tests/VM. One scoped owner retains the shared C ABI header while 16 contract-backed facades cover clock conversion, duration parsing, timestamp styles, timezone offsets, and bounded timespan formatting. The remaining arithmetic shadow facades are catalog-reviewed but not yet behavior-contract-backed. C-only clock acquisition, timestamp constructors, calendar/timezone state, parse_nsec, sleep, and runtime differential execution remain P2."
 
 [extract-word]
 c_paths = ["src/basic/extract-word.c", "src/basic/extract-word.h"]
@@ -414,11 +415,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-socket-util-rust.c"
 status = "in-progress"
 tier = 4
-symbols = 3
+symbols = 5
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/socket-util.c" = "79eabcf32077895d7ef592a5c0fc6d458522ab48", "src/basic/socket-util.h" = "81e5bf1d4b5c95a57f3da57b3d9d6015a9a74a7b" }
-last_reviewed_rust_blobs = { "src/basic/rust/socket_util.rs" = "6b5497674a2a721c820ae2300c9e14ad3c6b90e1", "src/basic/rust/socket_util.h" = "9a59ae4d1dd00d4d64882a2c339959b020b3cdc5" }
-notes = "Reviewed static interface-name ABI slice 2026-07-29; no build/tests/VM. Three byte-oriented validators preserve valid C predicate and base-zero ifindex parsing behavior. Sockaddr, SocketAddress, and vsock layouts remain unclaimed. C remains production authority; runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/socket_util.rs" = "d35506cae9fae113fc0d2a4ab877d34bcc0d5a0e", "src/basic/rust/socket_util.h" = "9a59ae4d1dd00d4d64882a2c339959b020b3cdc5" }
+notes = "Reviewed static socket parser slice 2026-07-29; no build/tests/VM. Five byte-oriented facades preserve valid C predicate and base-zero parser behavior, including VSOCK special CIDs and success-only output publication. Sockaddr and SocketAddress layout APIs remain unclaimed. C remains production authority; runtime parity remains P2."
 
 [percent-util]
 c_file = "src/basic/percent-util.c"
@@ -980,8 +981,8 @@ tier = 1
 symbols = 4
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/signal-util.c" = "aceafd35e2e14f133ca3aca51f13bf5e25333066", "src/basic/signal-util.h" = "e5860094db35c4806c66a2660fe9267386297657" }
-last_reviewed_rust_blobs = { "src/basic/rust/signal_util.rs" = "e1838467acfe55d8ddec4cdfca5e4fbacb369f29", "src/basic/rust/signal_util.h" = "c98cc0bb15fee17faf585945ea673b51d9b2b8a2" }
-notes = "Reviewed static signal ABI slice 2026-07-28; no build/tests/VM. Four claimed facades preserve the C inline's si_code rule, target signal spellings, C-string parser grammar, runtime real-time bounds, errno returns, and optional output publication. Reset/mask/handler and signal-code decoding remain C-only. C remains production authority; runtime parity is unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/signal_util.rs" = "e1838467acfe55d8ddec4cdfca5e4fbacb369f29", "src/basic/rust/signal_util.h" = "fb0ef2f03e53b85e75a5b269cdd5bdfe2fd83e7c" }
+notes = "Reviewed static signal ABI slice 2026-07-29; no build/tests/VM. Four claimed facades preserve the C inline's si_code rule, target signal spellings, C-string parser grammar, runtime real-time bounds, errno returns, and optional output publication. Test-only runtime-bound imports are intentionally private, since current systemd exposes those values as target-specific macros rather than C functions. Reset/mask/handler and signal-code decoding remain C-only. C remains production authority; runtime parity is unclaimed."
 
 [process-util-str-tables]
 c_paths = [
@@ -1640,11 +1641,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-dns-label-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 2
+symbols = 4
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/dns-domain.c" = "c90da5fc465f2d94981700e10a8df365ea6420e9", "src/shared/dns-domain.h" = "aabfaa502957546c53d1682c456e6400f6d101db" }
-last_reviewed_rust_blobs = { "src/basic/rust/dns_domain_validators.rs" = "df2998741f40c0049330ea3572db1f4b2b83ea5b", "src/shared/rust/dns_domain_validators.h" = "0e338a0b24ba8c2b6916388c669013ab2e71ef51" }
-notes = "Reviewed static DNS-domain validator slice 2026-07-29; no build/tests/VM. Two facades preserve valid UTF-8 service/subtype limits. DNS SRV/DNS-SD label classification and other DNS name parsing remain separately tracked; C remains production authority and runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/dns_domain_validators.rs" = "1b6ff525960258ec16870a45eceef85c60932906", "src/shared/rust/dns_domain_validators.h" = "0e338a0b24ba8c2b6916388c669013ab2e71ef51" }
+notes = "Reviewed static DNS-domain validator slice 2026-07-29; no build/tests/VM. Four facades preserve valid UTF-8 service/subtype limits plus the exact SRV/DNS-SD raw-label grammar through the shared DNS-label parser. Other DNS name parsing remains separately tracked; C remains production authority and runtime parity remains P2."
 
 [dns_label]
 c_paths = ["src/shared/dns-domain.c", "src/shared/dns-domain.h"]

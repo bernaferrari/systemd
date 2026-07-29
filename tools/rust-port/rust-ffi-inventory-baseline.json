@@ -36,11 +36,6 @@
     "src/basic/rust/serialize.h": [],
     "src/basic/rust/sha1.h": [],
     "src/basic/rust/sha256_hmac.h": [],
-    "src/basic/rust/signal_util.h": [
-      "rs_get_nsig",
-      "rs_get_sigrtmax",
-      "rs_get_sigrtmin"
-    ],
     "src/basic/rust/siphash24.h": [],
     "src/basic/rust/socket_util.h": [
       "rs_sockaddr_equal",
@@ -56,9 +51,7 @@
       "rs_socket_address_get_path",
       "rs_socket_address_parse_unix",
       "rs_socket_address_parse_vsock",
-      "rs_socket_address_verify",
-      "rs_vsock_parse_cid",
-      "rs_vsock_parse_port"
+      "rs_socket_address_verify"
     ],
     "src/basic/rust/strbuf.h": [],
     "src/basic/rust/strv.h": [
@@ -67,15 +60,7 @@
       "rs_strv_free_and_replace"
     ],
     "src/basic/rust/syslog_util.h": [],
-    "src/basic/rust/time_util.h": [
-      "rs_parse_sec",
-      "rs_parse_sec_def_infinity",
-      "rs_parse_sec_fix_0",
-      "rs_parse_time",
-      "rs_timestamp_style_from_string",
-      "rs_timestamp_style_to_string",
-      "rs_triple_timestamp_by_clock"
-    ],
+    "src/basic/rust/time_util.h": [],
     "src/basic/rust/uid_range.h": [
       "rs_uid_range_add_internal",
       "rs_uid_range_add_str_full",
@@ -96,10 +81,6 @@
     ],
     "src/basic/rust/unit_def.h": [],
     "src/basic/rust/utf8.h": [],
-    "src/shared/rust/dns_domain_validators.h": [
-      "rs_dns_srv_type_is_valid",
-      "rs_dnssd_srv_type_is_valid"
-    ],
     "src/shared/rust/dns_label.h": [
       "rs_dns_label_escape",
       "rs_dns_label_escape_new",
@@ -130,9 +111,7 @@
       "rs_dns_name_suffix",
       "rs_dns_name_to_wire_format",
       "rs_dns_service_join",
-      "rs_dns_service_split",
-      "rs_dns_srv_type_is_valid",
-      "rs_dnssd_srv_type_is_valid"
+      "rs_dns_service_split"
     ],
     "src/shared/rust/exit_status.h": [],
     "src/shared/rust/glob_util.h": [],

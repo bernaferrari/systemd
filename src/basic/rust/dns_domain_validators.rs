@@ -3,7 +3,8 @@
 // PORT-SYNC: scope=shared.dns-domain-validators; authority=src/shared/dns-domain.c,src/shared/dns-domain.h
 //
 // DNS domain name validators. Implements RFC 6763 Section 4.1.1 and Section 7.2.
-// Note: dns_srv_type_is_valid and dnssd_srv_type_is_valid are in dns_label.rs.
+// DNS SRV/DNS-SD type parsing lives in dns_label.rs; this module owns the
+// exported validator facades declared by dns_domain_validators.h.
 
 use libc::c_char;
 
@@ -91,6 +92,38 @@ pub unsafe extern "C" fn rs_dns_subtype_name_is_valid(name: *const c_char) -> bo
     // SAFETY: the entry point contract requires a live NUL-terminated string.
     let value = unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("");
     dns_subtype_name_is_valid(value)
+}
+
+/// C ABI shadow of C `dns_srv_type_is_valid()`.
+///
+/// The byte-level label parser is shared with the DNS-name facade so escaped
+/// labels, label-length handling, and the two-label rule stay in one audited
+/// implementation.
+///
+/// # Safety
+/// `name` must be NULL or point to a live, NUL-terminated C string borrowed
+/// for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dns_srv_type_is_valid(name: *const c_char) -> bool {
+    // SAFETY: the entry point contract is exactly the callee's raw C-string
+    // contract; the helper performs the NULL check before traversing it.
+    unsafe { crate::dns_label::rs_dns_srv_type_is_valid(name) }
+}
+
+/// C ABI shadow of C `dnssd_srv_type_is_valid()`.
+///
+/// This delegates to the shared DNS-label implementation, which first checks
+/// the SRV two-label grammar and then applies the DNS-SD `_tcp`/`_udp` suffix
+/// rule.
+///
+/// # Safety
+/// `name` must be NULL or point to a live, NUL-terminated C string borrowed
+/// for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_dnssd_srv_type_is_valid(name: *const c_char) -> bool {
+    // SAFETY: the entry point contract is exactly the callee's raw C-string
+    // contract; the helper performs the NULL check before traversing it.
+    unsafe { crate::dns_label::rs_dnssd_srv_type_is_valid(name) }
 }
 
 #[cfg(test)]

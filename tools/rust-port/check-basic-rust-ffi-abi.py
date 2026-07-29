@@ -172,6 +172,9 @@ C_TYPES = {
     "dual_timestamp *": "*mutDualTimestamp",
     "struct dual_timestamp *": "*mutDualTimestamp",
     "const triple_timestamp *": "*constTripleTimestamp",
+    "triple_timestamp *": "*mutTripleTimestamp",
+    "clockid_t": "i32",
+    "TimestampStyle": "i32",
     "const struct rs_IoVec *": "*constIoVec",
     "const struct file_handle *": "*constfile_handle",
     "const struct dirent *": "*constdirent",
@@ -739,7 +742,15 @@ def time_util_formatting_boundary_is_reviewed() -> bool:
     except IndexError:
         return False
     return (
-        symbols == frozenset({"rs_parse_gmtoff", "rs_format_timespan"})
+        symbols
+        == frozenset(
+            {
+                "rs_parse_gmtoff",
+                "rs_format_timespan",
+                "rs_timestamp_style_to_string",
+                "rs_timestamp_style_from_string",
+            }
+        )
         and "int rs_parse_gmtoff(const char *t, long *ret);" in header_text
         and "char *rs_format_timespan(char *buf, size_t l, usec_t t, usec_t accuracy);"
         in header_text

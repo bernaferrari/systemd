@@ -48,3 +48,35 @@ deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
 file = "tests-extra/test-dns-label-rust.c"
 meson_target = "test-dns-label-rust"
 labels = ["dns-subtype-name"]
+
+[[surface]]
+id = "dns-srv-type"
+c_symbols = ["dns_srv_type_is_valid"]
+rust_symbols = ["rs_dns_srv_type_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-label-rust.c"
+meson_target = "test-dns-label-rust"
+labels = ["dns-srv-type"]
+
+[[surface]]
+id = "dnssd-srv-type"
+c_symbols = ["dnssd_srv_type_is_valid"]
+rust_symbols = ["rs_dnssd_srv_type_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-label-rust.c"
+meson_target = "test-dns-label-rust"
+labels = ["dnssd-srv-type"]
