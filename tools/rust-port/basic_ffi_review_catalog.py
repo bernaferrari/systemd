@@ -856,11 +856,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "terminal_header_inline": (
-            basic_rust / "terminal_util.h",
-            basic_rust / "terminal_util.rs",
-            frozenset({"rs_osc_char_is_valid", "rs_vtnr_is_valid"}),
-        ),
         "path_header_inline": (
             basic_rust / "path_util.h",
             basic_rust / "header_inline_abi.rs",
@@ -967,17 +962,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "mount_setup.rs",
             frozenset({"rs_mount_point_is_api", "rs_mount_point_ignore"}),
         ),
-        "specifier_util": (
-            basic_rust / "specifier_util.h",
-            basic_rust / "specifier_util.rs",
-            frozenset(
-                {
-                    "rs_specifier_escape",
-                    "rs_specifier_escape_strv",
-                    "rs_efi_loader_entry_name_valid",
-                }
-            ),
-        ),
         "btrfs_validate_subvolume_name": (
             basic_rust / "btrfs_util.h",
             basic_rust / "btrfs_util.rs",
@@ -1027,16 +1011,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "credential_validators.h",
             basic_rust / "credential_validators.rs",
             frozenset({"rs_credential_name_valid", "rs_credential_glob_valid"}),
-        ),
-        "namespace_util": (
-            basic_rust / "namespace_util.h",
-            basic_rust / "namespace_util.rs",
-            frozenset(
-                {
-                    "rs_clone_flag_to_namespace_type",
-                    "rs_userns_shift_range_valid",
-                }
-            ),
         ),
         "edid": (
             basic_rust / "edid.h",
@@ -1142,18 +1116,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_strpcpy_full",
                     "rs_strnscpy_full",
                     "rs_strscpy_full",
-                }
-            ),
-        ),
-        "terminal_util": (
-            basic_rust / "terminal_util.h",
-            basic_rust / "terminal_util.rs",
-            frozenset(
-                {
-                    "rs_tty_is_vc",
-                    "rs_tty_is_console",
-                    "rs_vtnr_from_tty",
-                    "rs_url_suitable_for_osc8",
                 }
             ),
         ),
@@ -1325,7 +1287,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-path-util-extra-rust.c",
         ),
         "utf8_header_inline": (tests_extra / "test-header-inline-rust.c",),
-        "terminal_header_inline": (tests_extra / "test-header-inline-rust.c",),
         "path_header_inline": (tests_extra / "test-header-inline-rust.c",),
         "gpt_partition_predicates": (tests_extra / "test-gpt-unit-install-rust.c",),
         "unit_install_predicates": (tests_extra / "test-gpt-unit-install-rust.c",),
@@ -1344,14 +1305,12 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "device_nodes": (tests_extra / "test-device-nodes-rust.c",),
         "mount_setup": (tests_extra / "test-mount-setup-rust.c",),
-        "specifier_util": (tests_extra / "test-specifier-efi-rust.c",),
         "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
         "hexdecoct": (tests_extra / "test-hexdecoct-rust.c",),
         "env_util": (tests_extra / "test-env-util-rust.c",),
         "credential_validators": (
             tests_extra / "test-credential-validators-rust.c",
         ),
-        "namespace_util": (tests_extra / "test-namespace-mountpoint-rust.c",),
         "edid": (tests_extra / "test-edid-rust.c",),
         "nsflags": (tests_extra / "test-nsflags-rust.c",),
         "memory_util": (tests_extra / "test-memory-util-rust.c",),
@@ -1362,7 +1321,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "string_table": (tests_extra / "test-string-table-rust.c",),
         "strxcpyx": (tests_extra / "test-strxcpyx-rust.c",),
-        "terminal_util": (tests_extra / "test-terminal-util-rust.c",),
         "nulstr_util": (tests_extra / "test-nulstr-util-rust.c",),
         "recovery_key": (tests_extra / "test-recovery-key-rust.c",),
     }
@@ -1635,7 +1593,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "is_device_path": (root / "src/basic/path-util.c", root / "src/basic/path-util.h"),
         "path_byte_abi": (root / "src/basic/path-util.h", root / "src/basic/path-util.c"),
         "utf8_header_inline": (root / "src/basic/utf8.h",),
-        "terminal_header_inline": (root / "src/basic/terminal-util.h",),
         "path_header_inline": (root / "src/basic/path-util.h",),
         "gpt_partition_predicates": (root / "src/shared/gpt.c", root / "src/shared/gpt.h"),
         "unit_install_predicates": (root / "src/shared/unit-file.h",),
@@ -1691,12 +1648,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/mount-setup.c",
             root / "src/shared/mount-setup.h",
         ),
-        "specifier_util": (
-            root / "src/shared/specifier.c",
-            root / "src/shared/specifier.h",
-            root / "src/shared/efi-loader.c",
-            root / "src/shared/efi-loader.h",
-        ),
         "btrfs_validate_subvolume_name": (
             root / "src/basic/btrfs-util.c",
             root / "src/basic/btrfs-util.h",
@@ -1706,10 +1657,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "credential_validators": (
             root / "src/shared/creds-util.c",
             root / "src/shared/creds-util.h",
-        ),
-        "namespace_util": (
-            root / "src/basic/namespace-util.c",
-            root / "src/basic/namespace-util.h",
         ),
         "edid": (
             root / "src/fundamental/edid.c",
@@ -1758,11 +1705,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/parse-util.h",
         ),
         "strxcpyx": (root / "src/basic/strxcpyx.c", root / "src/basic/strxcpyx.h"),
-        "terminal_util": (
-            root / "src/basic/terminal-util.c",
-            root / "src/basic/terminal-util.h",
-            root / "src/shared/pretty-print.c",
-        ),
         "nulstr_util": (
             root / "src/basic/nulstr-util.c",
             root / "src/basic/nulstr-util.h",

@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 13:06 UTC
+Generated: 2026-07-29 13:17 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **302**
+- Total modules audited: **299**
 - `genuine-rust`: **205**
-- `ffi-backed-rust`: **97**
+- `ffi-backed-rust`: **94**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -72,7 +72,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/misc_validators.rs` | 11 | 64 | 0 | 38 |
 | `src/basic/rust/mount_setup.rs` | 2 | 12 | 0 | 20 |
 | `src/basic/rust/mountpoint_util.rs` | 4 | 57 | 0 | 17 |
-| `src/basic/rust/namespace_util.rs` | 2 | 30 | 0 | 6 |
 | `src/basic/rust/netdev_str_tables.rs` | 16 | 18 | 0 | 61 |
 | `src/basic/rust/nsflags.rs` | 4 | 33 | 0 | 30 |
 | `src/basic/rust/nulstr_util.rs` | 2 | 35 | 0 | 42 |
@@ -95,7 +94,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/siphash24.rs` | 6 | 34 | 0 | 24 |
 | `src/basic/rust/socket_util.rs` | 19 | 61 | 0 | 114 |
 | `src/basic/rust/sort_util.rs` | 8 | 19 | 0 | 32 |
-| `src/basic/rust/specifier_util.rs` | 3 | 8 | 0 | 14 |
 | `src/basic/rust/stat_util.rs` | 6 | 56 | 0 | 4 |
 | `src/basic/rust/strbuf.rs` | 4 | 25 | 0 | 31 |
 | `src/basic/rust/string_table.rs` | 5 | 33 | 0 | 29 |
@@ -106,7 +104,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/strverscmp.rs` | 1 | 21 | 0 | 28 |
 | `src/basic/rust/strxcpyx.rs` | 4 | 26 | 0 | 16 |
 | `src/basic/rust/syslog_util.rs` | 7 | 33 | 0 | 39 |
-| `src/basic/rust/terminal_util.rs` | 6 | 46 | 0 | 15 |
 | `src/basic/rust/udev_util.rs` | 2 | 12 | 0 | 32 |
 | `src/basic/rust/unaligned.rs` | 12 | 51 | 0 | 2 |
 | `src/basic/rust/unit_def.rs` | 8 | 38 | 2 | 55 |

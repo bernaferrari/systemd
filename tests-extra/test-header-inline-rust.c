@@ -1,15 +1,13 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-/* Shadow test: header inline functions (batch 3) — utf8, terminal-util, user-util, path-util */
+/* Shadow test: header inline functions (batch 3) — utf8, user-util, path-util */
 
 #include <assert.h>
 #include <string.h>
 #include "tests.h"
 #include "utf8.h"
-#include "terminal-util.h"
 #include "user-util.h"
 #include "path-util.h"
 #include "rust/path_util.h"
-#include "rust/terminal_util.h"
 #include "rust/utf8.h"
 #include "rust/user_util.h"
 
@@ -108,29 +106,6 @@ static void test_utf16_surrogate_pair_to_unichar(void) {
                   rs_utf16_surrogate_pair_to_unichar(0, 0));
 }
 
-/* ── osc_char_is_valid ─────────────────────────────────────────────────── */
-
-static void test_osc_char_is_valid(void) {
-        assert_se(osc_char_is_valid('A') == rs_osc_char_is_valid('A'));
-        assert_se(osc_char_is_valid('Z') == rs_osc_char_is_valid('Z'));
-        assert_se(osc_char_is_valid(' ') == rs_osc_char_is_valid(' '));
-        assert_se(osc_char_is_valid('~') == rs_osc_char_is_valid('~'));
-        assert_se(osc_char_is_valid(31) == rs_osc_char_is_valid(31));
-        assert_se(osc_char_is_valid(127) == rs_osc_char_is_valid(127));
-        assert_se(osc_char_is_valid(0) == rs_osc_char_is_valid(0));
-        assert_se(osc_char_is_valid(-1) == rs_osc_char_is_valid(-1));
-}
-
-/* ── vtnr_is_valid ─────────────────────────────────────────────────────── */
-
-static void test_vtnr_is_valid(void) {
-        assert_se(vtnr_is_valid(1) == rs_vtnr_is_valid(1));
-        assert_se(vtnr_is_valid(63) == rs_vtnr_is_valid(63));
-        assert_se(vtnr_is_valid(0) == rs_vtnr_is_valid(0));
-        assert_se(vtnr_is_valid(64) == rs_vtnr_is_valid(64));
-        assert_se(vtnr_is_valid(100) == rs_vtnr_is_valid(100));
-}
-
 /* ── skip_dev_prefix ───────────────────────────────────────────────────── */
 
 static void test_skip_dev_prefix(void) {
@@ -173,8 +148,6 @@ int main(int argc, char **argv) {
         test_utf16_is_surrogate();
         test_utf16_is_trailing_surrogate();
         test_utf16_surrogate_pair_to_unichar();
-        test_osc_char_is_valid();
-        test_vtnr_is_valid();
         test_skip_dev_prefix();
         test_hashed_password_is_locked_or_invalid();
         return 0;

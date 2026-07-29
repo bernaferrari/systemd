@@ -15,7 +15,6 @@
 #include "rust/path_util.h"
 #include "rust/strv.h"
 #include "rust/in_addr_util.h"
-#include "rust/terminal_util.h"
 #include "rust/parse_util.h"
 
 /* ── path_is_absolute ─────────────────────────────────────────────── */
@@ -320,42 +319,6 @@ static void test_strv_free_and_replace_with_null(void) {
         c_strv = strv_free(c_strv);
 }
 
-/* ── url_suitable_for_osc8 ──────────────────────────────────────────── */
-
-static void test_url_suitable_for_osc8_valid(void) {
-        /* C has assert(url), so only test Rust */
-        assert_se(rs_url_suitable_for_osc8("https://example.com"));
-        assert_se(rs_url_suitable_for_osc8("http://foo.bar"));
-        assert_se(rs_url_suitable_for_osc8("file:///tmp/test"));
-        assert_se(rs_url_suitable_for_osc8("https://a.co"));
-}
-
-static void test_url_suitable_for_osc8_null(void) {
-        assert_se(!rs_url_suitable_for_osc8(NULL));
-}
-
-static void test_url_suitable_for_osc8_too_long(void) {
-        /* URL > 2000 chars */
-        char buf[2005];
-        memset(buf, 'a', 2001);
-        buf[0] = 'h';
-        buf[1] = 't';
-        buf[2] = 't';
-        buf[3] = 'p';
-        buf[4] = ':';
-        buf[5] = '/';
-        buf[6] = '/';
-        buf[2001] = '\0';
-        assert_se(!rs_url_suitable_for_osc8(buf));
-}
-
-static void test_url_suitable_for_osc8_control_chars(void) {
-        /* URLs with control characters are not suitable */
-        char buf[] = "http://bad";
-        buf[7] = 0x01; /* insert control char */
-        assert_se(!rs_url_suitable_for_osc8(buf));
-}
-
 /* ── in6_addr_prefix_covers_full ───────────────────────────────────── */
 
 static void test_in6_addr_prefix_covers_full_exact(void) {
@@ -495,10 +458,6 @@ int main(int argc, char *argv[]) {
         test_strv_free_and_replace();
         test_strv_free_and_replace_null();
         test_strv_free_and_replace_with_null();
-        test_url_suitable_for_osc8_valid();
-        test_url_suitable_for_osc8_null();
-        test_url_suitable_for_osc8_too_long();
-        test_url_suitable_for_osc8_control_chars();
         test_in6_addr_prefix_covers_full_exact();
         test_in6_addr_prefix_covers_full_different_prefix();
         test_in6_addr_prefix_covers_full_shorter_address();

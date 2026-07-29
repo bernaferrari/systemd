@@ -1024,7 +1024,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "7e89c451321073fa51e51ff69e0f8415aace7f94", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "86319f0249cf994ed3deb5eaefe9111e7e874abf", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
@@ -1489,34 +1489,6 @@ last_reviewed_upstream_blobs = { "src/basic/mountpoint-util.c" = "4db4d8162fd14c
 last_reviewed_rust_blobs = { "src/basic/rust/mountpoint_util.rs" = "f7f1db46f6ba9980df4fe0c3337bc01d89527f8f", "src/basic/rust/mountpoint_util.h" = "e0fc049eaec754fac5b78e22eab490ab7257fbcc" }
 notes = "Reviewed static mountpoint ABI slice 2026-07-28; no build/tests/VM. Four facades preserve propagation-mask handling, static borrowed names, raw C-string parsing with success-only output publication, exact unsigned-long/int widths, and fatal negative-errno classification. Handle acquisition and mount I/O remain excluded. C remains production authority; runtime parity is unclaimed."
 
-[namespace_util]
-c_paths = [
-    "src/basic/namespace-util.c",
-    "src/basic/namespace-util.h",
-    "src/include/override/sched.h",
-]
-rust_paths = [
-    "src/basic/rust/namespace_util.rs",
-    "src/basic/rust/namespace_util.h",
-]
-scope = "basic.namespace-util"
-rust_scope_paths = ["src/basic/rust/namespace_util.rs"]
-rust_interface_paths = ["src/basic/rust/namespace_util.h"]
-contract_file = "tools/rust-port/contracts/basic/namespace-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/namespace-util.c", rust_paths = ["src/basic/rust/namespace_util.rs", "src/basic/rust/namespace_util.h"] },
-    { kind = "direct", path = "src/basic/namespace-util.h", rust_paths = ["src/basic/rust/namespace_util.rs", "src/basic/rust/namespace_util.h"] },
-    { kind = "direct", path = "src/include/override/sched.h", rust_paths = ["src/basic/rust/namespace_util.rs", "src/basic/rust/namespace_util.h"] },
-]
-test_file = "tests-extra/test-namespace-mountpoint-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 2
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/namespace-util.c" = "72e7005c946133b8e693fb8ac5817f8a8ed90ada", "src/basic/namespace-util.h" = "d0eff636a9d2b921da859e0f98cf449785b7be8a", "src/include/override/sched.h" = "3eed39311868ead35bdf71a18466e4a3f4e8b70e" }
-last_reviewed_rust_blobs = { "src/basic/rust/namespace_util.rs" = "c9041a41942fa195462aca6243dee6efb7587bcb", "src/basic/rust/namespace_util.h" = "a9c56463b4b4865afe21dfaa0519054a2719309e" }
-notes = "Reviewed static namespace scalar ABI slice 2026-07-28; no build/tests/VM. Two facades preserve the C namespace-bit mask (unrelated clone flags do not affect selection), native unsigned-long/uid_t widths, and overflow checks. Namespace FD, pidref, userns mapping, mount, and syscall operations remain C-only. C remains the production authority; runtime parity is unclaimed."
-
 [netdev_str_tables]
 c_file = "src/shared/bond-util.c"
 rust_file = "src/basic/rust/netdev_str_tables.rs"
@@ -1694,36 +1666,6 @@ symbols = 0
 sync_status = "needs_review"
 notes = "Rust-only compatibility-module index. Each child records exact C/H authority separately; the index itself adds no semantic authority."
 
-[specifier_util]
-c_paths = [
-    "src/shared/specifier.c",
-    "src/shared/specifier.h",
-    "src/shared/efi-loader.c",
-    "src/shared/efi-loader.h",
-]
-rust_paths = [
-    "src/basic/rust/specifier_util.rs",
-    "src/basic/rust/specifier_util.h",
-]
-scope = "basic.specifier-util"
-rust_scope_paths = ["src/basic/rust/specifier_util.rs"]
-rust_interface_paths = ["src/basic/rust/specifier_util.h"]
-contract_file = "tools/rust-port/contracts/basic/specifier-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/shared/specifier.c", rust_paths = ["src/basic/rust/specifier_util.rs", "src/basic/rust/specifier_util.h"] },
-    { kind = "direct", path = "src/shared/specifier.h", rust_paths = ["src/basic/rust/specifier_util.rs", "src/basic/rust/specifier_util.h"] },
-    { kind = "direct", path = "src/shared/efi-loader.c", rust_paths = ["src/basic/rust/specifier_util.rs", "src/basic/rust/specifier_util.h"] },
-    { kind = "direct", path = "src/shared/efi-loader.h", rust_paths = ["src/basic/rust/specifier_util.rs", "src/basic/rust/specifier_util.h"] },
-]
-test_file = "tests-extra/test-specifier-efi-rust.c"
-status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/shared/specifier.c" = "9d2066899f2fe0b5852499d13a255f105fce292d", "src/shared/specifier.h" = "3b9d43cd85dd0e7615ed0517851519e62babd844", "src/shared/efi-loader.c" = "da0a3a57b58cf8a387cec5757f4cad39280a605b", "src/shared/efi-loader.h" = "d4344e92adadd0c26ab48c894227e922bee39080" }
-last_reviewed_rust_blobs = { "src/basic/rust/specifier_util.rs" = "cfbe20dbdfc69b5f28a40d8806617a38cdc7607f", "src/basic/rust/specifier_util.h" = "22ff6d9f68d7094a1bb1f8da4745d6e0c34fa23b" }
-notes = "Reviewed static specifier/EFI ABI slice 2026-07-28; no build/tests/VM. Percent escaping is raw-byte and C-allocator owned; strv escaping preserves borrowed input, owned output, and failure-atomic publication; EFI entry validation preserves filename and ASCII charset boundaries. NULL ret for strv escaping is an explicit fail-closed Rust extension. Other specifier and EFI I/O APIs remain excluded; C remains production authority and runtime parity is unclaimed."
-
 [strverscmp]
 c_paths = ["src/fundamental/string-util.c", "src/fundamental/string-util.h"]
 rust_paths = ["src/basic/rust/strverscmp.rs", "src/basic/rust/strverscmp.h"]
@@ -1743,34 +1685,6 @@ sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/fundamental/string-util.c" = "bd6b81ea14da9fbe68b839a846b119164300e78a", "src/fundamental/string-util.h" = "c068c1904a8761a880c8bee6b977def7e79ead54" }
 last_reviewed_rust_blobs = { "src/basic/rust/strverscmp.rs" = "94bc24156cf38152062afe5baafbd2ab107b772b", "src/basic/rust/strverscmp.h" = "1225bb2a65e0d081b49551dfdca575af4bf99164" }
 notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The exact C ABI adapter preserves nullable-as-empty inputs, arbitrary non-UTF-8 bytes, ignored-byte boundaries, ASCII segment classification, and normalized -1/0/1 ordering without allocation. The registered dual C fixture pins RPM ordering, separators, invalid bytes, NULL inputs, and byte opacity. Partial provenance with static-only evidence; runtime parity unclaimed."
-
-[terminal_util]
-c_paths = [
-    "src/basic/terminal-util.c",
-    "src/basic/terminal-util.h",
-    "src/shared/pretty-print.c",
-]
-rust_paths = [
-    "src/basic/rust/terminal_util.rs",
-    "src/basic/rust/terminal_util.h",
-]
-scope = "basic.terminal-util"
-rust_scope_paths = ["src/basic/rust/terminal_util.rs"]
-rust_interface_paths = ["src/basic/rust/terminal_util.h"]
-contract_file = "tools/rust-port/contracts/basic/terminal-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/terminal-util.c", rust_paths = ["src/basic/rust/terminal_util.rs", "src/basic/rust/terminal_util.h"] },
-    { kind = "direct", path = "src/basic/terminal-util.h", rust_paths = ["src/basic/rust/terminal_util.rs", "src/basic/rust/terminal_util.h"] },
-    { kind = "direct", path = "src/shared/pretty-print.c", rust_paths = ["src/basic/rust/terminal_util.rs", "src/basic/rust/terminal_util.h"] },
-]
-test_file = "tests-extra/test-terminal-util-rust.c"
-status = "in-progress"
-tier = 3
-symbols = 6
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/terminal-util.c" = "597880d0ff1c878cc043f1d3f175ad05b43fa1f2", "src/basic/terminal-util.h" = "0e65d205a5296b9d6389efccb76ecfa6b6d91e2a", "src/shared/pretty-print.c" = "c5ace49f608a0bf3515789a9f5bcadcf690cb9a3" }
-last_reviewed_rust_blobs = { "src/basic/rust/terminal_util.rs" = "4d1542253c49d1751c93fe1725b164fddbf742d1", "src/basic/rust/terminal_util.h" = "3947c19e62a7f8d1e579373371c738e14fe2812b" }
-notes = "Reviewed static ABI slice 2026-07-28; no build/tests/VM. Six exact byte-oriented facades preserve component-aware /dev stripping, safe_atou base-zero grammar (including 0b/0o), VT range errors, and OSC8 character policy. Terminal I/O, console resolution, and other environment-facing APIs remain excluded; C remains production authority and runtime parity is unclaimed."
 
 [udev_util]
 c_file = "src/shared/udev-util.c"

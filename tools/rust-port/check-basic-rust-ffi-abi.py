@@ -2531,8 +2531,6 @@ def header_inline_boundary_is_reviewed() -> bool:
 
     source = PARTIAL_SURFACES["utf8_header_inline"][1].read_text()
     utf8_header = PARTIAL_SURFACES["utf8_header_inline"][0].read_text()
-    terminal_header = PARTIAL_SURFACES["terminal_header_inline"][0].read_text()
-    terminal_source = PARTIAL_SURFACES["terminal_header_inline"][1].read_text()
     path_header = PARTIAL_SURFACES["path_header_inline"][0].read_text()
     test = PARTIAL_SHADOW_TESTS["utf8_header_inline"][0].read_text()
     path_source = ROOT / "src/basic/rust/path_util.rs"
@@ -2550,14 +2548,8 @@ def header_inline_boundary_is_reviewed() -> bool:
         and source.count("#[unsafe(no_mangle)]") == 7
         and "bool rs_utf16_is_surrogate(char16_t c);" in utf8_header
         and "char32_t rs_utf16_surrogate_pair_to_unichar(char16_t lead, char16_t trail);" in utf8_header
-        and "bool rs_osc_char_is_valid(char c);" in terminal_header
-        and "bool rs_vtnr_is_valid(unsigned n);" in terminal_header
-        and "#include <stdbool.h>" in terminal_header
-        and "pub extern \"C\" fn rs_osc_char_is_valid(c: c_char) -> bool" in terminal_source
-        and "pub extern \"C\" fn rs_vtnr_is_valid(number: c_uint) -> bool" in terminal_source
         and "const char *rs_skip_dev_prefix(const char *p);" in path_header
         and '#include "rust/utf8.h"' in test
-        and '#include "rust/terminal_util.h"' in test
         and '#include "rust/path_util.h"' in test
         and "Rust FFI — utf8.h inline wrappers" not in test
         and '"\\xc0\\x80"' in test

@@ -1618,20 +1618,6 @@ if get_option('rust').enabled()
         test('test-mount-color-btrfs-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-ns-dirent-rust',
-                files('test-ns-dirent-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-ns-dirent-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-pe-binary-rust',
                 files('test-pe-binary-rust.c'),
                 include_directories : includes,
@@ -1700,20 +1686,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-misc-extra-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-specifier-efi-rust',
-                files('test-specifier-efi-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-specifier-efi-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-nsflags-rust',
@@ -1798,20 +1770,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-stat-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-terminal-util-rust',
-                files('test-terminal-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-terminal-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-devt-compare-rust',
