@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.uid-range; authority=src/basic/uid-range.c,src/basic/uid-range.h */
 #pragma once
 
 #include "uid-range.h"

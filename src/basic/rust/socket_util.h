@@ -7,10 +7,10 @@
 #include <stdbool.h>
 
 /*
- * Shadow FFI. The ifname validators are byte-oriented C-string predicates;
- * malformed NULL or invalid-flag inputs fail closed. The remaining sockaddr
- * and SocketAddress declarations stay deferred until their platform layouts
- * and ownership contracts are individually reviewed.
+ * Shadow FFI. String predicates retain C's byte-oriented behavior. Socket
+ * exports use an internal repr(C) shadow of the Linux sockaddr union solely
+ * at this ABI boundary; ordinary Rust callers use the typed safe models.
+ * Malformed null pointers fail closed where C would assert.
  */
 bool rs_ifname_valid_char(char a);
 bool rs_ifname_valid_full(const char *p, int flags);

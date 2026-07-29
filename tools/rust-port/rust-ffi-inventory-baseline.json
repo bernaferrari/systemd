@@ -1,49 +1,11 @@
 {
   "missing_by_header": {
-    "src/basic/rust/ansi_color.h": [
-      "rs_get_color_mode",
-      "rs_underline_enabled"
-    ],
     "src/basic/rust/image_policy_util.h": [
       "rs_image_policy_from_string",
       "rs_image_policy_intersect",
       "rs_image_policy_to_string",
       "rs_image_policy_union",
       "rs_partition_policy_determine_fstype"
-    ],
-    "src/basic/rust/socket_util.h": [
-      "rs_sockaddr_equal",
-      "rs_sockaddr_in_addr",
-      "rs_sockaddr_len",
-      "rs_sockaddr_ll_len",
-      "rs_sockaddr_port",
-      "rs_sockaddr_set_in_addr",
-      "rs_sockaddr_un_len",
-      "rs_sockaddr_un_set_path",
-      "rs_socket_address_can_accept",
-      "rs_socket_address_equal_unix",
-      "rs_socket_address_get_path",
-      "rs_socket_address_parse_unix",
-      "rs_socket_address_parse_vsock",
-      "rs_socket_address_verify"
-    ],
-    "src/basic/rust/uid_range.h": [
-      "rs_uid_range_add_internal",
-      "rs_uid_range_add_str_full",
-      "rs_uid_range_base",
-      "rs_uid_range_clip",
-      "rs_uid_range_contains",
-      "rs_uid_range_copy",
-      "rs_uid_range_covers",
-      "rs_uid_range_equal",
-      "rs_uid_range_free",
-      "rs_uid_range_is_empty",
-      "rs_uid_range_next_lower",
-      "rs_uid_range_overlaps",
-      "rs_uid_range_partition",
-      "rs_uid_range_remove",
-      "rs_uid_range_size",
-      "rs_uid_range_translate"
     ],
     "src/shared/rust/dns_label.h": [
       "rs_dns_label_escape",

@@ -3,7 +3,7 @@ module = "socket-util"
 semantic_coverage = "partial"
 source_structure = "independent"
 deviation_policy = "explicit-only"
-excluded_c_symbols = ["sockaddr_port", "sockaddr_in_addr", "sockaddr_set_in_addr", "sockaddr_equal", "sockaddr_ll_len", "sockaddr_un_len", "sockaddr_len", "sockaddr_un_set_path", "socket_address_verify", "socket_address_can_accept", "socket_address_get_path", "socket_address_parse_unix", "socket_address_parse_vsock", "socket_address_equal_unix"]
+excluded_c_symbols = ["socket_address_print", "socket_address_equal", "socket_address_matches_fd", "sockaddr_pretty", "getpeername_pretty", "getsockname_pretty", "socknameinfo_pretty", "fd_set_sndbuf", "fd_set_rcvbuf", "sockaddr_un_unlink", "socket_ioctl_fd", "netlink_socket_get_multicast_groups"]
 
 [authority]
 c_headers = ["src/basic/socket-util.h"]
@@ -102,3 +102,41 @@ deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
 file = "tests-extra/test-socket-util-rust.c"
 meson_target = "test-socket-util-rust"
 labels = ["vsock-parse-cid"]
+
+[[surface]]
+id = "sockaddr-layout"
+c_symbols = ["sockaddr_port", "sockaddr_in_addr", "sockaddr_set_in_addr", "sockaddr_equal", "sockaddr_ll_len", "sockaddr_un_len", "sockaddr_len", "sockaddr_un_set_path"]
+rust_symbols = ["rs_sockaddr_port", "rs_sockaddr_in_addr", "rs_sockaddr_set_in_addr", "rs_sockaddr_equal", "rs_sockaddr_ll_len", "rs_sockaddr_un_len", "rs_sockaddr_len", "rs_sockaddr_un_set_path"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "sockaddr-invalid-layout-fail-closed"
+deviation_rationale = "For valid Linux sockaddr unions, Rust preserves the C field layout, byte order, AF-specific lengths, address comparison quirk, borrowed interior pointer, and Unix path result. Null inputs, wrong families for asserted helpers, and an unknown sockaddr_len family fail closed instead of invoking C assertions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-socket-util-rust.c"
+meson_target = "test-socket-util-rust"
+labels = ["sockaddr-layout"]
+
+[[surface]]
+id = "socket-address-layout"
+c_symbols = ["socket_address_verify", "socket_address_can_accept", "socket_address_get_path", "socket_address_parse_unix", "socket_address_parse_vsock", "socket_address_equal_unix"]
+rust_symbols = ["rs_socket_address_verify", "rs_socket_address_can_accept", "rs_socket_address_get_path", "rs_socket_address_parse_unix", "rs_socket_address_parse_vsock", "rs_socket_address_equal_unix"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "socket-address-invalid-layout-fail-closed"
+deviation_rationale = "For valid C SocketAddress storage, Rust preserves Linux union layout, strict verification, type acceptance, borrowed Unix path lifetime, parse publication, VSOCK aliases, and AF_UNIX comparator behavior. Null outer pointers fail closed instead of reaching C assertions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-socket-util-rust.c"
+meson_target = "test-socket-util-rust"
+labels = ["socket-address-layout"]

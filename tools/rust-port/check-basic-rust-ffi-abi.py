@@ -96,6 +96,24 @@ C_TYPES = {
     "ExitStatusSet *": "*mutCExitStatusSet",
     "const ImagePolicy *": "*constCImagePolicy",
     "ImagePolicy *": "*mutCImagePolicy",
+    # UIDRange is a C-owned pointer/length allocation. The native Rust Vec
+    # type intentionally stays outside this ABI and is represented instead by
+    # the dedicated repr(C) CUIDRange boundary mirror.
+    "const UIDRange *": "*constCUIDRange",
+    "UIDRange *": "*mutCUIDRange",
+    "UIDRange **": "*mut*mutCUIDRange",
+    # Socket ABI facades keep the platform union/aggregate representation
+    # opaque in the generated C header while their Rust implementation owns
+    # the private repr(C) mirrors. This is still a C-exact pointer ABI.
+    "const struct sockaddr *": "*constc_void",
+    "const struct sockaddr_ll *": "*constc_void",
+    "const struct sockaddr_un *": "*constc_void",
+    "struct sockaddr_un *": "*mutc_void",
+    "const union sockaddr_union *": "*constc_void",
+    "union sockaddr_union *": "*mutc_void",
+    "const union in_addr_union *": "*constc_void",
+    "const SocketAddress *": "*constc_void",
+    "SocketAddress *": "*mutc_void",
     "IfnameValidFlags": "i32",
     "RateLimit *": "*mutRateLimit",
     "const RateLimit *": "*constRateLimit",

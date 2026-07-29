@@ -1,9 +1,9 @@
 schema = 1
 module = "ansi-color"
-semantic_coverage = "partial"
+semantic_coverage = "complete"
 source_structure = "independent"
 deviation_policy = "explicit-only"
-excluded_c_symbols = ["get_color_mode"]
+excluded_c_symbols = []
 
 [authority]
 c_headers = ["src/basic/ansi-color.h"]
@@ -81,3 +81,19 @@ verification = "static-only"
 file = "tests-extra/test-ansi-color-rust.c"
 meson_target = "test-ansi-color-rust"
 labels = ["ansi-color-sgr-classifier"]
+
+[[surface]]
+id = "ansi-color-runtime-selection"
+c_symbols = ["get_color_mode", "underline_enabled", "reset_ansi_feature_caches"]
+rust_symbols = ["rs_get_color_mode", "rs_underline_enabled", "rs_reset_ansi_feature_caches"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "environment"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ansi-color-rust.c"
+meson_target = "test-ansi-color-rust"
+labels = ["ansi-color-runtime-selection"]

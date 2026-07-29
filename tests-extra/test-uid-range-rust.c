@@ -1,4 +1,9 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: uid-range-ownership */
+/* RUST-CONTRACT: uid-range-addition */
+/* RUST-CONTRACT: uid-range-query */
+/* RUST-CONTRACT: uid-range-mutation */
+/* RUST-CONTRACT: uid-range-translation */
 
 #include <string.h>
 
@@ -192,6 +197,34 @@ TEST(uid_range_add_coalesce) {
         free_rust(rr);
 }
 
+TEST(uid_range_add_abi_interoperability) {
+        /* Both implementations must be able to extend and free the same
+         * pointer-plus-length C representation. */
+        UIDRange *c_then_rust = NULL, *rust_then_c = NULL;
+
+        assert_se(uid_range_add(&c_then_rust, 1000, 10) >= 0);
+        assert_se(rs_uid_range_add_internal(&c_then_rust, 2000, 10, true) >= 0);
+        assert_se(uid_range_contains(c_then_rust, 1005));
+        assert_se(uid_range_contains(c_then_rust, 2005));
+
+        assert_se(rs_uid_range_add_internal(&rust_then_c, 3000, 10, true) >= 0);
+        assert_se(uid_range_add(&rust_then_c, 4000, 10) >= 0);
+        assert_se(rs_uid_range_contains(rust_then_c, 3005));
+        assert_se(rs_uid_range_contains(rust_then_c, 4005));
+
+        uid_range_free(c_then_rust);
+        rs_uid_range_free(rust_then_c);
+}
+
+TEST(uid_range_add_overflow) {
+        UIDRange *cr = NULL, *rr = NULL;
+
+        assert_se(uid_range_add_internal(&cr, UINT32_MAX, 1, true) ==
+                  rs_uid_range_add_internal(&rr, UINT32_MAX, 1, true));
+        assert_se(cr == NULL);
+        assert_se(rr == NULL);
+}
+
 /* ── uid_range_clip ────────────────────────────────────────────────────── */
 
 TEST(uid_range_clip_basic) {
@@ -290,6 +323,27 @@ TEST(uid_range_translate_basic) {
         assert_se(rs_uid_range_translate(ri, ro, 5, &rt) >= 0);
         assert_se(ct == rt);
         assert_se(ct == 1005);
+
+        uid_range_free(co);
+        uid_range_free(ci);
+        free_rust(ro);
+        free_rust(ri);
+}
+
+TEST(uid_range_translate_missing_preserves_output) {
+        UIDRange *co = NULL, *ci = NULL;
+        UIDRange *ro = NULL, *ri = NULL;
+        uid_t ct = 123, rt = 123;
+
+        assert_se(uid_range_add(&co, 1000, 10) >= 0);
+        assert_se(uid_range_add(&ci, 0, 10) >= 0);
+        assert_se(rs_uid_range_add_internal(&ro, 1000, 10, false) >= 0);
+        assert_se(rs_uid_range_add_internal(&ri, 0, 10, false) >= 0);
+
+        assert_se(uid_range_translate(co, ci, 2000, &ct) ==
+                  rs_uid_range_translate(ro, ri, 2000, &rt));
+        assert_se(ct == 123);
+        assert_se(rt == 123);
 
         uid_range_free(co);
         uid_range_free(ci);

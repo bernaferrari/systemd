@@ -17,4 +17,5 @@ const char *rs_color_mode_to_string(int i);
 int rs_parse_systemd_colors(void);
 int rs_get_color_mode(void);
 bool rs_underline_enabled(void);
+void rs_reset_ansi_feature_caches(void);
 bool rs_looks_like_ansi_color_code(const char *str);

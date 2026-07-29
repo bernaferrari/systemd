@@ -23,7 +23,7 @@
     "src/basic/rust/ansi_color.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 4
+      "unsafe_sites": 7
     },
     "src/basic/rust/architecture.rs": {
       "missing_safety": 0,
@@ -535,7 +535,7 @@
     "src/basic/rust/socket_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 14
+      "unsafe_sites": 100
     },
     "src/basic/rust/sort_util.rs": {
       "missing_safety": 0,
@@ -721,6 +721,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 10
     },
+    "src/basic/rust/uid_range.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 89
+    },
     "src/basic/rust/unaligned.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -778,7 +783,7 @@
     "src/basic/rust/xml_tokenizer.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 10
+      "unsafe_sites": 9
     },
     "src/battery-check/rust/battery_check.rs": {
       "missing_safety": 0,
@@ -2188,7 +2193,7 @@
   },
   "totals": {
     "missing_safety": 613,
-    "unsafe_sites": 5517
+    "unsafe_sites": 5694
   },
   "version": 2,
   "window": 3

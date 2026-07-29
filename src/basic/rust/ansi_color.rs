@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: scope=basic.ansi-color; authority=src/basic/ansi-color.c,src/basic/ansi-color.h
+// PORT-SYNC: scope=basic.ansi-color; authority=src/basic/ansi-color.c,src/basic/ansi-color.h,src/basic/terminal-util.c,src/basic/terminal-util.h,src/basic/process-util.c,src/basic/process-util.h,src/basic/stat-util.c,src/basic/stat-util.h
 //
 // ANSI color mode parsing, environment detection, and validation.
 // Pure Rust — string table lookups and environment queries use safe Rust APIs.
@@ -8,6 +8,22 @@
 use crate::ffi::Errno;
 use std::ffi::CStr;
 use std::os::raw::c_char;
+use std::os::unix::ffi::OsStrExt;
+use std::sync::atomic::{AtomicI8, AtomicI32, Ordering};
+
+const COLOR_MODE_INVALID: i32 = Errno::EINVAL.to_neg_errno();
+const UNDERLINE_ENABLED_UNSET: i8 = -1;
+const FEATURE_BOOL_UNSET: i8 = -1;
+
+// These are intentionally separate from the ergonomic Rust helpers below.
+// The C ABI promises the process-lifetime cache maintained by ansi-color.c.
+static FFI_CACHED_COLOR_MODE: AtomicI32 = AtomicI32::new(COLOR_MODE_INVALID);
+static FFI_CACHED_UNDERLINE_ENABLED: AtomicI8 = AtomicI8::new(UNDERLINE_ENABLED_UNSET);
+// terminal-util.c owns these process-lifetime probes separately from the
+// ansi-color cache.  In particular, resetting the latter must not re-probe
+// stdout/stderr; C retains the terminal feature cache until its own reset API.
+static FFI_CACHED_ON_TTY: AtomicI8 = AtomicI8::new(FEATURE_BOOL_UNSET);
+static FFI_CACHED_ON_DEV_NULL: AtomicI8 = AtomicI8::new(FEATURE_BOOL_UNSET);
 
 // ── ColorMode enum ────────────────────────────────────────────────────────
 
@@ -169,13 +185,19 @@ pub fn get_color_mode() -> ColorMode {
 
     // If not COLOR_TRUE, check NO_COLOR and dumb terminal
     if m != Ok(ColorMode::True) {
-        if std::env::var("NO_COLOR").is_ok() {
+        if std::env::var_os("NO_COLOR").is_some() {
             return ColorMode::Off;
         }
 
-        // In the C version, getpid_cached() == 1 changes which dumb-check is used.
-        // For the pure-Rust version we always check TERM for dumb.
-        if is_dumb_terminal() {
+        // PID 1 has no persistent stdout/stderr terminal, so C intentionally
+        // consults only $TERM there. Other processes also require output to
+        // be a TTY (or both streams to be /dev/null).
+        let terminal_is_dumb = if std::process::id() == 1 {
+            getenv_terminal_is_dumb()
+        } else {
+            terminal_is_dumb()
+        };
+        if terminal_is_dumb {
             return ColorMode::Off;
         }
     }
@@ -200,12 +222,94 @@ pub fn get_color_mode() -> ColorMode {
     ColorMode::C256
 }
 
-/// Check if the terminal is "dumb" (no colour support).
-fn is_dumb_terminal() -> bool {
-    match std::env::var("TERM") {
-        Ok(term) => term == "dumb" || term.is_empty(),
-        Err(_) => true,
+/// Match C `getenv_terminal_is_dumb()` without requiring UTF-8 environment
+/// values. An empty `TERM` is not considered dumb by the C helper.
+fn getenv_terminal_is_dumb() -> bool {
+    std::env::var_os("TERM").is_none_or(|term| term.as_bytes() == b"dumb")
+}
+
+/// C's `isatty_safe()` treats a transient Linux `EIO` as a terminal too.
+fn isatty_safe(fd: libc::c_int) -> bool {
+    // SAFETY: `fd` is one of the always-valid standard descriptor numbers.
+    unsafe { libc::isatty(fd) != 0 }
+    || std::io::Error::last_os_error().raw_os_error() == Some(libc::EIO)
+}
+
+fn cached_feature_bool(slot: &AtomicI8, probe: impl Fn() -> bool) -> bool {
+    loop {
+        let cached = slot.load(Ordering::Acquire);
+        if cached >= 0 {
+            return cached != 0;
+        }
+
+        let computed = probe() as i8;
+        match slot.compare_exchange(
+            FEATURE_BOOL_UNSET,
+            computed,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => return computed != 0,
+            Err(raced) if raced >= 0 => return raced != 0,
+            Err(_) => {
+                // A concurrent terminal-cache reset restored the sentinel.
+            }
+        }
     }
+}
+
+fn stat_inode_same(a: &libc::stat, b: &libc::stat) -> bool {
+    ((a.st_mode ^ b.st_mode) & libc::S_IFMT as libc::mode_t) == 0
+        && a.st_dev == b.st_dev
+        && a.st_ino == b.st_ino
+}
+
+/// Return whether both output streams name the same inode as `/dev/null`.
+fn on_dev_null() -> bool {
+    let mut dev_null = std::mem::MaybeUninit::<libc::stat>::uninit();
+    let mut stdout = std::mem::MaybeUninit::<libc::stat>::uninit();
+    let mut stderr = std::mem::MaybeUninit::<libc::stat>::uninit();
+
+    // SAFETY: the C string is static, each output points to suitably aligned
+    // uninitialized storage for `struct stat`, and standard fds are valid
+    // descriptor numbers even when their underlying streams were closed.
+    let succeeded = unsafe {
+        libc::stat(c"/dev/null".as_ptr(), dev_null.as_mut_ptr()) == 0
+            && libc::fstat(libc::STDOUT_FILENO, stdout.as_mut_ptr()) == 0
+            && libc::fstat(libc::STDERR_FILENO, stderr.as_mut_ptr()) == 0
+    };
+    if !succeeded {
+        return false;
+    }
+
+    // SAFETY: all three `stat` calls above returned success.
+    let (dev_null, stdout, stderr) = unsafe {
+        (
+            dev_null.assume_init(),
+            stdout.assume_init(),
+            stderr.assume_init(),
+        )
+    };
+    stat_inode_same(&dev_null, &stdout) && stat_inode_same(&dev_null, &stderr)
+}
+
+fn cached_on_tty() -> bool {
+    cached_feature_bool(&FFI_CACHED_ON_TTY, || {
+        isatty_safe(libc::STDOUT_FILENO) && isatty_safe(libc::STDERR_FILENO)
+    })
+}
+
+fn cached_on_dev_null() -> bool {
+    cached_feature_bool(&FFI_CACHED_ON_DEV_NULL, on_dev_null)
+}
+
+/// Match C `terminal_is_dumb()` for stdout/stderr.
+fn terminal_is_dumb() -> bool {
+    if !cached_on_tty() && !cached_on_dev_null() {
+        return true;
+    }
+
+    getenv_terminal_is_dumb()
 }
 
 // ── underline_enabled ─────────────────────────────────────────────────────
@@ -218,9 +322,57 @@ pub fn underline_enabled() -> bool {
     if get_color_mode() == ColorMode::Off {
         return false;
     }
-    match std::env::var("TERM") {
-        Ok(term) => term != "linux",
-        Err(_) => false,
+    std::env::var_os("TERM").is_none_or(|term| term.as_bytes() != b"linux")
+}
+
+fn cached_color_mode() -> ColorMode {
+    loop {
+        let cached = FFI_CACHED_COLOR_MODE.load(Ordering::Acquire);
+        if let Some(mode) = ColorMode::from_i32(cached) {
+            return mode;
+        }
+
+        let computed = get_color_mode() as i32;
+        match FFI_CACHED_COLOR_MODE.compare_exchange(
+            COLOR_MODE_INVALID,
+            computed,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => return ColorMode::from_i32(computed).expect("computed C color mode is valid"),
+            Err(raced) => {
+                if let Some(mode) = ColorMode::from_i32(raced) {
+                    return mode;
+                }
+                // A concurrent reset restored the invalid sentinel. Retry
+                // instead of treating the sentinel as a valid color mode.
+            }
+        }
+    }
+}
+
+fn cached_underline_enabled() -> bool {
+    loop {
+        let cached = FFI_CACHED_UNDERLINE_ENABLED.load(Ordering::Acquire);
+        if cached >= 0 {
+            return cached != 0;
+        }
+
+        let computed = (cached_color_mode() != ColorMode::Off
+            && std::env::var_os("TERM").is_none_or(|term| term.as_bytes() != b"linux"))
+            as i8;
+        match FFI_CACHED_UNDERLINE_ENABLED.compare_exchange(
+            UNDERLINE_ENABLED_UNSET,
+            computed,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => return computed != 0,
+            Err(raced) if raced >= 0 => return raced != 0,
+            Err(_) => {
+                // A concurrent reset restored the unset sentinel. Retry.
+            }
+        }
     }
 }
 
@@ -311,6 +463,29 @@ pub extern "C" fn rs_parse_systemd_colors() -> i32 {
         Ok(mode) => mode as i32,
         Err(error) => error.to_neg_errno(),
     }
+}
+
+/// C ABI facade for `get_color_mode()`.
+///
+/// The return value is the integer representation of the C-compatible
+/// `ColorMode` enum, matching the C function's ABI exactly.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_get_color_mode() -> i32 {
+    cached_color_mode() as i32
+}
+
+/// C ABI facade for `underline_enabled()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_underline_enabled() -> bool {
+    cached_underline_enabled()
+}
+
+/// Reset the C-ABI color and underline caches, mirroring
+/// `reset_ansi_feature_caches()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_reset_ansi_feature_caches() {
+    FFI_CACHED_COLOR_MODE.store(COLOR_MODE_INVALID, Ordering::Release);
+    FFI_CACHED_UNDERLINE_ENABLED.store(UNDERLINE_ENABLED_UNSET, Ordering::Release);
 }
 
 /// C ABI facade for `looks_like_ansi_color_code()`.
@@ -456,7 +631,7 @@ mod tests {
     fn test_parse_boolean_unknown() {
         assert_eq!(parse_boolean(""), None);
         assert_eq!(parse_boolean("maybe"), None);
-        assert_eq!(parse_boolean("YES"), None);
+        assert_eq!(parse_boolean("YES"), Some(true));
     }
 
     // ── ColorMode::from_i32 ────────────────────────────────────────────

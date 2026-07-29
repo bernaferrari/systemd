@@ -5,6 +5,8 @@
 /* RUST-CONTRACT: ifname-valid */
 /* RUST-CONTRACT: vsock-parse-port */
 /* RUST-CONTRACT: vsock-parse-cid */
+/* RUST-CONTRACT: sockaddr-layout */
+/* RUST-CONTRACT: socket-address-layout */
 
 #include "tests.h"
 #include "in-addr-util.h"
@@ -539,6 +541,55 @@ static void test_sockaddr_equal(void) {
         assert_se(cb == rb); assert_se(cb == false);
 }
 
+/* ── sockaddr and SocketAddress ABI layouts ────────────────────────────── */
+
+static void test_socket_layout_abi(void) {
+        union sockaddr_union sa;
+        struct sockaddr_un un_c, un_r;
+        SocketAddress address_c, address_r;
+        const char *path_c, *path_r;
+        int rc, rrr;
+
+        memset(&sa, 0, sizeof(sa));
+        sa.ll.sll_family = AF_PACKET;
+        sa.ll.sll_hatype = htobe16(1); /* ARPHRD_ETHER */
+        assert_se(sockaddr_ll_len(&sa.ll) == rs_sockaddr_ll_len(&sa));
+
+        memset(&sa, 0, sizeof(sa));
+        sa.un.sun_family = AF_UNIX;
+        memcpy(sa.un.sun_path, "/run/test.sock", strlen("/run/test.sock") + 1);
+        assert_se(sockaddr_un_len(&sa.un) == rs_sockaddr_un_len(&sa));
+        assert_se(sockaddr_len(&sa) == rs_sockaddr_len(&sa));
+
+        rc = sockaddr_un_set_path(&un_c, "@rust-port");
+        rrr = rs_sockaddr_un_set_path(&un_r, "@rust-port");
+        assert_se(rc == rrr);
+        assert_se(memcmp(&un_c, &un_r, sizeof(un_c)) == 0);
+
+        rc = socket_address_parse_unix(&address_c, "/run/rust-port.sock");
+        rrr = rs_socket_address_parse_unix(&address_r, "/run/rust-port.sock");
+        assert_se(rc == rrr);
+        assert_se(socket_address_verify(&address_c, true) ==
+                  rs_socket_address_verify(&address_r, true));
+        assert_se(socket_address_can_accept(&address_c) ==
+                  rs_socket_address_can_accept(&address_r));
+        path_c = socket_address_get_path(&address_c);
+        path_r = rs_socket_address_get_path(&address_r);
+        assert_se(streq_ptr(path_c, path_r));
+
+        rc = socket_address_parse_vsock(&address_c, "vsock:host:1234");
+        rrr = rs_socket_address_parse_vsock(&address_r, "vsock:host:1234");
+        assert_se(rc == rrr);
+        assert_se(address_c.size == address_r.size);
+        assert_se(address_c.type == address_r.type);
+        assert_se(address_c.sockaddr.vm.svm_family == address_r.sockaddr.vm.svm_family);
+        assert_se(address_c.sockaddr.vm.svm_cid == address_r.sockaddr.vm.svm_cid);
+        assert_se(address_c.sockaddr.vm.svm_port == address_r.sockaddr.vm.svm_port);
+
+        assert_se(socket_address_equal_unix("@rust-port", "@rust-port") ==
+                  rs_socket_address_equal_unix("@rust-port", "@rust-port"));
+}
+
 int main(int argc, char **argv) {
         test_ifname_valid_char();
         test_ifname_valid_full();
@@ -550,5 +601,6 @@ int main(int argc, char **argv) {
         test_sockaddr_in_addr();
         test_sockaddr_set_in_addr();
         test_sockaddr_equal();
+        test_socket_layout_abi();
         return 0;
 }

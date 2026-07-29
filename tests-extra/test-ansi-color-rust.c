@@ -3,6 +3,7 @@
 /* RUST-CONTRACT: ansi-color-from-string */
 /* RUST-CONTRACT: ansi-color-to-string */
 /* RUST-CONTRACT: ansi-color-environment-parser */
+/* RUST-CONTRACT: ansi-color-runtime-selection */
 /* RUST-CONTRACT: ansi-color-sgr-classifier */
 
 #include <stdlib.h>
@@ -13,6 +14,11 @@
 
 /* Rust FFI */
 #include "rust/ansi_color.h"
+
+static void reset_c_and_r_ansi_feature_caches(void) {
+        reset_ansi_feature_caches();
+        rs_reset_ansi_feature_caches();
+}
 
 /* ── looks_like_ansi_color_code ─────────────────────────────────────────── */
 
@@ -138,7 +144,7 @@ TEST(get_color_mode_off) {
         unsetenv("COLORTERM");
         unsetenv("NO_COLOR");
         setenv("SYSTEMD_COLORS", "off", 1);
-        reset_ansi_feature_caches();
+        reset_c_and_r_ansi_feature_caches();
         assert_se(get_color_mode() == rs_get_color_mode());
         assert_se(get_color_mode() == COLOR_OFF);
         unsetenv("SYSTEMD_COLORS");
@@ -148,7 +154,7 @@ TEST(get_color_mode_no_color) {
         /* $NO_COLOR forces off when not COLOR_TRUE */
         unsetenv("SYSTEMD_COLORS");
         setenv("NO_COLOR", "1", 1);
-        reset_ansi_feature_caches();
+        reset_c_and_r_ansi_feature_caches();
         assert_se(get_color_mode() == rs_get_color_mode());
         assert_se(get_color_mode() == COLOR_OFF);
         unsetenv("NO_COLOR");
@@ -159,7 +165,7 @@ TEST(get_color_mode_colorterm) {
         unsetenv("SYSTEMD_COLORS");
         unsetenv("NO_COLOR");
         setenv("COLORTERM", "truecolor", 1);
-        reset_ansi_feature_caches();
+        reset_c_and_r_ansi_feature_caches();
         assert_se(get_color_mode() == rs_get_color_mode());
         unsetenv("COLORTERM");
 }
@@ -169,7 +175,7 @@ TEST(get_color_mode_colorterm_24bit) {
         unsetenv("SYSTEMD_COLORS");
         unsetenv("NO_COLOR");
         setenv("COLORTERM", "24bit", 1);
-        reset_ansi_feature_caches();
+        reset_c_and_r_ansi_feature_caches();
         assert_se(get_color_mode() == rs_get_color_mode());
         unsetenv("COLORTERM");
 }
@@ -181,7 +187,7 @@ TEST(underline_enabled_off) {
         unsetenv("COLORTERM");
         unsetenv("NO_COLOR");
         setenv("SYSTEMD_COLORS", "off", 1);
-        reset_ansi_feature_caches();
+        reset_c_and_r_ansi_feature_caches();
         assert_se(underline_enabled() == rs_underline_enabled());
         assert_se(underline_enabled() == false);
         unsetenv("SYSTEMD_COLORS");
