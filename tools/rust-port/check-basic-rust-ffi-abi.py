@@ -828,7 +828,10 @@ def in_addr_util_boundary_is_reviewed() -> bool:
     The header uses local mirror types instead of the platform's public socket
     types, so generic signature parsing cannot prove this safely.  Keep the
     single audited forwarding macro, all header declarations, current C names,
-    and the registered C comparison fixture in lockstep instead.
+    and the registered C comparison fixture in lockstep instead.  The C
+    `in4_addr_mask()` authority asserts before it can report an out-of-range
+    prefix, so that one contract violation is intentionally Rust-only: it
+    must fail closed without modifying the caller's address.
     """
 
     header = IN_ADDR_UTIL_HEADER.read_text()
@@ -854,8 +857,10 @@ def in_addr_util_boundary_is_reviewed() -> bool:
         "(*ret_start) = start;",
     )
     required_fixtures = (
-        "in4_addr_mask(&ac, 33)",
+        "C asserts on this contract violation before returning.",
         "rs_in4_addr_mask((struct rs_InAddr*)&ar, 33)",
+        "assert_se(rrc == -EINVAL);",
+        "assert_se(ar.s_addr == a.s_addr);",
         'in_addr_from_string(AF_INET, "255.255.255.0", &addr)',
         "memcmp(&c_start, &rs_start, sizeof(c_start))",
     )

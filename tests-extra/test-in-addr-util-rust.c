@@ -599,16 +599,12 @@ static void test_in4_addr_mask(void) {
         struct in_addr expected = make_in4(192, 168, 1, 0);
         assert_se(ac.s_addr == expected.s_addr);
 
-        /* The C helper rejects an IPv4 prefix larger than 32 rather than
-         * silently treating it as an all-ones mask. Keep the error and the
-         * input mutation behavior locked to the Rust ABI facade. */
-        ac = a;
+        /* C asserts on this contract violation before returning. The Rust ABI
+         * fails closed and must leave the caller's bytes untouched. */
         ar = a;
-        rc = in4_addr_mask(&ac, 33);
         rrc = rs_in4_addr_mask((struct rs_InAddr*)&ar, 33);
-        assert_se(rc == rrc);
-        assert_se(rc == -EINVAL);
-        assert_se(ac.s_addr == ar.s_addr);
+        assert_se(rrc == -EINVAL);
+        assert_se(ar.s_addr == a.s_addr);
 }
 
 static void test_in6_addr_mask(void) {
