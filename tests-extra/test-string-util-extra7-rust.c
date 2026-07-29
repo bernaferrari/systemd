@@ -37,6 +37,13 @@ static void test_cellescape(void) {
         assert_se(streq(cellescape(c_buf, 10, "1234567890abcdef"), rs_cellescape(rs_buf, 10, "1234567890abcdef")));
         assert_se(streq(c_buf, rs_buf));
 
+        /* The three-byte ellipsis follows C's locale policy and may require
+         * rolling back a multi-byte escape as one whole cell. */
+        strcpy(c_buf, "AAAAAAAAAAAA");
+        strcpy(rs_buf, "AAAAAAAAAAAA");
+        assert_se(streq(cellescape(c_buf, 6, "1\020x"), rs_cellescape(rs_buf, 6, "1\020x")));
+        assert_se(streq(c_buf, rs_buf));
+
         /* Empty string */
         strcpy(c_buf, "AAAAAAAAAAAA");
         strcpy(rs_buf, "AAAAAAAAAAAA");

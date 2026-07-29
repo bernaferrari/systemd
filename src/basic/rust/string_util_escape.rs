@@ -15,6 +15,25 @@ use crate::ffi::{malloc, realloc};
 const XESCAPE_8_BIT: i32 = 1 << 0;
 const XESCAPE_FORCE_ELLIPSIS: i32 = 1 << 1;
 const UTF8_ELLIPSIS: &[u8] = b"\xe2\x80\xa6";
+const ASCII_ELLIPSIS: &[u8] = b"...";
+
+unsafe extern "C" {
+    /// Current C locale policy, including systemd's environment, thread, and
+    /// cache behavior. `cellescape()` uses the same policy through
+    /// `glyph_full(GLYPH_ELLIPSIS, false)`.
+    fn is_locale_utf8() -> bool;
+}
+
+#[inline]
+fn cellescape_ellipsis() -> &'static [u8] {
+    // SAFETY: the C helper takes no pointers and returns its cached locale
+    // policy. Reusing it avoids a second, subtly divergent locale implementation.
+    if unsafe { is_locale_utf8() } {
+        UTF8_ELLIPSIS
+    } else {
+        ASCII_ELLIPSIS
+    }
+}
 
 fn try_bytes(capacity: usize) -> Result<Vec<u8>, ()> {
     let mut output = Vec::new();
@@ -79,8 +98,9 @@ fn cellescape_bytes(buffer: &mut [u8], input: &[u8]) {
 
             match buffer.len() - written {
                 4.. => {
-                    buffer[written..written + 3].copy_from_slice(b"...");
-                    written += 3;
+                    let ellipsis = cellescape_ellipsis();
+                    buffer[written..written + ellipsis.len()].copy_from_slice(ellipsis);
+                    written += ellipsis.len();
                 }
                 3 => {
                     buffer[written..written + 2].copy_from_slice(b"..");
