@@ -166,8 +166,6 @@ jobs:
           test-sort-util-rust
           test-time-util-rust
           test-time-util-extra-rust
-          test-efivars-rust
-          test-efi-guid-rust
           test-serialize-rust
           test-signal-util-rust
           test-capability-util-rust
@@ -298,8 +296,6 @@ jobs:
           test-sort-util-rust
           test-time-util-rust
           test-time-util-extra-rust
-          test-efivars-rust
-          test-efi-guid-rust
           test-serialize-rust
           test-signal-util-rust
           test-capability-util-rust

@@ -1,105 +1,11 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-/* Shadow test: C efi_guid_to_id128/efi_id128_to_guid, gpt_header_has_signature,
- *             mount_point_is_api/mount_point_ignore vs Rust */
+/* Shadow test: C gpt_header_has_signature and mount-point predicates vs Rust */
 
 #include "tests.h"
-#include "sd-id128.h"
 #include "gpt.h"
 #include "mount-setup.h"
-#include "efi-api.h"
-#include "efi.h"
-#include "rust/efivars_util.h"
 #include "rust/gpt_util.h"
 #include "rust/mount_setup.h"
-
-/* ── efi_guid_to_id128 / efi_id128_to_guid ───────────────────────────── */
-
-static void test_efi_guid_roundtrip(void) {
-        /* Use a known EFI GUID: {12345678-1234-5678-1234-567812345678} */
-        EFI_GUID guid = {
-                .Data1 = 0x12345678,
-                .Data2 = 0x1234,
-                .Data3 = 0x5678,
-                .Data4 = { 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78 },
-        };
-
-        sd_id128_t cr = efi_guid_to_id128(&guid);
-        uint8_t rr[16] = {};
-        assert_se(rs_efi_guid_to_id128(&guid, rr) == 0);
-
-        /* Compare byte-by-byte */
-        assert_se(memcmp(cr.bytes, rr, 16) == 0);
-
-        /* Expected: bytes[0..3] = 12 34 56 78 (big-endian of Data1) */
-        assert_se(cr.bytes[0] == 0x12);
-        assert_se(cr.bytes[1] == 0x34);
-        assert_se(cr.bytes[2] == 0x56);
-        assert_se(cr.bytes[3] == 0x78);
-        assert_se(cr.bytes[4] == 0x12);
-        assert_se(cr.bytes[5] == 0x34);
-        assert_se(cr.bytes[6] == 0x56);
-        assert_se(cr.bytes[7] == 0x78);
-        /* Data4 copied directly */
-        assert_se(cr.bytes[8] == 0x12);
-        assert_se(cr.bytes[15] == 0x78);
-}
-
-static void test_efi_id128_to_guid_roundtrip(void) {
-        sd_id128_t id;
-        EFI_GUID cg, rg;
-
-        zero(id);
-        zero(cg);
-        zero(rg);
-
-        /* Set up a known id128 */
-        id.bytes[0] = 0xab;
-        id.bytes[1] = 0xcd;
-        id.bytes[2] = 0xef;
-        id.bytes[3] = 0x01;
-        id.bytes[4] = 0x23;
-        id.bytes[5] = 0x45;
-        id.bytes[6] = 0x67;
-        id.bytes[7] = 0x89;
-        id.bytes[8] = 0xaa;
-        id.bytes[9] = 0xbb;
-        id.bytes[10] = 0xcc;
-        id.bytes[11] = 0xdd;
-        id.bytes[12] = 0xee;
-        id.bytes[13] = 0xff;
-        id.bytes[14] = 0x00;
-        id.bytes[15] = 0x11;
-
-        efi_id128_to_guid(id, &cg);
-        rs_efi_id128_to_guid(id.bytes, &rg);
-
-        /* Both should produce the same GUID bytes */
-        assert_se(memcmp(&cg, &rg, sizeof(EFI_GUID)) == 0);
-
-        /* Data1 should be big-endian: 0xabcdef01 */
-        assert_se(cg.Data1 == 0xabcdef01);
-        assert_se(cg.Data2 == 0x2345);
-        assert_se(cg.Data3 == 0x6789);
-        /* Data4 is copied directly */
-        assert_se(cg.Data4[0] == 0xaa);
-        assert_se(cg.Data4[7] == 0x11);
-}
-
-static void test_efi_guid_zero(void) {
-        EFI_GUID guid = {};
-        zero(guid);
-
-        sd_id128_t cr = efi_guid_to_id128(&guid);
-        uint8_t rr[16] = {};
-        assert_se(rs_efi_guid_to_id128(&guid, rr) == 0);
-
-        assert_se(memcmp(cr.bytes, rr, 16) == 0);
-        /* All bytes should be zero */
-        for (int i = 0; i < 16; i++) {
-                assert_se(cr.bytes[i] == 0);
-                assert_se(rr[i] == 0);
-        }
-}
 
 /* ── gpt_header_has_signature ────────────────────────────────────────── */
 
@@ -332,9 +238,6 @@ static void test_mount_point_ignore_not_ignored(void) {
 }
 
 int main(int argc, char **argv) {
-        test_efi_guid_roundtrip();
-        test_efi_id128_to_guid_roundtrip();
-        test_efi_guid_zero();
         test_gpt_header_has_signature_valid();
         test_gpt_header_has_signature_bad_signature();
         test_gpt_header_has_signature_bad_revision();

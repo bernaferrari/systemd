@@ -80,11 +80,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 102
     },
-    "src/basic/rust/efivars_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 10
-    },
     "src/basic/rust/env_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1030,11 +1025,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 16
     },
-    "src/shared/rust/log_assert_critical.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
     "src/shared/rust/loop_util/allocate.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1169,11 +1159,6 @@
       "unsafe_sites": 8
     },
     "src/shared/rust/reboot_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/shared/rust/recovery_key.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
@@ -1411,7 +1396,7 @@
   },
   "totals": {
     "missing_safety": 222,
-    "unsafe_sites": 5106
+    "unsafe_sites": 5094
   },
   "version": 2,
   "window": 3

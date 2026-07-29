@@ -1011,7 +1011,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "1ba74c7121fdec38477edd2a1fd294cce51b4aea", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "44da1a494d53d97fa44b501990c2b3bb4165e361", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
@@ -1173,40 +1173,6 @@ tier = 1
 symbols = 16
 sync_status = "needs_review"
 notes = "Static audit 2026-07-27; no build/tests/VM. Sixteen exact extern-C exports cover every scalar predicate, dns_type_to_af(), and the three TLSA string lookups in current src/shared/dns-type.c. The FFI uses uint16_t/uint8_t, C bool/int, target libc address-family values, -EINVAL on unsupported address types, and borrowed static NUL-terminated strings. Exact source/header signatures plus future exhaustive C-versus-Rust Meson/CI comparisons are pinned; runtime parity is unclaimed."
-
-[efivars_util]
-c_paths = [
-    "src/fundamental/efivars.c",
-    "src/fundamental/efivars.h",
-    "src/basic/efivars.c",
-    "src/basic/efivars.h",
-    "src/shared/efi-api.c",
-    "src/shared/efi-api.h",
-]
-rust_paths = [
-    "src/basic/rust/efivars_util.rs",
-    "src/basic/rust/efivars_util.h",
-]
-scope = "basic.efivars-util"
-rust_scope_paths = ["src/basic/rust/efivars_util.rs"]
-rust_interface_paths = ["src/basic/rust/efivars_util.h"]
-contract_file = "tools/rust-port/contracts/basic/efivars-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/fundamental/efivars.c", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
-    { kind = "direct", path = "src/fundamental/efivars.h", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
-    { kind = "direct", path = "src/basic/efivars.c", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
-    { kind = "direct", path = "src/basic/efivars.h", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
-    { kind = "direct", path = "src/shared/efi-api.c", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
-    { kind = "direct", path = "src/shared/efi-api.h", rust_paths = ["src/basic/rust/efivars_util.rs", "src/basic/rust/efivars_util.h"] },
-]
-test_file = "tests-extra/test-efivars-rust.c"
-status = "in-progress"
-tier = 3
-symbols = 5
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/fundamental/efivars.c" = "87dc1fff8f4b41f889567255039d647fbcf32c52", "src/fundamental/efivars.h" = "88bc97d75d6c363b4aad97ee51a8718feca4ba80", "src/basic/efivars.c" = "b64b83664a8d72a0e20a79fb90b1c2af67d0c501", "src/basic/efivars.h" = "c0ec94af5b164917e44b2a3f5aaf5675ace8f6dd", "src/shared/efi-api.c" = "652c48e84bac4baa24af39c85092c52d3900081c", "src/shared/efi-api.h" = "4f9a223d7f380505d763d6c93a7decf973f2cca1" }
-last_reviewed_rust_blobs = { "src/basic/rust/efivars_util.rs" = "0761c3f9e15fa5e494d4997f8e18159294a11a37", "src/basic/rust/efivars_util.h" = "a8ac9db2d4c1fa35caa62ff1859e8e74111f6ec8" }
-notes = "Reviewed static EFI scalar and GUID ABI slice 2026-07-28; no build/tests/VM. Secure-boot tables/state decoding, in-place backslash conversion, and unaligned native-endian EFI_GUID/ID128 conversion use C-compatible pointers and output ownership. NULL is a documented fail-closed extension where C asserts. EFI variable I/O remains excluded; C remains production authority and runtime parity is unclaimed."
 
 [env_util]
 c_paths = [
@@ -2487,15 +2453,6 @@ tier = 3
 symbols = 5
 sync_status = "needs_review"
 notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-fstab.c); re-anchor to current upstream files before claiming completion."
-
-[log_assert_critical]
-c_file = "src/shared/log-assert-critical.c"
-rust_file = "src/shared/rust/log_assert_critical.rs"
-header_file = "src/shared/log-assert-critical.h"
-status = "in-progress"
-tier = 1
-symbols = 2
-sync_status = "needs_review"
 
 [resolve_hook_util]
 c_file = "src/shared/resolve-hook-util.c"

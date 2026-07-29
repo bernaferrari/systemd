@@ -30,7 +30,6 @@ paths = [
     "tools/rust-port/contracts/basic/devnum-util.toml",
     "tools/rust-port/contracts/basic/device-nodes.toml",
     "tools/rust-port/contracts/basic/ether-addr-util.toml",
-    "tools/rust-port/contracts/basic/efivars-util.toml",
     "tools/rust-port/contracts/basic/exit-status.toml",
     "tools/rust-port/contracts/basic/xml-tokenizer.toml",
     "tools/rust-port/contracts/basic/exec-util.toml",

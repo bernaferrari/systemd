@@ -930,19 +930,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "gunicode.rs",
             frozenset({"rs_utf8_prev_char", "rs_unichar_iswide"}),
         ),
-        "efivars_util": (
-            basic_rust / "efivars_util.h",
-            basic_rust / "efivars_util.rs",
-            frozenset(
-                {
-                    "rs_secure_boot_mode_to_string",
-                    "rs_decode_secure_boot_mode",
-                    "rs_efi_tilt_backslashes",
-                    "rs_efi_guid_to_id128",
-                    "rs_efi_id128_to_guid",
-                }
-            ),
-        ),
         "device_nodes": (
             basic_rust / "device_nodes.h",
             basic_rust / "device_nodes.rs",
@@ -1284,11 +1271,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "bus_label": (tests_extra / "test-bus-label-rust.c",),
         "gunicode": (tests_extra / "test-gunicode-rust.c",),
-        "efivars_util": (
-            tests_extra / "test-efivars-rust.c",
-            tests_extra / "test-efi-guid-rust.c",
-            tests_extra / "test-misc-rust3.c",
-        ),
         "device_nodes": (tests_extra / "test-device-nodes-rust.c",),
         "mount_setup": (tests_extra / "test-mount-setup-rust.c",),
         "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
@@ -1312,9 +1294,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
     # parser. Keeping them here still makes the reviewed CI target set one
-    # source of truth.
+    # source of truth. test-misc-rust3 retains GPT and mount-setup coverage
+    # after the detached EFI facade fixtures were removed.
     ci_only_shadow_tests = (
         tests_extra / "test-inline-helpers-rust.c",
+        tests_extra / "test-misc-rust3.c",
         tests_extra / "test-string-util-fundamental-rust.c",
         tests_extra / "test-string-util-rust.c",
         tests_extra / "test-string-util-extra-rust.c",
@@ -1611,14 +1595,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "gunicode": (
             root / "src/basic/gunicode.c",
             root / "src/basic/gunicode.h",
-        ),
-        "efivars_util": (
-            root / "src/fundamental/efivars.c",
-            root / "src/fundamental/efivars.h",
-            root / "src/basic/efivars.c",
-            root / "src/basic/efivars.h",
-            root / "src/shared/efi-api.c",
-            root / "src/shared/efi-api.h",
         ),
         "device_nodes": (
             root / "src/basic/device-nodes.c",

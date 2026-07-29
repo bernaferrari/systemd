@@ -339,7 +339,6 @@ if get_option('rust').enabled()
                 'rust/id128_util.rs',
                 'rust/image_policy_util.rs',
                 'rust/exec_util.rs',
-                'rust/efivars_util.rs',
                 'rust/capability_util.rs',
                 'rust/recovery_key.rs',
                 'rust/mount_setup.rs',

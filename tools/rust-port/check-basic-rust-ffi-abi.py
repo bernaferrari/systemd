@@ -2974,38 +2974,6 @@ def main() -> int:
                     )
                 authority_curated += 1
                 continue
-            if name == "efivars_util" and symbol == "rs_efi_guid_to_id128":
-                # The C authority returns sd_id128_t by value, while this
-                # deliberately audited facade uses caller storage to avoid
-                # the by-value-union ABI variance on aarch64.
-                if (
-                    expected != (("*constc_void", "*mutu8"), "i32")
-                    or not re.search(
-                        r"\bsd_id128_t\s+efi_guid_to_id128\s*\(\s*const\s+void\s*\*\s*guid\s*\)",
-                        authority,
-                    )
-                ):
-                    return fail(
-                        "efivars_util: efi_guid_to_id128 output-pointer ABI no longer matches C authority"
-                    )
-                authority_curated += 1
-                continue
-            if name == "efivars_util" and symbol == "rs_efi_id128_to_guid":
-                # See the paired output-pointer facade above. The input is a
-                # 16-byte sd_id128_t representation rather than a by-value C
-                # union so the Rust declaration has one stable ABI.
-                if (
-                    expected != (("*constu8", "*mutc_void"), "()")
-                    or not re.search(
-                        r"\bvoid\s+efi_id128_to_guid\s*\(\s*sd_id128_t\s+id\s*,\s*void\s*\*\s*ret_guid\s*\)",
-                        authority,
-                    )
-                ):
-                    return fail(
-                        "efivars_util: efi_id128_to_guid pointer ABI no longer matches C authority"
-                    )
-                authority_curated += 1
-                continue
             if name == "signal_inline_registered" and symbol == "rs_signal_is_valid":
                 if (
                     "static inline bool SIGNAL_VALID(int signo)" not in authority

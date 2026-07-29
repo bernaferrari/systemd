@@ -68,7 +68,6 @@ pub mod dlfcn_util;
 pub mod dns_domain_validators;
 pub mod dns_label;
 pub mod dns_type_predicates;
-pub mod efivars_util;
 pub mod env_util;
 pub mod errno_classify;
 pub mod errno_util;

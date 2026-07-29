@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 13:24 UTC
+Generated: 2026-07-29 13:31 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **297**
-- `genuine-rust`: **205**
-- `ffi-backed-rust`: **92**
+- Total modules audited: **291**
+- `genuine-rust`: **200**
+- `ffi-backed-rust`: **91**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -47,7 +47,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/dns_domain_validators.rs` | 4 | 27 | 0 | 7 |
 | `src/basic/rust/dns_label.rs` | 30 | 52 | 0 | 271 |
 | `src/basic/rust/dns_type_predicates.rs` | 16 | 48 | 0 | 16 |
-| `src/basic/rust/efivars_util.rs` | 5 | 33 | 1 | 19 |
 | `src/basic/rust/env_util.rs` | 6 | 42 | 0 | 29 |
 | `src/basic/rust/errno_util.rs` | 34 | 57 | 2 | 12 |
 | `src/basic/rust/ether_addr_util.rs` | 16 | 55 | 2 | 44 |

@@ -1981,20 +1981,6 @@ if get_option('rust').enabled()
         test('test-exec-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-efivars-rust',
-                files('test-efivars-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-efivars-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-tpm2-rust',
                 files('test-tpm2-rust.c'),
                 include_directories : includes,
@@ -2638,17 +2624,4 @@ if get_option('rust').enabled()
         )
         test('test-misc-untested2-rust', rust_test_exe)
 
-        rust_test_exe = executable(
-                'test-efi-guid-rust',
-                'test-efi-guid-rust.c',
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-efi-guid-rust', rust_test_exe)
 endif
