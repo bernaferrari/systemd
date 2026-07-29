@@ -44,27 +44,21 @@
 #![allow(clippy::needless_bool)]
 #![allow(clippy::nonminimal_bool)]
 
-pub mod acpi_fpdt;
 pub mod barrier;
 pub mod bitmap;
 pub mod bootspec;
 pub mod bpf_dlopen;
 pub mod bpf_program;
 pub mod bus_message_util;
-pub mod bus_object;
 pub mod bus_polkit;
 pub mod bus_print_properties;
-pub mod bus_unit_procs;
 pub mod bus_unit_util;
 pub mod bus_util;
-pub mod bus_wait_for_jobs;
 pub mod bus_wait_for_units;
 pub mod calendarspec;
 pub mod cgroup_setup;
 pub mod cgroup_show;
 pub mod chown_recursive;
-pub mod clean_ipc;
-pub mod clock_util;
 pub mod compare_operator;
 pub mod condition;
 pub mod conf_parser;
@@ -111,7 +105,6 @@ pub mod local_addresses;
 pub mod locale_setup;
 pub mod log_assert_critical;
 pub mod lsm_util;
-pub mod machine_bind_user;
 pub mod machine_credential;
 pub mod machine_id_setup;
 pub mod macvlan_util;
@@ -135,7 +128,6 @@ pub mod seccomp_util;
 pub mod secret_bytes;
 pub mod securebits_util;
 pub mod sleep_config;
-pub mod switch_root;
 pub mod tmpfile_util_label;
 pub mod tomoyo_util;
 pub mod user_record;

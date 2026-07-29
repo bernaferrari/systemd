@@ -30,10 +30,6 @@ Production ownership is divided as follows:
 `journalctl.rs` is only the stable module facade and public re-export
 surface. It contains no forwarding functions.
 
-This source did not contain entry rendering. It only parses output-mode
-configuration; entry iteration and rendering belong to the separate
-`journalctl_show.rs` / `journalctl-show.c` port pair.
-
 ## Exact known gaps from `journalctl.c`
 
 - `help_facilities`, `help`, and `vl_server` are named in the port

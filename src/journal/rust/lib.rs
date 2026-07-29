@@ -35,29 +35,8 @@ pub mod fuzz_journald_syslog;
 #[path = "fuzz_journald_util.rs"]
 pub mod fuzz_journald_util;
 
-#[path = "journalctl_authenticate.rs"]
-pub mod journalctl_authenticate;
-
-#[path = "journalctl_catalog.rs"]
-pub mod journalctl_catalog;
-
 #[path = "journalctl_filter.rs"]
 pub mod journalctl_filter;
-
-#[path = "journalctl_misc.rs"]
-pub mod journalctl_misc;
-
-#[path = "journalctl_show.rs"]
-pub mod journalctl_show;
-
-#[path = "journalctl_util.rs"]
-pub mod journalctl_util;
-
-#[path = "journalctl_varlink_server.rs"]
-pub mod journalctl_varlink_server;
-
-#[path = "journalctl_varlink.rs"]
-pub mod journalctl_varlink;
 
 #[path = "journalctl.rs"]
 pub mod journalctl;
@@ -109,9 +88,6 @@ pub mod journald_varlink;
 
 #[path = "journald_wall.rs"]
 pub mod journald_wall;
-
-#[path = "journald.rs"]
-pub mod journald;
 
 #[path = "test_journald_config.rs"]
 pub mod test_journald_config;

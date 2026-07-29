@@ -241,14 +241,11 @@ jobs:
           test-compare-operator-rust
           test-signal-inline-rust
           test-bootspec-rust
-          test-log-target-rust
           test-recovery-key-rust
           test-sysctl-util-rust
-          test-confidential-virt-rust
           test-hexdecoct-rust
           test-env-util-rust
           test-edid-rust
-          test-runtime-scope-rust
           test-memory-util-rust
           test-hostname-util-rust
           test-id128-rust
@@ -259,7 +256,6 @@ jobs:
           test-terminal-util-rust
           test-credential-validators-rust
           test-locale-util-rust
-          test-image-class-rust
           test-arphrd-util-rust
           test-fstype-util-rust
           test-dirent-util-rust
@@ -272,7 +268,6 @@ jobs:
           test-misc-rust3
           test-misc-untested2-rust
           test-uid-range-rust
-          test-uid-classification-rust
           test-unaligned-rust
           test-safe-math-rust
           test-alloc-util-rust
@@ -398,14 +393,11 @@ jobs:
           test-compare-operator-rust
           test-signal-inline-rust
           test-bootspec-rust
-          test-log-target-rust
           test-recovery-key-rust
           test-sysctl-util-rust
-          test-confidential-virt-rust
           test-hexdecoct-rust
           test-env-util-rust
           test-edid-rust
-          test-runtime-scope-rust
           test-memory-util-rust
           test-hostname-util-rust
           test-id128-rust
@@ -416,7 +408,6 @@ jobs:
           test-terminal-util-rust
           test-credential-validators-rust
           test-locale-util-rust
-          test-image-class-rust
           test-arphrd-util-rust
           test-fstype-util-rust
           test-dirent-util-rust
@@ -429,7 +420,6 @@ jobs:
           test-misc-rust3
           test-misc-untested2-rust
           test-uid-range-rust
-          test-uid-classification-rust
           test-unaligned-rust
           test-safe-math-rust
           test-alloc-util-rust

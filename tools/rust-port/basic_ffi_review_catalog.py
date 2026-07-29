@@ -51,10 +51,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "rlimit_util": (basic_rust / "rlimit_util.h", basic_rust / "rlimit_util.rs"),
         "stat_util": (basic_rust / "stat_util.h", basic_rust / "stat_util.rs"),
         "safe_math": (basic_rust / "safe_math.h", basic_rust / "safe_math.rs"),
-        "uid_classification": (
-            basic_rust / "uid_classification.h",
-            basic_rust / "uid_classification.rs",
-        ),
         "unaligned": (basic_rust / "unaligned.h", basic_rust / "unaligned.rs"),
         "user_util": (basic_rust / "user_util.h", basic_rust / "user_util.rs"),
         "virt": (basic_rust / "virt.h", basic_rust / "virt.rs"),
@@ -665,11 +661,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "os_release_pretty_name": (
-            basic_rust / "image_class.h",
-            basic_rust / "image_class.rs",
-            frozenset({"rs_os_release_pretty_name"}),
-        ),
         "escape": (
             basic_rust / "escape.h",
             basic_rust / "escape.rs",
@@ -1065,28 +1056,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "argv_util.rs",
             frozenset({"rs_argv_looks_like_help", "rs_invoked_as"}),
         ),
-        "compare_operator": (
-            basic_rust / "compare_operator.h",
-            basic_rust / "compare_operator.rs",
-            frozenset(
-                {
-                    "rs_version_or_fnmatch_compare",
-                    "rs_COMPARE_OPERATOR_IS_STRING",
-                    "rs_COMPARE_OPERATOR_IS_FNMATCH",
-                    "rs_COMPARE_OPERATOR_IS_ORDER",
-                }
-            ),
-        ),
-        "confidential_virt": (
-            basic_rust / "confidential_virt.h",
-            basic_rust / "confidential_virt.rs",
-            frozenset(
-                {
-                    "rs_confidential_virtualization_to_string",
-                    "rs_confidential_virtualization_from_string",
-                }
-            ),
-        ),
         "hexdecoct": (
             basic_rust / "hexdecoct.h",
             basic_rust / "hexdecoct.rs",
@@ -1142,11 +1111,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_locale_is_valid",
                 }
             ),
-        ),
-        "image_class": (
-            basic_rust / "image_class.h",
-            basic_rust / "image_class.rs",
-            frozenset({"rs_image_class_to_string", "rs_image_class_from_string"}),
         ),
         "arphrd_util": (
             basic_rust / "arphrd_util.h",
@@ -1211,18 +1175,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_namespace_flags_to_strv",
                     "rs_namespace_flags_to_string",
                     "rs_namespace_flags_from_string",
-                }
-            ),
-        ),
-        "runtime_scope": (
-            basic_rust / "runtime_scope.h",
-            basic_rust / "runtime_scope.rs",
-            frozenset(
-                {
-                    "rs_runtime_scope_to_string",
-                    "rs_runtime_scope_from_string",
-                    "rs_runtime_scope_cmdline_option_to_string",
-                    "rs_runtime_scope_to_socket_mode",
                 }
             ),
         ),
@@ -1368,11 +1320,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "log_target": (
-            basic_rust / "log_target.h",
-            basic_rust / "log_target.rs",
-            frozenset({"rs_log_target_to_string", "rs_log_target_from_string"}),
-        ),
         "recovery_key": (
             basic_rust / "recovery_key.h",
             basic_rust / "recovery_key.rs",
@@ -1433,7 +1380,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-stat-util-rust.c",
         ),
         "safe_math": (tests_extra / "test-safe-math-rust.c",),
-        "uid_classification": (tests_extra / "test-uid-classification-rust.c",),
         "unaligned": (tests_extra / "test-unaligned-rust.c",),
         "user_util": (tests_extra / "test-user-util-rust.c",),
         "virt": (
@@ -1489,7 +1435,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "time_util_parsing": (tests_extra / "test-time-util-rust.c",),
         "time_util_arithmetic": (tests_extra / "test-time-util-extra2-rust.c",),
         "image_name_is_valid": (tests_extra / "test-image-name-rust.c",),
-        "os_release_pretty_name": (tests_extra / "test-image-name-rust.c",),
         "alloc_util": (tests_extra / "test-alloc-util-rust.c",),
         "alloc_util_multiply": (tests_extra / "test-alloc-util-extra2-rust.c",),
         "format_bytes_full": (
@@ -1570,22 +1515,18 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "specifier_util": (tests_extra / "test-specifier-efi-rust.c",),
         "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
         "argv_util": (tests_extra / "test-argv-util-rust.c",),
-        "compare_operator": (tests_extra / "test-compare-operator-rust.c",),
-        "confidential_virt": (tests_extra / "test-confidential-virt-rust.c",),
         "hexdecoct": (tests_extra / "test-hexdecoct-rust.c",),
         "env_util": (tests_extra / "test-env-util-rust.c",),
         "credential_validators": (
             tests_extra / "test-credential-validators-rust.c",
         ),
         "locale_util": (tests_extra / "test-locale-util-rust.c",),
-        "image_class": (tests_extra / "test-image-class-rust.c",),
         "arphrd_util": (tests_extra / "test-arphrd-util-rust.c",),
         "fstype_util": (tests_extra / "test-fstype-util-rust.c",),
         "namespace_util": (tests_extra / "test-namespace-mountpoint-rust.c",),
         "capability_list": (tests_extra / "test-capability-list-rust.c",),
         "edid": (tests_extra / "test-edid-rust.c",),
         "nsflags": (tests_extra / "test-nsflags-rust.c",),
-        "runtime_scope": (tests_extra / "test-runtime-scope-rust.c",),
         "memory_util": (tests_extra / "test-memory-util-rust.c",),
         "hostname_util": (tests_extra / "test-hostname-util-rust.c",),
         "id128_util": (tests_extra / "test-id128-rust.c",),
@@ -1601,7 +1542,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "hostname_setup": (tests_extra / "test-hostname-setup-rust.c",),
         "dirent_util": (tests_extra / "test-dirent-util-rust.c",),
         "bootspec_util": (tests_extra / "test-bootspec-rust.c",),
-        "log_target": (tests_extra / "test-log-target-rust.c",),
         "recovery_key": (tests_extra / "test-recovery-key-rust.c",),
         "sysctl_util": (tests_extra / "test-sysctl-util-rust.c",),
     }
@@ -1679,7 +1619,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/btrfs-util.h",
         ),
         "safe_math": (root / "src/basic/macro.h",),
-        "uid_classification": (root / "src/basic/uid-classification.h",),
         "unaligned": (root / "src/basic/unaligned.h",),
         "user_util": (
             root / "src/basic/user-util.c",
@@ -1808,7 +1747,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "time_util_arithmetic": (root / "src/basic/time-util.h",),
         "image_name_is_valid": (root / "src/basic/os-util.c",),
-        "os_release_pretty_name": (root / "src/basic/os-util.c",),
         "alloc_util": (
             root / "src/basic/alloc-util.c",
             root / "src/basic/alloc-util.h",
@@ -1958,14 +1896,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/btrfs-util.h",
         ),
         "argv_util": (root / "src/basic/argv-util.c", root / "src/basic/argv-util.h"),
-        "compare_operator": (
-            root / "src/shared/compare-operator.c",
-            root / "src/shared/compare-operator.h",
-        ),
-        "confidential_virt": (
-            root / "src/basic/confidential-virt.c",
-            root / "src/basic/confidential-virt.h",
-        ),
         "hexdecoct": (root / "src/basic/hexdecoct.c", root / "src/basic/hexdecoct.h"),
         "env_util": (root / "src/basic/env-util.c", root / "src/basic/env-util.h"),
         "credential_validators": (
@@ -1976,7 +1906,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/locale-util.c",
             root / "src/basic/locale-util.h",
         ),
-        "image_class": (root / "src/basic/os-util.c", root / "src/basic/os-util.h"),
         "arphrd_util": (
             root / "src/basic/arphrd-util.c",
             root / "src/basic/arphrd-util.h",
@@ -2000,10 +1929,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "nsflags": (
             root / "src/shared/nsflags.c",
             root / "src/shared/nsflags.h",
-        ),
-        "runtime_scope": (
-            root / "src/basic/runtime-scope.c",
-            root / "src/basic/runtime-scope.h",
         ),
         "memory_util": (
             root / "src/basic/memory-util.c",
@@ -2081,7 +2006,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/fundamental/bootspec.c",
             root / "src/fundamental/bootspec.h",
         ),
-        "log_target": (root / "src/basic/log.c", root / "src/basic/log.h"),
         "recovery_key": (
             root / "src/shared/recovery-key.c",
             root / "src/shared/recovery-key.h",

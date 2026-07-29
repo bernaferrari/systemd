@@ -80,20 +80,10 @@
       "missing_safety_sites": [],
       "unsafe_sites": 25
     },
-    "src/basic/rust/compare_operator.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
     "src/basic/rust/compress_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 4
-    },
-    "src/basic/rust/confidential_virt.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
     },
     "src/basic/rust/credential_validators.rs": {
       "missing_safety": 0,
@@ -245,11 +235,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 17
     },
-    "src/basic/rust/image_class.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
     "src/basic/rust/image_policy_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -286,11 +271,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 4
-    },
-    "src/basic/rust/log_target.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
     },
     "src/basic/rust/memory_util.rs": {
       "missing_safety": 0,
@@ -445,11 +425,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 20
-    },
-    "src/basic/rust/runtime_scope.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
     },
     "src/basic/rust/seccomp_util.rs": {
       "missing_safety": 0,
@@ -1031,16 +1006,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 19
     },
-    "src/shared/rust/clean_ipc.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 15
-    },
-    "src/shared/rust/clock_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
     "src/shared/rust/condition.rs": {
       "missing_safety": 6,
       "missing_safety_sites": [
@@ -1587,16 +1552,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 16
-    },
-    "src/shared/rust/switch_root.rs": {
-      "missing_safety": 4,
-      "missing_safety_sites": [
-        "248:33:let mut buf: libc::statfs = unsafe { std::mem::zeroed() };",
-        "260:36:let mut stat_buf: libc::stat = unsafe { std::mem::zeroed() };",
-        "261:43:let mut parent_stat_buf: libc::stat = unsafe { std::mem::zeroed() };",
-        "321:21:let entry = unsafe { &*entry };"
-      ],
-      "unsafe_sites": 28
     },
     "src/shared/rust/tar_util.rs": {
       "missing_safety": 13,

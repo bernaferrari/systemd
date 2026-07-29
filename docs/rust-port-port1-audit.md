@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 11:32 UTC
+Generated: 2026-07-29 11:50 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **363**
-- `genuine-rust`: **242**
-- `ffi-backed-rust`: **121**
+- Total modules audited: **349**
+- `genuine-rust`: **234**
+- `ffi-backed-rust`: **115**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -46,9 +46,7 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/capability_list.rs` | 4 | 23 | 0 | 15 |
 | `src/basic/rust/capability_util.rs` | 4 | 44 | 0 | 17 |
 | `src/basic/rust/cgroup_util_str_tables.rs` | 7 | 58 | 0 | 58 |
-| `src/basic/rust/compare_operator.rs` | 4 | 31 | 0 | 55 |
 | `src/basic/rust/compress_util.rs` | 5 | 19 | 0 | 4 |
-| `src/basic/rust/confidential_virt.rs` | 2 | 16 | 0 | 10 |
 | `src/basic/rust/credential_validators.rs` | 2 | 35 | 0 | 9 |
 | `src/basic/rust/device_nodes.rs` | 2 | 13 | 0 | 26 |
 | `src/basic/rust/devnum_util.rs` | 7 | 36 | 1 | 63 |
@@ -75,14 +73,12 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/hostname_setup.rs` | 1 | 32 | 0 | 32 |
 | `src/basic/rust/hostname_util.rs` | 10 | 79 | 0 | 93 |
 | `src/basic/rust/id128_util.rs` | 10 | 38 | 0 | 43 |
-| `src/basic/rust/image_class.rs` | 3 | 21 | 0 | 8 |
 | `src/basic/rust/image_policy_util.rs` | 17 | 69 | 0 | 169 |
 | `src/basic/rust/import_util.rs` | 5 | 23 | 0 | 29 |
 | `src/basic/rust/in_addr_util.rs` | 1 | 77 | 1 | 199 |
 | `src/basic/rust/iovec_util.rs` | 12 | 41 | 0 | 34 |
 | `src/basic/rust/iovec_wrapper.rs` | 8 | 36 | 0 | 34 |
 | `src/basic/rust/locale_util.rs` | 3 | 37 | 0 | 7 |
-| `src/basic/rust/log_target.rs` | 2 | 19 | 0 | 9 |
 | `src/basic/rust/memory_util.rs` | 9 | 28 | 0 | 35 |
 | `src/basic/rust/mempool.rs` | 3 | 25 | 0 | 16 |
 | `src/basic/rust/misc_validators.rs` | 11 | 64 | 0 | 38 |
@@ -105,7 +101,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/replace_var.rs` | 2 | 10 | 0 | 11 |
 | `src/basic/rust/resize_fs_util.rs` | 3 | 21 | 0 | 3 |
 | `src/basic/rust/rlimit_util.rs` | 7 | 25 | 0 | 25 |
-| `src/basic/rust/runtime_scope.rs` | 4 | 22 | 0 | 14 |
 | `src/basic/rust/safe_math.rs` | 3 | 22 | 0 | 8 |
 | `src/basic/rust/seccomp_util.rs` | 5 | 23 | 0 | 25 |
 | `src/basic/rust/serialize.rs` | 2 | 36 | 0 | 27 |
@@ -129,7 +124,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/syslog_util.rs` | 7 | 33 | 0 | 39 |
 | `src/basic/rust/terminal_util.rs` | 6 | 46 | 0 | 15 |
 | `src/basic/rust/udev_util.rs` | 2 | 12 | 0 | 32 |
-| `src/basic/rust/uid_classification.rs` | 9 | 21 | 0 | 10 |
 | `src/basic/rust/uid_range.rs` | 16 | 49 | 0 | 94 |
 | `src/basic/rust/unaligned.rs` | 12 | 51 | 0 | 2 |
 | `src/basic/rust/unit_def.rs` | 8 | 38 | 2 | 55 |

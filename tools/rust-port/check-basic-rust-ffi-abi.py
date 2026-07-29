@@ -3228,10 +3228,6 @@ def main() -> int:
         return fail(
             "user_util C ABI must remain allocation-free, NULL-correct, byte-oriented, and self-contained"
         )
-    if not image_name_boundary_is_reviewed():
-        return fail(
-            "image-name ABI must preserve byte-level UTF-8 validation and borrowed os-release name storage"
-        )
     if not escape_boundary_is_reviewed():
         return fail(
             "escape ABI must preserve checked byte lengths, current UTF-8 byte policy, C allocation ownership, and fail-closed pointers"
@@ -3289,10 +3285,6 @@ def main() -> int:
     if not percent_util_boundary_is_reviewed():
         return fail(
             "percent_util must preserve byte-level safe_atoi ordering, target-long overflow, and fail-closed C strings"
-        )
-    if not uid_configuration_is_authoritative():
-        return fail(
-            "uid_classification must receive every configurable range from Meson and reject stale C helpers"
         )
     if not unaligned_boundary_is_reviewed():
         return fail(

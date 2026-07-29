@@ -958,20 +958,6 @@ if get_option('rust').enabled()
         test('test-device-nodes-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-runtime-scope-rust',
-                files('test-runtime-scope-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-runtime-scope-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-iovec-wrapper-rust',
                 files('test-iovec-wrapper-rust.c'),
                 include_directories : includes,
@@ -1630,48 +1616,6 @@ if get_option('rust').enabled()
         test('test-namespace-mountpoint-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-log-target-rust',
-                files('test-log-target-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-log-target-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-confidential-virt-rust',
-                files('test-confidential-virt-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-confidential-virt-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-image-class-rust',
-                files('test-image-class-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-image-class-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-xattr-util-rust',
                 files('test-xattr-util-rust.c'),
                 include_directories : includes,
@@ -1826,20 +1770,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-unit-def-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-log-target-image-rust',
-                files('test-log-target-image-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-log-target-image-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-parse-range-rust',
@@ -2480,20 +2410,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-unaligned-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-uid-classification-rust',
-                files('test-uid-classification-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-uid-classification-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-safe-math-rust',
