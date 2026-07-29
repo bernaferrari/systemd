@@ -15,11 +15,12 @@
 // - The main `shift_uid_shift` entry point for recursive tree patching
 
 use crate::ffi::*;
+use std::ffi::CString;
 use std::fmt;
 use std::fs::{self, File};
 use std::io;
-use std::os::unix::fs::MetadataExt;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
@@ -262,24 +263,28 @@ pub fn is_already_shifted(uid: u32, shift: u32) -> bool {
 
 // ── Filesystem patching ───────────────────────────────────────────────────
 
-/// Patch the ownership (UID/GID) of a single file or directory identified
-/// by its path.
-///
-/// Replaces the upper 16 bits of the UID and GID with `shift`, preserving
-/// the lower 16 bits.  Also restores the original mode bits, since the
-/// Linux kernel may alter the mode during `chown()`.
-fn patch_fd(path: &Path, meta: &fs::Metadata, shift: u32) -> Result<bool, ShiftUidError> {
+fn shifted_ownership(
+    meta: &fs::Metadata,
+    shift: u32,
+) -> Result<Option<(libc::uid_t, libc::gid_t)>, ShiftUidError> {
     let new_uid = shift_uid(shift, meta.uid()).ok_or(ShiftUidError::InvalidUidGid)?;
     let new_gid = shift_gid(shift, meta.gid()).ok_or(ShiftUidError::InvalidUidGid)?;
 
-    if meta.uid() == new_uid && meta.gid() == new_gid {
-        return Ok(false);
+    if meta.uid() != new_uid || meta.gid() != new_gid {
+        Ok(Some((new_uid, new_gid)))
+    } else {
+        Ok(None)
     }
+}
 
-    let file = File::open(path)?;
+/// Patch an inode that is already pinned by an open file descriptor.
+fn patch_fd(file: &File, meta: &fs::Metadata, shift: u32) -> Result<bool, ShiftUidError> {
+    let Some((new_uid, new_gid)) = shifted_ownership(meta, shift)? else {
+        return Ok(false);
+    };
     let fd = file.as_raw_fd();
 
-    // SAFETY: `fd` is a valid file descriptor from `File::open`.
+    // SAFETY: `fd` remains owned by `file` for both calls.
     let ret = unsafe { libc::fchown(fd, new_uid, new_gid) };
     if ret < 0 {
         return Err(ShiftUidError::Io(io::Error::last_os_error()));
@@ -296,6 +301,66 @@ fn patch_fd(path: &Path, meta: &fs::Metadata, shift: u32) -> Result<bool, ShiftU
     Ok(true)
 }
 
+/// Patch a directory entry without following it if it is a symbolic link.
+///
+/// In particular, do not open the entry: opening a symlink would operate on
+/// its target, and opening a FIFO for reading could block indefinitely.
+fn patch_path(path: &Path, meta: &fs::Metadata, shift: u32) -> Result<bool, ShiftUidError> {
+    let Some((new_uid, new_gid)) = shifted_ownership(meta, shift)? else {
+        return Ok(false);
+    };
+    let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| {
+        ShiftUidError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "path contains an interior NUL byte",
+        ))
+    })?;
+
+    // SAFETY: `path` is NUL-terminated and remains live for both syscalls.
+    // AT_SYMLINK_NOFOLLOW makes the ownership update apply to the directory
+    // entry rather than a symlink target; the optional chmod is skipped for
+    // symlinks, which Linux cannot chmod.
+    // SAFETY: all pointer and descriptor contracts hold for this operation.
+    let chmod_ret = unsafe {
+        let ret = libc::fchownat(
+            libc::AT_FDCWD,
+            path.as_ptr(),
+            new_uid,
+            new_gid,
+            libc::AT_SYMLINK_NOFOLLOW,
+        );
+        if ret < 0 {
+            return Err(ShiftUidError::Io(io::Error::last_os_error()));
+        }
+
+        if meta.file_type().is_symlink() {
+            None
+        } else {
+            Some(libc::fchmodat(
+                libc::AT_FDCWD,
+                path.as_ptr(),
+                meta.mode() as libc::mode_t,
+                0,
+            ))
+        }
+    };
+    if let Some(ret) = chmod_ret {
+        if ret < 0 {
+            return Err(ShiftUidError::Io(io::Error::last_os_error()));
+        }
+    }
+
+    Ok(true)
+}
+
+/// Open a directory without following a final symlink.
+fn open_directory(path: &Path) -> Result<File, ShiftUidError> {
+    Ok(fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_NOATIME)
+        .open(path)?)
+}
+
 /// Recursively walk a directory tree, patching ownership of every inode.
 ///
 /// Stops recursion at fully userns-compatible filesystems (procfs, sysfs,
@@ -304,31 +369,44 @@ fn patch_fd(path: &Path, meta: &fs::Metadata, shift: u32) -> Result<bool, ShiftU
 /// Children are processed first (depth-first), then the directory itself —
 /// matching the C `recurse_fd()` semantics so that the top-level directory
 /// is patched last and serves as a quick indicator of completion.
-fn recurse_dir(dir: &Path, shift: u32, is_toplevel: bool) -> Result<bool, ShiftUidError> {
+fn recurse_dir(
+    dir: &Path,
+    shift: u32,
+    is_toplevel: bool,
+    open_file: Option<File>,
+    original_meta: Option<&fs::Metadata>,
+) -> Result<bool, ShiftUidError> {
     let mut changed = false;
+    let dir_file = match open_file {
+        Some(file) => file,
+        None => open_directory(dir)?,
+    };
+    let current_meta = dir_file.metadata()?;
+    let dir_meta = original_meta.unwrap_or(&current_meta);
 
     // Check filesystem type to see if we should skip this subtree.
-    if let Ok(meta) = fs::metadata(dir) {
-        let mut statfs_buf: libc::statfs = unsafe { std::mem::zeroed() };
-        let dir_file = File::open(dir)?;
-        // SAFETY: valid fd, valid output buffer.
-        let ret = unsafe { libc::fstatfs(dir_file.as_raw_fd(), &mut statfs_buf) };
-        if ret < 0 {
-            return Err(ShiftUidError::Io(io::Error::last_os_error()));
-        }
-        if is_fs_fully_userns_compatible(statfs_buf.f_type as u64) {
-            return Ok(false);
-        }
+    // SAFETY: `libc::statfs` is an integer-only output struct for which a
+    // zeroed temporary is valid. `dir_file` owns a live descriptor and the
+    // kernel may write the complete struct through the provided pointer.
+    let (ret, statfs_buf) = unsafe {
+        let mut statfs_buf: libc::statfs = std::mem::zeroed();
+        let ret = libc::fstatfs(dir_file.as_raw_fd(), &mut statfs_buf);
+        (ret, statfs_buf)
+    };
+    if ret < 0 {
+        return Err(ShiftUidError::Io(io::Error::last_os_error()));
+    }
+    if is_fs_fully_userns_compatible(statfs_buf.f_type as u64) {
+        return Ok(false);
+    }
+
+    // Match the C fast path for mounts that are explicitly read-only.
+    if (statfs_buf.f_flags as libc::c_ulong & libc::ST_RDONLY as libc::c_ulong) != 0 {
+        return Ok(false);
     }
 
     // Read directory entries.
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(e) if e.raw_os_error() == Some(libc::EACCES) && !is_toplevel => {
-            return Ok(false);
-        }
-        Err(e) => return Err(ShiftUidError::Io(e)),
-    };
+    let entries = fs::read_dir(dir)?;
 
     for entry in entries {
         let entry = entry?;
@@ -341,53 +419,21 @@ fn recurse_dir(dir: &Path, shift: u32, is_toplevel: bool) -> Result<bool, ShiftU
             continue;
         }
 
-        let meta = match fs::symlink_metadata(&path) {
-            Ok(m) => m,
-            Err(e) => {
-                // Skip entries we can't stat in non-toplevel directories.
-                if !is_toplevel {
-                    continue;
-                }
-                return Err(ShiftUidError::Io(e));
-            }
-        };
+        let meta = fs::symlink_metadata(&path)?;
 
         if meta.is_dir() {
-            match recurse_dir(&path, shift, false) {
-                Ok(true) => changed = true,
-                Ok(false) => {}
-                Err(ShiftUidError::Io(e))
-                    if e.raw_os_error() == Some(libc::EROFS) && !is_toplevel =>
-                {
-                    // Skip read-only subtrees silently when not at toplevel.
-                }
-                Err(e) => return Err(e),
-            }
+            changed |= recurse_dir(&path, shift, false, None, None)?;
         } else {
-            match patch_fd(&path, &meta, shift) {
-                Ok(true) => changed = true,
-                Ok(false) => {}
-                Err(ShiftUidError::Io(e))
-                    if e.raw_os_error() == Some(libc::EROFS) && !is_toplevel =>
-                {
-                    // Skip read-only files in non-toplevel directories.
-                }
-                Err(e) => return Err(e),
-            }
+            changed |= patch_path(&path, &meta, shift)?;
         }
     }
 
     // Patch the directory itself last (key ordering for crash recovery).
-    let dir_meta = fs::symlink_metadata(dir)?;
-    match patch_fd(dir, &dir_meta, shift) {
+    match patch_fd(&dir_file, dir_meta, shift) {
         Ok(true) => return Ok(true),
         Ok(false) => {}
-        Err(ShiftUidError::Io(e)) if e.raw_os_error() == Some(libc::EROFS) && is_toplevel => {
-            // At toplevel, EROFS is a hard error.
-            return Err(ShiftUidError::Io(e));
-        }
-        Err(ShiftUidError::Io(_)) if !is_toplevel => {
-            // Non-toplevel EROFS: silently skip.
+        Err(ShiftUidError::Io(e)) if e.raw_os_error() == Some(libc::EROFS) && !is_toplevel => {
+            // A read-only nested mount is skipped, preserving prior changes.
         }
         Err(e) => return Err(e),
     }
@@ -421,7 +467,10 @@ fn recurse_dir(dir: &Path, shift: u32, is_toplevel: bool) -> Result<bool, ShiftU
 pub fn shift_uid_shift(path: &Path, shift: u32, range: u32) -> Result<bool, ShiftUidError> {
     validate_shift_range(shift, range)?;
 
-    let meta = fs::symlink_metadata(path)?;
+    // Keep the top-level directory pinned throughout the operation, matching
+    // the C implementation's O_DIRECTORY|O_NOFOLLOW open.
+    let file = open_directory(path)?;
+    let meta = file.metadata()?;
 
     // We only support containers where the UID/GID container IDs match.
     check_container_ids_match(meta.uid(), meta.gid())?;
@@ -439,9 +488,8 @@ pub fn shift_uid_shift(path: &Path, shift: u32, range: u32) -> Result<bool, Shif
         let busy_uid = UID_BUSY_BASE | (meta.uid() & !UID_BUSY_MASK);
         let busy_gid = UID_BUSY_BASE | (meta.gid() & !UID_BUSY_MASK);
 
-        let file = File::open(path)?;
         let fd = file.as_raw_fd();
-        // SAFETY: valid fd.
+        // SAFETY: `file` owns `fd` and remains live through recursion.
         let ret = unsafe { libc::fchown(fd, busy_uid, busy_gid) };
         if ret < 0 {
             // Non-fatal: we still proceed even if marking fails.
@@ -449,7 +497,9 @@ pub fn shift_uid_shift(path: &Path, shift: u32, range: u32) -> Result<bool, Shif
         }
     }
 
-    recurse_dir(path, shift, true)
+    // Use the metadata captured before applying the busy marker so that the
+    // final fchmod restores any set-ID bits that the marker chown cleared.
+    recurse_dir(path, shift, true, Some(file), Some(&meta))
 }
 
 /// Convenience wrapper around [`shift_uid_shift`] that accepts a string path.

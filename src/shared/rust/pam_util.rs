@@ -273,7 +273,7 @@ bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct PamDataFlags: u32 {
         /// Indicates cleanup is running in a forked child (`PAM_DATA_SILENT`).
-        const SILENT = 0x8000;
+        const SILENT = 0x4000_0000;
     }
 }
 
@@ -290,8 +290,7 @@ const ENOMEM: i32 = 12;
 ///
 /// Mirrors `errno_to_pam_error()` in *pam-util.c*.
 pub fn errno_to_pam_error(errno: i32) -> PamError {
-    let abs = errno.abs();
-    if abs == ENOMEM {
+    if errno == ENOMEM || errno == -ENOMEM {
         PamError::BufErr
     } else {
         PamError::ServiceErr
@@ -451,8 +450,9 @@ where
 /// Mirrors `pam_cleanup_free()` in *pam-util.c*.
 ///
 /// # Safety
-/// `data` must point to memory allocated by libc `malloc`/`calloc`/`realloc`,
-/// or be null.
+/// `data` must be null or exclusively own a live allocation created by libc
+/// `malloc`/`calloc`/`realloc`. It must not be a Rust allocation, an interior
+/// pointer, or be freed by another owner after this callback is registered.
 pub unsafe fn cleanup_free(data: *mut c_void) {
     if !data.is_null() {
         // SAFETY: the caller guarantees data was allocated by the libc allocator.
@@ -460,7 +460,8 @@ pub unsafe fn cleanup_free(data: *mut c_void) {
     }
 }
 
-/// Close a file descriptor encoded as a pointer-sized integer in `data`.
+/// Close a file descriptor encoded with the C `FD_TO_PTR()` convention in
+/// `data` (the stored pointer value is `fd + 1`, so null represents `-1`).
 ///
 /// If `flags` contains [`SILENT`](PamDataFlags::SILENT) the call is a no-op
 /// (we are in a forked child where the fd is likely already closed).
@@ -469,14 +470,18 @@ pub unsafe fn cleanup_free(data: *mut c_void) {
 /// Mirrors `pam_cleanup_close()` in *pam-util.c*.
 ///
 /// # Safety
-/// `data` must encode a valid file descriptor, or be null.
+/// `data` must be null or a value encoded from a non-negative descriptor with
+/// `FD_TO_PTR()`. The callback consumes that descriptor; no other owner may
+/// close it after it is registered with PAM.
 pub unsafe fn cleanup_close(data: *mut c_void, flags: PamDataFlags) {
     if flags.contains(PamDataFlags::SILENT) {
         return;
     }
     if !data.is_null() {
-        let fd = data as i32;
-        if fd >= 0 {
+        let fd = (data as usize)
+            .checked_sub(1)
+            .and_then(|encoded| i32::try_from(encoded).ok());
+        if let Some(fd) = fd.filter(|fd| *fd >= 0) {
             // SAFETY: the caller guarantees data encodes the descriptor owned by this cleanup.
             unsafe { libc::close(fd) };
         }
@@ -500,9 +505,6 @@ pub fn pam_prompt_graceful<F>(
 where
     F: FnOnce(PamPromptStyle, &str) -> PamResult<Option<String>>,
 {
-    if message.is_empty() {
-        return Err(PamError::SystemErr);
-    }
     converse(style, message)
 }
 
@@ -510,12 +512,10 @@ where
 
 /// Validate a PAM module name for use as a bus cache key.
 ///
-/// Rejects empty names and names containing NUL or '/' characters.
+/// Rejects names containing NUL, which cannot be represented by the C string
+/// passed to `pam_make_bus_cache_id()`.
 pub fn validate_module_name(name: &str) -> PamResult<&str> {
-    if name.is_empty() {
-        return Err(PamError::SystemErr);
-    }
-    if name.contains('\0') || name.contains('/') {
+    if name.contains('\0') {
         return Err(PamError::SystemErr);
     }
     Ok(name)
@@ -621,6 +621,7 @@ mod tests {
         assert_eq!(errno_to_pam_error(22), PamError::ServiceErr);
         assert_eq!(errno_to_pam_error(-22), PamError::ServiceErr);
         assert_eq!(errno_to_pam_error(0), PamError::ServiceErr);
+        assert_eq!(errno_to_pam_error(i32::MIN), PamError::ServiceErr);
     }
 
     // ── @PAMERR@ Substitution ────────────────────────────────────────
@@ -706,7 +707,7 @@ mod tests {
     fn test_pam_data_flags_silent() {
         let flags = PamDataFlags::SILENT;
         assert!(flags.contains(PamDataFlags::SILENT));
-        assert_eq!(flags.bits(), 0x8000);
+        assert_eq!(flags.bits(), 0x4000_0000);
     }
 
     #[test]
@@ -796,19 +797,22 @@ mod tests {
     #[test]
     fn test_cleanup_free_null() {
         // Must not panic on null.
+        // SAFETY: a null pointer satisfies cleanup_free's ownership contract.
         unsafe { cleanup_free(std::ptr::null_mut()) };
     }
 
     #[test]
     fn test_cleanup_close_null() {
         // Must not panic on null, regardless of flags.
+        // SAFETY: a null pointer is the encoded no-descriptor sentinel.
         unsafe { cleanup_close(std::ptr::null_mut(), PamDataFlags::empty()) };
     }
 
     #[test]
     fn test_cleanup_close_silent_flag() {
-        // SILENT flag should suppress the close even with non-null data.
-        unsafe { cleanup_close(42 as *mut c_void, PamDataFlags::SILENT) };
+        // SILENT suppresses the close of a descriptor encoded with FD_TO_PTR().
+        // SAFETY: the silent path does not consume the encoded descriptor.
+        unsafe { cleanup_close(43 as *mut c_void, PamDataFlags::SILENT) };
     }
 
     // ── Conversation ─────────────────────────────────────────────────
@@ -837,11 +841,11 @@ mod tests {
     }
 
     #[test]
-    fn test_pam_prompt_graceful_empty_message() {
+    fn test_pam_prompt_graceful_empty_message_is_forwarded() {
         let result = pam_prompt_graceful(PamPromptStyle::EchoOff, "", |_style, _msg| {
             Ok(Some("x".to_owned()))
         });
-        assert_eq!(result.unwrap_err(), PamError::SystemErr);
+        assert_eq!(result.unwrap(), Some("x".to_owned()));
     }
 
     // ── Bus Cache ID ─────────────────────────────────────────────────
@@ -854,8 +858,9 @@ mod tests {
     }
 
     #[test]
-    fn test_make_bus_cache_id_empty_rejected() {
-        assert_eq!(make_bus_cache_id(""), Err(PamError::SystemErr));
+    fn test_make_bus_cache_id_empty_module_name() {
+        let id = make_bus_cache_id("").unwrap();
+        assert!(id.starts_with("system-bus--"));
     }
 
     #[test]
@@ -864,8 +869,9 @@ mod tests {
     }
 
     #[test]
-    fn test_make_bus_cache_id_slash_rejected() {
-        assert_eq!(make_bus_cache_id("bad/name"), Err(PamError::SystemErr));
+    fn test_make_bus_cache_id_slash_module_name() {
+        let id = make_bus_cache_id("bad/name").unwrap();
+        assert!(id.starts_with("system-bus-bad/name-"));
     }
 
     // ── Request constructors ─────────────────────────────────────────

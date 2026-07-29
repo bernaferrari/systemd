@@ -133,17 +133,20 @@ fn fill_random_bytes(buffer: &mut [u8]) -> Result<()> {
 
     while filled < buffer.len() {
         let chunk = &mut buffer[filled..];
+        // SAFETY: `chunk` is an exclusive, live output slice and remains
+        // writable for exactly `chunk.len()` bytes for this synchronous call.
         let read = unsafe { crate::ffi::getrandom(chunk.as_mut_ptr(), chunk.len(), 0) };
 
         if read < 0 {
             return Err(Fido2UtilError::from_io(io::Error::last_os_error()));
         }
 
-        if read == 0 {
+        let read = read as usize;
+        if read == 0 || read > chunk.len() {
             return Err(Fido2UtilError::ShortRandomRead);
         }
 
-        filled += read as usize;
+        filled += read;
     }
 
     Ok(())

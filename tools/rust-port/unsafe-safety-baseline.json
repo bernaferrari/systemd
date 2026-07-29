@@ -1329,10 +1329,8 @@
       "unsafe_sites": 12
     },
     "src/shared/rust/fido2_util.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "136:20:let read = unsafe { crate::ffi::getrandom(chunk.as_mut_ptr(), chunk.len(), 0) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/shared/rust/find_esp.rs": {
@@ -1600,12 +1598,8 @@
       "unsafe_sites": 27
     },
     "src/shared/rust/pam_util.rs": {
-      "missing_safety": 3,
-      "missing_safety_sites": [
-        "799:9:unsafe { cleanup_free(std::ptr::null_mut()) };",
-        "805:9:unsafe { cleanup_close(std::ptr::null_mut(), PamDataFlags::empty()) };",
-        "811:9:unsafe { cleanup_close(42 as *mut c_void, PamDataFlags::SILENT) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 7
     },
     "src/shared/rust/password_quality_util_passwdqc.rs": {
@@ -1831,10 +1825,8 @@
       "unsafe_sites": 4
     },
     "src/shared/rust/shift_uid.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "312:44:let mut statfs_buf: libc::statfs = unsafe { std::mem::zeroed() };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
     },
     "src/shared/rust/smack_util.rs": {
@@ -2064,7 +2056,7 @@
     }
   },
   "totals": {
-    "missing_safety": 521,
+    "missing_safety": 516,
     "unsafe_sites": 5712
   },
   "version": 2,

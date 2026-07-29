@@ -271,21 +271,34 @@ const fn hex_value(byte: u8) -> u8 {
 
 /// Try to read a plain-format machine-id from a file path.
 ///
-/// Returns `None` if the file does not exist, or `Err` on I/O / parse failure.
+/// The C authority accepts exactly 32 ASCII hex digits, optionally followed
+/// by one newline. UUID dashes and other surrounding whitespace are invalid
+/// for machine-id files even though [`id128_from_string`] accepts UUID input.
+/// Returns `None` if the file does not exist, is empty, or contains the null
+/// ID; otherwise returns `Err` on I/O or format failure.
 pub fn id128_read_file(path: &Path) -> MachineIdResult<Option<SdId128>> {
-    let content = match fs::read_to_string(path) {
+    let content = match fs::read(path) {
         Ok(c) => c,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(MachineIdError::Io(e)),
     };
 
-    let trimmed = content.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
+    let plain = match content.as_slice() {
+        [] => return Ok(None),
+        bytes if bytes.len() == 32 => bytes,
+        bytes if bytes.len() == MACHINE_ID_LINE_LEN && bytes[32] == b'\n' => &bytes[..32],
+        _ => {
+            return Err(MachineIdError::InvalidFormat(
+                "machine-id must contain exactly 32 hex digits with at most one trailing newline"
+                    .into(),
+            ));
+        }
+    };
+    let plain = std::str::from_utf8(plain)
+        .map_err(|_| MachineIdError::InvalidFormat("machine-id contains non-ASCII bytes".into()))?;
 
     // Refuse all-null machine-id (uninitialized).
-    let id = id128_from_string(trimmed)?;
+    let id = id128_from_string(plain)?;
     if id.is_nil() {
         return Ok(None);
     }
@@ -767,6 +780,18 @@ mod tests {
 
         let result = id128_read_file(&path).unwrap();
         assert!(result.is_none()); // null ID is refused
+    }
+
+    #[test]
+    fn test_id128_read_file_rejects_uuid_and_extra_whitespace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("machine-id");
+
+        fs::write(&path, "33221100-4455-6677-8899-aabbccddeeff\n").unwrap();
+        assert!(id128_read_file(&path).is_err());
+
+        fs::write(&path, " 33221100445566778899aabbccddeeff\n").unwrap();
+        assert!(id128_read_file(&path).is_err());
     }
 
     #[test]

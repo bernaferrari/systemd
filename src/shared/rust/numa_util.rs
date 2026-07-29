@@ -8,10 +8,11 @@
 // including policy validation, node mask conversion, and application
 // of policies via set_mempolicy(2).
 
+use crate::cpu_set_util::{CpuSet, CpuSetError};
+
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Maximum fallback NUMA node index (CONFIG_NODES_SHIFT=10 on x86_64).
-use crate::ffi::*;
 pub const NUMA_MAX_NODE_FALLBACK: u32 = 1023;
 
 /// Sysfs path for NUMA node topology.
@@ -32,6 +33,8 @@ pub enum NumaError {
     Errno(i32),
     /// Out of memory.
     OutOfMemory,
+    /// A NUMA node's CPU list could not be parsed or combined.
+    CpuSet(CpuSetError),
 }
 
 impl std::fmt::Display for NumaError {
@@ -42,6 +45,7 @@ impl std::fmt::Display for NumaError {
             NumaError::Io(e) => write!(f, "I/O error: {e}"),
             NumaError::Errno(code) => write!(f, "OS error (errno={code})"),
             NumaError::OutOfMemory => write!(f, "out of memory"),
+            NumaError::CpuSet(e) => write!(f, "CPU set error: {e}"),
         }
     }
 }
@@ -50,6 +54,7 @@ impl std::error::Error for NumaError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             NumaError::Io(e) => Some(e),
+            NumaError::CpuSet(e) => Some(e),
             _ => None,
         }
     }
@@ -58,6 +63,12 @@ impl std::error::Error for NumaError {
 impl From<std::io::Error> for NumaError {
     fn from(e: std::io::Error) -> Self {
         NumaError::Io(e)
+    }
+}
+
+impl From<CpuSetError> for NumaError {
+    fn from(e: CpuSetError) -> Self {
+        NumaError::CpuSet(e)
     }
 }
 
@@ -214,6 +225,22 @@ impl NodeMask {
         self.words.iter().all(|w| *w == 0)
     }
 
+    /// Iterate over the NUMA node indices present in the mask.
+    pub fn iter(&self) -> impl Iterator<Item = u32> + '_ {
+        self.words
+            .iter()
+            .enumerate()
+            .flat_map(|(word_index, word)| {
+                (0..Self::BITS_PER_WORD).filter_map(move |bit_index| {
+                    if word & (1 << bit_index) == 0 {
+                        return None;
+                    }
+
+                    u32::try_from(word_index * Self::BITS_PER_WORD + bit_index).ok()
+                })
+            })
+    }
+
     /// Convert to the `(maxnode, nodes)` format expected by `set_mempolicy(2)`.
     ///
     /// Returns `(maxnode, Option<&[libc::c_ulong]>)` where `maxnode` is
@@ -331,8 +358,10 @@ impl NumaPolicy {
     ///
     /// For `Default`/`Local` policies, or `Preferred` without nodes,
     /// returns `(mode, 0, None)`.
-    pub fn to_mempolicy(&self) -> (i32, usize, Option<&[u64]>) {
-        if self.nodes.is_empty() && self.policy_type.allows_empty_nodes() {
+    pub fn to_mempolicy(&self) -> (i32, usize, Option<&[libc::c_ulong]>) {
+        if matches!(self.policy_type, MpolType::Default | MpolType::Local)
+            || (self.policy_type == MpolType::Preferred && self.nodes.is_empty())
+        {
             return (self.policy_type.as_raw(), 0, None);
         }
 
@@ -432,6 +461,53 @@ pub fn apply_numa_policy(_policy: &NumaPolicy) -> Result<(), NumaError> {
 
 // ── Node discovery ────────────────────────────────────────────────────────
 
+/// Read the CPUs associated with a NUMA node from sysfs.
+pub fn numa_node_get_cpus(node: u32) -> Result<CpuSet, NumaError> {
+    let cpulist = std::fs::read_to_string(format!("{NUMA_NODE_SYSFS_PATH}/node{node}/cpulist"))?;
+    Ok(CpuSet::parse(&cpulist)?)
+}
+
+/// Return the union of CPUs associated with all nodes in a NUMA policy.
+pub fn numa_to_cpu_set(policy: &NumaPolicy) -> Result<CpuSet, NumaError> {
+    let mut cpus = CpuSet::new();
+
+    for node in policy.nodes().iter() {
+        cpus.add_set(&numa_node_get_cpus(node)?)?;
+    }
+
+    Ok(cpus)
+}
+
+/// Find the NUMA node containing a CPU.
+///
+/// Unreadable or malformed individual node CPU lists are ignored, matching
+/// the C helper. If no node contains `cpu`, node zero is returned.
+pub fn numa_get_node_from_cpu(cpu: u32) -> Result<u32, NumaError> {
+    for entry in std::fs::read_dir(NUMA_NODE_SYSFS_PATH)?.flatten() {
+        if !entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
+            continue;
+        }
+
+        let name = entry.file_name();
+        let Some(node) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix("node"))
+            .and_then(|suffix| suffix.parse::<u32>().ok())
+        else {
+            continue;
+        };
+
+        let Ok(cpus) = numa_node_get_cpus(node) else {
+            continue;
+        };
+        if cpus.contains(cpu) {
+            return Ok(node);
+        }
+    }
+
+    Ok(0)
+}
+
 /// Discover the maximum NUMA node index by scanning `/sys/devices/system/node`.
 ///
 /// Returns the highest node index found, or falls back to
@@ -441,6 +517,10 @@ pub fn numa_max_node() -> u32 {
         Ok(entries) => {
             let mut max_node: u32 = 0;
             for entry in entries.flatten() {
+                if !entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
+                    continue;
+                }
+
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
                 if let Some(suffix) = name_str.strip_prefix("node") {
@@ -594,6 +674,15 @@ mod tests {
     }
 
     #[test]
+    fn test_node_mask_iter() {
+        let mut mask = NodeMask::new();
+        mask.set(1);
+        mask.set(64);
+        mask.set(127);
+        assert_eq!(mask.iter().collect::<Vec<_>>(), vec![1, 64, 127]);
+    }
+
+    #[test]
     fn test_node_mask_default() {
         let mask = NodeMask::default();
         assert!(mask.is_empty());
@@ -673,6 +762,20 @@ mod tests {
         assert_eq!(mode, MpolType::Local.as_raw());
         assert_eq!(maxnode, 0);
         assert!(nodes.is_none());
+    }
+
+    #[test]
+    fn test_numa_policy_to_mempolicy_ignores_nodes_for_default_and_local() {
+        let mut mask = NodeMask::new();
+        mask.set(3);
+
+        for policy_type in [MpolType::Default, MpolType::Local] {
+            let p = NumaPolicy::new(policy_type, mask.clone());
+            let (mode, maxnode, nodes) = p.to_mempolicy();
+            assert_eq!(mode, policy_type.as_raw());
+            assert_eq!(maxnode, 0);
+            assert!(nodes.is_none());
+        }
     }
 
     #[test]
