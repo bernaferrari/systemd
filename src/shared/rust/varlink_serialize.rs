@@ -8,8 +8,11 @@
 // checkpoint/restore. Each socket is written as a single line containing
 // its address and a reference to a file descriptor in the FDSet.
 
+use crate::fdset::FdSetError;
 use std::fmt;
 use std::io::{self, Write};
+
+pub use crate::fdset::FdSet;
 
 // ── Error types ───────────────────────────────────────────────────────────
 
@@ -52,47 +55,13 @@ impl From<io::Error> for VarlinkSerializeError {
     }
 }
 
-// ── FDSet ─────────────────────────────────────────────────────────────────
-
-/// Minimal FDSet for serialization — mirrors the subset of serialize::FDSet
-/// needed by varlink serialization.
-#[derive(Debug, Default, Clone)]
-pub struct FdSet {
-    fds: Vec<i32>,
-}
-
-impl FdSet {
-    /// Create a new empty FdSet.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Insert a duplicate fd reference. Returns the fd on success.
-    pub fn put_dup(&mut self, fd: i32) -> Result<i32, VarlinkSerializeError> {
-        if fd < 0 {
-            return Err(VarlinkSerializeError::InvalidFd(fd));
+impl From<FdSetError> for VarlinkSerializeError {
+    fn from(error: FdSetError) -> Self {
+        match error {
+            FdSetError::InvalidFd(fd) => VarlinkSerializeError::InvalidFd(fd),
+            FdSetError::Io(error) => VarlinkSerializeError::Io(error),
+            FdSetError::NotFound(fd) => VarlinkSerializeError::FdNotFound(fd),
         }
-        self.fds.push(fd);
-        Ok(fd)
-    }
-
-    /// Remove and return an fd from the set by value.
-    pub fn remove(&mut self, fd: i32) -> Result<i32, VarlinkSerializeError> {
-        if let Some(pos) = self.fds.iter().position(|&f| f == fd) {
-            Ok(self.fds.remove(pos))
-        } else {
-            Err(VarlinkSerializeError::FdNotFound(fd))
-        }
-    }
-
-    /// Number of fds currently in the set.
-    pub fn len(&self) -> usize {
-        self.fds.len()
-    }
-
-    /// Check if the set is empty.
-    pub fn is_empty(&self) -> bool {
-        self.fds.is_empty()
     }
 }
 
@@ -249,28 +218,46 @@ pub fn varlink_server_contains_socket(sockets: &[VarlinkServerSocket], address: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::fd::AsRawFd;
+    use std::os::unix::net::UnixStream;
+
+    fn open_test_fd() -> UnixStream {
+        let (stream, peer) = UnixStream::pair().unwrap();
+        drop(peer);
+        stream
+    }
+
+    fn close_owned_fd(fd: i32) {
+        let mut cleanup = FdSet::new();
+        cleanup.put(fd).unwrap();
+    }
 
     #[test]
     fn test_fdset_put_dup_and_remove() {
+        let first = open_test_fd();
+        let second = open_test_fd();
         let mut fds = FdSet::new();
         assert!(fds.is_empty());
 
-        fds.put_dup(5).unwrap();
-        fds.put_dup(10).unwrap();
+        let first_copy = fds.put_dup(first.as_raw_fd()).unwrap();
+        let second_copy = fds.put_dup(second.as_raw_fd()).unwrap();
         assert_eq!(fds.len(), 2);
 
-        assert_eq!(fds.remove(5).unwrap(), 5);
+        assert_eq!(fds.remove(first_copy).unwrap(), first_copy);
         assert_eq!(fds.len(), 1);
 
         // Removing again should fail
-        assert!(fds.remove(5).is_err());
+        assert!(fds.remove(first_copy).is_err());
+        assert_eq!(fds.remove(second_copy).unwrap(), second_copy);
+        close_owned_fd(first_copy);
+        close_owned_fd(second_copy);
     }
 
     #[test]
     fn test_fdset_put_dup_negative_fd() {
         let mut fds = FdSet::new();
         let err = fds.put_dup(-1).unwrap_err();
-        assert!(matches!(err, VarlinkSerializeError::InvalidFd(-1)));
+        assert!(matches!(err, FdSetError::InvalidFd(-1)));
     }
 
     #[test]
@@ -294,9 +281,10 @@ mod tests {
 
     #[test]
     fn test_varlink_server_serialize_single() {
+        let source = open_test_fd();
         let sockets = vec![VarlinkServerSocket {
             address: "/run/foo.sock".to_string(),
-            fd: 7,
+            fd: source.as_raw_fd(),
         }];
         let mut fds = FdSet::new();
         let mut output = Vec::new();
@@ -304,17 +292,19 @@ mod tests {
         varlink_server_serialize(&sockets, None, &mut output, &mut fds).unwrap();
 
         let text = String::from_utf8(output).unwrap();
-        assert!(text.starts_with(
-            "varlink-server-socket-address=/run/foo.sock varlink-server-socket-fd=7\n"
-        ));
+        let value = text.trim_end().strip_prefix("varlink-server-").unwrap();
+        let (address, copy) = parse_socket_line(value).unwrap();
+        assert_eq!(address, "/run/foo.sock");
+        assert_ne!(copy, source.as_raw_fd());
         assert_eq!(fds.len(), 1);
     }
 
     #[test]
     fn test_varlink_server_serialize_with_name() {
+        let source = open_test_fd();
         let sockets = vec![VarlinkServerSocket {
             address: "/run/bar.sock".to_string(),
-            fd: 3,
+            fd: source.as_raw_fd(),
         }];
         let mut fds = FdSet::new();
         let mut output = Vec::new();
@@ -327,15 +317,17 @@ mod tests {
 
     #[test]
     fn test_varlink_server_serialize_empty_address_rejects() {
+        let source = open_test_fd();
         let sockets = vec![VarlinkServerSocket {
             address: String::new(),
-            fd: 1,
+            fd: source.as_raw_fd(),
         }];
         let mut fds = FdSet::new();
         let mut output = Vec::new();
 
         let err = varlink_server_serialize(&sockets, None, &mut output, &mut fds);
-        assert!(err.is_err());
+        assert!(matches!(err, Err(VarlinkSerializeError::InvalidInput(_))));
+        assert!(fds.is_empty());
     }
 
     #[test]
@@ -348,7 +340,8 @@ mod tests {
         let mut output = Vec::new();
 
         let err = varlink_server_serialize(&sockets, None, &mut output, &mut fds);
-        assert!(err.is_err());
+        assert!(matches!(err, Err(VarlinkSerializeError::InvalidFd(-1))));
+        assert!(fds.is_empty());
     }
 
     #[test]
@@ -393,18 +386,20 @@ mod tests {
 
     #[test]
     fn test_varlink_server_deserialize_one() {
+        let source = open_test_fd();
         let mut fds = FdSet::new();
-        fds.put_dup(10).unwrap();
+        let copy = fds.put_dup(source.as_raw_fd()).unwrap();
 
         let sock = varlink_server_deserialize_one(
-            "socket-address=/run/restore.sock varlink-server-socket-fd=10",
+            &format!("socket-address=/run/restore.sock varlink-server-socket-fd={copy}"),
             &mut fds,
         )
         .unwrap();
 
         assert_eq!(sock.address, "/run/restore.sock");
-        assert_eq!(sock.fd, 10);
+        assert_eq!(sock.fd, copy);
         assert!(fds.is_empty()); // fd was consumed
+        close_owned_fd(sock.fd);
     }
 
     #[test]
@@ -421,8 +416,9 @@ mod tests {
 
     #[test]
     fn test_varlink_server_deserialize_one_invalid_line() {
+        let source = open_test_fd();
         let mut fds = FdSet::new();
-        fds.put_dup(1).unwrap();
+        fds.put_dup(source.as_raw_fd()).unwrap();
 
         let err = varlink_server_deserialize_one("bogus line", &mut fds).unwrap_err();
         assert!(matches!(err, VarlinkSerializeError::InvalidInput(_)));
@@ -462,14 +458,16 @@ mod tests {
 
     #[test]
     fn test_roundtrip_serialize_deserialize() {
+        let first = open_test_fd();
+        let second = open_test_fd();
         let original = vec![
             VarlinkServerSocket {
                 address: "/run/first.sock".to_string(),
-                fd: 5,
+                fd: first.as_raw_fd(),
             },
             VarlinkServerSocket {
                 address: "@abstract".to_string(),
-                fd: 8,
+                fd: second.as_raw_fd(),
             },
         ];
 
@@ -491,15 +489,23 @@ mod tests {
             restored.push(sock);
         }
 
-        assert_eq!(restored, original);
+        assert_eq!(restored.len(), original.len());
+        for (restored, original) in restored.iter().zip(&original) {
+            assert_eq!(restored.address, original.address);
+            assert_ne!(restored.fd, original.fd);
+        }
         assert!(fds.is_empty());
+        for socket in restored {
+            close_owned_fd(socket.fd);
+        }
     }
 
     #[test]
     fn test_roundtrip_serialize_deserialize_no_name() {
+        let source = open_test_fd();
         let original = vec![VarlinkServerSocket {
             address: "/run/simple.sock".to_string(),
-            fd: 3,
+            fd: source.as_raw_fd(),
         }];
 
         let mut fds = FdSet::new();
@@ -511,7 +517,9 @@ mod tests {
         let stripped = text.lines().next().unwrap().strip_prefix(prefix).unwrap();
 
         let sock = varlink_server_deserialize_one(stripped, &mut fds).unwrap();
-        assert_eq!(sock, original[0]);
+        assert_eq!(sock.address, original[0].address);
+        assert_ne!(sock.fd, original[0].fd);
+        close_owned_fd(sock.fd);
     }
 
     #[test]

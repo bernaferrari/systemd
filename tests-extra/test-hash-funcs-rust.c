@@ -1,10 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
-/* Shadow test for hash callback functions ported from
- * src/basic/hash-funcs.c to src/basic/rust/bus_type_util.rs
- *
- * Verifies that Rust hash functions produce the same siphash state
- * as their C counterparts. Uses rs_siphash for both. */
+/* Rust SipHash callback coverage. */
 
 #include <assert.h>
 #include <string.h>
@@ -13,7 +9,6 @@
 #include "tests.h"
 
 #include "rust/siphash24.h"
-#include "rust/bus_type_util.h"
 
 static void test_string_hash_func(void) {
         struct rs_siphash c_state, rs_state;
@@ -61,66 +56,6 @@ static void test_string_hash_func_different(void) {
         rs_string_hash_func("world", &s2_state);
 
         /* Finalize to get a definitive hash value */
-        uint64_t h1 = rs_siphash24_finalize(&s1_state);
-        uint64_t h2 = rs_siphash24_finalize(&s2_state);
-        assert_se(h1 != h2);
-}
-
-static void test_trivial_hash_func(void) {
-        struct rs_siphash c_state, rs_state;
-        uint8_t key[16] = {};
-        void *ptr = (void *)0x12345678;
-
-        rs_siphash24_init(&c_state, key);
-        rs_siphash24_init(&rs_state, key);
-
-        rs_trivial_hash_func(&ptr, &c_state);
-        rs_trivial_hash_func(&ptr, &rs_state);
-
-        assert_se(c_state.v0 == rs_state.v0);
-        assert_se(c_state.inlen == rs_state.inlen);
-}
-
-static void test_uint64_hash_func(void) {
-        struct rs_siphash c_state, rs_state;
-        uint8_t key[16] = {};
-        uint64_t val = 0xdeadbeefcafebabe;
-
-        rs_siphash24_init(&c_state, key);
-        rs_siphash24_init(&rs_state, key);
-
-        rs_uint64_hash_func(&val, &c_state);
-        rs_uint64_hash_func(&val, &rs_state);
-
-        assert_se(c_state.v0 == rs_state.v0);
-        assert_se(c_state.inlen == rs_state.inlen);
-}
-
-static void test_uint64_hash_func_zero(void) {
-        struct rs_siphash c_state, rs_state;
-        uint8_t key[16] = {};
-        uint64_t val = 0;
-
-        rs_siphash24_init(&c_state, key);
-        rs_siphash24_init(&rs_state, key);
-
-        rs_uint64_hash_func(&val, &c_state);
-        rs_uint64_hash_func(&val, &rs_state);
-
-        assert_se(c_state.v0 == rs_state.v0);
-}
-
-static void test_uint64_hash_func_different(void) {
-        struct rs_siphash s1_state, s2_state;
-        uint8_t key[16] = { [0 ... 14] = 0xaa, [15] = 0xbb };
-
-        rs_siphash24_init(&s1_state, key);
-        rs_siphash24_init(&s2_state, key);
-
-        uint64_t v1 = 1, v2 = 2;
-        rs_uint64_hash_func(&v1, &s1_state);
-        rs_uint64_hash_func(&v2, &s2_state);
-
         uint64_t h1 = rs_siphash24_finalize(&s1_state);
         uint64_t h2 = rs_siphash24_finalize(&s2_state);
         assert_se(h1 != h2);
@@ -236,10 +171,6 @@ int main(int argc, char *argv[]) {
         test_string_hash_func();
         test_string_hash_func_empty();
         test_string_hash_func_different();
-        test_trivial_hash_func();
-        test_uint64_hash_func();
-        test_uint64_hash_func_zero();
-        test_uint64_hash_func_different();
         test_path_hash_func_absolute();
         test_path_hash_func_trailing_slash();
         test_path_hash_func_double_slash();

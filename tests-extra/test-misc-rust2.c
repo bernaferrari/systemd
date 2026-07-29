@@ -1,18 +1,16 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C btrfs_might_be_subvol, json_underscorify, json_dashify,
- *             suitable_blob_filename, decode_modhex_char, normalize_recovery_key vs Rust */
+ *             suitable_blob_filename vs Rust */
 
 #include "tests.h"
 #include "stat-util.h"
 #include "string-util.h"
 #include "btrfs-util.h"
 #include "user-record.h"
-#include "recovery-key.h"
 #include "json-util.h"
 #include "rust/stat_util.h"
 #include "rust/string_util.h"
 #include "rust/shared_facades/validation.h"
-#include "rust/recovery_key.h"
 
 static void test_btrfs_might_be_subvol(void) {
         struct stat st;
@@ -146,77 +144,10 @@ static void test_suitable_blob_filename(void) {
         assert_se(!cr);
 }
 
-static void test_decode_modhex_char(void) {
-        int cr, rr;
-
-        /* Valid lowercase */
-        cr = decode_modhex_char('c');
-        rr = rs_decode_modhex_char('c');
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-
-        cr = decode_modhex_char('v');
-        rr = rs_decode_modhex_char('v');
-        assert_se(cr == rr);
-        assert_se(cr == 15);
-
-        /* Valid uppercase */
-        cr = decode_modhex_char('C');
-        rr = rs_decode_modhex_char('C');
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-
-        /* Invalid */
-        cr = decode_modhex_char('a');
-        rr = rs_decode_modhex_char('a');
-        assert_se(cr == rr);
-        assert_se(cr < 0);
-
-        cr = decode_modhex_char('0');
-        rr = rs_decode_modhex_char('0');
-        assert_se(cr == rr);
-        assert_se(cr < 0);
-}
-
-static void test_normalize_recovery_key(void) {
-        _cleanup_free_ char *cr = NULL, *rr = NULL;
-        int rc, rrs;
-
-        /* Valid: without dashes (64 chars) */
-        rc = normalize_recovery_key("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", &cr);
-        rrs = rs_normalize_recovery_key("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", &rr);
-        assert_se(rc == rrs);
-        assert_se(rc == 0);
-        if (cr && rr) {
-                assert_se(streq(cr, rr));
-                assert_se(strlen(rr) == RECOVERY_KEY_MODHEX_FORMATTED_LENGTH - 1); /* 71 printable chars */
-        }
-        cr = mfree(cr);
-        rr = mfree(rr);
-
-        /* Invalid: wrong length */
-        rc = normalize_recovery_key("short", &cr);
-        rrs = rs_normalize_recovery_key("short", &rr);
-        assert_se(rc == rrs);
-        assert_se(rc < 0);
-
-        /* Invalid: contains non-modhex chars (64 chars but 'a' is not in modhex) */
-        rc = normalize_recovery_key("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", &cr);
-        rrs = rs_normalize_recovery_key("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", &rr);
-        assert_se(rc == rrs);
-        assert_se(rc < 0);
-
-        /* NULL — C asserts on NULL, only test Rust */
-        rrs = rs_normalize_recovery_key(NULL, &rr);
-        assert_se(rrs < 0);
-}
-
 int main(int argc, char **argv) {
         test_btrfs_might_be_subvol();
         test_json_underscorify();
         test_json_dashify();
         test_suitable_blob_filename();
-        test_decode_modhex_char();
-        test_normalize_recovery_key();
         return 0;
 }

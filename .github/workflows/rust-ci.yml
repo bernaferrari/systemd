@@ -93,7 +93,6 @@ jobs:
   # Priority runtime coverage configured in this job:
   #   path/non-UTF-8: test-path-util-rust, test-path-funcs-rust,
   #                    test-path-util-extra-rust
-  #   pure formatting: test-format-util-rust
   #   strv ownership/alloc: test-strv-rust, test-strv-extra{,2-7}-rust,
   #                         test-strv-fnmatch-rust, test-string-util-extra6-rust
   #   stat: test-stat-util-rust, test-stat-util-extra2-rust,
@@ -146,12 +145,10 @@ jobs:
           test-xml-rust
           test-parse-util-rust
           test-utf8-rust
-          test-syslog-util-rust
           test-exec-util-rust
           test-unit-dbus-rust
           test-ratelimit-rust
           test-extract-word-rust
-          test-user-shell-util-rust
           test-strbuf-rust
           test-mempool-rust
           test-pe-binary-rust
@@ -182,7 +179,6 @@ jobs:
           test-escape-extra2-rust
           test-gpt-unit-install-rust
           test-header-inline-rust
-          test-format-util-rust
           test-strv-extra3-rust
           test-strv-extra-rust
           test-strv-extra2-rust
@@ -198,6 +194,7 @@ jobs:
           test-parse-util-extra-rust
           test-parse-extra-rust
           test-parse-util-inline-rust
+          test-parse-range-rust
           test-path-funcs-rust
           test-path-util-extra-rust
           test-path-util-rust
@@ -206,8 +203,6 @@ jobs:
           test-string-util-inline2-rust
           test-devnum-util-rust
           test-iovec-util-rust
-          test-bus-type-util-rust
-          test-devt-compare-rust
           test-user-util-rust
           test-basic-validators-rust
           test-inline-helpers-rust
@@ -234,7 +229,6 @@ jobs:
           test-btrfs-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
-          test-recovery-key-rust
           test-hexdecoct-rust
           test-env-util-rust
           test-memory-util-rust
@@ -276,12 +270,10 @@ jobs:
           test-xml-rust
           test-parse-util-rust
           test-utf8-rust
-          test-syslog-util-rust
           test-exec-util-rust
           test-unit-dbus-rust
           test-ratelimit-rust
           test-extract-word-rust
-          test-user-shell-util-rust
           test-strbuf-rust
           test-mempool-rust
           test-pe-binary-rust
@@ -312,7 +304,6 @@ jobs:
           test-escape-extra2-rust
           test-gpt-unit-install-rust
           test-header-inline-rust
-          test-format-util-rust
           test-strv-extra3-rust
           test-strv-extra-rust
           test-strv-extra2-rust
@@ -328,6 +319,7 @@ jobs:
           test-parse-util-extra-rust
           test-parse-extra-rust
           test-parse-util-inline-rust
+          test-parse-range-rust
           test-path-funcs-rust
           test-path-util-extra-rust
           test-path-util-rust
@@ -336,8 +328,6 @@ jobs:
           test-string-util-inline2-rust
           test-devnum-util-rust
           test-iovec-util-rust
-          test-bus-type-util-rust
-          test-devt-compare-rust
           test-user-util-rust
           test-basic-validators-rust
           test-inline-helpers-rust
@@ -364,7 +354,6 @@ jobs:
           test-btrfs-util-rust
           test-compare-operator-rust
           test-signal-inline-rust
-          test-recovery-key-rust
           test-hexdecoct-rust
           test-env-util-rust
           test-memory-util-rust

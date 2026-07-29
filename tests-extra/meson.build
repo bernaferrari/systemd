@@ -706,20 +706,6 @@ if get_option('rust').enabled()
         test('test-siphash24-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-format-util-rust',
-                files('test-format-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-format-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-strxcpyx-rust',
                 files('test-strxcpyx-rust.c'),
                 include_directories : includes,
@@ -1070,20 +1056,6 @@ if get_option('rust').enabled()
         test('test-unit-name-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-syslog-util-rust',
-                files('test-syslog-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-syslog-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-signal-util-rust',
                 files('test-signal-util-rust.c'),
                 include_directories : includes,
@@ -1406,20 +1378,6 @@ if get_option('rust').enabled()
         test('test-bitmap-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-bus-type-util-rust',
-                files('test-bus-type-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-bus-type-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-sha1-rust',
                 files('test-sha1-rust.c'),
                 include_directories : includes,
@@ -1446,20 +1404,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-namespace-mountpoint-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-recovery-key-rust',
-                files('test-recovery-key-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-recovery-key-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-credential-validators-rust',
@@ -1532,20 +1476,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-credential-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-user-shell-util-rust',
-                files('test-user-shell-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-user-shell-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-credential-dns-rust',
@@ -1756,20 +1686,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-stat-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-devt-compare-rust',
-                files('test-devt-compare-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-devt-compare-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-memeqbyte-rust',

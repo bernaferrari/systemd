@@ -10,10 +10,8 @@
 #include "tests.h"
 #include "in-addr-util.h"
 #include "devnum-util.h"
-#include "format-util.h"
 #include "hexdecoct.h"
 #include "rust/misc_inline_abi.h"
-#include "rust/format_util.h"
 
 /* Rust FFI — in_addr */
 bool rs_in4_addr_is_set(const struct in_addr *a);
@@ -107,32 +105,6 @@ static void test_devnum_set_and_equal(void) {
         assert_se(devnum_set_and_equal(a, d) == rs_devnum_set_and_equal(a, d));
 }
 
-/* ── format_bytes ──────────────────────────────────────────────────────── */
-
-/* RUST-CONTRACT: format-bytes-inline */
-static void test_format_bytes(void) {
-        char c_buf[FORMAT_BYTES_MAX], rs_buf[FORMAT_BYTES_MAX];
-
-        /* 500 bytes */
-        assert_se(streq(format_bytes(c_buf, sizeof(c_buf), 500),
-                           rs_format_bytes(rs_buf, sizeof(rs_buf), 500)));
-
-        /* 1024 bytes = 1.0 KB */
-        assert_se(streq(format_bytes(c_buf, sizeof(c_buf), 1024),
-                           rs_format_bytes(rs_buf, sizeof(rs_buf), 1024)));
-
-        /* 0 bytes */
-        assert_se(streq(format_bytes(c_buf, sizeof(c_buf), 0),
-                           rs_format_bytes(rs_buf, sizeof(rs_buf), 0)));
-
-        /* 1500 bytes */
-        assert_se(streq(format_bytes(c_buf, sizeof(c_buf), 1500),
-                           rs_format_bytes(rs_buf, sizeof(rs_buf), 1500)));
-
-        assert_se(format_bytes(c_buf, sizeof(c_buf), UINT64_MAX) == NULL);
-        assert_se(rs_format_bytes(rs_buf, sizeof(rs_buf), UINT64_MAX) == NULL);
-}
-
 /* ── unhexmem ──────────────────────────────────────────────────────────── */
 
 static void test_unhexmem(void) {
@@ -208,7 +180,6 @@ int main(int argc, char **argv) {
         test_in_addr_data_is_null();
         test_devnum_is_zero();
         test_devnum_set_and_equal();
-        test_format_bytes();
         test_unhexmem();
         test_base64mem();
         test_unbase64mem();

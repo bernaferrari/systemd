@@ -1878,6 +1878,75 @@ pub unsafe extern "C" fn rs_parse_loadavg_fixed_point(s: *const c_char, ret: *mu
     })
 }
 
+/// C ABI facade for `parse_fractional_part_u()`.
+///
+/// The output pointer and input cursor are published only on success. The
+/// arithmetic intentionally wraps as C's unsigned arithmetic does.
+///
+/// # Safety
+///
+/// `p` and `res` must be writable. `*p` must be a non-null, live
+/// NUL-terminated C string. Pointer ranges must not overlap in a way that
+/// makes the cursor update invalidate the read.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_fractional_part_u(
+    p: *mut *const c_char,
+    digits: usize,
+    res: *mut u32,
+) -> i32 {
+    if p.is_null() || res.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    // SAFETY: `p` is writable under this export's contract.
+    let mut cursor = unsafe { *p };
+    if cursor.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    let mut value = 0u32;
+    for index in 0..digits {
+        // SAFETY: `cursor` starts in a live C string and advances only after
+        // reading a non-NUL decimal byte, so it remains in that allocation.
+        let byte = unsafe { *cursor } as u8;
+        if !byte.is_ascii_digit() {
+            if index == 0 {
+                return Errno::EINVAL.to_neg_errno();
+            }
+            for _ in index..digits {
+                value = value.wrapping_mul(10);
+            }
+            break;
+        }
+        value = value.wrapping_mul(10).wrapping_add((byte - b'0') as u32);
+        // SAFETY: the byte was non-NUL, so its successor remains in the C string.
+        cursor = unsafe { cursor.add(1) };
+    }
+
+    // SAFETY: `cursor` remains within the live C string by the loop invariant.
+    let round = unsafe { *cursor } as u8;
+    if (b'5'..=b'9').contains(&round) {
+        value = value.wrapping_add(1);
+    }
+    // C uses strspn(s, DIGITS), preserving opaque non-digit bytes and stopping
+    // exactly at the first one.
+    loop {
+        // SAFETY: `cursor` is within the live NUL-terminated C string.
+        let byte = unsafe { *cursor } as u8;
+        if !byte.is_ascii_digit() {
+            break;
+        }
+        // SAFETY: the byte was non-NUL, so the successor stays in range.
+        cursor = unsafe { cursor.add(1) };
+    }
+
+    // SAFETY: both output locations are writable by this export's contract.
+    unsafe {
+        *p = cursor;
+        *res = value;
+    }
+    0
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

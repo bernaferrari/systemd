@@ -3,7 +3,7 @@ module = "parse-util"
 semantic_coverage = "partial"
 source_structure = "independent"
 deviation_policy = "explicit-only"
-excluded_c_symbols = ["parse_fractional_part_u"]
+excluded_c_symbols = ["parse_user_shell", "parse_capability_set", "safe_atod", "nft_identifier_valid"]
 
 [authority]
 c_headers = ["src/basic/parse-util.h"]
@@ -74,3 +74,19 @@ verification = "static-only"
 file = "tests-extra/test-parse-util-rust.c"
 meson_target = "test-parse-util-rust"
 labels = ["parse-numeric-fields"]
+
+[[surface]]
+id = "parse-fractional-part"
+c_symbols = ["parse_fractional_part_u"]
+rust_symbols = ["rs_parse_fractional_part_u"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-parse-range-rust.c"
+meson_target = "test-parse-range-rust"
+labels = ["parse-fractional-part"]

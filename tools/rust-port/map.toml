@@ -159,11 +159,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-parse-util-rust.c"
 status = "in-progress"
 tier = 2
-symbols = 24
+symbols = 25
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
-last_reviewed_rust_blobs = { "src/basic/rust/parse_util.rs" = "96c7795e4357f2aa3bbcf9284bc6072b84d8430a", "src/basic/rust/parse_util.h" = "4cd5b45632c538527caa7ae2d2d86bc3b2d0fb3a" }
-notes = "Reviewed static parse ABI slice 2026-07-29; no build/tests/VM. Twenty-four C parser facades preserve opaque C-string inputs, target-width integer parsing, range checks, negative-errno errors, and success-only output publication. Header-inline/time formatting helpers and runtime/cross-target differential evidence remain P2."
+last_reviewed_rust_blobs = { "src/basic/rust/parse_util.rs" = "7a9be9388c8cbf1ce3786b025f960fdde3710d25", "src/basic/rust/parse_util.h" = "4cd5b45632c538527caa7ae2d2d86bc3b2d0fb3a" }
+notes = "Reviewed static parse ABI slice 2026-07-29; no build/tests/VM. Twenty-five C parser facades preserve opaque C-string inputs, target-width integer parsing, fractional cursor/output semantics, range checks, negative-errno errors, and success-only output publication. Header-inline/time formatting helpers and runtime/cross-target differential evidence remain P2."
 
 [time-util]
 c_paths = ["src/basic/time-util.c", "src/basic/time-util.h"]
@@ -402,32 +402,6 @@ sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/siphash24.c" = "b73ede34c8bc43c04697adb23f84db94473ab43a", "src/basic/siphash24.h" = "6da73fedaa41c21ed516779b978019ab6f9fcd33" }
 last_reviewed_rust_blobs = { "src/basic/rust/siphash24.rs" = "d17b12246fa7c3942560edf8665a9d50bf4e76cc", "src/basic/rust/siphash24.h" = "8e02b5d8e1bced44fd10fbd333043221a06d9cb9" }
 notes = "Reviewed static SipHash ABI slice 2026-07-29; no build/tests/VM. Six facades preserve the repr(C) streaming state, length wrapping, byte and C-string paths, and finalized output. IOVEC compression remains C-only. C remains production authority; runtime parity remains P2."
-
-[format-util]
-c_paths = [
-    "src/basic/format-util.c",
-    "src/basic/format-util.h",
-]
-rust_paths = [
-    "src/basic/rust/format_util.rs",
-    "src/basic/rust/format_util.h",
-]
-scope = "basic.format-util"
-rust_scope_paths = ["src/basic/rust/format_util.rs"]
-rust_interface_paths = ["src/basic/rust/format_util.h"]
-contract_file = "tools/rust-port/contracts/basic/format-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/format-util.c", rust_paths = ["src/basic/rust/format_util.rs", "src/basic/rust/format_util.h"] },
-    { kind = "direct", path = "src/basic/format-util.h", rust_paths = ["src/basic/rust/format_util.rs", "src/basic/rust/format_util.h"] },
-]
-test_file = "tests-extra/test-format-util-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 2
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/format-util.c" = "30ab0fd3b8d5f33a79f70e2962b7c4af119d89f4", "src/basic/format-util.h" = "5ab982d12692579d11883aeadf2c1b6ab224a054" }
-last_reviewed_rust_blobs = { "src/basic/rust/format_util.rs" = "0b034ca4c7b4032c9da2455d1f2980a1179ca849", "src/basic/rust/format_util.h" = "6e3d81ebfbe65e78952e8d5893c720379df4e818" }
-notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The full and inline byte-format facades share one bounded stack formatter, preserve C's `UINT64_MAX` sentinel and wrapping final-bucket arithmetic, and return a truncated NUL-terminated alias of the caller buffer. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 [strxcpyx]
 c_paths = [
@@ -824,26 +798,6 @@ last_reviewed_upstream_blobs = { "src/basic/prioq.c" = "94ee528556a696fd6f0b036e
 last_reviewed_rust_blobs = { "src/basic/rust/prioq.rs" = "225e1bedc7e83c79b9c6c5cdf8e9a758b9431bc9", "src/basic/rust/prioq.h" = "8b0c6b7843c463acadd3729ae045c45545bef98b" }
 notes = "Reviewed static priority-queue ABI slice 2026-07-29; no build/tests/VM. Nine facades use a libc-owned opaque Rust handle, borrowed C data, synchronous C comparison callbacks, and C-managed tracked indices. C remains production authority; runtime parity remains P2."
 
-[syslog-util]
-c_paths = ["src/basic/syslog-util.c", "src/basic/syslog-util.h"]
-rust_paths = ["src/basic/rust/syslog_util.rs", "src/basic/rust/syslog_util.h"]
-scope = "basic.syslog-util"
-rust_scope_paths = ["src/basic/rust/syslog_util.rs"]
-rust_interface_paths = ["src/basic/rust/syslog_util.h"]
-contract_file = "tools/rust-port/contracts/basic/syslog-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/syslog-util.c", rust_paths = ["src/basic/rust/syslog_util.rs", "src/basic/rust/syslog_util.h"] },
-    { kind = "direct", path = "src/basic/syslog-util.h", rust_paths = ["src/basic/rust/syslog_util.rs", "src/basic/rust/syslog_util.h"] },
-]
-test_file = "tests-extra/test-syslog-util-rust.c"
-status = "in-progress"
-tier = 1
-symbols = 7
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/syslog-util.c" = "bd1bb65282332a17a01d2ea9836e04ca2768f19e", "src/basic/syslog-util.h" = "5a9c1f64676f794ebb31077b1e1e3444b3d22ccc" }
-last_reviewed_rust_blobs = { "src/basic/rust/syslog_util.rs" = "177199e1cfb62bbfde3ac6edfed8cae872c79b87", "src/basic/rust/syslog_util.h" = "0b4350a92ce99a8cde9c284ab4746a3e1477739d" }
-notes = "Reviewed static syslog ABI slice 2026-07-29; no build/tests/VM. Seven C facades preserve generated facility/level tables, C allocator ownership, validation, and priority parsing. Namespace validation remains C-only; runtime parity remains P2."
-
 [signal-util]
 c_paths = [
     "src/basic/signal-util.c",
@@ -1011,7 +965,7 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "44da1a494d53d97fa44b501990c2b3bb4165e361", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
+last_reviewed_upstream_blobs = { "src/basic/af-list.c" = "5ab92a96b58420da2e26f329848cc4413d081542", "src/basic/af-list.h" = "6b7154cb5997117678857aa2e745514b19b96ecf", "src/basic/generate-af-list.sh" = "d7c777507b5da24b423b9aee980e8b86eb05d5a3", "src/basic/af-to-name.awk" = "b9cfbb7e37adf58908ead6c0e11d8411848f1bdc", "src/basic/meson.build" = "2b75c766dcbad1eab8ff7d1be8643656e774f352", "src/include/meson.build" = "5fc8bb6a61e2b389a2a90bf9c34a92fbadb31cdc", "src/include/override/sys/socket.h" = "25e9ad7737b3731cc6bc3c85269b21ea884ad351", "tools/generate-gperfs.py" = "e9e520247eb20e562205432573bcd2116bcafad6" }
 last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae88934e32ece3d350e9ca", "src/basic/rust/af_list.h" = "79a25ce4145c6ad47d02b0b36abe52041281c723" }
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
@@ -1065,16 +1019,6 @@ sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/btrfs-util.c" = "1c605a9ef2f60f093294448c4dadc11560cbd17a", "src/basic/btrfs-util.h" = "3d7332d5041140c54227ffc54e8e8bd05a16910c" }
 last_reviewed_rust_blobs = { "src/basic/rust/btrfs_util.rs" = "476d1f7b2591d1e9eb1fe1e85f1021b1e601f690", "src/basic/rust/btrfs_util.h" = "51a18ab28f4ca22dd9932fea712fd967e4a02644" }
 notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. The exact byte-preserving validation ABI keeps C's filename_is_valid() before BTRFS_SUBVOL_NAME_MAX, so names longer than NAME_MAX return -EINVAL rather than the formerly divergent Rust success/-E2BIG result. Btrfs ioctl/subvolume creation behavior remains C-only; runtime parity is unclaimed."
-
-[bus_type_util]
-c_paths = ["src/libsystemd/sd-bus/bus-type.c", "src/libsystemd/sd-bus/bus-type.h", "src/basic/hash-funcs.c", "src/basic/hash-funcs.h"]
-rust_file = "src/basic/rust/bus_type_util.rs"
-header_file = "src/basic/rust/bus_type_util.h"
-status = "in-progress"
-tier = 1
-symbols = 9
-sync_status = "needs_review"
-notes = "Static ABI audit 2026-07-27; no build/tests/VM. Six bus-type and three comparison exports are exact header-backed extern-C facades over current sd-bus/hash authorities. 2026-07-27 provenance audit replaces the malformed semicolon-delimited source field with reviewed current source/header pairs. Scalar C char stays symbolic as libc::c_char, fixing unsigned-char Linux target ABI. Exact Rust-linked Meson tests and both CI phases are pinned; runtime parity remains unclaimed."
 
 [capability_util]
 c_paths = ["src/basic/capability-util.c", "src/basic/capability-util.h"]
@@ -1512,26 +1456,6 @@ symbols = 7
 sync_status = "needs_review"
 notes = "All seven current C surfaces (the six procfs runtime APIs plus meminfo conversion) now have ABI-complete Rust shadow implementations with bounded byte parsing and output-on-success wrappers. The Meson topology deliberately leaves C as production authority and links Rust only into shadow tests; differential runtime validation on real /proc and sysctl write failures remains tracked separately."
 
-[recovery_key]
-c_paths = ["src/shared/recovery-key.c", "src/shared/recovery-key.h"]
-rust_paths = ["src/basic/rust/recovery_key.rs", "src/basic/rust/recovery_key.h"]
-scope = "shared.recovery-key"
-rust_scope_paths = ["src/basic/rust/recovery_key.rs"]
-rust_interface_paths = ["src/basic/rust/recovery_key.h"]
-contract_file = "tools/rust-port/contracts/basic/recovery-key.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/shared/recovery-key.c", rust_paths = ["src/basic/rust/recovery_key.rs", "src/basic/rust/recovery_key.h"] },
-    { kind = "direct", path = "src/shared/recovery-key.h", rust_paths = ["src/basic/rust/recovery_key.rs", "src/basic/rust/recovery_key.h"] },
-]
-test_file = "tests-extra/test-recovery-key-rust.c"
-status = "in-progress"
-tier = 2
-symbols = 2
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/shared/recovery-key.c" = "df8c7e8b23ac08f695681df744d52649cb268ce0", "src/shared/recovery-key.h" = "ec7090a1c223a027bc493128bc344d4e99aa9e11" }
-last_reviewed_rust_blobs = { "src/basic/rust/recovery_key.rs" = "19cba5c23b71d21928f29fdd8a665561c78cb4c6", "src/basic/rust/recovery_key.h" = "d0ca739f526199a17558c988d5d651cca6ffd661" }
-notes = "Reviewed static recovery-key ABI slice 2026-07-28; no build/tests/VM. Decode and normalization preserve modhex spelling, 64/71-byte syntax, 8-character grouping, C-owned output, output-on-success, and allocator-before-validation ordering. Random key generation remains C-only. C remains the production authority; runtime parity is unclaimed."
-
 [safe_math]
 c_file = "src/basic/macro.h"
 rust_file = "src/basic/rust/safe_math.rs"
@@ -1669,28 +1593,6 @@ status = "in-progress"
 tier = 3
 symbols = 17
 sync_status = "needs_review"
-
-[user_shell_util]
-c_paths = ["src/basic/user-util.c", "src/basic/user-util.h", "src/basic/parse-util.c", "src/basic/parse-util.h"]
-rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"]
-scope = "basic.user-shell-util"
-rust_scope_paths = ["src/basic/rust/user_shell_util.rs"]
-rust_interface_paths = ["src/shared/rust/user_shell_util.h"]
-contract_file = "tools/rust-port/contracts/basic/user-shell-util.toml"
-c_provenance_edges = [
-    { kind = "direct", path = "src/basic/user-util.c", rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"] },
-    { kind = "direct", path = "src/basic/user-util.h", rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"] },
-    { kind = "direct", path = "src/basic/parse-util.c", rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"] },
-    { kind = "direct", path = "src/basic/parse-util.h", rust_paths = ["src/basic/rust/user_shell_util.rs", "src/shared/rust/user_shell_util.h"] },
-]
-test_file = "tests-extra/test-user-shell-util-rust.c"
-status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/user-util.c" = "fe4c0e6a36858f6b915705f50219a00c104a50f1", "src/basic/user-util.h" = "8355548b00ca3cd41ad52990f7f66f0807e47bc0", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
-last_reviewed_rust_blobs = { "src/basic/rust/user_shell_util.rs" = "084a88fababae3baf7a1d2c8ba314948e50dd54c", "src/shared/rust/user_shell_util.h" = "e9fe96b83badbc5f42470335a4445146b8546804" }
-notes = "Reviewed static shell and fractional parser ABI slice 2026-07-29; no build/tests/VM. Three raw-byte helpers preserve valid classification and fractional parser cursor/output behavior. User lookup and shell selection remain C-only. C remains production authority; runtime parity remains P2."
 
 [user_util]
 c_file = "src/basic/user-util.c"

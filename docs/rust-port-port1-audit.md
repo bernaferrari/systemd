@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 13:31 UTC
+Generated: 2026-07-29 14:02 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **291**
-- `genuine-rust`: **200**
-- `ffi-backed-rust`: **91**
+- Total modules audited: **281**
+- `genuine-rust`: **195**
+- `ffi-backed-rust`: **86**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -38,7 +38,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/bitmap.rs` | 11 | 35 | 0 | 55 |
 | `src/basic/rust/btrfs_util.rs` | 1 | 21 | 0 | 13 |
 | `src/basic/rust/bus_label.rs` | 2 | 15 | 0 | 17 |
-| `src/basic/rust/bus_type_util.rs` | 9 | 26 | 0 | 12 |
 | `src/basic/rust/capability_util.rs` | 4 | 44 | 0 | 17 |
 | `src/basic/rust/credential_validators.rs` | 2 | 35 | 0 | 9 |
 | `src/basic/rust/device_nodes.rs` | 2 | 13 | 0 | 26 |
@@ -53,7 +52,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/exec_util.rs` | 5 | 37 | 0 | 43 |
 | `src/basic/rust/exit_status.rs` | 9 | 37 | 0 | 33 |
 | `src/basic/rust/extract_word.rs` | 1 | 35 | 0 | 104 |
-| `src/basic/rust/format_util.rs` | 2 | 27 | 0 | 13 |
 | `src/basic/rust/gpt_util.rs` | 17 | 41 | 0 | 45 |
 | `src/basic/rust/gunicode.rs` | 2 | 28 | 1 | 8 |
 | `src/basic/rust/header_inline_abi.rs` | 7 | 11 | 0 | 5 |
@@ -73,7 +71,7 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/netdev_str_tables.rs` | 16 | 18 | 0 | 61 |
 | `src/basic/rust/nsflags.rs` | 4 | 33 | 0 | 30 |
 | `src/basic/rust/nulstr_util.rs` | 2 | 35 | 0 | 42 |
-| `src/basic/rust/parse_util.rs` | 40 | 87 | 0 | 163 |
+| `src/basic/rust/parse_util.rs` | 41 | 88 | 0 | 172 |
 | `src/basic/rust/path_util.rs` | 15 | 65 | 0 | 209 |
 | `src/basic/rust/pe_binary.rs` | 7 | 37 | 1 | 36 |
 | `src/basic/rust/percent_util.rs` | 12 | 57 | 0 | 29 |
@@ -81,7 +79,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/process_util_str_tables.rs` | 4 | 27 | 0 | 20 |
 | `src/basic/rust/procfs_util.rs` | 7 | 35 | 0 | 60 |
 | `src/basic/rust/ratelimit.rs` | 6 | 37 | 0 | 13 |
-| `src/basic/rust/recovery_key.rs` | 2 | 25 | 1 | 23 |
 | `src/basic/rust/rlimit_util.rs` | 7 | 25 | 0 | 25 |
 | `src/basic/rust/safe_math.rs` | 3 | 22 | 0 | 8 |
 | `src/basic/rust/seccomp_util.rs` | 5 | 23 | 0 | 25 |
@@ -101,13 +98,11 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/strv.rs` | 52 | 73 | 0 | 228 |
 | `src/basic/rust/strverscmp.rs` | 1 | 21 | 0 | 28 |
 | `src/basic/rust/strxcpyx.rs` | 4 | 26 | 0 | 16 |
-| `src/basic/rust/syslog_util.rs` | 7 | 33 | 0 | 39 |
 | `src/basic/rust/udev_util.rs` | 2 | 12 | 0 | 32 |
 | `src/basic/rust/unaligned.rs` | 12 | 51 | 0 | 2 |
 | `src/basic/rust/unit_def.rs` | 8 | 38 | 2 | 55 |
 | `src/basic/rust/unit_inline_abi.rs` | 2 | 2 | 0 | 0 |
 | `src/basic/rust/unit_name.rs` | 20 | 91 | 0 | 157 |
-| `src/basic/rust/user_shell_util.rs` | 3 | 21 | 0 | 23 |
 | `src/basic/rust/user_util.rs` | 7 | 27 | 0 | 31 |
 | `src/basic/rust/utf8.rs` | 19 | 33 | 0 | 120 |
 | `src/basic/rust/virt.rs` | 5 | 25 | 1 | 7 |

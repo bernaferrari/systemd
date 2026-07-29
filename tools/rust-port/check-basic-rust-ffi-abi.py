@@ -647,13 +647,11 @@ def allocator_boundary_is_c_compatible(path: Path) -> bool:
 
 def misc_inline_abi_boundary_is_reviewed() -> bool:
     header, hex_source, symbols = PARTIAL_SURFACES["misc_inline_abi"]
-    format_header = PARTIAL_SURFACES["format_bytes_full"][0]
-    devnum_source, format_source = PARTIAL_EXTRA_SOURCES["misc_inline_abi"]
+    (devnum_source,) = PARTIAL_EXTRA_SOURCES["misc_inline_abi"]
     test = PARTIAL_SHADOW_TESTS["misc_inline_abi"][0]
     header_text = header.read_text()
     hex_text = hex_source.read_text()
     devnum_text = devnum_source.read_text()
-    format_text = format_source.read_text()
     test_text = test.read_text()
 
     required_header = (
@@ -675,9 +673,6 @@ def misc_inline_abi_boundary_is_reviewed() -> bool:
         unbase64 = hex_text.split('#[unsafe(export_name = "rs_unbase64mem")]', 1)[1].split(
             "#[cfg(test)]", 1
         )[0]
-        format_bytes = format_text.split(
-            '#[unsafe(export_name = "rs_format_bytes")]', 1
-        )[1].split("#[cfg(test)]", 1)[0]
     except IndexError:
         return False
 
@@ -685,8 +680,6 @@ def misc_inline_abi_boundary_is_reviewed() -> bool:
         len(symbols) == 5
         and all(snippet in header_text for snippet in required_header)
         and '#include "rust/misc_inline_abi.h"' in test_text
-        and '#include "rust/format_util.h"' in test_text
-        and "char* rs_format_bytes(char *buf, size_t l, uint64_t t);" in format_header.read_text()
         and all(f"{symbol}(" in test_text for symbol in symbols)
         and "Rust FFI — devnum" not in test_text
         and "unhex_decode_into(" in unhex
@@ -697,11 +690,6 @@ def misc_inline_abi_boundary_is_reviewed() -> bool:
         and "*ret_data =" in unhex
         and "*ret_data =" in unbase64
         and "*ret =" in base64
-        and "format_bytes_default_into(" in format_bytes
-        and "libc::malloc" not in format_bytes
-        and "format!(" not in format_bytes
-        and "String" not in format_bytes
-        and "Vec" not in format_bytes
         and "pub extern \"C\" fn rs_devnum_is_zero" in devnum_text
         and "pub extern \"C\" fn rs_devnum_set_and_equal" in devnum_text
     )
@@ -3127,7 +3115,7 @@ def main() -> int:
         )
     if not misc_inline_abi_boundary_is_reviewed():
         return fail(
-            "misc inline ABI must use its self-contained header, fallible C-owned codec buffers, and allocation-free format facade"
+            "misc inline ABI must use its self-contained header and fallible C-owned codec buffers"
         )
     if not misc_validator_registered_boundary_is_reviewed():
         return fail(
@@ -3283,9 +3271,6 @@ def main() -> int:
         return fail(
             "stat inode hashes must preserve target-native field bytes/order, comparison conditionals, typed sentinels, and canonical SipHash state ABI"
         )
-    bus_header = SURFACES["bus_type_util"][0].read_text()
-    if "#include <sys/types.h>" not in bus_header or "const dev_t *" not in bus_header:
-        return fail("bus_type_util dev_t comparison declaration must be self-contained and use dev_t")
     required_ci_tests = {
         test.stem
         for tests in (*SHADOW_TESTS.values(), *PARTIAL_SHADOW_TESTS.values())

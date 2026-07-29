@@ -87,6 +87,7 @@ static void test_parse_range(void) {
 
 /* ── parse_fractional_part_u ───────────────────────────────────────────── */
 
+/* RUST-CONTRACT: parse-fractional-part */
 static void test_parse_fractional_part_u(void) {
         const char *pc, *pr;
         unsigned cr, rr;

@@ -35,7 +35,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     surfaces = {
         "af_list": (basic_rust / "af_list.h", basic_rust / "af_list.rs"),
         "basic_validators": (basic_rust / "basic_validators.h", basic_rust / "basic_validators.rs"),
-        "bus_type_util": (basic_rust / "bus_type_util.h", basic_rust / "bus_type_util.rs"),
         "capability_util": (basic_rust / "capability_util.h", basic_rust / "capability_util.rs"),
         "devnum_util": (basic_rust / "devnum_util.h", basic_rust / "devnum_util.rs"),
         "dns_type_predicates": (
@@ -152,6 +151,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_parse_nice",
                     "rs_parse_ip_port",
                     "rs_parse_range",
+                    "rs_parse_fractional_part_u",
                 }
             ),
         ),
@@ -179,21 +179,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_utf8_char_console_width",
                     "rs_utf8_console_width",
                     "rs_utf8_last_length",
-                }
-            ),
-        ),
-        "syslog_util": (
-            basic_rust / "syslog_util.h",
-            basic_rust / "syslog_util.rs",
-            frozenset(
-                {
-                    "rs_log_facility_unshifted_from_string",
-                    "rs_log_facility_unshifted_to_string_alloc",
-                    "rs_log_facility_unshifted_is_valid",
-                    "rs_log_level_from_string",
-                    "rs_log_level_to_string_alloc",
-                    "rs_log_level_is_valid",
-                    "rs_syslog_parse_priority",
                 }
             ),
         ),
@@ -240,22 +225,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "extract_word.h",
             basic_rust / "extract_word.rs",
             frozenset({"rs_extract_first_word"}),
-        ),
-        "user_shell_util": (
-            shared_rust / "user_shell_util.h",
-            basic_rust / "user_shell_util.rs",
-            frozenset(
-                {
-                    "rs_is_nologin_shell",
-                    "rs_shell_is_placeholder",
-                    "rs_parse_fractional_part_u",
-                }
-            ),
-        ),
-        "parse_util_fractional": (
-            basic_rust / "parse_util.h",
-            basic_rust / "user_shell_util.rs",
-            frozenset({"rs_parse_fractional_part_u"}),
         ),
         "strbuf": (
             basic_rust / "strbuf.h",
@@ -586,11 +555,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_memdup_suffix0_multiply",
                 }
             ),
-        ),
-        "format_bytes_full": (
-            basic_rust / "format_util.h",
-            basic_rust / "format_util.rs",
-            frozenset({"rs_format_bytes", "rs_format_bytes_full"}),
         ),
         "path_base_predicates": (
             basic_rust / "path_util.h",
@@ -1099,11 +1063,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "nulstr_util.rs",
             frozenset({"rs_nulstr_get", "rs_strv_parse_nulstr_full"}),
         ),
-        "recovery_key": (
-            basic_rust / "recovery_key.h",
-            basic_rust / "recovery_key.rs",
-            frozenset({"rs_decode_modhex_char", "rs_normalize_recovery_key"}),
-        ),
     }
     partial_extra_sources = {
         "escape": (
@@ -1111,20 +1070,13 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "escape/core_abi.rs",
             basic_rust / "escape/full_abi.rs",
         ),
-        "misc_inline_abi": (
-            basic_rust / "devnum_util.rs",
-            basic_rust / "format_util.rs",
-        ),
+        "misc_inline_abi": (basic_rust / "devnum_util.rs",),
         "misc_validator_registered": (basic_rust / "process_util_str_tables.rs",),
         "string_mutation_registered": (basic_rust / "string_util_lines.rs",),
     }
     shadow_tests = {
         "af_list": (tests_extra / "test-af-list-rust.c",),
         "basic_validators": (tests_extra / "test-basic-validators-rust.c",),
-        "bus_type_util": (
-            tests_extra / "test-bus-type-util-rust.c",
-            tests_extra / "test-devt-compare-rust.c",
-        ),
         "capability_util": (tests_extra / "test-capability-util-rust.c",),
         "devnum_util": (tests_extra / "test-devnum-util-rust.c",),
         "dns_type_predicates": (tests_extra / "test-dns-type-predicates-rust.c",),
@@ -1174,15 +1126,13 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-parse-util-extra-rust.c",
             tests_extra / "test-parse-util-inline-rust.c",
             tests_extra / "test-parse-extra-rust.c",
+            tests_extra / "test-parse-range-rust.c",
         ),
         "utf8_abi": (tests_extra / "test-utf8-rust.c",),
-        "syslog_util": (tests_extra / "test-syslog-util-rust.c",),
         "exec_util": (tests_extra / "test-exec-util-rust.c",),
         "unit_dbus": (tests_extra / "test-unit-dbus-rust.c",),
         "ratelimit": (tests_extra / "test-ratelimit-rust.c",),
         "extract_word": (tests_extra / "test-extract-word-rust.c",),
-        "user_shell_util": (tests_extra / "test-user-shell-util-rust.c",),
-        "parse_util_fractional": (tests_extra / "test-user-shell-util-rust.c",),
         "strbuf": (tests_extra / "test-strbuf-rust.c",),
         "mempool": (tests_extra / "test-mempool-rust.c",),
         "pe_binary": (tests_extra / "test-pe-binary-rust.c",),
@@ -1208,10 +1158,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "image_name_is_valid": (tests_extra / "test-image-name-rust.c",),
         "alloc_util": (tests_extra / "test-alloc-util-rust.c",),
         "alloc_util_multiply": (tests_extra / "test-alloc-util-extra2-rust.c",),
-        "format_bytes_full": (
-            tests_extra / "test-format-util-rust.c",
-            tests_extra / "test-misc-inline-rust.c",
-        ),
         "path_base_predicates": (tests_extra / "test-path-util-rust.c",),
         "path_extra_abi": (tests_extra / "test-path-util-rust.c",),
         "escape": (
@@ -1289,7 +1235,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "string_table": (tests_extra / "test-string-table-rust.c",),
         "strxcpyx": (tests_extra / "test-strxcpyx-rust.c",),
         "nulstr_util": (tests_extra / "test-nulstr-util-rust.c",),
-        "recovery_key": (tests_extra / "test-recovery-key-rust.c",),
     }
     # These C-versus-Rust fixtures are reviewed by their dedicated static ABI
     # gates rather than by `check-basic-rust-ffi-abi.py`'s generic surface
@@ -1324,7 +1269,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/fileio.h",
             root / "src/basic/string-util.h",
         ),
-        "bus_type_util": (root / "src/libsystemd/sd-bus/bus-type.c", root / "src/basic/hash-funcs.c"),
         "capability_util": (root / "src/basic/capability-util.h",),
         "devnum_util": (root / "src/basic/devnum-util.c", root / "src/basic/devnum-util.h"),
         "dns_type_predicates": (root / "src/shared/dns-type.c", root / "src/shared/dns-type.h"),
@@ -1398,7 +1342,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/gunicode.c",
             root / "src/basic/gunicode.h",
         ),
-        "syslog_util": (root / "src/basic/syslog-util.c", root / "src/basic/syslog-util.h"),
         "exec_util": (
             root / "src/shared/exec-util.c",
             root / "src/shared/exec-util.h",
@@ -1410,16 +1353,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "extract_word": (
             root / "src/basic/extract-word.c",
             root / "src/basic/extract-word.h",
-        ),
-        "user_shell_util": (
-            root / "src/basic/user-util.c",
-            root / "src/basic/user-util.h",
-            root / "src/basic/parse-util.c",
-            root / "src/basic/parse-util.h",
-        ),
-        "parse_util_fractional": (
-            root / "src/basic/parse-util.c",
-            root / "src/basic/parse-util.h",
         ),
         "strbuf": (root / "src/basic/strbuf.c", root / "src/basic/strbuf.h"),
         "mempool": (
@@ -1497,10 +1430,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/alloc-util.h",
         ),
         "alloc_util_multiply": (root / "src/basic/alloc-util.h",),
-        "format_bytes_full": (
-            root / "src/basic/format-util.c",
-            root / "src/basic/format-util.h",
-        ),
         "path_base_predicates": (
             root / "src/basic/path-util.c",
             root / "src/basic/path-util.h",
@@ -1567,8 +1496,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "unit_install_predicates": (root / "src/shared/unit-file.h",),
         "misc_inline_abi": (
             root / "src/basic/devnum-util.h",
-            root / "src/basic/format-util.c",
-            root / "src/basic/format-util.h",
             root / "src/basic/hexdecoct.c",
             root / "src/basic/hexdecoct.h",
         ),
@@ -1662,10 +1589,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "nulstr_util": (
             root / "src/basic/nulstr-util.c",
             root / "src/basic/nulstr-util.h",
-        ),
-        "recovery_key": (
-            root / "src/shared/recovery-key.c",
-            root / "src/shared/recovery-key.h",
         ),
     }
     return BasicFfiReviewCatalog(

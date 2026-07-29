@@ -4,8 +4,11 @@
 //!
 //! Translated from `src/shared/serialize.c`.
 
+use crate::fdset::FdSetError;
 use crate::ffi::*;
 use std::io::{self, BufRead, Write};
+
+pub use crate::fdset::FdSet as FDSet;
 
 /// Maximum length for a serialized line (matches LONG_LINE_MAX in C).
 const LONG_LINE_MAX: usize = 1024 * 1024;
@@ -13,39 +16,14 @@ const LONG_LINE_MAX: usize = 1024 * 1024;
 /// Sentinel value representing an infinite/invalid microsecond timestamp.
 pub const USEC_INFINITY: u64 = u64::MAX;
 
-// ── FDSet ────────────────────────────────────────────────────────────────────
-
-/// A simple set of file descriptors, used to track FDs during serialization.
-#[derive(Debug, Default, Clone)]
-pub struct FDSet {
-    fds: Vec<i32>,
-}
-
-impl FDSet {
-    /// Create a new empty FDSet.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Add a duplicate reference to an fd. Returns the same fd value on success.
-    /// In the real implementation this would call `dup()`. Here we just track it.
-    pub fn put_dup(&mut self, fd: i32) -> io::Result<i32> {
-        if fd < 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid fd"));
+fn fdset_error_to_io(error: FdSetError) -> io::Error {
+    match error {
+        FdSetError::InvalidFd(fd) => {
+            io::Error::new(io::ErrorKind::InvalidInput, format!("invalid fd: {fd}"))
         }
-        self.fds.push(fd);
-        Ok(fd)
-    }
-
-    /// Remove and return an fd from the set by value.
-    pub fn remove(&mut self, fd: i32) -> io::Result<i32> {
-        if let Some(pos) = self.fds.iter().position(|&f| f == fd) {
-            Ok(self.fds.remove(pos))
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("fd {fd} not found in set"),
-            ))
+        FdSetError::Io(error) => error,
+        FdSetError::NotFound(fd) => {
+            io::Error::new(io::ErrorKind::NotFound, format!("fd {fd} not found in set"))
         }
     }
 }
@@ -145,7 +123,7 @@ pub fn serialize_fd<W: Write>(
     if fd < 0 {
         return Ok(false);
     }
-    let copy = fds.put_dup(fd)?;
+    let copy = fds.put_dup(fd).map_err(fdset_error_to_io)?;
     serialize_item_format(writer, key, format_args!("{copy}"))
 }
 
@@ -167,7 +145,7 @@ pub fn serialize_fd_many<W: Write>(
                 "negative fd in fd_array",
             ));
         }
-        values.push(fds.put_dup(*fd)?.to_string());
+        values.push(fds.put_dup(*fd).map_err(fdset_error_to_io)?.to_string());
     }
     serialize_item(writer, key, Some(&values.join(" ")))
 }
@@ -356,7 +334,7 @@ pub fn deserialize_fd(fds: &mut FDSet, value: &str) -> io::Result<i32> {
         .trim()
         .parse()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, format!("invalid fd: {value}")))?;
-    fds.remove(parsed)
+    fds.remove(parsed).map_err(fdset_error_to_io)
 }
 
 /// Deserialize multiple FDs from a space-separated value string.
@@ -468,6 +446,19 @@ pub fn serialize_item_tristate<W: Write>(
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::os::fd::AsRawFd;
+    use std::os::unix::net::UnixStream;
+
+    fn open_test_fd() -> UnixStream {
+        let (stream, peer) = UnixStream::pair().unwrap();
+        drop(peer);
+        stream
+    }
+
+    fn close_owned_fd(fd: i32) {
+        let mut cleanup = FDSet::new();
+        cleanup.put(fd).unwrap();
+    }
 
     #[test]
     fn source_is_embedded() {
@@ -624,9 +615,11 @@ mod tests {
 
     #[test]
     fn serialize_fd_many_negative_errors() {
+        let source = open_test_fd();
         let mut buf = Vec::new();
         let mut fds = FDSet::new();
-        assert!(serialize_fd_many(&mut buf, &mut fds, "fds", &[3, -1]).is_err());
+        assert!(serialize_fd_many(&mut buf, &mut fds, "fds", &[source.as_raw_fd(), -1]).is_err());
+        assert_eq!(fds.len(), 1);
     }
 
     #[test]
@@ -723,12 +716,18 @@ mod tests {
 
     #[test]
     fn fdset_put_dup_and_remove() {
+        let first = open_test_fd();
+        let second = open_test_fd();
         let mut fds = FDSet::new();
-        fds.put_dup(5).unwrap();
-        fds.put_dup(10).unwrap();
-        assert_eq!(fds.remove(5).unwrap(), 5);
-        assert!(fds.remove(5).is_err());
-        assert_eq!(fds.remove(10).unwrap(), 10);
+        let first_copy = fds.put_dup(first.as_raw_fd()).unwrap();
+        let second_copy = fds.put_dup(second.as_raw_fd()).unwrap();
+        assert_ne!(first_copy, first.as_raw_fd());
+        assert_ne!(second_copy, second.as_raw_fd());
+        assert_eq!(fds.remove(first_copy).unwrap(), first_copy);
+        assert!(fds.remove(first_copy).is_err());
+        assert_eq!(fds.remove(second_copy).unwrap(), second_copy);
+        close_owned_fd(first_copy);
+        close_owned_fd(second_copy);
     }
 
     #[test]

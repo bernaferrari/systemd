@@ -40,11 +40,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 9
     },
-    "src/basic/rust/bus_type_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
     "src/basic/rust/capability_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -134,11 +129,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
-    },
-    "src/basic/rust/format_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
     },
     "src/basic/rust/gpt_util.rs": {
       "missing_safety": 0,
@@ -280,7 +270,7 @@
         "123:1:unsafe fn mangle_base(s: *const c_char, base: &mut u32) -> *const c_char {",
         "165:1:unsafe fn parse_boolean_inner(v: *const c_char) -> i32 {"
       ],
-      "unsafe_sites": 224
+      "unsafe_sites": 232
     },
     "src/basic/rust/path_util.rs": {
       "missing_safety": 8,
@@ -330,11 +320,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 14
-    },
-    "src/basic/rust/recovery_key.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 8
     },
     "src/basic/rust/rlimit_util.rs": {
       "missing_safety": 0,
@@ -517,11 +502,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 18
     },
-    "src/basic/rust/syslog_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 18
-    },
     "src/basic/rust/time_util/arithmetic.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -580,11 +560,6 @@
         "1350:1:unsafe fn unit_name_from_path_simple("
       ],
       "unsafe_sites": 306
-    },
-    "src/basic/rust/user_shell_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 13
     },
     "src/basic/rust/user_util.rs": {
       "missing_safety": 0,
@@ -955,16 +930,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 11
     },
-    "src/shared/rust/data_fd_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 21
-    },
-    "src/shared/rust/dev_setup.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 20
-    },
     "src/shared/rust/device_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1138,16 +1103,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 15
     },
-    "src/shared/rust/plymouth_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/shared/rust/polkit_agent.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
     "src/shared/rust/pretty_print.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1167,11 +1122,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
-    },
-    "src/shared/rust/resize_fs.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 6
     },
     "src/shared/rust/rm_rf.rs": {
       "missing_safety": 48,
@@ -1396,7 +1346,7 @@
   },
   "totals": {
     "missing_safety": 222,
-    "unsafe_sites": 5094
+    "unsafe_sites": 5002
   },
   "version": 2,
   "window": 3
