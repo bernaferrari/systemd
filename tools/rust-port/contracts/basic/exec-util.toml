@@ -1,0 +1,99 @@
+schema = 1
+module = "exec_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["execute_strv"]
+
+[authority]
+c_headers = ["src/shared/exec-util.h", "src/shared/bootspec.h"]
+c_sources = ["src/shared/exec-util.c", "src/shared/bootspec.c"]
+rust_headers = ["src/basic/rust/exec_util.h"]
+rust_sources = ["src/basic/rust/exec_util.rs"]
+
+[[surface]]
+id = "exec-command-flags-renderer"
+c_symbols = ["exec_command_flags_to_string"]
+rust_symbols = ["rs_exec_command_flags_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-exec-util-rust.c"
+meson_target = "test-exec-util-rust"
+labels = ["exec-command-flags-renderer"]
+
+[[surface]]
+id = "exec-command-flags-parser"
+c_symbols = ["exec_command_flags_from_string"]
+rust_symbols = ["rs_exec_command_flags_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-exec-util-rust.c"
+meson_target = "test-exec-util-rust"
+labels = ["exec-command-flags-parser"]
+
+[[surface]]
+id = "exec-command-flags-from-strv"
+c_symbols = ["exec_command_flags_from_strv"]
+rust_symbols = ["rs_exec_command_flags_from_strv"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-exec-util-rust.c"
+meson_target = "test-exec-util-rust"
+labels = ["exec-command-flags-from-strv"]
+
+[[surface]]
+id = "exec-command-flags-to-strv"
+c_symbols = ["exec_command_flags_to_strv"]
+rust_symbols = ["rs_exec_command_flags_to_strv"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-exec-util-rust.c"
+meson_target = "test-exec-util-rust"
+labels = ["exec-command-flags-to-strv"]
+
+[[surface]]
+id = "exec-indent-embedded-newlines"
+c_symbols = ["indent_embedded_newlines"]
+rust_symbols = ["rs_indent_embedded_newlines"]
+coverage = "partial"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-exec-util-rust.c"
+meson_target = "test-exec-util-rust"
+labels = ["exec-indent-embedded-newlines"]

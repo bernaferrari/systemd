@@ -65,6 +65,9 @@ IOVEC_INCLUDE_TESTS = (
 )
 C_TYPES = {
     "CompareOperator": "i32",
+    "ColorMode": "i32",
+    "ExecCommandFlags": "i32",
+    "ExecCommandFlags *": "*muti32",
     "Compression": "i32",
     "CompareOperatorParseFlags": "i32",
     "ConditionType": "i32",
@@ -93,10 +96,12 @@ C_TYPES = {
     "char": "c_char",
     "char16_t": "u16",
     "char16_t *": "*mutu16",
+    "const char16_t *": "*constu16",
     "char32_t": "u32",
     "char32_t *": "*mutu32",
     "ssize_t": "isize",
     "char *": "*mutc_char",
+    "char*": "*mutc_char",
     "char * *": "*mut*mutc_char",
     "char * const *": "*const*mutc_char",
     "const char * const *": "*const*constc_char",
@@ -105,6 +110,7 @@ C_TYPES = {
     "char ***": "*mut*mut*mutc_char",
     "char **": "*mut*mutc_char",
     "const char *": "*constc_char",
+    "const char*": "*constc_char",
     "const sd_char *": "*constc_char",
     "const char **": "*mut*constc_char",
     "const char * *": "*mut*constc_char",
@@ -148,17 +154,22 @@ C_TYPES = {
     "nsec_t *": "*mutu64",
     "loadavg_t *": "*mutc_ulong",
     "uid_t *": "*mutu32",
+    "pid_t *": "*muti32",
     "uint8_t *": "*mutu8",
     "uint8_t*": "*mutu8",
     "uint16_t *": "*mutu16",
     "uint32_t *": "*mutu32",
     "uint64_t *": "*mutu64",
+    "int16_t *": "*muti16",
+    "int64_t *": "*muti64",
     "usec_t *": "*mutu64",
     "int32_t *": "*muti32",
     "int *": "*muti32",
     "unsigned *": "*mutu32",
     "unsigned long *": "*mutc_ulong",
     "long *": "*mutc_long",
+    "long long *": "*muti64",
+    "unsigned long long *": "*mutu64",
     "size_t *": "*mutusize",
     "size_t": "usize",
     "intmax_t": "i64",
@@ -171,6 +182,8 @@ C_TYPES = {
     "unsigned int": "u32",
     "unsigned long": "c_ulong",
     "long": "c_long",
+    "long long": "i64",
+    "unsigned long long": "u64",
     "uint8_t": "u8",
     "uint16_t": "u16",
     "uint32_t": "u32",
@@ -2251,7 +2264,7 @@ def declarations_match_c_authority(
             if c_name.endswith(suffix):
                 table = c_name.removesuffix(suffix)
                 if re.search(
-                    rf"\bDEFINE_STRING_TABLE_LOOKUP\(\s*{re.escape(table)}\s*,",
+                    rf"\bDEFINE_STRING_TABLE_LOOKUP(?:_WITH_BOOLEAN)?\(\s*{re.escape(table)}\s*,",
                     authority,
                 ):
                     break
@@ -3017,7 +3030,7 @@ def main() -> int:
                 if c_symbol.endswith(suffix):
                     table = c_symbol.removesuffix(suffix)
                     if re.search(
-                        rf"\bDEFINE_STRING_TABLE_LOOKUP\(\s*{re.escape(table)}\s*,",
+                        rf"\bDEFINE_STRING_TABLE_LOOKUP(?:_WITH_BOOLEAN)?\(\s*{re.escape(table)}\s*,",
                         authority,
                     ):
                         actual = (

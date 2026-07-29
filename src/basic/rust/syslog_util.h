@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.syslog-util; authority=src/basic/syslog-util.c,src/basic/syslog-util.h */
 #pragma once
 
 #include <stddef.h>

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: scope=basic.path-util; authority=src/basic/path-util.c,src/basic/path-util.h
+// PORT-SYNC: scope=basic.path-util; authority=src/basic/path-util.c,src/basic/path-util.h,src/basic/fd-util.c,src/basic/fd-util.h
 //
 // Path and filename validation/comparison utilities.
 
@@ -288,7 +288,8 @@ pub unsafe extern "C" fn rs_filename_is_valid(p: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_fdname_is_valid(s: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_fdname_is_valid(s: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -473,7 +474,8 @@ pub unsafe extern "C" fn rs_path_implies_directory(path: *const c_char) -> bool 
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_path_is_normalized(p: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_path_is_normalized(p: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -505,7 +507,8 @@ pub unsafe fn rs_path_is_normalized(p: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_path_is_absolute(p: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_path_is_absolute(p: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -642,7 +645,8 @@ pub unsafe extern "C" fn rs_is_device_path(path: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_valid_device_node_path(path: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_valid_device_node_path(path: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -674,7 +678,8 @@ pub unsafe fn rs_valid_device_node_path(path: *const c_char) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_valid_device_allow_pattern(path: *const c_char) -> bool {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_valid_device_allow_pattern(path: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -1739,7 +1744,8 @@ pub unsafe fn rs_path_extract_directory(path: *const c_char, ret: *mut *mut c_ch
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_file_in_same_dir(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_file_in_same_dir(
     path: *const c_char,
     filename: *const c_char,
     ret: *mut *mut c_char,

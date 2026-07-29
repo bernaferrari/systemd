@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.parse-util; authority=src/basic/parse-util.c,src/basic/parse-util.h */
 #pragma once
 
 #include <stdbool.h>

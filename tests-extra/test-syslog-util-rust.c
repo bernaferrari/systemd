@@ -1,4 +1,11 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: syslog-facility-parser */
+/* RUST-CONTRACT: syslog-facility-validator */
+/* RUST-CONTRACT: syslog-facility-renderer */
+/* RUST-CONTRACT: syslog-level-parser */
+/* RUST-CONTRACT: syslog-level-validator */
+/* RUST-CONTRACT: syslog-level-renderer */
+/* RUST-CONTRACT: syslog-priority-parser */
 /* Shadow test: C syslog-util vs Rust rs_syslog_util */
 
 #include <syslog.h>
@@ -43,6 +50,13 @@ TEST(log_facility_from_string_c_vs_rs) {
         ASSERT_EQ(log_facility_unshifted_from_string("23"), rs_log_facility_unshifted_from_string("23"));
         ASSERT_EQ(log_facility_unshifted_from_string("127"), rs_log_facility_unshifted_from_string("127"));
         ASSERT_EQ(log_facility_unshifted_from_string("128"), rs_log_facility_unshifted_from_string("128"));
+
+        /* The fallback is safe_atou(), not decimal-only parsing. */
+        ASSERT_EQ(log_facility_unshifted_from_string(" 15"), rs_log_facility_unshifted_from_string(" 15"));
+        ASSERT_EQ(log_facility_unshifted_from_string("+15"), rs_log_facility_unshifted_from_string("+15"));
+        ASSERT_EQ(log_facility_unshifted_from_string("0xf"), rs_log_facility_unshifted_from_string("0xf"));
+        ASSERT_EQ(log_facility_unshifted_from_string("0b1111"), rs_log_facility_unshifted_from_string("0b1111"));
+        ASSERT_EQ(log_facility_unshifted_from_string("0o17"), rs_log_facility_unshifted_from_string("0o17"));
 }
 
 /* ── log_facility_unshifted_to_string ─────────────────────────────────── */
@@ -100,6 +114,9 @@ TEST(log_level_from_string_c_vs_rs) {
         ASSERT_EQ(log_level_from_string("0"), rs_log_level_from_string("0"));
         ASSERT_EQ(log_level_from_string("7"), rs_log_level_from_string("7"));
         ASSERT_EQ(log_level_from_string("8"), rs_log_level_from_string("8"));
+        ASSERT_EQ(log_level_from_string("0x7"), rs_log_level_from_string("0x7"));
+        ASSERT_EQ(log_level_from_string("0b111"), rs_log_level_from_string("0b111"));
+        ASSERT_EQ(log_level_from_string("0o7"), rs_log_level_from_string("0o7"));
 }
 
 /* ── log_level_to_string ──────────────────────────────────────────────── */

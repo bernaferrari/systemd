@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/unit-def.c (string table subset + pure helpers)
+// PORT-SYNC: scope=basic.unit-def; authority=src/basic/unit-def.c,src/basic/unit-def.h
 //
 // Unit definition string tables and pure helper functions.
 
@@ -552,6 +552,13 @@ pub extern "C" fn rs_freezer_state_objective(value: i32) -> i32 {
 
 // ── D-Bus interface helpers ───────────────────────────────────────────────
 
+use std::ffi::CStr;
+use std::os::raw::c_char;
+use std::ptr;
+
+use crate::bus_label::{rs_bus_label_escape, rs_bus_label_unescape_n};
+use crate::ffi::{free, malloc, strlen};
+
 const UNIT_DBUS_INTERFACE_TABLE: &[&str] = &[
     "org.freedesktop.systemd1.Service",
     "org.freedesktop.systemd1.Mount",
@@ -572,6 +579,160 @@ pub fn unit_dbus_interface_from_type(t: UnitType) -> Option<&'static str> {
 }
 
 const UNIT_DBUS_PATH_PREFIX: &str = "/org/freedesktop/systemd1/unit/";
+const UNIT_DBUS_PATH_PREFIX_BYTES: &[u8] = b"/org/freedesktop/systemd1/unit/";
+
+// Keep this byte table separate from the ergonomic `&str` table above: C
+// callers receive pointers which must remain valid for the entire process and
+// which must be NUL-terminated. The ordering is the `UnitType` ABI ordering
+// from unit-def.h, rather than the designated-initializer ordering in C.
+const UNIT_DBUS_INTERFACE_CSTRS: [&[u8]; UnitType::COUNT] = [
+    b"org.freedesktop.systemd1.Service\0",
+    b"org.freedesktop.systemd1.Mount\0",
+    b"org.freedesktop.systemd1.Swap\0",
+    b"org.freedesktop.systemd1.Socket\0",
+    b"org.freedesktop.systemd1.Target\0",
+    b"org.freedesktop.systemd1.Device\0",
+    b"org.freedesktop.systemd1.Automount\0",
+    b"org.freedesktop.systemd1.Timer\0",
+    b"org.freedesktop.systemd1.Path\0",
+    b"org.freedesktop.systemd1.Slice\0",
+    b"org.freedesktop.systemd1.Scope\0",
+];
+
+/// C ABI mirror of `unit_dbus_path_from_name()`.
+///
+/// # Safety
+///
+/// `name` must be null or point to a live NUL-terminated byte string. A
+/// non-null result is a fresh process-C-allocator allocation owned by the C
+/// caller and must be released with `free(3)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_unit_dbus_path_from_name(name: *const c_char) -> *mut c_char {
+    if name.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: the entry-point contract supplies a live NUL-terminated name.
+    let escaped = unsafe { rs_bus_label_escape(name) };
+    if escaped.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: `rs_bus_label_escape` returned this live, NUL-terminated C
+    // allocation, whose ownership remains local until the cleanup below.
+    let escaped_len = unsafe { strlen(escaped) };
+    let Some(allocation_size) = UNIT_DBUS_PATH_PREFIX_BYTES
+        .len()
+        .checked_add(escaped_len)
+        .and_then(|size| size.checked_add(1))
+    else {
+        // SAFETY: `escaped` is the unique live C allocation returned above.
+        unsafe { free(escaped.cast()) };
+        return ptr::null_mut();
+    };
+
+    let output = malloc(allocation_size).cast::<c_char>();
+    if output.is_null() {
+        // SAFETY: `escaped` is the unique live C allocation returned above.
+        unsafe { free(escaped.cast()) };
+        return ptr::null_mut();
+    }
+
+    // SAFETY: `output` owns `allocation_size` bytes, which is exactly the
+    // prefix, escaped contents, and terminator. `escaped` is a distinct live
+    // C allocation with `escaped_len` readable payload bytes.
+    unsafe {
+        ptr::copy_nonoverlapping(
+            UNIT_DBUS_PATH_PREFIX_BYTES.as_ptr(),
+            output.cast::<u8>(),
+            UNIT_DBUS_PATH_PREFIX_BYTES.len(),
+        );
+        ptr::copy_nonoverlapping(
+            escaped.cast::<u8>(),
+            output.cast::<u8>().add(UNIT_DBUS_PATH_PREFIX_BYTES.len()),
+            escaped_len,
+        );
+        *output.cast::<u8>().add(allocation_size - 1) = 0;
+        free(escaped.cast());
+    }
+
+    output
+}
+
+/// C ABI mirror of `unit_name_from_dbus_path()`.
+///
+/// # Safety
+///
+/// `path` must be null or point to a live NUL-terminated byte string. `name`
+/// must be null or point to writable storage for one `char *`. On success the
+/// function publishes a process-C-allocator allocation in `*name`, owned by
+/// the C caller and released with `free(3)`; failures leave `*name` untouched.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_unit_name_from_dbus_path(
+    path: *const c_char,
+    name: *mut *mut c_char,
+) -> i32 {
+    if path.is_null() || name.is_null() {
+        return EINVAL;
+    }
+
+    // SAFETY: the entry-point contract supplies a live NUL-terminated path.
+    let path_bytes = unsafe { CStr::from_ptr(path) }.to_bytes();
+    if !path_bytes.starts_with(UNIT_DBUS_PATH_PREFIX_BYTES) {
+        return EINVAL;
+    }
+
+    // SAFETY: the exact prefix check above proves this offset remains within
+    // the live C string. The Rust bus-label port returns a C-owned allocation
+    // with the same `bus_label_unescape()` byte semantics as the C authority.
+    // SAFETY: the exact-prefix proof above makes this derived pointer valid,
+    // and `path` stays live and NUL-terminated for the delegated call.
+    let decoded =
+        unsafe { rs_bus_label_unescape_n(path.add(UNIT_DBUS_PATH_PREFIX_BYTES.len()), usize::MAX) };
+    if decoded.is_null() {
+        return -libc::ENOMEM;
+    }
+
+    // SAFETY: `name` is writable by the entry-point contract. Publish only
+    // after all fallible work succeeds, matching C's output-pointer behavior.
+    unsafe { *name = decoded };
+    0
+}
+
+/// C ABI mirror of `unit_dbus_interface_from_type()`.
+///
+/// Invalid `UnitType` values return null. Valid results are borrowed static
+/// NUL-terminated strings and must not be freed by the caller.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_unit_dbus_interface_from_type(t: i32) -> *const c_char {
+    let Ok(index) = usize::try_from(t) else {
+        return ptr::null();
+    };
+
+    UNIT_DBUS_INTERFACE_CSTRS
+        .get(index)
+        .map_or(ptr::null(), |value| value.as_ptr().cast::<c_char>())
+}
+
+/// C ABI mirror of `unit_dbus_interface_from_name()`.
+///
+/// # Safety
+///
+/// `name` must be null or point to a live NUL-terminated byte string. A
+/// non-null result is a borrowed static NUL-terminated string and must not be
+/// freed by the caller.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_unit_dbus_interface_from_name(name: *const c_char) -> *const c_char {
+    if name.is_null() {
+        return ptr::null();
+    }
+
+    // SAFETY: the entry-point contract supplies the C string required by the
+    // Rust unit-name port. Its result uses the UnitType integer ABI from
+    // unit-def.h; invalid names produce a negative errno and map to null.
+    let unit_type = unsafe { crate::unit_name::rs_unit_name_to_type(name) };
+    rs_unit_dbus_interface_from_type(unit_type)
+}
 
 pub fn unit_dbus_path_from_name(name: &str) -> String {
     let escaped = bus_label_escape(name);

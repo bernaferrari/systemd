@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/parse-util.c
+// PORT-SYNC: scope=basic.parse-util; authority=src/basic/parse-util.c,src/basic/parse-util.h
 //
 // Safe numeric parsing, boolean parsing, and size parsing.
 // Core safe_ato* family and parse_boolean used throughout systemd.
@@ -189,7 +189,8 @@ unsafe fn parse_boolean_inner(v: *const c_char) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_boolean(v: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_boolean(v: *const c_char) -> i32 {
     // SAFETY: this function forwards its C-string contract unchanged.
     unsafe { parse_boolean_inner(v) }
 }
@@ -286,7 +287,8 @@ pub(crate) unsafe fn safe_atou_full_inner(s: *const c_char, base: u32, ret_u: *m
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atou_full(s: *const c_char, base: u32, ret_u: *mut u32) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atou_full(s: *const c_char, base: u32, ret_u: *mut u32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { safe_atou_full_inner(s, base, ret_u) }
 }
@@ -300,7 +302,8 @@ pub unsafe fn rs_safe_atou_full(s: *const c_char, base: u32, ret_u: *mut u32) ->
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atou(s: *const c_char, ret_u: *mut u32) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atou(s: *const c_char, ret_u: *mut u32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { safe_atou_full_inner(s, 0, ret_u) }
 }
@@ -314,7 +317,13 @@ pub unsafe fn rs_safe_atou(s: *const c_char, ret_u: *mut u32) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atou_bounded(s: *const c_char, min: u32, max: u32, ret: *mut u32) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atou_bounded(
+    s: *const c_char,
+    min: u32,
+    max: u32,
+    ret: *mut u32,
+) -> i32 {
     let mut v: u32 = 0;
     // SAFETY: s is caller-validated and v is a live writable local.
     let r = unsafe { safe_atou_full_inner(s, 0, &mut v) };
@@ -342,7 +351,8 @@ pub unsafe fn rs_safe_atou_bounded(s: *const c_char, min: u32, max: u32, ret: *m
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atou8_full(s: *const c_char, base: u32, ret: *mut u8) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atou8_full(s: *const c_char, base: u32, ret: *mut u8) -> i32 {
     let mut u: u32 = 0;
     // SAFETY: s is caller-validated and u is a live writable local.
     let r = unsafe { safe_atou_full_inner(s, base, &mut u) };
@@ -368,7 +378,8 @@ pub unsafe fn rs_safe_atou8_full(s: *const c_char, base: u32, ret: *mut u8) -> i
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atou16_full(s: *const c_char, base: u32, ret: *mut u16) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atou16_full(s: *const c_char, base: u32, ret: *mut u16) -> i32 {
     let mut u: u32 = 0;
     // SAFETY: s is caller-validated and u is a live writable local.
     let r = unsafe { safe_atou_full_inner(s, base, &mut u) };
@@ -387,6 +398,8 @@ pub unsafe fn rs_safe_atou16_full(s: *const c_char, base: u32, ret: *mut u16) ->
 
 // ── safe_atoi ─────────────────────────────────────────────────────────────
 
+// SAFETY: callers pass either NULL (rejected) or a readable NUL-terminated C string;
+// a non-NULL output is writable for one i32 and is only published on success.
 unsafe fn safe_atoi_inner(s: *const c_char, ret_i: *mut i32) -> i32 {
     let mut x: *mut c_char = std::ptr::null_mut();
 
@@ -433,7 +446,8 @@ unsafe fn safe_atoi_inner(s: *const c_char, ret_i: *mut i32) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atoi(s: *const c_char, ret_i: *mut i32) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atoi(s: *const c_char, ret_i: *mut i32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { safe_atoi_inner(s, ret_i) }
 }
@@ -447,7 +461,8 @@ pub unsafe fn rs_safe_atoi(s: *const c_char, ret_i: *mut i32) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atoi16(s: *const c_char, ret: *mut i16) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atoi16(s: *const c_char, ret: *mut i16) -> i32 {
     let mut x: *mut c_char = std::ptr::null_mut();
 
     if s.is_null() {
@@ -534,7 +549,8 @@ pub(crate) unsafe fn safe_atolli_inner(s: *const c_char, ret_lli: *mut i64) -> i
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atolli(s: *const c_char, ret_lli: *mut i64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atolli(s: *const c_char, ret_lli: *mut i64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { safe_atolli_inner(s, ret_lli) }
 }
@@ -580,6 +596,7 @@ pub(crate) unsafe fn safe_atollu_full_inner(s: *const c_char, base: u32, ret_llu
     // evaluated after observing a leading non-NUL zero digit.
     if flags_set(base, SAFE_ATO_REFUSE_LEADING_ZERO)
         && (unsafe { *s } as u8) == b'0'
+        // SAFETY: a leading zero is non-NUL, so the next byte is within the C string.
         && unsafe { *s.add(1) } != 0
     {
         return Errno::EINVAL.to_neg_errno();
@@ -621,7 +638,12 @@ pub(crate) unsafe fn safe_atollu_full_inner(s: *const c_char, base: u32, ret_llu
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atollu_full(s: *const c_char, base: u32, ret_llu: *mut u64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atollu_full(
+    s: *const c_char,
+    base: u32,
+    ret_llu: *mut u64,
+) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { safe_atollu_full_inner(s, base, ret_llu) }
 }
@@ -635,7 +657,8 @@ pub unsafe fn rs_safe_atollu_full(s: *const c_char, base: u32, ret_llu: *mut u64
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atollu(s: *const c_char, ret_llu: *mut u64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atollu(s: *const c_char, ret_llu: *mut u64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { safe_atollu_full_inner(s, 0, ret_llu) }
 }
@@ -649,7 +672,8 @@ pub unsafe fn rs_safe_atollu(s: *const c_char, ret_llu: *mut u64) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atou64(s: *const c_char, ret_u: *mut u64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atou64(s: *const c_char, ret_u: *mut u64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { safe_atollu_full_inner(s, 0, ret_u) }
 }
@@ -663,7 +687,8 @@ pub unsafe fn rs_safe_atou64(s: *const c_char, ret_u: *mut u64) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atoi64(s: *const c_char, ret_i: *mut i64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atoi64(s: *const c_char, ret_i: *mut i64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { safe_atolli_inner(s, ret_i) }
 }
@@ -677,7 +702,8 @@ pub unsafe fn rs_safe_atoi64(s: *const c_char, ret_i: *mut i64) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atoux64(s: *const c_char, ret: *mut u64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atoux64(s: *const c_char, ret: *mut u64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { safe_atollu_full_inner(s, 16, ret) }
 }
@@ -766,7 +792,12 @@ pub unsafe extern "C" fn rs_safe_atoi32(s: *const c_char, ret_i: *mut i32) -> i3
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_safe_atolu_full(s: *const c_char, base: u32, ret_u: *mut c_ulong) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_safe_atolu_full(
+    s: *const c_char,
+    base: u32,
+    ret_u: *mut c_ulong,
+) -> i32 {
     let mut parsed = 0u64;
     // SAFETY: s follows this function's C-string contract and parsed is a
     // writable full-width intermediate.
@@ -950,6 +981,8 @@ const SI_TABLE: [SizeEntry; 8] = [
 ];
 
 /// Check if byte at `s` starts with the CStr suffix.
+// SAFETY: callers provide a readable NUL-terminated string at s; this helper
+// reads only through its terminator while comparing a Rust-owned suffix.
 unsafe fn startswith_cstr(s: *const c_char, suffix: &CStr) -> bool {
     let suffix_bytes = suffix.to_bytes();
     let mut i = 0;
@@ -969,6 +1002,8 @@ unsafe fn startswith_cstr(s: *const c_char, suffix: &CStr) -> bool {
     }
 }
 
+// SAFETY: t is NULL-checked before C-string reads; a non-NULL size points to
+// writable u64 storage and is updated only after successful parsing.
 unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
     if t.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -1087,7 +1122,8 @@ unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_size(t: *const c_char, base: u64, size: *mut u64) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_size(t: *const c_char, base: u64, size: *mut u64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { parse_size_inner(t, base, size) }
 }
@@ -1110,6 +1146,8 @@ pub fn parse_size(value: &str, base: u64) -> Result<u64, i32> {
 
 // ── Higher-level parsers ───────────────────────────────────────────────────
 
+// SAFETY: s is NULL-checked before C-string reads and non-NULL ret is writable
+// i32 storage; the result is published only after all validation succeeds.
 unsafe fn parse_pid_inner(s: *const c_char, ret: *mut i32) -> i32 {
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -1157,11 +1195,14 @@ unsafe fn parse_pid_inner(s: *const c_char, ret: *mut i32) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_pid(s: *const c_char, ret: *mut i32) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_pid(s: *const c_char, ret: *mut i32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { parse_pid_inner(s, ret) }
 }
 
+// SAFETY: s is NULL-checked before C-string reads and non-NULL ret is writable
+// u32 storage; the result is published only after successful validation.
 unsafe fn parse_mode_inner(s: *const c_char, ret: *mut u32) -> i32 {
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -1197,11 +1238,13 @@ unsafe fn parse_mode_inner(s: *const c_char, ret: *mut u32) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_mode(s: *const c_char, ret: *mut u32) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_mode(s: *const c_char, ret: *mut u32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { parse_mode_inner(s, ret) }
 }
 
+// SAFETY: s is NULL-checked and otherwise denotes a readable NUL-terminated C string.
 unsafe fn parse_ifindex_inner(s: *const c_char) -> i32 {
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -1231,11 +1274,13 @@ unsafe fn parse_ifindex_inner(s: *const c_char) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_ifindex(s: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_ifindex(s: *const c_char) -> i32 {
     // SAFETY: this function forwards its C-string contract unchanged.
     unsafe { parse_ifindex_inner(s) }
 }
 
+// SAFETY: s is NULL-checked and otherwise denotes a readable NUL-terminated C string.
 unsafe fn parse_fd_inner(s: *const c_char) -> i32 {
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -1265,11 +1310,13 @@ unsafe fn parse_fd_inner(s: *const c_char) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_fd(s: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_fd(s: *const c_char) -> i32 {
     // SAFETY: this function forwards its C-string contract unchanged.
     unsafe { parse_fd_inner(s) }
 }
 
+// SAFETY: s is NULL-checked and otherwise denotes a readable NUL-terminated C string.
 unsafe fn parse_errno_inner(s: *const c_char) -> i32 {
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -1307,11 +1354,14 @@ unsafe fn parse_errno_inner(s: *const c_char) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_errno(s: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_errno(s: *const c_char) -> i32 {
     // SAFETY: this function forwards its C-string contract unchanged.
     unsafe { parse_errno_inner(s) }
 }
 
+// SAFETY: s is NULL-checked before C-string reads and non-NULL ret is writable
+// i32 storage; the result is published only after range validation.
 unsafe fn parse_nice_inner(s: *const c_char, ret: *mut i32) -> i32 {
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -1348,7 +1398,8 @@ unsafe fn parse_nice_inner(s: *const c_char, ret: *mut i32) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_nice(s: *const c_char, ret: *mut i32) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_nice(s: *const c_char, ret: *mut i32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { parse_nice_inner(s, ret) }
 }
@@ -1359,6 +1410,8 @@ fn rs_oom_score_adjust_is_valid(oa: i32) -> bool {
     oom_score_adjust_is_valid_rs(oa)
 }
 
+// SAFETY: s and ret are NULL-checked; s is a readable C string and ret is
+// writable i32 storage, published only after all parsing succeeds.
 unsafe fn parse_oom_score_adjust_inner(s: *const c_char, ret: *mut i32) -> i32 {
     if s.is_null() || ret.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -1391,6 +1444,8 @@ pub unsafe extern "C" fn rs_parse_oom_score_adjust(s: *const c_char, ret: *mut i
     unsafe { parse_oom_score_adjust_inner(s, ret) }
 }
 
+// SAFETY: s is NULL-checked before C-string reads and non-NULL ret is writable
+// u16 storage; the parsed port is published only on success.
 unsafe fn parse_ip_port_inner(s: *const c_char, ret: *mut u16) -> i32 {
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -1424,7 +1479,8 @@ unsafe fn parse_ip_port_inner(s: *const c_char, ret: *mut u16) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_ip_port(s: *const c_char, ret: *mut u16) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_ip_port(s: *const c_char, ret: *mut u16) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
     unsafe { parse_ip_port_inner(s, ret) }
 }
@@ -1441,7 +1497,8 @@ pub unsafe fn rs_parse_ip_port(s: *const c_char, ret: *mut u16) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_parse_range(t: *const c_char, lower: *mut u32, upper: *mut u32) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_parse_range(t: *const c_char, lower: *mut u32, upper: *mut u32) -> i32 {
     if lower.is_null() || upper.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
@@ -1505,6 +1562,8 @@ pub unsafe fn rs_parse_range(t: *const c_char, lower: *mut u32, upper: *mut u32)
 
 // ── parse_ip_port_range ─────────────────────────────────────────────────
 
+// SAFETY: s is NULL-checked before C-string reads; any non-NULL output points
+// to writable u16 storage and is not updated until the full range is valid.
 unsafe fn parse_ip_port_range_inner(
     s: *const c_char,
     low: *mut u16,

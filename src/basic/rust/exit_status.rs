@@ -198,6 +198,35 @@ pub fn exit_status_from_string(s: &str) -> Result<i32, ExitStatusFromStringError
         .map_err(|_| ExitStatusFromStringError::Invalid)
 }
 
+/// Parse a symbolic or numeric exit status through the C-compatible ABI.
+///
+/// # Safety
+/// `s` must be null or point to a readable NUL-terminated C string for the
+/// duration of this call. A null input fails closed with `-EINVAL`, matching
+/// the numeric parser reached by the C implementation after no symbolic name
+/// matches.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_exit_status_from_string(s: *const libc::c_char) -> libc::c_int {
+    // SAFETY: the entry-point contract covers the C-string traversal below;
+    // `rs_safe_atou8` has the same null and writable-output requirements.
+    unsafe {
+        if !s.is_null() {
+            let value = CStr::from_ptr(s);
+            for code in 0u16..=u8::MAX as u16 {
+                if let Some((name, _)) = exit_status_mapping_raw(code as u8)
+                    && value == name
+                {
+                    return i32::from(code as u8);
+                }
+            }
+        }
+
+        let mut value = 0u8;
+        let r = crate::parse_util::rs_safe_atou8(s, &mut value);
+        if r < 0 { r } else { i32::from(value) }
+    }
+}
+
 pub fn secure_bit_to_string(bit: i32) -> Option<&'static str> {
     secure_bit_to_c_string(bit).map(|name| {
         name.to_str()

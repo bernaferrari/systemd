@@ -75,21 +75,54 @@ sync_status = "needs_review"
 notes = "2026-07-27 source audit: not a completed C port. Rust has no C ABI exports, while the C header exposes xbsearch_r, bsearch_safe_internal, qsort_safe, qsort_r_safe, cmp_int, cmp_uint16, and cmp_unsigned. The safe generic API has no raw callback/layout/NULL contract; cmp_unsigned is absent; and qsort_r_safe uses a stable insertion algorithm rather than C qsort_r callback behavior. Re-establish an exact C facade and differential coverage before an anchored completion claim."
 
 [utf8]
-c_file = "src/basic/utf8.c"
-rust_file = "src/basic/rust/utf8.rs"
+c_paths = [
+    "src/basic/utf8.c",
+    "src/basic/utf8.h",
+    "src/basic/gunicode.c",
+    "src/basic/gunicode.h",
+]
+rust_paths = [
+    "src/basic/rust/utf8.rs",
+    "src/basic/rust/utf8.h",
+]
+scope = "basic.utf8"
+rust_scope_paths = ["src/basic/rust/utf8.rs"]
+rust_interface_paths = ["src/basic/rust/utf8.h"]
+contract_file = "tools/rust-port/contracts/basic/utf8.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/utf8.c", rust_paths = ["src/basic/rust/utf8.rs", "src/basic/rust/utf8.h"] },
+    { kind = "direct", path = "src/basic/utf8.h", rust_paths = ["src/basic/rust/utf8.rs", "src/basic/rust/utf8.h"] },
+    { kind = "direct", path = "src/basic/gunicode.c", rust_paths = ["src/basic/rust/utf8.rs", "src/basic/rust/utf8.h"] },
+    { kind = "direct", path = "src/basic/gunicode.h", rust_paths = ["src/basic/rust/utf8.rs", "src/basic/rust/utf8.h"] },
+]
+test_file = "tests-extra/test-utf8-rust.c"
 status = "in-progress"
 tier = 1
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: UTF-8 decoding, escaping, console-width, and C-string behavior has no complete current behavior review or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+symbols = 19
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/utf8.c" = "0fccc4711cb9eb8e3817eff421e41b2f2f951be3", "src/basic/utf8.h" = "fde72a0d5422c9800125484ac619decf7ac93ffb", "src/basic/gunicode.c" = "7c33a7c87251a5fdac6bcc5ed90d7ea4a7d094b7", "src/basic/gunicode.h" = "9bba03ba30b9a120ec9b7dddea6959a356482654" }
+last_reviewed_rust_blobs = { "src/basic/rust/utf8.rs" = "cdec824ab2ad55f49df6e5681d527cfde50a8d68", "src/basic/rust/utf8.h" = "fc2ba0b4f1c054aabef5cfb54d07bd69c75bb3a9" }
+notes = "Reviewed static UTF-8 ABI slice 2026-07-29; no build/tests/VM. Nineteen C facades preserve raw byte traversal, C allocator ownership, UTF-16 little-endian layout, output publication, invalid-byte escaping, and the exact gunicode width table. Remaining C APIs and all runtime parity are unclaimed; C remains production authority."
 
 [ansi-color]
-c_file = "src/basic/ansi-color.c"
-rust_file = "src/basic/rust/ansi_color.rs"
-header_file = "src/basic/ansi-color.h"
+c_paths = ["src/basic/ansi-color.c", "src/basic/ansi-color.h"]
+rust_paths = ["src/basic/rust/ansi_color.rs", "src/basic/rust/ansi_color.h"]
+scope = "basic.ansi-color"
+rust_scope_paths = ["src/basic/rust/ansi_color.rs"]
+rust_interface_paths = ["src/basic/rust/ansi_color.h"]
+contract_file = "tools/rust-port/contracts/basic/ansi-color.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/ansi-color.c", rust_paths = ["src/basic/rust/ansi_color.rs", "src/basic/rust/ansi_color.h"] },
+    { kind = "direct", path = "src/basic/ansi-color.h", rust_paths = ["src/basic/rust/ansi_color.rs", "src/basic/rust/ansi_color.h"] },
+]
+test_file = "tests-extra/test-ansi-color-rust.c"
 status = "in-progress"
 tier = 1
-sync_status = "needs_review"
-notes = "2026-07-27 source audit: no Rust C ABI exports or reviewed C fixture/header surface exists. Rust omits C's cached color/underline state and reset_ansi_feature_caches(), PID1-specific terminal branch, and full systemd boolean grammar (y/t/n/f aliases). It must gain an audited environment/runtime boundary and exact C ABI before it can be anchored."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/ansi-color.c" = "36cdca727c93db3eb39aa5060ab3b34560f49d35", "src/basic/ansi-color.h" = "25a170aa653d0847a5e993ec32a94680f035fa75" }
+last_reviewed_rust_blobs = { "src/basic/rust/ansi_color.rs" = "9617cbcc3fcee89c4e89d4f2a4f0c9af311f0cdb", "src/basic/rust/ansi_color.h" = "397a131205b32abbee2e6cdfe1fd34684efc5e56" }
+notes = "Reviewed static ANSI color ABI slice 2026-07-29; no build/tests/VM. Four C facades preserve the generated color table, complete case-insensitive boolean grammar, SYSTEMD_COLORS parsing, and SGR byte validation. Cached TTY/PID color selection and underline state remain explicitly C-only; runtime parity is unclaimed."
 
 [glyph-util]
 c_paths = [
@@ -152,13 +185,24 @@ last_reviewed_rust_blobs = { "src/basic/rust/string_table.rs" = "46d97e09b024dd5
 notes = "Reviewed static generic string-table ABI slice 2026-07-28; no build/tests/VM. Five exact facades preserve borrowed table strings, opaque C-string matching, C boolean and safe_atou fallbacks, libc allocation, and transactional output publication. Runtime differential parity remains unclaimed; C remains production authority."
 
 [parse-util]
-c_file = "src/basic/parse-util.c"
-rust_file = "src/basic/rust/parse_util.rs"
-header_file = "src/basic/parse-util.h"
+c_paths = ["src/basic/parse-util.c", "src/basic/parse-util.h"]
+rust_paths = ["src/basic/rust/parse_util.rs", "src/basic/rust/parse_util.h"]
+scope = "basic.parse-util"
+rust_scope_paths = ["src/basic/rust/parse_util.rs"]
+rust_interface_paths = ["src/basic/rust/parse_util.h"]
+contract_file = "tools/rust-port/contracts/basic/parse-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/parse-util.c", rust_paths = ["src/basic/rust/parse_util.rs", "src/basic/rust/parse_util.h"] },
+    { kind = "direct", path = "src/basic/parse-util.h", rust_paths = ["src/basic/rust/parse_util.rs", "src/basic/rust/parse_util.h"] },
+]
+test_file = "tests-extra/test-parse-util-rust.c"
 status = "in-progress"
 tier = 2
-sync_status = "needs_review"
-notes = "Static audit 2026-07-27; no build/tests/VM. Sixteen additional parse/header-inline/time formatting facades now have explicit exact extern-C definitions, canonical header declarations, current C authority and direct registered fixture calls. Target C long/unsigned long/size_t widths, transactional output publication, loadavg wrapping arithmetic, and first-dot/empty-part grammar were reviewed. Unreviewed historical declarations in rust/parse_util.h remain unclaimed; runtime and cross-target differential execution remain P2."
+symbols = 24
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
+last_reviewed_rust_blobs = { "src/basic/rust/parse_util.rs" = "96c7795e4357f2aa3bbcf9284bc6072b84d8430a", "src/basic/rust/parse_util.h" = "4cd5b45632c538527caa7ae2d2d86bc3b2d0fb3a" }
+notes = "Reviewed static parse ABI slice 2026-07-29; no build/tests/VM. Twenty-four C parser facades preserve opaque C-string inputs, target-width integer parsing, range checks, negative-errno errors, and success-only output publication. Header-inline/time formatting helpers and runtime/cross-target differential evidence remain P2."
 
 [time-util]
 c_file = "src/basic/time-util.c"
@@ -552,6 +596,8 @@ notes = "3 FFI exports: rs_sha256_is_valid, rs_parse_sha256, rs_hmac_sha256. Cal
 c_paths = [
     "src/basic/path-util.c",
     "src/basic/path-util.h",
+    "src/basic/fd-util.c",
+    "src/basic/fd-util.h",
 ]
 rust_paths = [
     "src/basic/rust/path_util.rs",
@@ -568,15 +614,17 @@ contract_file = "tools/rust-port/contracts/basic/path-util.toml"
 c_provenance_edges = [
     { kind = "direct", path = "src/basic/path-util.c", rust_paths = ["src/basic/rust/path_util.rs", "src/basic/rust/path_util/byte_abi.rs", "src/basic/rust/path_util.h"] },
     { kind = "direct", path = "src/basic/path-util.h", rust_paths = ["src/basic/rust/path_util.rs", "src/basic/rust/path_util/byte_abi.rs", "src/basic/rust/path_util.h"] },
+    { kind = "direct", path = "src/basic/fd-util.c", rust_paths = ["src/basic/rust/path_util.rs", "src/basic/rust/path_util.h"] },
+    { kind = "direct", path = "src/basic/fd-util.h", rust_paths = ["src/basic/rust/path_util.rs", "src/basic/rust/path_util.h"] },
 ]
 test_file = "tests-extra/test-path-funcs-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 31
+symbols = 37
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44" }
-last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "6d4b77bfdd9b9c20ee32a5e61ff86d7e1b9f0cca", "src/basic/rust/path_util/byte_abi.rs" = "8adae62fb6f2e47b83b782d9af42ca12f81e2c06", "src/basic/rust/path_util.h" = "e06e6e62f9334cd4bad35eaea18ce2810a80218e" }
-notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Thirty-one pure path byte, predicate, and is_device_path facades are covered by eighteen machine-checked contracts with exact ABI, opaque C-string bytes, NULL/empty/non-UTF-8 cases, borrowed-interior offsets, in-place simplification, libc-owned outputs, and success-only publication. Filesystem I/O path APIs, remaining unexported validators, and skip_dev_prefix (header_inline ownership) remain excluded. Partial provenance with static-only evidence, not runtime parity."
+last_reviewed_upstream_blobs = { "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5" }
+last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "07f7020b1b0460da17a4a41eb170e01b220dd08a", "src/basic/rust/path_util/byte_abi.rs" = "8adae62fb6f2e47b83b782d9af42ca12f81e2c06", "src/basic/rust/path_util.h" = "6c203f60db89a99ba099093e068ad1899b726743" }
+notes = "Reviewed static behavior slice 2026-07-29; no build/tests/VM. Thirty-seven pure path byte, predicate, validation, and allocation facades are covered by machine-checked contracts with exact ABI, opaque C-string bytes, borrowed-interior offsets, allocator ownership, and success-only publication. Filesystem I/O APIs, remaining validators, and skip_dev_prefix remain excluded. Partial provenance with static-only evidence, not runtime parity."
 
 [bus-label]
 c_paths = [
@@ -750,11 +798,24 @@ tier = 2
 notes = "4 shadow tests pass. 9 FFI exports: rs_prioq_new, rs_prioq_free, rs_prioq_put, rs_prioq_remove, rs_prioq_reshuffle, rs_prioq_peek_by_index, rs_prioq_pop, rs_prioq_size, rs_prioq_isempty. Min-heap with C comparator callback."
 
 [syslog-util]
-c_file = "src/basic/syslog-util.c"
-rust_file = "src/basic/rust/syslog_util.rs"
+c_paths = ["src/basic/syslog-util.c", "src/basic/syslog-util.h"]
+rust_paths = ["src/basic/rust/syslog_util.rs", "src/basic/rust/syslog_util.h"]
+scope = "basic.syslog-util"
+rust_scope_paths = ["src/basic/rust/syslog_util.rs"]
+rust_interface_paths = ["src/basic/rust/syslog_util.h"]
+contract_file = "tools/rust-port/contracts/basic/syslog-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/syslog-util.c", rust_paths = ["src/basic/rust/syslog_util.rs", "src/basic/rust/syslog_util.h"] },
+    { kind = "direct", path = "src/basic/syslog-util.h", rust_paths = ["src/basic/rust/syslog_util.rs", "src/basic/rust/syslog_util.h"] },
+]
+test_file = "tests-extra/test-syslog-util-rust.c"
 status = "in-progress"
 tier = 1
-notes = "7 shadow tests pass. 7 FFI exports: rs_syslog_parse_priority, rs_log_facility_unshifted_from_string, rs_log_facility_unshifted_to_string_alloc, rs_log_facility_unshifted_is_valid, rs_log_level_from_string, rs_log_level_to_string_alloc, rs_log_level_is_valid. Skipped: log_namespace_name_valid (depends on C filename_is_valid, unit_instance_is_valid, string_is_safe)."
+symbols = 7
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/syslog-util.c" = "bd1bb65282332a17a01d2ea9836e04ca2768f19e", "src/basic/syslog-util.h" = "5a9c1f64676f794ebb31077b1e1e3444b3d22ccc" }
+last_reviewed_rust_blobs = { "src/basic/rust/syslog_util.rs" = "177199e1cfb62bbfde3ac6edfed8cae872c79b87", "src/basic/rust/syslog_util.h" = "0b4350a92ce99a8cde9c284ab4746a3e1477739d" }
+notes = "Reviewed static syslog ABI slice 2026-07-29; no build/tests/VM. Seven C facades preserve generated facility/level tables, C allocator ownership, validation, and priority parsing. Namespace validation remains C-only; runtime parity remains P2."
 
 [signal-util]
 c_paths = [
@@ -949,11 +1010,24 @@ last_reviewed_rust_blobs = { "src/basic/rust/log_target.rs" = "b49ba51e63a28b9bb
 notes = "Reviewed static log-target ABI slice 2026-07-28; no build/tests/VM. Two facades preserve the nine-entry C table, static borrowed output, raw C-string matching, and NULL/-EINVAL parsing behavior. Logging state, output, formatting, and environment handling remain C-only. C remains the production authority; runtime parity is unclaimed."
 
 [unit-def]
-c_file = "src/basic/unit-def.c"
-rust_file = "src/basic/rust/unit_def.rs"
+c_paths = ["src/basic/unit-def.c", "src/basic/unit-def.h"]
+rust_paths = ["src/basic/rust/unit_def.rs", "src/basic/rust/unit_def.h"]
+scope = "basic.unit-def"
+rust_scope_paths = ["src/basic/rust/unit_def.rs"]
+rust_interface_paths = ["src/basic/rust/unit_def.h"]
+contract_file = "tools/rust-port/contracts/basic/unit-def.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/unit-def.c", rust_paths = ["src/basic/rust/unit_def.rs", "src/basic/rust/unit_def.h"] },
+    { kind = "direct", path = "src/basic/unit-def.h", rust_paths = ["src/basic/rust/unit_def.rs", "src/basic/rust/unit_def.h"] },
+]
+test_file = "tests-extra/test-unit-dbus-rust.c"
 status = "in-progress"
 tier = 1
-notes = "Registered C comparison test exhaustively covers all 20 unit-def string tables, their reverse lookups, and invalid/NULL boundaries. 42 explicit FFI exports: 20 table pairs plus freezer_state_finish/objective. ABI tables are static NUL-backed bytes; inbound strings are byte-exact and NULL-safe. The four D-Bus helpers remain intentionally unbacked because their path/name functions return C-owned allocations and require a separately audited allocator boundary."
+symbols = 4
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/unit-def.c" = "57a67af163e31c9f42b2017f54d135ebbf576233", "src/basic/unit-def.h" = "9192d8c4a530f6292ed2dd953be1cdd0500a535b" }
+last_reviewed_rust_blobs = { "src/basic/rust/unit_def.rs" = "c33faa8ecf7eeae204c8f1199a4539b993385588", "src/basic/rust/unit_def.h" = "539e71f2aacf2caf4ea495fadcdb0a240be763c1" }
+notes = "Reviewed static unit D-Bus ABI slice 2026-07-29; no build/tests/VM. Four facades preserve raw-byte escaping, C-owned path/name outputs with deferred publication, and static interface strings. The existing table facades remain separately tracked; runtime parity remains P2."
 
 [cgroup-util-str-tables]
 c_file = "src/basic/cgroup-util.c"
@@ -1516,14 +1590,25 @@ notes = "Three errno name/string exports, three errno-return helpers, and 26 cla
 
 [exec_util]
 c_paths = ["src/shared/exec-util.c", "src/shared/exec-util.h", "src/shared/bootspec.c", "src/shared/bootspec.h"]
-rust_file = "src/basic/rust/exec_util.rs"
-header_file = "src/shared/exec-util.h"
-test_file = "src/test/test-exec-util.c"
+rust_paths = ["src/basic/rust/exec_util.rs", "src/basic/rust/exec_util.h"]
+scope = "basic.exec-util"
+rust_scope_paths = ["src/basic/rust/exec_util.rs"]
+rust_interface_paths = ["src/basic/rust/exec_util.h"]
+contract_file = "tools/rust-port/contracts/basic/exec-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/exec-util.c", rust_paths = ["src/basic/rust/exec_util.rs", "src/basic/rust/exec_util.h"] },
+    { kind = "direct", path = "src/shared/exec-util.h", rust_paths = ["src/basic/rust/exec_util.rs", "src/basic/rust/exec_util.h"] },
+    { kind = "direct", path = "src/shared/bootspec.c", rust_paths = ["src/basic/rust/exec_util.rs", "src/basic/rust/exec_util.h"] },
+    { kind = "direct", path = "src/shared/bootspec.h", rust_paths = ["src/basic/rust/exec_util.rs", "src/basic/rust/exec_util.h"] },
+]
+test_file = "tests-extra/test-exec-util-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 6
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit maps command-flag conversions and embedded-newline indentation to current shared exec/bootspec authorities; behavioral completion remains unclaimed."
+symbols = 5
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/exec-util.c" = "420803c77d43d4b846c92a6b6e709204d471dcda", "src/shared/exec-util.h" = "11b01f321f7453c1e0e00a417d19eb1e2b93b75e", "src/shared/bootspec.c" = "17a3b826d88054d6237b3301cfecd8a1f51bf3b1", "src/shared/bootspec.h" = "3f62726b25d803640325524fa58e01f6836dfc72" }
+last_reviewed_rust_blobs = { "src/basic/rust/exec_util.rs" = "2a0c25393ab541963291202ab8d1d93d8afefb26", "src/basic/rust/exec_util.h" = "dc2f0f101fc6a028d127605b30a783301ffdba80" }
+notes = "Reviewed static command-flag ABI slice 2026-07-29; no build/tests/VM. Five facades preserve shared exec/bootspec flag parsing, C allocation, quoting, and embedded-newline indentation. Process execution remains C-only; runtime parity remains P2."
 
 [exit_status]
 c_paths = [
@@ -1549,11 +1634,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-exit-status-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 4
+symbols = 5
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/exit-status.c" = "b40664d204ce207221836c981ec35cb07ae18ed0", "src/shared/exit-status.h" = "5a880d466406b1d2714e50d78ffebd5884be112b", "src/shared/securebits-util.c" = "bd682e6cbe9c336a02fa98693cfba3d2081875e2", "src/shared/securebits-util.h" = "cacae7347d7044a56ac7c655e817ffd280074135" }
-last_reviewed_rust_blobs = { "src/basic/rust/exit_status.rs" = "c18a0f21c6b150933cc8fd7b5c9c94db9a01bdf5", "src/basic/rust/exit_status.h" = "241fe777769a4d0f225283166ecdce23a30eacd0" }
-notes = "Reviewed static exit-status ABI slice 2026-07-28; no build/tests/VM. Four facades preserve status class-mask lookup, borrowed static names, securebit assertion behavior, and securebit mask validation. Parsing and Bitmap-backed status-set ownership stay explicitly C-only. C remains production authority; runtime parity is unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/exit_status.rs" = "1ab38cf115675343de67e06ec3d92894d4c25751", "src/basic/rust/exit_status.h" = "241fe777769a4d0f225283166ecdce23a30eacd0" }
+notes = "Reviewed static exit-status ABI slice 2026-07-29; no build/tests/VM. Five facades preserve status class-mask lookup, status-name parsing, borrowed static names, securebit assertion behavior, and securebit mask validation. Bitmap-backed status-set ownership stays C-only. C remains production authority; runtime parity is unclaimed."
 
 [file_classify]
 c_paths = [

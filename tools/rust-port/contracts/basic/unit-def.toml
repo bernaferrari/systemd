@@ -1,0 +1,84 @@
+schema = 1
+module = "unit-def"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["unit_type_to_string"]
+
+[authority]
+c_headers = ["src/basic/unit-def.h"]
+c_sources = ["src/basic/unit-def.c"]
+rust_headers = ["src/basic/rust/unit_def.h"]
+rust_sources = ["src/basic/rust/unit_def.rs"]
+
+[[surface]]
+id = "unit-dbus-path"
+c_symbols = ["unit_dbus_path_from_name"]
+rust_symbols = ["rs_unit_dbus_path_from_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-unit-dbus-rust.c"
+meson_target = "test-unit-dbus-rust"
+labels = ["unit-dbus-path"]
+
+[[surface]]
+id = "unit-dbus-name"
+c_symbols = ["unit_name_from_dbus_path"]
+rust_symbols = ["rs_unit_name_from_dbus_path"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "name"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-unit-dbus-rust.c"
+meson_target = "test-unit-dbus-rust"
+labels = ["unit-dbus-name"]
+
+[[surface]]
+id = "unit-dbus-interface"
+c_symbols = ["unit_dbus_interface_from_type", "unit_dbus_interface_from_name"]
+rust_symbols = ["rs_unit_dbus_interface_from_type", "rs_unit_dbus_interface_from_name"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["unit_dbus_interface_from_type", "unit_dbus_interface_from_name"]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-unit-dbus-rust.c"
+meson_target = "test-unit-dbus-rust"
+labels = ["unit-dbus-interface"]

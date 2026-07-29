@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-/* PORT-SYNC: scope=basic.path-util; authority=src/basic/path-util.c,src/basic/path-util.h */
+/* PORT-SYNC: scope=basic.path-util; authority=src/basic/path-util.c,src/basic/path-util.h,src/basic/fd-util.c,src/basic/fd-util.h */
 #pragma once
 
 /* Rust FFI declarations for path_util module. */

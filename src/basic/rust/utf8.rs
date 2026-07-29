@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.0-or-later
 //
-// PORT-SYNC: src/basic/utf8.c
+// PORT-SYNC: scope=basic.utf8; authority=src/basic/utf8.c,src/basic/utf8.h,src/basic/gunicode.c,src/basic/gunicode.h
 //
 // UTF-8 validation, encoding, decoding, and utility functions.
 // Based on GLIB gutf8.c (Copyright 1999 Tom Tromey, 2000 Red Hat).
@@ -12,10 +12,11 @@ use std::os::raw::c_void;
 use std::ptr;
 
 use crate::ffi::{Errno, SIZE_MAX};
+use crate::gunicode::unichar_iswide;
 
 // ── C dependencies (called via FFI) ──────────────────────────────────────
 
-use crate::ffi::{free, malloc};
+use crate::ffi::{free, malloc, realloc};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -54,7 +55,11 @@ fn utf8_encoded_expected_len(c: u8) -> usize {
     0
 }
 
-/// Decode one unicode char from UTF-8. Returns byte count or -EINVAL.
+/// Decode one unicode char from UTF-8. Returns byte count or `-EINVAL`.
+///
+/// # Safety
+/// `str` must point to a readable sequence at least as long as indicated by
+/// its leading byte, and `ret_unichar` must point to writable `u32` storage.
 unsafe fn utf8_encoded_to_unichar_inner(str: *const c_char, ret_unichar: *mut u32) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -109,6 +114,9 @@ fn utf8_unichar_to_encoded_len(unichar: u32) -> usize {
 
 /// Encode single UCS-4 character as UTF-8 into a u8 buffer.
 /// Returns byte count. Writes to out_utf8 if non-null. Does NOT NUL-terminate.
+///
+/// # Safety
+/// When non-null, `out_utf8` must point to at least four writable bytes.
 unsafe fn utf8_encode_unichar_raw(out_utf8: *mut u8, g: u32) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
@@ -167,58 +175,22 @@ pub(crate) fn utf16_surrogate_pair_to_unichar(lead: u16, trail: u16) -> u32 {
         .wrapping_add(0x10000)
 }
 
-fn unichar_iswide(c: u32) -> bool {
-    matches!(
-        c,
-        0x1100..=0x115F
-            | 0x231A..=0x231B
-            | 0x2329..=0x232A
-            | 0x23E9..=0x23EC
-            | 0x23F0
-            | 0x23F3
-            | 0x25FD..=0x25FE
-            | 0x2614..=0x2615
-            | 0x2648..=0x2653
-            | 0x267F
-            | 0x2693
-            | 0x26A1
-            | 0x26AA..=0x26AB
-            | 0x26BD..=0x26BE
-            | 0x26C4..=0x26C5
-            | 0x26CE
-            | 0x26D4
-            | 0x26EA
-            | 0x26F2..=0x26F3
-            | 0x26F5
-            | 0x26FA
-            | 0x26FD
-            | 0x2705
-            | 0x270A..=0x270B
-            | 0x2728
-            | 0x274C
-            | 0x274E
-            | 0x2753..=0x2755
-            | 0x2757
-            | 0x2795..=0x2797
-            | 0x27B0
-            | 0x27BF
-            | 0x2B1B..=0x2B1C
-            | 0x2B50
-            | 0x2B55
-            | 0x2E80..=0xA4CF
-            | 0xAC00..=0xD7A3
-            | 0xF900..=0xFAFF
-            | 0xFE10..=0xFE19
-            | 0xFE30..=0xFE6F
-            | 0xFF00..=0xFF60
-            | 0xFFE0..=0xFFE6
-            | 0x1F300..=0x1FAFF
-            | 0x20000..=0x3FFFD
-    )
-}
+/// Reallocate a C string to its exact occupied size, retaining the original
+/// allocation if shrinking fails, as C `str_realloc()` does.
+///
+/// # Safety
+/// `p` must be null or own a live allocation from the C allocator containing
+/// a NUL-terminated string of exactly `occupied_size` bytes including its
+/// terminator. The returned pointer assumes ownership of `p`.
+unsafe fn str_realloc(p: *mut c_char, occupied_size: usize) -> *mut c_char {
+    if p.is_null() {
+        return ptr::null_mut();
+    }
 
-fn str_realloc(p: *mut c_char) -> *mut c_char {
-    p
+    // SAFETY: ownership of p is transferred to realloc; on failure libc keeps
+    // the original allocation live, exactly matching C str_realloc().
+    let resized = unsafe { realloc(p.cast(), occupied_size) }.cast::<c_char>();
+    if resized.is_null() { p } else { resized }
 }
 
 fn calloc_bytes(nmemb: usize, size: usize) -> *mut c_void {
@@ -241,15 +213,16 @@ fn calloc_bytes(nmemb: usize, size: usize) -> *mut c_void {
 /// hexchar equivalent (inline to avoid cross-module dep on hexdecoct).
 #[inline]
 fn hexchar(x: i32) -> c_char {
-    let d = if x < 10 {
-        b'0' + (x as u8)
-    } else {
-        b'a' + ((x - 10) as u8)
-    };
-    d as c_char
+    const LOWERCASE_HEXDIGITS: &[u8; 16] = b"0123456789abcdef";
+    LOWERCASE_HEXDIGITS[(x as u32 & 0x0f) as usize] as c_char
 }
 
 /// Advance past one UTF-8 character (equivalent to utf8_next_char macro).
+///
+/// # Safety
+/// `p` must point to a readable byte. Its leading byte must describe a
+/// sequence contained in the same allocation, or be an invalid leading byte
+/// for which advancing by one remains within or one byte past the allocation.
 #[inline]
 unsafe fn utf8_next_char(p: *const c_char) -> *const c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
@@ -259,7 +232,8 @@ unsafe fn utf8_next_char(p: *const c_char) -> *const c_char {
 
 // ── FFI exports ──────────────────────────────────────────────────────────
 
-pub fn rs_unichar_is_valid(ch: u32) -> bool {
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_unichar_is_valid(ch: u32) -> bool {
     if ch >= 0x110000 {
         return false;
     }
@@ -282,7 +256,8 @@ pub fn rs_unichar_is_valid(ch: u32) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_is_valid_n(str: *const c_char, len_bytes: usize) -> *mut c_char {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_is_valid_n(str: *const c_char, len_bytes: usize) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -330,7 +305,8 @@ pub unsafe fn rs_utf8_is_valid_n(str: *const c_char, len_bytes: usize) -> *mut c
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_ascii_is_valid_n(str: *const c_char, len: usize) -> *mut c_char {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_ascii_is_valid_n(str: *const c_char, len: usize) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -368,7 +344,8 @@ pub unsafe fn rs_ascii_is_valid_n(str: *const c_char, len: usize) -> *mut c_char
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_encoded_valid_unichar(str: *const c_char, length: usize) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_encoded_valid_unichar(str: *const c_char, length: usize) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -421,7 +398,11 @@ pub unsafe fn rs_utf8_encoded_valid_unichar(str: *const c_char, length: usize) -
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_encoded_to_unichar(str: *const c_char, ret_unichar: *mut u32) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_encoded_to_unichar(
+    str: *const c_char,
+    ret_unichar: *mut u32,
+) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe { utf8_encoded_to_unichar_inner(str, ret_unichar) }
@@ -434,7 +415,8 @@ pub unsafe fn rs_utf8_encoded_to_unichar(str: *const c_char, ret_unichar: *mut u
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_to_ascii(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_to_ascii(
     str: *const c_char,
     replacement_char: c_char,
     ret: *mut *mut c_char,
@@ -445,7 +427,10 @@ pub unsafe fn rs_utf8_to_ascii(
         let s = CStr::from_ptr(str);
         let byte_len = s.to_bytes().len();
 
-        let ans = malloc(byte_len + 1);
+        let Some(allocation_size) = byte_len.checked_add(1) else {
+            return Errno::ENOMEM.to_neg_errno();
+        };
+        let ans = malloc(allocation_size);
         if ans.is_null() {
             return Errno::ENOMEM.to_neg_errno(); // -ENOMEM
         }
@@ -484,7 +469,8 @@ pub unsafe fn rs_utf8_to_ascii(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_escape_invalid(str: *const c_char) -> *mut c_char {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_escape_invalid(str: *const c_char) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -492,7 +478,13 @@ pub unsafe fn rs_utf8_escape_invalid(str: *const c_char) -> *mut c_char {
         let byte_len = s.to_bytes().len();
 
         // Worst case: every byte becomes UTF8_REPLACEMENT_CHARACTER (3 bytes) + NUL
-        let p = malloc(byte_len * 3 + 1);
+        let Some(allocation_size) = byte_len
+            .checked_mul(UTF8_REPLACEMENT_CHARACTER.len())
+            .and_then(|size| size.checked_add(1))
+        else {
+            return ptr::null_mut();
+        };
+        let p = malloc(allocation_size);
         if p.is_null() {
             return ptr::null_mut();
         }
@@ -521,7 +513,8 @@ pub unsafe fn rs_utf8_escape_invalid(str: *const c_char) -> *mut c_char {
         }
         *t = 0;
 
-        str_realloc(p as *mut c_char)
+        let occupied_size = t.offset_from(p.cast::<u8>()) as usize + 1;
+        str_realloc(p as *mut c_char, occupied_size)
     }
 }
 
@@ -532,7 +525,8 @@ pub unsafe fn rs_utf8_escape_invalid(str: *const c_char) -> *mut c_char {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_is_printable_newline(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_is_printable_newline(
     str: *const c_char,
     length: usize,
     allow_newline: bool,
@@ -576,7 +570,8 @@ pub unsafe fn rs_utf8_is_printable_newline(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_char_console_width(str: *const c_char) -> i32 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_char_console_width(str: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -601,7 +596,8 @@ pub unsafe fn rs_utf8_char_console_width(str: *const c_char) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_escape_non_printable_full(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_escape_non_printable_full(
     str: *const c_char,
     console_width: usize,
     force_ellipsis: bool,
@@ -621,7 +617,13 @@ pub unsafe fn rs_utf8_escape_non_printable_full(
         let s = CStr::from_ptr(str);
         let byte_len = s.to_bytes().len();
         // Worst case: each byte becomes \xHH (4 bytes) + ellipsis + NUL
-        let p = malloc(byte_len * 4 + 4 + 1);
+        let Some(allocation_size) = byte_len
+            .checked_mul(4)
+            .and_then(|size| size.checked_add(UTF8_REPLACEMENT_CHARACTER.len() + 1))
+        else {
+            return ptr::null_mut();
+        };
+        let p = malloc(allocation_size);
         if p.is_null() {
             return ptr::null_mut();
         }
@@ -722,7 +724,8 @@ pub unsafe fn rs_utf8_escape_non_printable_full(
         }
 
         *t = 0;
-        str_realloc(p as *mut c_char)
+        let occupied_size = t.offset_from(p.cast::<u8>()) as usize + 1;
+        str_realloc(p as *mut c_char, occupied_size)
     }
 }
 
@@ -733,7 +736,8 @@ pub unsafe fn rs_utf8_escape_non_printable_full(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_encode_unichar(out_utf8: *mut c_char, g: u32) -> usize {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_encode_unichar(out_utf8: *mut c_char, g: u32) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe { utf8_encode_unichar_raw(out_utf8 as *mut u8, g) }
@@ -745,19 +749,20 @@ pub unsafe fn rs_utf8_encode_unichar(out_utf8: *mut c_char, g: u32) -> usize {
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_utf16_encode_unichar(out: *mut u16, c: u32) -> usize {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf16_encode_unichar(out: *mut u16, c: u32) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
         match c {
             0..=0xD7FF | 0xE000..=0xFFFF => {
-                *out = c as u16; // Little-endian on Linux
+                *out = (c as u16).to_le();
                 1
             }
             0x10000..=0x10FFFF => {
                 let adjusted = c - 0x10000;
-                *out = (adjusted >> 10) as u16 + 0xD800;
-                *out.add(1) = (adjusted & 0x3FF) as u16 + 0xDC00;
+                *out = ((adjusted >> 10) as u16 + 0xD800).to_le();
+                *out.add(1) = ((adjusted & 0x3FF) as u16 + 0xDC00).to_le();
                 2
             }
             _ => 0, // invalid (surrogate)
@@ -772,7 +777,8 @@ pub unsafe fn rs_utf16_encode_unichar(out: *mut u16, c: u32) -> usize {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf16_to_utf8(s: *const u16, length: usize) -> *mut c_char {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf16_to_utf8(s: *const u16, length: usize) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -852,7 +858,8 @@ pub unsafe fn rs_utf16_to_utf8(s: *const u16, length: usize) -> *mut c_char {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_to_utf16(s: *const c_char, length: usize) -> *mut u16 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_to_utf16(s: *const c_char, length: usize) -> *mut u16 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -875,7 +882,13 @@ pub unsafe fn rs_utf8_to_utf16(s: *const c_char, length: usize) -> *mut u16 {
             return ptr::null_mut();
         }
 
-        let n = malloc((effective_length + 1) * std::mem::size_of::<u16>());
+        let Some(allocation_size) = effective_length
+            .checked_add(1)
+            .and_then(|words| words.checked_mul(std::mem::size_of::<u16>()))
+        else {
+            return ptr::null_mut();
+        };
+        let n = malloc(allocation_size);
         if n.is_null() {
             return ptr::null_mut();
         }
@@ -889,7 +902,7 @@ pub unsafe fn rs_utf8_to_utf16(s: *const c_char, length: usize) -> *mut u16 {
             let e = utf8_encoded_expected_len(*bytes.add(i));
             if e <= 1 || i + e > effective_length {
                 // Invalid or truncated — copy as-is
-                *q = (*bytes.add(i)) as u16;
+                *q = (*s.add(i) as u16).to_le();
                 i += 1;
                 q = q.add(1);
                 continue;
@@ -899,7 +912,7 @@ pub unsafe fn rs_utf8_to_utf16(s: *const c_char, length: usize) -> *mut u16 {
             let r = utf8_encoded_to_unichar_inner(s.add(i), &mut unichar);
             if r < 0 {
                 // Invalid sequence — copy as-is
-                *q = (*bytes.add(i)) as u16;
+                *q = (*s.add(i) as u16).to_le();
                 i += 1;
                 q = q.add(1);
                 continue;
@@ -921,7 +934,8 @@ pub unsafe fn rs_utf8_to_utf16(s: *const c_char, length: usize) -> *mut u16 {
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_char16_strlen(s: *const u16) -> usize {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_char16_strlen(s: *const u16) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -944,7 +958,8 @@ pub unsafe fn rs_char16_strlen(s: *const u16) -> usize {
 /// reads performed by this call, and every non-null output pointer must be
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
-pub unsafe fn rs_char16_strsize(s: *const u16) -> usize {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_char16_strsize(s: *const u16) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -962,7 +977,8 @@ pub unsafe fn rs_char16_strsize(s: *const u16) -> usize {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_n_codepoints(str: *const c_char) -> usize {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_n_codepoints(str: *const c_char) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
@@ -989,11 +1005,12 @@ pub unsafe fn rs_utf8_n_codepoints(str: *const c_char) -> usize {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_console_width(str: *const c_char) -> usize {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_console_width(str: *const c_char) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
-        if *str == 0 {
+        if str.is_null() || *str == 0 {
             return 0;
         }
 
@@ -1020,7 +1037,8 @@ pub unsafe fn rs_utf8_console_width(str: *const c_char) -> usize {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_utf8_last_length(s: *const c_char, n: usize) -> usize {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_utf8_last_length(s: *const c_char, n: usize) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {

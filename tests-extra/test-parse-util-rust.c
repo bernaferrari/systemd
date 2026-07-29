@@ -1,4 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: parse-boolean */
+/* RUST-CONTRACT: parse-safe-unsigned */
+/* RUST-CONTRACT: parse-safe-integers */
+/* RUST-CONTRACT: parse-numeric-fields */
 
 #include <limits.h>
 #include <stdlib.h>
@@ -159,20 +163,20 @@ TEST(safe_atou_bounded_out_of_range) {
 
 TEST(safe_atou8_basic) {
         uint8_t v;
-        assert_se(safe_atou8("0", &v) == rs_safe_atou8_full("0", 0, &v) && v == 0);
-        assert_se(safe_atou8("255", &v) == rs_safe_atou8_full("255", 0, &v) && v == 255);
-        assert_se(safe_atou8("256", &v) == rs_safe_atou8_full("256", 0, &v));
-        assert_se(safe_atou8("256", &v) < 0);
+        assert_se(safe_atou8_full("0", 0, &v) == rs_safe_atou8_full("0", 0, &v) && v == 0);
+        assert_se(safe_atou8_full("255", 0, &v) == rs_safe_atou8_full("255", 0, &v) && v == 255);
+        assert_se(safe_atou8_full("256", 0, &v) == rs_safe_atou8_full("256", 0, &v));
+        assert_se(safe_atou8_full("256", 0, &v) < 0);
 }
 
 /* ── safe_atou16_full ────────────────────────────────────────────────────── */
 
 TEST(safe_atou16_basic) {
         uint16_t v;
-        assert_se(safe_atou16("0", &v) == rs_safe_atou16_full("0", 0, &v) && v == 0);
-        assert_se(safe_atou16("65535", &v) == rs_safe_atou16_full("65535", 0, &v) && v == 65535);
-        assert_se(safe_atou16("65536", &v) == rs_safe_atou16_full("65536", 0, &v));
-        assert_se(safe_atou16("65536", &v) < 0);
+        assert_se(safe_atou16_full("0", 0, &v) == rs_safe_atou16_full("0", 0, &v) && v == 0);
+        assert_se(safe_atou16_full("65535", 0, &v) == rs_safe_atou16_full("65535", 0, &v) && v == 65535);
+        assert_se(safe_atou16_full("65536", 0, &v) == rs_safe_atou16_full("65536", 0, &v));
+        assert_se(safe_atou16_full("65536", 0, &v) < 0);
 }
 
 /* ── parse_size ──────────────────────────────────────────────────────────── */
@@ -347,6 +351,38 @@ TEST(safe_atollu_full_invalid) {
         assert_se(safe_atollu_full("", 10, &llu) == rs_safe_atollu_full("", 10, &llu));
         assert_se(safe_atollu_full("abc", 10, &llu) == rs_safe_atollu_full("abc", 10, &llu));
         assert_se(safe_atollu_full("-1", 10, &llu) == rs_safe_atollu_full("-1", 10, &llu));
+}
+
+/* ── remaining native-width safe parsers ───────────────────────────────── */
+
+TEST(safe_atolu_full_c_vs_rs) {
+        unsigned long c_value = 0, rs_value = 0;
+        assert_se(safe_atolu_full("0xff", 0, &c_value) == rs_safe_atolu_full("0xff", 0, &rs_value));
+        assert_se(c_value == rs_value);
+}
+
+TEST(safe_atou64_c_vs_rs) {
+        uint64_t c_value = 0, rs_value = 0;
+        assert_se(safe_atou64("18446744073709551615", &c_value) == rs_safe_atou64("18446744073709551615", &rs_value));
+        assert_se(c_value == rs_value);
+}
+
+TEST(safe_atoi64_c_vs_rs) {
+        int64_t c_value = 0, rs_value = 0;
+        assert_se(safe_atoi64("-9223372036854775808", &c_value) == rs_safe_atoi64("-9223372036854775808", &rs_value));
+        assert_se(c_value == rs_value);
+}
+
+TEST(safe_atoux64_c_vs_rs) {
+        uint64_t c_value = 0, rs_value = 0;
+        assert_se(safe_atoux64("deadbeef", &c_value) == rs_safe_atoux64("deadbeef", &rs_value));
+        assert_se(c_value == rs_value);
+}
+
+TEST(parse_range_c_vs_rs) {
+        unsigned c_lower = 0, c_upper = 0, rs_lower = 0, rs_upper = 0;
+        assert_se(parse_range("10-42", &c_lower, &c_upper) == rs_parse_range("10-42", &rs_lower, &rs_upper));
+        assert_se(c_lower == rs_lower && c_upper == rs_upper);
 }
 
 /* ── main ────────────────────────────────────────────────────────────────── */

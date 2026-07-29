@@ -4,7 +4,6 @@ semantic_coverage = "partial"
 source_structure = "independent"
 deviation_policy = "explicit-only"
 excluded_c_symbols = [
-    "exit_status_from_string",
     "is_clean_exit",
     "exit_status_set_free",
     "exit_status_set_is_empty",
@@ -57,6 +56,22 @@ optional = false
 file = "tests-extra/test-exit-status-rust.c"
 meson_target = "test-exit-status-rust"
 labels = ["exit-status-lookup"]
+
+[[surface]]
+id = "exit-status-from-string"
+c_symbols = ["exit_status_from_string"]
+rust_symbols = ["rs_exit_status_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-exit-status-rust.c"
+meson_target = "test-exit-status-rust"
+labels = ["exit-status-from-string"]
 
 [[surface]]
 id = "exit-status-class"

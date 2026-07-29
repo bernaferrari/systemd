@@ -1,0 +1,83 @@
+schema = 1
+module = "ansi-color"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["get_color_mode"]
+
+[authority]
+c_headers = ["src/basic/ansi-color.h"]
+c_sources = ["src/basic/ansi-color.c"]
+rust_headers = ["src/basic/rust/ansi_color.h"]
+rust_sources = ["src/basic/rust/ansi_color.rs"]
+
+[[surface]]
+id = "ansi-color-from-string"
+c_symbols = ["color_mode_from_string"]
+rust_symbols = ["rs_color_mode_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ansi-color-rust.c"
+meson_target = "test-ansi-color-rust"
+labels = ["ansi-color-from-string"]
+
+[[surface]]
+id = "ansi-color-to-string"
+c_symbols = ["color_mode_to_string"]
+rust_symbols = ["rs_color_mode_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-ansi-color-rust.c"
+meson_target = "test-ansi-color-rust"
+labels = ["ansi-color-to-string"]
+
+[[surface]]
+id = "ansi-color-environment-parser"
+c_symbols = ["parse_systemd_colors"]
+rust_symbols = ["rs_parse_systemd_colors"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "environment"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ansi-color-rust.c"
+meson_target = "test-ansi-color-rust"
+labels = ["ansi-color-environment-parser"]
+
+[[surface]]
+id = "ansi-color-sgr-classifier"
+c_symbols = ["looks_like_ansi_color_code"]
+rust_symbols = ["rs_looks_like_ansi_color_code"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-ansi-color-rust.c"
+meson_target = "test-ansi-color-rust"
+labels = ["ansi-color-sgr-classifier"]

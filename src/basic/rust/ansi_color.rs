@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/ansi-color.c (color_mode_from_string, color_mode_to_string,
-//            looks_like_ansi_color_code, get_color_mode, underline_enabled,
-//            parse_systemd_colors)
+// PORT-SYNC: scope=basic.ansi-color; authority=src/basic/ansi-color.c,src/basic/ansi-color.h
 //
 // ANSI color mode parsing, environment detection, and validation.
 // Pure Rust — string table lookups and environment queries use safe Rust APIs.
 
 use crate::ffi::Errno;
+use std::ffi::CStr;
+use std::os::raw::c_char;
 
 // ── ColorMode enum ────────────────────────────────────────────────────────
 
@@ -70,15 +70,27 @@ const COLOR_MODE_NAMES: [&str; 8] = [
 
 /// Parse a boolean-like string value.
 ///
-/// Returns `Some(true)` for "1", "yes", "true", "on".
-/// Returns `Some(false)` for "0", "no", "false", "off".
+/// Returns `Some(true)` for the case-insensitive systemd boolean spellings
+/// "1", "yes", "y", "true", "t", and "on".
+/// Returns `Some(false)` for "0", "no", "n", "false", "f", and "off".
 /// Returns `None` for anything else (including empty or unrecognised strings).
 fn parse_boolean(s: &str) -> Option<bool> {
-    match s {
-        "1" | "yes" | "true" | "on" => Some(true),
-        "0" | "no" | "false" | "off" => Some(false),
-        _ => None,
-    }
+    (s.eq_ignore_ascii_case("1")
+        || s.eq_ignore_ascii_case("yes")
+        || s.eq_ignore_ascii_case("y")
+        || s.eq_ignore_ascii_case("true")
+        || s.eq_ignore_ascii_case("t")
+        || s.eq_ignore_ascii_case("on"))
+    .then_some(true)
+    .or_else(|| {
+        (s.eq_ignore_ascii_case("0")
+            || s.eq_ignore_ascii_case("no")
+            || s.eq_ignore_ascii_case("n")
+            || s.eq_ignore_ascii_case("false")
+            || s.eq_ignore_ascii_case("f")
+            || s.eq_ignore_ascii_case("off"))
+        .then_some(false)
+    })
 }
 
 // ── color_mode_from_string ────────────────────────────────────────────────
@@ -236,6 +248,96 @@ pub fn looks_like_ansi_color_code(s: &str) -> bool {
     }
 
     prev_was_digit
+}
+
+fn color_mode_from_bytes(bytes: &[u8]) -> i32 {
+    if let Some((index, _)) = COLOR_MODE_NAMES
+        .iter()
+        .enumerate()
+        .find(|(_, name)| bytes == name.as_bytes())
+    {
+        return index as i32;
+    }
+
+    let is = |value: &[u8]| bytes.eq_ignore_ascii_case(value);
+    if [b"1".as_slice(), b"yes", b"y", b"true", b"t", b"on"]
+        .iter()
+        .any(|value| is(value))
+    {
+        return ColorMode::True as i32;
+    }
+    if [b"0".as_slice(), b"no", b"n", b"false", b"f", b"off"]
+        .iter()
+        .any(|value| is(value))
+    {
+        return ColorMode::Off as i32;
+    }
+    Errno::EINVAL.to_neg_errno()
+}
+
+/// C ABI facade for `color_mode_from_string()`.
+///
+/// # Safety
+/// `s` must be null or a readable NUL-terminated C string for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_color_mode_from_string(s: *const c_char) -> i32 {
+    if s.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    // SAFETY: the FFI caller promises a live NUL-terminated input string.
+    color_mode_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes())
+}
+
+/// C ABI facade for `color_mode_to_string()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_color_mode_to_string(mode: i32) -> *const c_char {
+    match mode {
+        0 => c"off".as_ptr(),
+        1 => c"16".as_ptr(),
+        2 => c"256".as_ptr(),
+        3 => c"24bit".as_ptr(),
+        4 => c"auto-16".as_ptr(),
+        5 => c"auto-256".as_ptr(),
+        6 => c"auto-24bit".as_ptr(),
+        7 => c"true".as_ptr(),
+        _ => std::ptr::null(),
+    }
+}
+
+/// C ABI facade for `parse_systemd_colors()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_parse_systemd_colors() -> i32 {
+    match parse_systemd_colors() {
+        Ok(mode) => mode as i32,
+        Err(error) => error.to_neg_errno(),
+    }
+}
+
+/// C ABI facade for `looks_like_ansi_color_code()`.
+///
+/// # Safety
+/// `str_` must be null or a readable NUL-terminated C string for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_looks_like_ansi_color_code(str_: *const c_char) -> bool {
+    if str_.is_null() {
+        return false;
+    }
+    // SAFETY: the FFI caller promises a live NUL-terminated input string.
+    let bytes = unsafe { CStr::from_ptr(str_) }.to_bytes();
+    if bytes.is_empty() {
+        return false;
+    }
+    let mut previous_was_digit = false;
+    for byte in bytes {
+        if byte.is_ascii_digit() {
+            previous_was_digit = true;
+        } else if previous_was_digit && *byte == b';' {
+            previous_was_digit = false;
+        } else {
+            return false;
+        }
+    }
+    previous_was_digit
 }
 
 #[cfg(test)]

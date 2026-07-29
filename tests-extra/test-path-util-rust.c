@@ -1,9 +1,11 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "tests.h"
+#include "fd-util.h"
 #include "path-util.h"
 
 /* Rust FFI */
@@ -241,6 +243,30 @@ TEST(path_implies_directory_normal) {
 TEST(path_implies_directory_null) {
         assert_se(path_implies_directory(NULL) == rs_path_implies_directory(NULL));
         assert_se(!path_implies_directory(NULL));
+}
+
+/* RUST-CONTRACT: path-extra-abi */
+/* RUST-CONTRACT: path-extra-predicates */
+/* RUST-CONTRACT: path-file-in-same-dir */
+TEST(path_extra_abi_c_vs_rs) {
+        char *c_result = NULL, *rs_result = NULL;
+
+        assert_se(fdname_is_valid("listen-fd") == rs_fdname_is_valid("listen-fd"));
+        assert_se(!fdname_is_valid("bad:name") == !rs_fdname_is_valid("bad:name"));
+        assert_se(path_is_absolute("/var/lib") == rs_path_is_absolute("/var/lib"));
+        assert_se(path_is_absolute("relative") == rs_path_is_absolute("relative"));
+        assert_se(path_is_normalized("/var/lib/systemd") == rs_path_is_normalized("/var/lib/systemd"));
+        assert_se(path_is_normalized("/var//lib") == rs_path_is_normalized("/var//lib"));
+        assert_se(valid_device_node_path("/dev/null") == rs_valid_device_node_path("/dev/null"));
+        assert_se(valid_device_node_path("/dev/") == rs_valid_device_node_path("/dev/"));
+        assert_se(valid_device_allow_pattern("block-*") == rs_valid_device_allow_pattern("block-*"));
+        assert_se(valid_device_allow_pattern("/run/systemd/inaccessible/null") == rs_valid_device_allow_pattern("/run/systemd/inaccessible/null"));
+
+        assert_se(file_in_same_dir("/var/lib/systemd/unit", "foo.service", &c_result) ==
+                  rs_file_in_same_dir("/var/lib/systemd/unit", "foo.service", &rs_result));
+        assert_se(streq(c_result, rs_result));
+        free(c_result);
+        free(rs_result);
 }
 
 /* ── main ────────────────────────────────────────────────────────────── */

@@ -1,0 +1,124 @@
+schema = 1
+module = "utf8"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["utf8_is_valid"]
+
+[authority]
+c_headers = ["src/basic/utf8.h", "src/basic/gunicode.h"]
+c_sources = ["src/basic/utf8.c", "src/basic/gunicode.c"]
+rust_headers = ["src/basic/rust/utf8.h"]
+rust_sources = ["src/basic/rust/utf8.rs"]
+
+[[surface]]
+id = "utf8-validation"
+c_symbols = ["unichar_is_valid", "utf8_is_valid_n", "ascii_is_valid_n", "utf8_encoded_valid_unichar"]
+rust_symbols = ["rs_unichar_is_valid", "rs_utf8_is_valid_n", "rs_ascii_is_valid_n", "rs_utf8_encoded_valid_unichar"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-utf8-rust.c"
+meson_target = "test-utf8-rust"
+labels = ["utf8-validation"]
+
+[[surface]]
+id = "utf8-decoder"
+c_symbols = ["utf8_encoded_to_unichar"]
+rust_symbols = ["rs_utf8_encoded_to_unichar"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-utf8-rust.c"
+meson_target = "test-utf8-rust"
+labels = ["utf8-decoder"]
+
+[[surface]]
+id = "utf8-text-transforms"
+c_symbols = ["utf8_to_ascii", "utf8_escape_invalid", "utf8_escape_non_printable_full"]
+rust_symbols = ["rs_utf8_to_ascii", "rs_utf8_escape_invalid", "rs_utf8_escape_non_printable_full"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-utf8-rust.c"
+meson_target = "test-utf8-rust"
+labels = ["utf8-text-transforms"]
+
+[[surface]]
+id = "utf8-printable-newline"
+c_symbols = ["utf8_is_printable_newline"]
+rust_symbols = ["rs_utf8_is_printable_newline"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-utf8-rust.c"
+meson_target = "test-utf8-rust"
+labels = ["utf8-printable-newline"]
+
+[[surface]]
+id = "utf8-encoding"
+c_symbols = ["utf8_encode_unichar", "utf16_encode_unichar", "char16_strlen", "char16_strsize"]
+rust_symbols = ["rs_utf8_encode_unichar", "rs_utf16_encode_unichar", "rs_char16_strlen", "rs_char16_strsize"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-utf8-rust.c"
+meson_target = "test-utf8-rust"
+labels = ["utf8-encoding"]
+
+[[surface]]
+id = "utf8-conversions"
+c_symbols = ["utf16_to_utf8", "utf8_to_utf16"]
+rust_symbols = ["rs_utf16_to_utf8", "rs_utf8_to_utf16"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-utf8-rust.c"
+meson_target = "test-utf8-rust"
+labels = ["utf8-conversions"]
+
+[[surface]]
+id = "utf8-display"
+c_symbols = ["utf8_n_codepoints", "utf8_char_console_width", "utf8_console_width", "utf8_last_length"]
+rust_symbols = ["rs_utf8_n_codepoints", "rs_utf8_char_console_width", "rs_utf8_console_width", "rs_utf8_last_length"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-utf8-rust.c"
+meson_target = "test-utf8-rust"
+labels = ["utf8-display"]

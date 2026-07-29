@@ -816,7 +816,7 @@ def unit_def_authority_failures(
         raw_result, raw_parameters = direct.groups()
 
         def authority_type(raw: str, *, parameter: bool) -> str:
-            normalized = re.sub(r"\bFreezerState\b", "int", raw)
+            normalized = re.sub(r"\b(?:FreezerState|UnitType)\b", "int", raw)
             # `CGroupMask` is a 32-bit controller-bit enum. The Rust C ABI
             # intentionally exposes its bit representation as `u32`, matching
             # the registered C comparison prototypes and avoiding an enum
@@ -845,9 +845,9 @@ def unit_def_authority_failures(
             )
         parsed += 1
 
-    if len(backed) != 55:
+    if len(backed) != 59:
         failures.append(
-            f"{UNIT_DEF_HEADER}: expected 55 artifact-backed reviewed declarations, "
+            f"{UNIT_DEF_HEADER}: expected 59 artifact-backed reviewed declarations, "
             f"found {len(backed)}"
         )
     return failures, parsed, curated
@@ -1104,7 +1104,7 @@ def main() -> int:
         f"same_source_c_helpers={len(set().union(*(set(v) for v in c_definitions.values())))} "
         f"unbacked_sources={len(unbacked)} unbacked_symbols={len(unbacked_symbols)} "
         f"backed_signatures={checked_signatures} artifact=systemd_basic_rs "
-        f"unit-def-signatures=55 C-authority-parsed={unit_def_authority_parsed} "
+        f"unit-def-signatures=59 C-authority-parsed={unit_def_authority_parsed} "
         f"C-authority-curated={unit_def_authority_curated} "
         f"shared-authority-curated={shared_str_tables_authority_curated} "
         "configuration=unconditional-only link_parity=unclaimed"

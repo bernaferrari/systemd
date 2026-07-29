@@ -1,0 +1,76 @@
+schema = 1
+module = "parse-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["parse_fractional_part_u"]
+
+[authority]
+c_headers = ["src/basic/parse-util.h"]
+c_sources = ["src/basic/parse-util.c"]
+rust_headers = ["src/basic/rust/parse_util.h"]
+rust_sources = ["src/basic/rust/parse_util.rs"]
+
+[[surface]]
+id = "parse-boolean"
+c_symbols = ["parse_boolean"]
+rust_symbols = ["rs_parse_boolean"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-parse-util-rust.c"
+meson_target = "test-parse-util-rust"
+labels = ["parse-boolean"]
+
+[[surface]]
+id = "parse-safe-unsigned"
+c_symbols = ["safe_atou", "safe_atou_full", "safe_atou_bounded", "safe_atou8_full", "safe_atou16_full", "safe_atollu", "safe_atollu_full", "safe_atolu_full", "safe_atou64", "safe_atoux64"]
+rust_symbols = ["rs_safe_atou", "rs_safe_atou_full", "rs_safe_atou_bounded", "rs_safe_atou8_full", "rs_safe_atou16_full", "rs_safe_atollu", "rs_safe_atollu_full", "rs_safe_atolu_full", "rs_safe_atou64", "rs_safe_atoux64"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-parse-util-rust.c"
+meson_target = "test-parse-util-rust"
+labels = ["parse-safe-unsigned"]
+
+[[surface]]
+id = "parse-safe-integers"
+c_symbols = ["safe_atoi", "safe_atoi16", "safe_atolli", "safe_atoi64"]
+rust_symbols = ["rs_safe_atoi", "rs_safe_atoi16", "rs_safe_atolli", "rs_safe_atoi64"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-parse-util-rust.c"
+meson_target = "test-parse-util-rust"
+labels = ["parse-safe-integers"]
+
+[[surface]]
+id = "parse-numeric-fields"
+c_symbols = ["parse_size", "parse_pid", "parse_mode", "parse_ifindex", "parse_fd", "parse_errno", "parse_nice", "parse_ip_port", "parse_range"]
+rust_symbols = ["rs_parse_size", "rs_parse_pid", "rs_parse_mode", "rs_parse_ifindex", "rs_parse_fd", "rs_parse_errno", "rs_parse_nice", "rs_parse_ip_port", "rs_parse_range"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-parse-util-rust.c"
+meson_target = "test-parse-util-rust"
+labels = ["parse-numeric-fields"]

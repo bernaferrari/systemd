@@ -1,5 +1,14 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: exec-command-flags */
+/* RUST-CONTRACT: exec-command-flags-renderer */
+/* RUST-CONTRACT: exec-command-flags-parser */
+/* RUST-CONTRACT: exec-command-flags-strv */
+/* RUST-CONTRACT: exec-command-flags-from-strv */
+/* RUST-CONTRACT: exec-command-flags-to-strv */
+/* RUST-CONTRACT: exec-indent-embedded-newlines */
 /* Shadow test: C exec_command_flags_to/from_string vs Rust */
+
+#include <stdint.h>
 
 #include "tests.h"
 #include "exec-util.h"
@@ -153,17 +162,32 @@ static void test_indent_embedded_newlines(void) {
         assert_se(streq(result, ""));
         result = mfree(result);
 
-        /* Trailing newline */
+        /* strv_split_newlines() suppresses a trailing separator. */
         r = rs_indent_embedded_newlines("line1\n", &result);
         assert_se(r == 0);
-        assert_se(streq(result, "line1\n              "));
+        assert_se(streq(result, "line1"));
         result = mfree(result);
 
-        /* Only newlines */
+        /* Repeated and leading separators are coalesced by extract_first_word(). */
         r = rs_indent_embedded_newlines("\n\n", &result);
         assert_se(r == 0);
-        assert_se(streq(result, "\n              \n              "));
+        assert_se(streq(result, ""));
         result = mfree(result);
+
+        r = rs_indent_embedded_newlines("\n\rline1\n\nline2\r", &result);
+        assert_se(r == 0);
+        assert_se(streq(result, "line1\n              line2"));
+        result = mfree(result);
+
+        /* A backslash quotes the following byte, including a newline. */
+        r = rs_indent_embedded_newlines("line1\\\nline2", &result);
+        assert_se(r == 0);
+        assert_se(streq(result, "line1\nline2"));
+        result = mfree(result);
+
+        /* extract_first_word() rejects an unquoted trailing backslash. */
+        r = rs_indent_embedded_newlines("line1\\", &result);
+        assert_se(r == -EINVAL);
 
         /* Realistic kernel cmdline with embedded newline */
         r = rs_indent_embedded_newlines("root=UUID=aaaa initrd=/initramfs\nquiet splash", &result);
@@ -225,6 +249,14 @@ static void test_exec_command_flags_from_strv(void) {
         assert_se(rc == rrs);
         assert_se(rc < 0);
 
+        /* On error both implementations leave the output untouched. */
+        c_flags = r_flags = 0x6a6a6a6a;
+        rc = exec_command_flags_from_strv(opts4, &c_flags);
+        rrs = rs_exec_command_flags_from_strv(opts4, &r_flags);
+        assert_se(rc == rrs);
+        assert_se(c_flags == r_flags);
+        assert_se(c_flags == 0x6a6a6a6a);
+
         /* "ambient" compatibility + valid flag */
         rc = exec_command_flags_from_strv(opts5, &c_flags);
         rrs = rs_exec_command_flags_from_strv(opts5, &r_flags);
@@ -273,6 +305,16 @@ static void test_exec_command_flags_to_strv(void) {
         assert_se(rc == 0);
         /* Both return NULL for zero flags */
         assert_se(!c_opts && !r_opts);
+
+        /* An unknown bit fails without publishing a partial vector. */
+        c_opts = r_opts = (char**) (uintptr_t) 1;
+        rc = exec_command_flags_to_strv(1 << 5, &c_opts);
+        rrs = rs_exec_command_flags_to_strv(1 << 5, &r_opts);
+        assert_se(rc == rrs);
+        assert_se(rc == -EINVAL);
+        assert_se(c_opts == (char**) (uintptr_t) 1);
+        assert_se(r_opts == (char**) (uintptr_t) 1);
+        c_opts = r_opts = NULL;
 }
 
 int main(int argc, char **argv) {

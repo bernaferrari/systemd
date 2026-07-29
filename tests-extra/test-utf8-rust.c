@@ -1,4 +1,11 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: utf8-validation */
+/* RUST-CONTRACT: utf8-decoder */
+/* RUST-CONTRACT: utf8-text-transforms */
+/* RUST-CONTRACT: utf8-printable-newline */
+/* RUST-CONTRACT: utf8-encoding */
+/* RUST-CONTRACT: utf8-conversions */
+/* RUST-CONTRACT: utf8-display */
 
 /*
  * Shadow test: verify Rust utf8 port matches C behavior exactly.
@@ -217,6 +224,20 @@ TEST(utf8_escape_non_printable_with_control_c_vs_rs) {
         ASSERT_STREQ(c_ret, rs_ret);
 }
 
+TEST(utf8_escape_non_printable_multibyte_control_c_vs_rs) {
+        _cleanup_free_ char *c_ret = NULL;
+        _cleanup_free_ char *rs_ret = NULL;
+
+        /* U+0080 is valid UTF-8 but a C1 control. Its encoded bytes have the
+         * high bit set, exercising C hexchar()'s signed-char masking rule. */
+        c_ret = utf8_escape_non_printable_full("\xc2\x80", 80, false);
+        rs_ret = rs_utf8_escape_non_printable_full("\xc2\x80", 80, false);
+        ASSERT_NOT_NULL(c_ret);
+        ASSERT_NOT_NULL(rs_ret);
+        ASSERT_STREQ(c_ret, rs_ret);
+        ASSERT_STREQ(rs_ret, "\\xc2\\x80");
+}
+
 TEST(utf8_escape_non_printable_truncate_c_vs_rs) {
         _cleanup_free_ char *c_ret = NULL;
         _cleanup_free_ char *rs_ret = NULL;
@@ -393,6 +414,14 @@ TEST(utf8_char_console_width_ascii_c_vs_rs) {
 TEST(utf8_char_console_width_tab_c_vs_rs) {
         ASSERT_EQ(utf8_char_console_width("\t"), rs_utf8_char_console_width("\t"));
         ASSERT_EQ(rs_utf8_char_console_width("\t"), 8);
+}
+
+TEST(utf8_char_console_width_uses_c_unicode_table) {
+        /* The C authority intentionally uses the Unicode 6.0 table from
+         * gunicode.c. These codepoints became wide in newer tables, so they
+         * guard against silently substituting contemporary width behavior. */
+        ASSERT_EQ(utf8_char_console_width("\xe2\x8c\x9a"), rs_utf8_char_console_width("\xe2\x8c\x9a")); /* U+231A */
+        ASSERT_EQ(utf8_char_console_width("\xf0\x9f\x98\x80"), rs_utf8_char_console_width("\xf0\x9f\x98\x80")); /* U+1F600 */
 }
 
 /* ── utf8_console_width ───────────────────────────────────────────────── */

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* RUST-CONTRACT: exit-status-lookup */
+/* RUST-CONTRACT: exit-status-from-string */
 /* RUST-CONTRACT: exit-status-class */
 /* RUST-CONTRACT: securebit-name */
 /* Shadow test: C exit-status/securebits vs Rust */
@@ -140,6 +141,18 @@ static void test_exit_status_to_string(void) {
         assert_se(streq_ptr(cv, rv));
 }
 
+/* ── exit_status_from_string ─────────────────────────────────────────── */
+
+static void test_exit_status_from_string(void) {
+        static const char *const inputs[] = {
+                "SUCCESS", "FAILURE", "CHDIR", "USAGE", "EXCEPTION",
+                "0", "42", "255", "", "256", "-1", "invalid",
+        };
+
+        FOREACH_ELEMENT(input, inputs)
+                assert_se(exit_status_from_string(*input) == rs_exit_status_from_string(*input));
+}
+
 /* ── exit_status_class ────────────────────────────────────────────────── */
 
 static void test_exit_status_class(void) {
@@ -244,6 +257,7 @@ static void test_secure_bit_to_string(void) {
 
 int main(int argc, char **argv) {
         test_exit_status_to_string();
+        test_exit_status_from_string();
         test_exit_status_class();
         test_secure_bits_is_valid();
         test_secure_bit_to_string();

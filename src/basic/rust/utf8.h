@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.utf8; authority=src/basic/utf8.c,src/basic/utf8.h,src/basic/gunicode.c,src/basic/gunicode.h */
 #pragma once
 
 #include <stddef.h>

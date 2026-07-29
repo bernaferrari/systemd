@@ -93,6 +93,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 {
                     "rs_exit_status_to_string",
                     "rs_exit_status_class",
+                    "rs_exit_status_from_string",
                     "rs_secure_bit_to_string",
                 }
             ),
@@ -118,6 +119,109 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_parse_sector_size",
                     "rs_store_loadavg_fixed_point",
                     "rs_parse_loadavg_fixed_point",
+                    "rs_parse_boolean",
+                    "rs_safe_atou",
+                    "rs_safe_atou_full",
+                    "rs_safe_atou_bounded",
+                    "rs_safe_atou8_full",
+                    "rs_safe_atou16_full",
+                    "rs_safe_atoi",
+                    "rs_safe_atoi16",
+                    "rs_safe_atolli",
+                    "rs_safe_atollu",
+                    "rs_safe_atollu_full",
+                    "rs_safe_atolu_full",
+                    "rs_safe_atou64",
+                    "rs_safe_atoi64",
+                    "rs_safe_atoux64",
+                    "rs_parse_size",
+                    "rs_parse_pid",
+                    "rs_parse_mode",
+                    "rs_parse_ifindex",
+                    "rs_parse_fd",
+                    "rs_parse_errno",
+                    "rs_parse_nice",
+                    "rs_parse_ip_port",
+                    "rs_parse_range",
+                }
+            ),
+        ),
+        "utf8_abi": (
+            basic_rust / "utf8.h",
+            basic_rust / "utf8.rs",
+            frozenset(
+                {
+                    "rs_unichar_is_valid",
+                    "rs_utf8_is_valid_n",
+                    "rs_ascii_is_valid_n",
+                    "rs_utf8_to_ascii",
+                    "rs_utf8_escape_invalid",
+                    "rs_utf8_is_printable_newline",
+                    "rs_utf8_escape_non_printable_full",
+                    "rs_utf8_encode_unichar",
+                    "rs_utf16_encode_unichar",
+                    "rs_utf16_to_utf8",
+                    "rs_utf8_to_utf16",
+                    "rs_char16_strlen",
+                    "rs_char16_strsize",
+                    "rs_utf8_encoded_valid_unichar",
+                    "rs_utf8_encoded_to_unichar",
+                    "rs_utf8_n_codepoints",
+                    "rs_utf8_char_console_width",
+                    "rs_utf8_console_width",
+                    "rs_utf8_last_length",
+                }
+            ),
+        ),
+        "ansi_color": (
+            basic_rust / "ansi_color.h",
+            basic_rust / "ansi_color.rs",
+            frozenset(
+                {
+                    "rs_color_mode_from_string",
+                    "rs_color_mode_to_string",
+                    "rs_parse_systemd_colors",
+                    "rs_looks_like_ansi_color_code",
+                }
+            ),
+        ),
+        "syslog_util": (
+            basic_rust / "syslog_util.h",
+            basic_rust / "syslog_util.rs",
+            frozenset(
+                {
+                    "rs_log_facility_unshifted_from_string",
+                    "rs_log_facility_unshifted_to_string_alloc",
+                    "rs_log_facility_unshifted_is_valid",
+                    "rs_log_level_from_string",
+                    "rs_log_level_to_string_alloc",
+                    "rs_log_level_is_valid",
+                    "rs_syslog_parse_priority",
+                }
+            ),
+        ),
+        "exec_util": (
+            basic_rust / "exec_util.h",
+            basic_rust / "exec_util.rs",
+            frozenset(
+                {
+                    "rs_exec_command_flags_from_string",
+                    "rs_exec_command_flags_to_string",
+                    "rs_exec_command_flags_from_strv",
+                    "rs_exec_command_flags_to_strv",
+                    "rs_indent_embedded_newlines",
+                }
+            ),
+        ),
+        "unit_dbus": (
+            basic_rust / "unit_def.h",
+            basic_rust / "unit_def.rs",
+            frozenset(
+                {
+                    "rs_unit_dbus_path_from_name",
+                    "rs_unit_name_from_dbus_path",
+                    "rs_unit_dbus_interface_from_type",
+                    "rs_unit_dbus_interface_from_name",
                 }
             ),
         ),
@@ -211,6 +315,20 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_filename_part_is_valid",
                     "rs_hidden_or_backup_file",
                     "rs_path_implies_directory",
+                }
+            ),
+        ),
+        "path_extra_abi": (
+            basic_rust / "path_util.h",
+            basic_rust / "path_util.rs",
+            frozenset(
+                {
+                    "rs_fdname_is_valid",
+                    "rs_file_in_same_dir",
+                    "rs_path_is_absolute",
+                    "rs_path_is_normalized",
+                    "rs_valid_device_node_path",
+                    "rs_valid_device_allow_pattern",
                 }
             ),
         ),
@@ -1019,10 +1137,16 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "exit_status_securebits": (tests_extra / "test-securebits-rust.c",),
         "exit_status_lookup": (tests_extra / "test-exit-status-rust.c",),
         "parse_util": (
+            tests_extra / "test-parse-util-rust.c",
             tests_extra / "test-parse-util-extra-rust.c",
             tests_extra / "test-parse-util-inline-rust.c",
             tests_extra / "test-parse-extra-rust.c",
         ),
+        "utf8_abi": (tests_extra / "test-utf8-rust.c",),
+        "ansi_color": (tests_extra / "test-ansi-color-rust.c",),
+        "syslog_util": (tests_extra / "test-syslog-util-rust.c",),
+        "exec_util": (tests_extra / "test-exec-util-rust.c",),
+        "unit_dbus": (tests_extra / "test-unit-dbus-rust.c",),
         "time_util_formatting": (tests_extra / "test-parse-extra-rust.c",),
         "time_util_arithmetic": (tests_extra / "test-time-util-extra2-rust.c",),
         "install_change": (tests_extra / "test-install-rust.c",),
@@ -1043,6 +1167,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "murmurhash2": (tests_extra / "test-murmurhash2-rust.c",),
         "path_base_predicates": (tests_extra / "test-path-util-rust.c",),
+        "path_extra_abi": (tests_extra / "test-path-util-rust.c",),
         "escape": (
             tests_extra / "test-escape-rust.c",
             tests_extra / "test-escape-extra-rust.c",
@@ -1256,6 +1381,21 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/securebits-util.h",
         ),
         "parse_util": (root / "src/basic/parse-util.c", root / "src/basic/parse-util.h"),
+        "utf8_abi": (
+            root / "src/basic/utf8.c",
+            root / "src/basic/utf8.h",
+            root / "src/basic/gunicode.c",
+            root / "src/basic/gunicode.h",
+        ),
+        "ansi_color": (root / "src/basic/ansi-color.c", root / "src/basic/ansi-color.h"),
+        "syslog_util": (root / "src/basic/syslog-util.c", root / "src/basic/syslog-util.h"),
+        "exec_util": (
+            root / "src/shared/exec-util.c",
+            root / "src/shared/exec-util.h",
+            root / "src/shared/bootspec.c",
+            root / "src/shared/bootspec.h",
+        ),
+        "unit_dbus": (root / "src/basic/unit-def.c", root / "src/basic/unit-def.h"),
         "time_util_formatting": (
             root / "src/basic/time-util.c",
             root / "src/basic/time-util.h",
@@ -1291,6 +1431,12 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "path_base_predicates": (
             root / "src/basic/path-util.c",
             root / "src/basic/path-util.h",
+        ),
+        "path_extra_abi": (
+            root / "src/basic/path-util.c",
+            root / "src/basic/path-util.h",
+            root / "src/basic/fd-util.c",
+            root / "src/basic/fd-util.h",
         ),
         "escape": (root / "src/basic/escape.c", root / "src/basic/escape.h"),
         "strv_escape_and_fnmatch": (root / "src/basic/strv.c", root / "src/basic/strv.h"),

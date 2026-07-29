@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: unit-dbus-path */
+/* RUST-CONTRACT: unit-dbus-name */
+/* RUST-CONTRACT: unit-dbus-interface */
 /* Shadow test: unit_dbus_path_from_name, unit_name_from_dbus_path,
  *              unit_dbus_interface_from_type, unit_dbus_interface_from_name,
  *              file_in_same_dir */
@@ -26,6 +29,25 @@ static void test_unit_dbus_path_from_name(void) {
         assert_se(rs_r != NULL);
         assert_se(streq(c_r, rs_r));
         assert_se(startswith(c_r, "/org/freedesktop/systemd1/unit/"));
+        free(c_r); free(rs_r);
+
+        /* Empty input uses bus-label's special underscore spelling. */
+        c_r = unit_dbus_path_from_name("");
+        rs_r = rs_unit_dbus_path_from_name("");
+        assert_se(c_r != NULL);
+        assert_se(rs_r != NULL);
+        assert_se(streq(c_r, rs_r));
+        assert_se(streq(c_r, "/org/freedesktop/systemd1/unit/_"));
+        free(c_r); free(rs_r);
+
+        /* C strings are raw bytes, not UTF-8 text. */
+        const char byte_name[] = { (char) 0xff, '.', 's', 'e', 'r', 'v', 'i', 'c', 'e', 0 };
+        c_r = unit_dbus_path_from_name(byte_name);
+        rs_r = rs_unit_dbus_path_from_name(byte_name);
+        assert_se(c_r != NULL);
+        assert_se(rs_r != NULL);
+        assert_se(streq(c_r, rs_r));
+        assert_se(streq(c_r, "/org/freedesktop/systemd1/unit/_ff_2eservice"));
         free(c_r); free(rs_r);
 
         /* Name with dashes */
@@ -83,6 +105,24 @@ static void test_unit_name_from_dbus_path(void) {
         rs_ret = rs_unit_name_from_dbus_path("/org/freedesktop/something/unit/foo.service", &rs_r);
         assert_se(c_ret == rs_ret);
         assert_se(c_ret < 0);
+
+        /* Invalid escapes remain literal, as bus_label_unescape() specifies. */
+        c_ret = unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/foo_bad", &c_r);
+        rs_ret = rs_unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/foo_bad", &rs_r);
+        assert_se(c_ret == rs_ret);
+        assert_se(c_ret == 0);
+        assert_se(streq(c_r, rs_r));
+        assert_se(streq(c_r, "foo_bad"));
+        free(c_r); c_r = NULL; free(rs_r); rs_r = NULL;
+
+        /* Decoding _00 retains bytes after the embedded NUL in the allocation. */
+        c_ret = unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/_00A", &c_r);
+        rs_ret = rs_unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/_00A", &rs_r);
+        assert_se(c_ret == rs_ret);
+        assert_se(c_ret == 0);
+        assert_se(memcmp(c_r, rs_r, 3) == 0);
+        assert_se(memcmp(c_r, "\0A\0", 3) == 0);
+        free(c_r); c_r = NULL; free(rs_r); rs_r = NULL;
 
         /* Empty path (doesn't start with prefix) */
         c_ret = unit_name_from_dbus_path("", &c_r);

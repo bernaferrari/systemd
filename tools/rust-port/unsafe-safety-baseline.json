@@ -20,6 +20,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 14
     },
+    "src/basic/rust/ansi_color.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
     "src/basic/rust/architecture.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -147,6 +152,16 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 10
+    },
+    "src/basic/rust/exec_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 18
+    },
+    "src/basic/rust/exit_status.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/basic/rust/errno_util.rs": {
       "missing_safety": 0,
@@ -494,6 +509,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 3
     },
+    "src/basic/rust/syslog_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 18
+    },
     "src/basic/rust/stat_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -663,7 +683,7 @@
     "src/basic/rust/unit_def.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 14
     },
     "src/basic/rust/unit_name.rs": {
       "missing_safety": 13,
@@ -696,7 +716,7 @@
         "112:1:unsafe fn utf8_encode_unichar_raw(out_utf8: *mut u8, g: u32) -> usize {",
         "254:1:unsafe fn utf8_next_char(p: *const c_char) -> *const c_char {"
       ],
-      "unsafe_sites": 48
+      "unsafe_sites": 50
     },
     "src/basic/rust/virt.rs": {
       "missing_safety": 0,

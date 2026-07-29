@@ -107,9 +107,8 @@ jobs:
   #   version byte ordering: test-strverscmp-rust
   #   non-UTF-8 extras: test-header-inline-rust, string/escape/errno fixtures
   #
-  # Intentionally NOT listed until C ABI exports exist (no_mangle/export_name):
-  #   test-parse-util-rust, test-time-util-rust, test-time-util-extra-rust,
-  #   test-utf8-rust
+  # Intentionally NOT listed until their C ABI exports exist (no_mangle/export_name):
+  #   test-time-util-rust, test-time-util-extra-rust
   #   — see tools/rust-port/PRIORITY_RUNTIME_SET.md
   rust-meson-reviewed-shadows:
     name: Meson-reviewed Rust C shadows
@@ -148,6 +147,12 @@ jobs:
           test-device-nodes-rust
           test-gunicode-rust
           test-exit-status-rust
+          test-parse-util-rust
+          test-utf8-rust
+          test-ansi-color-rust
+          test-syslog-util-rust
+          test-exec-util-rust
+          test-unit-dbus-rust
           test-efivars-rust
           test-efi-guid-rust
           test-serialize-rust
@@ -288,6 +293,12 @@ jobs:
           test-device-nodes-rust
           test-gunicode-rust
           test-exit-status-rust
+          test-parse-util-rust
+          test-utf8-rust
+          test-ansi-color-rust
+          test-syslog-util-rust
+          test-exec-util-rust
+          test-unit-dbus-rust
           test-efivars-rust
           test-efi-guid-rust
           test-serialize-rust

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/syslog-util.c
+// PORT-SYNC: scope=basic.syslog-util; authority=src/basic/syslog-util.c,src/basic/syslog-util.h
 
 use crate::ffi::Errno;
+use std::ffi::CStr;
+use std::os::raw::c_char;
 
 const LOG_FACMASK: i32 = 0x03f8;
 const LOG_FAC_MAX: i32 = 127;
@@ -138,12 +140,73 @@ fn lookup_value_with_fallback(
         return Ok(value);
     }
 
-    let parsed = name.parse::<i32>().map_err(|_| Errno::EINVAL)?;
-    if !(0..=fallback_max).contains(&parsed) {
+    let Some(parsed) = parse_safe_atou(name.as_bytes()) else {
+        return Err(Errno::EINVAL);
+    };
+    if parsed > fallback_max as u32 {
         return Err(Errno::EINVAL);
     }
 
-    Ok(parsed)
+    Ok(parsed as i32)
+}
+
+/// Parse exactly the `safe_atou(..., base=0)` grammar used by C's string-table
+/// fallback, without crossing the C boundary.
+fn parse_safe_atou(bytes: &[u8]) -> Option<u32> {
+    let mut start = 0;
+    while matches!(
+        bytes.get(start),
+        Some(b' ' | b'\t' | b'\n' | b'\r' | b'\x0b' | b'\x0c')
+    ) {
+        start += 1;
+    }
+    if start == bytes.len() {
+        return None;
+    }
+
+    /* parse-util's base mangling happens before strtoul() consumes a sign, so
+     * `0b` and `0o` remain deliberately unsigned-prefix-only. */
+    let (index, base) = if bytes[start..].starts_with(b"0b") || bytes[start..].starts_with(b"0B") {
+        (start + 2, 2)
+    } else if bytes[start..].starts_with(b"0o") || bytes[start..].starts_with(b"0O") {
+        (start + 2, 8)
+    } else {
+        let mut index = start;
+        let negative = matches!(bytes.get(index), Some(b'-'));
+        if matches!(bytes.get(index), Some(b'+' | b'-')) {
+            index += 1;
+        }
+        let (index, base) =
+            if bytes[index..].starts_with(b"0x") || bytes[index..].starts_with(b"0X") {
+                (index + 2, 16)
+            } else if bytes.get(index) == Some(&b'0') {
+                (index, 8)
+            } else {
+                (index, 10)
+            };
+        return parse_digits(bytes, index, base, negative);
+    };
+
+    parse_digits(bytes, index, base, false)
+}
+
+fn parse_digits(bytes: &[u8], mut index: usize, base: u8, negative: bool) -> Option<u32> {
+    let first_digit = index;
+    let mut value = 0_u32;
+    while let Some(byte) = bytes.get(index) {
+        let digit = match byte {
+            b'0'..=b'9' => byte - b'0',
+            b'a'..=b'f' => byte - b'a' + 10,
+            b'A'..=b'F' => byte - b'A' + 10,
+            _ => return None,
+        };
+        if digit >= base {
+            return None;
+        }
+        value = value.checked_mul(base as u32)?.checked_add(digit as u32)?;
+        index += 1;
+    }
+    (index != first_digit && (!negative || value == 0)).then_some(value)
 }
 
 pub const fn log_facility_unshifted_is_valid(facility: i32) -> bool {
@@ -230,6 +293,190 @@ pub fn syslog_parse_priority(
     Some((&input[end + 1..], parsed))
 }
 
+/// Copy bytes into a C-owned NUL-terminated allocation.
+///
+/// # Safety
+/// `ret` must point to writable storage for one `char *`.
+unsafe fn copy_to_c_allocator(bytes: &[u8], ret: *mut *mut c_char) -> i32 {
+    let Some(allocation_size) = bytes.len().checked_add(1) else {
+        return Errno::ENOMEM.to_neg_errno();
+    };
+
+    let allocation = crate::ffi::malloc(allocation_size).cast::<c_char>();
+    if allocation.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
+
+    // SAFETY: allocation has bytes.len() + 1 writable bytes, and bytes is a
+    // live Rust slice. The final byte is within the allocation.
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), allocation.cast::<u8>(), bytes.len());
+        *allocation.cast::<u8>().add(bytes.len()) = 0;
+        *ret = allocation;
+    }
+    0
+}
+
+// SAFETY: name is NULL-checked before borrowing it as a C string; table is a
+// Rust-owned static lookup and no raw output pointer is dereferenced here.
+unsafe fn log_value_from_c_string(
+    name: *const c_char,
+    table: &[(i32, &'static str)],
+    maximum: i32,
+) -> i32 {
+    if name.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: the FFI caller promises a live NUL-terminated input string.
+    let name_bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
+    if let Some(value) = table
+        .iter()
+        .find_map(|(value, candidate)| (name_bytes == candidate.as_bytes()).then_some(*value))
+    {
+        return value;
+    }
+
+    let Some(numeric) = parse_safe_atou(name_bytes) else {
+        return Errno::EINVAL.to_neg_errno();
+    };
+    if numeric > maximum as u32 {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    numeric as i32
+}
+
+/// C ABI facade for `log_facility_unshifted_is_valid()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_log_facility_unshifted_is_valid(facility: i32) -> bool {
+    log_facility_unshifted_is_valid(facility)
+}
+
+/// C ABI facade for `log_facility_unshifted_from_string()`.
+///
+/// # Safety
+/// `name` must be null or a readable NUL-terminated C string for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_log_facility_unshifted_from_string(name: *const c_char) -> i32 {
+    // SAFETY: this facade forwards its C-string contract to the parser.
+    unsafe { log_value_from_c_string(name, LOG_FACILITY_TABLE, LOG_FAC_MAX) }
+}
+
+/// C ABI facade for `log_facility_unshifted_to_string_alloc()`.
+///
+/// # Safety
+/// `ret` must be a non-null, writable `char **`. On success it receives a
+/// fresh `malloc(3)` allocation owned by the C caller.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_log_facility_unshifted_to_string_alloc(
+    value: i32,
+    ret: *mut *mut c_char,
+) -> i32 {
+    if ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    // SAFETY: ret satisfies this function's writable-output contract.
+    unsafe { *ret = std::ptr::null_mut() };
+    let Ok(rendered) = log_facility_unshifted_to_string(value) else {
+        return Errno::ERANGE.to_neg_errno();
+    };
+    // SAFETY: ret satisfies this facade's writable-output contract.
+    unsafe { copy_to_c_allocator(rendered.as_bytes(), ret) }
+}
+
+/// C ABI facade for `log_level_is_valid()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rs_log_level_is_valid(level: i32) -> bool {
+    log_level_is_valid(level)
+}
+
+/// C ABI facade for `log_level_from_string()`.
+///
+/// # Safety
+/// `name` must be null or a readable NUL-terminated C string for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_log_level_from_string(name: *const c_char) -> i32 {
+    // SAFETY: this facade forwards its C-string contract to the parser.
+    unsafe { log_value_from_c_string(name, LOG_LEVEL_TABLE, LOG_DEBUG) }
+}
+
+/// C ABI facade for `log_level_to_string_alloc()`.
+///
+/// # Safety
+/// `ret` must be a non-null, writable `char **`. On success it receives a
+/// fresh `malloc(3)` allocation owned by the C caller.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_log_level_to_string_alloc(value: i32, ret: *mut *mut c_char) -> i32 {
+    if ret.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    // SAFETY: ret satisfies this function's writable-output contract.
+    unsafe { *ret = std::ptr::null_mut() };
+    let Ok(rendered) = log_level_to_string(value) else {
+        return Errno::ERANGE.to_neg_errno();
+    };
+    // SAFETY: ret satisfies this facade's writable-output contract.
+    unsafe { copy_to_c_allocator(rendered.as_bytes(), ret) }
+}
+
+/// C ABI facade for `syslog_parse_priority()`.
+///
+/// # Safety
+/// `p` must point to a writable C-string pointer and `priority` to a writable
+/// `int`; the input string must remain live and NUL-terminated for the call.
+/// The pointer slots may not alias incompatible storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_syslog_parse_priority(
+    p: *mut *const c_char,
+    priority: *mut i32,
+    with_facility: bool,
+) -> i32 {
+    if p.is_null() || priority.is_null() {
+        return 0;
+    }
+    // SAFETY: p satisfies this function's writable pointer-slot contract.
+    let input = unsafe { *p };
+    if input.is_null() {
+        return 0;
+    }
+    // SAFETY: input satisfies this function's C-string contract.
+    let bytes = unsafe { CStr::from_ptr(input) }.to_bytes();
+    if bytes.first() != Some(&b'<') {
+        return 0;
+    }
+    let Some(end) = bytes.iter().position(|byte| *byte == b'>') else {
+        return 0;
+    };
+    let k = end;
+    if !(2..=4).contains(&k) {
+        return 0;
+    }
+    let digits = &bytes[1..k];
+    if !digits.iter().all(|byte| byte.is_ascii_digit()) {
+        return 0;
+    }
+    let (a, b, c) = match digits {
+        [c] => (0, 0, (c - b'0') as i32),
+        [b, c] => (0, (b - b'0') as i32, (c - b'0') as i32),
+        [a, b, c] => ((a - b'0') as i32, (b - b'0') as i32, (c - b'0') as i32),
+        _ => return 0,
+    };
+    if !with_facility && (a != 0 || b != 0 || c > LOG_DEBUG) {
+        return 0;
+    }
+    // SAFETY: p and priority satisfy this function's writable-output contract.
+    unsafe {
+        *priority = if with_facility {
+            a * 100 + b * 10 + c
+        } else {
+            (*priority & LOG_FACMASK) | c
+        };
+        *p = input.add(k + 1);
+    }
+    1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,6 +518,20 @@ mod tests {
             log_facility_unshifted_from_string("KERN"),
             Err(Errno::EINVAL)
         );
+    }
+
+    #[test]
+    fn string_table_numeric_fallback_uses_safe_atou_grammar() {
+        assert_eq!(log_facility_unshifted_from_string(" 15"), Ok(15));
+        assert_eq!(log_facility_unshifted_from_string("+15"), Ok(15));
+        assert_eq!(log_facility_unshifted_from_string("0xf"), Ok(15));
+        assert_eq!(log_facility_unshifted_from_string("0b1111"), Ok(15));
+        assert_eq!(log_facility_unshifted_from_string("0o17"), Ok(15));
+        assert_eq!(
+            log_facility_unshifted_from_string("+0b1111"),
+            Err(Errno::EINVAL)
+        );
+        assert_eq!(log_facility_unshifted_from_string("08"), Err(Errno::EINVAL));
     }
 
     #[test]

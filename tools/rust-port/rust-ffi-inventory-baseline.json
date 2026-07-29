@@ -1,11 +1,7 @@
 {
   "missing_by_header": {
     "src/basic/rust/ansi_color.h": [
-      "rs_color_mode_from_string",
-      "rs_color_mode_to_string",
       "rs_get_color_mode",
-      "rs_looks_like_ansi_color_code",
-      "rs_parse_systemd_colors",
       "rs_underline_enabled"
     ],
     "src/basic/rust/bitmap.h": [
@@ -21,15 +17,8 @@
       "rs_bitmap_set",
       "rs_bitmap_unset"
     ],
-    "src/basic/rust/exec_util.h": [
-      "rs_exec_command_flags_from_string",
-      "rs_exec_command_flags_from_strv",
-      "rs_exec_command_flags_to_string",
-      "rs_exec_command_flags_to_strv",
-      "rs_indent_embedded_newlines"
-    ],
+    "src/basic/rust/exec_util.h": [],
     "src/basic/rust/exit_status.h": [
-      "rs_exit_status_from_string",
       "rs_exit_status_set_free",
       "rs_exit_status_set_is_empty",
       "rs_exit_status_set_test",
@@ -85,40 +74,9 @@
       "rs_mempool_init"
     ],
     "src/basic/rust/parse_util.h": [
-      "rs_parse_boolean",
-      "rs_parse_errno",
-      "rs_parse_fd",
-      "rs_parse_fractional_part_u",
-      "rs_parse_ifindex",
-      "rs_parse_ip_port",
-      "rs_parse_mode",
-      "rs_parse_nice",
-      "rs_parse_pid",
-      "rs_parse_range",
-      "rs_parse_size",
-      "rs_safe_atoi",
-      "rs_safe_atoi16",
-      "rs_safe_atoi64",
-      "rs_safe_atolli",
-      "rs_safe_atollu",
-      "rs_safe_atollu_full",
-      "rs_safe_atolu_full",
-      "rs_safe_atou",
-      "rs_safe_atou16_full",
-      "rs_safe_atou64",
-      "rs_safe_atou8_full",
-      "rs_safe_atou_bounded",
-      "rs_safe_atou_full",
-      "rs_safe_atoux64"
+      "rs_parse_fractional_part_u"
     ],
-    "src/basic/rust/path_util.h": [
-      "rs_fdname_is_valid",
-      "rs_file_in_same_dir",
-      "rs_path_is_absolute",
-      "rs_path_is_normalized",
-      "rs_valid_device_allow_pattern",
-      "rs_valid_device_node_path"
-    ],
+    "src/basic/rust/path_util.h": [],
     "src/basic/rust/pe_binary.h": [
       "rs_pe_header_find_section",
       "rs_pe_header_get_data_directory",
@@ -211,15 +169,7 @@
       "rs_strv_find_closest_prefix",
       "rs_strv_free_and_replace"
     ],
-    "src/basic/rust/syslog_util.h": [
-      "rs_log_facility_unshifted_from_string",
-      "rs_log_facility_unshifted_is_valid",
-      "rs_log_facility_unshifted_to_string_alloc",
-      "rs_log_level_from_string",
-      "rs_log_level_is_valid",
-      "rs_log_level_to_string_alloc",
-      "rs_syslog_parse_priority"
-    ],
+    "src/basic/rust/syslog_util.h": [],
     "src/basic/rust/time_util.h": [
       "rs_map_clock_usec_raw",
       "rs_parse_sec",
@@ -254,33 +204,8 @@
       "rs_uid_range_size",
       "rs_uid_range_translate"
     ],
-    "src/basic/rust/unit_def.h": [
-      "rs_unit_dbus_interface_from_name",
-      "rs_unit_dbus_interface_from_type",
-      "rs_unit_dbus_path_from_name",
-      "rs_unit_name_from_dbus_path"
-    ],
-    "src/basic/rust/utf8.h": [
-      "rs_ascii_is_valid_n",
-      "rs_char16_strlen",
-      "rs_char16_strsize",
-      "rs_unichar_is_valid",
-      "rs_utf16_encode_unichar",
-      "rs_utf16_to_utf8",
-      "rs_utf8_char_console_width",
-      "rs_utf8_console_width",
-      "rs_utf8_encode_unichar",
-      "rs_utf8_encoded_to_unichar",
-      "rs_utf8_encoded_valid_unichar",
-      "rs_utf8_escape_invalid",
-      "rs_utf8_escape_non_printable_full",
-      "rs_utf8_is_printable_newline",
-      "rs_utf8_is_valid_n",
-      "rs_utf8_last_length",
-      "rs_utf8_n_codepoints",
-      "rs_utf8_to_ascii",
-      "rs_utf8_to_utf16"
-    ],
+    "src/basic/rust/unit_def.h": [],
+    "src/basic/rust/utf8.h": [],
     "src/shared/rust/dns_domain_validators.h": [
       "rs_dns_service_name_is_valid",
       "rs_dns_srv_type_is_valid",
@@ -321,7 +246,7 @@
       "rs_dns_srv_type_is_valid",
       "rs_dnssd_srv_type_is_valid"
     ],
-    "src/shared/rust/exit_status.h": ["rs_exit_status_from_string"],
+    "src/shared/rust/exit_status.h": [],
     "src/shared/rust/glob_util.h": [
       "rs_glob_non_glob_prefix",
       "rs_string_is_glob"

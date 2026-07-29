@@ -1,0 +1,140 @@
+schema = 1
+module = "syslog-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["log_namespace_name_valid"]
+
+[authority]
+c_headers = ["src/basic/syslog-util.h"]
+c_sources = ["src/basic/syslog-util.c"]
+rust_headers = ["src/basic/rust/syslog_util.h"]
+rust_sources = ["src/basic/rust/syslog_util.rs"]
+
+[[surface]]
+id = "syslog-facility-parser"
+c_symbols = ["log_facility_unshifted_from_string"]
+rust_symbols = ["rs_log_facility_unshifted_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-syslog-util-rust.c"
+meson_target = "test-syslog-util-rust"
+labels = ["syslog-facility-parser"]
+
+[[surface]]
+id = "syslog-facility-validator"
+c_symbols = ["log_facility_unshifted_is_valid"]
+rust_symbols = ["rs_log_facility_unshifted_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-syslog-util-rust.c"
+meson_target = "test-syslog-util-rust"
+labels = ["syslog-facility-validator"]
+
+[[surface]]
+id = "syslog-facility-renderer"
+c_symbols = ["log_facility_unshifted_to_string_alloc"]
+rust_symbols = ["rs_log_facility_unshifted_to_string_alloc"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-syslog-util-rust.c"
+meson_target = "test-syslog-util-rust"
+labels = ["syslog-facility-renderer"]
+
+[[surface]]
+id = "syslog-level-parser"
+c_symbols = ["log_level_from_string"]
+rust_symbols = ["rs_log_level_from_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-syslog-util-rust.c"
+meson_target = "test-syslog-util-rust"
+labels = ["syslog-level-parser"]
+
+[[surface]]
+id = "syslog-level-validator"
+c_symbols = ["log_level_is_valid"]
+rust_symbols = ["rs_log_level_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-syslog-util-rust.c"
+meson_target = "test-syslog-util-rust"
+labels = ["syslog-level-validator"]
+
+[[surface]]
+id = "syslog-level-renderer"
+c_symbols = ["log_level_to_string_alloc"]
+rust_symbols = ["rs_log_level_to_string_alloc"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-syslog-util-rust.c"
+meson_target = "test-syslog-util-rust"
+labels = ["syslog-level-renderer"]
+
+[[surface]]
+id = "syslog-priority-parser"
+c_symbols = ["syslog_parse_priority"]
+rust_symbols = ["rs_syslog_parse_priority"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-syslog-util-rust.c"
+meson_target = "test-syslog-util-rust"
+labels = ["syslog-priority-parser"]

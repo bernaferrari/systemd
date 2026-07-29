@@ -24,19 +24,14 @@ excluded_c_symbols = [
     "fsck_exists_for_fstype",
     "safe_getcwd",
     "empty_or_root_harder_to_null",
-    "path_is_normalized",
     "path_is_valid_full",
-    "path_is_absolute",
-    "valid_device_node_path",
-    "valid_device_allow_pattern",
-    "file_in_same_dir",
     "skip_dev_prefix",
     "skip_leading_slash",
 ]
 
 [authority]
-c_headers = ["src/basic/path-util.h"]
-c_sources = ["src/basic/path-util.c"]
+c_headers = ["src/basic/path-util.h", "src/basic/fd-util.h"]
+c_sources = ["src/basic/path-util.c", "src/basic/fd-util.c"]
 rust_headers = ["src/basic/rust/path_util.h"]
 rust_sources = [
     "src/basic/rust/path_util.rs",
@@ -476,3 +471,49 @@ verification = "static-only"
 file = "tests-extra/test-stat-verify-rust.c"
 meson_target = "test-stat-verify-rust"
 labels = ["is-device-path"]
+
+[[surface]]
+id = "path-extra-predicates"
+c_symbols = ["fdname_is_valid", "path_is_absolute", "path_is_normalized", "valid_device_node_path", "valid_device_allow_pattern"]
+rust_symbols = ["rs_fdname_is_valid", "rs_path_is_absolute", "rs_path_is_normalized", "rs_valid_device_node_path", "rs_valid_device_allow_pattern"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "path-extra-null-fail-closed"
+deviation_rationale = "Several C helpers assert or require non-NULL strings. The Rust facades return false for invalid boundary pointers while preserving reviewed valid-input behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-rust.c"
+meson_target = "test-path-util-rust"
+labels = ["path-extra-predicates"]
+
+[[surface]]
+id = "path-file-in-same-dir"
+c_symbols = ["file_in_same_dir"]
+rust_symbols = ["rs_file_in_same_dir"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "path-file-in-same-dir-null-fail-closed"
+deviation_rationale = "The C helper asserts required pointer arguments. The Rust facade returns -EINVAL before dereferencing invalid pointers while preserving valid-input allocation and publication behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-path-util-rust.c"
+meson_target = "test-path-util-rust"
+labels = ["path-file-in-same-dir"]

@@ -1,4 +1,9 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: ansi-color-string-conversion */
+/* RUST-CONTRACT: ansi-color-from-string */
+/* RUST-CONTRACT: ansi-color-to-string */
+/* RUST-CONTRACT: ansi-color-environment-parser */
+/* RUST-CONTRACT: ansi-color-sgr-classifier */
 
 #include <stdlib.h>
 #include <string.h>
