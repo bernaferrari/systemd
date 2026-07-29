@@ -13,6 +13,7 @@ edition = "2024"
 [dependencies]
 systemd-shared-rs = { path = "../../shared/rust" }
 libc = { workspace = true }
+nix = { workspace = true }
 getrandom = "0.4"
 
 [lib]

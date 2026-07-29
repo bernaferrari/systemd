@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-use crate::constants::{SD_INTERFACE, SD_PATH, SD_SERVICE};
+use crate::constants::{
+    DBUS_INTERFACE as SD_INTERFACE, DBUS_PATH as SD_PATH, DBUS_SERVICE as SD_SERVICE,
+};
 use crate::proxy::{UnitStatus, UnitStatusWire};
 
 use zbus::zvariant::OwnedObjectPath;

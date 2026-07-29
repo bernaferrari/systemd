@@ -554,6 +554,7 @@ dependencies = [
 name = "systemd-boot-rust"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "systemd-basic-rs",
 ]
 
@@ -924,6 +925,7 @@ version = "0.0.1"
 dependencies = [
  "getrandom",
  "libc",
+ "nix",
  "systemd-shared-rs",
 ]
 

@@ -284,7 +284,7 @@ impl ManagerState {
             .values()
             .map(UnitRecord::to_status)
             .map(UnitStatusWire::from_status)
-            .collect()
+            .collect::<zbus::zvariant::Result<Vec<_>>>()
             .map_err(wire_error)
     }
 
@@ -408,7 +408,7 @@ impl ManagerState {
                     job.unit_path.clone(),
                 )
             })
-            .collect()
+            .collect::<zbus::zvariant::Result<Vec<_>>>()
             .map_err(wire_error)
     }
 

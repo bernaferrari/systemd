@@ -774,12 +774,12 @@ pub fn run_bridge(
             },
             libc::pollfd {
                 fd: fds.input(),
-                events: (peer_events & libc::POLLIN) as i16,
+                events: (peer_events & libc::POLLIN as libc::c_int) as i16,
                 revents: 0,
             },
             libc::pollfd {
                 fd: fds.output(),
-                events: (peer_events & libc::POLLOUT) as i16,
+                events: (peer_events & libc::POLLOUT as libc::c_int) as i16,
                 revents: 0,
             },
         ];

@@ -35,6 +35,15 @@ use std::{
 #[cfg(target_os = "linux")]
 const RNDADDENTROPY_HEADER_SIZE: usize = std::mem::size_of::<RandPoolInfoHeader>();
 
+/// Linux's `RNDADDENTROPY` `_IOW('R', 0x03, int[2])` request number.
+///
+/// libc does not export this UAPI constant. Deriving it through nix's
+/// target-aware ioctl encoder preserves the distinct encodings used by Linux
+/// architectures instead of hard-coding the generic 0x4008_5203 value.
+#[cfg(target_os = "linux")]
+const RNDADDENTROPY: libc::c_ulong =
+    nix::request_code_write!(b'R', 0x03, RNDADDENTROPY_HEADER_SIZE) as libc::c_ulong;
+
 /// The fixed-size prefix of Linux's `struct rand_pool_info` UAPI request.
 ///
 /// `buf` is a flexible array member, so `libc::rand_pool_info` alone is not a
@@ -115,7 +124,7 @@ fn add_entropy(urandom: &File, data: &[u8]) -> io::Result<()> {
     // SAFETY: `request` is a live contiguous Linux UAPI request as described
     // above; `ioctl` copies it before returning and the descriptor is an open
     // /dev/urandom file owned by `urandom`.
-    let result = unsafe { libc::ioctl(urandom.as_raw_fd(), libc::RNDADDENTROPY, request.as_ptr()) };
+    let result = unsafe { libc::ioctl(urandom.as_raw_fd(), RNDADDENTROPY, request.as_ptr()) };
     if result < 0 {
         return Err(io::Error::last_os_error());
     }

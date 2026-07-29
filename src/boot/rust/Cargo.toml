@@ -8,6 +8,7 @@ publish = false
 path = "lib.rs"
 
 [dependencies]
+libc = { workspace = true }
 systemd-basic-rs = { path = "../../basic/rust" }
 
 [[bin]]
