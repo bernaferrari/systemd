@@ -1,6 +1,6 @@
 # Rust Port Completeness Audit
 
-Date: 2026-07-28
+Date: 2026-07-29
 Scope: `systemd/src` C-vs-Rust completeness and replacement readiness for Linux distro init use.
 
 ## Method
@@ -8,7 +8,13 @@ Scope: `systemd/src` C-vs-Rust completeness and replacement readiness for Linux 
 1. Regenerated file-count coverage snapshot with:
    `python3 tools/rust-port/coverage-dashboard.py --write docs/rust-port-coverage.md`
 2. Sampled representative Rust subsystems for behavioral depth (not only file count).
-3. Mapped largest replacement blockers to open beads dependency chains.
+3. In the lightweight Ubuntu 24.04/aarch64 Lima guest, compiled every Cargo
+   target with `cargo check --locked --workspace --all-targets` using Rust
+   1.97.1.
+4. Rebuilt and ran all 141 registered `-rust` Meson C-versus-Rust shadow tests:
+   141 passed, 0 failed.
+5. Ran the behavior-contract, FFI ABI, registered-fixture, GPT ABI, fixture
+   catalog, and synchronization-metadata gates.
 
 ## Source Inventory Snapshot
 
@@ -24,20 +30,17 @@ Interpretation: raw file ratios are not a coverage metric. Even the behavior-can
 count is only an inventory after excluding obvious non-implementations; it does not
 establish C behavior, ABI, build, installation, or executable parity.
 
-The issue counts below use the repository's outer-workspace Beads database and
-were refreshed on 2026-07-28:
+The former Beads/Dolt issue database is not part of the current workspace, so
+its historical count of 133 P2 issues is not an actionable or authoritative
+measure of remaining work. The concrete replacement risks are described below
+instead of being represented by a stale issue total.
 
-- Open or in-progress issues: **133**
-- Open or in-progress P0 issues: **0**
-- Open or in-progress P1 issues: **0**
-- Open or in-progress P2 issues: **133**
-
-The ABI inventories are similarly explicit: 122 Rust-owned headers currently
-declare **1269** unique C symbols, of which **811** have explicit Rust C exports
-and **458** remain baseline debt. The registered C-test inventory currently has
-194 Rust comparison sources and six sources with 24 manually declared `rs_*`
-symbols; all 24 have an artifact-local backing export. These static ratchets are
-not evidence that the targets link or run, and link parity remains unclaimed.
+The current machine-checked ABI inventory for the Rust-linked basic shadow
+surface has **756** declarations, exports, and matching signatures, with zero
+duplicates. The registered test inventory contains **144** Rust FFI sources;
+all have a backing artifact and 23 manually declared symbols are accounted for.
+This is strong ABI/linkage accounting, but it is not a claim that every C source
+or daemon path has a Rust replacement.
 
 ## Current Static Architecture And Safety Checkpoint
 
@@ -60,7 +63,7 @@ This review also established several boundaries that were previously implicit:
   spellings;
 - socket listeners are now owned by `OwnedFd` instead of leaked with
   `mem::forget` and closed manually. End-to-end `LISTEN_FDS`/`Accept=` delivery
-  and event-source teardown ordering remain P0 work;
+  and event-source teardown ordering remain high-risk incomplete work;
 - the epoll and timerfd wrappers now keep kernel descriptors under RAII
   ownership, set close-on-exec, reject source-ID collisions and mismatched
   removal, avoid raw-FD re-ownership, and propagate callback failures. They are
@@ -74,14 +77,17 @@ This review also established several boundaries that were previously implicit:
   for forward compatibility, matching the C parser's warn-and-continue policy;
 - encrypted credential fallbacks and Varlink credential crypto now fail closed
   instead of returning ciphertext or plaintext identity transforms. Complete
-  authenticated OpenSSL/TPM2/Varlink decryption remains a P0 release blocker;
+  authenticated OpenSSL/TPM2/Varlink decryption remains a release blocker;
 - the glibc UTMP facade now uses libc's exact target layout and serializes
   process-global cursor transactions. It is compiled only on the supported
   Linux/glibc target instead of pretending that an unavailable void API can
   fail safely.
 
-These are static findings only. No Cargo, Meson, runtime, VM, or cross-target
-test was run during this storage-constrained review.
+The current Linux evidence is no longer static-only: the full Cargo workspace
+target graph compiles and the 141 reviewed C/R shadow fixtures execute cleanly
+in Lima. That evidence is intentionally limited to the selected, link-closed
+shadow surface. It does not exercise an installed Rust PID1, privileged boot
+paths, cross-target ABIs, fault injection, or full daemon integration.
 
 ## Representative Completeness Findings
 
@@ -137,40 +143,27 @@ Evidence:
 
 ### A) PID1 + D-Bus + transaction chain
 
-Critical beads in chain remain open and dependency-linked:
-
-- `systemd-dgn7` (PID1 signals, D-Bus, lifecycle, sockets, and fail-closed behavior)
-- `systemd-q491` / `systemd-q491.4.9` (artifact wiring and authoritative ABI gates)
-- `systemd-xxf` (unit operations)
-- `systemd-s4e` / `systemd-3gh` (transaction verify/scheduling)
-- `systemd-yzz` / `systemd-d7b` / `systemd-af0` (D-Bus parity)
-
-Without these, replacing systemd as init is not credible.
+The developer-only Rust PID1 is intentionally non-installed and remains
+incomplete. Signal/lifecycle handling, unit operations, D-Bus contracts,
+transaction verification/scheduling, socket activation, and fail-closed error
+paths must be demonstrated together before replacing the C init process is
+credible.
 
 ### B) Unit-file parser completeness
 
-Core parser gaps still block parity for service semantics and policy controls:
-
-- `systemd-iy9` (`[Service]` all directives)
-- `systemd-5oe` (`[Unit]` all directives)
-- `systemd-fh0` / `systemd-w2s` (kill/cgroup/exec contexts)
-- `systemd-ial` / `systemd-t7g` / `systemd-t72` (drop-ins/tokenizer/specifiers)
+Core parser gaps still block parity for complete service semantics and policy
+controls: the full `[Service]` and `[Unit]` directive space, kill/cgroup/exec
+contexts, drop-ins, tokenizer behavior, and specifiers need systematic C/R
+coverage rather than hand-maintained subsets.
 
 ### C) Daemon parity in resolved/networkd/logind/journald
 
-P0 daemon functionality remains open and dependency-ordered:
-
-- resolved: `systemd-onr`, `systemd-2p6`
-- resolved backend/startup hardening: `systemd-o6pw`
-- networkd: `systemd-uhi`, `systemd-h9z`, `systemd-lf5`
-- logind: `systemd-750`, `systemd-deo`
-- journald: `systemd-4hi`, `systemd-rbk`, `systemd-h97`
-
-Journald ingress parity for `/dev/kmsg` and `NETLINK_AUDIT` was completed in `systemd-a8q`;
+Resolved, networkd, logind, and journald still need daemon startup, backend,
+and integration parity. Journald ingress parity for `/dev/kmsg` and
+`NETLINK_AUDIT` has a scoped shadow implementation;
 socket ingress closeout evidence is captured in `docs/rust-journald-socket-ingress-parity.md`;
 the kmsg/audit closeout checklist is captured in `docs/rust-journald-kmsg-audit-parity.md`.
-Earlier issue notes marked journald socket ingress closed. Within journal-file parity
-(`systemd-rbk`), Rust contains
+Within journal-file parity, Rust contains
 empty-file binary layout, typed DATA/FIELD/ENTRY append with hash-chain linkage and canonical
 entry-item ordering/deduplication, checked record readback, a real `system.journal` runtime backend
 for append/rotate/flush/catalog paths, keyed hashing, structural rotate suggestions, and an acyclic
@@ -187,15 +180,15 @@ Audit-control parity is tracked outside the socket-ingress chain.
 
 ### D) End-to-end correctness and safety gates
 
-Integration/fuzz/system tests required for production readiness are still open:
-
-- `systemd-eta`, `systemd-dfw`, `systemd-5re`, `systemd-5rc`, `systemd-0oq`, `systemd-2u1`
+Production readiness still requires integration, fuzz, fault-injection, boot,
+and cross-target system testing. The current 141-fixture C/R suite is a strong
+baseline, not a substitute for those environments.
 
 ## Readiness Verdict
 
 Current state is **not ready** for swapping distro `systemd` with Rust implementation on Ubuntu or general Linux distributions.
 
-The port has substantial progress and several strong subsystems (especially udev-related work), but the remaining open P0 dependency graph still contains core init, parser semantics, D-Bus contract, and integration correctness blockers.
+The port has substantial progress and several strong subsystems (especially udev-related work), but the remaining core replacement gaps still contain init, parser semantics, D-Bus contract, and integration correctness blockers.
 
 The architecture is now harder to misrepresent: incomplete PID1 selection is
 release-blocked, disconnected core modules and C-character ABI debt are
@@ -206,7 +199,15 @@ That is meaningful progress, but it does not change the **NO-SHIP** verdict.
 
 ```sh
 python3 tools/rust-port/coverage-dashboard.py --write docs/rust-port-coverage.md
-bd status
-bd list -n 0 --status open --json
-bd list -n 0 --status in_progress --json
+python3 tools/rust-port/check-behavior-contract.py --repo-root .
+python3 tools/rust-port/check-basic-rust-ffi-abi.py --root .
+python3 tools/rust-port/check-registered-test-rust-ffi.py
+python3 tools/rust-port/check-gpt-basic-abi.py --root .
+python3 tools/rust-port/check-rust-fixture-catalog.py --repo-root .
+python3 tools/rust-port/sync-metadata-gate.py --repo-root .
+
+# In the `systemd-rust` Lima guest, with Rust 1.97.1 on PATH:
+cargo check --locked --workspace --all-targets
+mapfile -t rust_tests < <(meson test -C /home/bernardoferrari.guest/build-rust-reviewed --list | awk '/-rust$/')
+meson test -C /home/bernardoferrari.guest/build-rust-reviewed -j1 "${rust_tests[@]}"
 ```
