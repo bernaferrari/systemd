@@ -237,9 +237,13 @@ pub fn asynchronous_sync(track_pid: bool) -> AsyncResult<Option<u32>> {
         0 => {
             if !track_pid {
                 // Detach via double-fork.
+                // SAFETY: fork has no pointer preconditions; this child and its
+                // descendant use only async-signal-safe syscalls before _exit().
                 match unsafe { libc::fork() } {
                     0 => {
                         // Grandchild — do the actual work.
+                        // SAFETY: sync is an async-signal-safe syscall wrapper
+                        // with no pointer arguments, called only in the child.
                         unsafe {
                             libc::sync();
                         }
@@ -249,6 +253,8 @@ pub fn asynchronous_sync(track_pid: bool) -> AsyncResult<Option<u32>> {
                 }
             }
             // Single child — do the work directly.
+            // SAFETY: sync is an async-signal-safe syscall wrapper with no
+            // pointer arguments, called only in the child.
             unsafe {
                 libc::sync();
             }
@@ -285,6 +291,8 @@ pub fn asynchronous_fsync(fd: RawFd, track_pid: bool) -> AsyncResult<Option<u32>
     match unsafe { libc::fork() } {
         0 => {
             if !track_pid {
+                // SAFETY: fork has no pointer preconditions; the child paths
+                // use only async-signal-safe syscalls before _exit().
                 match unsafe { libc::fork() } {
                     0 => {
                         // SAFETY: fd validated >= 0 above.
@@ -373,7 +381,7 @@ fn child_exit(code: i32) -> ! {
 /// unavailable).
 fn is_reaper_process() -> Option<bool> {
     // Fast path: PID 1 is always a reaper.
-    let pid = unsafe { libc::getpid() };
+    let pid = std::process::id();
     if pid == 1 {
         return Some(true);
     }

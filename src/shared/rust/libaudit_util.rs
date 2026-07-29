@@ -148,6 +148,8 @@ unsafe fn try_audit_request(fd: i32) -> Result<(), AuditError> {
     mh.msg_iovlen = 1;
 
     // Send the request (MSG_NOSIGNAL = 0x4000 on Linux)
+    // SAFETY: `fd` is an open netlink socket by contract, and `mh` describes the
+    // initialized `msg` buffer through a live, single-element iovec for this call.
     if unsafe { libc::sendmsg(fd, &mh, 0x4000) } < 0 {
         let err = std::io::Error::last_os_error();
         let errno = err.raw_os_error().unwrap_or(0);
@@ -169,6 +171,8 @@ unsafe fn try_audit_request(fd: i32) -> Result<(), AuditError> {
     recv_mh.msg_iov = &mut resp_iov as *mut _ as *mut libc::iovec;
     recv_mh.msg_iovlen = 1;
 
+    // SAFETY: `fd` is an open netlink socket by contract, and `recv_mh` points to
+    // the live, writable `resp_msg` buffer with its exact capacity.
     let n = unsafe { libc::recvmsg(fd, &mut recv_mh, 0) };
     if n < 0 {
         return Err(AuditError::Io(std::io::Error::last_os_error().to_string()));
@@ -181,6 +185,8 @@ unsafe fn try_audit_request(fd: i32) -> Result<(), AuditError> {
         )));
     }
 
+    // SAFETY: `addr_of!` forms no reference to the packed field, the response
+    // buffer is initialized, and `read_unaligned` supports its packed alignment.
     let nlmsg_type: u16 =
         unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(resp_msg.hdr.nlmsg_type)) };
     if nlmsg_type != NLMSG_ERROR {
@@ -189,6 +195,8 @@ unsafe fn try_audit_request(fd: i32) -> Result<(), AuditError> {
         )));
     }
 
+    // SAFETY: `addr_of!` forms no reference to the packed field, the response
+    // buffer is initialized, and `read_unaligned` supports its packed alignment.
     let audit_error: i32 =
         unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(resp_msg.err.error)) };
     // resp_msg.err.error == 0 means success; negative means kernel error code
@@ -266,6 +274,8 @@ fn reset_audit_cache() {
 /// Perform the actual audit enablement detection via netlink socket.
 fn detect_audit_enabled() -> bool {
     // Open a netlink audit socket (SOCK_RAW | SOCK_CLOEXEC | SOCK_NONBLOCK)
+    // SAFETY: `socket` receives only integer constants and does not access Rust
+    // memory; success is checked before the returned descriptor is used.
     let fd = unsafe {
         libc::socket(
             AF_NETLINK,
@@ -284,7 +294,11 @@ fn detect_audit_enabled() -> bool {
     }
 
     // Attempt the audit request; close fd on any path.
+    // SAFETY: the successful `socket` call returned a non-negative, open audit
+    // netlink descriptor, satisfying `try_audit_request`'s contract.
     let result = unsafe { try_audit_request(fd) };
+    // SAFETY: this scope still exclusively owns the open descriptor, and the
+    // request above borrows it without closing or retaining it.
     unsafe { libc::close(fd) };
 
     result.is_ok()
@@ -543,14 +557,24 @@ mod tests {
     #[test]
     fn test_audit_feature_msg_request() {
         let msg = AuditFeatureMsg::new_request();
+        // SAFETY: `msg` initialized this packed integer field; `addr_of!` creates
+        // no reference and `read_unaligned` permits the field's alignment.
         let nlmsg_type: u16 =
             unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.hdr.nlmsg_type)) };
+        // SAFETY: `msg` initialized this packed integer field; `addr_of!` creates
+        // no reference and `read_unaligned` permits the field's alignment.
         let nlmsg_flags: u16 =
             unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.hdr.nlmsg_flags)) };
+        // SAFETY: `msg` initialized this packed integer field; `addr_of!` creates
+        // no reference and `read_unaligned` permits the field's alignment.
         let nlmsg_seq: u32 =
             unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.hdr.nlmsg_seq)) };
+        // SAFETY: `msg` initialized this packed integer field; `addr_of!` creates
+        // no reference and `read_unaligned` permits the field's alignment.
         let nlmsg_pid: u32 =
             unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.hdr.nlmsg_pid)) };
+        // SAFETY: `msg` initialized this packed integer field; `addr_of!` creates
+        // no reference and `read_unaligned` permits the field's alignment.
         let err_error: i32 = unsafe { std::ptr::read_unaligned(std::ptr::addr_of!(msg.err.error)) };
         assert_eq!(nlmsg_type, AUDIT_GET_FEATURE);
         assert_eq!(nlmsg_flags, NLM_F_REQUEST_ACK);
