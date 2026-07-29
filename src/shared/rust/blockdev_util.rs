@@ -10,10 +10,12 @@
 
 use std::fs;
 use std::io;
+use std::os::fd::AsFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
+use crate::btrfs_util::btrfs_get_block_device_fd;
 use crate::ffi::Errno;
 use systemd_basic_rs::devnum_util::{devnum_from_major_minor, devnum_major, devnum_minor};
 
@@ -38,6 +40,8 @@ const ENCRYPTION_CHASE_DEPTH: u32 = 10;
 pub enum BlockDevError {
     /// A POSIX errno occurred.
     Errno(Errno),
+    /// A POSIX errno not represented by the shared typed errno enum.
+    RawErrno(i32),
     /// The fd does not refer to a block device.
     NotABlockDevice,
     /// No backing block device was found.
@@ -61,16 +65,25 @@ impl BlockDevError {
             io::ErrorKind::PermissionDenied => libc::EACCES,
             _ => libc::EIO,
         });
-        match Errno_from_raw(raw) {
+        match Errno::from_raw(raw) {
             Some(e) => BlockDevError::Errno(e),
-            None => BlockDevError::Errno(Errno::EIO),
+            None => BlockDevError::RawErrno(raw),
         }
     }
 
-    /// Return the underlying errno value, if any.
+    /// Return the typed errno value, when the shared enum represents it.
     pub fn errno(&self) -> Option<Errno> {
         match self {
             BlockDevError::Errno(e) => Some(*e),
+            _ => None,
+        }
+    }
+
+    /// Return the positive raw errno value, if this error carries one.
+    pub fn raw_errno(&self) -> Option<i32> {
+        match self {
+            BlockDevError::Errno(e) => Some(*e as i32),
+            BlockDevError::RawErrno(errno) => Some(*errno),
             _ => None,
         }
     }
@@ -80,6 +93,9 @@ impl std::fmt::Display for BlockDevError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BlockDevError::Errno(e) => write!(f, "block device error: errno {:?}", e),
+            BlockDevError::RawErrno(errno) => {
+                write!(f, "block device error: errno {}", errno)
+            }
             BlockDevError::NotABlockDevice => write!(f, "not a block device"),
             BlockDevError::NoBlockDevice => write!(f, "no backing block device"),
             BlockDevError::Encrypted => write!(f, "device is encrypted (dm-crypt)"),
@@ -107,36 +123,6 @@ impl From<io::Error> for BlockDevError {
 impl From<Errno> for BlockDevError {
     fn from(e: Errno) -> Self {
         BlockDevError::Errno(e)
-    }
-}
-
-/// Try to map a raw errno integer to the `Errno` enum.
-fn Errno_from_raw(raw: i32) -> Option<Errno> {
-    match raw {
-        1 => Some(Errno::EPERM),
-        2 => Some(Errno::ENOENT),
-        5 => Some(Errno::EIO),
-        6 => Some(Errno::ENXIO),
-        9 => Some(Errno::EBADF),
-        11 => Some(Errno::EAGAIN),
-        12 => Some(Errno::ENOMEM),
-        13 => Some(Errno::EACCES),
-        15 => Some(Errno::ENOTBLK),
-        16 => Some(Errno::EBUSY),
-        19 => Some(Errno::ENODEV),
-        21 => Some(Errno::EISDIR),
-        22 => Some(Errno::EINVAL),
-        25 => Some(Errno::ENOTTY),
-        28 => Some(Errno::ENOSPC),
-        34 => Some(Errno::ERANGE),
-        38 => Some(Errno::ENOSYS),
-        39 => Some(Errno::ENOTEMPTY),
-        40 => Some(Errno::ELOOP),
-        61 => Some(Errno::ENODATA),
-        75 => Some(Errno::EOVERFLOW),
-        76 => Some(Errno::ENOTUNIQ),
-        117 => Some(Errno::ESTALE),
-        _ => None,
     }
 }
 
@@ -319,13 +305,15 @@ impl WholeDiskResult {
 ///
 /// Uses `fstat` to obtain the filesystem's backing device number. Returns
 /// `Ok(None)` when the filesystem is not backed by a representable block
-/// device (including the currently unported btrfs fallback case).
+/// device, including a multi-device btrfs filesystem.
 ///
 /// # Errors
 ///
-/// Returns `BlockDevError::Errno(EBADF)` for bad fds.
-pub fn get_block_device_fd<Fd: AsRawFd>(fd: &Fd) -> Result<Option<u64>> {
-    let raw_fd = fd.as_raw_fd();
+/// Returns the original `fstat` or btrfs-helper errno. `EBADF` identifies a
+/// stale descriptor; btrfs may additionally report topology/device errors.
+pub fn get_block_device_fd<Fd: AsFd>(fd: &Fd) -> Result<Option<u64>> {
+    let borrowed_fd = fd.as_fd();
+    let raw_fd = borrowed_fd.as_raw_fd();
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: raw_fd is borrowed for this call and `stat` provides writable
     // storage of exactly the ABI-required size.
@@ -337,10 +325,15 @@ pub fn get_block_device_fd<Fd: AsRawFd>(fd: &Fd) -> Result<Option<u64>> {
 
     // C's get_block_device_fd() identifies the device backing the mounted
     // filesystem, not a block special file's st_rdev. A zero major number is
-    // the special btrfs/devtmpfs path; btrfs ioctl fallback remains a separate
-    // P2 rather than returning an incorrect st_rdev value.
+    // the special btrfs/devtmpfs path, so defer to the authoritative btrfs
+    // helper. ENOTTY means it was not btrfs; both that case and btrfs RAID
+    // intentionally produce the C API's "no single backing device" outcome.
     if dev_major(stat.st_dev as u64) == 0 {
-        return Ok(None);
+        return match btrfs_get_block_device_fd(borrowed_fd) {
+            Ok(device) => Ok(device.map(|device| device as u64)),
+            Err(error) if error.raw_os_error() == Some(libc::ENOTTY) => Ok(None),
+            Err(error) => Err(BlockDevError::from_io(error)),
+        };
     }
 
     Ok(Some(stat.st_dev as u64))
@@ -407,8 +400,9 @@ pub fn blockdev_is_encrypted(sysfs_path: &Path, depth_left: u32) -> Result<bool>
 ///
 /// # Errors
 ///
-/// Returns `BlockDevError::Errno` if the backing device cannot be determined.
-pub fn fd_is_encrypted<Fd: AsRawFd>(fd: &Fd) -> Result<bool> {
+/// Returns a `BlockDevError` carrying the original errno if the backing device
+/// cannot be determined.
+pub fn fd_is_encrypted<Fd: AsFd>(fd: &Fd) -> Result<bool> {
     let devt = match get_block_device_fd(fd)? {
         Some(d) => d,
         None => return Ok(false),
@@ -424,8 +418,8 @@ use std::path::PathBuf;
 ///
 /// # Errors
 ///
-/// Returns `BlockDevError::Errno` if the path cannot be opened or the
-/// backing device cannot be determined.
+/// Returns a `BlockDevError` carrying the original errno if the path cannot be
+/// opened or the backing device cannot be determined.
 pub fn path_is_encrypted(path: &Path) -> Result<bool> {
     let devt = match get_block_device(path)? {
         Some(d) => d,
@@ -511,7 +505,7 @@ pub fn blockdev_partscan_enabled(sysfs_dev_path: &Path) -> Result<bool> {
 /// # Errors
 ///
 /// Returns an error if the block device cannot be resolved.
-pub fn blockdev_partscan_enabled_fd<Fd: AsRawFd>(fd: &Fd) -> Result<bool> {
+pub fn blockdev_partscan_enabled_fd<Fd: AsFd>(fd: &Fd) -> Result<bool> {
     let devt = get_block_device_fd(fd)?.ok_or(BlockDevError::NotABlockDevice)?;
 
     let sysfs = PathBuf::from(sys_block_path(devt));
@@ -733,6 +727,18 @@ mod tests {
         let io_err = io::Error::new(io::ErrorKind::PermissionDenied, "denied");
         let bd_err = BlockDevError::from_io(io_err);
         assert_eq!(bd_err.errno(), Some(Errno::EACCES));
+
+        // btrfs_get_block_device_at_full() can return EUCLEAN for /dev/root.
+        // Preserve that errno even though the shared typed enum omits it.
+        let io_err = io::Error::from_raw_os_error(libc::EUCLEAN);
+        let bd_err = BlockDevError::from_io(io_err);
+        assert_eq!(bd_err.errno(), None);
+        assert_eq!(bd_err.raw_errno(), Some(libc::EUCLEAN));
+
+        let io_err = io::Error::from_raw_os_error(libc::ESTALE);
+        let bd_err = BlockDevError::from_io(io_err);
+        assert_eq!(bd_err.errno(), Some(Errno::ESTALE));
+        assert_eq!(bd_err.raw_errno(), Some(libc::ESTALE));
     }
 
     // ── block_get_whole_disk (zero dev_t) ───────────────────────────

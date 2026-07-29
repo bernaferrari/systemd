@@ -6,10 +6,11 @@
 // signatures, certificate source types, verify flags, and PEM marker
 // constants.
 //
-// The actual PKCS#7 verification (pkcs7_verify_mem, pkcs7_sign_mem, etc.)
-// requires OpenSSL and is performed via dlopen of libopenssl at runtime.
-// This module provides safe Rust types and helpers; the heavy crypto work
-// is delegated to openssl_util.
+// PORT-GAP: The OpenSSL-backed DER parsing, signer extraction, verification,
+// and loading paths remain C-only. This Rust module provides only the safe
+// value model and error contracts; it deliberately returns EOPNOTSUPP for
+// those cryptographic operations rather than presenting a partial parser as
+// equivalent to the C implementation.
 
 use crate::ffi::Errno;
 
@@ -210,10 +211,8 @@ pub fn looks_like_pkcs7_pem(data: &[u8]) -> bool {
 
 /// Extract signer information from a DER-encoded PKCS#7 signature.
 ///
-/// This is the safe Rust equivalent of `pkcs7_extract_signers()` from
-/// `pkcs7-util.c`.  It parses the PKCS#7 DER data, iterates over the
-/// `PKCS7_SIGNER_INFO` stack, and collects each signer's issuer name and
-/// serial number.
+/// The C implementation of this operation is OpenSSL-backed and remains the
+/// authoritative implementation; the Rust placeholder reports unsupported.
 ///
 /// # Errors
 ///
@@ -227,19 +226,8 @@ pub fn pkcs7_extract_signers(der: &[u8]) -> Result<Vec<Signer>> {
         return Err(Pkcs7Error::bad_message());
     }
 
-    // The actual PKCS#7 parsing requires OpenSSL.  When built without
-    // HAVE_OPENSSL (or on platforms without libopenssl), we return
-    // EOPNOTSUPP — mirroring the C #else branch.
-    //
-    // When OpenSSL is available, the real implementation would:
-    //   1. Call d2i_PKCS7 to parse the DER blob
-    //   2. Call PKCS7_get_signer_info to obtain the signer stack
-    //   3. For each PKCS7_SIGNER_INFO, extract issuer_and_serial
-    //      via i2d_X509_NAME and i2d_ASN1_INTEGER
-    //   4. Enforce SIGNERS_MAX limit
-    //
-    // For now, we provide the framework and return not-supported so
-    // that callers can handle the fallback gracefully.
+    // Deliberately do not attempt partial ASN.1 parsing here. The C path
+    // owns OpenSSL ABI loading, object lifetimes, and DER encoding details.
     Err(Pkcs7Error::not_supported())
 }
 
@@ -272,22 +260,11 @@ pub fn pkcs7_certificate_hash(certificate: &[u8]) -> Result<[u8; 32]> {
 
 // ── OpenSSL dlopen support ──────────────────────────────────────────────────
 
-/// Attempt to dlopen libopenssl for PKCS#7 operations.
+/// Report that the Rust OpenSSL-backed PKCS#7 loader is not yet implemented.
 ///
-/// This is a placeholder — the real implementation follows the same
-/// pattern as `bpf_dlopen.rs` / `pkcs11_util.rs`:
-///   1. `libc::dlopen("libcrypto.so" / "libssl.so", RTLD_LAZY | RTLD_LOCAL)`
-///   2. Resolve required symbols via `libc::dlsym`
-///   3. Cache the handle in a global `AtomicBool` / `OnceLock`
-///
-/// # Safety
-///
-/// The caller must ensure this is called before any other PKCS#7 function
-/// that requires OpenSSL.  The loaded library handle lives for the
-/// remainder of the process.
+/// The real loading path remains C-owned; this intentionally has no hidden
+/// dynamic-loader side effect.
 pub fn pkcs7_dlopen_openssl() -> Result<()> {
-    // Placeholder — real implementation uses libc::dlopen.
-    // See bpf_dlopen.rs for the canonical pattern.
     Err(Pkcs7Error::not_supported())
 }
 

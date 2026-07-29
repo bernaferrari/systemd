@@ -10,7 +10,7 @@
 // available, operations return `PwqualityError::Unsupported`.
 //
 // The module mirrors the C implementation:
-// - `dlopen_pwquality()` → idempotent library loading with three-state cache
+// - `dlopen_pwquality()` → success-cached library loading through C policy
 // - `pwq_allocate_context()` → settings allocation with config reading
 // - `pwq_maybe_disable_dictionary()` → graceful fallback when dict file missing
 // - `check_password_quality()` → strength validation returning quality score
@@ -18,10 +18,12 @@
 
 use std::ffi::{CStr, CString, c_void};
 use std::fmt;
+use std::io::ErrorKind;
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::{PublishedDlopenHandle, UnpublishedDlopenHandle};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -31,11 +33,15 @@ pub const N_SUGGESTIONS: usize = 6;
 /// Maximum length of libpwquality error messages.
 const PWQ_MAX_ERROR_MESSAGE_LEN: usize = 256;
 
-/// libpwquality setting key for the dictionary path.
-const PWQ_SETTING_DICT_PATH: i32 = 1;
+/// libpwquality's public `PWQ_SETTING_DICT_PATH` setting key.
+///
+/// This is ABI data from `pwquality.h`, not an inferred ordinal.
+const PWQ_SETTING_DICT_PATH: i32 = 10;
 
-/// libpwquality setting key for dictionary check toggle.
-const PWQ_SETTING_DICT_CHECK: i32 = 5;
+/// libpwquality's public `PWQ_SETTING_DICT_CHECK` setting key.
+///
+/// This is ABI data from `pwquality.h`, not an inferred ordinal.
+const PWQ_SETTING_DICT_CHECK: i32 = 15;
 
 /// Shared library soname for libpwquality.
 const LIBPWQUALITY_SONAME: &str = "libpwquality.so.1";
@@ -127,30 +133,10 @@ pub enum PasswordQualityResult {
 
 // ── Dlopen state ──────────────────────────────────────────────────────────
 
-/// Owned dlopen handle. It remains in the same immutable state object as the
-/// typed symbols, so callers cannot observe a symbol without its library.
-struct DlHandle(*mut c_void);
-
-unsafe impl Send for DlHandle {}
-unsafe impl Sync for DlHandle {}
-
-impl DlHandle {
-    fn as_ptr(&self) -> *mut c_void {
-        self.0
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for DlHandle {
-    fn drop(&mut self) {
-        // SAFETY: this wrapper owns one `dlopen` handle. Published state is
-        // process-lifetime; partial loads are closed exactly once on failure.
-        unsafe { libc::dlclose(self.0) };
-    }
-}
-
 /// Cached function pointers (valid only when state == 1).
+#[derive(Clone, Copy)]
 struct PwqualitySymbols {
+    // SAFETY: callers uphold libpwquality's settings and pointer contract.
     pwquality_check: unsafe extern "C" fn(
         *mut c_void,         // pwquality_settings_t *pwq
         *const libc::c_char, // const char *password
@@ -158,44 +144,54 @@ struct PwqualitySymbols {
         *const libc::c_char, // const char *user
         *mut *mut c_void,    // void **auxerror
     ) -> i32,
+    // SAFETY: the returned opaque context is owned by libpwquality.
     pwquality_default_settings: unsafe extern "C" fn() -> *mut c_void,
+    // SAFETY: callers pass only a context allocated by this library.
     pwquality_free_settings: unsafe extern "C" fn(*mut c_void),
+    // SAFETY: callers supply a live context and writable password output.
     pwquality_generate: unsafe extern "C" fn(
         *mut c_void,            // pwquality_settings_t *pwq
         i32,                    // int entropy_bits
         *mut *mut libc::c_char, // char **password
     ) -> i32,
+    // SAFETY: callers supply a live context and valid string output pointer.
     pwquality_get_str_value: unsafe extern "C" fn(
         *mut c_void,              // pwquality_settings_t *pwq
         i32,                      // int setting
         *mut *const libc::c_char, // const char **value
     ) -> i32,
+    // SAFETY: callers supply a live context and valid auxiliary-error output.
     pwquality_read_config: unsafe extern "C" fn(
         *mut c_void,         // pwquality_settings_t *pwq
         *const libc::c_char, // const char *cfgfile
         *mut *mut c_void,    // void **auxerror
     ) -> i32,
+    // SAFETY: callers supply a live context and valid integer setting value.
     pwquality_set_int_value: unsafe extern "C" fn(
         *mut c_void, // pwquality_settings_t *pwq
         i32,         // int setting
         i32,         // int value
     ) -> i32,
+    // SAFETY: callers supply writable buffer storage and the matching auxerror.
     pwquality_strerror: unsafe extern "C" fn(
         *mut libc::c_char, // char *buf
         usize,             // size_t len
         i32,               // int error
         *mut c_void,       // void *auxerror
-    ) -> *mut libc::c_char,
+    ) -> *const libc::c_char,
 }
 
+#[derive(Clone, Copy)]
 struct PwqualityLibrary {
-    _handle: DlHandle,
+    // C's dlopen_many_sym_or_warn() retains a validated dependency for the
+    // remainder of the process, so the typed symbols always have a live DSO.
+    _handle: PublishedDlopenHandle,
     symbols: PwqualitySymbols,
 }
 
-/// Synchronizes one initialization attempt and caches either its fully formed
-/// library object or its exact error for all later callers.
-static LIBPWQUALITY: OnceLock<Result<PwqualityLibrary, PwqualityError>> = OnceLock::new();
+/// Serializes initialization and caches only a fully validated successful
+/// library, exactly as C's `static void *pwquality_dl` does.
+static LIBPWQUALITY: OnceLock<Mutex<Option<PwqualityLibrary>>> = OnceLock::new();
 
 // ── Feature description ────────────────────────────────────────────────────
 
@@ -218,28 +214,45 @@ pub fn pwquality_required_symbols() -> &'static [&'static str] {
 
 /// Dynamically load libpwquality and resolve all required symbols.
 ///
-/// Idempotent: after the first call the result (success or failure) is cached
-/// and subsequent calls return the same result without retrying.
+/// Idempotent after success. A failed load is intentionally retried on the
+/// next call, matching C's success-only static loader cache.
 ///
 /// Returns `Ok(())` on success, or a `PwqualityError` describing the failure.
 pub fn dlopen_pwquality() -> Result<(), PwqualityError> {
     pwquality_library().map(|_| ())
 }
 
-fn pwquality_library() -> Result<&'static PwqualityLibrary, PwqualityError> {
-    LIBPWQUALITY
-        .get_or_init(load_pwquality)
-        .as_ref()
-        .map_err(Clone::clone)
+fn pwquality_library() -> Result<PwqualityLibrary, PwqualityError> {
+    let cache = LIBPWQUALITY.get_or_init(|| Mutex::new(None));
+    // A historical panic cannot invalidate a published immutable handle; use
+    // its contents if present and permit retry if it was never published.
+    let mut cache = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    if let Some(library) = *cache {
+        return Ok(library);
+    }
+
+    let library = load_pwquality()?;
+    *cache = Some(library);
+    Ok(library)
 }
 
 /// Fully resolve every symbol before publishing the immutable library object.
 fn load_pwquality() -> Result<PwqualityLibrary, PwqualityError> {
-    let handle = dlopen_wrapper(LIBPWQUALITY_SONAME)?;
+    // C delegates through `dlopen_many_sym_or_warn()`, hence through
+    // `dlopen_safe()`. Retain static-build, block_dlopen(), RTLD_NOW, and
+    // RTLD_NODELETE behavior instead of selecting a divergent local/lazy load.
+    let handle = UnpublishedDlopenHandle::open(LIBPWQUALITY_SONAME)
+        .map_err(|error| PwqualityError::DlopenFailed(error.to_string()))?;
 
     // Resolve all required symbols.
+    // SAFETY: every requested type below is the exact declaration from the
+    // libpwquality public header for the named required symbol.
     let check_fn = unsafe {
         resolve_symbol::<
+            // SAFETY: this is `pwquality_check`'s header declaration.
             unsafe extern "C" fn(
                 *mut c_void,
                 *const libc::c_char,
@@ -248,62 +261,61 @@ fn load_pwquality() -> Result<PwqualityLibrary, PwqualityError> {
                 *mut *mut c_void,
             ) -> i32,
         >(&handle, "pwquality_check")
-    }
-    .ok_or_else(|| PwqualityError::SymbolNotFound("pwquality_check".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let default_settings_fn = unsafe {
         resolve_symbol::<unsafe extern "C" fn() -> *mut c_void>(
             &handle,
             "pwquality_default_settings",
         )
-    }
-    .ok_or_else(|| PwqualityError::SymbolNotFound("pwquality_default_settings".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let free_settings_fn = unsafe {
         resolve_symbol::<unsafe extern "C" fn(*mut c_void)>(&handle, "pwquality_free_settings")
-    }
-    .ok_or_else(|| PwqualityError::SymbolNotFound("pwquality_free_settings".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let generate_fn = unsafe {
         resolve_symbol::<unsafe extern "C" fn(*mut c_void, i32, *mut *mut libc::c_char) -> i32>(
             &handle,
             "pwquality_generate",
         )
-    }
-    .ok_or_else(|| PwqualityError::SymbolNotFound("pwquality_generate".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let get_str_fn = unsafe {
         resolve_symbol::<unsafe extern "C" fn(*mut c_void, i32, *mut *const libc::c_char) -> i32>(
             &handle,
             "pwquality_get_str_value",
         )
-    }
-    .ok_or_else(|| PwqualityError::SymbolNotFound("pwquality_get_str_value".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let read_config_fn = unsafe {
         resolve_symbol::<
             unsafe extern "C" fn(*mut c_void, *const libc::c_char, *mut *mut c_void) -> i32,
         >(&handle, "pwquality_read_config")
-    }
-    .ok_or_else(|| PwqualityError::SymbolNotFound("pwquality_read_config".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let set_int_fn = unsafe {
         resolve_symbol::<unsafe extern "C" fn(*mut c_void, i32, i32) -> i32>(
             &handle,
             "pwquality_set_int_value",
         )
-    }
-    .ok_or_else(|| PwqualityError::SymbolNotFound("pwquality_set_int_value".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let strerror_fn = unsafe {
         resolve_symbol::<
-            unsafe extern "C" fn(*mut libc::c_char, usize, i32, *mut c_void) -> *mut libc::c_char,
+            unsafe extern "C" fn(*mut libc::c_char, usize, i32, *mut c_void) -> *const libc::c_char,
         >(&handle, "pwquality_strerror")
-    }
-    .ok_or_else(|| PwqualityError::SymbolNotFound("pwquality_strerror".to_string()))?;
+    }?;
 
     Ok(PwqualityLibrary {
-        _handle: handle,
+        _handle: handle.publish(),
         symbols: PwqualitySymbols {
             pwquality_check: check_fn,
             pwquality_default_settings: default_settings_fn,
@@ -317,83 +329,42 @@ fn load_pwquality() -> Result<PwqualityLibrary, PwqualityError> {
     })
 }
 
-// ── Platform dlopen / dlsym wrappers ───────────────────────────────────────
+// ── Required-symbol typing ────────────────────────────────────────────────
 
-/// Open a shared library via dlopen with RTLD_LAZY | RTLD_LOCAL.
-///
-#[cfg(target_os = "linux")]
-fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, PwqualityError> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| PwqualityError::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: `c_name` is NUL terminated and `DlHandle` takes ownership before
-    // any fallible symbol resolution occurs.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-    if handle.is_null() {
-        let detail = dlerror_string();
-        Err(PwqualityError::DlopenFailed(format!(
-            "{}: {}",
-            lib_name, detail
-        )))
-    } else {
-        Ok(DlHandle(handle))
-    }
-}
-
-/// On non-Linux platforms, dlopen always fails.
-#[cfg(not(target_os = "linux"))]
-fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, PwqualityError> {
-    Err(PwqualityError::DlopenFailed(format!(
-        "Platform not supported: {}",
-        lib_name
-    )))
-}
-
-/// Look up a symbol in an already-opened library handle and transmute it
-/// to the requested function pointer type.
-///
-/// Returns `None` if the symbol is not found.
+/// Resolve one required symbol and give it its exact public C function type.
 ///
 /// # Safety
-/// `handle` must be a valid handle from dlopen. The caller must ensure the
-/// returned pointer is used only while the library remains loaded.
-unsafe fn resolve_symbol<T>(handle: &DlHandle, symbol: &str) -> Option<T> {
-    let c_sym = CString::new(symbol).ok()?;
-    let ptr = unsafe { libc::dlsym(handle.as_ptr(), c_sym.as_ptr()) };
-    if ptr.is_null() {
-        None
-    } else {
-        // SAFETY: T is selected by the caller to match this named library symbol.
-        Some(unsafe { std::mem::transmute_copy(&ptr) })
-    }
-}
+/// `T` must exactly match the named libpwquality symbol's ABI. The returned
+/// function pointer stays valid because `PwqualityLibrary` retains the
+/// process-lifetime published loader handle.
+unsafe fn resolve_symbol<T>(
+    handle: &UnpublishedDlopenHandle,
+    symbol: &str,
+) -> Result<T, PwqualityError> {
+    let pointer = handle
+        .resolve_required(symbol)
+        .map_err(|error| PwqualityError::SymbolNotFound(error.to_string()))?;
+    let raw = pointer.as_ptr();
 
-/// Retrieve the last dlerror() message as a Rust String.
-fn dlerror_string() -> String {
-    #[cfg(target_os = "linux")]
-    {
-        unsafe {
-            let ptr = libc::dlerror();
-            if ptr.is_null() {
-                return "unknown error".to_string();
-            }
-            CStr::from_ptr(ptr).to_string_lossy().into_owned()
-        }
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        "dlopen not available on this platform".to_string()
-    }
+    // SAFETY: the caller establishes that `T` is this symbol's exact function
+    // pointer type. All supported systemd targets represent data and function
+    // pointers at the same width required by the POSIX dlsym contract.
+    Ok(unsafe { std::mem::transmute_copy(&raw) })
 }
 
 // ── Helper: get pwquality_strerror message ─────────────────────────────────
 
 /// Get a human-readable error message from libpwquality.
 ///
+/// # Safety
+/// `auxerror` must be the auxiliary value returned for `error_code` by a
+/// libpwquality operation, or null. It is consumed by pwquality_strerror().
 unsafe fn pwq_strerror(error_code: i32, auxerror: *mut c_void) -> String {
-    let syms = match pwquality_library() {
-        Ok(library) => &library.symbols,
+    let library = match pwquality_library() {
+        Ok(library) => library,
         Err(_) => return format!("pwquality error {} (library not loaded)", error_code),
     };
+    let syms = &library.symbols;
 
     let mut buf = vec![0u8; PWQ_MAX_ERROR_MESSAGE_LEN];
     // SAFETY: buf is writable for its full length and auxerror is supplied by libpwquality.
@@ -420,11 +391,15 @@ unsafe fn pwq_strerror(error_code: i32, auxerror: *mut c_void) -> String {
 /// dictionary path is configured but the file does not exist (ENOENT), the
 /// dictionary check is silently disabled to avoid spurious failures.
 ///
+/// # Safety
+/// `pwq` must be a live settings context allocated by the same loaded
+/// libpwquality instance.
 unsafe fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {
-    let syms = match pwquality_library() {
-        Ok(library) => &library.symbols,
+    let library = match pwquality_library() {
+        Ok(library) => library,
         Err(_) => return,
     };
+    let syms = &library.symbols;
 
     let mut dict_path: *const libc::c_char = std::ptr::null();
     // SAFETY: the caller supplies a live settings context; dict_path is a valid out-parameter.
@@ -451,9 +426,14 @@ unsafe fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {
         return;
     }
 
-    if Path::new(path_str).exists() {
-        // Dictionary file exists, keep dictionary checking enabled.
-        return;
+    match Path::new(path_str).metadata() {
+        // `access(path, F_OK)` succeeded in C: keep the configured check.
+        Ok(_) => return,
+        // C disables the check only for ENOENT. Permission errors, malformed
+        // paths, and other failures remain diagnostic-only and do not mutate
+        // the caller's policy.
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(_) => return,
     }
 
     // Dictionary file doesn't exist; disable dictionary checking.
@@ -485,10 +465,16 @@ unsafe fn pwq_allocate_context() -> Result<*mut c_void, PwqualityError> {
         return Err(PwqualityError::ContextAllocationFailed);
     }
 
-    // Read config — ignore errors (mirrors C behavior).
+    // Read config — ignore errors after passing any auxiliary allocation to
+    // pwquality_strerror(), as the public API requires to release it.
     let mut auxerror: *mut c_void = std::ptr::null_mut();
     // SAFETY: pwq is a newly allocated settings context and auxerror is a valid out-parameter.
-    let _ = unsafe { (syms.pwquality_read_config)(pwq, std::ptr::null(), &mut auxerror) };
+    let r = unsafe { (syms.pwquality_read_config)(pwq, std::ptr::null(), &mut auxerror) };
+    if r < 0 {
+        // SAFETY: libpwquality documents that auxiliary error information must
+        // be passed to pwquality_strerror(), which consumes any allocation.
+        let _ = unsafe { pwq_strerror(r, auxerror) };
+    }
 
     // Disable dictionary check if the dictionary file is missing.
     // SAFETY: pwq is non-null and remains owned by the caller.
@@ -505,10 +491,11 @@ unsafe fn pwq_free_settings(pwq: *mut c_void) {
     if pwq.is_null() {
         return;
     }
-    let syms = match pwquality_library() {
-        Ok(library) => &library.symbols,
+    let library = match pwquality_library() {
+        Ok(library) => library,
         Err(_) => return,
     };
+    let syms = &library.symbols;
     // SAFETY: the caller guarantees pwq is a live context allocated by libpwquality.
     unsafe { (syms.pwquality_free_settings)(pwq) };
 }

@@ -12,10 +12,10 @@
 //
 // Verification pins the candidate directory, confirms its filesystem type and
 // mount-root status, and obtains its backing device. GPT/DOS partition metadata
-// probing via blkid/udev and the C btrfs backing-device fallback remain
-// deliberately tracked porting gaps; neither is represented as discovered
-// partition metadata by this safe model.
+// probing via blkid/udev remains a deliberately tracked porting gap and is not
+// represented as discovered partition metadata by this safe model.
 
+use crate::btrfs_util::btrfs_get_block_device_fd;
 use crate::ffi::*;
 use std::ffi::{CString, OsStr};
 use std::fmt;
@@ -356,11 +356,15 @@ pub fn verify_fsroot_dir(path: &Path) -> Result<(u32, u32), FindEspError> {
         path: path.to_path_buf(),
         source,
     })?;
-    verify_fsroot_dir_fd(path, fd.as_fd())
+    verify_fsroot_dir_fd(path, fd.as_fd(), true)
 }
 
 /// Check mount-root status through a pinned directory descriptor.
-fn verify_fsroot_dir_fd(path: &Path, fd: BorrowedFd<'_>) -> Result<(u32, u32), FindEspError> {
+fn verify_fsroot_dir_fd(
+    path: &Path,
+    fd: BorrowedFd<'_>,
+    resolve_backing_device: bool,
+) -> Result<(u32, u32), FindEspError> {
     let mut statx = std::mem::MaybeUninit::<libc::statx>::zeroed();
 
     // SAFETY: `fd` is live, `c""` is a valid NUL-terminated empty path used
@@ -400,7 +404,18 @@ fn verify_fsroot_dir_fd(path: &Path, fd: BorrowedFd<'_>) -> Result<(u32, u32), F
         return Err(FindEspError::NotFsRoot(path.to_path_buf()));
     }
 
-    Ok((statx.stx_dev_major, statx.stx_dev_minor))
+    if !resolve_backing_device || statx.stx_dev_major != 0 {
+        return Ok((statx.stx_dev_major, statx.stx_dev_minor));
+    }
+
+    // Match verify_fsroot_dir() in C: only a requested zero-major device
+    // triggers the btrfs topology query. Multi-device btrfs intentionally
+    // leaves the device number zero, while non-btrfs and ioctl errors retain
+    // the helper's original errno.
+    match btrfs_get_block_device_fd(fd).map_err(FindEspError::Io)? {
+        Some(device) => Ok((devnum_major(device as u64), devnum_minor(device as u64))),
+        None => Ok((0, 0)),
+    }
 }
 
 // ── Filesystem type check ───────────────────────────────────────────────────
@@ -485,7 +500,7 @@ fn verify_esp_at(
     let device = if skip_fsroot {
         None
     } else {
-        Some(verify_fsroot_dir_fd(&resolved, fd.as_fd())?)
+        Some(verify_fsroot_dir_fd(&resolved, fd.as_fd(), !skip_dev)?)
     };
 
     if skip_dev {
@@ -497,10 +512,9 @@ fn verify_esp_at(
     // nevertheless requested.
     let (dev_major, dev_minor) = device.unwrap_or((0, 0));
 
-    // C asks btrfs_get_block_device_fd() when statx reports major 0. This
-    // port has no equivalent btrfs topology query yet, so reject all such
-    // pseudo-devices rather than treating a 0:<minor> btrfs mount as a usable
-    // block device and fabricating partition verification success.
+    // A zero device remains possible for a multi-device btrfs filesystem or
+    // when fs-root verification was explicitly skipped. C rejects both before
+    // probing partition metadata.
     if dev_major == 0 {
         return Err(FindEspError::NoBackingDevice(resolved));
     }
@@ -778,7 +792,7 @@ fn verify_xbootldr_at(
     let device = if skip_fsroot {
         None
     } else {
-        Some(verify_fsroot_dir_fd(&resolved, fd.as_fd())?)
+        Some(verify_fsroot_dir_fd(&resolved, fd.as_fd(), !skip_dev)?)
     };
 
     if skip_dev {
@@ -787,8 +801,8 @@ fn verify_xbootldr_at(
 
     let (dev_major, dev_minor) = device.unwrap_or((0, 0));
 
-    // See verify_esp_at(): btrfs uses major 0 and requires C's dedicated
-    // backing-device resolver, which this safe port has not implemented.
+    // See verify_esp_at(): a multi-device btrfs filesystem leaves the device
+    // number zero, as does an explicitly skipped device check.
     if dev_major == 0 {
         return Err(FindEspError::NoBackingDevice(resolved));
     }

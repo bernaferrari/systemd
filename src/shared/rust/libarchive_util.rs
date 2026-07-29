@@ -7,15 +7,18 @@
 // Provides lazy dlopen-based loading of libarchive, symbol resolution for all
 // archive entry, read, and write helpers, and file-type equivalence
 // verification between libarchive macros and POSIX S_IF* constants.
-// The module is behind `cfg(feature = "libarchive")`; when the feature is
-// absent every call returns `ArchiveError::Unsupported`.
+//
+// PORT-GAP: C's `HAVE_LIBARCHIVE` configuration gate is not yet represented
+// in this Rust crate. Until that build-time capability is plumbed through,
+// the safe loader boundary remains the runtime authority for availability.
 
 use std::collections::HashSet;
-use std::ffi::{CStr, CString, c_void};
 use std::fmt;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -54,8 +57,10 @@ impl From<ArchiveError> for i32 {
     fn from(e: ArchiveError) -> i32 {
         match e {
             ArchiveError::Unsupported => Errno::EOPNOTSUPP.to_neg_errno(),
-            ArchiveError::DlopenFailed(_) => Errno::ENOENT.to_neg_errno(),
-            ArchiveError::SymbolNotFound(_) => Errno::ENOENT.to_neg_errno(),
+            // `dlopen_many_sym_or_warn()` reports an unavailable optional
+            // dependency as EOPNOTSUPP and a missing required ABI as ELIBBAD.
+            ArchiveError::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
+            ArchiveError::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
             ArchiveError::AlreadyLoaded => Errno::EBUSY.to_neg_errno(),
         }
     }
@@ -144,9 +149,6 @@ const ARCHIVE_WRITE_SYMBOLS: &[&str] = &[
 /// Additional utility symbol.
 const ARCHIVE_ERROR_SYMBOLS: &[&str] = &["archive_error_string"];
 
-/// The full set of required symbols (all categories combined).
-const REQUIRED_SYMBOLS: &[&str] = &[];
-
 // ── File type equivalence verification ─────────────────────────────────────
 
 /// Verify that libarchive's AE_IF* macros match the POSIX S_IF* constants.
@@ -188,6 +190,10 @@ pub fn verify_filetype_equivalence() -> bool {
 /// Global flag: has `dlopen_libarchive()` been called and completed?
 static ARCHIVE_LOADED: AtomicBool = AtomicBool::new(false);
 
+/// Serialize the first successful load so concurrent callers cannot each
+/// acquire and publish a separate permanent loader reference.
+static ARCHIVE_LOAD_LOCK: Mutex<()> = Mutex::new(());
+
 /// Convenience wrapper — calls `dlopen_libarchive_full` with `log_level = 0`.
 pub fn dlopen_libarchive() -> Result<(), ArchiveError> {
     dlopen_libarchive_full(0)
@@ -195,14 +201,23 @@ pub fn dlopen_libarchive() -> Result<(), ArchiveError> {
 
 /// Attempt to dynamically load libarchive.
 ///
-/// This function is idempotent: after the first successful call it returns
-/// `Ok(())` immediately. If libarchive cannot be found the result is
-/// cached as an error so that subsequent calls return `Err` without
-/// retrying.
+/// This function is idempotent after the first successful call. Failures are
+/// deliberately retried, matching C's success-only static loader cache: a
+/// library that becomes available before a later call may still be loaded.
 ///
 /// `log_level` controls the verbosity of log messages emitted on failure
 /// (0 = silent, higher = more verbose).
 pub fn dlopen_libarchive_full(log_level: i32) -> Result<(), ArchiveError> {
+    if ARCHIVE_LOADED.load(Ordering::Acquire) {
+        return Ok(());
+    }
+
+    // The process-lifetime loaded state remains sound after an unrelated
+    // panic, so retain a recovered mutex guard rather than permanently
+    // turning that historical panic into an archive-loader failure.
+    let _load_lock = ARCHIVE_LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if ARCHIVE_LOADED.load(Ordering::Acquire) {
         return Ok(());
     }
@@ -218,7 +233,12 @@ pub fn dlopen_libarchive_full(log_level: i32) -> Result<(), ArchiveError> {
 
 /// Try to open libarchive and resolve all required symbols.
 fn try_load_libarchive(lib_name: &str, _log_level: i32) -> Result<(), ArchiveError> {
-    let handle = unsafe { dlopen_wrapper(lib_name) }?;
+    // C's dlopen_libarchive() delegates to dlopen_many_sym_or_warn(), which
+    // in turn uses dlopen_safe(). Retain its static-build, block_dlopen(),
+    // RTLD_NOW, and RTLD_NODELETE policy rather than selecting a divergent
+    // local/lazy loader here.
+    let handle = UnpublishedDlopenHandle::open(lib_name)
+        .map_err(|error| ArchiveError::DlopenFailed(error.to_string()))?;
 
     // Resolve all required symbol groups.
     let all_groups: &[&[&str]] = &[
@@ -231,15 +251,8 @@ fn try_load_libarchive(lib_name: &str, _log_level: i32) -> Result<(), ArchiveErr
     for group in all_groups {
         let missing: Vec<String> = group
             .iter()
-            .filter_map(|sym| {
-                let c_sym = CString::new(*sym).unwrap_or_default();
-                let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };
-                if ptr.is_null() {
-                    Some((*sym).to_string())
-                } else {
-                    None
-                }
-            })
+            .filter(|symbol| handle.resolve_required(symbol).is_err())
+            .map(|symbol| (*symbol).to_string())
             .collect();
 
         if !missing.is_empty() {
@@ -250,55 +263,12 @@ fn try_load_libarchive(lib_name: &str, _log_level: i32) -> Result<(), ArchiveErr
     // Optional symbols are resolved but their absence is not an error.
     // (gid_is_set, hardlink_is_set, uid_is_set have fallback implementations.)
 
-    // Intentionally keep `handle` open for the lifetime of the process.
-    // dlclose() is deliberately skipped — the symbols remain valid.
-    let _ = handle;
+    // C's successful loader handle is process-lifetime state. An incomplete
+    // load above instead drops through UnpublishedDlopenHandle and releases
+    // its one loader reference.
+    handle.publish();
 
     Ok(())
-}
-
-// ── Platform dlopen / dlsym wrappers ────────────────────────────────────────
-
-/// Open a shared library, returning the handle on success.
-///
-/// Wraps `dlopen()` with `RTLD_LAZY | RTLD_LOCAL` and translates errors
-/// into `ArchiveError::DlopenFailed`.
-unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, ArchiveError> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| ArchiveError::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: c_name is NUL-terminated and remains live for the call.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-    if handle.is_null() {
-        let detail = dlerror_string();
-        Err(ArchiveError::DlopenFailed(format!(
-            "{}: {}",
-            lib_name, detail
-        )))
-    } else {
-        Ok(handle)
-    }
-}
-
-/// Look up a symbol in an already-opened library handle.
-///
-/// Returns a null pointer if the symbol is not found (caller checks).
-///
-/// # Safety
-/// `handle` must be a valid handle returned by `dlopen`.
-unsafe fn dlsym_wrapper(handle: *mut c_void, symbol: &CStr) -> *mut c_void {
-    // SAFETY: the caller supplies a live dlopen handle and symbol is NUL-terminated.
-    unsafe { libc::dlsym(handle, symbol.as_ptr()) }
-}
-
-/// Retrieve the last `dlerror()` message as a Rust `String`.
-fn dlerror_string() -> String {
-    unsafe {
-        let ptr = libc::dlerror();
-        if ptr.is_null() {
-            return "unknown error".to_string();
-        }
-        CStr::from_ptr(ptr).to_string_lossy().into_owned()
-    }
 }
 
 // ── UID/GID fallback helpers ───────────────────────────────────────────────
@@ -343,16 +313,6 @@ pub fn gid_is_valid(gid: u32) -> bool {
 /// and the library handle is available.
 pub fn archive_is_loaded() -> bool {
     ARCHIVE_LOADED.load(Ordering::Acquire)
-}
-
-/// Reset the loaded state. Useful for tests.
-///
-/// # Safety
-/// Only call from tests. Calling this while archive symbols are in use is
-/// undefined behaviour.
-#[cfg(test)]
-pub fn reset_archive_loaded() {
-    ARCHIVE_LOADED.store(false, Ordering::Release);
 }
 
 // ── Feature description (for external consumers) ────────────────────────────
@@ -437,10 +397,10 @@ mod tests {
         assert_eq!(val, Errno::EBUSY.to_neg_errno());
 
         let val: i32 = ArchiveError::DlopenFailed("x".into()).into();
-        assert_eq!(val, Errno::ENOENT.to_neg_errno());
+        assert_eq!(val, Errno::EOPNOTSUPP.to_neg_errno());
 
         let val: i32 = ArchiveError::SymbolNotFound("x".into()).into();
-        assert_eq!(val, Errno::ENOENT.to_neg_errno());
+        assert_eq!(val, Errno::ELIBBAD.to_neg_errno());
     }
 
     #[test]
@@ -586,21 +546,5 @@ mod tests {
 
         let write_set: HashSet<_> = ARCHIVE_WRITE_SYMBOLS.iter().copied().collect();
         assert_eq!(write_set.len(), ARCHIVE_WRITE_SYMBOLS.len());
-    }
-
-    #[test]
-    fn test_archive_is_loaded_initial() {
-        reset_archive_loaded();
-        assert!(!archive_is_loaded());
-    }
-
-    #[test]
-    fn test_dlopen_libarchive_caching() {
-        reset_archive_loaded();
-        let r1 = dlopen_libarchive();
-        let r2 = dlopen_libarchive();
-        // If first succeeds, second must too (cached).
-        // If first fails, second must also fail (cached error).
-        assert_eq!(r1.is_ok(), r2.is_ok());
     }
 }

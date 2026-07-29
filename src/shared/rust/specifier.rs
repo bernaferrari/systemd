@@ -426,14 +426,17 @@ fn lookup_group(gid: libc::gid_t) -> Result<Option<String>, i32> {
     ))
 }
 
+fn current_uid() -> libc::uid_t {
+    // SAFETY: getuid has no arguments or preconditions and only reads the
+    // calling process's kernel-maintained real UID.
+    unsafe { libc::getuid() }
+}
+
 fn runtime_uid(scope: RuntimeScope) -> Result<libc::uid_t, i32> {
     match scope {
         RuntimeScope::Global => Err(-libc::EINVAL),
         RuntimeScope::System => Ok(0),
-        RuntimeScope::User => {
-            // SAFETY: `getuid` has no preconditions.
-            Ok(unsafe { libc::getuid() })
-        }
+        RuntimeScope::User => Ok(current_uid()),
     }
 }
 
@@ -812,7 +815,7 @@ pub fn specifier_user_home(
     if let Some((_, home, _)) = lookup_passwd(uid)? {
         return Ok(Some(home));
     }
-    if uid == unsafe { libc::getuid() } {
+    if uid == current_uid() {
         if let Some(home) = std::env::var_os("HOME") {
             return Ok(Some(home.to_string_lossy().into_owned()));
         }
@@ -830,7 +833,7 @@ pub fn specifier_user_shell(
     if let Some((_, _, shell)) = lookup_passwd(uid)? {
         return Ok(Some(shell));
     }
-    if uid == unsafe { libc::getuid() } {
+    if uid == current_uid() {
         if let Some(shell) = std::env::var_os("SHELL") {
             return Ok(Some(shell.to_string_lossy().into_owned()));
         }
@@ -1158,7 +1161,7 @@ mod tests {
         let system = SpecifierData::RuntimeScope(RuntimeScope::System);
         assert_eq!(
             specifier_user_id('U', &user, None, None).unwrap(),
-            Some(unsafe { libc::getuid() }.to_string())
+            Some(current_uid().to_string())
         );
         assert_eq!(
             specifier_group_id('G', &system, None, None).unwrap(),

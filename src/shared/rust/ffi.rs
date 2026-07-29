@@ -19,6 +19,8 @@ pub fn errno() -> std::os::raw::c_int {
 // libc exposes updwtmpx() for several non-Linux targets, but not Linux. The
 // project only enables UTMP with glibc, where <utmpx.h> declares this symbol.
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
+// SAFETY: the sole caller supplies a live NUL-terminated filename and a valid
+// initialized `utmpx` record, matching glibc's updwtmpx(3) ABI.
 unsafe extern "C" {
     pub fn updwtmpx(file: *const c_char, ut: *const libc::utmpx);
 }

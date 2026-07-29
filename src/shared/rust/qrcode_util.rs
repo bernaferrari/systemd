@@ -4,17 +4,23 @@
 //
 // QR code generation and terminal rendering utilities.
 //
-// Provides dynamic loading of libqrencode via dlopen, QR code encoding
-// from strings, and Unicode-based terminal rendering using half-block
-// characters for compact display. The module gracefully degrades when
-// libqrencode is not available.
+// PORT-GAP: C's `HAVE_QRENCODE` configuration gate and its `FILE*` terminal
+// cursor/locale/color integration are not yet represented by this generic
+// `Write` API. The C implementation remains authoritative for those paths.
+// This module keeps the optional-library boundary aligned with C and exposes
+// only owned QR matrices to safe Rust.
 
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::{CString, c_char};
 use std::fmt;
 use std::io::{self, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::ptr::NonNull;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::{PublishedDlopenHandle, UnpublishedDlopenHandle};
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -62,8 +68,10 @@ impl From<QrCodeError> for i32 {
     fn from(e: QrCodeError) -> i32 {
         match e {
             QrCodeError::Unsupported => Errno::EOPNOTSUPP.to_neg_errno(),
-            QrCodeError::DlopenFailed(_) => Errno::ENOENT.to_neg_errno(),
-            QrCodeError::SymbolNotFound(_) => Errno::ENOENT.to_neg_errno(),
+            // `dlopen_many_sym_or_warn()` normalizes an unavailable optional
+            // dependency to EOPNOTSUPP and a missing required ABI to ELIBBAD.
+            QrCodeError::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
+            QrCodeError::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
             QrCodeError::EncodeFailed(_) => Errno::ENOMEM.to_neg_errno(),
             QrCodeError::NotUtf8Locale => Errno::EOPNOTSUPP.to_neg_errno(),
             QrCodeError::ColorsDisabled => Errno::EOPNOTSUPP.to_neg_errno(),
@@ -133,6 +141,29 @@ const NO_POSITION: u32 = u32::MAX;
 /// Global flag: has `dlopen_qrencode()` been called and completed?
 static QRENCODE_LOADED: AtomicBool = AtomicBool::new(false);
 
+/// C's static loader cache is success-only. Serialize Rust's equivalent
+/// check/open/publish sequence so concurrent callers cannot retain multiple
+/// permanent references while racing through the initial load.
+static QRENCODE_LOAD_LOCK: Mutex<Option<QrencodeApi>> = Mutex::new(None);
+
+/// libqrencode's largest standard QR matrix is version 40 (177 × 177).
+/// Refusing a wider foreign result avoids creating an unchecked slice from
+/// malformed or ABI-incompatible library data.
+const MAX_QR_WIDTH: usize = 177;
+
+type QrCodeEncodeString = unsafe extern "C" fn(*const c_char, i32, i32, i32, i32) -> *mut QRcode;
+type QrCodeFree = unsafe extern "C" fn(*mut QRcode);
+
+/// Fully validated libqrencode entry points plus their process-lifetime
+/// loader reference. Function pointers are copied only after `dlsym()` has
+/// verified the exact symbol names from `qrcode-util.c`.
+#[derive(Clone, Copy)]
+struct QrencodeApi {
+    _library: PublishedDlopenHandle,
+    encode_string: QrCodeEncodeString,
+    free: QrCodeFree,
+}
+
 // ── QR code data wrapper ────────────────────────────────────────────────────
 
 /// A decoded QR code matrix.
@@ -173,102 +204,84 @@ impl QrCodeMatrix {
 
 /// Dynamically load libqrencode and resolve required symbols.
 ///
-/// This function is idempotent: after the first successful call it returns
-/// `Ok(())` immediately. If the library cannot be found the error is
-/// cached so subsequent calls return `Err` without retrying.
+/// This function is idempotent after the first success. Failures are retried,
+/// matching C's success-only `qrcode_dl` cache: an optional library that
+/// becomes available later may still be loaded.
 pub fn dlopen_qrencode() -> Result<(), QrCodeError> {
     if QRENCODE_LOADED.load(Ordering::Acquire) {
         return Ok(());
     }
 
-    let mut last_err = String::new();
+    let mut api = QRENCODE_LOAD_LOCK
+        .lock()
+        // A prior panic cannot invalidate a published process-lifetime
+        // loader reference, so recover the guard instead of pinning an
+        // unrelated historical panic to future load attempts.
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if api.is_some() {
+        QRENCODE_LOADED.store(true, Ordering::Release);
+        return Ok(());
+    }
 
-    for lib in LIBQRENCODE_CANDIDATES.iter() {
-        match try_load_qrencode(lib) {
-            Ok(()) => {
+    // C returns the outcome of the final candidate. Preserve that distinction:
+    // an absent .3 is optional-dependency failure, while an ABI-incomplete .3
+    // is ELIBBAD even if an earlier candidate failed differently.
+    let mut last_error = QrCodeError::Unsupported;
+
+    for lib in LIBQRENCODE_CANDIDATES {
+        match QrencodeApi::load(lib) {
+            Ok(loaded) => {
+                *api = Some(loaded);
                 QRENCODE_LOADED.store(true, Ordering::Release);
                 return Ok(());
             }
             Err(e) => {
-                last_err = e.to_string();
+                last_error = e;
             }
         }
     }
 
-    Err(QrCodeError::DlopenFailed(last_err))
+    Err(last_error)
 }
 
-/// Try to open a single libqrencode candidate and resolve all required symbols.
-fn try_load_qrencode(lib_name: &str) -> Result<(), QrCodeError> {
-    let handle = unsafe { dlopen_wrapper(lib_name) }?;
+impl QrencodeApi {
+    /// Load one C-authoritative candidate and resolve its complete ABI.
+    fn load(lib_name: &str) -> Result<Self, QrCodeError> {
+        // `dlopen_qrencode()` uses `dlopen_many_sym_or_warn()`, hence the
+        // shared `dlopen_safe()` policy (static builds, block_dlopen(),
+        // RTLD_NOW, and RTLD_NODELETE) is part of its contract. Do not use a
+        // local RTLD_LAZY | RTLD_LOCAL implementation here.
+        let handle = UnpublishedDlopenHandle::open(lib_name)
+            .map_err(|error| QrCodeError::DlopenFailed(error.to_string()))?;
+        let encode_string = handle
+            .resolve_required(SYMBOL_QRCODE_ENCODE_STRING)
+            .map_err(|error| QrCodeError::SymbolNotFound(error.to_string()))?;
+        let free = handle
+            .resolve_required(SYMBOL_QRCODE_FREE)
+            .map_err(|error| QrCodeError::SymbolNotFound(error.to_string()))?;
 
-    let symbols_to_check = [
-        (SYMBOL_QRCODE_ENCODE_STRING, "QRcode_encodeString"),
-        (SYMBOL_QRCODE_FREE, "QRcode_free"),
-    ];
+        // SAFETY: `qrcode-util.c` declares these exact libqrencode symbols
+        // with the signatures below. `resolve_required()` obtained each from
+        // the validated live handle, which is retained for process lifetime.
+        let encode_string = unsafe {
+            std::mem::transmute::<*mut std::ffi::c_void, QrCodeEncodeString>(encode_string.as_ptr())
+        };
+        // SAFETY: as above, `QRcode_free`'s ABI is declared by qrencode.h and
+        // the live handle is retained by the returned API object.
+        let free =
+            unsafe { std::mem::transmute::<*mut std::ffi::c_void, QrCodeFree>(free.as_ptr()) };
 
-    for (sym_name, sym_display) in &symbols_to_check {
-        let c_sym = CString::new(*sym_name).unwrap_or_default();
-        let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };
-        if ptr.is_null() {
-            return Err(QrCodeError::SymbolNotFound((*sym_display).to_string()));
-        }
-    }
-
-    // Intentionally keep handle open for the process lifetime.
-    let _ = handle;
-
-    Ok(())
-}
-
-/// Open a shared library, returning the handle on success.
-///
-/// Wraps `dlopen()` with `RTLD_LAZY | RTLD_LOCAL`.
-unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, QrCodeError> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| QrCodeError::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: c_name is NUL-terminated and remains live for the call.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-    if handle.is_null() {
-        let detail = dlerror_string();
-        Err(QrCodeError::DlopenFailed(format!(
-            "{}: {}",
-            lib_name, detail
-        )))
-    } else {
-        Ok(handle)
-    }
-}
-
-/// Look up a symbol in an already-opened library handle.
-///
-/// # Safety
-/// `handle` must be a valid handle returned by `dlopen`.
-unsafe fn dlsym_wrapper(handle: *mut c_void, symbol: &CStr) -> *mut c_void {
-    // SAFETY: the caller supplies a live dlopen handle and symbol is NUL-terminated.
-    unsafe { libc::dlsym(handle, symbol.as_ptr()) }
-}
-
-/// Retrieve the last `dlerror()` message as a Rust `String`.
-fn dlerror_string() -> String {
-    unsafe {
-        let ptr = libc::dlerror();
-        if ptr.is_null() {
-            return "unknown error".to_string();
-        }
-        CStr::from_ptr(ptr).to_string_lossy().into_owned()
+        Ok(Self {
+            _library: handle.publish(),
+            encode_string,
+            free,
+        })
     }
 }
 
 /// Returns `true` if `dlopen_qrencode()` has been called successfully.
 pub fn qrencode_is_loaded() -> bool {
     QRENCODE_LOADED.load(Ordering::Acquire)
-}
-
-/// Reset the loaded state. Useful for tests.
-#[cfg(test)]
-pub fn reset_qrencode_loaded() {
-    QRENCODE_LOADED.store(false, Ordering::Release);
 }
 
 // ── QR code encoding ────────────────────────────────────────────────────────
@@ -284,34 +297,22 @@ pub fn qr_code_from_string(string: &str) -> Result<QrCodeMatrix, QrCodeError> {
     let c_string = CString::new(string)
         .map_err(|e| QrCodeError::EncodeFailed(format!("Invalid input string: {}", e)))?;
 
-    // Load the symbol for QRcode_encodeString
-    let c_sym = CString::new(SYMBOL_QRCODE_ENCODE_STRING).unwrap();
-    let handle = find_loaded_handle();
-    let encode_fn = unsafe {
-        let ptr = dlsym_wrapper(handle, &c_sym);
-        if ptr.is_null() {
-            return Err(QrCodeError::SymbolNotFound(
-                SYMBOL_QRCODE_ENCODE_STRING.to_string(),
-            ));
-        }
-        std::mem::transmute::<
-            *mut c_void,
-            unsafe extern "C" fn(*const libc::c_char, i32, i32, i32, i32) -> *mut QRcode,
-        >(ptr)
-    };
-
-    let c_free_sym = CString::new(SYMBOL_QRCODE_FREE).unwrap();
-    let free_fn = unsafe {
-        let ptr = dlsym_wrapper(handle, &c_free_sym);
-        if ptr.is_null() {
-            return Err(QrCodeError::SymbolNotFound(SYMBOL_QRCODE_FREE.to_string()));
-        }
-        std::mem::transmute::<*mut c_void, unsafe extern "C" fn(*mut QRcode)>(ptr)
-    };
+    let api = QRENCODE_LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .as_ref()
+        .copied()
+        .ok_or_else(|| {
+            QrCodeError::DlopenFailed(
+                "loader completed without publishing a libqrencode API".to_string(),
+            )
+        })?;
 
     // QRcode_encodeString(string, version, ecLevel, mode, case_sensitive)
+    // SAFETY: `api.encode_string` was resolved from qrencode.h's exact ABI;
+    // `c_string` is NUL-terminated and stays live for this call.
     let qr = unsafe {
-        encode_fn(
+        (api.encode_string)(
             c_string.as_ptr(),
             0,            // version: auto
             QR_ECLEVEL_L, // error correction level L
@@ -320,47 +321,62 @@ pub fn qr_code_from_string(string: &str) -> Result<QrCodeMatrix, QrCodeError> {
         )
     };
 
-    if qr.is_null() {
-        return Err(QrCodeError::EncodeFailed(
-            "QRcode_encodeString returned NULL".to_string(),
-        ));
-    }
-
-    let width = unsafe { (*qr).width } as usize;
-    let data_ptr = unsafe { (*qr).data };
-
-    // Extract pixel data into a safe Vec<bool>
-    let mut data = Vec::with_capacity(width * width);
-    for i in 0..(width * width) {
-        let byte = unsafe { *data_ptr.add(i) };
-        data.push((byte & 1) != 0);
-    }
-
-    // Free the QRcode via libqrencode's free function
-    unsafe {
-        free_fn(qr);
-    }
-
-    Ok(QrCodeMatrix { width, data })
+    let qr = QrCodeAllocation::new(qr, api.free).ok_or_else(|| {
+        QrCodeError::EncodeFailed("QRcode_encodeString returned NULL".to_string())
+    })?;
+    qr.copy_matrix()
 }
 
-/// Find a previously loaded libqrencode handle by re-opening with the same flags.
-///
-/// This is necessary because we don't store the handle globally. Instead, we
-/// re-dlopen (which returns the same handle if already loaded).
-fn find_loaded_handle() -> *mut c_void {
-    for lib in LIBQRENCODE_CANDIDATES {
-        let c_name = match CString::new(*lib) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        // SAFETY: c_name is NUL-terminated and remains live for the call.
-        let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-        if !handle.is_null() {
-            return handle;
-        }
+/// Owns a non-null `QRcode*` until its matching libqrencode destructor runs.
+struct QrCodeAllocation {
+    pointer: NonNull<QRcode>,
+    free: QrCodeFree,
+}
+
+impl QrCodeAllocation {
+    fn new(pointer: *mut QRcode, free: QrCodeFree) -> Option<Self> {
+        NonNull::new(pointer).map(|pointer| Self { pointer, free })
     }
-    std::ptr::null_mut()
+
+    /// Copy the foreign matrix after validating its documented QR bounds.
+    fn copy_matrix(&self) -> Result<QrCodeMatrix, QrCodeError> {
+        // SAFETY: `pointer` is non-null and is owned by this allocation until
+        // Drop invokes libqrencode's matching `QRcode_free` function.
+        let qr = unsafe { self.pointer.as_ref() };
+        let width = usize::try_from(qr.width).map_err(|_| {
+            QrCodeError::EncodeFailed("libqrencode returned a negative matrix width".to_string())
+        })?;
+        if !(1..=MAX_QR_WIDTH).contains(&width) {
+            return Err(QrCodeError::EncodeFailed(format!(
+                "libqrencode returned unsupported matrix width {width}"
+            )));
+        }
+        let len = width.checked_mul(width).ok_or_else(|| {
+            QrCodeError::EncodeFailed("QR matrix dimensions overflowed".to_string())
+        })?;
+        let data = NonNull::new(qr.data).ok_or_else(|| {
+            QrCodeError::EncodeFailed("libqrencode returned a null matrix".to_string())
+        })?;
+
+        // qrencode.h specifies `width * width` matrix bytes for a successful
+        // `QRcode_encodeString` result. The positive standard-QR width bound
+        // above prevents overflow; this allocation stays owned by `self`.
+        // SAFETY: the documented matrix remains valid until `self` is dropped.
+        let bytes = unsafe { std::slice::from_raw_parts(data.as_ptr(), len) };
+        Ok(QrCodeMatrix {
+            width,
+            data: bytes.iter().map(|byte| byte & 1 != 0).collect(),
+        })
+    }
+}
+
+impl Drop for QrCodeAllocation {
+    fn drop(&mut self) {
+        // SAFETY: this allocation owns one successful `QRcode_encodeString`
+        // result, and `free` was resolved from the same retained libqrencode
+        // ABI. It is called exactly once when the wrapper is dropped.
+        unsafe { (self.free)(self.pointer.as_ptr()) };
+    }
 }
 
 // ── Terminal rendering ──────────────────────────────────────────────────────
@@ -597,6 +613,12 @@ mod tests {
         let val: i32 = QrCodeError::Unsupported.into();
         assert_eq!(val, Errno::EOPNOTSUPP.to_neg_errno());
 
+        let val: i32 = QrCodeError::DlopenFailed("x".into()).into();
+        assert_eq!(val, Errno::EOPNOTSUPP.to_neg_errno());
+
+        let val: i32 = QrCodeError::SymbolNotFound("x".into()).into();
+        assert_eq!(val, Errno::ELIBBAD.to_neg_errno());
+
         let val: i32 = QrCodeError::EncodeFailed("x".into()).into();
         assert_eq!(val, Errno::ENOMEM.to_neg_errno());
 
@@ -707,12 +729,6 @@ mod tests {
     }
 
     #[test]
-    fn test_qrencode_is_loaded_initial() {
-        reset_qrencode_loaded();
-        assert!(!qrencode_is_loaded());
-    }
-
-    #[test]
     fn test_write_qrcode_small_matrix() {
         let matrix = QrCodeMatrix {
             width: 3,
@@ -774,12 +790,5 @@ mod tests {
         // QR encoding constants
         assert_eq!(QR_ECLEVEL_L, 0);
         assert_eq!(QR_MODE_8, 3);
-    }
-
-    #[test]
-    fn test_dlerror_string_returns_string() {
-        // Just ensure it doesn't panic and returns something
-        let s = dlerror_string();
-        assert!(!s.is_empty());
     }
 }

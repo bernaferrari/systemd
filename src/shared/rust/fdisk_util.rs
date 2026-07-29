@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/shared/fdisk-util.c, src/shared/fdisk-util.h
+// PORT-GAP: Stateful `libfdisk` context/partition operations still execute
+// through the C implementation. This module owns only the safe value parsing,
+// attribute serialization, and availability boundary until those opaque C
+// types have a complete audited Rust ownership model.
 //
-// libfdisk partition table utilities — dlopen of libfdisk for partition
-// table manipulation.  Provides context creation, partition UUID/type
-// extraction, and GPT attribute flags parsing/serialization.
+// libfdisk partition-table value utilities and availability boundary. Provides
+// UUID/type extraction and GPT attribute flags parsing/serialization without
+// exposing raw libfdisk pointers to safe Rust.
 //
 // All libfdisk symbols are resolved through dlopen so the module
 // gracefully degrades when libfdisk is absent.
 
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::CStr;
 use std::fmt;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -90,23 +97,88 @@ static NAMED_GPT_FLAGS: &[NamedGptFlag] = &[
 /// Shared library name for libfdisk.
 const LIBFDISK_NAME: &str = "libfdisk.so.1";
 
-/// All libfdisk symbols that must be resolved at dlopen time.
+/// All symbols resolved by C's `dlopen_fdisk()` entry point.
+///
+/// Keeping this list mechanically parallel to `DLSYM_PROTOTYPE()` in
+/// `src/shared/fdisk-util.c` is important even while this Rust module exposes
+/// only a safe subset of the operations: a successful load must mean the same
+/// complete libfdisk ABI is available to either implementation.
 const REQUIRED_SYMBOLS: &[&str] = &[
+    "fdisk_add_partition",
+    "fdisk_apply_table",
+    "fdisk_ask_get_type",
+    "fdisk_ask_string_set_result",
     "fdisk_new_context",
-    "fdisk_unref_context",
-    "fdisk_save_user_sector_size",
     "fdisk_assign_device",
+    "fdisk_assign_device_by_fd",
+    "fdisk_create_disklabel",
+    "fdisk_delete_partition",
+    "fdisk_get_devfd",
+    "fdisk_get_disklabel_id",
+    "fdisk_get_first_lba",
+    "fdisk_get_grain_size",
+    "fdisk_get_last_lba",
+    "fdisk_get_npartitions",
+    "fdisk_get_nsectors",
+    "fdisk_get_partition",
+    "fdisk_get_partitions",
+    "fdisk_get_sector_size",
+    "fdisk_has_label",
+    "fdisk_is_labeltype",
+    "fdisk_new_partition",
+    "fdisk_new_parttype",
+    "fdisk_partname",
     "fdisk_partition_get_uuid",
     "fdisk_partition_get_type",
-    "fdisk_parttype_get_string",
     "fdisk_partition_get_attrs",
+    "fdisk_partition_get_end",
+    "fdisk_partition_get_name",
+    "fdisk_partition_get_partno",
+    "fdisk_partition_get_size",
+    "fdisk_partition_get_start",
+    "fdisk_partition_has_end",
+    "fdisk_partition_has_partno",
+    "fdisk_partition_has_size",
+    "fdisk_partition_has_start",
+    "fdisk_partition_is_used",
+    "fdisk_partition_partno_follow_default",
     "fdisk_partition_set_attrs",
+    "fdisk_partition_set_name",
+    "fdisk_partition_set_partno",
+    "fdisk_partition_set_size",
+    "fdisk_partition_set_start",
+    "fdisk_partition_set_type",
+    "fdisk_partition_set_uuid",
+    "fdisk_partition_size_explicit",
+    "fdisk_partition_to_string",
+    "fdisk_parttype_get_string",
+    "fdisk_parttype_set_typestr",
+    "fdisk_ref_partition",
+    "fdisk_save_user_sector_size",
+    "fdisk_set_ask",
+    "fdisk_set_disklabel_id",
+    "fdisk_set_partition",
+    "fdisk_table_get_nents",
+    "fdisk_table_get_partition",
+    "fdisk_unref_context",
+    "fdisk_unref_partition",
+    "fdisk_unref_parttype",
+    "fdisk_unref_table",
+    "fdisk_write_disklabel",
 ];
 
 // ── Dlopen state ────────────────────────────────────────────────────────────
 
 /// Global flag: has `dlopen_libfdisk()` been called and completed successfully?
 static FDISK_LOADED: AtomicBool = AtomicBool::new(false);
+
+/// Serialize the check/open/publish sequence without caching failures.
+///
+/// The C global is normally initialized on a single startup path. The Rust
+/// facade may be called from independent code paths, so it must not let two
+/// callers publish separate process-lifetime references after racing past the
+/// fast-path flag.
+static FDISK_LOAD_LOCK: Mutex<()> = Mutex::new(());
 
 /// Attempt to dynamically load libfdisk and resolve all required symbols.
 ///
@@ -117,28 +189,36 @@ pub fn dlopen_libfdisk() -> Result<(), FdiskError> {
         return Ok(());
     }
 
-    let handle = unsafe { dlopen_wrapper(LIBFDISK_NAME) }?;
-
-    // Verify every required symbol is present.
-    let missing: Vec<String> = REQUIRED_SYMBOLS
-        .iter()
-        .filter_map(|sym| {
-            let c_sym = CString::new(*sym).unwrap_or_default();
-            let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };
-            if ptr.is_null() {
-                Some((*sym).to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if !missing.is_empty() {
-        return Err(FdiskError::SymbolNotFound(missing.join(", ")));
+    let _lock = FDISK_LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if FDISK_LOADED.load(Ordering::Acquire) {
+        return Ok(());
     }
 
-    // Keep the handle open for the process lifetime.
-    let _ = handle;
+    // The C authority calls `dlopen_many_sym_or_warn()`, which in turn uses
+    // `dlopen_safe()`. In particular, its RTLD_NOW | RTLD_NODELETE policy and
+    // static-build/blocked-loader behavior are intentional. Do not replace
+    // this with a direct RTLD_LAZY | RTLD_LOCAL call.
+    let handle = UnpublishedDlopenHandle::open(LIBFDISK_NAME).map_err(|error| {
+        if error.errno() == libc::EOPNOTSUPP {
+            FdiskError::Unsupported
+        } else {
+            FdiskError::DlopenFailed(error.to_string())
+        }
+    })?;
+
+    // Verify every required symbol is present.
+    for symbol in REQUIRED_SYMBOLS {
+        handle
+            .resolve_required(symbol)
+            .map_err(|error| FdiskError::SymbolNotFound(error.to_string()))?;
+    }
+
+    // C intentionally retains a validated optional dependency for the
+    // process lifetime. `publish()` makes that ownership transfer explicit;
+    // on every earlier error the RAII handle closes the incomplete load.
+    let _published = handle.publish();
 
     FDISK_LOADED.store(true, Ordering::Release);
     Ok(())
@@ -147,54 +227,6 @@ pub fn dlopen_libfdisk() -> Result<(), FdiskError> {
 /// Returns `true` if libfdisk was successfully loaded.
 pub fn have_fdisk() -> bool {
     FDISK_LOADED.load(Ordering::Acquire)
-}
-
-// ── Platform dlopen / dlsym wrappers ────────────────────────────────────────
-
-/// Open a shared library, returning the handle on success.
-///
-/// Wraps `dlopen()` with `RTLD_LAZY | RTLD_LOCAL`.
-unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, FdiskError> {
-    #[cfg(target_os = "linux")]
-    {
-        let c_name = CString::new(lib_name)
-            .map_err(|e| FdiskError::DlopenFailed(format!("Invalid library name: {}", e)))?;
-        // SAFETY: c_name is NUL-terminated and remains live for the call.
-        let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-        if handle.is_null() {
-            let detail = unsafe {
-                let err_ptr = libc::dlerror();
-                if err_ptr.is_null() {
-                    "unknown error".to_string()
-                } else {
-                    CStr::from_ptr(err_ptr).to_string_lossy().into_owned()
-                }
-            };
-            Err(FdiskError::DlopenFailed(detail))
-        } else {
-            Ok(handle)
-        }
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = lib_name;
-        Err(FdiskError::Unsupported)
-    }
-}
-
-/// Look up a symbol in an already-opened library handle.
-///
-/// Returns a raw pointer that is non-null on success, null if not found.
-#[cfg(target_os = "linux")]
-unsafe fn dlsym_wrapper(handle: *mut c_void, name: &CStr) -> *const c_void {
-    // SAFETY: the caller supplies a live dlopen handle and name is NUL-terminated.
-    unsafe { libc::dlsym(handle, name.as_ptr()) }
-}
-
-#[cfg(not(target_os = "linux"))]
-unsafe fn dlsym_wrapper(_handle: *mut c_void, _name: &CStr) -> *const c_void {
-    std::ptr::null()
 }
 
 // ── Sector size sentinel ────────────────────────────────────────────────────
@@ -344,6 +376,8 @@ pub unsafe fn c_str_to_option(ptr: *const libc::c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
+    // SAFETY: the caller guarantees that this non-null pointer remains
+    // readable through its terminating NUL for the duration of this copy.
     let s = unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned();

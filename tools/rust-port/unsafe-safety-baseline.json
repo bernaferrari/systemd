@@ -1079,6 +1079,11 @@
       ],
       "unsafe_sites": 11
     },
+    "src/shared/rust/btrfs_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
     "src/shared/rust/bus_print_properties.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1239,12 +1244,9 @@
       "unsafe_sites": 20
     },
     "src/shared/rust/device_util.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "406:17:let major = unsafe { libc::major(devnum as libc::dev_t) };",
-        "407:17:let minor = unsafe { libc::minor(devnum as libc::dev_t) };"
-      ],
-      "unsafe_sites": 4
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/shared/rust/dm_util.rs": {
       "missing_safety": 0,
@@ -1267,16 +1269,9 @@
       "unsafe_sites": 2
     },
     "src/shared/rust/fdisk_util.rs": {
-      "missing_safety": 6,
-      "missing_safety_sites": [
-        "120:18:let handle = unsafe { dlopen_wrapper(LIBFDISK_NAME) }?;",
-        "127:23:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
-        "157:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, FdiskError> {",
-        "190:1:unsafe fn dlsym_wrapper(handle: *mut c_void, name: &CStr) -> *const c_void {",
-        "196:1:unsafe fn dlsym_wrapper(_handle: *mut c_void, _name: &CStr) -> *const c_void {",
-        "347:13:let s = unsafe { CStr::from_ptr(ptr) }"
-      ],
-      "unsafe_sites": 13
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 5
     },
     "src/shared/rust/fdset.rs": {
       "missing_safety": 18,
@@ -1303,10 +1298,8 @@
       "unsafe_sites": 18
     },
     "src/shared/rust/ffi.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "22:1:unsafe extern \"C\" {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 12
     },
     "src/shared/rust/fido2_util.rs": {
@@ -1399,16 +1392,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/shared/rust/libarchive_util.rs": {
-      "missing_safety": 4,
-      "missing_safety_sites": [
-        "221:18:let handle = unsafe { dlopen_wrapper(lib_name) }?;",
-        "236:27:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
-        "266:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, ArchiveError> {",
-        "295:5:unsafe {"
-      ],
-      "unsafe_sites": 7
-    },
     "src/shared/rust/libaudit_util.rs": {
       "missing_safety": 12,
       "missing_safety_sites": [
@@ -1428,27 +1411,9 @@
       "unsafe_sites": 16
     },
     "src/shared/rust/libcrypt_util.rs": {
-      "missing_safety": 17,
-      "missing_safety_sites": [
-        "88:1:unsafe impl Send for DlHandle {}",
-        "89:1:unsafe impl Sync for DlHandle {}",
-        "110:23:crypt_gensalt_ra: unsafe extern \"C\" fn(",
-        "116:29:crypt_preferred_method: unsafe extern \"C\" fn() -> *const libc::c_char,",
-        "117:15:crypt_ra: unsafe extern \"C\" fn(",
-        "203:22:let gensalt_fn = unsafe {",
-        "205:13:unsafe extern \"C\" fn(",
-        "215:24:let preferred_fn = unsafe {",
-        "216:26:resolve_symbol::<unsafe extern \"C\" fn() -> *const libc::c_char>(",
-        "223:23:let crypt_ra_fn = unsafe {",
-        "225:13:unsafe extern \"C\" fn(",
-        "279:15:let ptr = unsafe { libc::dlsym(handle.as_ptr(), c_sym.as_ptr()) };",
-        "290:5:unsafe {",
-        "314:9:unsafe {",
-        "330:5:unsafe {",
-        "364:5:unsafe {",
-        "414:5:unsafe {"
-      ],
-      "unsafe_sites": 21
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 11
     },
     "src/shared/rust/libfido2_util.rs": {
       "missing_safety": 0,
@@ -1559,85 +1524,19 @@
       "unsafe_sites": 7
     },
     "src/shared/rust/password_quality_util_passwdqc.rs": {
-      "missing_safety": 19,
-      "missing_safety_sites": [
-        "186:28:passwdqc_params_reset: unsafe extern \"C\" fn(*mut PasswdqcParams),",
-        "188:9:unsafe extern \"C\" fn(*mut PasswdqcParams, *mut *mut c_char, *const c_char) -> c_int,",
-        "190:27:passwdqc_params_free: unsafe extern \"C\" fn(*mut PasswdqcParams),",
-        "191:21:passwdqc_check: unsafe extern \"C\" fn(",
-        "197:22:passwdqc_random: unsafe extern \"C\" fn(*const PasswdqcParamsQc) -> *mut c_char,",
-        "254:27:let params_reset_fn = unsafe {",
-        "255:26:resolve_symbol::<unsafe extern \"C\" fn(*mut PasswdqcParams)>(",
-        "262:26:let params_load_fn = unsafe {",
-        "264:13:unsafe extern \"C\" fn(*mut PasswdqcParams, *mut *mut c_char, *const c_char) -> c_int,",
-        "270:9:unsafe { resolve_symbol::<PasswdqcParamsParseFn>(&handle, \"passwdqc_params_parse\") }",
-        "273:26:let params_free_fn = unsafe {",
-        "274:26:resolve_symbol::<unsafe extern \"C\" fn(*mut PasswdqcParams)>(&handle, \"passwdqc_params_free\")",
-        "278:20:let check_fn = unsafe {",
-        "280:13:unsafe extern \"C\" fn(",
-        "290:21:let random_fn = unsafe {",
-        "291:26:resolve_symbol::<unsafe extern \"C\" fn(*const PasswdqcParamsQc) -> *mut c_char>(",
-        "354:15:let ptr = unsafe { libc::dlsym(handle.as_ptr(), c_sym.as_ptr()) };",
-        "367:9:unsafe {",
-        "443:13:let r = unsafe {"
-      ],
-      "unsafe_sites": 33
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 27
     },
     "src/shared/rust/password_quality_util_pwquality.rs": {
-      "missing_safety": 30,
-      "missing_safety_sites": [
-        "134:1:unsafe impl Send for DlHandle {}",
-        "135:1:unsafe impl Sync for DlHandle {}",
-        "154:22:pwquality_check: unsafe extern \"C\" fn(",
-        "161:33:pwquality_default_settings: unsafe extern \"C\" fn() -> *mut c_void,",
-        "162:30:pwquality_free_settings: unsafe extern \"C\" fn(*mut c_void),",
-        "163:25:pwquality_generate: unsafe extern \"C\" fn(",
-        "168:30:pwquality_get_str_value: unsafe extern \"C\" fn(",
-        "173:28:pwquality_read_config: unsafe extern \"C\" fn(",
-        "178:30:pwquality_set_int_value: unsafe extern \"C\" fn(",
-        "183:25:pwquality_strerror: unsafe extern \"C\" fn(",
-        "241:20:let check_fn = unsafe {",
-        "243:13:unsafe extern \"C\" fn(",
-        "254:31:let default_settings_fn = unsafe {",
-        "255:26:resolve_symbol::<unsafe extern \"C\" fn() -> *mut c_void>(",
-        "262:28:let free_settings_fn = unsafe {",
-        "263:26:resolve_symbol::<unsafe extern \"C\" fn(*mut c_void)>(&handle, \"pwquality_free_settings\")",
-        "267:23:let generate_fn = unsafe {",
-        "268:26:resolve_symbol::<unsafe extern \"C\" fn(*mut c_void, i32, *mut *mut libc::c_char) -> i32>(",
-        "275:22:let get_str_fn = unsafe {",
-        "276:26:resolve_symbol::<unsafe extern \"C\" fn(*mut c_void, i32, *mut *const libc::c_char) -> i32>(",
-        "283:26:let read_config_fn = unsafe {",
-        "285:13:unsafe extern \"C\" fn(*mut c_void, *const libc::c_char, *mut *mut c_void) -> i32,",
-        "290:22:let set_int_fn = unsafe {",
-        "291:26:resolve_symbol::<unsafe extern \"C\" fn(*mut c_void, i32, i32) -> i32>(",
-        "298:23:let strerror_fn = unsafe {",
-        "300:13:unsafe extern \"C\" fn(*mut libc::c_char, usize, i32, *mut c_void) -> *mut libc::c_char,",
-        "361:15:let ptr = unsafe { libc::dlsym(handle.as_ptr(), c_sym.as_ptr()) };",
-        "374:9:unsafe {",
-        "392:1:unsafe fn pwq_strerror(error_code: i32, auxerror: *mut c_void) -> String {",
-        "423:1:unsafe fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {"
-      ],
-      "unsafe_sites": 47
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 42
     },
     "src/shared/rust/pcre2_util.rs": {
-      "missing_safety": 14,
-      "missing_safety_sites": [
-        "158:13:unsafe {",
-        "304:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, Pcre2Error> {",
-        "331:5:unsafe {",
-        "363:18:let handle = unsafe { dlopen_wrapper(PCRE2_LIB_NAME) }?;",
-        "370:23:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
-        "385:16:let syms = unsafe {",
-        "424:14:let rc = unsafe { (lib.get_error_message())(errorcode, buf.as_mut_ptr(), buf.len()) };",
-        "474:20:let code_ptr = unsafe {",
-        "522:14:let md = unsafe { (lib.match_data_create())(1, std::ptr::null_mut()) };",
-        "534:13:unsafe {",
-        "547:14:let rc = unsafe {",
-        "572:20:let ovec = unsafe { (lib.get_ovector_pointer())(md) };",
-        "576:19:Some((unsafe { *ovec }, unsafe { *ovec.add(1) }))",
-        "576:37:Some((unsafe { *ovec }, unsafe { *ovec.add(1) }))"
-      ],
-      "unsafe_sites": 21
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 14
     },
     "src/shared/rust/plymouth_util.rs": {
       "missing_safety": 0,
@@ -1655,23 +1554,9 @@
       "unsafe_sites": 2
     },
     "src/shared/rust/qrcode_util.rs": {
-      "missing_safety": 13,
-      "missing_safety_sites": [
-        "203:18:let handle = unsafe { dlopen_wrapper(lib_name) }?;",
-        "212:19:let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };",
-        "227:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, QrCodeError> {",
-        "254:5:unsafe {",
-        "290:21:let encode_fn = unsafe {",
-        "299:13:unsafe extern \"C\" fn(*const libc::c_char, i32, i32, i32, i32) -> *mut QRcode,",
-        "304:19:let free_fn = unsafe {",
-        "309:44:std::mem::transmute::<*mut c_void, unsafe extern \"C\" fn(*mut QRcode)>(ptr)",
-        "313:14:let qr = unsafe {",
-        "329:17:let width = unsafe { (*qr).width } as usize;",
-        "330:20:let data_ptr = unsafe { (*qr).data };",
-        "335:20:let byte = unsafe { *data_ptr.add(i) };",
-        "340:5:unsafe {"
-      ],
-      "unsafe_sites": 17
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 6
     },
     "src/shared/rust/quota_util.rs": {
       "missing_safety": 0,
@@ -1831,13 +1716,9 @@
       "unsafe_sites": 9
     },
     "src/shared/rust/specifier.rs": {
-      "missing_safety": 3,
-      "missing_safety_sites": [
-        "815:15:if uid == unsafe { libc::getuid() } {",
-        "833:15:if uid == unsafe { libc::getuid() } {",
-        "1161:18:Some(unsafe { libc::getuid() }.to_string())"
-      ],
-      "unsafe_sites": 19
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 16
     },
     "src/shared/rust/switch_root.rs": {
       "missing_safety": 4,
@@ -2002,8 +1883,8 @@
     }
   },
   "totals": {
-    "missing_safety": 474,
-    "unsafe_sites": 5707
+    "missing_safety": 365,
+    "unsafe_sites": 5650
   },
   "version": 2,
   "window": 3

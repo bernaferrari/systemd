@@ -4,18 +4,26 @@
 //
 // Password hashing utilities backed by libcrypt (libxcrypt).
 //
-// Provides dynamic loading of libcrypt via dlopen, salt generation,
+// Provides dynamic loading of libcrypt through systemd's C loader policy, salt generation,
 // password hashing, and password verification. The module uses a
-// three-state cache (unloaded / loaded / failed) to avoid redundant
-// dlopen attempts. On non-glibc platforms the load always fails with
-// EOPNOTSUPP, matching the C #else path.
+// three-state cache (unloaded / loaded / failed) to avoid redundant loader
+// attempts. The C source remains the authority for its non-glibc static
+// implementation.
+//
+// PORT-GAP: C's `HAVE_LIBCRYPT` configuration gate and non-glibc static
+// implementation are not yet represented by this Rust crate. A Rust-only
+// caller returns EOPNOTSUPP off glibc, whereas C uses its musl compatibility
+// implementation when libcrypt is enabled. The C dynamic-loader boundary
+// remains authoritative for glibc static builds and blocked loading.
 
 use std::env;
 use std::ffi::{CStr, CString, c_void};
 use std::fmt;
+use std::os::unix::ffi::OsStrExt;
 use std::sync::OnceLock;
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::{PublishedDlopenHandle, UnpublishedDlopenHandle};
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -55,7 +63,9 @@ impl From<CryptError> for i32 {
         match e {
             CryptError::Unsupported => Errno::EOPNOTSUPP.to_neg_errno(),
             CryptError::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
-            CryptError::SymbolNotFound(_) => Errno::EOPNOTSUPP.to_neg_errno(),
+            // `dlopen_many_sym_or_warn()` distinguishes an unavailable
+            // optional library from an ABI-incompatible library.
+            CryptError::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
             CryptError::CryptFailed(_) => Errno::EINVAL.to_neg_errno(),
             CryptError::InvalidPrefix(_) => Errno::EINVAL.to_neg_errno(),
         }
@@ -79,59 +89,70 @@ const CRYPT_PREFIX_ENV: &str = "SYSTEMD_CRYPT_PREFIX";
 
 // ── Dlopen state ───────────────────────────────────────────────────────────
 
-/// An owned `dlopen` handle. It is stored together with all resolved symbols,
-/// so those symbols cannot outlive the library that defines them.
-struct DlHandle(*mut c_void);
-
-// `dlopen` handles are process-global loader objects. This wrapper never
-// exposes the pointer and only closes a handle that was not published.
-unsafe impl Send for DlHandle {}
-unsafe impl Sync for DlHandle {}
-
-impl DlHandle {
-    fn as_ptr(&self) -> *mut c_void {
-        self.0
-    }
-}
-
-#[cfg(target_env = "gnu")]
-impl Drop for DlHandle {
-    fn drop(&mut self) {
-        // SAFETY: this wrapper owns the handle returned by `dlopen`; published
-        // handles live in a process-lifetime `OnceLock`, while failed partial
-        // loads drop here exactly once.
-        unsafe { libc::dlclose(self.0) };
-    }
-}
-
 /// Cached function pointers. They are private to the library object that owns
 /// the dlopen handle.
+///
+/// Each alias is the exact declaration in libxcrypt's <crypt.h>; pointers are
+/// created only after `resolve_required()` validates the corresponding named
+/// symbol against a live library handle.
+type CryptGensaltRa = unsafe extern "C" fn(
+    prefix: *const libc::c_char,
+    count: libc::c_ulong,
+    rbytes: *const libc::c_char,
+    nrbytes: i32,
+) -> *mut libc::c_char;
+
+type CryptPreferredMethod = unsafe extern "C" fn() -> *const libc::c_char;
+
+type CryptRa = unsafe extern "C" fn(
+    phrase: *const libc::c_char,
+    setting: *const libc::c_char,
+    data: *mut *mut c_void,
+    size: *mut i32,
+) -> *mut libc::c_char;
+
 struct CryptSymbols {
-    crypt_gensalt_ra: unsafe extern "C" fn(
-        prefix: *const libc::c_char,
-        count: libc::c_ulong,
-        rbytes: *const libc::c_char,
-        nrbytes: i32,
-    ) -> *mut libc::c_char,
-    crypt_preferred_method: unsafe extern "C" fn() -> *const libc::c_char,
-    crypt_ra: unsafe extern "C" fn(
-        phrase: *const libc::c_char,
-        setting: *const libc::c_char,
-        data: *mut *mut c_void,
-        size: *mut i32,
-    ) -> *mut libc::c_char,
+    crypt_gensalt_ra: CryptGensaltRa,
+    crypt_preferred_method: CryptPreferredMethod,
+    crypt_ra: CryptRa,
 }
 
 struct CryptLibrary {
     // Keep this field before the symbols to make the ownership relation
     // obvious: a `CryptLibrary` always owns the handle backing its symbols.
-    _handle: DlHandle,
+    _handle: PublishedDlopenHandle,
     symbols: CryptSymbols,
 }
 
 /// Caches both success and failure. `OnceLock` serializes initialization and
 /// publishes only a fully resolved library object.
 static LIBCRYPT: OnceLock<Result<CryptLibrary, CryptError>> = OnceLock::new();
+
+// `crypt_ra()` allocates this opaque workspace with the C allocator. Its
+// contents can include password-derived material, so use systemd's exact C
+// erase-and-free helper rather than guessing the allocation size from the
+// libcrypt output parameter.
+// SAFETY: callers pass only a null pointer or a live allocation returned by
+// `crypt_ra()`, which is precisely the ownership contract of erase_and_free().
+unsafe extern "C" {
+    fn erase_and_free(pointer: *mut c_void) -> *mut c_void;
+}
+
+/// Own the temporary allocation returned through `crypt_ra()`'s `data` out
+/// parameter. The C implementation uses `_cleanup_(erase_and_freep)` for the
+/// same lifetime and scrubbing semantics.
+struct CryptData(*mut c_void);
+
+impl Drop for CryptData {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            // SAFETY: `self.0` is either null or the still-owned allocation
+            // returned by `crypt_ra()` through its `data` out-parameter. The
+            // C helper securely erases its allocator-known extent and frees it.
+            unsafe { erase_and_free(self.0) };
+        }
+    }
+}
 
 // ── Feature description ─────────────────────────────────────────────────────
 
@@ -197,103 +218,52 @@ fn load_libcrypt() -> Result<CryptLibrary, CryptError> {
 /// Try to open a single libcrypt candidate and resolve all required symbols.
 #[cfg(target_env = "gnu")]
 fn try_load_libcrypt(lib_name: &str) -> Result<CryptLibrary, CryptError> {
-    let handle = dlopen_wrapper(lib_name)?;
+    // C's `dlopen_libcrypt()` delegates to `dlopen_many_sym_or_warn()`, which
+    // uses `dlopen_safe()`. Keep its static-build, `block_dlopen()`, RTLD_NOW,
+    // and RTLD_NODELETE policy instead of selecting a divergent lazy loader.
+    let handle = UnpublishedDlopenHandle::open(lib_name)
+        .map_err(|error| CryptError::DlopenFailed(error.to_string()))?;
 
     // Resolve all required symbols.
-    let gensalt_fn = unsafe {
-        resolve_symbol::<
-            unsafe extern "C" fn(
-                *const libc::c_char,
-                libc::c_ulong,
-                *const libc::c_char,
-                i32,
-            ) -> *mut libc::c_char,
-        >(&handle, "crypt_gensalt_ra")
-    }
-    .ok_or_else(|| CryptError::SymbolNotFound("crypt_gensalt_ra".to_string()))?;
+    let gensalt_symbol = handle
+        .resolve_required("crypt_gensalt_ra")
+        .map_err(|error| CryptError::SymbolNotFound(error.to_string()))?;
+    // `crypt_gensalt_ra` has its exact <crypt.h> declaration here.
+    // SAFETY: `handle` remains live until it is published into the returned
+    // library object below, so the resolved code address remains valid.
+    let gensalt_fn =
+        unsafe { std::mem::transmute::<*mut c_void, CryptGensaltRa>(gensalt_symbol.as_ptr()) };
 
+    let preferred_symbol = handle
+        .resolve_required("crypt_preferred_method")
+        .map_err(|error| CryptError::SymbolNotFound(error.to_string()))?;
+    // SAFETY: `crypt_preferred_method` is a required C ABI symbol with this
+    // exact no-argument declaration in <crypt.h>; the published handle below
+    // keeps its code address valid for process lifetime.
     let preferred_fn = unsafe {
-        resolve_symbol::<unsafe extern "C" fn() -> *const libc::c_char>(
-            &handle,
-            "crypt_preferred_method",
-        )
-    }
-    .ok_or_else(|| CryptError::SymbolNotFound("crypt_preferred_method".to_string()))?;
+        std::mem::transmute::<*mut c_void, CryptPreferredMethod>(preferred_symbol.as_ptr())
+    };
 
-    let crypt_ra_fn = unsafe {
-        resolve_symbol::<
-            unsafe extern "C" fn(
-                *const libc::c_char,
-                *const libc::c_char,
-                *mut *mut c_void,
-                *mut i32,
-            ) -> *mut libc::c_char,
-        >(&handle, "crypt_ra")
-    }
-    .ok_or_else(|| CryptError::SymbolNotFound("crypt_ra".to_string()))?;
+    let crypt_ra_symbol = handle
+        .resolve_required("crypt_ra")
+        .map_err(|error| CryptError::SymbolNotFound(error.to_string()))?;
+    // `crypt_ra` has its exact <crypt.h> declaration here.
+    // SAFETY: its address cannot be used after the process-lifetime handle is
+    // published into the returned `CryptLibrary`.
+    let crypt_ra_fn =
+        unsafe { std::mem::transmute::<*mut c_void, CryptRa>(crypt_ra_symbol.as_ptr()) };
 
     Ok(CryptLibrary {
-        _handle: handle,
+        // Just like `dlopen_many_sym_or_warn()`, retain a fully validated
+        // optional dependency. Earlier error paths drop the unpublished
+        // handle and release the partial reference exactly once.
+        _handle: handle.publish(),
         symbols: CryptSymbols {
             crypt_gensalt_ra: gensalt_fn,
             crypt_preferred_method: preferred_fn,
             crypt_ra: crypt_ra_fn,
         },
     })
-}
-
-// ── Platform dlopen / dlsym wrappers ────────────────────────────────────────
-
-/// Open a shared library via dlopen with RTLD_LAZY | RTLD_LOCAL.
-///
-/// # Safety
-/// Uses libc::dlopen directly; the returned handle must not outlive the process.
-#[cfg(target_env = "gnu")]
-fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, CryptError> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| CryptError::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: `c_name` is NUL terminated and the resulting handle is wrapped
-    // in `DlHandle`, which owns and closes unpublished partial loads.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-    if handle.is_null() {
-        let detail = dlerror_string();
-        Err(CryptError::DlopenFailed(format!(
-            "{}: {}",
-            lib_name, detail
-        )))
-    } else {
-        Ok(DlHandle(handle))
-    }
-}
-
-/// Look up a symbol in an already-opened library handle and transmute it
-/// to the requested function pointer type.
-///
-/// Returns `None` if the symbol is not found.
-///
-/// # Safety
-/// `handle` must be a valid handle from dlopen. The caller must ensure the
-/// returned pointer is used only while the library remains loaded.
-unsafe fn resolve_symbol<T>(handle: &DlHandle, symbol: &str) -> Option<T> {
-    let c_sym = CString::new(symbol).ok()?;
-    let ptr = unsafe { libc::dlsym(handle.as_ptr(), c_sym.as_ptr()) };
-    if ptr.is_null() {
-        None
-    } else {
-        // SAFETY: T is selected by the caller to match this named library symbol.
-        Some(unsafe { std::mem::transmute_copy(&ptr) })
-    }
-}
-
-/// Retrieve the last dlerror() message as a Rust String.
-fn dlerror_string() -> String {
-    unsafe {
-        let ptr = libc::dlerror();
-        if ptr.is_null() {
-            return "unknown error".to_string();
-        }
-        CStr::from_ptr(ptr).to_string_lossy().into_owned()
-    }
 }
 
 // ── Salt generation ────────────────────────────────────────────────────────
@@ -307,26 +277,31 @@ fn dlerror_string() -> String {
 pub fn make_salt() -> Result<String, CryptError> {
     let library = crypt_library()?;
 
-    let prefix = env::var(CRYPT_PREFIX_ENV).unwrap_or_default();
-
-    let prefix_cstr = if prefix.is_empty() {
-        // Use crypt_preferred_method() when no env override.
-        unsafe {
-            let raw = (library.symbols.crypt_preferred_method)();
+    let prefix_c = match secure_crypt_prefix()? {
+        // `secure_getenv()` distinguishes an unset variable from a present
+        // empty one. Preserve that detail: C passes an explicitly empty
+        // prefix to crypt_gensalt_ra() rather than selecting the default.
+        Some(prefix) => prefix,
+        None => {
+            // SAFETY: the loaded symbol has the <crypt.h> ABI validated by
+            // `try_load_libcrypt()`, and its process-lifetime handle remains
+            // owned by `library`. A non-null return is a borrowed C string.
+            let raw = unsafe { (library.symbols.crypt_preferred_method)() };
             if raw.is_null() {
                 return Err(CryptError::CryptFailed(
                     "crypt_preferred_method() returned NULL".to_string(),
                 ));
             }
-            CStr::from_ptr(raw).to_string_lossy().into_owned()
+            // SAFETY: `crypt_preferred_method()` promises a NUL-terminated
+            // string that remains valid until the next libcrypt call. Copy it
+            // before invoking crypt_gensalt_ra().
+            unsafe { CStr::from_ptr(raw).to_owned() }
         }
-    } else {
-        prefix
     };
 
-    let prefix_c = CString::new(prefix_cstr.as_str())
-        .map_err(|e| CryptError::InvalidPrefix(format!("NUL byte in prefix: {}", e)))?;
-
+    // SAFETY: the loaded symbol has the <crypt.h> ABI validated above;
+    // `prefix_c` is a live NUL-terminated input, and null/zero request
+    // libcrypt-generated random bytes as in the C implementation.
     unsafe {
         let salt_ptr =
             (library.symbols.crypt_gensalt_ra)(prefix_c.as_ptr(), 0, std::ptr::null(), 0);
@@ -337,11 +312,35 @@ pub fn make_salt() -> Result<String, CryptError> {
                 errno_val
             )));
         }
+        // SAFETY: a successful crypt_gensalt_ra() result is a live,
+        // NUL-terminated allocation owned by this caller until freed below.
         let salt = CStr::from_ptr(salt_ptr).to_string_lossy().into_owned();
         // crypt_gensalt_ra allocates with malloc; free it.
+        // SAFETY: `salt_ptr` is the allocation returned by crypt_gensalt_ra
+        // and has not been freed or retained elsewhere.
         libc::free(salt_ptr as *mut c_void);
         Ok(salt)
     }
+}
+
+/// Return `SYSTEMD_CRYPT_PREFIX` with C `secure_getenv()` semantics.
+///
+/// Environment values are byte strings. Retaining their Unix bytes avoids
+/// incorrectly rejecting a valid non-UTF-8 libcrypt prefix before passing it
+/// through the same C-string boundary C uses.
+fn secure_crypt_prefix() -> Result<Option<CString>, CryptError> {
+    // SAFETY: getauxval() takes no pointers and transfers no ownership. AT_SECURE
+    // is the kernel flag consulted by glibc's secure_getenv() implementation.
+    if unsafe { libc::getauxval(libc::AT_SECURE) } != 0 {
+        return Ok(None);
+    }
+
+    env::var_os(CRYPT_PREFIX_ENV)
+        .map(|value| {
+            CString::new(value.as_bytes())
+                .map_err(|error| CryptError::InvalidPrefix(format!("NUL byte in prefix: {error}")))
+        })
+        .transpose()
 }
 
 // ── Password hashing ───────────────────────────────────────────────────────
@@ -361,37 +360,31 @@ pub fn hash_password(password: &str) -> Result<String, CryptError> {
     let salt_c = CString::new(salt.as_str())
         .map_err(|e| CryptError::CryptFailed(format!("NUL byte in salt: {}", e)))?;
 
+    // SAFETY: both function inputs are live NUL-terminated strings. `data`
+    // and `size` are writable local out-parameters; `CryptData` owns and
+    // securely releases any allocation that libcrypt returns through `data`.
     unsafe {
-        let mut cd_data: *mut c_void = std::ptr::null_mut();
+        let mut cd_data = CryptData(std::ptr::null_mut());
         let mut cd_size: i32 = 0;
 
         let result_ptr = (library.symbols.crypt_ra)(
             password_c.as_ptr(),
             salt_c.as_ptr(),
-            &mut cd_data,
+            &mut cd_data.0,
             &mut cd_size,
         );
 
         if result_ptr.is_null() {
             let errno_val = crate::ffi::errno();
-            // Free any partial allocation.
-            if !cd_data.is_null() {
-                libc::free(cd_data);
-            }
             return Err(CryptError::CryptFailed(format!(
                 "crypt_ra failed (errno={})",
                 errno_val
             )));
         }
 
+        // SAFETY: a successful crypt_ra() result is a live NUL-terminated
+        // string owned by the `cd_data` workspace until that guard drops.
         let hashed = CStr::from_ptr(result_ptr).to_string_lossy().into_owned();
-
-        // crypt_ra allocates cd_data with malloc; free it.
-        if !cd_data.is_null() {
-            // Zero out sensitive data before freeing (erase_and_free).
-            crate::ffi::explicit_bzero(cd_data.cast::<u8>(), cd_size as usize);
-            libc::free(cd_data);
-        }
 
         Ok(hashed)
     }
@@ -411,22 +404,22 @@ pub fn test_password(hashed_password: &str, password: &str) -> Result<bool, Cryp
     let hashed_c = CString::new(hashed_password)
         .map_err(|_| CryptError::CryptFailed("NUL byte in hashed password".to_string()))?;
 
+    // SAFETY: both inputs are live NUL-terminated strings. The writable
+    // out-parameters are local, and the `CryptData` guard erases and frees
+    // any allocation returned by crypt_ra() on every exit path.
     unsafe {
-        let mut cd_data: *mut c_void = std::ptr::null_mut();
+        let mut cd_data = CryptData(std::ptr::null_mut());
         let mut cd_size: i32 = 0;
 
         let result_ptr = (library.symbols.crypt_ra)(
             password_c.as_ptr(),
             hashed_c.as_ptr(),
-            &mut cd_data,
+            &mut cd_data.0,
             &mut cd_size,
         );
 
         if result_ptr.is_null() {
             let errno_val = crate::ffi::errno();
-            if !cd_data.is_null() {
-                libc::free(cd_data);
-            }
             if errno_val == Errno::ENOMEM as i32 {
                 return Err(CryptError::CryptFailed(
                     "crypt_ra: out of memory".to_string(),
@@ -436,14 +429,10 @@ pub fn test_password(hashed_password: &str, password: &str) -> Result<bool, Cryp
             return Ok(false);
         }
 
+        // SAFETY: a successful crypt_ra() return is a live NUL-terminated
+        // string within the workspace owned by `cd_data`.
         let result = CStr::from_ptr(result_ptr).to_string_lossy();
         let matches = result == hashed_password;
-
-        // Erase and free sensitive data.
-        if !cd_data.is_null() {
-            crate::ffi::explicit_bzero(cd_data.cast::<u8>(), cd_size as usize);
-            libc::free(cd_data);
-        }
 
         Ok(matches)
     }

@@ -8,13 +8,22 @@
 // compilation with case-sensitivity control (sensitive, insensitive,
 // or auto-detected from pattern content), and pattern matching against
 // arbitrary byte buffers with optional ovector output.
+//
+// PORT-GAP: C's `HAVE_PCRE2` configuration gate and locale-aware
+// `[[:upper:]]` AUTO-case probe are not yet represented in Rust. The latter
+// currently retains an explicit ASCII-only approximation rather than hiding
+// a potentially locale-dependent semantic difference.
 
 use std::collections::HashSet;
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::{CString, c_void};
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -61,9 +70,11 @@ impl From<Pcre2Error> for i32 {
     fn from(e: Pcre2Error) -> i32 {
         match e {
             Pcre2Error::Unsupported => Errno::EOPNOTSUPP.to_neg_errno(),
-            Pcre2Error::DlopenFailed(_) | Pcre2Error::SymbolNotFound(_) => {
-                Errno::ENOENT.to_neg_errno()
-            }
+            // `dlopen_many_sym_or_warn()` normalizes an unavailable optional
+            // library to EOPNOTSUPP and a missing required ABI symbol to
+            // ELIBBAD. Keep this boundary observable to C-facing callers.
+            Pcre2Error::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
+            Pcre2Error::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
             Pcre2Error::AlreadyLoaded => Errno::EBUSY.to_neg_errno(),
             Pcre2Error::InvalidPattern { .. } | Pcre2Error::MatchFailed(_) => {
                 Errno::EINVAL.to_neg_errno()
@@ -155,6 +166,9 @@ impl Drop for CompiledPattern {
     fn drop(&mut self) {
         // Load the free function on demand — the library must already be loaded.
         if let Ok(lib) = Pcre2Lib::current() {
+            // SAFETY: `self.ptr` came from this library's pcre2_compile_8,
+            // is owned by this guard, and the published library handle is
+            // retained for the process lifetime.
             unsafe {
                 (lib.code_free())(self.ptr);
             }
@@ -213,7 +227,7 @@ type Pcre2MatchFn = unsafe extern "C" fn(
     *mut c_void,   // match_context
 ) -> i32;
 
-type Pcre2MatchDataCreateFn = unsafe extern "C" fn(i32, *mut c_void) -> *mut c_void; // (ovecsize, general_ctx)
+type Pcre2MatchDataCreateFn = unsafe extern "C" fn(u32, *mut c_void) -> *mut c_void; // (ovecsize, general_ctx)
 
 type Pcre2MatchDataFreeFn = unsafe extern "C" fn(*mut c_void);
 type Pcre2CodeFreeFn = unsafe extern "C" fn(*mut c_void);
@@ -231,9 +245,9 @@ type Pcre2GetOvectorPointerFn = unsafe extern "C" fn(*mut c_void) -> *mut usize;
 /// Global flag: has `dlopen_pcre2()` been called successfully?
 static PCRE2_LOADED: AtomicBool = AtomicBool::new(false);
 
-/// Cached library handle (kept open for process lifetime).
-static PCRE2_HANDLE: std::sync::atomic::AtomicPtr<c_void> =
-    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+/// Serializes initialization so concurrent callers cannot publish multiple
+/// process-lifetime references after resolving the same library.
+static PCRE2_LOAD_LOCK: Mutex<()> = Mutex::new(());
 
 /// Cached symbol pointers, packed into a struct.
 struct Pcre2Symbols {
@@ -246,12 +260,11 @@ struct Pcre2Symbols {
     get_ovector_pointer: Pcre2GetOvectorPointerFn,
 }
 
-// Use a Mutex to protect the lazy-init of the symbol struct.
+// The serialized loader publishes this immutable symbol table once.
 static PCRE2_SYMS: std::sync::OnceLock<Pcre2Symbols> = std::sync::OnceLock::new();
 
 /// Wrapper around the loaded PCRE2 library providing typed access to symbols.
 struct Pcre2Lib {
-    _handle: *mut c_void,
     syms: &'static Pcre2Symbols,
 }
 
@@ -261,12 +274,8 @@ impl Pcre2Lib {
         if !PCRE2_LOADED.load(Ordering::Acquire) {
             return Err(Pcre2Error::Unsupported);
         }
-        let handle = PCRE2_HANDLE.load(Ordering::Acquire);
         let syms = PCRE2_SYMS.get().ok_or(Pcre2Error::Unsupported)?;
-        Ok(Self {
-            _handle: handle,
-            syms,
-        })
+        Ok(Self { syms })
     }
 
     fn compile(&self) -> Pcre2CompileFn {
@@ -298,45 +307,6 @@ impl Pcre2Lib {
     }
 }
 
-// ── Platform dlopen / dlsym wrappers ────────────────────────────────────────
-
-/// Open a shared library, returning the handle on success.
-unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, Pcre2Error> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| Pcre2Error::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: c_name is NUL-terminated and remains live for the call.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-    if handle.is_null() {
-        let detail = dlerror_string();
-        Err(Pcre2Error::DlopenFailed(format!(
-            "{}: {}",
-            lib_name, detail
-        )))
-    } else {
-        Ok(handle)
-    }
-}
-
-/// Look up a symbol in an already-opened library handle.
-///
-/// # Safety
-/// `handle` must be a valid handle returned by `dlopen`.
-unsafe fn dlsym_wrapper(handle: *mut c_void, symbol: &CStr) -> *mut c_void {
-    // SAFETY: the caller supplies a live dlopen handle and symbol is NUL-terminated.
-    unsafe { libc::dlsym(handle, symbol.as_ptr()) }
-}
-
-/// Retrieve the last `dlerror()` message as a Rust `String`.
-fn dlerror_string() -> String {
-    unsafe {
-        let ptr = libc::dlerror();
-        if ptr.is_null() {
-            return "unknown error".to_string();
-        }
-        CStr::from_ptr(ptr).to_string_lossy().into_owned()
-    }
-}
-
 // ── PCRE2 constants ─────────────────────────────────────────────────────────
 
 /// `PCRE2_CASELESS` — case-insensitive matching flag.
@@ -353,55 +323,63 @@ const PCRE2_ERROR_NOMATCH: i32 = -1;
 /// Attempt to dynamically load libpcre2-8.
 ///
 /// This function is idempotent: after the first successful call it returns
-/// `Ok(())` immediately. On failure the result is cached so subsequent
-/// calls return `Err` without retrying.
+/// `Ok(())` immediately. Failures are not cached, matching the C loader's
+/// behaviour: a later caller may retry after the dependency becomes available.
 pub fn dlopen_pcre2() -> Result<(), Pcre2Error> {
     if PCRE2_LOADED.load(Ordering::Acquire) {
         return Ok(());
     }
 
-    let handle = unsafe { dlopen_wrapper(PCRE2_LIB_NAME) }?;
+    let _load_lock = PCRE2_LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    // Resolve all required symbols.
-    let missing: Vec<String> = PCRE2_SYMBOLS
-        .iter()
-        .filter_map(|sym| {
-            let c_sym = CString::new(*sym).unwrap_or_default();
-            let ptr = unsafe { dlsym_wrapper(handle, &c_sym) };
-            if ptr.is_null() {
-                Some((*sym).to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if !missing.is_empty() {
-        return Err(Pcre2Error::SymbolNotFound(missing.join(", ")));
+    if PCRE2_LOADED.load(Ordering::Acquire) {
+        return Ok(());
     }
 
-    // Safe to transmute: we just verified the symbols exist and the
-    // function signatures match the PCRE2 ABI.
-    let syms = unsafe {
-        let c_sym = |name: &str| -> *mut c_void {
-            let c = CString::new(name).unwrap_or_default();
-            dlsym_wrapper(handle, &c)
-        };
+    // The C authority uses dlopen_many_sym_or_warn(), which delegates all
+    // policy (static builds, blocked loads, RTLD_NOW | RTLD_NODELETE) to
+    // dlopen_safe(). The shared Rust facade makes that policy explicit while
+    // ensuring incomplete loads are released on every error path.
+    let handle = UnpublishedDlopenHandle::open(PCRE2_LIB_NAME)
+        .map_err(|error| Pcre2Error::DlopenFailed(error.to_string()))?;
 
-        Pcre2Symbols {
-            match_data_create: std::mem::transmute(c_sym("pcre2_match_data_create_8")),
-            match_data_free: std::mem::transmute(c_sym("pcre2_match_data_free_8")),
-            code_free: std::mem::transmute(c_sym("pcre2_code_free_8")),
-            compile: std::mem::transmute(c_sym("pcre2_compile_8")),
-            get_error_message: std::mem::transmute(c_sym("pcre2_get_error_message_8")),
-            match_fn: std::mem::transmute(c_sym("pcre2_match_8")),
-            get_ovector_pointer: std::mem::transmute(c_sym("pcre2_get_ovector_pointer_8")),
-        }
+    macro_rules! required_symbol {
+        ($symbol:literal, $type:ty) => {{
+            let symbol = handle
+                .resolve_required($symbol)
+                .map_err(|error| Pcre2Error::SymbolNotFound(error.to_string()))?;
+            // SAFETY: each symbol is resolved from the process-lifetime
+            // libpcre2-8 handle and its explicit type below is the matching
+            // PCRE2 C declaration from pcre2-util.h.
+            unsafe { std::mem::transmute::<*mut c_void, $type>(symbol.as_ptr()) }
+        }};
+    }
+
+    let syms = Pcre2Symbols {
+        match_data_create: required_symbol!("pcre2_match_data_create_8", Pcre2MatchDataCreateFn),
+        match_data_free: required_symbol!("pcre2_match_data_free_8", Pcre2MatchDataFreeFn),
+        code_free: required_symbol!("pcre2_code_free_8", Pcre2CodeFreeFn),
+        compile: required_symbol!("pcre2_compile_8", Pcre2CompileFn),
+        get_error_message: required_symbol!("pcre2_get_error_message_8", Pcre2GetErrorMessageFn),
+        match_fn: required_symbol!("pcre2_match_8", Pcre2MatchFn),
+        get_ovector_pointer: required_symbol!(
+            "pcre2_get_ovector_pointer_8",
+            Pcre2GetOvectorPointerFn
+        ),
     };
 
-    // Store handle and symbols globally.
-    PCRE2_HANDLE.store(handle, Ordering::Release);
-    let _ = PCRE2_SYMS.set(syms);
+    // Keep a successfully validated optional dependency loaded for the
+    // process lifetime, exactly like dlopen_many_sym_or_warn().
+    handle.publish();
+    if PCRE2_SYMS.set(syms).is_err() {
+        // The load mutex and false loaded flag establish that the cell is
+        // empty on this path. Reaching this branch would mean a violated
+        // process-global invariant; continuing would pair the new handle
+        // with unrelated function pointers.
+        unreachable!("PCRE2 symbols were unexpectedly initialized twice");
+    }
     PCRE2_LOADED.store(true, Ordering::Release);
 
     Ok(())
@@ -421,6 +399,8 @@ fn pattern_has_uppercase(pattern: &str) -> bool {
 /// is unrecognised.
 fn pcre2_error_message(lib: &Pcre2Lib, errorcode: i32) -> String {
     let mut buf = [0u8; 1024];
+    // SAFETY: get_error_message is the validated PCRE2 ABI symbol, and the
+    // stack buffer is writable for exactly the length passed to the function.
     let rc = unsafe { (lib.get_error_message())(errorcode, buf.as_mut_ptr(), buf.len()) };
     if rc < 0 {
         return "unknown error".to_string();
@@ -448,6 +428,10 @@ pub fn pattern_compile(
     pattern: &str,
     case_: PatternCompileCase,
 ) -> Result<CompiledPattern, Pcre2Error> {
+    // C's pattern_compile_and_log() always attempts the lazy load itself.
+    // Retain that entry-point contract so callers do not need a separate
+    // dlopen_pcre2() call before compiling their first pattern.
+    dlopen_pcre2()?;
     let lib = Pcre2Lib::current()?;
 
     let mut flags: u32 = 0;
@@ -471,6 +455,9 @@ pub fn pattern_compile(
     let mut errorcode: i32 = 0;
     let mut erroroffset: usize = 0;
 
+    // SAFETY: compile is the validated PCRE2 ABI symbol; `pattern_cstr` is a
+    // live NUL-terminated pattern, both out-pointers refer to live writable
+    // locals, and a null compile context is explicitly supported by PCRE2.
     let code_ptr = unsafe {
         (lib.compile())(
             pattern_cstr.as_ptr() as *const u8,
@@ -516,9 +503,24 @@ pub fn pattern_matches(
     message: &str,
     want_ovector: bool,
 ) -> Result<MatchResult, Pcre2Error> {
+    pattern_matches_bytes(compiled_pattern, message.as_bytes(), want_ovector)
+}
+
+/// Match a compiled PCRE2 pattern against an arbitrary byte buffer.
+///
+/// Unlike [`pattern_matches`], this preserves C's explicit `size` parameter:
+/// embedded NUL bytes are part of the subject rather than terminating it.
+/// This is the direct equivalent of `pattern_matches_and_log()`.
+pub fn pattern_matches_bytes(
+    compiled_pattern: &CompiledPattern,
+    message: &[u8],
+    want_ovector: bool,
+) -> Result<MatchResult, Pcre2Error> {
     let lib = Pcre2Lib::current()?;
 
-    // Create match data for 1 capture group.
+    // Create match data for the full match's two ovector offsets.
+    // SAFETY: match_data_create is the validated PCRE2 ABI symbol, and a
+    // positive ovector count with a null optional general context is valid.
     let md = unsafe { (lib.match_data_create())(1, std::ptr::null_mut()) };
     if md.is_null() {
         return Err(Pcre2Error::OutOfMemory);
@@ -531,6 +533,8 @@ pub fn pattern_matches(
     }
     impl Drop for MatchDataGuard {
         fn drop(&mut self) {
+            // SAFETY: this guard owns the non-null match-data allocation
+            // returned by its corresponding PCRE2 constructor exactly once.
             unsafe {
                 (self.free_fn)(self.ptr);
             }
@@ -541,14 +545,14 @@ pub fn pattern_matches(
         free_fn: lib.match_data_free(),
     };
 
-    let message_cstr = CString::new(message)
-        .map_err(|_| Pcre2Error::MatchFailed("message contains NUL byte".to_string()))?;
-
+    // SAFETY: match_fn is the validated PCRE2 ABI symbol; the compiled code
+    // and match-data allocations are live, and the byte slice remains valid
+    // for its exact explicit length for the duration of this call.
     let rc = unsafe {
         (lib.match_fn())(
             compiled_pattern.as_ptr(),
-            message_cstr.as_ptr() as *const u8,
-            PCRE2_ZERO_TERMINATED,
+            message.as_ptr(),
+            message.len(),
             0, // start offset
             0, // options
             md,
@@ -569,11 +573,20 @@ pub fn pattern_matches(
     }
 
     let ovector = if want_ovector {
+        // SAFETY: match_data_create(1, ...) creates space for the full
+        // match's start and end offsets, and a successful PCRE2 match makes
+        // its returned ovector valid until the match data is freed.
         let ovec = unsafe { (lib.get_ovector_pointer())(md) };
         if ovec.is_null() {
             None
         } else {
-            Some((unsafe { *ovec }, unsafe { *ovec.add(1) }))
+            // SAFETY: the successful one-pair match has an ovector element
+            // for the full match start at index zero.
+            let start = unsafe { *ovec };
+            // SAFETY: the same one-pair ovector has the full match end at
+            // index one; both elements are initialized by the match call.
+            let end = unsafe { *ovec.add(1) };
+            Some((start, end))
         }
     } else {
         None
@@ -605,13 +618,6 @@ pub fn pcre2_library_name() -> &'static str {
 /// Returns the set of symbol names required from libpcre2-8.
 pub fn pcre2_required_symbols() -> HashSet<&'static str> {
     PCRE2_SYMBOLS.iter().copied().collect()
-}
-
-/// Reset the loaded state. For testing only.
-#[cfg(test)]
-pub fn reset_pcre2_loaded() {
-    PCRE2_LOADED.store(false, Ordering::Release);
-    PCRE2_HANDLE.store(std::ptr::null_mut(), Ordering::Release);
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -807,28 +813,6 @@ mod tests {
         assert_eq!(PCRE2_CASELESS, 0x0000_0008);
         assert_eq!(PCRE2_ZERO_TERMINATED, usize::MAX);
         assert_eq!(PCRE2_ERROR_NOMATCH, -1);
-    }
-
-    #[test]
-    fn test_pcre2_is_loaded_initial() {
-        reset_pcre2_loaded();
-        assert!(!pcre2_is_loaded());
-    }
-
-    #[test]
-    fn test_pattern_compile_without_pcre2_loaded() {
-        reset_pcre2_loaded();
-        let result = pattern_compile("test", PatternCompileCase::Sensitive);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), Pcre2Error::Unsupported);
-    }
-
-    #[test]
-    fn test_pattern_matches_without_pcre2_loaded() {
-        reset_pcre2_loaded();
-        // We can't easily construct a CompiledPattern without the library,
-        // but we can verify the library-not-loaded path.
-        assert!(!pcre2_is_loaded());
     }
 
     #[test]

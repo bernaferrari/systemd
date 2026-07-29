@@ -10,7 +10,7 @@
 // available, operations return `PasswdqcError::Unsupported`.
 //
 // The module mirrors the C implementation:
-// - `dlopen_passwdqc()` → idempotent library loading with three-state cache
+// - `dlopen_passwdqc()` → success-cached library loading through C policy
 // - `pwqc_allocate_context()` → params allocation with config reading
 // - `check_password_quality()` → strength validation with username awareness
 // - `suggest_passwords()` → random password generation
@@ -18,9 +18,10 @@
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::fmt;
 use std::ptr::NonNull;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use crate::ffi::Errno;
+use systemd_basic_rs::dlfcn_util::{PublishedDlopenHandle, UnpublishedDlopenHandle};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -117,33 +118,6 @@ pub enum PasswordQualityResult {
 
 // ── Dlopen state ──────────────────────────────────────────────────────────
 
-/// Owned dlopen handle, kept in the same immutable object as all resolved
-/// symbols. Unpublished handles close automatically on resolution failure.
-struct DlHandle(*mut c_void);
-
-// SAFETY: a successful handle is published immutably and remains loaded for
-// the process lifetime. POSIX specifies dlopen/dlsym as thread-safe, and each
-// passwdqc operation uses its own separately allocated parameter context.
-unsafe impl Send for DlHandle {}
-// SAFETY: see the Send proof above; no mutable Rust state is accessed through
-// the handle itself.
-unsafe impl Sync for DlHandle {}
-
-impl DlHandle {
-    fn as_ptr(&self) -> *mut c_void {
-        self.0
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for DlHandle {
-    fn drop(&mut self) {
-        // SAFETY: this wrapper owns the successful `dlopen` handle. Only a
-        // failed, unpublished resolution is dropped during process lifetime.
-        unsafe { libc::dlclose(self.0) };
-    }
-}
-
 /// Public `passwdqc_params_qc_t` layout from passwdqc 2.x.
 ///
 /// `libpasswdqc.so.1` first appeared in passwdqc 1.9, but this module also
@@ -182,28 +156,41 @@ type PasswdqcParamsParseFn = unsafe extern "C" fn(
 ) -> c_int;
 
 /// Cached function pointers.
+#[derive(Clone, Copy)]
 struct PasswdqcSymbols {
+    // SAFETY: callers provide an initialized, writable `passwdqc_params_t`.
     passwdqc_params_reset: unsafe extern "C" fn(*mut PasswdqcParams),
+    // SAFETY: callers keep the params, output pointer, and C path live.
     passwdqc_params_load:
         unsafe extern "C" fn(*mut PasswdqcParams, *mut *mut c_char, *const c_char) -> c_int,
     passwdqc_params_parse: PasswdqcParamsParseFn,
+    // SAFETY: callers pass only a context initialized by this library.
     passwdqc_params_free: unsafe extern "C" fn(*mut PasswdqcParams),
+    // SAFETY: callers meet libpasswdqc's pointer and lifetime contract.
     passwdqc_check: unsafe extern "C" fn(
         *const PasswdqcParamsQc,
         *const c_char,
         *const c_char,
         *const libc::passwd,
     ) -> *const c_char,
+    // SAFETY: callers pass a live initialized quality-settings subobject.
     passwdqc_random: unsafe extern "C" fn(*const PasswdqcParamsQc) -> *mut c_char,
 }
 
+#[derive(Clone, Copy)]
 struct PasswdqcLibrary {
-    _handle: DlHandle,
+    // C's `dlopen_many_sym_or_warn()` deliberately retains a successful
+    // optional dependency for process lifetime. Keeping that ownership in the
+    // value that owns the function pointers makes the dependency explicit.
+    _handle: PublishedDlopenHandle,
     symbols: PasswdqcSymbols,
 }
 
-/// Caches a fully resolved library or the exact failure from the first load.
-static LIBPASSWDQC: OnceLock<Result<PasswdqcLibrary, PasswdqcError>> = OnceLock::new();
+/// Serializes initialization and records only a validated successful load.
+///
+/// This mirrors C's `static void *passwdqc_dl`: a failed attempt is not
+/// published, so a later call may retry after the loader environment changes.
+static LIBPASSWDQC: OnceLock<Mutex<Option<PasswdqcLibrary>>> = OnceLock::new();
 
 // ── Feature description ────────────────────────────────────────────────────
 
@@ -231,50 +218,66 @@ pub fn passwdqc_conf_path() -> &'static str {
 
 /// Dynamically load libpasswdqc and resolve all required symbols.
 ///
-/// Idempotent: after the first call the result (success or failure) is cached
-/// and subsequent calls return the same result without retrying.
+/// Idempotent after success. Failed attempts are deliberately not cached,
+/// matching C's `dlopen_many_sym_or_warn()` behavior.
 ///
 /// Returns `Ok(())` on success, or a `PasswdqcError` describing the failure.
 pub fn dlopen_passwdqc() -> Result<(), PasswdqcError> {
     passwdqc_library().map(|_| ())
 }
 
-fn passwdqc_library() -> Result<&'static PasswdqcLibrary, PasswdqcError> {
-    LIBPASSWDQC
-        .get_or_init(load_passwdqc)
-        .as_ref()
-        .map_err(Clone::clone)
+fn passwdqc_library() -> Result<PasswdqcLibrary, PasswdqcError> {
+    let cache = LIBPASSWDQC.get_or_init(|| Mutex::new(None));
+    // A poisoned lock cannot invalidate a published process-lifetime handle;
+    // retain its value and permit a fresh load if the panic happened earlier.
+    let mut cache = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    if let Some(library) = *cache {
+        return Ok(library);
+    }
+
+    let library = load_passwdqc()?;
+    *cache = Some(library);
+    Ok(library)
 }
 
 /// Open the library and resolve every symbol before publishing any state.
 fn load_passwdqc() -> Result<PasswdqcLibrary, PasswdqcError> {
-    let handle = dlopen_wrapper(LIBPASSWDQC_SONAME)?;
+    // C delegates through `dlopen_many_sym_or_warn()`, which in turn uses
+    // `dlopen_safe()`. Preserve its static-build, block_dlopen(), RTLD_NOW,
+    // and RTLD_NODELETE policy instead of selecting a local lazy policy.
+    let handle = UnpublishedDlopenHandle::open(LIBPASSWDQC_SONAME)
+        .map_err(|error| PasswdqcError::DlopenFailed(error.to_string()))?;
 
     // Resolve all required symbols.
+    // SAFETY: every requested type below is the exact declaration from the
+    // libpasswdqc public header for the named required symbol.
     let params_reset_fn = unsafe {
         resolve_symbol::<unsafe extern "C" fn(*mut PasswdqcParams)>(
             &handle,
             "passwdqc_params_reset",
         )
-    }
-    .ok_or_else(|| PasswdqcError::SymbolNotFound("passwdqc_params_reset".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let params_load_fn = unsafe {
         resolve_symbol::<
             unsafe extern "C" fn(*mut PasswdqcParams, *mut *mut c_char, *const c_char) -> c_int,
         >(&handle, "passwdqc_params_load")
-    }
-    .ok_or_else(|| PasswdqcError::SymbolNotFound("passwdqc_params_load".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let params_parse_fn =
-        unsafe { resolve_symbol::<PasswdqcParamsParseFn>(&handle, "passwdqc_params_parse") }
-            .ok_or_else(|| PasswdqcError::SymbolNotFound("passwdqc_params_parse".to_string()))?;
+        unsafe { resolve_symbol::<PasswdqcParamsParseFn>(&handle, "passwdqc_params_parse") }?;
 
+    // SAFETY: see the ABI proof above.
     let params_free_fn = unsafe {
         resolve_symbol::<unsafe extern "C" fn(*mut PasswdqcParams)>(&handle, "passwdqc_params_free")
-    }
-    .ok_or_else(|| PasswdqcError::SymbolNotFound("passwdqc_params_free".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let check_fn = unsafe {
         resolve_symbol::<
             unsafe extern "C" fn(
@@ -284,19 +287,18 @@ fn load_passwdqc() -> Result<PasswdqcLibrary, PasswdqcError> {
                 *const libc::passwd,
             ) -> *const c_char,
         >(&handle, "passwdqc_check")
-    }
-    .ok_or_else(|| PasswdqcError::SymbolNotFound("passwdqc_check".to_string()))?;
+    }?;
 
+    // SAFETY: see the ABI proof above.
     let random_fn = unsafe {
         resolve_symbol::<unsafe extern "C" fn(*const PasswdqcParamsQc) -> *mut c_char>(
             &handle,
             "passwdqc_random",
         )
-    }
-    .ok_or_else(|| PasswdqcError::SymbolNotFound("passwdqc_random".to_string()))?;
+    }?;
 
     Ok(PasswdqcLibrary {
-        _handle: handle,
+        _handle: handle.publish(),
         symbols: PasswdqcSymbols {
             passwdqc_params_reset: params_reset_fn,
             passwdqc_params_load: params_load_fn,
@@ -308,74 +310,27 @@ fn load_passwdqc() -> Result<PasswdqcLibrary, PasswdqcError> {
     })
 }
 
-// ── Platform dlopen / dlsym wrappers ───────────────────────────────────────
+// ── Required-symbol typing ────────────────────────────────────────────────
 
-/// Open a shared library via dlopen with RTLD_LAZY | RTLD_LOCAL.
+/// Resolve one required symbol and give it its exact public C function type.
 ///
 /// # Safety
-/// Uses libc::dlopen directly; the returned handle must not outlive the process.
-#[cfg(target_os = "linux")]
-fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, PasswdqcError> {
-    let c_name = CString::new(lib_name)
-        .map_err(|e| PasswdqcError::DlopenFailed(format!("Invalid library name: {}", e)))?;
-    // SAFETY: `c_name` is NUL terminated and the handle is immediately owned
-    // by `DlHandle`, including on a later symbol-resolution failure.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-    if handle.is_null() {
-        let detail = dlerror_string();
-        Err(PasswdqcError::DlopenFailed(format!(
-            "{}: {}",
-            lib_name, detail
-        )))
-    } else {
-        Ok(DlHandle(handle))
-    }
-}
+/// `T` must exactly match the named libpasswdqc symbol's ABI. The returned
+/// function pointer stays valid because `PasswdqcLibrary` retains the
+/// process-lifetime published loader handle.
+unsafe fn resolve_symbol<T>(
+    handle: &UnpublishedDlopenHandle,
+    symbol: &str,
+) -> Result<T, PasswdqcError> {
+    let pointer = handle
+        .resolve_required(symbol)
+        .map_err(|error| PasswdqcError::SymbolNotFound(error.to_string()))?;
+    let raw = pointer.as_ptr();
 
-/// On non-Linux platforms, dlopen always fails.
-#[cfg(not(target_os = "linux"))]
-fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, PasswdqcError> {
-    Err(PasswdqcError::DlopenFailed(format!(
-        "Platform not supported: {}",
-        lib_name
-    )))
-}
-
-/// Look up a symbol in an already-opened library handle and transmute it
-/// to the requested function pointer type.
-///
-/// Returns `None` if the symbol is not found.
-///
-/// # Safety
-/// `handle` must be a valid handle from dlopen. The caller must ensure the
-/// returned pointer is used only while the library remains loaded.
-unsafe fn resolve_symbol<T>(handle: &DlHandle, symbol: &str) -> Option<T> {
-    let c_sym = CString::new(symbol).ok()?;
-    let ptr = unsafe { libc::dlsym(handle.as_ptr(), c_sym.as_ptr()) };
-    if ptr.is_null() {
-        None
-    } else {
-        // SAFETY: T is selected by the caller to match this named library symbol.
-        Some(unsafe { std::mem::transmute_copy(&ptr) })
-    }
-}
-
-/// Retrieve the last dlerror() message as a Rust String.
-fn dlerror_string() -> String {
-    #[cfg(target_os = "linux")]
-    {
-        unsafe {
-            let ptr = libc::dlerror();
-            if ptr.is_null() {
-                return "unknown error".to_string();
-            }
-            CStr::from_ptr(ptr).to_string_lossy().into_owned()
-        }
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        "dlopen not available on this platform".to_string()
-    }
+    // SAFETY: the caller establishes that `T` is this symbol's exact function
+    // pointer type. All supported systemd targets represent data and function
+    // pointers at the same width required by the POSIX dlsym contract.
+    Ok(unsafe { std::mem::transmute_copy(&raw) })
 }
 
 // ── Internal: allocate passwdqc context ───────────────────────────────────
@@ -384,7 +339,7 @@ fn dlerror_string() -> String {
 /// internal strings.
 struct PasswdqcContext {
     params: NonNull<PasswdqcParams>,
-    library: &'static PasswdqcLibrary,
+    library: PasswdqcLibrary,
 }
 
 impl PasswdqcContext {
@@ -440,6 +395,8 @@ fn pwqc_allocate_context() -> Result<PasswdqcContext, PasswdqcError> {
     let conf_path = CString::new(PASSWDQC_CONF_PATH)
         .map_err(|_| PasswdqcError::InvalidArgument("NUL byte in config path".to_string()))?;
     let mut load_reason: *mut c_char = std::ptr::null_mut();
+    // SAFETY: `context` owns initialized params, and both the NUL-terminated
+    // path and writable diagnostic output remain live for this call.
     let r = unsafe {
         (syms.passwdqc_params_load)(
             context.params.as_ptr(),

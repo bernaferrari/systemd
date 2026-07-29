@@ -2,12 +2,30 @@
 //
 // PORT-SYNC: src/shared/btrfs-util.c, src/shared/btrfs-util.h
 //
-// Btrfs filesystem utility types and pure-logic helpers.
+// Btrfs filesystem utility types, pure-logic helpers, and a safe backing-device
+// query facade.
 //
 // This module provides idiomatic Rust types and pure functions that mirror
-// the C btrfs-util implementation. I/O-bound operations (ioctls, file
-// descriptor manipulation) are documented but left to the C side; only
-// the ioctl invocations themselves require `unsafe`.
+// the C btrfs-util implementation. The backing-device query is deliberately
+// delegated to the authoritative C implementation so its ioctl validation,
+// single-device policy, and kernel-error behavior remain shared.
+
+use std::io;
+use std::os::fd::{AsRawFd, BorrowedFd};
+
+// SAFETY: This is the exact exported declaration from btrfs-util.h. The safe
+// wrapper below supplies a live descriptor, null optional inputs/outputs, and
+// a uniquely borrowed, correctly typed dev_t output slot.
+unsafe extern "C" {
+    #[link_name = "btrfs_get_block_device_at_full"]
+    fn c_btrfs_get_block_device_at_full(
+        dir_fd: libc::c_int,
+        path: *const libc::c_char,
+        ret_devid: *mut u64,
+        ret_path: *mut *mut libc::c_char,
+        ret: *mut libc::dev_t,
+    ) -> libc::c_int;
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -22,6 +40,44 @@ pub const BTRFS_PATH_NAME_MAX: usize = 4096;
 
 /// Sentinel for "no qgroup found" in subtree qgroup searches.
 pub const BTRFS_NO_QGROUP: u64 = u64::MAX;
+
+// ── Safe I/O facade ───────────────────────────────────────────────────────
+
+/// Return the sole block device backing the btrfs filesystem at `fd`.
+///
+/// This is the fd form of C's `btrfs_get_block_device_at_full()`. `Ok(None)`
+/// means that the filesystem has multiple devices; the C helper intentionally
+/// declines to select one in that case. A non-btrfs descriptor is reported as
+/// `ENOTTY`, and all other kernel/filesystem errors retain their original
+/// errno.
+///
+/// The descriptor is borrowed and is never consumed or closed.
+pub fn btrfs_get_block_device_fd(fd: BorrowedFd<'_>) -> io::Result<Option<libc::dev_t>> {
+    let mut device: libc::dev_t = 0;
+
+    // SAFETY: `fd` stays live for the call, null selects the fd itself exactly
+    // like the C inline btrfs_get_block_device_fd(), unused outputs are null,
+    // and `device` is a valid unique output slot.
+    let result = unsafe {
+        c_btrfs_get_block_device_at_full(
+            fd.as_raw_fd(),
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut device,
+        )
+    };
+
+    if result < 0 {
+        return Err(io::Error::from_raw_os_error(-result));
+    }
+    if result == 0 {
+        return Ok(None);
+    }
+
+    debug_assert_eq!(result, 1);
+    Ok(Some(device))
+}
 
 // ── Data structures ───────────────────────────────────────────────────────
 

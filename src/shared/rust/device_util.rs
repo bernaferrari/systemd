@@ -13,6 +13,7 @@ use std::ffi::CString;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -403,9 +404,7 @@ pub fn make_log_field(key: &str, value: &str) -> String {
 
 /// Build a formatted device number string in `major:minor` format.
 pub fn format_devnum(devnum: u64) -> String {
-    let major = unsafe { libc::major(devnum as libc::dev_t) };
-    let minor = unsafe { libc::minor(devnum as libc::dev_t) };
-    format!("{major}:{minor}")
+    format!("{}:{}", devnum_major(devnum), devnum_minor(devnum))
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────

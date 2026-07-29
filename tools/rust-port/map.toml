@@ -3087,7 +3087,7 @@ status = "in-progress"
 tier = 3
 symbols = 4
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: block-device ioctl/probe behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-29 static-only review: get_block_device_fd now matches the C zero-major path by delegating btrfs topology and kernel-error policy to btrfs_get_block_device_at_full through a documented safe facade; multi-device btrfs and non-btrfs zero-major filesystems retain C's distinct zero/ENOTTY handling. Broader block-device, udev, sysfs, ioctl, and runtime parity remains unclaimed."
 
 [bond_util]
 c_file = "src/shared/bond-util.c"
