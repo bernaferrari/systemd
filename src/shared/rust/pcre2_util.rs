@@ -8,10 +8,6 @@
 // compilation with case-sensitivity control (sensitive, insensitive,
 // or auto-detected from pattern content), and pattern matching against
 // arbitrary byte buffers with optional ovector output.
-//
-// PORT-GAP: C's `HAVE_PCRE2` configuration gate is not yet represented in
-// Rust. Runtime loading remains optional and reports `EOPNOTSUPP` when the
-// library is unavailable.
 
 use std::collections::HashSet;
 use std::ffi::{CString, c_void};
@@ -23,6 +19,13 @@ use std::sync::{
 
 use crate::ffi::Errno;
 use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
+
+// SAFETY: Exact pcre2-util.h declaration. This C helper only returns Meson's
+// immutable HAVE_PCRE2 configuration value and retains no Rust state.
+unsafe extern "C" {
+    #[link_name = "pcre2_support_enabled"]
+    safe fn c_pcre2_support_enabled() -> libc::c_int;
+}
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -365,6 +368,13 @@ const PCRE2_ERROR_NOMATCH: i32 = -1;
 /// `Ok(())` immediately. Failures are not cached, matching the C loader's
 /// behaviour: a later caller may retry after the dependency becomes available.
 pub fn dlopen_pcre2() -> Result<(), Pcre2Error> {
+    // `HAVE_PCRE2` is a C build decision, not a property Rust may infer from
+    // whether a shared object happens to be installed at runtime. Query C so
+    // disabled builds retain its unconditional EOPNOTSUPP result.
+    if c_pcre2_support_enabled() <= 0 {
+        return Err(Pcre2Error::Unsupported);
+    }
+
     if PCRE2_LOADED.load(Ordering::Acquire) {
         return Ok(());
     }

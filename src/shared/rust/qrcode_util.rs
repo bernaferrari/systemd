@@ -4,15 +4,15 @@
 //
 // QR code generation and terminal rendering utilities.
 //
-// PORT-GAP: C's `HAVE_QRENCODE` configuration gate and its `FILE*` terminal
-// cursor/locale/color integration are not yet represented by this generic
-// `Write` API. The C implementation remains authoritative for those paths.
-// This module keeps the optional-library boundary aligned with C and exposes
-// only owned QR matrices to safe Rust.
+// C's loader remains the compile-time capability authority, so a Rust caller
+// cannot bypass HAVE_QRENCODE. The generic `Write` API remains useful for
+// portable matrix rendering, while the fd API delegates terminal cursor,
+// locale, and color behavior to C's FILE*-based authority.
 
 use std::ffi::{CString, c_char};
 use std::fmt;
 use std::io::{self, Write};
+use std::os::fd::AsRawFd;
 use std::ptr::NonNull;
 use std::sync::{
     Mutex,
@@ -22,11 +22,33 @@ use std::sync::{
 use crate::ffi::Errno;
 use systemd_basic_rs::dlfcn_util::{PublishedDlopenHandle, UnpublishedDlopenHandle};
 
+// SAFETY: These are exact qrcode-util.h declarations. The loader accepts only
+// a scalar and retains no Rust data; the fd renderer's wrapper below supplies
+// valid NUL-terminated strings and a live borrowed descriptor.
+unsafe extern "C" {
+    #[link_name = "dlopen_qrencode"]
+    safe fn c_dlopen_qrencode(log_level: libc::c_int) -> libc::c_int;
+
+    #[link_name = "print_qrcode_full_fd"]
+    fn c_print_qrcode_full_fd(
+        fd: libc::c_int,
+        header: *const c_char,
+        string: *const c_char,
+        row: libc::c_uint,
+        column: libc::c_uint,
+        tty_width: libc::c_uint,
+        tty_height: libc::c_uint,
+        check_tty: bool,
+    ) -> libc::c_int;
+}
+
 // ── Error type ──────────────────────────────────────────────────────────────
 
 /// Errors returned by QR code operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QrCodeError {
+    /// An errno returned unchanged by C's descriptor-backed renderer.
+    RawErrno(i32),
     /// libqrencode is not available on this system.
     Unsupported,
     /// The shared library could not be opened.
@@ -46,6 +68,7 @@ pub enum QrCodeError {
 impl fmt::Display for QrCodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::RawErrno(code) => write!(f, "QR code renderer failed with errno {code}"),
             Self::Unsupported => write!(
                 f,
                 "QR code support is not compiled in or libqrencode not available"
@@ -64,19 +87,30 @@ impl fmt::Display for QrCodeError {
 
 impl std::error::Error for QrCodeError {}
 
+impl QrCodeError {
+    /// Preserve a C-style negative errno without collapsing its cause.
+    pub const fn from_neg_errno(code: i32) -> Self {
+        Self::RawErrno(code)
+    }
+
+    /// Return the C-style negative errno represented by this error.
+    pub const fn as_neg_errno(&self) -> i32 {
+        match self {
+            Self::RawErrno(code) => *code,
+            Self::Unsupported
+            | Self::NotUtf8Locale
+            | Self::ColorsDisabled
+            | Self::TerminalTooSmall => Errno::EOPNOTSUPP.to_neg_errno(),
+            Self::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
+            Self::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
+            Self::EncodeFailed(_) => Errno::ENOMEM.to_neg_errno(),
+        }
+    }
+}
+
 impl From<QrCodeError> for i32 {
     fn from(e: QrCodeError) -> i32 {
-        match e {
-            QrCodeError::Unsupported => Errno::EOPNOTSUPP.to_neg_errno(),
-            // `dlopen_many_sym_or_warn()` normalizes an unavailable optional
-            // dependency to EOPNOTSUPP and a missing required ABI to ELIBBAD.
-            QrCodeError::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
-            QrCodeError::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
-            QrCodeError::EncodeFailed(_) => Errno::ENOMEM.to_neg_errno(),
-            QrCodeError::NotUtf8Locale => Errno::EOPNOTSUPP.to_neg_errno(),
-            QrCodeError::ColorsDisabled => Errno::EOPNOTSUPP.to_neg_errno(),
-            QrCodeError::TerminalTooSmall => Errno::EOPNOTSUPP.to_neg_errno(),
-        }
+        e.as_neg_errno()
     }
 }
 
@@ -221,6 +255,21 @@ pub fn dlopen_qrencode() -> Result<(), QrCodeError> {
     if api.is_some() {
         QRENCODE_LOADED.store(true, Ordering::Release);
         return Ok(());
+    }
+
+    // The C loader owns the HAVE_QRENCODE decision. Requiring it to succeed
+    // before resolving a Rust view prevents an installed library from
+    // accidentally enabling support that the configured build disabled.
+    let configured = c_dlopen_qrencode(libc::LOG_DEBUG);
+    if configured < 0 {
+        let errno = configured.checked_neg().unwrap_or(libc::EIO);
+        return Err(match errno {
+            libc::EOPNOTSUPP => QrCodeError::Unsupported,
+            libc::ELIBBAD => QrCodeError::SymbolNotFound(
+                "C libqrencode loader rejected the required ABI".to_string(),
+            ),
+            _ => QrCodeError::DlopenFailed(format!("C loader failed with errno {errno}")),
+        });
     }
 
     // C returns the outcome of the final candidate. Preserve that distinction:
@@ -446,6 +495,87 @@ pub fn write_qrcode<W: Write>(out: &mut W, matrix: &QrCodeMatrix) -> io::Result<
     Ok(())
 }
 
+/// Print a QR code through C's descriptor-backed default renderer.
+///
+/// This mirrors the C `print_qrcode()` inline: it uses no explicit cursor
+/// position and enables C's terminal/color check. The original descriptor
+/// remains owned by `out`; see [`print_qrcode_full_fd`] for full positioning.
+pub fn print_qrcode_fd(
+    out: &impl AsRawFd,
+    header: Option<&str>,
+    string: &str,
+) -> Result<(), QrCodeError> {
+    print_qrcode_full_fd(
+        out,
+        header,
+        string,
+        NO_POSITION,
+        NO_POSITION,
+        NO_POSITION,
+        NO_POSITION,
+        true,
+    )
+}
+
+/// Print a QR code through C's descriptor-backed terminal renderer.
+///
+/// Unlike the generic [`print_qrcode_full`] API, this delegates C's UTF-8
+/// locale, color, and cursor-positioning behavior to its `FILE*` renderer.
+/// C duplicates `out`'s descriptor before constructing an independently
+/// buffered stream, so the caller keeps ownership of the original descriptor.
+///
+/// C's negative errno is retained unchanged in
+/// [`QrCodeError::RawErrno`], including `-EOPNOTSUPP` when rendering is
+/// unavailable and errors from duplicating or wrapping the descriptor.
+pub fn print_qrcode_full_fd(
+    out: &impl AsRawFd,
+    header: Option<&str>,
+    string: &str,
+    row: u32,
+    column: u32,
+    tty_width: u32,
+    tty_height: u32,
+    check_tty: bool,
+) -> Result<(), QrCodeError> {
+    let fd = out.as_raw_fd();
+    if fd < 0 {
+        return Err(QrCodeError::from_neg_errno(Errno::EBADF.to_neg_errno()));
+    }
+
+    let header = match header {
+        Some(header) => Some(
+            CString::new(header)
+                .map_err(|_| QrCodeError::from_neg_errno(Errno::EINVAL.to_neg_errno()))?,
+        ),
+        None => None,
+    };
+    let string = CString::new(string)
+        .map_err(|_| QrCodeError::from_neg_errno(Errno::EINVAL.to_neg_errno()))?;
+
+    // SAFETY: `out` remains borrowed for the synchronous call, its checked
+    // descriptor is live, and both C strings remain NUL-terminated and alive.
+    // C duplicates the descriptor and retains none of the passed pointers.
+    let result = unsafe {
+        c_print_qrcode_full_fd(
+            fd,
+            header
+                .as_ref()
+                .map_or(std::ptr::null(), |header| header.as_ptr()),
+            string.as_ptr(),
+            row,
+            column,
+            tty_width,
+            tty_height,
+            check_tty,
+        )
+    };
+    if result < 0 {
+        Err(QrCodeError::from_neg_errno(result))
+    } else {
+        Ok(())
+    }
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /// Print a QR code encoding `string` to `out`.
@@ -627,6 +757,14 @@ mod tests {
 
         let val: i32 = QrCodeError::TerminalTooSmall.into();
         assert_eq!(val, Errno::EOPNOTSUPP.to_neg_errno());
+    }
+
+    #[test]
+    fn test_qr_code_error_raw_errno_is_preserved() {
+        let error = QrCodeError::from_neg_errno(Errno::EBADF.to_neg_errno());
+        assert_eq!(error.as_neg_errno(), Errno::EBADF.to_neg_errno());
+        let code: i32 = error.into();
+        assert_eq!(code, Errno::EBADF.to_neg_errno());
     }
 
     #[test]

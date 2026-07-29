@@ -10,11 +10,9 @@
 // attempts. The C source remains the authority for its non-glibc static
 // implementation.
 //
-// PORT-GAP: C's `HAVE_LIBCRYPT` configuration gate and non-glibc static
-// implementation are not yet represented by this Rust crate. A Rust-only
-// caller returns EOPNOTSUPP off glibc, whereas C uses its musl compatibility
-// implementation when libcrypt is enabled. The C dynamic-loader boundary
-// remains authoritative for glibc static builds and blocked loading.
+// The C function-table bridge is the configuration and loader authority. It
+// enforces HAVE_LIBCRYPT, uses the dynamic loader on glibc, and publishes the
+// statically linked musl compatibility functions on non-glibc builds.
 
 use std::env;
 use std::ffi::{CStr, CString, c_void};
@@ -23,7 +21,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::sync::OnceLock;
 
 use crate::ffi::Errno;
-use systemd_basic_rs::dlfcn_util::{PublishedDlopenHandle, UnpublishedDlopenHandle};
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -111,22 +108,22 @@ type CryptRa = unsafe extern "C" fn(
     size: *mut i32,
 ) -> *mut libc::c_char;
 
+#[repr(C)]
+struct CCryptSymbols {
+    crypt_gensalt_ra: Option<CryptGensaltRa>,
+    crypt_preferred_method: Option<CryptPreferredMethod>,
+    crypt_ra: Option<CryptRa>,
+}
+
 struct CryptSymbols {
     crypt_gensalt_ra: CryptGensaltRa,
     crypt_preferred_method: CryptPreferredMethod,
     crypt_ra: CryptRa,
 }
 
-struct CryptLibrary {
-    // Keep this field before the symbols to make the ownership relation
-    // obvious: a `CryptLibrary` always owns the handle backing its symbols.
-    _handle: PublishedDlopenHandle,
-    symbols: CryptSymbols,
-}
-
 /// Caches both success and failure. `OnceLock` serializes initialization and
 /// publishes only a fully resolved library object.
-static LIBCRYPT: OnceLock<Result<CryptLibrary, CryptError>> = OnceLock::new();
+static LIBCRYPT: OnceLock<Result<CryptSymbols, CryptError>> = OnceLock::new();
 
 // `crypt_ra()` allocates this opaque workspace with the C allocator. Its
 // contents can include password-derived material, so use systemd's exact C
@@ -135,6 +132,9 @@ static LIBCRYPT: OnceLock<Result<CryptLibrary, CryptError>> = OnceLock::new();
 // SAFETY: callers pass only a null pointer or a live allocation returned by
 // `crypt_ra()`, which is precisely the ownership contract of erase_and_free().
 unsafe extern "C" {
+    #[link_name = "libcrypt_get_functions"]
+    fn c_libcrypt_get_functions(ret: *mut CCryptSymbols) -> libc::c_int;
+
     fn erase_and_free(pointer: *mut c_void) -> *mut c_void;
 }
 
@@ -185,84 +185,54 @@ pub fn dlopen_libcrypt() -> Result<(), CryptError> {
 
 /// Return the one immutable library object, caching an exact failure as well
 /// as a success. This is the only access path for resolved symbols.
-fn crypt_library() -> Result<&'static CryptLibrary, CryptError> {
+fn crypt_library() -> Result<&'static CryptSymbols, CryptError> {
     LIBCRYPT
         .get_or_init(load_libcrypt)
         .as_ref()
         .map_err(Clone::clone)
 }
 
-/// Inner implementation that actually performs the dlopen and fully resolves
-/// all symbols before any state is published.
-#[cfg(target_env = "gnu")]
-fn load_libcrypt() -> Result<CryptLibrary, CryptError> {
-    let mut last_err = String::new();
-
-    for lib_name in LIBCRYPT_CANDIDATES {
-        match try_load_libcrypt(lib_name) {
-            Ok(library) => return Ok(library),
-            Err(e) => {
-                last_err = e.to_string();
-            }
-        }
-    }
-
-    Err(CryptError::DlopenFailed(last_err))
-}
-
-#[cfg(not(target_env = "gnu"))]
-fn load_libcrypt() -> Result<CryptLibrary, CryptError> {
-    Err(CryptError::Unsupported)
-}
-
-/// Try to open a single libcrypt candidate and resolve all required symbols.
-#[cfg(target_env = "gnu")]
-fn try_load_libcrypt(lib_name: &str) -> Result<CryptLibrary, CryptError> {
-    // C's `dlopen_libcrypt()` delegates to `dlopen_many_sym_or_warn()`, which
-    // uses `dlopen_safe()`. Keep its static-build, `block_dlopen()`, RTLD_NOW,
-    // and RTLD_NODELETE policy instead of selecting a divergent lazy loader.
-    let handle = UnpublishedDlopenHandle::open(lib_name)
-        .map_err(|error| CryptError::DlopenFailed(error.to_string()))?;
-
-    // Resolve all required symbols.
-    let gensalt_symbol = handle
-        .resolve_required("crypt_gensalt_ra")
-        .map_err(|error| CryptError::SymbolNotFound(error.to_string()))?;
-    // `crypt_gensalt_ra` has its exact <crypt.h> declaration here.
-    // SAFETY: `handle` remains live until it is published into the returned
-    // library object below, so the resolved code address remains valid.
-    let gensalt_fn =
-        unsafe { std::mem::transmute::<*mut c_void, CryptGensaltRa>(gensalt_symbol.as_ptr()) };
-
-    let preferred_symbol = handle
-        .resolve_required("crypt_preferred_method")
-        .map_err(|error| CryptError::SymbolNotFound(error.to_string()))?;
-    // SAFETY: `crypt_preferred_method` is a required C ABI symbol with this
-    // exact no-argument declaration in <crypt.h>; the published handle below
-    // keeps its code address valid for process lifetime.
-    let preferred_fn = unsafe {
-        std::mem::transmute::<*mut c_void, CryptPreferredMethod>(preferred_symbol.as_ptr())
+/// Ask C to publish the exact functions selected by the configured build.
+///
+/// On glibc this runs C's cached `dlopen_libcrypt()` and returns pointers kept
+/// alive by its process-lifetime handle. On musl the same table contains the
+/// statically linked compatibility implementation. A build configured without
+/// libcrypt returns EOPNOTSUPP before publishing any pointer.
+fn load_libcrypt() -> Result<CryptSymbols, CryptError> {
+    let mut symbols = CCryptSymbols {
+        crypt_gensalt_ra: None,
+        crypt_preferred_method: None,
+        crypt_ra: None,
     };
 
-    let crypt_ra_symbol = handle
-        .resolve_required("crypt_ra")
-        .map_err(|error| CryptError::SymbolNotFound(error.to_string()))?;
-    // `crypt_ra` has its exact <crypt.h> declaration here.
-    // SAFETY: its address cannot be used after the process-lifetime handle is
-    // published into the returned `CryptLibrary`.
-    let crypt_ra_fn =
-        unsafe { std::mem::transmute::<*mut c_void, CryptRa>(crypt_ra_symbol.as_ptr()) };
+    // SAFETY: `symbols` is writable, correctly aligned C-layout storage. C
+    // initializes every field only on success and never retains the pointer.
+    let result = unsafe { c_libcrypt_get_functions(&mut symbols) };
+    if result != 0 {
+        let errno = if result < 0 {
+            result.checked_neg().unwrap_or(libc::EIO)
+        } else {
+            libc::EIO
+        };
+        return Err(match errno {
+            libc::EOPNOTSUPP => CryptError::Unsupported,
+            libc::ELIBBAD => CryptError::SymbolNotFound(
+                "C libcrypt loader rejected the required ABI".to_string(),
+            ),
+            _ => CryptError::DlopenFailed(format!("C loader failed with errno {errno}")),
+        });
+    }
 
-    Ok(CryptLibrary {
-        // Just like `dlopen_many_sym_or_warn()`, retain a fully validated
-        // optional dependency. Earlier error paths drop the unpublished
-        // handle and release the partial reference exactly once.
-        _handle: handle.publish(),
-        symbols: CryptSymbols {
-            crypt_gensalt_ra: gensalt_fn,
-            crypt_preferred_method: preferred_fn,
-            crypt_ra: crypt_ra_fn,
-        },
+    Ok(CryptSymbols {
+        crypt_gensalt_ra: symbols.crypt_gensalt_ra.ok_or_else(|| {
+            CryptError::SymbolNotFound("crypt_gensalt_ra function table entry".to_string())
+        })?,
+        crypt_preferred_method: symbols.crypt_preferred_method.ok_or_else(|| {
+            CryptError::SymbolNotFound("crypt_preferred_method function table entry".to_string())
+        })?,
+        crypt_ra: symbols.crypt_ra.ok_or_else(|| {
+            CryptError::SymbolNotFound("crypt_ra function table entry".to_string())
+        })?,
     })
 }
 
@@ -283,10 +253,10 @@ pub fn make_salt() -> Result<String, CryptError> {
         // prefix to crypt_gensalt_ra() rather than selecting the default.
         Some(prefix) => prefix,
         None => {
-            // SAFETY: the loaded symbol has the <crypt.h> ABI validated by
-            // `try_load_libcrypt()`, and its process-lifetime handle remains
-            // owned by `library`. A non-null return is a borrowed C string.
-            let raw = unsafe { (library.symbols.crypt_preferred_method)() };
+            // SAFETY: C published the exact <crypt.h> function after retaining
+            // its loader handle or selecting the static musl implementation.
+            // A non-null return is a borrowed C string.
+            let raw = unsafe { (library.crypt_preferred_method)() };
             if raw.is_null() {
                 return Err(CryptError::CryptFailed(
                     "crypt_preferred_method() returned NULL".to_string(),
@@ -303,8 +273,7 @@ pub fn make_salt() -> Result<String, CryptError> {
     // `prefix_c` is a live NUL-terminated input, and null/zero request
     // libcrypt-generated random bytes as in the C implementation.
     unsafe {
-        let salt_ptr =
-            (library.symbols.crypt_gensalt_ra)(prefix_c.as_ptr(), 0, std::ptr::null(), 0);
+        let salt_ptr = (library.crypt_gensalt_ra)(prefix_c.as_ptr(), 0, std::ptr::null(), 0);
         if salt_ptr.is_null() {
             let errno_val = crate::ffi::errno();
             return Err(CryptError::CryptFailed(format!(
@@ -367,7 +336,7 @@ pub fn hash_password(password: &str) -> Result<String, CryptError> {
         let mut cd_data = CryptData(std::ptr::null_mut());
         let mut cd_size: i32 = 0;
 
-        let result_ptr = (library.symbols.crypt_ra)(
+        let result_ptr = (library.crypt_ra)(
             password_c.as_ptr(),
             salt_c.as_ptr(),
             &mut cd_data.0,
@@ -411,7 +380,7 @@ pub fn test_password(hashed_password: &str, password: &str) -> Result<bool, Cryp
         let mut cd_data = CryptData(std::ptr::null_mut());
         let mut cd_size: i32 = 0;
 
-        let result_ptr = (library.symbols.crypt_ra)(
+        let result_ptr = (library.crypt_ra)(
             password_c.as_ptr(),
             hashed_c.as_ptr(),
             &mut cd_data.0,
@@ -657,13 +626,9 @@ mod tests {
     #[test]
     fn test_test_password_many_empty_list() {
         // Empty list should return false (no match possible).
-        // This will fail at dlopen on non-glibc, which is expected.
         let result = test_password_many(&[], "password");
-        // On platforms without libcrypt, expect Unsupported error.
-        // If libcrypt loaded, expect Ok(false) for empty list.
         match result {
             Ok(false) => {}
-            Err(CryptError::Unsupported) => {}
             other => panic!("Unexpected result: {:?}", other),
         }
     }
@@ -672,7 +637,7 @@ mod tests {
     fn test_test_password_many_single_entry() {
         // Single entry should behave like test_password.
         let result = test_password_many(&["$6$invalid"], "password");
-        // Will fail at dlopen on non-glibc or crypt_ra with bad input.
+        // A disabled configured feature or a bad crypt input may still fail.
         match result {
             Ok(_) => {}
             Err(CryptError::Unsupported) => {}

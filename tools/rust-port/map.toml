@@ -3452,14 +3452,6 @@ symbols = 4
 sync_status = "needs_review"
 notes = "2026-07-27 provenance audit re-anchored DUID/client-ID state and IAID behavior to current libsystemd-network source/internal declarations; behavioral completion remains unclaimed."
 
-[dhcp_option]
-rust_file = "src/shared/rust/dhcp_option.rs"
-status = "todo"
-tier = 3
-symbols = 6
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit: the old DHCP option source/header no longer exist, and the current DHCP message/IPv6 option APIs do not expose the Rust facade's historical v4 TLV API. No replacement authority is claimed; re-review and partition the Rust behavior against current interfaces before re-adding c_paths."
-
 [discover_image]
 c_file = "src/shared/discover-image.c"
 rust_file = "src/shared/rust/discover_image.rs"
@@ -3877,7 +3869,7 @@ status = "in-progress"
 tier = 2
 symbols = 0
 sync_status = "needs_review"
-notes = "Behavioral DHCPv4 option parse/append slice only. The former dhcp-option.c source-text adapter was removed after its source split; remaining message construction, route/client-ID helpers, and full public API parity are still todo."
+notes = "Sole DHCPv4 Rust owner after removal of the unreferenced shared facade with no current C authority. Behavioral option parse/append slice only; remaining message construction, route/client-ID helpers, and full public API parity are still todo."
 
 [libsystemd_sd_resolve]
 c_file = "src/libsystemd/sd-resolve/sd-resolve.c"

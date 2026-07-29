@@ -9,16 +9,21 @@
 // libfdisk partition-table value utilities and availability boundary. Provides
 // UUID/type extraction and GPT attribute flags parsing/serialization without
 // exposing raw libfdisk pointers to safe Rust.
-//
-// All libfdisk symbols are resolved through dlopen so the module
-// gracefully degrades when libfdisk is absent.
 
 use std::ffi::CStr;
 use std::fmt;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
+use systemd_libsystemd_rs::sd_id128_strings::sd_id128_from_string;
+
+// SAFETY: Exact fdisk-util.h declaration. `dlopen_fdisk()` mutates C's
+// process-global loader and symbol state, so the call below is serialized by
+// `FDISK_LOAD_LOCK`; C retains all loaded-library and resolved-symbol state.
+unsafe extern "C" {
+    #[link_name = "dlopen_fdisk"]
+    fn c_dlopen_fdisk(log_level: libc::c_int) -> libc::c_int;
+}
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -92,99 +97,33 @@ static NAMED_GPT_FLAGS: &[NamedGptFlag] = &[
     },
 ];
 
-// ── Library name constant ───────────────────────────────────────────────────
-
-/// Shared library name for libfdisk.
-const LIBFDISK_NAME: &str = "libfdisk.so.1";
-
-/// All symbols resolved by C's `dlopen_fdisk()` entry point.
-///
-/// Keeping this list mechanically parallel to `DLSYM_PROTOTYPE()` in
-/// `src/shared/fdisk-util.c` is important even while this Rust module exposes
-/// only a safe subset of the operations: a successful load must mean the same
-/// complete libfdisk ABI is available to either implementation.
-const REQUIRED_SYMBOLS: &[&str] = &[
-    "fdisk_add_partition",
-    "fdisk_apply_table",
-    "fdisk_ask_get_type",
-    "fdisk_ask_string_set_result",
-    "fdisk_new_context",
-    "fdisk_assign_device",
-    "fdisk_assign_device_by_fd",
-    "fdisk_create_disklabel",
-    "fdisk_delete_partition",
-    "fdisk_get_devfd",
-    "fdisk_get_disklabel_id",
-    "fdisk_get_first_lba",
-    "fdisk_get_grain_size",
-    "fdisk_get_last_lba",
-    "fdisk_get_npartitions",
-    "fdisk_get_nsectors",
-    "fdisk_get_partition",
-    "fdisk_get_partitions",
-    "fdisk_get_sector_size",
-    "fdisk_has_label",
-    "fdisk_is_labeltype",
-    "fdisk_new_partition",
-    "fdisk_new_parttype",
-    "fdisk_partname",
-    "fdisk_partition_get_uuid",
-    "fdisk_partition_get_type",
-    "fdisk_partition_get_attrs",
-    "fdisk_partition_get_end",
-    "fdisk_partition_get_name",
-    "fdisk_partition_get_partno",
-    "fdisk_partition_get_size",
-    "fdisk_partition_get_start",
-    "fdisk_partition_has_end",
-    "fdisk_partition_has_partno",
-    "fdisk_partition_has_size",
-    "fdisk_partition_has_start",
-    "fdisk_partition_is_used",
-    "fdisk_partition_partno_follow_default",
-    "fdisk_partition_set_attrs",
-    "fdisk_partition_set_name",
-    "fdisk_partition_set_partno",
-    "fdisk_partition_set_size",
-    "fdisk_partition_set_start",
-    "fdisk_partition_set_type",
-    "fdisk_partition_set_uuid",
-    "fdisk_partition_size_explicit",
-    "fdisk_partition_to_string",
-    "fdisk_parttype_get_string",
-    "fdisk_parttype_set_typestr",
-    "fdisk_ref_partition",
-    "fdisk_save_user_sector_size",
-    "fdisk_set_ask",
-    "fdisk_set_disklabel_id",
-    "fdisk_set_partition",
-    "fdisk_table_get_nents",
-    "fdisk_table_get_partition",
-    "fdisk_unref_context",
-    "fdisk_unref_partition",
-    "fdisk_unref_parttype",
-    "fdisk_unref_table",
-    "fdisk_write_disklabel",
-];
-
 // ── Dlopen state ────────────────────────────────────────────────────────────
 
 /// Global flag: has `dlopen_libfdisk()` been called and completed successfully?
 static FDISK_LOADED: AtomicBool = AtomicBool::new(false);
 
-/// Serialize the check/open/publish sequence without caching failures.
+/// Serialize Rust calls into C's mutable process-global loader state.
 ///
-/// The C global is normally initialized on a single startup path. The Rust
-/// facade may be called from independent code paths, so it must not let two
-/// callers publish separate process-lifetime references after racing past the
-/// fast-path flag.
+/// C remains the single source of truth for its handle and all resolved
+/// symbols. The Rust flag below is only a fast-path observation for callers of
+/// this Rust facade.
 static FDISK_LOAD_LOCK: Mutex<()> = Mutex::new(());
 
-/// Attempt to dynamically load libfdisk and resolve all required symbols.
+/// Attempt to dynamically load libfdisk through C's authoritative loader.
 ///
-/// Idempotent: after the first successful call returns `Ok(())` immediately.
-/// On failure the error is not cached — callers may retry.
+/// This convenience form uses C's normal debug-level diagnostics. Call
+/// [`dlopen_libfdisk_full`] when the enclosing operation needs a different
+/// diagnostic priority.
 pub fn dlopen_libfdisk() -> Result<(), FdiskError> {
+    dlopen_libfdisk_full(libc::LOG_DEBUG)
+}
+
+/// Attempt to dynamically load libfdisk through C's authoritative loader.
+///
+/// This retains C's exact `HAVE_LIBFDISK`, `dlopen_safe()`, logging, complete
+/// symbol-list, and process-lifetime ownership policy. Idempotent successes
+/// return `Ok(())`; failures are not cached, so callers may retry.
+pub fn dlopen_libfdisk_full(log_level: libc::c_int) -> Result<(), FdiskError> {
     if FDISK_LOADED.load(Ordering::Acquire) {
         return Ok(());
     }
@@ -196,29 +135,26 @@ pub fn dlopen_libfdisk() -> Result<(), FdiskError> {
         return Ok(());
     }
 
-    // The C authority calls `dlopen_many_sym_or_warn()`, which in turn uses
-    // `dlopen_safe()`. In particular, its RTLD_NOW | RTLD_NODELETE policy and
-    // static-build/blocked-loader behavior are intentional. Do not replace
-    // this with a direct RTLD_LAZY | RTLD_LOCAL call.
-    let handle = UnpublishedDlopenHandle::open(LIBFDISK_NAME).map_err(|error| {
-        if error.errno() == libc::EOPNOTSUPP {
-            FdiskError::Unsupported
-        } else {
-            FdiskError::DlopenFailed(error.to_string())
-        }
-    })?;
-
-    // Verify every required symbol is present.
-    for symbol in REQUIRED_SYMBOLS {
-        handle
-            .resolve_required(symbol)
-            .map_err(|error| FdiskError::SymbolNotFound(error.to_string()))?;
+    // SAFETY: the declaration is exact, the lock serializes Rust callers that
+    // could otherwise mutate C's `fdisk_dl`/`sym_fdisk_*` globals together,
+    // and C retains every pointer it publishes beyond this call.
+    let result = unsafe { c_dlopen_fdisk(log_level) };
+    if result < 0 {
+        return Err(match result {
+            x if x == -libc::EOPNOTSUPP => FdiskError::Unsupported,
+            x if x == -libc::ELIBBAD => FdiskError::SymbolNotFound(
+                "C loader rejected the required libfdisk ABI".to_string(),
+            ),
+            x => {
+                let errno = x.checked_neg().unwrap_or(libc::EIO);
+                FdiskError::DlopenFailed(format!(
+                    "C dlopen_fdisk() failed with errno {}: {}",
+                    errno,
+                    std::io::Error::from_raw_os_error(errno),
+                ))
+            }
+        });
     }
-
-    // C intentionally retains a validated optional dependency for the
-    // process lifetime. `publish()` makes that ownership transfer explicit;
-    // on every earlier error the RAII handle closes the incomplete load.
-    let _published = handle.publish();
 
     FDISK_LOADED.store(true, Ordering::Release);
     Ok(())
@@ -243,30 +179,21 @@ pub const FDISK_SECTOR_SIZE_AUTO: u32 = u32::MAX;
 ///
 /// Equivalent to `sd_id128_from_string()` used in the C source for UUID parsing.
 pub fn parse_partition_uuid(s: &str) -> Result<[u8; 16], FdiskError> {
-    let s = s.trim();
-    let hex: String = s.chars().filter(|c| *c != '-').collect();
-    if hex.len() != 32 {
-        return Err(FdiskError::ParseError(format!(
-            "UUID string must be 32 hex chars (or 36 with dashes), got {}",
-            hex.len()
-        )));
-    }
-    let mut bytes = [0u8; 16];
-    for i in 0..16 {
-        bytes[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(|e| {
-            FdiskError::ParseError(format!("Invalid hex in UUID at position {}: {}", i * 2, e))
-        })?;
-    }
-    Ok(bytes)
+    // Share the port's strict id128 parser so misplaced dashes and whitespace
+    // stay invalid exactly as they are for C's `sd_id128_from_string()`.
+    sd_id128_from_string(s)
+        .map(|id| id.0)
+        .map_err(|_| FdiskError::ParseError("not a valid sd_id128 string".to_string()))
 }
 
 /// Get the partition UUID from a UUID string.
 ///
 /// This is the pure-Rust equivalent of `fdisk_partition_get_uuid_as_id128()`.
-/// Returns `Err(FdiskError::NotFound)` if the UUID string is `None` or empty.
+/// Returns `Err(FdiskError::NotFound)` for a missing UUID and rejects an empty
+/// string as C's `sd_id128_from_string()` does.
 pub fn fdisk_partition_get_uuid(uuid_str: Option<&str>) -> Result<[u8; 16], FdiskError> {
     match uuid_str {
-        None | Some("") => Err(FdiskError::NotFound),
+        None => Err(FdiskError::NotFound),
         Some(s) => parse_partition_uuid(s),
     }
 }
@@ -274,10 +201,11 @@ pub fn fdisk_partition_get_uuid(uuid_str: Option<&str>) -> Result<[u8; 16], Fdis
 /// Get the partition type UUID from a type string.
 ///
 /// This is the pure-Rust equivalent of `fdisk_partition_get_type_as_id128()`.
-/// Returns `Err(FdiskError::NotFound)` if the type string is `None` or empty.
+/// Returns `Err(FdiskError::NotFound)` for a missing type and rejects an empty
+/// string as C's `sd_id128_from_string()` does.
 pub fn fdisk_partition_get_type(type_str: Option<&str>) -> Result<[u8; 16], FdiskError> {
     match type_str {
-        None | Some("") => Err(FdiskError::NotFound),
+        None => Err(FdiskError::NotFound),
         Some(s) => parse_partition_uuid(s),
     }
 }
@@ -434,6 +362,8 @@ mod tests {
         assert!(parse_partition_uuid("").is_err());
         assert!(parse_partition_uuid("too-short").is_err());
         assert!(parse_partition_uuid("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz").is_err());
+        assert!(parse_partition_uuid("c5a364bd4-12a-4bdf-a66d-098e840a4e1c").is_err());
+        assert!(parse_partition_uuid(" c5a364bd-412a-4bdf-a66d-098e840a4e1c").is_err());
     }
 
     #[test]
@@ -453,11 +383,11 @@ mod tests {
     }
 
     #[test]
-    fn test_fdisk_partition_get_uuid_empty() {
-        assert_eq!(
-            fdisk_partition_get_uuid(Some("")).unwrap_err(),
-            FdiskError::NotFound
-        );
+    fn test_fdisk_partition_get_uuid_empty_is_invalid() {
+        assert!(matches!(
+            fdisk_partition_get_uuid(Some("")),
+            Err(FdiskError::ParseError(_))
+        ));
     }
 
     #[test]

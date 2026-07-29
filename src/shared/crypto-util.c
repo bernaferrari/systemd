@@ -2637,6 +2637,27 @@ int kdf_hkdf_sha256(
 }
 #endif
 
+int openssl_digest_size_for_rust(const char *digest_alg, size_t *ret_digest_size) {
+#if HAVE_OPENSSL
+        return openssl_digest_size(digest_alg, ret_digest_size);
+#else
+        return -EOPNOTSUPP;
+#endif
+}
+
+int openssl_digest_many_for_rust(
+                const char *digest_alg,
+                const struct iovec data[],
+                size_t n_data,
+                void **ret_digest,
+                size_t *ret_digest_size) {
+#if HAVE_OPENSSL
+        return openssl_digest_many(digest_alg, data, n_data, ret_digest, ret_digest_size);
+#else
+        return -EOPNOTSUPP;
+#endif
+}
+
 int parse_openssl_certificate_source_argument(
                 const char *argument,
                 char **certificate_source,

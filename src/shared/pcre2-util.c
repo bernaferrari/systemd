@@ -24,6 +24,10 @@ DEFINE_HASH_OPS_WITH_KEY_DESTRUCTOR(
 const struct hash_ops pcre2_code_hash_ops_free = {};
 #endif
 
+int pcre2_support_enabled(void) {
+        return HAVE_PCRE2;
+}
+
 int dlopen_pcre2(int log_level) {
 #if HAVE_PCRE2
         static void *pcre2_dl = NULL;

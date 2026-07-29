@@ -1,65 +1,62 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/openssl-util.c, src/shared/openssl-util.h
+// PORT-SYNC: src/shared/crypto-util.c, src/shared/crypto-util.h
 //
-// OpenSSL utility functions for cryptographic operations.
+// Digest helpers backed by C's OpenSSL capability boundary. C owns the
+// configured HAVE_OPENSSL decision, lazy loading, provider lookup, and OpenSSL
+// ABI; Rust owns only validated inputs and returned-allocation lifetime.
+
+use std::ffi::{CString, c_char, c_void};
+use std::ptr::NonNull;
+use std::sync::Mutex;
 
 use crate::ffi::Errno;
 
-// ── Error type ──────────────────────────────────────────────────────────────
+// SAFETY: Exact crypto-util.h declarations for the stable, always-linked
+// digest bridges. The calls retain no Rust pointers or allocation ownership;
+// C returns a `malloc(3)` allocation only through `ret_digest` on success.
+unsafe extern "C" {
+    #[link_name = "openssl_digest_size_for_rust"]
+    fn c_openssl_digest_size(digest_alg: *const c_char, ret_digest_size: *mut usize)
+    -> libc::c_int;
 
+    #[link_name = "openssl_digest_many_for_rust"]
+    fn c_openssl_digest_many(
+        digest_alg: *const c_char,
+        data: *const libc::iovec,
+        n_data: usize,
+        ret_digest: *mut *mut c_void,
+        ret_digest_size: *mut usize,
+    ) -> libc::c_int;
+}
+
+/// Errors returned by the C-authoritative OpenSSL digest helpers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenSslError {
     pub code: i32,
 }
 
 impl OpenSslError {
-    pub fn from_neg_errno(neg: i32) -> Self {
-        Self { code: neg }
+    fn from_neg_errno(code: i32) -> Self {
+        Self { code }
     }
 
-    pub fn not_supported() -> Self {
-        Self {
-            code: Errno::EOPNOTSUPP.to_neg_errno(),
-        }
-    }
-
-    pub fn invalid_argument() -> Self {
+    fn invalid_argument() -> Self {
         Self {
             code: Errno::EINVAL.to_neg_errno(),
         }
     }
 
-    pub fn io_error() -> Self {
+    fn io_error() -> Self {
         Self {
             code: Errno::EIO.to_neg_errno(),
         }
-    }
-
-    pub fn out_of_memory() -> Self {
-        Self {
-            code: Errno::ENOMEM.to_neg_errno(),
-        }
-    }
-
-    pub fn bad_message() -> Self {
-        Self {
-            code: Errno::EBADMSG.to_neg_errno(),
-        }
-    }
-
-    pub fn is_not_supported(&self) -> bool {
-        self.code == Errno::EOPNOTSUPP.to_neg_errno()
-    }
-
-    pub fn is_invalid_argument(&self) -> bool {
-        self.code == Errno::EINVAL.to_neg_errno()
     }
 }
 
 impl std::fmt::Display for OpenSslError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "OpenSSL error (errno {})", self.code)
+        write!(f, "OpenSSL digest error (errno {})", self.code)
     }
 }
 
@@ -67,771 +64,160 @@ impl std::error::Error for OpenSslError {}
 
 pub type Result<T> = std::result::Result<T, OpenSslError>;
 
-// ── Constants ───────────────────────────────────────────────────────────────
+/// Serializes Rust entry into C's lazy libcrypto loader and published symbol
+/// table. Once loaded, C/OpenSSL own all process-wide cryptographic state.
+static OPENSSL_DIGEST_LOCK: Mutex<()> = Mutex::new(());
 
-pub const X509_FINGERPRINT_SIZE: usize = 32;
-
-// ── Enums ───────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum CertificateSourceType {
-    File = 0,
-    Provider = 1,
+/// A digest buffer allocated by C with `malloc(3)`.
+///
+/// The guard is created immediately after a successful C call so every later
+/// Rust validation and copy path releases the C allocation exactly once.
+struct CAllocatedDigest {
+    ptr: NonNull<u8>,
+    len: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum KeySourceType {
-    File = 0,
-    Engine = 1,
-    Provider = 2,
+impl CAllocatedDigest {
+    fn new(ptr: *mut c_void, len: usize) -> Result<Self> {
+        let ptr = NonNull::new(ptr.cast()).ok_or_else(OpenSslError::io_error)?;
+        Ok(Self { ptr, len })
+    }
+
+    fn to_vec(&self) -> Vec<u8> {
+        // SAFETY: C's successful `openssl_digest_many()` result is a live
+        // malloc allocation of exactly `len` digest bytes, owned by this guard.
+        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }.to_vec()
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CertificateSource {
-    pub source: Option<String>,
-    pub source_type: CertificateSourceType,
+impl Drop for CAllocatedDigest {
+    fn drop(&mut self) {
+        // SAFETY: `ptr` is the single malloc allocation transferred by C to
+        // this guard. `libc::free` is allocator-compatible and runs once.
+        unsafe { libc::free(self.ptr.as_ptr().cast()) };
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeySource {
-    pub source: Option<String>,
-    pub source_type: KeySourceType,
+fn digest_algorithm(algorithm: &str) -> Result<CString> {
+    CString::new(algorithm).map_err(|_| OpenSslError::invalid_argument())
 }
 
-// ── Digest utilities ────────────────────────────────────────────────────────
-
-static DIGEST_TABLE: &[(&str, usize)] = &[
-    ("SHA256", 32),
-    ("SHA-256", 32),
-    ("SHA384", 48),
-    ("SHA-384", 48),
-    ("SHA512", 64),
-    ("SHA-512", 64),
-    ("SHA224", 28),
-    ("SHA-224", 28),
-    ("SHA1", 20),
-    ("SHA-1", 20),
-    ("MD5", 16),
-];
-
+/// Return the size of C/OpenSSL's fixed-size digest algorithm.
+///
+/// Provider names and availability are intentionally determined by C at call
+/// time, rather than by a Rust table that can disagree with the configured
+/// OpenSSL build.
 pub fn digest_size(digest_alg: &str) -> Result<usize> {
-    let upper = digest_alg.to_uppercase();
-    for &(name, size) in DIGEST_TABLE {
-        if upper == name.to_uppercase() {
-            return Ok(size);
-        }
+    let digest_alg = digest_algorithm(digest_alg)?;
+    let _lock = OPENSSL_DIGEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut size = 0;
+
+    // SAFETY: `digest_alg` is NUL-terminated and live for the call; `size` is
+    // a writable output slot. C retains neither pointer.
+    let result = unsafe { c_openssl_digest_size(digest_alg.as_ptr(), &mut size) };
+    if result < 0 {
+        return Err(OpenSslError::from_neg_errno(result));
     }
-    Err(OpenSslError::not_supported())
+    if size == 0 {
+        return Err(OpenSslError::io_error());
+    }
+
+    Ok(size)
 }
 
-pub fn digest_size_for_alg(alg: &str) -> Result<usize> {
-    digest_size(alg)
-}
-
+/// Encode bytes using C's lowercase hexadecimal spelling.
 pub fn hex_encode(data: &[u8]) -> String {
-    let mut s = String::with_capacity(data.len() * 2);
-    for b in data {
-        s.push_str(&format!("{:02x}", b));
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    let mut encoded = String::with_capacity(data.len().saturating_mul(2));
+    for byte in data {
+        encoded.push(HEX[usize::from(byte >> 4)] as char);
+        encoded.push(HEX[usize::from(byte & 0x0f)] as char);
     }
-    s
+    encoded
 }
 
-pub fn compute_hash(data: &[u8], alg: &str) -> Result<Vec<u8>> {
-    use openssl::hash::{MessageDigest, hash};
-
-    let md = match alg.to_uppercase().as_str() {
-        "SHA256" | "SHA-256" => MessageDigest::sha256(),
-        "SHA384" | "SHA-384" => MessageDigest::sha384(),
-        "SHA512" | "SHA-512" => MessageDigest::sha512(),
-        "SHA224" | "SHA-224" => MessageDigest::sha224(),
-        "SHA1" | "SHA-1" => MessageDigest::sha1(),
-        "MD5" => MessageDigest::md5(),
-        _ => return Err(OpenSslError::not_supported()),
+/// Hash one byte slice through C's `openssl_digest_many()` implementation.
+///
+/// A zero-length slice is represented by a live one-byte sentinel with length
+/// zero. This preserves the C iovec contract without turning Rust's dangling
+/// empty-slice pointer into a foreign pointer argument.
+pub fn compute_hash(data: &[u8], algorithm: &str) -> Result<Vec<u8>> {
+    let digest_alg = digest_algorithm(algorithm)?;
+    let empty_sentinel = 0_u8;
+    let base = if data.is_empty() {
+        &empty_sentinel as *const u8
+    } else {
+        data.as_ptr()
     };
+    let iovec = libc::iovec {
+        iov_base: base.cast_mut().cast(),
+        iov_len: data.len(),
+    };
+    let _lock = OPENSSL_DIGEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut digest = std::ptr::null_mut();
+    let mut digest_size = 0;
 
-    let digest = hash(md, data).map_err(|_| OpenSslError::io_error())?;
-    let expected = digest_size(alg)?;
-    let result = digest.to_vec();
-    if result.len() != expected {
+    // SAFETY: the one-element iovec, its input bytes (or live zero-length
+    // sentinel), and both output slots live for the call. C copies no input
+    // pointers and transfers only the malloc allocation in `digest` on success.
+    let result = unsafe {
+        c_openssl_digest_many(
+            digest_alg.as_ptr(),
+            &iovec,
+            1,
+            &mut digest,
+            &mut digest_size,
+        )
+    };
+    if result < 0 {
+        return Err(OpenSslError::from_neg_errno(result));
+    }
+
+    let digest = CAllocatedDigest::new(digest, digest_size)?;
+    if digest.len == 0 {
         return Err(OpenSslError::io_error());
     }
-    Ok(result)
+    Ok(digest.to_vec())
 }
 
+/// Hash exactly `len` UTF-8 bytes from `s` and return lowercase hexadecimal.
+///
+/// C accepts an arbitrary pointer/length pair. The safe Rust API rejects an
+/// out-of-bounds length rather than reading past `s`, while preserving C's
+/// zero-length behavior (hash the empty byte sequence).
 pub fn string_hashsum(s: &str, len: usize, md_algorithm: &str) -> Result<String> {
-    let data = if len == 0 || len == usize::MAX {
-        s.as_bytes()
-    } else {
-        &s.as_bytes()[..len.min(s.len())]
-    };
-    let hash = compute_hash(data, md_algorithm)?;
-    Ok(hex_encode(&hash))
+    let bytes = s.as_bytes();
+    if len > bytes.len() {
+        return Err(OpenSslError::invalid_argument());
+    }
+
+    Ok(hex_encode(&compute_hash(&bytes[..len], md_algorithm)?))
 }
 
+/// Hash all UTF-8 bytes of `s` and return lowercase hexadecimal.
 pub fn string_hashsum_full(s: &str, md_algorithm: &str) -> Result<String> {
-    string_hashsum(s, usize::MAX, md_algorithm)
+    string_hashsum(s, s.len(), md_algorithm)
 }
-
-// ── Argument parsing ────────────────────────────────────────────────────────
-
-pub fn parse_certificate_source(argument: &str) -> Result<CertificateSource> {
-    if argument.is_empty() {
-        return Err(OpenSslError::invalid_argument());
-    }
-    if let Some(rest) = argument.strip_prefix("provider:") {
-        Ok(CertificateSource {
-            source: Some(rest.to_string()),
-            source_type: CertificateSourceType::Provider,
-        })
-    } else if argument == "file" {
-        Ok(CertificateSource {
-            source: None,
-            source_type: CertificateSourceType::File,
-        })
-    } else {
-        Err(OpenSslError::invalid_argument())
-    }
-}
-
-pub fn parse_key_source(argument: &str) -> Result<KeySource> {
-    if argument.is_empty() {
-        return Err(OpenSslError::invalid_argument());
-    }
-    if let Some(rest) = argument.strip_prefix("engine:") {
-        Ok(KeySource {
-            source: Some(rest.to_string()),
-            source_type: KeySourceType::Engine,
-        })
-    } else if let Some(rest) = argument.strip_prefix("provider:") {
-        Ok(KeySource {
-            source: Some(rest.to_string()),
-            source_type: KeySourceType::Provider,
-        })
-    } else if argument == "file" {
-        Ok(KeySource {
-            source: None,
-            source_type: KeySourceType::File,
-        })
-    } else {
-        Err(OpenSslError::invalid_argument())
-    }
-}
-
-// ── RSA key size ────────────────────────────────────────────────────────────
-
-pub fn rsa_pkey_to_suitable_key_size(bits: i32) -> Result<usize> {
-    if bits <= 0 {
-        return Err(OpenSslError::io_error());
-    }
-    let suitable_key_size = bits as usize / 8 / 2;
-    if suitable_key_size < 1 {
-        return Err(OpenSslError::io_error());
-    }
-    Ok(suitable_key_size)
-}
-
-// ── Public key fingerprint ──────────────────────────────────────────────────
-
-pub fn pubkey_fingerprint(pk_data: &[u8], hash_alg: &str) -> Result<Vec<u8>> {
-    compute_hash(pk_data, hash_alg)
-}
-
-// ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_digest_size_sha256_variants() {
-        assert_eq!(digest_size("SHA256").unwrap(), 32);
-        assert_eq!(digest_size("sha256").unwrap(), 32);
-        assert_eq!(digest_size("SHA-256").unwrap(), 32);
-        assert_eq!(digest_size("sha-256").unwrap(), 32);
-    }
-
-    #[test]
-    fn test_digest_size_sha512_sha384_sha224() {
-        assert_eq!(digest_size("SHA512").unwrap(), 64);
-        assert_eq!(digest_size("SHA384").unwrap(), 48);
-        assert_eq!(digest_size("SHA224").unwrap(), 28);
-    }
-
-    #[test]
-    fn test_digest_size_sha1_md5() {
-        assert_eq!(digest_size("SHA1").unwrap(), 20);
-        assert_eq!(digest_size("SHA-1").unwrap(), 20);
-        assert_eq!(digest_size("MD5").unwrap(), 16);
-    }
-
-    #[test]
-    fn test_digest_size_unknown() {
-        let err = digest_size("BLAKE2B").unwrap_err();
-        assert!(err.is_not_supported());
-        assert_eq!(err.code, Errno::EOPNOTSUPP.to_neg_errno());
-    }
-
-    #[test]
-    fn test_digest_size_empty() {
-        assert!(digest_size("").is_err());
-    }
-
-    #[test]
-    fn test_hex_encode_basic() {
+    fn hex_encode_uses_c_lowercase_spelling() {
         assert_eq!(hex_encode(&[0x01, 0x23, 0xff]), "0123ff");
     }
 
     #[test]
-    fn test_hex_encode_empty() {
-        assert_eq!(hex_encode(&[]), "");
-    }
-
-    #[test]
-    fn test_hex_encode_all_zeros() {
-        assert_eq!(hex_encode(&[0x00, 0x00, 0x00]), "000000");
-    }
-
-    #[test]
-    fn test_compute_hash_sha256_hello() {
-        let result = compute_hash(b"hello", "SHA256").unwrap();
-        assert_eq!(result.len(), 32);
+    fn string_hashsum_rejects_out_of_bounds_byte_lengths() {
         assert_eq!(
-            hex_encode(&result),
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[test]
-    fn test_compute_hash_sha1_hello() {
-        let result = compute_hash(b"hello", "SHA1").unwrap();
-        assert_eq!(result.len(), 20);
-        assert_eq!(
-            hex_encode(&result),
-            "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
-        );
-    }
-
-    #[test]
-    fn test_compute_hash_md5_hello() {
-        let result = compute_hash(b"hello", "MD5").unwrap();
-        assert_eq!(result.len(), 16);
-        assert_eq!(hex_encode(&result), "5d41402abc4b2a76b9719d911017c592");
-    }
-
-    #[test]
-    fn test_compute_hash_unknown_alg() {
-        assert!(compute_hash(b"hello", "BLAKE2B").is_err());
-    }
-
-    #[test]
-    fn test_string_hashsum_sha256() {
-        let result = string_hashsum("hello", usize::MAX, "SHA256").unwrap();
-        assert_eq!(result.len(), 64);
-        assert_eq!(
-            result,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[test]
-    fn test_string_hashsum_sha512() {
-        let result = string_hashsum("hello", usize::MAX, "SHA512").unwrap();
-        assert_eq!(result.len(), 128);
-    }
-
-    #[test]
-    fn test_string_hashsum_with_len() {
-        let result = string_hashsum("hello world", 5, "SHA256").unwrap();
-        assert_eq!(result.len(), 64);
-        assert_eq!(
-            result,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[test]
-    fn test_string_hashsum_zero_len_hashes_full() {
-        let result = string_hashsum("hello", 0, "SHA256").unwrap();
-        assert_eq!(result.len(), 64);
-    }
-
-    #[test]
-    fn test_string_hashsum_full() {
-        let result = string_hashsum_full("hello", "SHA256").unwrap();
-        assert_eq!(
-            result,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[test]
-    fn test_parse_certificate_source_file() {
-        let parsed = parse_certificate_source("file").unwrap();
-        assert_eq!(parsed.source, None);
-        assert_eq!(parsed.source_type, CertificateSourceType::File);
-    }
-
-    #[test]
-    fn test_parse_certificate_source_provider() {
-        let parsed = parse_certificate_source("provider:my-provider").unwrap();
-        assert_eq!(parsed.source.as_deref(), Some("my-provider"));
-        assert_eq!(parsed.source_type, CertificateSourceType::Provider);
-    }
-
-    #[test]
-    fn test_parse_certificate_source_empty() {
-        let err = parse_certificate_source("").unwrap_err();
-        assert!(err.is_invalid_argument());
-    }
-
-    #[test]
-    fn test_parse_certificate_source_invalid() {
-        assert!(parse_certificate_source("http://bad").is_err());
-        assert!(parse_certificate_source("engine:pkcs11").is_err());
-    }
-
-    #[test]
-    fn test_parse_key_source_file() {
-        let parsed = parse_key_source("file").unwrap();
-        assert_eq!(parsed.source, None);
-        assert_eq!(parsed.source_type, KeySourceType::File);
-    }
-
-    #[test]
-    fn test_parse_key_source_engine() {
-        let parsed = parse_key_source("engine:pkcs11").unwrap();
-        assert_eq!(parsed.source.as_deref(), Some("pkcs11"));
-        assert_eq!(parsed.source_type, KeySourceType::Engine);
-    }
-
-    #[test]
-    fn test_parse_key_source_provider() {
-        let parsed = parse_key_source("provider:my-provider").unwrap();
-        assert_eq!(parsed.source.as_deref(), Some("my-provider"));
-        assert_eq!(parsed.source_type, KeySourceType::Provider);
-    }
-
-    #[test]
-    fn test_parse_key_source_invalid() {
-        assert!(parse_key_source("http://bad").is_err());
-        assert!(parse_key_source("").is_err());
-    }
-
-    #[test]
-    fn test_rsa_suitable_key_size_2048() {
-        assert_eq!(rsa_pkey_to_suitable_key_size(2048).unwrap(), 128);
-    }
-
-    #[test]
-    fn test_rsa_suitable_key_size_4096() {
-        assert_eq!(rsa_pkey_to_suitable_key_size(4096).unwrap(), 256);
-    }
-
-    #[test]
-    fn test_rsa_suitable_key_size_too_small() {
-        assert!(rsa_pkey_to_suitable_key_size(8).is_err());
-        assert!(rsa_pkey_to_suitable_key_size(0).is_err());
-        assert!(rsa_pkey_to_suitable_key_size(-1).is_err());
-    }
-
-    #[test]
-    fn test_pubkey_fingerprint_basic() {
-        let data = b"test public key data";
-        let result = pubkey_fingerprint(data, "SHA256").unwrap();
-        assert_eq!(result.len(), 32);
-    }
-
-    #[test]
-    fn test_certificate_source_type_values() {
-        assert_eq!(CertificateSourceType::File as i32, 0);
-        assert_eq!(CertificateSourceType::Provider as i32, 1);
-    }
-
-    #[test]
-    fn test_key_source_type_values() {
-        assert_eq!(KeySourceType::File as i32, 0);
-        assert_eq!(KeySourceType::Engine as i32, 1);
-        assert_eq!(KeySourceType::Provider as i32, 2);
-    }
-
-    #[test]
-    fn test_x509_fingerprint_size() {
-        assert_eq!(X509_FINGERPRINT_SIZE, 32);
-    }
-
-    #[test]
-    fn test_openssl_error_constructors() {
-        let err = OpenSslError::not_supported();
-        assert!(err.is_not_supported());
-        assert!(!err.is_invalid_argument());
-
-        let err = OpenSslError::invalid_argument();
-        assert!(err.is_invalid_argument());
-        assert!(!err.is_not_supported());
-
-        let err = OpenSslError::io_error();
-        assert_eq!(err.code, Errno::EIO.to_neg_errno());
-
-        let err = OpenSslError::out_of_memory();
-        assert_eq!(err.code, Errno::ENOMEM.to_neg_errno());
-
-        let err = OpenSslError::bad_message();
-        assert_eq!(err.code, Errno::EBADMSG.to_neg_errno());
-    }
-
-    #[test]
-    fn test_openssl_error_from_neg_errno() {
-        let err = OpenSslError::from_neg_errno(Errno::EOPNOTSUPP.to_neg_errno());
-        assert!(err.is_not_supported());
-    }
-
-    #[test]
-    fn test_openssl_error_display() {
-        let err = OpenSslError::not_supported();
-        let msg = format!("{}", err);
-        assert!(msg.contains("OpenSSL error"));
-    }
-
-    #[test]
-    fn test_openssl_error_equality() {
-        assert_eq!(OpenSslError::not_supported(), OpenSslError::not_supported());
-        assert_ne!(
-            OpenSslError::not_supported(),
-            OpenSslError::invalid_argument()
-        );
-    }
-
-    #[test]
-    fn test_compute_hash_empty_data() {
-        let result = compute_hash(b"", "SHA256").unwrap();
-        assert_eq!(result.len(), 32);
-    }
-
-    #[test]
-    fn test_compute_hash_sha384() {
-        let result = compute_hash(b"test", "SHA384").unwrap();
-        assert_eq!(result.len(), 48);
-    }
-
-    #[test]
-    fn test_compute_hash_sha512() {
-        let result = compute_hash(b"test", "SHA512").unwrap();
-        assert_eq!(result.len(), 64);
-    }
-
-    #[test]
-    fn test_compute_hash_sha224() {
-        let result = compute_hash(b"test", "SHA224").unwrap();
-        assert_eq!(result.len(), 28);
-    }
-
-    #[test]
-    fn test_digest_size_for_alg_alias() {
-        assert_eq!(digest_size_for_alg("SHA256").unwrap(), 32);
-        assert_eq!(
-            digest_size_for_alg("unknown").unwrap_err().code,
-            Errno::EOPNOTSUPP.to_neg_errno()
-        );
-    }
-}
-
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests_round_trips {
-    use super::*;
-
-    #[test]
-    fn test_digest_size_sha256_variants() {
-        assert_eq!(digest_size("SHA256").unwrap(), 32);
-        assert_eq!(digest_size("sha256").unwrap(), 32);
-        assert_eq!(digest_size("SHA-256").unwrap(), 32);
-        assert_eq!(digest_size("sha-256").unwrap(), 32);
-    }
-
-    #[test]
-    fn test_digest_size_sha512_sha384_sha224() {
-        assert_eq!(digest_size("SHA512").unwrap(), 64);
-        assert_eq!(digest_size("SHA384").unwrap(), 48);
-        assert_eq!(digest_size("SHA224").unwrap(), 28);
-    }
-
-    #[test]
-    fn test_digest_size_sha1_md5() {
-        assert_eq!(digest_size("SHA1").unwrap(), 20);
-        assert_eq!(digest_size("SHA-1").unwrap(), 20);
-        assert_eq!(digest_size("MD5").unwrap(), 16);
-    }
-
-    #[test]
-    fn test_digest_size_unknown() {
-        let err = digest_size("BLAKE2B").unwrap_err();
-        assert!(err.is_not_supported());
-        assert_eq!(err.code, Errno::EOPNOTSUPP.to_neg_errno());
-    }
-
-    #[test]
-    fn test_digest_size_empty() {
-        assert!(digest_size("").is_err());
-    }
-
-    #[test]
-    fn test_hex_encode_basic() {
-        assert_eq!(hex_encode(&[0x01, 0x23, 0xff]), "0123ff");
-    }
-
-    #[test]
-    fn test_hex_encode_empty() {
-        assert_eq!(hex_encode(&[]), "");
-    }
-
-    #[test]
-    fn test_hex_encode_all_zeros() {
-        assert_eq!(hex_encode(&[0x00, 0x00, 0x00]), "000000");
-    }
-
-    #[test]
-    fn test_compute_hash_sha256_hello() {
-        let result = compute_hash(b"hello", "SHA256").unwrap();
-        assert_eq!(result.len(), 32);
-        assert_eq!(
-            hex_encode(&result),
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[test]
-    fn test_compute_hash_sha1_hello() {
-        let result = compute_hash(b"hello", "SHA1").unwrap();
-        assert_eq!(result.len(), 20);
-        assert_eq!(
-            hex_encode(&result),
-            "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
-        );
-    }
-
-    #[test]
-    fn test_compute_hash_md5_hello() {
-        let result = compute_hash(b"hello", "MD5").unwrap();
-        assert_eq!(result.len(), 16);
-        assert_eq!(hex_encode(&result), "5d41402abc4b2a76b9719d911017c592");
-    }
-
-    #[test]
-    fn test_compute_hash_unknown_alg() {
-        assert!(compute_hash(b"hello", "BLAKE2B").is_err());
-    }
-
-    #[test]
-    fn test_string_hashsum_sha256() {
-        let result = string_hashsum("hello", usize::MAX, "SHA256").unwrap();
-        assert_eq!(result.len(), 64);
-        assert_eq!(
-            result,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[test]
-    fn test_string_hashsum_sha512() {
-        let result = string_hashsum("hello", usize::MAX, "SHA512").unwrap();
-        assert_eq!(result.len(), 128);
-    }
-
-    #[test]
-    fn test_string_hashsum_with_len() {
-        let result = string_hashsum("hello world", 5, "SHA256").unwrap();
-        assert_eq!(result.len(), 64);
-        assert_eq!(
-            result,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[test]
-    fn test_string_hashsum_zero_len_hashes_full() {
-        let result = string_hashsum("hello", 0, "SHA256").unwrap();
-        assert_eq!(result.len(), 64);
-    }
-
-    #[test]
-    fn test_string_hashsum_full() {
-        let result = string_hashsum_full("hello", "SHA256").unwrap();
-        assert_eq!(
-            result,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[test]
-    fn test_parse_certificate_source_file() {
-        let parsed = parse_certificate_source("file").unwrap();
-        assert_eq!(parsed.source, None);
-        assert_eq!(parsed.source_type, CertificateSourceType::File);
-    }
-
-    #[test]
-    fn test_parse_certificate_source_provider() {
-        let parsed = parse_certificate_source("provider:my-provider").unwrap();
-        assert_eq!(parsed.source.as_deref(), Some("my-provider"));
-        assert_eq!(parsed.source_type, CertificateSourceType::Provider);
-    }
-
-    #[test]
-    fn test_parse_certificate_source_empty() {
-        let err = parse_certificate_source("").unwrap_err();
-        assert!(err.is_invalid_argument());
-    }
-
-    #[test]
-    fn test_parse_certificate_source_invalid() {
-        assert!(parse_certificate_source("http://bad").is_err());
-        assert!(parse_certificate_source("engine:pkcs11").is_err());
-    }
-
-    #[test]
-    fn test_parse_key_source_file() {
-        let parsed = parse_key_source("file").unwrap();
-        assert_eq!(parsed.source, None);
-        assert_eq!(parsed.source_type, KeySourceType::File);
-    }
-
-    #[test]
-    fn test_parse_key_source_engine() {
-        let parsed = parse_key_source("engine:pkcs11").unwrap();
-        assert_eq!(parsed.source.as_deref(), Some("pkcs11"));
-        assert_eq!(parsed.source_type, KeySourceType::Engine);
-    }
-
-    #[test]
-    fn test_parse_key_source_provider() {
-        let parsed = parse_key_source("provider:my-provider").unwrap();
-        assert_eq!(parsed.source.as_deref(), Some("my-provider"));
-        assert_eq!(parsed.source_type, KeySourceType::Provider);
-    }
-
-    #[test]
-    fn test_parse_key_source_invalid() {
-        assert!(parse_key_source("http://bad").is_err());
-        assert!(parse_key_source("").is_err());
-    }
-
-    #[test]
-    fn test_rsa_suitable_key_size_2048() {
-        assert_eq!(rsa_pkey_to_suitable_key_size(2048).unwrap(), 128);
-    }
-
-    #[test]
-    fn test_rsa_suitable_key_size_4096() {
-        assert_eq!(rsa_pkey_to_suitable_key_size(4096).unwrap(), 256);
-    }
-
-    #[test]
-    fn test_rsa_suitable_key_size_too_small() {
-        assert!(rsa_pkey_to_suitable_key_size(8).is_err());
-        assert!(rsa_pkey_to_suitable_key_size(0).is_err());
-        assert!(rsa_pkey_to_suitable_key_size(-1).is_err());
-    }
-
-    #[test]
-    fn test_pubkey_fingerprint_basic() {
-        let data = b"test public key data";
-        let result = pubkey_fingerprint(data, "SHA256").unwrap();
-        assert_eq!(result.len(), 32);
-    }
-
-    #[test]
-    fn test_certificate_source_type_values() {
-        assert_eq!(CertificateSourceType::File as i32, 0);
-        assert_eq!(CertificateSourceType::Provider as i32, 1);
-    }
-
-    #[test]
-    fn test_key_source_type_values() {
-        assert_eq!(KeySourceType::File as i32, 0);
-        assert_eq!(KeySourceType::Engine as i32, 1);
-        assert_eq!(KeySourceType::Provider as i32, 2);
-    }
-
-    #[test]
-    fn test_x509_fingerprint_size() {
-        assert_eq!(X509_FINGERPRINT_SIZE, 32);
-    }
-
-    #[test]
-    fn test_openssl_error_constructors() {
-        let err = OpenSslError::not_supported();
-        assert!(err.is_not_supported());
-        assert!(!err.is_invalid_argument());
-
-        let err = OpenSslError::invalid_argument();
-        assert!(err.is_invalid_argument());
-        assert!(!err.is_not_supported());
-
-        let err = OpenSslError::io_error();
-        assert_eq!(err.code, Errno::EIO.to_neg_errno());
-
-        let err = OpenSslError::out_of_memory();
-        assert_eq!(err.code, Errno::ENOMEM.to_neg_errno());
-
-        let err = OpenSslError::bad_message();
-        assert_eq!(err.code, Errno::EBADMSG.to_neg_errno());
-    }
-
-    #[test]
-    fn test_openssl_error_from_neg_errno() {
-        let err = OpenSslError::from_neg_errno(Errno::EOPNOTSUPP.to_neg_errno());
-        assert!(err.is_not_supported());
-    }
-
-    #[test]
-    fn test_openssl_error_display() {
-        let err = OpenSslError::not_supported();
-        let msg = format!("{}", err);
-        assert!(msg.contains("OpenSSL error"));
-    }
-
-    #[test]
-    fn test_openssl_error_equality() {
-        assert_eq!(OpenSslError::not_supported(), OpenSslError::not_supported());
-        assert_ne!(
-            OpenSslError::not_supported(),
-            OpenSslError::invalid_argument()
-        );
-    }
-
-    #[test]
-    fn test_compute_hash_empty_data() {
-        let result = compute_hash(b"", "SHA256").unwrap();
-        assert_eq!(result.len(), 32);
-    }
-
-    #[test]
-    fn test_compute_hash_sha384() {
-        let result = compute_hash(b"test", "SHA384").unwrap();
-        assert_eq!(result.len(), 48);
-    }
-
-    #[test]
-    fn test_compute_hash_sha512() {
-        let result = compute_hash(b"test", "SHA512").unwrap();
-        assert_eq!(result.len(), 64);
-    }
-
-    #[test]
-    fn test_compute_hash_sha224() {
-        let result = compute_hash(b"test", "SHA224").unwrap();
-        assert_eq!(result.len(), 28);
-    }
-
-    #[test]
-    fn test_digest_size_for_alg_alias() {
-        assert_eq!(digest_size_for_alg("SHA256").unwrap(), 32);
-        assert_eq!(
-            digest_size_for_alg("unknown").unwrap_err().code,
-            Errno::EOPNOTSUPP.to_neg_errno()
+            string_hashsum("abc", 4, "SHA256").unwrap_err().code,
+            Errno::EINVAL.to_neg_errno()
         );
     }
 }

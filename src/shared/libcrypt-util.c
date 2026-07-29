@@ -165,3 +165,25 @@ int dlopen_libcrypt(int log_level) {
                               "libcrypt support is not compiled in.");
 #endif
 }
+
+int libcrypt_get_functions(LibCryptFunctions *ret) {
+        assert(ret);
+
+#if HAVE_LIBCRYPT
+        int r;
+
+        r = dlopen_libcrypt(LOG_DEBUG);
+        if (r < 0)
+                return r;
+
+        *ret = (LibCryptFunctions) {
+                .crypt_gensalt_ra = sym_crypt_gensalt_ra,
+                .crypt_preferred_method = sym_crypt_preferred_method,
+                .crypt_ra = sym_crypt_ra,
+        };
+
+        return 0;
+#else
+        return -EOPNOTSUPP;
+#endif
+}

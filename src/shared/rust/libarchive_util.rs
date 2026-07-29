@@ -7,10 +7,6 @@
 // Provides lazy dlopen-based loading of libarchive, symbol resolution for all
 // archive entry, read, and write helpers, and file-type equivalence
 // verification between libarchive macros and POSIX S_IF* constants.
-//
-// PORT-GAP: C's `HAVE_LIBARCHIVE` configuration gate is not yet represented
-// in this Rust crate. Until that build-time capability is plumbed through,
-// the safe loader boundary remains the runtime authority for availability.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -19,6 +15,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ffi::Errno;
 use systemd_basic_rs::dlfcn_util::UnpublishedDlopenHandle;
+
+// SAFETY: Exact libarchive-util.h declaration. This C helper only returns
+// Meson's immutable HAVE_LIBARCHIVE configuration value and retains no Rust
+// state.
+unsafe extern "C" {
+    #[link_name = "libarchive_support_enabled"]
+    safe fn c_libarchive_support_enabled() -> libc::c_int;
+}
 
 // ── Error type ──────────────────────────────────────────────────────────────
 
@@ -208,6 +212,12 @@ pub fn dlopen_libarchive() -> Result<(), ArchiveError> {
 /// `log_level` controls the verbosity of log messages emitted on failure
 /// (0 = silent, higher = more verbose).
 pub fn dlopen_libarchive_full(log_level: i32) -> Result<(), ArchiveError> {
+    // C owns the HAVE_LIBARCHIVE build decision. Do not let the presence of a
+    // runtime library enable a feature that the matching C build disabled.
+    if c_libarchive_support_enabled() <= 0 {
+        return Err(ArchiveError::Unsupported);
+    }
+
     if ARCHIVE_LOADED.load(Ordering::Acquire) {
         return Ok(());
     }

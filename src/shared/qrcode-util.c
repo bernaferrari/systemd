@@ -8,10 +8,12 @@
 #endif
 #include <qrencode.h>
 #endif
+#include <fcntl.h>
 #include <stdio.h>
 
 #include "ansi-color.h"
 #include "dlfcn-util.h"
+#include "fd-util.h"
 #include "locale-util.h"
 #include "log.h"
 #include "strv.h"
@@ -249,4 +251,38 @@ int print_qrcode_full(
 #else
         return -EOPNOTSUPP;
 #endif
+}
+
+int print_qrcode_full_fd(
+                int fd,
+                const char *header,
+                const char *string,
+                unsigned row,
+                unsigned column,
+                unsigned tty_width,
+                unsigned tty_height,
+                bool check_tty) {
+
+        _cleanup_close_ int copy = -EBADF;
+        _cleanup_fclose_ FILE *out = NULL;
+
+        if (fd < 0)
+                return -EBADF;
+
+        /* Keep the caller's descriptor open while giving print_qrcode_full()
+         * the FILE* it needs for locale, color, and cursor handling. The
+         * duplicate shares the file description but is the only descriptor we close. */
+        copy = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+        if (copy < 0)
+                return -errno;
+
+        out = fdopen(copy, "w");
+        if (!out)
+                return -errno;
+        copy = -EBADF; /* fdopen() transferred close ownership to out. */
+
+        return print_qrcode_full(
+                        out, header, string,
+                        row, column, tty_width, tty_height,
+                        check_tty);
 }

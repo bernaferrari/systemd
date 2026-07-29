@@ -85,4 +85,8 @@ DEFINE_TRIVIAL_CLEANUP_FUNC_FULL_RENAME(struct archive*, sym_archive_write_free,
 DEFINE_TRIVIAL_CLEANUP_FUNC_FULL_RENAME(struct archive*, sym_archive_read_free, archive_read_freep, NULL);
 #endif
 
+/* Expose the configured capability to Rust callers without duplicating Meson's
+ * HAVE_LIBARCHIVE decision in a second build system. */
+int libarchive_support_enabled(void);
+
 int dlopen_libarchive(int log_level) _dlopen_loader_;

@@ -29,6 +29,17 @@ int parse_openssl_key_source_argument(const char *argument, char **private_key_s
 
 #define X509_FINGERPRINT_SIZE SHA256_DIGEST_SIZE
 
+/* Stable digest seam for Rust callers. Keep these declarations outside
+ * HAVE_OPENSSL so a disabled C build reports EOPNOTSUPP instead of leaving an
+ * unresolved Rust FFI symbol. */
+int openssl_digest_size_for_rust(const char *digest_alg, size_t *ret_digest_size);
+int openssl_digest_many_for_rust(
+                const char *digest_alg,
+                const struct iovec data[],
+                size_t n_data,
+                void **ret_digest,
+                size_t *ret_digest_size);
+
 #if HAVE_OPENSSL
 #ifndef SYSTEMD_CFLAGS_MARKER_LIBOPENSSL
 #  error "missing libopenssl_cflags in meson dependency."

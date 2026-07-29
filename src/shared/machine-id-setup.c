@@ -57,8 +57,24 @@ static int acquire_machine_id_from_credential(sd_id128_t *ret_machine_id) {
         return 1;
 }
 
-static int acquire_machine_id(const char *root, bool machine_id_from_firmware, sd_id128_t *ret) {
+int machine_id_read_dbus(const char *root, sd_id128_t *ret) {
         _cleanup_close_ int fd = -EBADF;
+
+        assert(ret);
+
+        /* Keep rooted resolution, no-follow, regular-file verification, and
+         * ID parsing on the same descriptor. Callers deliberately treat all
+         * failures as a source-selection fallthrough. */
+        fd = chase_and_open("/var/lib/dbus/machine-id", root,
+                            CHASE_PREFIX_ROOT|CHASE_NOFOLLOW|CHASE_MUST_BE_REGULAR,
+                            O_RDONLY|O_CLOEXEC|O_NOCTTY, NULL);
+        if (fd < 0)
+                return fd;
+
+        return id128_read_fd(fd, ID128_FORMAT_PLAIN | ID128_REFUSE_NULL, ret);
+}
+
+static int acquire_machine_id(const char *root, bool machine_id_from_firmware, sd_id128_t *ret) {
         int r;
 
         assert(ret);
@@ -73,8 +89,7 @@ static int acquire_machine_id(const char *root, bool machine_id_from_firmware, s
         }
 
         /* Then, try reading the D-Bus machine ID, unless it is a symlink */
-        fd = chase_and_open("/var/lib/dbus/machine-id", root, CHASE_PREFIX_ROOT|CHASE_NOFOLLOW|CHASE_MUST_BE_REGULAR, O_RDONLY|O_CLOEXEC|O_NOCTTY, NULL);
-        if (fd >= 0 && id128_read_fd(fd, ID128_FORMAT_PLAIN | ID128_REFUSE_NULL, ret) >= 0) {
+        if (machine_id_read_dbus(root, ret) >= 0) {
                 log_info("Initializing machine ID from D-Bus machine ID.");
                 return 0;
         }

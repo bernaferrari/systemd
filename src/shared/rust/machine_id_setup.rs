@@ -6,15 +6,9 @@
 // D-Bus, credentials, container UUID, firmware (DMI/SMBIOS), or a
 // random generator.  Supports transient (tmpfs bind-mount) and
 // persistent modes, and can commit a transient ID to disk.
-//
-// PORT-GAP: The explicit `credential_value` integration seam has not yet been
-// connected to C's encrypted credential store, and the D-Bus fallback still
-// uses a metadata-then-read sequence instead of C's descriptor-pinned
-// `chase_and_open()` path. Both gaps remain explicit rather than imitating
-// their security-sensitive details with a partial Rust substitute.
 
 use crate::ffi::*;
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::fmt;
 use std::fs;
 use std::io;
@@ -23,9 +17,9 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
 
-// SAFETY: Exact process-util.h and id128-util.h declarations. The wrappers
-// below uphold the pointer/ownership contracts for `getenv_for_pid` and
-// `c_id128_get_product`.
+// SAFETY: Exact process-util.h, creds-util.h, machine-id-setup.h, and
+// sd-id128.h declarations. The wrappers below uphold the pointer/ownership
+// contracts for process, credential, rooted D-Bus, and ID128 helpers.
 unsafe extern "C" {
     #[link_name = "detect_vm"]
     safe fn c_detect_vm() -> libc::c_int;
@@ -45,6 +39,19 @@ unsafe extern "C" {
 
     #[link_name = "id128_get_product"]
     fn c_id128_get_product(ret: *mut SdId128) -> libc::c_int;
+
+    #[link_name = "read_credential_with_decryption"]
+    fn c_read_credential_with_decryption(
+        name: *const c_char,
+        ret: *mut *mut c_void,
+        ret_size: *mut libc::size_t,
+    ) -> libc::c_int;
+
+    #[link_name = "sd_id128_from_string"]
+    fn c_sd_id128_from_string(value: *const c_char, ret: *mut SdId128) -> libc::c_int;
+
+    #[link_name = "machine_id_read_dbus"]
+    fn c_machine_id_read_dbus(root: *const c_char, ret: *mut SdId128) -> libc::c_int;
 }
 
 /// A NUL-terminated string allocated by systemd's C allocator.
@@ -74,6 +81,33 @@ impl Drop for CAllocatedCString {
     }
 }
 
+/// One C-allocator string returned by `read_credential_with_decryption()`.
+///
+/// The C helper produces a NUL-terminated, `free(3)`-owned string when it
+/// returns a positive result. It may originate in the encrypted system
+/// credential store, so retaining no Rust-owned copy also narrows the
+/// credential's lifetime to this source-selection step.
+struct CAllocatedCredential(NonNull<c_char>);
+
+impl CAllocatedCredential {
+    /// Borrow the C helper's NUL-terminated credential until this owner drops.
+    fn as_c_str(&self) -> &CStr {
+        // SAFETY: a positive `read_credential_with_decryption()` result
+        // transfers one non-null NUL-terminated allocation to this guard.
+        // The guard keeps it alive for the returned borrow.
+        unsafe { CStr::from_ptr(self.0.as_ptr()) }
+    }
+}
+
+impl Drop for CAllocatedCredential {
+    fn drop(&mut self) {
+        // SAFETY: the positive-result ownership contract of
+        // `read_credential_with_decryption()` transfers exactly this
+        // allocator-compatible allocation to the guard, which drops it once.
+        unsafe { libc::free(self.0.as_ptr().cast()) };
+    }
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Primary persistent machine-id path.
@@ -81,9 +115,6 @@ const ETC_MACHINE_ID: &str = "/etc/machine-id";
 
 /// Transient machine-id path (may be bind-mounted over the persistent one).
 const RUN_MACHINE_ID: &str = "/run/machine-id";
-
-/// D-Bus machine-id path (legacy, used as fallback source).
-const DBUS_MACHINE_ID: &str = "/var/lib/dbus/machine-id";
 
 /// Magic string written to /etc/machine-id when the ID is transient.
 const UNINITIALIZED_STR: &str = "uninitialized\n";
@@ -384,51 +415,119 @@ pub fn id128_write_file(path: &Path, id: SdId128) -> MachineIdResult<()> {
 
 // ── Core logic ────────────────────────────────────────────────────────────
 
-/// Try to acquire a machine-id from the D-Bus legacy path (regular file only).
+/// Try to acquire a machine-id from the rooted D-Bus legacy path.
+///
+/// C owns the entire lookup as one descriptor-pinned operation: rooted chase,
+/// symlink refusal, regular-file verification, and `ID128_REFUSE_NULL`
+/// parsing. This prevents a Rust metadata/read race and preserves the C
+/// caller's rule that every negative errno is simply a fallthrough.
 fn acquire_from_dbus(root: &Path) -> MachineIdResult<Option<(SdId128, MachineIdSource)>> {
-    let dbus_path = root.join(DBUS_MACHINE_ID.trim_start_matches('/'));
-
-    // Only accept a non-symlink regular file — mirrors C's
-    // `CHASE_NOFOLLOW | CHASE_MUST_BE_REGULAR` filter. The C compound
-    // condition intentionally treats every lookup/open/read rejection as a
-    // fallthrough, so this probe must not make acquisition fail.
-    let meta = match fs::symlink_metadata(&dbus_path) {
-        Ok(m) => m,
+    let root = match CString::new(root.as_os_str().as_bytes()) {
+        Ok(root) => root,
+        // A path with an embedded NUL cannot be represented by C's pathname
+        // API. Treat it like C's rejected rooted probe and continue normally.
         Err(_) => return Ok(None),
     };
-    if !meta.is_file() {
-        return Ok(None);
-    }
-
-    match id128_read_file(&dbus_path).ok().flatten() {
-        Some(id) => Ok(Some((id, MachineIdSource::DbusMachineId))),
-        None => Ok(None),
+    let mut id = SdId128::nil();
+    // SAFETY: `root` is NUL-terminated, `id` is valid writable storage with
+    // the first sixteen bytes of `sd_id128_t`, and C retains neither pointer.
+    // `machine_id_read_dbus()` pins resolution and parsing to its own FD.
+    let result = unsafe { c_machine_id_read_dbus(root.as_ptr(), &mut id) };
+    if result >= 0 {
+        Ok(Some((id, MachineIdSource::DbusMachineId)))
+    } else {
+        Ok(None)
     }
 }
 
-/// Try to read a machine-id string from a system credential.
+/// The credential outcomes that control C's remaining source selection.
 ///
-/// In production this calls into `read_credential_with_decryption("system.machine_id", …)`.
-/// For unit-testability the credential name is parameterised.
-fn acquire_from_credential(
-    _credential_name: &str,
-    _cred_value: Option<&str>,
-) -> MachineIdResult<Option<(SdId128, MachineIdSource)>> {
-    // The real implementation reads from the kernel credential store.
-    // Here we accept an explicit value for testability.
-    let value = match _cred_value {
-        Some(v) => v,
-        None => return Ok(None),
-    };
+/// A null ID is deliberately grouped with the `firmware` keyword. C parses a
+/// null credential successfully, then treats it as a request to force the
+/// firmware probe rather than as a usable machine ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CredentialMachineId {
+    MissingOrInvalid,
+    ForceFirmware,
+    Id(SdId128),
+}
 
-    if value == "firmware" {
-        // Credential says "try firmware" — caller should fall through.
-        return Ok(None);
+/// Parse the C string returned by the credential store with C's exact ID128
+/// grammar and source-selection rules.
+fn credential_machine_id_from_c_str(value: &CStr) -> CredentialMachineId {
+    if value.to_bytes() == b"firmware" {
+        return CredentialMachineId::ForceFirmware;
     }
 
-    match id128_from_string(value) {
-        Ok(id) if !id.is_nil() => Ok(Some((id, MachineIdSource::Credential))),
-        _ => Ok(None),
+    let mut id = SdId128::nil();
+    // SAFETY: `value` is a valid NUL-terminated string and `id` has the
+    // 16-byte `sd_id128_t` representation required by `sd_id128_from_string`.
+    // C writes only on success and retains neither pointer.
+    if unsafe { c_sd_id128_from_string(value.as_ptr(), &mut id) } < 0 {
+        // C logs and ignores malformed credentials, then continues with the
+        // container/firmware/random fallback chain.
+        return CredentialMachineId::MissingOrInvalid;
+    }
+
+    if id.is_nil() {
+        CredentialMachineId::ForceFirmware
+    } else {
+        CredentialMachineId::Id(id)
+    }
+}
+
+/// Read `name` from C's plaintext-or-encrypted system credential store.
+///
+/// Negative errors are intentionally folded into the ordinary fallback path:
+/// `acquire_machine_id_from_credential()` logs them and its caller proceeds
+/// unless it receives a positive result. A positive result transfers a C
+/// `free(3)` allocation, which is released by `CAllocatedCredential`.
+fn read_machine_id_credential(name: &CStr) -> CredentialMachineId {
+    let mut value = std::ptr::null_mut::<c_void>();
+    // SAFETY: `name` is NUL-terminated, `value` is writable storage for the
+    // one output pointer, and `ret_size == NULL` is explicitly supported by
+    // creds-util.h. C does not retain `name` or the output-storage address.
+    let result = unsafe {
+        c_read_credential_with_decryption(name.as_ptr(), &mut value, std::ptr::null_mut())
+    };
+    if result <= 0 {
+        return CredentialMachineId::MissingOrInvalid;
+    }
+
+    // A positive C result must transfer a non-null allocation. Treat a
+    // contract-violating null pointer as unusable instead of dereferencing it.
+    let Some(value) = NonNull::new(value.cast::<c_char>()) else {
+        return CredentialMachineId::MissingOrInvalid;
+    };
+    let value = CAllocatedCredential(value);
+    credential_machine_id_from_c_str(value.as_c_str())
+}
+
+/// Try to read a machine-id from a system credential.
+///
+/// `None` reaches C's authoritative plaintext-or-encrypted credential store.
+/// `Some` is deliberately retained only as a test override; it does not
+/// replace the production source. The credential name remains parameterized
+/// so tests can exercise the same parsing boundary without consulting host
+/// credentials.
+fn acquire_from_credential(
+    credential_name: &str,
+    credential_value: Option<&str>,
+) -> CredentialMachineId {
+    match credential_value {
+        Some(value) => match CString::new(value) {
+            Ok(value) => credential_machine_id_from_c_str(&value),
+            // A Rust test override with an embedded NUL cannot represent a C
+            // credential string. C would parse only its prefix; reject the
+            // non-representable override and use the normal fallback path.
+            Err(_) => CredentialMachineId::MissingOrInvalid,
+        },
+        None => match CString::new(credential_name) {
+            Ok(name) => read_machine_id_credential(&name),
+            // C logs an invalid credential-name error and its caller falls
+            // through, so preserve that result even for a malformed test name.
+            Err(_) => CredentialMachineId::MissingOrInvalid,
+        },
     }
 }
 
@@ -531,10 +630,9 @@ fn acquire_from_firmware(force_firmware: bool) -> Option<SdId128> {
 ///
 /// Returns `(id, source)` on success.
 ///
-/// `credential_value` is an explicit test/integration seam, not a replacement
-/// for C's encrypted credential-store lookup. `Some("firmware")` retains the
-/// C credential's force-firmware meaning; `None` means this Rust surface does
-/// not supply a credential and therefore falls through normally.
+/// `credential_value` is an explicit test override. In production callers pass
+/// `None`, which reaches C's encrypted-aware credential store. `Some("firmware")`
+/// and a null ID retain C's force-firmware meaning.
 pub fn acquire_machine_id(
     root: &Path,
     force_firmware: bool,
@@ -561,10 +659,11 @@ pub fn acquire_machine_id(
     // 3–5. C performs all remaining host-only probes only outside a chroot.
     if root_empty && not_in_chroot() {
         // 3. Credential
-        let credential_requests_firmware = credential_value == Some("firmware");
-        if let Some((id, src)) = acquire_from_credential("system.machine_id", credential_value)? {
-            return Ok((id, src));
+        let credential = acquire_from_credential("system.machine_id", credential_value);
+        if let CredentialMachineId::Id(id) = credential {
+            return Ok((id, MachineIdSource::Credential));
         }
+        let credential_requests_firmware = credential == CredentialMachineId::ForceFirmware;
 
         // 4–5. `detect_container() > 0` chooses the container-UUID branch;
         // every other result (including a negative detection error) follows
@@ -644,9 +743,8 @@ fn open_etc_machine_id(root: &Path) -> MachineIdResult<(PathBuf, bool)> {
 /// Otherwise a transient file is written to `/run/machine-id` and bind-mounted
 /// over `/etc/machine-id`.
 ///
-/// `credential_value` has the same explicit test/integration semantics as
-/// [`acquire_machine_id`]; the C encrypted credential store remains outside
-/// this safe Rust surface.
+/// `credential_value` has the same explicit test-override semantics as
+/// [`acquire_machine_id`]; `None` uses C's encrypted-aware credential store.
 ///
 /// Returns the effective machine-id.
 pub fn machine_id_setup(
@@ -1118,35 +1216,40 @@ mod tests {
     }
 
     #[test]
-    fn test_acquire_from_credential_none() {
-        let result = acquire_from_credential("system.machine_id", None).unwrap();
-        assert!(result.is_none());
+    fn test_credential_parser_invalid_falls_through() {
+        assert_eq!(
+            credential_machine_id_from_c_str(c"not-a-machine-id"),
+            CredentialMachineId::MissingOrInvalid
+        );
     }
 
     #[test]
     fn test_acquire_from_credential_firmware_keyword() {
-        let result = acquire_from_credential("system.machine_id", Some("firmware")).unwrap();
-        assert!(result.is_none()); // "firmware" means "try firmware path", not an ID
+        assert_eq!(
+            acquire_from_credential("system.machine_id", Some("firmware")),
+            CredentialMachineId::ForceFirmware
+        );
     }
 
     #[test]
     fn test_acquire_from_credential_valid() {
         let hex = "aabbccdd11223344aabbccdd11223344";
-        let result = acquire_from_credential("system.machine_id", Some(hex)).unwrap();
-        assert!(result.is_some());
-        let (id, src) = result.unwrap();
-        assert_eq!(src, MachineIdSource::Credential);
-        assert_eq!(format!("{id}"), hex);
+        let result = acquire_from_credential("system.machine_id", Some(hex));
+        assert_eq!(
+            result,
+            CredentialMachineId::Id(id128_from_string(hex).unwrap())
+        );
     }
 
     #[test]
-    fn test_acquire_from_credential_null_rejected() {
-        let result = acquire_from_credential(
-            "system.machine_id",
-            Some("00000000000000000000000000000000"),
-        )
-        .unwrap();
-        assert!(result.is_none());
+    fn test_acquire_from_credential_null_forces_firmware() {
+        assert_eq!(
+            acquire_from_credential(
+                "system.machine_id",
+                Some("00000000000000000000000000000000"),
+            ),
+            CredentialMachineId::ForceFirmware
+        );
     }
 
     #[test]
@@ -1170,7 +1273,6 @@ mod tests {
     fn test_constants() {
         assert_eq!(ETC_MACHINE_ID, "/etc/machine-id");
         assert_eq!(RUN_MACHINE_ID, "/run/machine-id");
-        assert_eq!(DBUS_MACHINE_ID, "/var/lib/dbus/machine-id");
         assert_eq!(UNINITIALIZED_STR, "uninitialized\n");
         assert_eq!(MACHINE_ID_LINE_LEN, 33);
     }

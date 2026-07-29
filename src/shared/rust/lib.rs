@@ -96,7 +96,6 @@ pub mod dev_setup;
 pub mod device_enumerator;
 pub mod device_util;
 pub mod dhcp_identifier;
-pub mod dhcp_option;
 pub mod discover_image;
 pub mod dissect_image;
 pub mod dns_answer;

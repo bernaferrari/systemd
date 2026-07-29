@@ -1271,7 +1271,7 @@
     "src/shared/rust/fdisk_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 5
+      "unsafe_sites": 7
     },
     "src/shared/rust/fdset.rs": {
       "missing_safety": 0,
@@ -1373,6 +1373,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
+    "src/shared/rust/libarchive_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
     "src/shared/rust/libaudit_util.rs": {
       "missing_safety": 12,
       "missing_safety_sites": [
@@ -1394,7 +1399,7 @@
     "src/shared/rust/libcrypt_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 11
+      "unsafe_sites": 9
     },
     "src/shared/rust/libfido2_util.rs": {
       "missing_safety": 0,
@@ -1462,7 +1467,7 @@
     "src/shared/rust/machine_id_setup.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 10
+      "unsafe_sites": 15
     },
     "src/shared/rust/mkfs_util.rs": {
       "missing_safety": 0,
@@ -1488,6 +1493,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
+    },
+    "src/shared/rust/openssl_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 5
     },
     "src/shared/rust/osc_context.rs": {
       "missing_safety": 0,
@@ -1517,7 +1527,7 @@
     "src/shared/rust/pcre2_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 14
+      "unsafe_sites": 15
     },
     "src/shared/rust/pkcs7_util.rs": {
       "missing_safety": 0,
@@ -1542,7 +1552,7 @@
     "src/shared/rust/qrcode_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 6
+      "unsafe_sites": 8
     },
     "src/shared/rust/quota_util.rs": {
       "missing_safety": 0,
@@ -1870,7 +1880,7 @@
   },
   "totals": {
     "missing_safety": 347,
-    "unsafe_sites": 5663
+    "unsafe_sites": 5677
   },
   "version": 2,
   "window": 3

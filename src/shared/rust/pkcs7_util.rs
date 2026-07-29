@@ -3,16 +3,11 @@
 // PORT-SYNC: src/shared/pkcs7-util.c, src/shared/pkcs7-util.h
 //
 // PKCS#7 signature utilities — C-authoritative signer extraction from
-// DER-encoded PKCS#7 signatures, certificate source types, verify flags, and
-// PEM marker constants.
+// DER-encoded PKCS#7 signatures.
 //
 // Signer extraction delegates to C so OpenSSL loading, parsing, and error
 // behavior remain shared. The returned C allocation is copied into Rust-owned
 // values and released with signer_free_many(), its authoritative destructor.
-//
-// PORT-GAP: PKCS#7 verification, certificate hashing, and explicit OpenSSL
-// loading remain C-only. Their Rust entry points deliberately return
-// EOPNOTSUPP rather than presenting partial implementations as equivalent.
 
 use crate::ffi::Errno;
 use std::ptr::NonNull;
@@ -89,12 +84,6 @@ fn copy_signer_iovec(iovec: &libc::iovec, encoded_signature_len: usize) -> Resul
 /// This is a safety net against maliciously complex signatures.
 pub const SIGNERS_MAX: usize = 32;
 
-/// PEM begin marker for PKCS#7 data.
-pub const PKCS7_PEM_START: &str = "-----BEGIN PKCS7-----";
-
-/// PEM end marker for PKCS#7 data.
-pub const PKCS7_PEM_END: &str = "-----END PKCS7-----";
-
 // ── Error type ──────────────────────────────────────────────────────────────
 
 /// Errors produced by PKCS#7 operations.
@@ -116,13 +105,6 @@ impl Pkcs7Error {
     pub fn not_supported() -> Self {
         Self {
             code: Errno::EOPNOTSUPP.to_neg_errno(),
-        }
-    }
-
-    /// Invalid argument passed.
-    pub fn invalid_argument() -> Self {
-        Self {
-            code: Errno::EINVAL.to_neg_errno(),
         }
     }
 
@@ -186,44 +168,6 @@ impl std::error::Error for Pkcs7Error {}
 /// Module-local Result alias.
 pub type Result<T> = std::result::Result<T, Pkcs7Error>;
 
-// ── Enums ───────────────────────────────────────────────────────────────────
-
-/// Source for a PKCS#7 certificate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum Pkcs7CertificateSource {
-    /// Certificate loaded from a file path.
-    File = 0,
-    /// Certificate embedded inline (e.g. in a firmware volume).
-    Embedded = 1,
-}
-
-impl Pkcs7CertificateSource {
-    /// Convert a raw integer to a certificate source.
-    /// Returns `None` if the value does not match any variant.
-    pub fn from_raw(raw: i32) -> Option<Self> {
-        match raw {
-            0 => Some(Self::File),
-            1 => Some(Self::Embedded),
-            _ => None,
-        }
-    }
-
-    /// Convert back to the raw integer representation.
-    pub fn to_raw(self) -> i32 {
-        self as i32
-    }
-}
-
-/// Flags controlling PKCS#7 signature verification behaviour.
-bitflags::bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct Pkcs7VerifyFlags: u32 {
-        /// Allow self-signed certificates.
-        const ALLOW_SELF_SIGNED = 1 << 0;
-    }
-}
-
 // ── Signer type ─────────────────────────────────────────────────────────────
 
 /// Information about a single signer extracted from a PKCS#7 signature.
@@ -248,32 +192,6 @@ impl Signer {
     pub fn is_valid(&self) -> bool {
         !self.issuer.is_empty() && !self.serial.is_empty()
     }
-}
-
-// ── PEM marker helpers ──────────────────────────────────────────────────────
-
-/// Returns the PKCS#7 PEM begin marker.
-pub fn pkcs7_start_pem_marker() -> &'static str {
-    PKCS7_PEM_START
-}
-
-/// Returns the PKCS#7 PEM end marker.
-pub fn pkcs7_end_pem_marker() -> &'static str {
-    PKCS7_PEM_END
-}
-
-/// Check whether a byte slice looks like a PEM-encoded PKCS#7 block.
-///
-/// This is a lightweight check — it simply looks for the begin/end markers
-/// without doing full PEM parsing.
-pub fn looks_like_pkcs7_pem(data: &[u8]) -> bool {
-    let start = data
-        .windows(PKCS7_PEM_START.len())
-        .any(|w| w == PKCS7_PEM_START.as_bytes());
-    let end = data
-        .windows(PKCS7_PEM_END.len())
-        .any(|w| w == PKCS7_PEM_END.as_bytes());
-    start && end
 }
 
 // ── PKCS#7 extraction ───────────────────────────────────────────────────────
@@ -347,43 +265,6 @@ pub fn pkcs7_extract_signers(der: &[u8]) -> Result<Vec<Signer>> {
     Ok(signers)
 }
 
-/// Verify a PKCS#7 signature in memory.
-///
-/// Validates that `signature` is a valid PKCS#7 signature over `data`
-/// using the provided `certificate`.
-///
-/// This requires OpenSSL at runtime and will return
-/// [`Pkcs7Error::not_supported()`] if libopenssl is unavailable.
-pub fn pkcs7_verify_mem(
-    _signature: &[u8],
-    _data: &[u8],
-    _certificate: &[u8],
-    _flags: Pkcs7VerifyFlags,
-) -> Result<()> {
-    Err(Pkcs7Error::not_supported())
-}
-
-/// Compute a SHA-256 fingerprint of a PKCS#7 certificate.
-///
-/// Returns a 32-byte digest on success.  Requires OpenSSL at runtime.
-pub fn pkcs7_certificate_hash(certificate: &[u8]) -> Result<[u8; 32]> {
-    if certificate.is_empty() {
-        return Err(Pkcs7Error::invalid_argument());
-    }
-    // Actual implementation uses openssl::hash::hash(MessageDigest::sha256(), cert)
-    Err(Pkcs7Error::not_supported())
-}
-
-// ── OpenSSL dlopen support ──────────────────────────────────────────────────
-
-/// Report that the Rust OpenSSL-backed PKCS#7 loader is not yet implemented.
-///
-/// The real loading path remains C-owned; this intentionally has no hidden
-/// dynamic-loader side effect.
-pub fn pkcs7_dlopen_openssl() -> Result<()> {
-    Err(Pkcs7Error::not_supported())
-}
-
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -417,12 +298,6 @@ mod tests {
     }
 
     #[test]
-    fn test_pkcs7_error_invalid_argument() {
-        let err = Pkcs7Error::invalid_argument();
-        assert_eq!(err.as_neg_errno(), Errno::EINVAL.to_neg_errno());
-    }
-
-    #[test]
     fn test_pkcs7_error_out_of_memory() {
         let err = Pkcs7Error::out_of_memory();
         assert_eq!(err.as_neg_errno(), Errno::ENOMEM.to_neg_errno());
@@ -453,99 +328,6 @@ mod tests {
     fn test_pkcs7_error_equality() {
         assert_eq!(Pkcs7Error::bad_message(), Pkcs7Error::bad_message());
         assert_ne!(Pkcs7Error::bad_message(), Pkcs7Error::no_data());
-    }
-
-    // ── Certificate source tests ─────────────────────────────────────────
-
-    #[test]
-    fn test_certificate_source_from_raw() {
-        assert_eq!(
-            Pkcs7CertificateSource::from_raw(0),
-            Some(Pkcs7CertificateSource::File)
-        );
-        assert_eq!(
-            Pkcs7CertificateSource::from_raw(1),
-            Some(Pkcs7CertificateSource::Embedded)
-        );
-        assert_eq!(Pkcs7CertificateSource::from_raw(2), None);
-        assert_eq!(Pkcs7CertificateSource::from_raw(-1), None);
-    }
-
-    #[test]
-    fn test_certificate_source_roundtrip() {
-        for src in [
-            Pkcs7CertificateSource::File,
-            Pkcs7CertificateSource::Embedded,
-        ] {
-            assert_eq!(Pkcs7CertificateSource::from_raw(src.to_raw()), Some(src));
-        }
-    }
-
-    // ── Verify flags tests ───────────────────────────────────────────────
-
-    #[test]
-    fn test_verify_flags_none() {
-        let flags = Pkcs7VerifyFlags::empty();
-        assert!(flags.is_empty());
-        assert_eq!(flags.bits(), 0);
-    }
-
-    #[test]
-    fn test_verify_flags_allow_self_signed() {
-        let flags = Pkcs7VerifyFlags::ALLOW_SELF_SIGNED;
-        assert!(!flags.is_empty());
-        assert!(flags.contains(Pkcs7VerifyFlags::ALLOW_SELF_SIGNED));
-        assert_eq!(flags.bits(), 1);
-    }
-
-    #[test]
-    fn test_verify_flags_combination() {
-        let flags = Pkcs7VerifyFlags::empty();
-        assert!(!flags.contains(Pkcs7VerifyFlags::ALLOW_SELF_SIGNED));
-    }
-
-    // ── PEM marker tests ─────────────────────────────────────────────────
-
-    #[test]
-    fn test_pkcs7_pem_markers() {
-        assert!(pkcs7_start_pem_marker().starts_with("-----BEGIN"));
-        assert!(pkcs7_end_pem_marker().starts_with("-----END"));
-        assert!(pkcs7_start_pem_marker().contains("PKCS7"));
-        assert!(pkcs7_end_pem_marker().contains("PKCS7"));
-    }
-
-    #[test]
-    fn test_pkcs7_pem_constants() {
-        assert_eq!(pkcs7_start_pem_marker(), PKCS7_PEM_START);
-        assert_eq!(pkcs7_end_pem_marker(), PKCS7_PEM_END);
-    }
-
-    #[test]
-    fn test_looks_like_pkcs7_pem_valid() {
-        let pem = b"-----BEGIN PKCS7-----\nMIIB...\n-----END PKCS7-----";
-        assert!(looks_like_pkcs7_pem(pem));
-    }
-
-    #[test]
-    fn test_looks_like_pkcs7_pem_only_start() {
-        let data = b"-----BEGIN PKCS7-----\nMIIB...";
-        assert!(!looks_like_pkcs7_pem(data));
-    }
-
-    #[test]
-    fn test_looks_like_pkcs7_pem_only_end() {
-        let data = b"MIIB...\n-----END PKCS7-----";
-        assert!(!looks_like_pkcs7_pem(data));
-    }
-
-    #[test]
-    fn test_looks_like_pkcs7_pem_empty() {
-        assert!(!looks_like_pkcs7_pem(b""));
-    }
-
-    #[test]
-    fn test_looks_like_pkcs7_pem_garbage() {
-        assert!(!looks_like_pkcs7_pem(b"not pem data at all"));
     }
 
     // ── Signer tests ─────────────────────────────────────────────────────
@@ -600,34 +382,6 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert!(error.is_bad_message() || error.is_not_supported());
-    }
-
-    #[test]
-    fn test_pkcs7_verify_mem_not_supported() {
-        let result = pkcs7_verify_mem(&[], &[], &[], Pkcs7VerifyFlags::empty());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().is_not_supported());
-    }
-
-    // #[test]
-    //     fn test_pkcs7_certificate_hash_empty() {
-    //         let result = pkcs7_certificate_hash(&[]);
-    //         assert!(result.is_err());
-    //         assert!(result.unwrap_err().is_invalid_argument());
-    //     }
-
-    #[test]
-    fn test_pkcs7_certificate_hash_not_supported() {
-        let result = pkcs7_certificate_hash(&[1, 2, 3]);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().is_not_supported());
-    }
-
-    #[test]
-    fn test_pkcs7_dlopen_not_supported() {
-        let result = pkcs7_dlopen_openssl();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().is_not_supported());
     }
 
     // ── Constants ────────────────────────────────────────────────────────
