@@ -1,28 +1,69 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/shared/fdisk-util.c, src/shared/fdisk-util.h
-// PORT-GAP: Stateful `libfdisk` context/partition operations still execute
-// through the C implementation. This module owns only the safe value parsing,
-// attribute serialization, and availability boundary until those opaque C
-// types have a complete audited Rust ownership model.
+// PORT-GAP: Partition/table allocation and mutation remain in C. Rust now owns
+// an opaque, read-only context through an always-linked C boundary; extend
+// that boundary with owned snapshot values instead of publishing libfdisk
+// pointers or reproducing its state machine.
 //
 // libfdisk partition-table value utilities and availability boundary. Provides
-// UUID/type extraction and GPT attribute flags parsing/serialization without
-// exposing raw libfdisk pointers to safe Rust.
+// a read-only context, UUID/type extraction, and GPT attribute flags
+// parsing/serialization without exposing raw libfdisk pointers to safe Rust.
 
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::fmt;
+use std::marker::PhantomData;
+use std::os::fd::{AsRawFd, BorrowedFd};
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
+use std::ptr::NonNull;
+use std::rc::Rc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use systemd_libsystemd_rs::sd_id128_strings::sd_id128_from_string;
 
-// SAFETY: Exact fdisk-util.h declaration. `dlopen_fdisk()` mutates C's
-// process-global loader and symbol state, so the call below is serialized by
-// `FDISK_LOAD_LOCK`; C retains all loaded-library and resolved-symbol state.
+// SAFETY: Exact fdisk-util.h declarations. `FDISK_LOAD_LOCK` serializes C's
+// mutable loader state; C owns every opaque context behind the other calls.
 unsafe extern "C" {
     #[link_name = "dlopen_fdisk"]
     fn c_dlopen_fdisk(log_level: libc::c_int) -> libc::c_int;
+
+    #[link_name = "fdisk_new_read_only_context_at"]
+    fn c_fdisk_new_read_only_context_at(
+        dir_fd: libc::c_int,
+        path: *const libc::c_char,
+        sector_size: u32,
+        ret: *mut *mut CFdiskContext,
+    ) -> libc::c_int;
+
+    #[link_name = "fdisk_context_unref"]
+    fn c_fdisk_context_unref(context: *mut CFdiskContext);
+
+    #[link_name = "fdisk_context_get_info"]
+    fn c_fdisk_context_get_info(
+        context: *mut CFdiskContext,
+        ret: *mut CFdiskContextInfo,
+    ) -> libc::c_int;
+}
+
+/// Opaque C `struct fdisk_context`.
+#[repr(C)]
+struct CFdiskContext {
+    _private: [u8; 0],
+}
+
+/// Exact C `FdiskContextInfo` value snapshot.
+#[repr(C)]
+#[derive(Default)]
+struct CFdiskContextInfo {
+    sector_size: u64,
+    grain_size: u64,
+    n_sectors: u64,
+    first_lba: u64,
+    last_lba: u64,
+    n_partitions: u64,
+    has_label: libc::c_int,
 }
 
 // ── Error type ──────────────────────────────────────────────────────────────
@@ -42,6 +83,11 @@ pub enum FdiskError {
     ParseError(String),
     /// An invalid argument was provided.
     InvalidArgument(String),
+    /// An authoritative C context operation returned a negative errno.
+    OperationFailed {
+        operation: &'static str,
+        errno: libc::c_int,
+    },
 }
 
 impl fmt::Display for FdiskError {
@@ -55,6 +101,13 @@ impl fmt::Display for FdiskError {
             Self::NotFound => write!(f, "Requested fdisk value not found"),
             Self::ParseError(msg) => write!(f, "Failed to parse fdisk value: {}", msg),
             Self::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
+            Self::OperationFailed { operation, errno } => write!(
+                f,
+                "{} failed with errno {}: {}",
+                operation,
+                errno,
+                std::io::Error::from_raw_os_error(*errno),
+            ),
         }
     }
 }
@@ -169,6 +222,153 @@ pub fn have_fdisk() -> bool {
 
 /// Sentinel value indicating the sector size should be probed automatically.
 pub const FDISK_SECTOR_SIZE_AUTO: u32 = u32::MAX;
+
+// ── Opaque read-only context ────────────────────────────────────────────────
+
+/// Immutable scalar facts about an assigned block device and partition table.
+///
+/// `sector_size` and `grain_size` are bytes. `n_sectors` is a sector count,
+/// while `first_lba` and `last_lba` are sector indices. LBA values are
+/// libfdisk's current values and are only meaningful for the assigned device's
+/// current label state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FdiskContextInfo {
+    /// Logical sector size in bytes.
+    pub sector_size: u64,
+    /// libfdisk alignment grain in bytes.
+    pub grain_size: u64,
+    /// Device size in logical sectors.
+    pub n_sectors: u64,
+    /// First usable logical block address.
+    pub first_lba: u64,
+    /// Last usable logical block address.
+    pub last_lba: u64,
+    /// Number of partitions reported by libfdisk.
+    pub n_partitions: u64,
+    /// Whether libfdisk recognized a disk label.
+    pub has_label: bool,
+}
+
+/// Owned, read-only libfdisk context.
+///
+/// The pointee remains opaque: C performs construction, read-only queries,
+/// and destruction. The `Rc` marker deliberately keeps the context
+/// `!Send + !Sync` because libfdisk does not promise that one context may be
+/// moved between or accessed from multiple threads.
+pub struct FdiskContext {
+    context: NonNull<CFdiskContext>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+impl FdiskContext {
+    /// Open `path` relative to the process working directory.
+    pub fn open_read_only(path: &Path, sector_size: u32) -> Result<FdiskContext, FdiskError> {
+        Self::open_read_only_raw(libc::AT_FDCWD, Some(path), sector_size)
+    }
+
+    /// Open `path` relative to `dir_fd`.
+    pub fn open_read_only_at(
+        dir_fd: BorrowedFd<'_>,
+        path: &Path,
+        sector_size: u32,
+    ) -> Result<FdiskContext, FdiskError> {
+        Self::open_read_only_raw(dir_fd.as_raw_fd(), Some(path), sector_size)
+    }
+
+    /// Assign a read-only context to an already-open block-device descriptor.
+    ///
+    /// libfdisk opens its own `/proc/self/fd/` reference during construction,
+    /// so it does not borrow `fd` after this function returns.
+    pub fn from_fd_read_only(
+        fd: BorrowedFd<'_>,
+        sector_size: u32,
+    ) -> Result<FdiskContext, FdiskError> {
+        Self::open_read_only_raw(fd.as_raw_fd(), None, sector_size)
+    }
+
+    fn open_read_only_raw(
+        dir_fd: libc::c_int,
+        path: Option<&Path>,
+        sector_size: u32,
+    ) -> Result<FdiskContext, FdiskError> {
+        let path = path
+            .map(|path| {
+                if path.as_os_str().is_empty() {
+                    return Err(FdiskError::InvalidArgument(
+                        "device path cannot be empty".to_string(),
+                    ));
+                }
+                CString::new(path.as_os_str().as_bytes()).map_err(|_| {
+                    FdiskError::InvalidArgument("device path contains a NUL byte".to_string())
+                })
+            })
+            .transpose()?;
+
+        dlopen_libfdisk()?;
+
+        let mut context = std::ptr::null_mut();
+        // SAFETY: `dir_fd` is AT_FDCWD or comes from a live `BorrowedFd`;
+        // `path`, when present, remains NUL-terminated for the call; `context`
+        // is a valid out-pointer. The C seam returns sole ownership on success.
+        let result = unsafe {
+            c_fdisk_new_read_only_context_at(
+                dir_fd,
+                path.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()),
+                sector_size,
+                &mut context,
+            )
+        };
+        if result < 0 {
+            return Err(c_operation_error("fdisk_new_read_only_context_at", result));
+        }
+
+        let context = NonNull::new(context).ok_or(FdiskError::OperationFailed {
+            operation: "fdisk_new_read_only_context_at",
+            errno: libc::EIO,
+        })?;
+        Ok(FdiskContext {
+            context,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    /// Return a C-populated value snapshot of immutable context properties.
+    pub fn info(&self) -> Result<FdiskContextInfo, FdiskError> {
+        let mut info = CFdiskContextInfo::default();
+        // SAFETY: `self.context` remains a live, exclusively owned libfdisk
+        // context, and `info` is a correctly laid-out writable out-parameter.
+        let result =
+            unsafe { c_fdisk_context_get_info(self.context.as_ptr(), &mut info as *mut _) };
+        if result < 0 {
+            return Err(c_operation_error("fdisk_context_get_info", result));
+        }
+
+        Ok(FdiskContextInfo {
+            sector_size: info.sector_size,
+            grain_size: info.grain_size,
+            n_sectors: info.n_sectors,
+            first_lba: info.first_lba,
+            last_lba: info.last_lba,
+            n_partitions: info.n_partitions,
+            has_label: info.has_label > 0,
+        })
+    }
+}
+
+impl Drop for FdiskContext {
+    fn drop(&mut self) {
+        // SAFETY: construction gives this wrapper sole ownership and Drop runs
+        // exactly once. The always-linked C seam accepts this live pointer.
+        unsafe { c_fdisk_context_unref(self.context.as_ptr()) };
+    }
+}
+
+fn c_operation_error(operation: &'static str, result: libc::c_int) -> FdiskError {
+    FdiskError::OperationFailed {
+        operation,
+        errno: result.checked_neg().unwrap_or(libc::EIO),
+    }
+}
 
 // ── Partition UUID helpers ──────────────────────────────────────────────────
 

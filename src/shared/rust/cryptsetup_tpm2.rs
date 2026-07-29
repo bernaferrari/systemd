@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/shared/cryptsetup-tpm2.c, src/shared/cryptsetup-tpm2.h
+//
+// PORT-GAP: the backend traits do not yet enforce C's
+// HAVE_LIBCRYPTSETUP/HAVE_TPM2 boundary. The current request/token model also
+// lacks C's Argon2id parameter/HKDF path and public-key policy reference.
+// The backend's decrypted volume-key result is still a plain `Vec<u8>` rather
+// than a zeroizing owner. Those ownership-sensitive paths remain
+// C-authoritative.
 
 use crate::ffi::*;
 use std::collections::BTreeMap;
@@ -14,18 +21,27 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use openssl::hash::MessageDigest;
-use openssl::pkcs5;
-
 use crate::ask_password_api::{AskPasswordFlags, AskPasswordRequest, ask_password_auto};
+use crate::secret_bytes::SecretBytes;
 use crate::tpm2_util::{
     TPM2_ALG_ECC, TPM2_PCRS_MAX, Tpm2Flags, tpm2_asym_alg_from_string, tpm2_hash_alg_from_string,
 };
 
-const PBKDF2_HMAC_SHA256_ITERATIONS: usize = 10_000;
 const TPM2_TOKEN_TYPE: &str = "systemd-tpm2";
 const PIN_PROMPT: &str = "Please enter TPM2 PIN:";
 const ANY_PCR_MASK: u32 = u32::MAX;
+
+// SAFETY: Exact tpm2-util.h declaration. C reads the two byte spans only for
+// the duration of the call and writes exactly one SHA-256 digest to `ret`.
+unsafe extern "C" {
+    fn tpm2_util_pbkdf2_hmac_sha256(
+        pass: *const libc::c_void,
+        passlen: usize,
+        salt: *const libc::c_void,
+        saltlen: usize,
+        ret: *mut u8,
+    ) -> libc::c_int;
+}
 
 pub type Result<T> = std::result::Result<T, Tpm2Error>;
 
@@ -381,13 +397,29 @@ pub fn acquire_tpm2_key<B: Tpm2Backend, P: PinProvider>(
             break;
         }
 
-        let pin = pin_provider.get_pin(request.until, request.askpw_credential, askpw_flags)?;
+        let pin = SecretBytes::from_vec(
+            pin_provider
+                .get_pin(request.until, request.askpw_credential, askpw_flags)?
+                .into_bytes(),
+        );
+        if pin.contains(0) {
+            return Err(Tpm2Error::new(
+                libc::EINVAL,
+                "TPM2 PIN contains an embedded NUL byte.",
+            ));
+        }
         askpw_flags.remove(AskPasswordFlags::ACCEPT_CACHED);
 
         let pin = match request.salt {
-            Some(salt) if !salt.is_empty() => salted_pin(&pin, salt)?,
+            Some(salt) if !salt.is_empty() => salted_pin(pin.as_bytes(), salt)?,
             _ => pin,
         };
+        let pin = pin.as_str().map_err(|_| {
+            Tpm2Error::new(
+                libc::EINVAL,
+                "TPM2 PIN is not valid UTF-8 after derivation.",
+            )
+        })?;
 
         match connection.unseal(&UnsealRequest {
             hash_pcr_mask: request.hash_pcr_mask,
@@ -395,7 +427,7 @@ pub fn acquire_tpm2_key<B: Tpm2Backend, P: PinProvider>(
             pubkey: request.pubkey,
             pubkey_pcr_mask: request.pubkey_pcr_mask,
             signature_json: signature_json.as_ref(),
-            pin: Some(pin.as_str()),
+            pin: Some(pin),
             pcrlock_policy: pcrlock_policy.as_ref(),
             primary_alg: request.primary_alg,
             blobs: &blobs,
@@ -775,18 +807,36 @@ unsafe fn getenv_steal_erase(name: &str) -> Option<String> {
     value
 }
 
-fn salted_pin(pin: &str, salt: &[u8]) -> Result<String> {
-    let mut derived = [0u8; 32];
-    pkcs5::pbkdf2_hmac(
-        pin.as_bytes(),
-        salt,
-        PBKDF2_HMAC_SHA256_ITERATIONS,
-        MessageDigest::sha256(),
-        &mut derived,
-    )
-    .map_err(|e| Tpm2Error::new(libc::EIO, format!("Failed to perform PBKDF2: {e}")))?;
+fn salted_pin(pin: &[u8], salt: &[u8]) -> Result<SecretBytes> {
+    if pin.is_empty() || salt.is_empty() || salt.len() > usize::MAX - std::mem::size_of::<u32>() {
+        return Err(Tpm2Error::new(
+            libc::EINVAL,
+            "PBKDF2 requires a non-empty PIN and a bounded, non-empty salt.",
+        ));
+    }
 
-    Ok(encode_base64(&derived))
+    let mut derived = SecretBytes::try_zeroed(32)
+        .map_err(|_| Tpm2Error::new(libc::ENOMEM, "Failed to allocate PBKDF2 output."))?;
+
+    // SAFETY: both non-empty input slices remain live for the call. `derived`
+    // owns a writable 32-byte region, exactly the output size promised by
+    // `tpm2_util_pbkdf2_hmac_sha256()`. C retains no pointers.
+    let result = unsafe {
+        tpm2_util_pbkdf2_hmac_sha256(
+            pin.as_ptr().cast(),
+            pin.len(),
+            salt.as_ptr().cast(),
+            salt.len(),
+            derived.as_mut_bytes().as_mut_ptr(),
+        )
+    };
+    if result < 0 {
+        return Err(Tpm2Error::new(-result, "Failed to perform PBKDF2."));
+    }
+
+    Ok(SecretBytes::from_vec(
+        encode_base64(derived.as_bytes()).into_bytes(),
+    ))
 }
 
 fn map_unseal_result(result: std::result::Result<Vec<u8>, UnsealError>) -> Result<Vec<u8>> {

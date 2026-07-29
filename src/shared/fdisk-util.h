@@ -89,4 +89,24 @@ int fdisk_partition_get_attrs_as_uint64(struct fdisk_partition *pa, uint64_t *re
 int fdisk_partition_set_attrs_as_uint64(struct fdisk_partition *pa, uint64_t flags);
 #endif
 
+typedef struct FdiskContextInfo {
+        uint64_t sector_size;
+        uint64_t grain_size;
+        uint64_t n_sectors;
+        uint64_t first_lba;
+        uint64_t last_lba;
+        uint64_t n_partitions;
+        int has_label;
+} FdiskContextInfo;
+
+/* Always-linked, read-only ownership boundary for callers which cannot expose
+ * libfdisk's configuration-dependent types. */
+int fdisk_new_read_only_context_at(
+                int dir_fd,
+                const char *path,
+                uint32_t sector_size,
+                struct fdisk_context **ret);
+void fdisk_context_unref(struct fdisk_context *context);
+int fdisk_context_get_info(struct fdisk_context *context, FdiskContextInfo *ret);
+
 int dlopen_fdisk(int log_level) _dlopen_loader_;

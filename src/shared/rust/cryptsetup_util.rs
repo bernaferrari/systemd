@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/shared/cryptsetup-util.c, src/shared/cryptsetup-util.h
+//
+// PORT-GAP: `CryptDevice` and `CryptsetupLibrary` are injected behavioral
+// seams; they do not yet own libcryptsetup's opaque objects or publish C's
+// process-global symbol table. C's HAVE_LIBCRYPTSETUP-aware
+// `dlopen_cryptsetup()` therefore remains the production loader authority.
 
 use std::collections::BTreeMap;
 use std::env;
 use std::fmt;
 
-use openssl::pkey::PKey;
-use openssl::sign::Signer;
+use systemd_basic_rs::sha256_hmac::hmac_sha256;
 
 use crate::ffi::Errno;
 
@@ -268,18 +272,7 @@ pub fn cryptsetup_get_volume_key_id<D: CryptDevice>(
     volume_key: &[u8],
 ) -> Result<String> {
     let prefix = cryptsetup_get_volume_key_prefix(cd, volume_name)?;
-    let hmac_key =
-        PKey::hmac(volume_key).map_err(|e| CryptsetupError::new(Errno::EINVAL, e.to_string()))?;
-    let mut signer = Signer::new(openssl::hash::MessageDigest::sha256(), &hmac_key)
-        .map_err(|e| CryptsetupError::new(Errno::EINVAL, e.to_string()))?;
-
-    signer
-        .update(prefix.as_bytes())
-        .map_err(|e| CryptsetupError::new(Errno::EINVAL, e.to_string()))?;
-
-    let digest = signer
-        .sign_to_vec()
-        .map_err(|e| CryptsetupError::new(Errno::EINVAL, e.to_string()))?;
+    let digest = hmac_sha256(volume_key, prefix.as_bytes());
 
     Ok(hex_encode(&digest))
 }
