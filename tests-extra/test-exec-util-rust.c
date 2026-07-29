@@ -136,61 +136,72 @@ static void test_exec_command_flags_from_string(void) {
 
 static void test_indent_embedded_newlines(void) {
         _cleanup_free_ char *result = NULL;
+        char no_newlines[] = "hello world";
+        char single_newline[] = "line1\nline2";
+        char multiple_newlines[] = "a\nb\nc";
+        char empty[] = "";
+        char trailing_newline[] = "line1\n";
+        char only_newlines[] = "\n\n";
+        char repeated_newlines[] = "\n\rline1\n\nline2\r";
+        char escaped_newline[] = "line1\\\nline2";
+        char trailing_backslash[] = "line1\\";
+        char kernel_cmdline[] = "root=UUID=aaaa initrd=/initramfs\nquiet splash";
+        char short_newline[] = "x\ny";
         int r;
 
         /* No newlines */
-        r = rs_indent_embedded_newlines("hello world", &result);
+        r = rs_indent_embedded_newlines(no_newlines, &result);
         assert_se(r == 0);
         assert_se(streq(result, "hello world"));
         result = mfree(result);
 
         /* Single newline */
-        r = rs_indent_embedded_newlines("line1\nline2", &result);
+        r = rs_indent_embedded_newlines(single_newline, &result);
         assert_se(r == 0);
         assert_se(streq(result, "line1\n              line2"));
         result = mfree(result);
 
         /* Multiple newlines */
-        r = rs_indent_embedded_newlines("a\nb\nc", &result);
+        r = rs_indent_embedded_newlines(multiple_newlines, &result);
         assert_se(r == 0);
         assert_se(streq(result, "a\n              b\n              c"));
         result = mfree(result);
 
         /* Empty string */
-        r = rs_indent_embedded_newlines("", &result);
+        r = rs_indent_embedded_newlines(empty, &result);
         assert_se(r == 0);
         assert_se(streq(result, ""));
         result = mfree(result);
 
         /* strv_split_newlines() suppresses a trailing separator. */
-        r = rs_indent_embedded_newlines("line1\n", &result);
+        r = rs_indent_embedded_newlines(trailing_newline, &result);
         assert_se(r == 0);
         assert_se(streq(result, "line1"));
         result = mfree(result);
 
         /* Repeated and leading separators are coalesced by extract_first_word(). */
-        r = rs_indent_embedded_newlines("\n\n", &result);
+        r = rs_indent_embedded_newlines(only_newlines, &result);
         assert_se(r == 0);
         assert_se(streq(result, ""));
         result = mfree(result);
 
-        r = rs_indent_embedded_newlines("\n\rline1\n\nline2\r", &result);
+        r = rs_indent_embedded_newlines(repeated_newlines, &result);
         assert_se(r == 0);
         assert_se(streq(result, "line1\n              line2"));
         result = mfree(result);
 
         /* A backslash quotes the following byte, including a newline. */
-        r = rs_indent_embedded_newlines("line1\\\nline2", &result);
+        r = rs_indent_embedded_newlines(escaped_newline, &result);
         assert_se(r == 0);
         assert_se(streq(result, "line1\nline2"));
         result = mfree(result);
 
         /* extract_first_word() rejects an unquoted trailing backslash. */
-        r = rs_indent_embedded_newlines("line1\\", &result);
+        r = rs_indent_embedded_newlines(trailing_backslash, &result);
         assert_se(r == -EINVAL);
 
         /* Realistic kernel cmdline with embedded newline */
-        r = rs_indent_embedded_newlines("root=UUID=aaaa initrd=/initramfs\nquiet splash", &result);
+        r = rs_indent_embedded_newlines(kernel_cmdline, &result);
         assert_se(r == 0);
         assert_se(streq(result,
                 "root=UUID=aaaa initrd=/initramfs\n"
@@ -198,7 +209,7 @@ static void test_indent_embedded_newlines(void) {
         result = mfree(result);
 
         /* Indentation matches C's 14 spaces */
-        r = rs_indent_embedded_newlines("x\ny", &result);
+        r = rs_indent_embedded_newlines(short_newline, &result);
         assert_se(r == 0);
         /* After "x\n" there should be 14 spaces before "y" */
         assert_se(strlen(result) == 1 + 1 + 14 + 1); // "x" + "\n" + "              " + "y"

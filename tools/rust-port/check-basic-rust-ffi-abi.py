@@ -2389,7 +2389,13 @@ def alloc_util_multiply_boundary_is_reviewed() -> bool:
         and "void *rs_malloc_multiply(size_t need, size_t size);" in header_text
         and '#include "rust/alloc_util.h"' in test
         and "void* rs_malloc_multiply(" not in test
-        and "malloc_multiply(SIZE_MAX, 2)" in test
+        and "volatile size_t size_max = SIZE_MAX;" in test
+        and "malloc_multiply(size_max, 2)" in test
+        and "rs_malloc_multiply(size_max, 2)" in test
+        and "memdup_multiply(data, size_max, 2)" in test
+        and "rs_memdup_multiply(data, size_max, 2)" in test
+        and "memdup_suffix0_multiply(data, size_max, 2)" in test
+        and "rs_memdup_suffix0_multiply(data, size_max, 2)" in test
         and "memdup_suffix0_multiply(data, 0, 5)" in test
     )
 

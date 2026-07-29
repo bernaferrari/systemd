@@ -1164,7 +1164,7 @@ symbols = 5
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/exec-util.c" = "420803c77d43d4b846c92a6b6e709204d471dcda", "src/shared/exec-util.h" = "11b01f321f7453c1e0e00a417d19eb1e2b93b75e", "src/shared/bootspec.c" = "17a3b826d88054d6237b3301cfecd8a1f51bf3b1", "src/shared/bootspec.h" = "3f62726b25d803640325524fa58e01f6836dfc72" }
 last_reviewed_rust_blobs = { "src/basic/rust/exec_util.rs" = "2a0c25393ab541963291202ab8d1d93d8afefb26", "src/basic/rust/exec_util.h" = "dc2f0f101fc6a028d127605b30a783301ffdba80" }
-notes = "Reviewed static command-flag ABI slice 2026-07-29; no build/tests/VM. Five facades preserve shared exec/bootspec flag parsing, C allocation, quoting, and embedded-newline indentation. Process execution remains C-only; runtime parity remains P2."
+notes = "Reviewed static command-flag ABI slice 2026-07-29; the C/R Meson shadow test passed in the Ubuntu Lima guest. Five facades preserve shared exec/bootspec flag parsing, C allocation, quoting, and embedded-newline indentation. Process execution remains C-only; broader runtime parity remains P2."
 
 [exit_status]
 c_paths = [
@@ -1216,7 +1216,7 @@ status = "in-progress"
 tier = 1
 symbols = 13
 sync_status = "needs_review"
-notes = "Static-only ABI restoration 2026-07-27. The basic crate owns 13 explicit rs_* C adapters over an allocation-free safe core for designator, mountpoint, GPT header, label, and VLAN parsing policy. 2026-07-27 provenance audit replaces the malformed semicolon-delimited source field with reviewed current GPT and VLAN source/header authorities. tools/rust-port/check-gpt-basic-abi.py mechanically verifies every dedicated header declaration has exactly one unsafe(no_mangle) extern C export, matching the C type inventory, and that source/test Meson membership remains intact. No Cargo/build/tests/VM run; canonical gpt_probe/table/consumer integration remains systemd-eu62.18."
+notes = "ABI restoration reviewed 2026-07-29. The basic crate owns 13 explicit rs_* C adapters over an allocation-free safe core for designator, mountpoint, GPT header, label, and VLAN parsing policy. The C/R Meson shadows test-gpt-util-rust, test-gpt-unit-install-rust, test-misc-rust3, and test-inline-helpers-rust passed in the Ubuntu Lima guest. tools/rust-port/check-gpt-basic-abi.py mechanically verifies every dedicated header declaration has exactly one unsafe(no_mangle) extern C export, matching the C type inventory, and that source/test Meson membership remains intact. Canonical gpt_probe/table/consumer integration remains systemd-eu62.18."
 
 [id128_util]
 c_paths = [

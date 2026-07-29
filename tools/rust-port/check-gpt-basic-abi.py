@@ -2,9 +2,10 @@
 """Statically verify the dedicated basic Rust GPT C ABI.
 
 The shared GPT model deliberately owns the generated partition-type table. This
-small basic module instead backs the three existing C shadow tests which include
-``src/basic/rust/gpt_util.h`` and link the basic Rust static library.  No build
-or test execution is required for this source-level inventory check.
+small basic module backs the focused C shadow tests and both ``rust/gpt_util.h``
+include paths mirror the same ABI because tests-extra searches ``src/shared``
+before ``src/basic``. No build or test execution is required for this
+source-level inventory check.
 """
 
 from __future__ import annotations
@@ -41,20 +42,7 @@ EXPECTED = {
     "rs_gpt_partition_type_knows_no_auto": ("bool", ("GptPartitionType",)),
     "rs_gpt_partition_type_has_filesystem": ("bool", ("GptPartitionType",)),
 }
-SHARED_EXPECTED = {
-    name: EXPECTED[name]
-    for name in (
-        "rs_partition_designator_is_versioned",
-        "rs_partition_verity_hash_of",
-        "rs_partition_verity_sig_of",
-        "rs_partition_verity_hash_to_data",
-        "rs_partition_verity_sig_to_data",
-        "rs_partition_verity_to_data",
-        "rs_partition_mountpoint_to_string",
-        "rs_gpt_partition_label_valid",
-        "rs_parse_vlanid",
-    )
-}
+SHARED_EXPECTED = EXPECTED
 
 HEADER_TYPES = {
     "bool": "bool",

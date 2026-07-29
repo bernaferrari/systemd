@@ -9,8 +9,12 @@
 #include "alloc-util.h"
 #include "rust/alloc_util.h"
 
+/* Keep overflow operands runtime-fed: GCC diagnoses alloc_size literals before
+ * either C/Rust implementation can demonstrate its checked-overflow result. */
+
 static void test_malloc_multiply(void) {
         void *c_r, *rs_r;
+        volatile size_t size_max = SIZE_MAX;
 
         /* Normal multiplication */
         c_r = malloc_multiply(10, 4);
@@ -34,20 +38,21 @@ static void test_malloc_multiply(void) {
         free(c_r); free(rs_r);
 
         /* Overflow */
-        c_r = malloc_multiply(SIZE_MAX, 2);
-        rs_r = rs_malloc_multiply(SIZE_MAX, 2);
+        c_r = malloc_multiply(size_max, 2);
+        rs_r = rs_malloc_multiply(size_max, 2);
         assert_se(c_r == NULL);
         assert_se(rs_r == NULL);
 
         /* Large values causing overflow */
-        c_r = malloc_multiply(SIZE_MAX / 2 + 1, 2);
-        rs_r = rs_malloc_multiply(SIZE_MAX / 2 + 1, 2);
+        c_r = malloc_multiply(size_max / 2 + 1, 2);
+        rs_r = rs_malloc_multiply(size_max / 2 + 1, 2);
         assert_se(c_r == NULL);
         assert_se(rs_r == NULL);
 }
 
 static void test_memdup_multiply(void) {
         const char data[] = "hello world";
+        volatile size_t size_max = SIZE_MAX;
 
         /* Normal duplication */
         void *c_r = memdup_multiply(data, 2, 6);
@@ -74,14 +79,15 @@ static void test_memdup_multiply(void) {
         free(c_r); free(rs_r);
 
         /* Overflow */
-        c_r = memdup_multiply(data, SIZE_MAX, 2);
-        rs_r = rs_memdup_multiply(data, SIZE_MAX, 2);
+        c_r = memdup_multiply(data, size_max, 2);
+        rs_r = rs_memdup_multiply(data, size_max, 2);
         assert_se(c_r == NULL);
         assert_se(rs_r == NULL);
 }
 
 static void test_memdup_suffix0_multiply(void) {
         const char data[] = "hello";
+        volatile size_t size_max = SIZE_MAX;
 
         /* Normal duplication with NUL suffix */
         char *c_r = memdup_suffix0_multiply(data, 2, 3);
@@ -103,8 +109,8 @@ static void test_memdup_suffix0_multiply(void) {
         free(c_r); free(rs_r);
 
         /* Overflow */
-        c_r = memdup_suffix0_multiply(data, SIZE_MAX, 2);
-        rs_r = rs_memdup_suffix0_multiply(data, SIZE_MAX, 2);
+        c_r = memdup_suffix0_multiply(data, size_max, 2);
+        rs_r = rs_memdup_suffix0_multiply(data, size_max, 2);
         assert_se(c_r == NULL);
         assert_se(rs_r == NULL);
 }
