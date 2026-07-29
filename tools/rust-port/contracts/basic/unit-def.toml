@@ -3,13 +3,174 @@ module = "unit-def"
 semantic_coverage = "partial"
 source_structure = "independent"
 deviation_policy = "explicit-only"
-excluded_c_symbols = ["unit_type_to_string"]
+excluded_c_symbols = ["unit_types_list", "unit_type_to_capitalized_string"]
 
 [authority]
 c_headers = ["src/basic/unit-def.h"]
 c_sources = ["src/basic/unit-def.c"]
 rust_headers = ["src/basic/rust/unit_def.h"]
 rust_sources = ["src/basic/rust/unit_def.rs"]
+
+[[surface]]
+id = "unit-def-string-tables-to-string"
+c_symbols = [
+    "unit_type_to_string",
+    "unit_load_state_to_string",
+    "unit_active_state_to_string",
+    "freezer_state_to_string",
+    "unit_marker_to_string",
+    "automount_state_to_string",
+    "device_state_to_string",
+    "mount_state_to_string",
+    "path_state_to_string",
+    "scope_state_to_string",
+    "service_state_to_string",
+    "slice_state_to_string",
+    "socket_state_to_string",
+    "swap_state_to_string",
+    "target_state_to_string",
+    "timer_state_to_string",
+    "unit_dependency_to_string",
+    "notify_access_to_string",
+    "job_mode_to_string",
+    "exec_directory_type_to_string",
+]
+rust_symbols = [
+    "rs_unit_type_to_string",
+    "rs_unit_load_state_to_string",
+    "rs_unit_active_state_to_string",
+    "rs_freezer_state_to_string",
+    "rs_unit_marker_to_string",
+    "rs_automount_state_to_string",
+    "rs_device_state_to_string",
+    "rs_mount_state_to_string",
+    "rs_path_state_to_string",
+    "rs_scope_state_to_string",
+    "rs_service_state_to_string",
+    "rs_slice_state_to_string",
+    "rs_socket_state_to_string",
+    "rs_swap_state_to_string",
+    "rs_target_state_to_string",
+    "rs_timer_state_to_string",
+    "rs_unit_dependency_to_string",
+    "rs_notify_access_to_string",
+    "rs_job_mode_to_string",
+    "rs_exec_directory_type_to_string",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = [
+    "unit_type_to_string",
+    "unit_load_state_to_string",
+    "unit_active_state_to_string",
+    "freezer_state_to_string",
+    "unit_marker_to_string",
+    "automount_state_to_string",
+    "device_state_to_string",
+    "mount_state_to_string",
+    "path_state_to_string",
+    "scope_state_to_string",
+    "service_state_to_string",
+    "slice_state_to_string",
+    "socket_state_to_string",
+    "swap_state_to_string",
+    "target_state_to_string",
+    "timer_state_to_string",
+    "unit_dependency_to_string",
+    "notify_access_to_string",
+    "job_mode_to_string",
+    "exec_directory_type_to_string",
+]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-unit-def-rust.c"
+meson_target = "test-unit-def-rust"
+labels = ["unit-def-string-tables-to-string"]
+
+[[surface]]
+id = "unit-def-string-tables-from-string"
+c_symbols = [
+    "unit_type_from_string",
+    "unit_load_state_from_string",
+    "unit_active_state_from_string",
+    "freezer_state_from_string",
+    "unit_marker_from_string",
+    "automount_state_from_string",
+    "device_state_from_string",
+    "mount_state_from_string",
+    "path_state_from_string",
+    "scope_state_from_string",
+    "service_state_from_string",
+    "slice_state_from_string",
+    "socket_state_from_string",
+    "swap_state_from_string",
+    "target_state_from_string",
+    "timer_state_from_string",
+    "unit_dependency_from_string",
+    "notify_access_from_string",
+    "job_mode_from_string",
+    "exec_directory_type_from_string",
+]
+rust_symbols = [
+    "rs_unit_type_from_string",
+    "rs_unit_load_state_from_string",
+    "rs_unit_active_state_from_string",
+    "rs_freezer_state_from_string",
+    "rs_unit_marker_from_string",
+    "rs_automount_state_from_string",
+    "rs_device_state_from_string",
+    "rs_mount_state_from_string",
+    "rs_path_state_from_string",
+    "rs_scope_state_from_string",
+    "rs_service_state_from_string",
+    "rs_slice_state_from_string",
+    "rs_socket_state_from_string",
+    "rs_swap_state_from_string",
+    "rs_target_state_from_string",
+    "rs_timer_state_from_string",
+    "rs_unit_dependency_from_string",
+    "rs_notify_access_from_string",
+    "rs_job_mode_from_string",
+    "rs_exec_directory_type_from_string",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-unit-def-rust.c"
+meson_target = "test-unit-def-rust"
+labels = ["unit-def-string-tables-from-string"]
+
+[[surface]]
+id = "unit-def-freezer-transitions"
+c_symbols = ["freezer_state_finish", "freezer_state_objective"]
+rust_symbols = ["rs_freezer_state_finish", "rs_freezer_state_objective"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-unit-def-rust.c"
+meson_target = "test-unit-def-rust"
+labels = ["unit-def-freezer-transitions"]
 
 [[surface]]
 id = "unit-dbus-path"

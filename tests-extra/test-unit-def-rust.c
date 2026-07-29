@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: unit-def-string-tables-to-string */
+/* RUST-CONTRACT: unit-def-string-tables-from-string */
+/* RUST-CONTRACT: unit-def-freezer-transitions */
 /* Shadow test: C unit-def string tables vs Rust */
 
 #include "tests.h"
@@ -31,6 +34,18 @@
                 assert_se(rs_##name##_from_string(NULL) < 0);                 \
         } while (false)
 
+/* The exhaustive macro below supplies the behavioral coverage. Keep these
+ * direct samples as well so the behavior contract can statically tie every
+ * table facade to this C/R fixture without relying on token pasting. */
+#define ASSERT_STRING_TABLE_SYMBOL_WIRING(c_to, r_to, c_from, r_from)          \
+        do {                                                                    \
+                const char *c_value = (c_to);                                  \
+                const char *r_value = (r_to);                                  \
+                assert_se(c_value && r_value);                                 \
+                assert_se(streq(c_value, r_value));                            \
+                assert_se((c_from) == (r_from));                               \
+        } while (false)
+
 static void test_all_unit_def_string_tables(void) {
         ASSERT_FULL_STRING_TABLE(unit_type, 11);
         ASSERT_FULL_STRING_TABLE(unit_load_state, 7);
@@ -52,6 +67,57 @@ static void test_all_unit_def_string_tables(void) {
         ASSERT_FULL_STRING_TABLE(notify_access, 4);
         ASSERT_FULL_STRING_TABLE(job_mode, 10);
         ASSERT_FULL_STRING_TABLE(exec_directory_type, 5);
+
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        automount_state_to_string(0),
+                        rs_automount_state_to_string(0),
+                        automount_state_from_string("not-a-systemd-table-value"),
+                        rs_automount_state_from_string("not-a-systemd-table-value"));
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        device_state_to_string(0),
+                        rs_device_state_to_string(0),
+                        device_state_from_string("not-a-systemd-table-value"),
+                        rs_device_state_from_string("not-a-systemd-table-value"));
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        mount_state_to_string(0),
+                        rs_mount_state_to_string(0),
+                        mount_state_from_string("not-a-systemd-table-value"),
+                        rs_mount_state_from_string("not-a-systemd-table-value"));
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        path_state_to_string(0),
+                        rs_path_state_to_string(0),
+                        path_state_from_string("not-a-systemd-table-value"),
+                        rs_path_state_from_string("not-a-systemd-table-value"));
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        scope_state_to_string(0),
+                        rs_scope_state_to_string(0),
+                        scope_state_from_string("not-a-systemd-table-value"),
+                        rs_scope_state_from_string("not-a-systemd-table-value"));
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        slice_state_to_string(0),
+                        rs_slice_state_to_string(0),
+                        slice_state_from_string("not-a-systemd-table-value"),
+                        rs_slice_state_from_string("not-a-systemd-table-value"));
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        socket_state_to_string(0),
+                        rs_socket_state_to_string(0),
+                        socket_state_from_string("not-a-systemd-table-value"),
+                        rs_socket_state_from_string("not-a-systemd-table-value"));
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        swap_state_to_string(0),
+                        rs_swap_state_to_string(0),
+                        swap_state_from_string("not-a-systemd-table-value"),
+                        rs_swap_state_from_string("not-a-systemd-table-value"));
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        target_state_to_string(0),
+                        rs_target_state_to_string(0),
+                        target_state_from_string("not-a-systemd-table-value"),
+                        rs_target_state_from_string("not-a-systemd-table-value"));
+        ASSERT_STRING_TABLE_SYMBOL_WIRING(
+                        timer_state_to_string(0),
+                        rs_timer_state_to_string(0),
+                        timer_state_from_string("not-a-systemd-table-value"),
+                        rs_timer_state_from_string("not-a-systemd-table-value"));
 }
 
 /* ── unit_type ───────────────────────────────────────────────────────── */

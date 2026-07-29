@@ -880,8 +880,8 @@ tier = 1
 symbols = 46
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/unit-def.c" = "57a67af163e31c9f42b2017f54d135ebbf576233", "src/basic/unit-def.h" = "9192d8c4a530f6292ed2dd953be1cdd0500a535b" }
-last_reviewed_rust_blobs = { "src/basic/rust/unit_def.rs" = "eabc5c75707e3be80181a6b2948633eecf1afd41", "src/basic/rust/unit_def.h" = "d2a1e4a2177fd85f3975a22f9e8f7253da727ecd" }
-notes = "Reviewed unit-definition ABI/table slice 2026-07-29; the C/R unit-def Meson shadow passed in the Ubuntu Lima guest. Forty-six facades cover raw-byte escaping, C-owned path/name outputs with deferred publication, static interface strings, and current enum/string-table discriminants. C remains production authority; broader runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/unit_def.rs" = "ba4c58a8b749474c882ec76fcee1cc678df79ad0", "src/basic/rust/unit_def.h" = "d2a1e4a2177fd85f3975a22f9e8f7253da727ecd" }
+notes = "Reviewed unit-definition ABI/table slice 2026-07-29; the C/R unit-def Meson shadow passed in the Ubuntu Lima guest. Forty-six facades cover raw-byte escaping, C-owned path/name outputs with deferred publication, static interface strings, and current enum/string-table discriminants. Rust-only path helpers now make their strict UTF-8 boundary explicit and retain a byte-faithful decoder. C remains production authority; broader runtime parity remains P2."
 
 [rlimit-util]
 c_file = "src/basic/rlimit-util.c"

@@ -50,6 +50,15 @@ static void test_unit_dbus_path_from_name(void) {
         assert_se(streq(c_r, "/org/freedesktop/systemd1/unit/_ff_2eservice"));
         free(c_r); free(rs_r);
 
+        /* Leading digits are escaped, while later digits remain literal. */
+        c_r = unit_dbus_path_from_name("7foo2.service");
+        rs_r = rs_unit_dbus_path_from_name("7foo2.service");
+        assert_se(c_r != NULL);
+        assert_se(rs_r != NULL);
+        assert_se(streq(c_r, rs_r));
+        assert_se(streq(c_r, "/org/freedesktop/systemd1/unit/_37foo2_2eservice"));
+        free(c_r); free(rs_r);
+
         /* Name with dashes */
         c_r = unit_dbus_path_from_name("systemd-journald.service");
         rs_r = rs_unit_dbus_path_from_name("systemd-journald.service");

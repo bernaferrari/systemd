@@ -742,51 +742,52 @@ pub fn unit_dbus_path_from_name(name: &str) -> String {
     path
 }
 
-pub fn unit_name_from_dbus_path(path: &str) -> Result<String, i32> {
-    let rest = path.strip_prefix(UNIT_DBUS_PATH_PREFIX).ok_or(-(22i32))?; // -EINVAL
-    let name = bus_label_unescape(rest)?;
-    Ok(name)
+/// Decode a unit D-Bus path using the byte semantics of
+/// `unit_name_from_dbus_path()`.
+///
+/// Unlike a `String`-only helper, this retains decoded NUL and non-UTF-8
+/// bytes and keeps malformed escapes literal, matching the C implementation.
+/// `path` must begin with the byte-exact systemd unit-path prefix.
+pub fn unit_name_bytes_from_dbus_path(path: &[u8]) -> Result<Vec<u8>, i32> {
+    let rest = path
+        .strip_prefix(UNIT_DBUS_PATH_PREFIX_BYTES)
+        .ok_or(-libc::EINVAL)?;
+    crate::bus_label::bus_label_unescape_bytes(rest).ok_or(-libc::ENOMEM)
+}
+
+/// Decode a UTF-8 unit D-Bus path into a Rust string.
+///
+/// This is a strict UTF-8 convenience wrapper around
+/// [`unit_name_bytes_from_dbus_path`], not the C ABI mirror. For byte-exact C
+/// behavior (including decoded NUL or non-UTF-8 bytes), use the byte helper or
+/// [`rs_unit_name_from_dbus_path`].
+pub fn unit_name_from_dbus_path_utf8(path: &str) -> Result<String, i32> {
+    String::from_utf8(unit_name_bytes_from_dbus_path(path.as_bytes())?).map_err(|_| -libc::EINVAL)
 }
 
 // ── Bus label escape/unescape ─────────────────────────────────────────────
 
 /// Escape a unit name for use in a D-Bus object path.
-/// Replaces characters not valid in D-Bus paths with _xx hex encoding.
+///
+/// This follows `bus_label_escape()`: only ASCII letters are copied
+/// unconditionally, while ASCII digits are copied only after the first byte.
 fn bus_label_escape(s: &str) -> String {
+    if s.is_empty() {
+        return "_".into();
+    }
+
     let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'_' => out.push_str("_5f"),
-            b @ 0x00..=0x2f | b @ 0x3a..=0x40 | b @ 0x5b..=0x5e | b @ 0x60 | b @ 0x7b..=0xff => {
-                out.push('_');
-                out.push_str(&format!("{:02x}", b));
-            }
-            _ => out.push(b as char),
+    for (index, byte) in s.bytes().enumerate() {
+        if byte.is_ascii_alphabetic() || (index > 0 && byte.is_ascii_digit()) {
+            out.push(byte as char);
+        } else {
+            const HEX: &[u8; 16] = b"0123456789abcdef";
+            out.push('_');
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 0x0f) as usize] as char);
         }
     }
     out
-}
-
-/// Unescape a D-Bus path element back to a unit name.
-fn bus_label_unescape(s: &str) -> Result<String, i32> {
-    let mut out = Vec::with_capacity(s.len());
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'_' {
-            if i + 2 >= bytes.len() {
-                return Err(-(22)); // -EINVAL
-            }
-            let hex = &s[i + 1..i + 3];
-            let byte = u8::from_str_radix(hex, 16).map_err(|_| -(22i32))?;
-            out.push(byte);
-            i += 3;
-        } else {
-            out.push(bytes[i]);
-            i += 1;
-        }
-    }
-    String::from_utf8(out).map_err(|_| -(22))
 }
 
 #[cfg(test)]
@@ -861,18 +862,38 @@ mod tests {
     }
 
     #[test]
-    fn test_unit_dbus_path_from_name_escapes_underscore() {
+    fn test_unit_dbus_path_from_name_uses_bus_label_rules() {
         assert_eq!(
             unit_dbus_path_from_name("foo_bar.service"),
             "/org/freedesktop/systemd1/unit/foo_5fbar_2eservice"
         );
+        assert_eq!(
+            unit_dbus_path_from_name("7foo.service"),
+            "/org/freedesktop/systemd1/unit/_37foo_2eservice"
+        );
+        assert_eq!(
+            unit_dbus_path_from_name(""),
+            "/org/freedesktop/systemd1/unit/_"
+        );
     }
 
     #[test]
-    fn test_unit_name_from_dbus_path_rejects_short_escape() {
+    fn test_unit_name_bytes_from_dbus_path_preserves_c_unescape_rules() {
         assert_eq!(
-            unit_name_from_dbus_path("/org/freedesktop/systemd1/unit/foo_"),
-            Err(-22)
+            unit_name_bytes_from_dbus_path(b"/org/freedesktop/systemd1/unit/foo_"),
+            Ok(b"foo_".to_vec())
+        );
+        assert_eq!(
+            unit_name_bytes_from_dbus_path(b"/org/freedesktop/systemd1/unit/foo_xz"),
+            Ok(b"foo_xz".to_vec())
+        );
+        assert_eq!(
+            unit_name_bytes_from_dbus_path(b"/org/freedesktop/systemd1/unit/foo_ba"),
+            Ok(vec![b'f', b'o', b'o', 0xba])
+        );
+        assert_eq!(
+            unit_name_bytes_from_dbus_path(b"/org/freedesktop/systemd1/unit/_"),
+            Ok(Vec::new())
         );
     }
 
@@ -982,14 +1003,14 @@ mod tests {
         let name = "test.service";
         let path = unit_dbus_path_from_name(name);
         assert!(path.starts_with("/org/freedesktop/systemd1/unit/"));
-        let roundtrip = unit_name_from_dbus_path(&path).unwrap();
+        let roundtrip = unit_name_from_dbus_path_utf8(&path).unwrap();
         assert_eq!(roundtrip, name);
     }
 
     #[test]
     fn test_dbus_path_invalid_prefix() {
-        assert!(unit_name_from_dbus_path("/wrong/path").is_err());
-        assert!(unit_name_from_dbus_path("").is_err());
+        assert!(unit_name_from_dbus_path_utf8("/wrong/path").is_err());
+        assert!(unit_name_from_dbus_path_utf8("").is_err());
     }
 
     #[test]
