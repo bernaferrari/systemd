@@ -41,54 +41,52 @@ fn static_c(bytes: &'static [u8]) -> *const c_char {
     bytes.as_ptr().cast()
 }
 
-#[inline]
-fn compare_c_strings(
-    a: Option<&[u8]>,
-    b: Option<&[u8]>,
-    compare: impl FnOnce(&[u8], &[u8]) -> i32,
-) -> i32 {
-    match (a, b) {
-        (Some(a), Some(b)) => compare(a, b),
-        (None, None) => 0,
-        (None, Some(_)) => -1,
-        (Some(_), None) => 1,
-    }
-}
-
 /// C ABI for fundamental `strcmp_ptr()`.
+///
+/// For non-null inputs, this preserves the C library's complete comparison
+/// result, not merely its sign. This is required because the C inline forwards
+/// `strcmp()` directly.
 ///
 /// # Safety
 /// Each non-null argument must be a readable NUL-terminated C string. Null
 /// values keep C's `CMP()` ordering: null sorts before non-null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strcmp_ptr(a: *const c_char, b: *const c_char) -> i32 {
-    // SAFETY: established by this entry point's C-string contract.
-    let (a, b) = unsafe { (c_string_bytes(a), c_string_bytes(b)) };
-    compare_c_strings(a, b, fundamental::strcmp_bytes)
+    // SAFETY: this entry point establishes the same optional C-string contract
+    // as the shared, reviewed Rust implementation.
+    unsafe { core::rs_strcmp_ptr(a, b) }
 }
 
 /// C ABI for fundamental `strncmp_ptr()`.
+///
+/// For non-null inputs, this preserves the C library's complete comparison
+/// result, not merely its sign. This is required because the C inline forwards
+/// `strncmp()` directly.
 ///
 /// # Safety
 /// Each non-null argument must be readable through its NUL terminator. Null
 /// values keep C's `CMP()` ordering regardless of `n`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strncmp_ptr(a: *const c_char, b: *const c_char, n: usize) -> i32 {
-    // SAFETY: established by this entry point's C-string contract.
-    let (a, b) = unsafe { (c_string_bytes(a), c_string_bytes(b)) };
-    compare_c_strings(a, b, |a, b| fundamental::strncmp_bytes(a, b, n))
+    // SAFETY: this entry point establishes the same optional C-string contract
+    // as the shared, reviewed Rust implementation.
+    unsafe { core::rs_strncmp_ptr(a, b, n) }
 }
 
-/// C ABI for fundamental `strcasecmp_ptr()` with systemd's ASCII case rules.
+/// C ABI for fundamental `strcasecmp_ptr()`.
+///
+/// For non-null inputs, this preserves the C library's complete comparison
+/// result and locale behavior because the C inline forwards `strcasecmp()`
+/// directly.
 ///
 /// # Safety
 /// Each non-null argument must be a readable NUL-terminated C string. Null
 /// values keep C's `CMP()` ordering.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strcasecmp_ptr(a: *const c_char, b: *const c_char) -> i32 {
-    // SAFETY: established by this entry point's C-string contract.
-    let (a, b) = unsafe { (c_string_bytes(a), c_string_bytes(b)) };
-    compare_c_strings(a, b, fundamental::strcasecmp_bytes)
+    // SAFETY: this entry point establishes the same optional C-string contract
+    // as the shared, reviewed Rust implementation.
+    unsafe { core::rs_strcasecmp_ptr(a, b) }
 }
 
 /// C ABI for fundamental `streq_ptr()`.

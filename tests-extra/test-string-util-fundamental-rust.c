@@ -11,6 +11,8 @@ static void test_strcmp_ptr(void) {
         assert_se(strcmp_ptr("hello", "hello") == rs_strcmp_ptr("hello", "hello"));
         assert_se(strcmp_ptr("abc", "abd") == rs_strcmp_ptr("abc", "abd"));
         assert_se(strcmp_ptr("abd", "abc") == rs_strcmp_ptr("abd", "abc"));
+        assert_se(strcmp_ptr("a", "z") == rs_strcmp_ptr("a", "z"));
+        assert_se(strcmp_ptr("abc", "abcd") == rs_strcmp_ptr("abc", "abcd"));
         assert_se(strcmp_ptr(NULL, NULL) == rs_strcmp_ptr(NULL, NULL));
         assert_se(strcmp_ptr(NULL, "abc") == rs_strcmp_ptr(NULL, "abc"));
         assert_se(strcmp_ptr("abc", NULL) == rs_strcmp_ptr("abc", NULL));
@@ -20,6 +22,8 @@ static void test_strncmp_ptr(void) {
         assert_se(strncmp_ptr("hello", "hello", 5) == rs_strncmp_ptr("hello", "hello", 5));
         assert_se(strncmp_ptr("abc", "abd", 2) == rs_strncmp_ptr("abc", "abd", 2));
         assert_se(strncmp_ptr("abc", "abd", 3) == rs_strncmp_ptr("abc", "abd", 3));
+        assert_se(strncmp_ptr("a", "z", 1) == rs_strncmp_ptr("a", "z", 1));
+        assert_se(strncmp_ptr("abc", "abcd", 4) == rs_strncmp_ptr("abc", "abcd", 4));
         assert_se(strncmp_ptr(NULL, NULL, 5) == rs_strncmp_ptr(NULL, NULL, 5));
         assert_se(strncmp_ptr(NULL, "abc", 5) == rs_strncmp_ptr(NULL, "abc", 5));
         assert_se(strncmp_ptr("abc", NULL, 5) == rs_strncmp_ptr("abc", NULL, 5));
@@ -28,6 +32,8 @@ static void test_strncmp_ptr(void) {
 static void test_strcasecmp_ptr(void) {
         assert_se(strcasecmp_ptr("Hello", "hello") == rs_strcasecmp_ptr("Hello", "hello"));
         assert_se(strcasecmp_ptr("abc", "ABD") == rs_strcasecmp_ptr("abc", "ABD"));
+        assert_se(strcasecmp_ptr("Alpha", "zulu") == rs_strcasecmp_ptr("Alpha", "zulu"));
+        assert_se(strcasecmp_ptr("abc", "ABCD") == rs_strcasecmp_ptr("abc", "ABCD"));
         assert_se(strcasecmp_ptr(NULL, NULL) == rs_strcasecmp_ptr(NULL, NULL));
         assert_se(strcasecmp_ptr(NULL, "abc") == rs_strcasecmp_ptr(NULL, "abc"));
         assert_se(strcasecmp_ptr("abc", NULL) == rs_strcasecmp_ptr("abc", NULL));
