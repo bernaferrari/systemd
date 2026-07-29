@@ -1084,20 +1084,6 @@ if get_option('rust').enabled()
         test('test-arphrd-util-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-capability-list-rust',
-                files('test-capability-list-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-capability-list-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-env-util-rust',
                 files('test-env-util-rust.c'),
                 include_directories : includes,
@@ -1462,20 +1448,6 @@ if get_option('rust').enabled()
         test('test-basic-str-tables-extra-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-hostname-setup-rust',
-                files('test-hostname-setup-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-hostname-setup-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-bitmap-rust',
                 files('test-bitmap-rust.c'),
                 include_directories : includes,
@@ -1742,20 +1714,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-pe-binary-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-resize-fs-rust',
-                files('test-resize-fs-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-resize-fs-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-id128-rust',

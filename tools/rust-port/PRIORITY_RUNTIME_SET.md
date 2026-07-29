@@ -29,12 +29,10 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | ARPHRD name and length tables | `test-arphrd-util-rust` | Generated Linux-UAPI names, ASCII case folding, HDLC/CISCO alias, and native-width lengths |
 | Filesystem predicates | `test-fstype-util-rust` | Opaque bytes, generated filesystem sets, fuse aliases, and API-VFS path boundaries |
 | Glyph selection | `test-glyph-util-rust` | Static borrowed glyphs, locale/default selection, secure `SYSTEMD_UTF8`, ordinary `SYSTEMD_EMOJI`, and forced UTF-8 |
-| Hostname shortening | `test-hostname-setup-rust` | Raw-byte hostname validation, first-label/64-byte shortening, libc ownership, and errno publication |
 | NUL-string parsing | `test-nulstr-util-rust` | Borrowed interior list lookup and C-owned NULL-terminated `strv` construction |
 | D-Bus error accessors | `test-bus-error-rust` | Public struct layout, NULL predicates, and opaque C-string name matching |
 | Namespace scalar helpers | `test-namespace-mountpoint-rust` | Namespace-bit masking, Linux clone-flag values, and native uid_t overflow boundaries |
 | Namespace flag conversions | `test-nsflags-rust` | Native-width flags, C whitespace/backslash parsing, ordered names, and C-owned string/strv release |
-| Capability name conversion | `test-capability-list-rust` | Target-generated capability table, ASCII gperf case folding, numeric grammar, and caller-buffer fallback |
 | EDID parsing | `test-edid-rust` | Packed 20-byte layout, unaligned inputs, byte order, failure publication, and partial panel output |
 | Runtime scope conversion | `test-runtime-scope-rust` | Borrowed static table strings, opaque C-string parsing, invalid enums, and socket mode defaults |
 | Counted memory primitives | `test-memory-util-rust` | Raw C pointer preconditions, zero-length exceptions, borrowed search results, and fundamental uniform-byte semantics |

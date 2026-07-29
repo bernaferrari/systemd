@@ -60,11 +60,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 7
     },
-    "src/basic/rust/capability_list.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 8
-    },
     "src/basic/rust/capability_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -204,11 +199,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 72
-    },
-    "src/basic/rust/hostname_setup.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
     },
     "src/basic/rust/hostname_util.rs": {
       "missing_safety": 0,
@@ -385,11 +375,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 8
-    },
-    "src/basic/rust/resize_fs_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
     },
     "src/basic/rust/rlimit_util.rs": {
       "missing_safety": 0,
@@ -1105,51 +1090,15 @@
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
-    "src/shared/rust/id128_print.rs": {
+    "src/shared/rust/install_file.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/shared/rust/install_file.rs": {
-      "missing_safety": 25,
-      "missing_safety_sites": [
-        "88:13:unsafe {",
-        "181:18:let new_fd = unsafe { libc::openat(libc::AT_FDCWD, c_path.as_ptr(), flags | libc::O_CLOEXEC) };",
-        "190:8:if unsafe { libc::fsync(fd) } < 0 {",
-        "199:8:if unsafe { crate::ffi::syncfs(fd) } < 0 {",
-        "211:18:let dir_fd = unsafe {",
-        "228:15:let pfd = unsafe {",
-        "257:13:let r = unsafe {",
-        "278:13:let r = unsafe {",
-        "301:8:if unsafe { libc::unlinkat(dirfd, c_path.as_ptr(), 0) } >= 0 {",
-        "307:12:if unsafe { libc::unlinkat(dirfd, c_path.as_ptr(), libc::AT_REMOVEDIR) } < 0 {",
-        "328:8:if unsafe { libc::fstat(fd, st.as_mut_ptr()) } < 0 {",
-        "331:14:let st = unsafe { st.assume_init() };",
-        "349:20:if unsafe { libc::fchmod(fd, new_mode as _) } < 0 {",
-        "357:16:if unsafe { libc::ioctl(fd, BLKROSET as u64, &ro) } < 0 {",
-        "382:8:if unsafe { libc::ioctl(fd, BTRFS_IOC_SUBVOL_SETFLAGS as _, &flags) } < 0 {",
-        "397:8:if unsafe { libc::ioctl(fd, FS_IOC_GETFLAGS as _, &mut flags) } < 0 {",
-        "406:8:if unsafe { libc::ioctl(fd, FS_IOC_SETFLAGS as _, &(new_flags as libc::c_long)) } < 0 {",
-        "484:23:let pfd_raw = unsafe {",
-        "497:12:if unsafe { libc::fstat(pfd.raw(), st.as_mut_ptr()) } < 0 {",
-        "500:18:let st = unsafe { st.assume_init() };",
-        "563:21:let r = unsafe {",
-        "584:31:let dfd_raw = unsafe {",
-        "605:29:unsafe { libc::close(dfd_raw) };",
-        "619:29:unsafe { libc::close(dfd_raw) };",
-        "624:34:let r2 = unsafe {"
-      ],
-      "unsafe_sites": 25
+      "unsafe_sites": 23
     },
     "src/shared/rust/journal_file_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 4
-    },
-    "src/shared/rust/kbd_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
     },
     "src/shared/rust/libaudit_util.rs": {
       "missing_safety": 0,
@@ -1315,7 +1264,7 @@
       "unsafe_sites": 6
     },
     "src/shared/rust/rm_rf.rs": {
-      "missing_safety": 51,
+      "missing_safety": 48,
       "missing_safety_sites": [
         "156:13:let r = unsafe { libc::fstatfs(fd, sfs.as_mut_ptr()) };",
         "163:8:Ok(unsafe { sfs.assume_init() }.f_type as u64)",
@@ -1345,31 +1294,28 @@
         "408:5:unsafe { libc::close(pfd) };",
         "415:13:let r = unsafe { libc::fstat(fd, st.as_mut_ptr()) };",
         "419:8:Ok(unsafe { st.assume_init() })",
-        "520:5:unsafe fn close(&mut self) {",
-        "531:9:unsafe { self.close() };",
-        "557:29:let parent_fd = unsafe { libc::dirfd(parent.dir) };",
-        "571:25:unsafe {",
-        "589:26:current_fd = unsafe { libc::dirfd(current_dir) };",
-        "593:27:current_dir = unsafe { libc::fdopendir(current_fd) };",
-        "595:17:unsafe { libc::close(current_fd) };",
-        "598:26:current_fd = unsafe { libc::dirfd(current_dir) };",
-        "614:25:let entry = unsafe { libc::readdir(current_dir) };",
-        "618:24:let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };",
-        "627:26:let d_type = unsafe { (*entry).d_type };",
-        "675:21:let r = unsafe { crate::ffi::syncfs(current_fd) };",
-        "684:17:unsafe { libc::fchmod(current_fd, current_old_mode & 0o7777) };",
-        "687:13:unsafe { libc::closedir(current_dir) };",
-        "755:17:let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
-        "769:17:let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
-        "781:26:let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
-        "812:33:let r = unsafe {",
-        "824:38:let r2 = unsafe { libc::fstatfs(dir_fd, sfs2.as_mut_ptr()) };",
-        "826:51:&& is_physical_fs(unsafe { sfs2.assume_init() }.f_type as u64)",
-        "835:30:let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), 0) };",
-        "1141:13:unsafe { libc::open(tmp_path.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };",
-        "1146:9:unsafe { libc::close(parent_fd) };"
+        "563:29:let parent_fd = unsafe { libc::dirfd(parent.dir) };",
+        "577:25:unsafe {",
+        "595:26:current_fd = unsafe { libc::dirfd(current_dir) };",
+        "599:27:current_dir = unsafe { libc::fdopendir(current_fd) };",
+        "601:17:unsafe { libc::close(current_fd) };",
+        "604:26:current_fd = unsafe { libc::dirfd(current_dir) };",
+        "631:25:let entry = unsafe { libc::readdir(current_dir) };",
+        "635:24:let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };",
+        "644:26:let d_type = unsafe { (*entry).d_type };",
+        "692:21:let r = unsafe { crate::ffi::syncfs(current_fd) };",
+        "701:17:unsafe { libc::fchmod(current_fd, current_old_mode & 0o7777) };",
+        "772:17:let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
+        "786:17:let r = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
+        "798:26:let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), libc::AT_REMOVEDIR) };",
+        "829:33:let r = unsafe {",
+        "841:38:let r2 = unsafe { libc::fstatfs(dir_fd, sfs2.as_mut_ptr()) };",
+        "843:51:&& is_physical_fs(unsafe { sfs2.assume_init() }.f_type as u64)",
+        "852:30:let qr = unsafe { libc::unlinkat(dir_fd, c_path.as_ptr(), 0) };",
+        "1158:13:unsafe { libc::open(tmp_path.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };",
+        "1163:9:unsafe { libc::close(parent_fd) };"
       ],
-      "unsafe_sites": 52
+      "unsafe_sites": 49
     },
     "src/shared/rust/seccomp_util/architecture.rs": {
       "missing_safety": 0,
@@ -1602,8 +1548,8 @@
     }
   },
   "totals": {
-    "missing_safety": 277,
-    "unsafe_sites": 5308
+    "missing_safety": 249,
+    "unsafe_sites": 5283
   },
   "version": 2,
   "window": 3

@@ -995,17 +995,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "mount_setup.rs",
             frozenset({"rs_mount_point_is_api", "rs_mount_point_ignore"}),
         ),
-        "resize_fs_util": (
-            basic_rust / "resize_fs_util.h",
-            basic_rust / "resize_fs_util.rs",
-            frozenset(
-                {
-                    "rs_minimal_size_by_fs_name",
-                    "rs_minimal_size_by_fs_magic",
-                    "rs_fs_can_online_shrink_and_grow",
-                }
-            ),
-        ),
         "specifier_util": (
             basic_rust / "specifier_util.h",
             basic_rust / "specifier_util.rs",
@@ -1101,18 +1090,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 {
                     "rs_clone_flag_to_namespace_type",
                     "rs_userns_shift_range_valid",
-                }
-            ),
-        ),
-        "capability_list": (
-            basic_rust / "capability_list.h",
-            basic_rust / "capability_list.rs",
-            frozenset(
-                {
-                    "rs_capability_to_name",
-                    "rs_capability_to_string",
-                    "rs_capability_from_name",
-                    "rs_capability_list_length",
                 }
             ),
         ),
@@ -1244,11 +1221,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "nulstr_util.h",
             basic_rust / "nulstr_util.rs",
             frozenset({"rs_nulstr_get", "rs_strv_parse_nulstr_full"}),
-        ),
-        "hostname_setup": (
-            basic_rust / "hostname_setup.h",
-            basic_rust / "hostname_setup.rs",
-            frozenset({"rs_shorten_overlong"}),
         ),
         "bootspec_util": (
             basic_rust / "bootspec_util.h",
@@ -1444,7 +1416,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "device_nodes": (tests_extra / "test-device-nodes-rust.c",),
         "mount_setup": (tests_extra / "test-mount-setup-rust.c",),
-        "resize_fs_util": (tests_extra / "test-resize-fs-rust.c",),
         "specifier_util": (tests_extra / "test-specifier-efi-rust.c",),
         "btrfs_validate_subvolume_name": (tests_extra / "test-btrfs-util-rust.c",),
         "hexdecoct": (tests_extra / "test-hexdecoct-rust.c",),
@@ -1455,7 +1426,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "arphrd_util": (tests_extra / "test-arphrd-util-rust.c",),
         "fstype_util": (tests_extra / "test-fstype-util-rust.c",),
         "namespace_util": (tests_extra / "test-namespace-mountpoint-rust.c",),
-        "capability_list": (tests_extra / "test-capability-list-rust.c",),
         "edid": (tests_extra / "test-edid-rust.c",),
         "nsflags": (tests_extra / "test-nsflags-rust.c",),
         "memory_util": (tests_extra / "test-memory-util-rust.c",),
@@ -1469,7 +1439,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "terminal_util": (tests_extra / "test-terminal-util-rust.c",),
         "glyph_util": (tests_extra / "test-glyph-util-rust.c",),
         "nulstr_util": (tests_extra / "test-nulstr-util-rust.c",),
-        "hostname_setup": (tests_extra / "test-hostname-setup-rust.c",),
         "bootspec_util": (tests_extra / "test-bootspec-rust.c",),
         "recovery_key": (tests_extra / "test-recovery-key-rust.c",),
     }
@@ -1803,10 +1772,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/mount-setup.c",
             root / "src/shared/mount-setup.h",
         ),
-        "resize_fs_util": (
-            root / "src/shared/resize-fs.c",
-            root / "src/shared/resize-fs.h",
-        ),
         "specifier_util": (
             root / "src/shared/specifier.c",
             root / "src/shared/specifier.h",
@@ -1834,10 +1799,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "namespace_util": (
             root / "src/basic/namespace-util.c",
             root / "src/basic/namespace-util.h",
-        ),
-        "capability_list": (
-            root / "src/basic/capability-list.c",
-            root / "src/basic/capability-list.h",
         ),
         "edid": (
             root / "src/fundamental/edid.c",
@@ -1900,12 +1861,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "nulstr_util": (
             root / "src/basic/nulstr-util.c",
             root / "src/basic/nulstr-util.h",
-        ),
-        "hostname_setup": (
-            root / "src/shared/hostname-setup.c",
-            root / "src/shared/hostname-setup.h",
-            root / "src/basic/hostname-util.c",
-            root / "src/basic/hostname-util.h",
         ),
         "bootspec_util": (
             root / "src/shared/bootspec.c",

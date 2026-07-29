@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 12:23 UTC
+Generated: 2026-07-29 12:40 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **326**
-- `genuine-rust`: **219**
-- `ffi-backed-rust`: **107**
+- Total modules audited: **317**
+- `genuine-rust`: **213**
+- `ffi-backed-rust`: **104**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -42,7 +42,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/btrfs_util.rs` | 1 | 21 | 0 | 13 |
 | `src/basic/rust/bus_label.rs` | 2 | 15 | 0 | 17 |
 | `src/basic/rust/bus_type_util.rs` | 9 | 26 | 0 | 12 |
-| `src/basic/rust/capability_list.rs` | 4 | 23 | 0 | 15 |
 | `src/basic/rust/capability_util.rs` | 4 | 44 | 0 | 17 |
 | `src/basic/rust/compress_util.rs` | 5 | 19 | 0 | 4 |
 | `src/basic/rust/credential_validators.rs` | 2 | 35 | 0 | 9 |
@@ -67,7 +66,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/gunicode.rs` | 2 | 28 | 1 | 8 |
 | `src/basic/rust/header_inline_abi.rs` | 7 | 11 | 0 | 5 |
 | `src/basic/rust/hexdecoct.rs` | 21 | 69 | 0 | 171 |
-| `src/basic/rust/hostname_setup.rs` | 1 | 32 | 0 | 32 |
 | `src/basic/rust/hostname_util.rs` | 10 | 79 | 0 | 93 |
 | `src/basic/rust/id128_util.rs` | 10 | 38 | 0 | 43 |
 | `src/basic/rust/image_policy_util.rs` | 17 | 69 | 0 | 169 |
@@ -93,7 +91,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/procfs_util.rs` | 7 | 35 | 0 | 60 |
 | `src/basic/rust/ratelimit.rs` | 6 | 37 | 0 | 13 |
 | `src/basic/rust/recovery_key.rs` | 2 | 25 | 1 | 23 |
-| `src/basic/rust/resize_fs_util.rs` | 3 | 21 | 0 | 3 |
 | `src/basic/rust/rlimit_util.rs` | 7 | 25 | 0 | 25 |
 | `src/basic/rust/safe_math.rs` | 3 | 22 | 0 | 8 |
 | `src/basic/rust/seccomp_util.rs` | 5 | 23 | 0 | 25 |

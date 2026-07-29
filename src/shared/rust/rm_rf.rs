@@ -515,20 +515,26 @@ struct TodoEntry {
     old_mode: libc::mode_t,
 }
 
+/// Close an owned `DIR*` once and clear its ownership slot.
+fn close_owned_dir(dir: &mut *mut libc::DIR) {
+    if !dir.is_null() {
+        // SAFETY: every caller passes its unique ownership slot for a live
+        // stream returned by `fdopendir()`; clearing the slot prevents reuse.
+        unsafe { libc::closedir(*dir) };
+        *dir = std::ptr::null_mut();
+    }
+}
+
 impl TodoEntry {
     /// Close the DIR* and free the entry.
-    unsafe fn close(&mut self) {
-        if !self.dir.is_null() {
-            // SAFETY: self.dir is the live DIR* owned by this TodoEntry.
-            unsafe { libc::closedir(self.dir) };
-            self.dir = std::ptr::null_mut();
-        }
+    fn close(&mut self) {
+        close_owned_dir(&mut self.dir);
     }
 }
 
 impl Drop for TodoEntry {
     fn drop(&mut self) {
-        unsafe { self.close() };
+        self.close();
     }
 }
 
@@ -600,8 +606,19 @@ fn rm_rf_children_impl(
 
             // Check filesystem type.
             if !flags.contains(RemoveFlags::REMOVE_PHYSICAL) {
-                let f_type = get_fs_type(current_fd)?;
+                let f_type = match get_fs_type(current_fd) {
+                    Ok(f_type) => f_type,
+                    Err(error) => {
+                        // `fdopendir()` took ownership of `current_fd`; close
+                        // the resulting stream before propagating the error.
+                        close_owned_dir(&mut current_dir);
+                        return Err(error);
+                    }
+                };
                 if is_physical_fs(f_type) {
+                    // `fdopendir()` took ownership of `current_fd`; close the
+                    // resulting stream before rejecting physical filesystems.
+                    close_owned_dir(&mut current_dir);
                     return Err(RmRfError::PhysicalFs(
                         "attempted to remove disk filesystem".into(),
                     ));
@@ -684,7 +701,7 @@ fn rm_rf_children_impl(
                 unsafe { libc::fchmod(current_fd, current_old_mode & 0o7777) };
             }
             // Close the final DIR*.
-            unsafe { libc::closedir(current_dir) };
+            close_owned_dir(&mut current_dir);
             break;
         }
     }

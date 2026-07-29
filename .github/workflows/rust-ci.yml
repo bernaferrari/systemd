@@ -171,7 +171,6 @@ jobs:
           test-efi-guid-rust
           test-serialize-rust
           test-signal-util-rust
-          test-capability-list-rust
           test-capability-util-rust
           test-unit-name-rust
           test-string-util-rust
@@ -255,7 +254,6 @@ jobs:
           test-arphrd-util-rust
           test-fstype-util-rust
           test-glyph-util-rust
-          test-hostname-setup-rust
           test-nulstr-util-rust
           test-boot-entry-rust
           test-pkcs11-rust
@@ -270,7 +268,6 @@ jobs:
           test-mount-setup-rust
           test-namespace-mountpoint-rust
           test-nsflags-rust
-          test-resize-fs-rust
           test-specifier-efi-rust
           test-time-util-extra2-rust
           test-str-tables-batch3-rust
@@ -316,7 +313,6 @@ jobs:
           test-efi-guid-rust
           test-serialize-rust
           test-signal-util-rust
-          test-capability-list-rust
           test-capability-util-rust
           test-unit-name-rust
           test-string-util-rust
@@ -400,7 +396,6 @@ jobs:
           test-arphrd-util-rust
           test-fstype-util-rust
           test-glyph-util-rust
-          test-hostname-setup-rust
           test-nulstr-util-rust
           test-boot-entry-rust
           test-pkcs11-rust
@@ -415,7 +410,6 @@ jobs:
           test-mount-setup-rust
           test-namespace-mountpoint-rust
           test-nsflags-rust
-          test-resize-fs-rust
           test-specifier-efi-rust
           test-time-util-extra2-rust
           test-str-tables-batch3-rust
