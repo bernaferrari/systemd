@@ -3,8 +3,11 @@
 // PORT-SYNC: src/shared/fido2-util.c, src/shared/fido2-util.h
 
 use std::fmt;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::{Shutdown, UnixStream};
 use std::path::Path;
 
@@ -23,6 +26,7 @@ pub enum Fido2UtilError {
     SaltTooLarge(usize),
     OffsetTooLarge(u64),
     ShortRandomRead,
+    InvalidSocketAddress,
 }
 
 impl Fido2UtilError {
@@ -33,6 +37,7 @@ impl Fido2UtilError {
             Self::SaltTooLarge(_) => Errno::E2BIG.to_neg_errno(),
             Self::OffsetTooLarge(_) => Errno::ERANGE.to_neg_errno(),
             Self::ShortRandomRead => Errno::EIO.to_neg_errno(),
+            Self::InvalidSocketAddress => Errno::EINVAL.to_neg_errno(),
         }
     }
 }
@@ -55,6 +60,7 @@ impl fmt::Display for Fido2UtilError {
             }
             Self::OffsetTooLarge(offset) => write!(f, "Offset {offset} exceeds fseek() range"),
             Self::ShortRandomRead => write!(f, "Short read from kernel random source"),
+            Self::InvalidSocketAddress => write!(f, "Invalid Unix socket address"),
         }
     }
 }
@@ -98,8 +104,8 @@ pub fn fido2_generate_salt() -> Result<[u8; FIDO2_SALT_SIZE]> {
 pub fn fido2_read_salt_file<P: AsRef<Path>>(
     filename: P,
     offset: u64,
-    _client: &str,
-    _node: &str,
+    client: &str,
+    node: &str,
 ) -> Result<[u8; FIDO2_SALT_SIZE]> {
     let filename = filename.as_ref();
     let effective_offset = if offset == 0 { None } else { Some(offset) };
@@ -111,7 +117,7 @@ pub fn fido2_read_salt_file<P: AsRef<Path>>(
         Err(error)
             if effective_offset.is_none() && error.raw_os_error() == Some(Errno::ENXIO as i32) =>
         {
-            let mut stream = UnixStream::connect(filename).map_err(Fido2UtilError::from_io)?;
+            let mut stream = connect_salt_socket(filename, client, node)?;
             stream
                 .shutdown(Shutdown::Write)
                 .map_err(Fido2UtilError::from_io)?;
@@ -127,6 +133,131 @@ pub fn fido2_read_salt_file<P: AsRef<Path>>(
     }
 
     read_salt_from_reader(&mut file)
+}
+
+/// Connect to the salt service with the recognizable abstract client name used
+/// by C's `fido2_read_salt_file()` implementation. This lets a salt server
+/// distinguish FIDO2 callers from anonymous local clients.
+fn connect_salt_socket(filename: &Path, client: &str, node: &str) -> Result<UnixStream> {
+    let mut random = [0u8; std::mem::size_of::<u64>()];
+    fill_random_bytes(&mut random)?;
+    let bind_name = format!(
+        "@{:x}/{client}-fido2-salt/{node}",
+        u64::from_ne_bytes(random)
+    );
+
+    // SAFETY: socket takes only scalar arguments and returns a newly-owned
+    // descriptor on success. `SOCK_CLOEXEC` prevents descriptor inheritance.
+    let raw_fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
+    if raw_fd < 0 {
+        return Err(Fido2UtilError::from_io(io::Error::last_os_error()));
+    }
+    // SAFETY: `raw_fd` is a fresh descriptor owned by this function after the
+    // successful socket call above; `OwnedFd` closes it on every error path.
+    let socket = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+
+    let (bind_address, bind_length) = abstract_socket_address(&bind_name)?;
+    // SAFETY: `bind_address` is initialized and its advertised length covers
+    // exactly the AF_UNIX family plus the constructed abstract-name bytes.
+    if unsafe {
+        libc::bind(
+            socket.as_raw_fd(),
+            (&bind_address as *const libc::sockaddr_un).cast::<libc::sockaddr>(),
+            bind_length,
+        )
+    } < 0
+    {
+        return Err(Fido2UtilError::from_io(io::Error::last_os_error()));
+    }
+
+    connect_unix_path(socket.as_raw_fd(), filename)?;
+    Ok(UnixStream::from(socket))
+}
+
+fn abstract_socket_address(name: &str) -> Result<(libc::sockaddr_un, libc::socklen_t)> {
+    let name = name
+        .strip_prefix('@')
+        .filter(|name| !name.is_empty())
+        .ok_or(Fido2UtilError::InvalidSocketAddress)?;
+    let bytes = name.as_bytes();
+    let mut address = empty_unix_socket_address();
+
+    if bytes.contains(&0) || bytes.len() + 1 >= address.sun_path.len() {
+        return Err(Fido2UtilError::InvalidSocketAddress);
+    }
+
+    for (index, byte) in bytes.iter().enumerate() {
+        address.sun_path[index + 1] = *byte as libc::c_char;
+    }
+
+    let length = std::mem::offset_of!(libc::sockaddr_un, sun_path) + 1 + bytes.len();
+    Ok((address, length as libc::socklen_t))
+}
+
+fn connect_unix_path(socket: libc::c_int, path: &Path) -> Result<()> {
+    let bytes = path.as_os_str().as_bytes();
+    if bytes.is_empty() || bytes.contains(&0) {
+        return Err(Fido2UtilError::InvalidSocketAddress);
+    }
+
+    // C's connect_unix_path() uses an O_PATH descriptor and /proc/self/fd for
+    // long socket paths. Keep that descriptor alive until connect(2) has
+    // resolved the indirection.
+    let opened_socket = (bytes.len() + 1 > unix_socket_path_capacity())
+        .then(|| {
+            OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_PATH | libc::O_CLOEXEC)
+                .open(path)
+        })
+        .transpose()
+        .map_err(Fido2UtilError::from_io)?;
+    let target: Vec<u8> = opened_socket
+        .as_ref()
+        .map(|file| format!("/proc/self/fd/{}", file.as_raw_fd()).into_bytes())
+        .unwrap_or_else(|| bytes.to_vec());
+    let (address, length) = filesystem_socket_address(&target)?;
+
+    // SAFETY: `address` is initialized and its advertised length covers the
+    // AF_UNIX family plus a NUL-terminated filesystem socket path. The file
+    // backing a long path remains open until this synchronous call returns.
+    if unsafe {
+        libc::connect(
+            socket,
+            (&address as *const libc::sockaddr_un).cast::<libc::sockaddr>(),
+            length,
+        )
+    } < 0
+    {
+        return Err(Fido2UtilError::from_io(io::Error::last_os_error()));
+    }
+
+    Ok(())
+}
+
+fn empty_unix_socket_address() -> libc::sockaddr_un {
+    libc::sockaddr_un {
+        sun_family: libc::AF_UNIX as libc::sa_family_t,
+        sun_path: [0; 108],
+    }
+}
+
+fn unix_socket_path_capacity() -> usize {
+    empty_unix_socket_address().sun_path.len()
+}
+
+fn filesystem_socket_address(bytes: &[u8]) -> Result<(libc::sockaddr_un, libc::socklen_t)> {
+    let mut address = empty_unix_socket_address();
+    if bytes.is_empty() || bytes.contains(&0) || bytes.len() + 1 > address.sun_path.len() {
+        return Err(Fido2UtilError::InvalidSocketAddress);
+    }
+
+    for (index, byte) in bytes.iter().enumerate() {
+        address.sun_path[index] = *byte as libc::c_char;
+    }
+
+    let length = std::mem::offset_of!(libc::sockaddr_un, sun_path) + bytes.len() + 1;
+    Ok((address, length as libc::socklen_t))
 }
 
 impl Fido2UtilError {
@@ -250,10 +381,11 @@ mod tests {
             let mut byte = [0u8; 1];
             assert_eq!(connection.read(&mut byte).unwrap(), 0);
             connection.write_all(&payload).unwrap();
+            !connection.peer_addr().unwrap().is_unnamed()
         });
 
         let result = fido2_read_salt_file(&path, 0, "client", "node").unwrap();
-        sender.join().unwrap();
+        assert!(sender.join().unwrap(), "FIDO2 client must bind an identity");
         fs::remove_file(&path).unwrap();
         result
     }

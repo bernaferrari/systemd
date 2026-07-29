@@ -10,9 +10,9 @@
 // Similarly locates the XBOOTLDR partition via /boot, SYSTEMD_XBOOTLDR_PATH,
 // or an explicit path.
 //
-// Verification involves confirming the filesystem is FAT (vfat), resides on a
-// GPT partition with the correct type GUID, and (when privileged) probing the
-// partition table via blkid or udev for full metadata.
+// Verification pins the candidate directory, confirms its filesystem type and
+// mount-root status, and obtains its backing device. GPT/DOS partition metadata
+// probing via blkid/udev remains a deliberately tracked porting gap.
 
 use crate::ffi::*;
 use std::fmt;
@@ -148,6 +148,8 @@ bitflags::bitflags! {
         const SKIP_FSTYPE_CHECK  = 1 << 2;
         /// Skip device node / partition table check.
         const SKIP_DEVICE_CHECK  = 1 << 3;
+        /// Skip the check that the candidate is the root of its filesystem.
+        const SKIP_FSROOT_CHECK  = 1 << 4;
     }
 }
 
@@ -276,9 +278,9 @@ pub fn parse_env_bool(name: &str) -> Option<bool> {
 /// Initialise verification flags for ESP checks.
 ///
 /// Sets `UNPRIVILEGED_MODE` when `unprivileged_mode` is `Some(true)` or when
-/// the effective UID is non-zero. Sets `SKIP_FSTYPE_CHECK` and
-/// `SKIP_DEVICE_CHECK` when the corresponding relax environment variable is
-/// `"yes"`.
+/// the effective UID is non-zero. Sets `SKIP_FSTYPE_CHECK`,
+/// `SKIP_DEVICE_CHECK`, and `SKIP_FSROOT_CHECK` when the corresponding relax
+/// environment variable is `"yes"`.
 pub fn verify_esp_flags_init(
     unprivileged_mode: Option<bool>,
     env_name_for_relaxing: &str,
@@ -291,7 +293,9 @@ pub fn verify_esp_flags_init(
     }
 
     if let Some(true) = parse_env_bool(env_name_for_relaxing) {
-        flags |= VerifyEspFlags::SKIP_FSTYPE_CHECK | VerifyEspFlags::SKIP_DEVICE_CHECK;
+        flags |= VerifyEspFlags::SKIP_FSTYPE_CHECK
+            | VerifyEspFlags::SKIP_DEVICE_CHECK
+            | VerifyEspFlags::SKIP_FSROOT_CHECK;
     }
 
     flags
@@ -321,53 +325,58 @@ pub fn path_extract_filename(p: &Path) -> Option<&str> {
 /// Check that a directory is the root of its filesystem and return the
 /// backing device number.
 ///
-/// Uses `statx` with `STATX_ATTR_MOUNT_ROOT` (when available) to confirm the
-/// directory is a mount point. Falls back to comparing st_dev of the
-/// directory and its parent.
+/// Opens `path` as a directory and uses `statx(AT_EMPTY_PATH)` with
+/// `STATX_ATTR_MOUNT_ROOT`, matching C's descriptor-pinned check.
 pub fn verify_fsroot_dir(path: &Path) -> Result<(u32, u32), FindEspError> {
-    let metadata = std::fs::metadata(path).map_err(|e| {
-        if e.kind() == io::ErrorKind::NotFound {
-            FindEspError::NotFound
-        } else {
-            FindEspError::PathResolution {
-                path: path.to_path_buf(),
-                source: e,
-            }
-        }
+    let fd = open_path(path).map_err(|source| FindEspError::PathResolution {
+        path: path.to_path_buf(),
+        source,
     })?;
+    verify_fsroot_dir_fd(path, fd.as_fd())
+}
 
-    if !metadata.is_dir() {
+/// Check mount-root status through a pinned directory descriptor.
+fn verify_fsroot_dir_fd(path: &Path, fd: BorrowedFd<'_>) -> Result<(u32, u32), FindEspError> {
+    let mut statx = std::mem::MaybeUninit::<libc::statx>::zeroed();
+
+    // SAFETY: `fd` is live, `c""` is a valid NUL-terminated empty path used
+    // with AT_EMPTY_PATH, and `statx` is writable target-native storage.
+    if unsafe {
+        libc::statx(
+            fd.as_raw_fd(),
+            c"".as_ptr(),
+            libc::AT_EMPTY_PATH,
+            libc::STATX_TYPE | libc::STATX_INO,
+            statx.as_mut_ptr(),
+        )
+    } < 0
+    {
+        return Err(FindEspError::Io(io::Error::last_os_error()));
+    }
+
+    // SAFETY: the storage was zeroed before a successful libc call, so all
+    // bytes are initialized even if an old kernel omits optional fields.
+    let statx = unsafe { statx.assume_init() };
+    if statx.stx_mask & (libc::STATX_TYPE | libc::STATX_INO) != libc::STATX_TYPE | libc::STATX_INO {
+        return Err(FindEspError::Io(io::Error::from_raw_os_error(
+            libc::EUNATCH,
+        )));
+    }
+    if statx.stx_mode & libc::S_IFMT as u16 != libc::S_IFDIR as u16 {
         return Err(FindEspError::NotADirectory(path.to_path_buf()));
     }
 
-    // Check if this is a mount root by comparing dev of this dir with its parent.
-    let parent = path.parent().unwrap_or(Path::new("/"));
-    let parent_meta = match std::fs::metadata(parent) {
-        Ok(m) => m,
-        Err(_) => {
-            // If we can't stat parent, trust it if it's / or /boot etc.
-            return Ok((major(metadata.dev()), minor(metadata.dev())));
-        }
-    };
-
-    if metadata.dev() == parent_meta.dev() {
-        // Same device → not a mount point root
+    let mount_root = libc::STATX_ATTR_MOUNT_ROOT as u64;
+    if statx.stx_attributes_mask & mount_root != mount_root {
+        return Err(FindEspError::Io(io::Error::from_raw_os_error(
+            libc::EUNATCH,
+        )));
+    }
+    if statx.stx_attributes & mount_root == 0 {
         return Err(FindEspError::NotFsRoot(path.to_path_buf()));
     }
 
-    Ok((major(metadata.dev()), minor(metadata.dev())))
-}
-
-/// Extract major number from a device ID.
-#[inline]
-fn major(dev: u64) -> u32 {
-    ((dev >> 8) & 0xfff_f) as u32
-}
-
-/// Extract minor number from a device ID.
-#[inline]
-fn minor(dev: u64) -> u32 {
-    ((dev & 0xff) | ((dev >> 12) & 0xfff_f00)) as u32
+    Ok((statx.stx_dev_major, statx.stx_dev_minor))
 }
 
 // ── Filesystem type check ───────────────────────────────────────────────────
@@ -377,16 +386,22 @@ fn minor(dev: u64) -> u32 {
 /// Uses `statfs` to read the filesystem type and compares against
 /// `MSDOS_SUPER_MAGIC`.
 pub fn check_fat_filesystem(path: &Path) -> Result<(), FindEspError> {
-    let c_path = CString::new(path.as_os_str().as_bytes())
-        .map_err(|_| FindEspError::General(format!("Path {:?} contains NUL byte", path)))?;
+    let fd = open_path(path).map_err(|source| FindEspError::PathResolution {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    check_fat_filesystem_fd(path, fd.as_fd())
+}
 
+/// Check the filesystem type through a pinned candidate descriptor.
+fn check_fat_filesystem_fd(path: &Path, fd: BorrowedFd<'_>) -> Result<(), FindEspError> {
     // SAFETY: Linux's statfs is a C POD struct containing only integers and
     // integer arrays, for which the all-zero bit pattern is valid.
     let mut statfs_buf: libc::statfs = unsafe { std::mem::zeroed() };
 
-    // SAFETY: c_path is a valid NUL-terminated string, statfs_buf is a valid
-    // pointer to a statfs struct on the stack.
-    let r = unsafe { libc::statfs(c_path.as_ptr(), &mut statfs_buf) };
+    // SAFETY: `fd` is live and statfs_buf is valid writable target-native
+    // storage for the duration of fstatfs.
+    let r = unsafe { libc::fstatfs(fd.as_raw_fd(), &mut statfs_buf) };
     if r < 0 {
         return Err(FindEspError::Io(io::Error::last_os_error()));
     }
@@ -421,6 +436,7 @@ fn verify_esp_at(
     let searching = flags.contains(VerifyEspFlags::SEARCHING);
     let skip_fs = flags.contains(VerifyEspFlags::SKIP_FSTYPE_CHECK);
     let skip_dev = flags.contains(VerifyEspFlags::SKIP_DEVICE_CHECK);
+    let skip_fsroot = flags.contains(VerifyEspFlags::SKIP_FSROOT_CHECK);
 
     // Resolve the path (chase symlinks).
     let resolved = resolve_path_at(root_fd, path).map_err(|e| {
@@ -433,20 +449,29 @@ fn verify_esp_at(
             }
         }
     })?;
+    let fd = open_path(&resolved).map_err(|source| FindEspError::PathResolution {
+        path: resolved.clone(),
+        source,
+    })?;
 
     if !skip_fs {
-        check_fat_filesystem(&resolved)?;
+        check_fat_filesystem_fd(&resolved, fd.as_fd())?;
     }
 
-    let (dev_major, dev_minor) = if skip_dev {
-        (0, 0)
+    let device = if skip_fsroot {
+        None
     } else {
-        verify_fsroot_dir(&resolved)?
+        Some(verify_fsroot_dir_fd(&resolved, fd.as_fd())?)
     };
 
     if skip_dev {
         return Ok(EspInfo::from_path(resolved));
     }
+
+    // C leaves the device number zero when its caller explicitly skips the
+    // fs-root check; retain that fail-closed result if device verification was
+    // nevertheless requested.
+    let (dev_major, dev_minor) = device.unwrap_or((0, 0));
 
     if dev_major == 0 && dev_minor == 0 {
         return Err(FindEspError::NoBackingDevice(resolved));
@@ -608,10 +633,17 @@ fn find_esp_and_warn_at(
             source: e,
         })?;
 
-        let metadata = std::fs::metadata(&resolved).map_err(|e| FindEspError::PathResolution {
+        let fd = open_path(&resolved).map_err(|source| FindEspError::PathResolution {
             path: resolved.clone(),
-            source: e,
+            source,
         })?;
+        let metadata =
+            std::fs::File::from(fd)
+                .metadata()
+                .map_err(|source| FindEspError::PathResolution {
+                    path: resolved.clone(),
+                    source,
+                })?;
         if !metadata.is_dir() {
             return Err(FindEspError::NotADirectory(resolved));
         }
@@ -679,6 +711,7 @@ fn verify_xbootldr_at(
 ) -> Result<XBootLdrInfo, FindEspError> {
     let searching = flags.contains(VerifyEspFlags::SEARCHING);
     let skip_dev = flags.contains(VerifyEspFlags::SKIP_DEVICE_CHECK);
+    let skip_fsroot = flags.contains(VerifyEspFlags::SKIP_FSROOT_CHECK);
 
     let resolved = resolve_path_at(root_fd, path).map_err(|e| {
         if searching && e.kind() == io::ErrorKind::NotFound {
@@ -690,16 +723,22 @@ fn verify_xbootldr_at(
             }
         }
     })?;
+    let fd = open_path(&resolved).map_err(|source| FindEspError::PathResolution {
+        path: resolved.clone(),
+        source,
+    })?;
 
-    let (dev_major, dev_minor) = if skip_dev {
-        (0, 0)
+    let device = if skip_fsroot {
+        None
     } else {
-        verify_fsroot_dir(&resolved)?
+        Some(verify_fsroot_dir_fd(&resolved, fd.as_fd())?)
     };
 
     if skip_dev {
         return Ok(XBootLdrInfo::from_path(resolved));
     }
+
+    let (dev_major, dev_minor) = device.unwrap_or((0, 0));
 
     if dev_major == 0 && dev_minor == 0 {
         return Err(FindEspError::NoBackingDevice(resolved));
@@ -753,10 +792,17 @@ fn find_xbootldr_and_warn_at(
             source: e,
         })?;
 
-        let metadata = std::fs::metadata(&resolved).map_err(|e| FindEspError::PathResolution {
+        let fd = open_path(&resolved).map_err(|source| FindEspError::PathResolution {
             path: resolved.clone(),
-            source: e,
+            source,
         })?;
+        let metadata =
+            std::fs::File::from(fd)
+                .metadata()
+                .map_err(|source| FindEspError::PathResolution {
+                    path: resolved.clone(),
+                    source,
+                })?;
         if !metadata.is_dir() {
             return Err(FindEspError::NotADirectory(resolved));
         }
@@ -818,7 +864,10 @@ pub fn take_esp_mount_point(
 pub fn verify_xbootldr_automount(path: &Path) -> Result<XBootLdrInfo, FindEspError> {
     let flags = VerifyEspFlags::SEARCHING
         | VerifyEspFlags::UNPRIVILEGED_MODE
-        | VerifyEspFlags::SKIP_DEVICE_CHECK;
+        | VerifyEspFlags::SKIP_DEVICE_CHECK
+        // This Rust-only convenience API intentionally accepts an inactive
+        // automount's underlying directory, which is not yet a mount root.
+        | VerifyEspFlags::SKIP_FSROOT_CHECK;
     verify_xbootldr(path, flags)
 }
 
@@ -920,6 +969,7 @@ mod tests {
         let flags = verify_esp_flags_init(Some(false), ENV_RELAX_ESP_CHECKS);
         assert!(!flags.contains(VerifyEspFlags::SKIP_FSTYPE_CHECK));
         assert!(!flags.contains(VerifyEspFlags::SKIP_DEVICE_CHECK));
+        assert!(!flags.contains(VerifyEspFlags::SKIP_FSROOT_CHECK));
         assert!(!flags.contains(VerifyEspFlags::UNPRIVILEGED_MODE));
     }
 
@@ -937,6 +987,19 @@ mod tests {
     fn test_verify_esp_flags_init_searching() {
         let flags = VerifyEspFlags::SEARCHING;
         assert!(flags.contains(VerifyEspFlags::SEARCHING));
+    }
+
+    #[test]
+    fn test_verify_esp_flags_init_relax_skips_every_verification() {
+        // SAFETY: this environment-dependent test target runs with --test-threads=1
+        // and does not spawn threads that access the process environment.
+        let environment = unsafe { TestEnvironment::lock() };
+        environment.set(ENV_RELAX_ESP_CHECKS, "yes");
+        let flags = verify_esp_flags_init(Some(false), ENV_RELAX_ESP_CHECKS);
+        assert!(flags.contains(VerifyEspFlags::SKIP_FSTYPE_CHECK));
+        assert!(flags.contains(VerifyEspFlags::SKIP_DEVICE_CHECK));
+        assert!(flags.contains(VerifyEspFlags::SKIP_FSROOT_CHECK));
+        environment.remove(ENV_RELAX_ESP_CHECKS);
     }
 
     // ── Path helpers ──
@@ -1052,16 +1115,6 @@ mod tests {
         assert!(info.partition_uuid.is_none());
     }
 
-    // ── Device ID extraction ──
-
-    #[test]
-    fn test_major_minor_extraction() {
-        // /dev/sda1 is typically (8, 1)
-        let dev = ((8u64) << 8) | (1u64 & 0xff) | (((1u64 >> 8) & 0xfff_f) << 12);
-        assert_eq!(major(dev), 8);
-        assert_eq!(minor(dev), 1);
-    }
-
     // ── Verify ESP on non-existent path ──
 
     #[test]
@@ -1175,11 +1228,13 @@ mod tests {
         let f = VerifyEspFlags::SEARCHING
             | VerifyEspFlags::UNPRIVILEGED_MODE
             | VerifyEspFlags::SKIP_FSTYPE_CHECK
-            | VerifyEspFlags::SKIP_DEVICE_CHECK;
+            | VerifyEspFlags::SKIP_DEVICE_CHECK
+            | VerifyEspFlags::SKIP_FSROOT_CHECK;
         assert!(f.contains(VerifyEspFlags::SEARCHING));
         assert!(f.contains(VerifyEspFlags::UNPRIVILEGED_MODE));
         assert!(f.contains(VerifyEspFlags::SKIP_FSTYPE_CHECK));
         assert!(f.contains(VerifyEspFlags::SKIP_DEVICE_CHECK));
+        assert!(f.contains(VerifyEspFlags::SKIP_FSROOT_CHECK));
     }
 
     #[test]

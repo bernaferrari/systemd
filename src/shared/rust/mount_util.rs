@@ -5,6 +5,8 @@
 use crate::ffi::*;
 use std::ffi::CString;
 use std::io;
+#[cfg(target_os = "linux")]
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
@@ -691,6 +693,32 @@ fn to_cstring(s: &str) -> io::Result<CString> {
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains null byte"))
 }
 
+/// Open a mount target without following its final component.
+///
+/// This is the descriptor half of C's `mount_nofollow()`: `/proc/self/fd/N`
+/// names the pinned target for the subsequent legacy `mount(2)` call. As in
+/// the C implementation, symlinks in parent components are allowed, while a
+/// final symlink is kept as the mount target rather than being followed.
+#[cfg(target_os = "linux")]
+fn open_mount_target_nofollow(target: &CString) -> io::Result<OwnedFd> {
+    // SAFETY: target is a retained, NUL-terminated pathname. O_PATH avoids
+    // opening FIFOs/devices for I/O; O_NOFOLLOW pins the final directory entry
+    // itself, and successful open() returns a uniquely owned descriptor.
+    let fd = unsafe {
+        libc::open(
+            target.as_ptr(),
+            libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    // SAFETY: open() above returned a fresh non-negative descriptor whose
+    // ownership has not been transferred elsewhere.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
 // ── Mount/umount operations (Linux only) ───────────────────────────────────
 
 /// Mount a filesystem.
@@ -719,25 +747,26 @@ pub fn mount_verbose_full(
     let options_ptr = c_options
         .as_ref()
         .map_or(std::ptr::null(), |s| s.as_ptr() as *const libc::c_void);
+    let target_fd = if follow_symlink {
+        None
+    } else {
+        Some(open_mount_target_nofollow(&c_where)?)
+    };
+    let proc_fd_target = target_fd
+        .as_ref()
+        .map(|fd| to_cstring(&format!("/proc/self/fd/{}", fd.as_raw_fd())))
+        .transpose()?;
+    let target_ptr = proc_fd_target
+        .as_ref()
+        .map_or(c_where.as_ptr(), |s| s.as_ptr());
 
     // SAFETY: All CString pointers are valid null-terminated strings. The
     // `options_ptr` either is null or points to the retained `c_options` for
     // the duration of the call.
-    //
-    // The C implementation resolves a no-follow target using openat2 with
-    // RESOLVE_NO_SYMLINKS. That infrastructure is not available here, so this
-    // implementation always follows symlinks.
-    let _ = follow_symlink;
-    // SAFETY: all retained pointer arguments remain valid for this call.
-    let ret = unsafe {
-        libc::mount(
-            c_what.as_ptr(),
-            c_where.as_ptr(),
-            fstype_ptr,
-            flags,
-            options_ptr,
-        )
-    };
+    // `target_fd`, when present, remains alive so its procfs path identifies
+    // the pinned final target for the whole mount call.
+    // SAFETY: all retained pointer arguments and the optional fd are valid.
+    let ret = unsafe { libc::mount(c_what.as_ptr(), target_ptr, fstype_ptr, flags, options_ptr) };
 
     if ret < 0 {
         return Err(io::Error::last_os_error());
@@ -757,11 +786,10 @@ pub fn mount_follow_verbose(
     mount_verbose_full(what, where_, fstype, flags, options, true)
 }
 
-/// Mount a filesystem through the no-follow API.
+/// Mount a filesystem without following a final target symlink.
 ///
-/// This currently follows target symlinks because the openat2-backed C
-/// implementation has not yet been ported. Do not use this wrapper where
-/// rejecting target symlinks is a security requirement.
+/// Parent-directory symlinks retain the C implementation's normal resolution
+/// semantics; the final path component is pinned through `/proc/self/fd`.
 #[cfg(target_os = "linux")]
 pub fn mount_nofollow_verbose(
     what: &str,

@@ -9,15 +9,17 @@
 // implementation: `path_chown_recursive` (by filesystem path) and
 // `fd_chown_recursive` (by already-opened file descriptor).
 //
-// `unsafe` is used exclusively around raw syscalls (`fchown`, `fchmod`,
-// `fremovexattr`, `fstat`).  All surrounding logic is safe Rust.
+// `unsafe` is confined to small syscall, descriptor-ownership, and libc
+// directory-stream boundaries. All traversal and policy decisions remain safe
+// Rust.
 
 use crate::ffi::*;
+use std::ffi::{CStr, CString};
 use std::fs::{self, Metadata};
 use std::io;
 use std::mem::MaybeUninit;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::path::Path;
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -134,15 +136,32 @@ fn needs_change(meta: &Metadata, opts: &ChownOptions) -> bool {
     (meta.mode() as u32 & !opts.mode_mask & 0o7777) != 0
 }
 
+fn proc_fd_path(fd: RawFd) -> CString {
+    CString::new(format!("/proc/self/fd/{fd}")).expect("proc fd path contains no NUL")
+}
+
+fn errno_is_xattr_absent(code: libc::c_int) -> bool {
+    code == libc::ENODATA
+        || code == libc::ENOENT
+        || code == libc::EOPNOTSUPP
+        || code == libc::ENOTTY
+        || code == libc::ENOSYS
+        || code == libc::EAFNOSUPPORT
+        || code == libc::EPFNOSUPPORT
+        || code == libc::EPROTONOSUPPORT
+        || code == libc::ESOCKTNOSUPPORT
+        || code == libc::ENOPROTOOPT
+}
+
 /// Remove POSIX ACL extended attributes from the inode behind `fd`.
 ///
-/// Ignores `ENODATA` (no such xattr) and `ENOTSUP` (filesystem doesn't
-/// support xattrs), but propagates other errors.
-fn remove_acl_xattrs(fd: i32) -> io::Result<()> {
+/// Ignores the same "xattr absent or unsupported" errno family as the C
+/// `ERRNO_IS_NEG_XATTR_ABSENT()` helper, but propagates other errors.
+fn remove_acl_xattrs(fd: RawFd) -> io::Result<()> {
     for name in ACL_XATTR_NAMES {
         // SAFETY: `fd` stays owned by the caller, and every attribute name is
         // a static NUL-terminated byte string for the duration of the call.
-        let ret = unsafe {
+        let mut ret = unsafe {
             #[cfg(target_os = "linux")]
             {
                 libc::fremovexattr(fd, name.as_ptr().cast())
@@ -153,10 +172,21 @@ fn remove_acl_xattrs(fd: i32) -> io::Result<()> {
                 0_i32
             }
         };
+
+        if ret < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::EBADF) {
+            // O_PATH descriptors deliberately reject fremovexattr(2). The
+            // procfs magic link still names the pinned inode, so this does not
+            // reopen the directory entry and cannot be redirected by rename.
+            let fd_path = proc_fd_path(fd);
+            // SAFETY: both arguments are valid NUL-terminated strings for the
+            // duration of this synchronous call.
+            ret = unsafe { libc::removexattr(fd_path.as_ptr(), name.as_ptr().cast()) };
+        }
+
         if ret < 0 {
             let err = io::Error::last_os_error();
             let code = err.raw_os_error().unwrap_or(0);
-            if code != libc::ENODATA && code != libc::ENOTSUP {
+            if !errno_is_xattr_absent(code) {
                 return Err(err);
             }
         }
@@ -170,23 +200,64 @@ fn remove_acl_xattrs(fd: i32) -> io::Result<()> {
 ///
 /// This is the Rust equivalent of C's `chown_one()`:
 /// 1. Remove POSIX ACLs.
-/// 2. Apply `mode & mask` via `fchmod`.
-/// 3. Apply uid/gid via `fchown`.
-fn chown_one_fd(fd: i32, meta: &Metadata, opts: &ChownOptions) -> io::Result<()> {
-    remove_acl_xattrs(fd)?;
-
-    let mode = (meta.mode() as u32 & 0o7777) & opts.mode_mask;
-    let uid = opts.uid.unwrap_or(meta.uid());
-    let gid = opts.gid.unwrap_or(meta.gid());
-
-    // SAFETY: `fd` is valid and owned by the caller.
-    if unsafe { libc::fchmod(fd, mode as libc::mode_t) } < 0 {
-        return Err(io::Error::last_os_error());
+/// 2. If ownership changes, temporarily tighten the mode as needed.
+/// 3. Apply uid/gid through the pinned descriptor.
+/// 4. Restore `mode & mask`, including bits implicitly cleared by chown.
+fn chmod_fd(fd: RawFd, mode: libc::mode_t) -> io::Result<()> {
+    // SAFETY: `fd` is valid and borrowed for this synchronous call.
+    if unsafe { libc::fchmod(fd, mode) } >= 0 {
+        return Ok(());
     }
 
-    // SAFETY: `fd` is valid and owned by the caller.
-    if unsafe { libc::fchown(fd, uid, gid) } < 0 {
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() != Some(libc::EBADF) {
+        return Err(err);
+    }
+
+    // fchmod(2) rejects O_PATH descriptors. Like systemd's fchmod_opath(),
+    // address the already-pinned inode through procfs instead of reopening
+    // the mutable directory entry.
+    let fd_path = proc_fd_path(fd);
+    // SAFETY: `fd_path` is a valid NUL-terminated path and `mode` is passed by
+    // value.
+    if unsafe { libc::chmod(fd_path.as_ptr(), mode) } < 0 {
         return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn chown_one_fd(fd: RawFd, meta: &Metadata, opts: &ChownOptions) -> io::Result<()> {
+    let is_symlink = meta.file_type().is_symlink();
+    remove_acl_xattrs(fd)?;
+
+    let old_mode = meta.mode() as u32 & 0o7777;
+    let new_mode = old_mode & opts.mode_mask;
+    let do_chown = opts.uid.is_some_and(|uid| uid != meta.uid())
+        || opts.gid.is_some_and(|gid| gid != meta.gid());
+    let do_chmod = !is_symlink && (old_mode != new_mode || do_chown);
+
+    // Tighten permissions before changing ownership, then restore the desired
+    // mode afterwards. This preserves setuid/setgid bits cleared by chown and
+    // never temporarily grants permissions outside either the old or new mode.
+    if do_chown && do_chmod {
+        let minimal = old_mode & new_mode;
+        if minimal != old_mode {
+            chmod_fd(fd, minimal as libc::mode_t)?;
+        }
+    }
+
+    if do_chown {
+        let uid = opts.uid.unwrap_or(UID_INVALID);
+        let gid = opts.gid.unwrap_or(GID_INVALID);
+        // SAFETY: `fd` names the pinned inode, the empty pathname is
+        // NUL-terminated, and AT_EMPTY_PATH explicitly requests fd operation.
+        if unsafe { libc::fchownat(fd, c"".as_ptr(), uid, gid, libc::AT_EMPTY_PATH) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+
+    if do_chmod {
+        chmod_fd(fd, new_mode as libc::mode_t)?;
     }
 
     Ok(())
@@ -194,10 +265,6 @@ fn chown_one_fd(fd: i32, meta: &Metadata, opts: &ChownOptions) -> io::Result<()>
 
 // ── Core: recursive directory walk ────────────────────────────────────────
 
-/// Recursively chown a directory tree.
-///
-/// Children are processed first (depth-first), then the directory itself —
-/// matching the C `chown_recursive_internal()` semantics.
 fn open_directory(path: &Path, follow_symlinks: bool) -> io::Result<fs::File> {
     let no_follow = if follow_symlinks { 0 } else { libc::O_NOFOLLOW };
     fs::OpenOptions::new()
@@ -206,44 +273,119 @@ fn open_directory(path: &Path, follow_symlinks: bool) -> io::Result<fs::File> {
         .open(path)
 }
 
+fn openat_file(dir_fd: RawFd, name: &CStr, flags: libc::c_int) -> io::Result<fs::File> {
+    // SAFETY: `dir_fd` stays borrowed, `name` is NUL-terminated, and openat
+    // returns a new descriptor that is immediately transferred to `File`.
+    let fd = unsafe { libc::openat(dir_fd, name.as_ptr(), flags) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `fd` is newly owned by this function and has not been wrapped.
+    Ok(unsafe { fs::File::from_raw_fd(fd) })
+}
+
+fn duplicate_fd(fd: RawFd) -> io::Result<fs::File> {
+    // SAFETY: fcntl borrows `fd` and returns a separately owned descriptor.
+    let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3) };
+    if duplicate < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `duplicate` is newly owned and has not been wrapped elsewhere.
+    Ok(unsafe { fs::File::from_raw_fd(duplicate) })
+}
+
+struct DirStream(*mut libc::DIR);
+
+impl DirStream {
+    fn from_file(file: fs::File) -> io::Result<Self> {
+        let fd = file.as_raw_fd();
+        // SAFETY: fdopendir takes ownership only on success. `file` is
+        // forgotten in that case and otherwise closes the descriptor.
+        let stream = unsafe { libc::fdopendir(fd) };
+        if stream.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        std::mem::forget(file);
+        Ok(Self(stream))
+    }
+
+    fn fd(&self) -> RawFd {
+        // SAFETY: `self.0` remains a live DIR until Drop.
+        unsafe { libc::dirfd(self.0) }
+    }
+
+    fn next_name(&mut self) -> io::Result<Option<CString>> {
+        // SAFETY: this module targets Linux; setting thread-local errno before
+        // readdir lets a null result be distinguished from end-of-directory.
+        unsafe { *libc::__errno_location() = 0 };
+        // SAFETY: `self.0` is a live DIR and this method has exclusive access
+        // while readdir advances its internal position.
+        let entry = unsafe { libc::readdir(self.0) };
+        if entry.is_null() {
+            let error = io::Error::last_os_error();
+            return if error.raw_os_error() == Some(0) {
+                Ok(None)
+            } else {
+                Err(error)
+            };
+        }
+
+        // SAFETY: d_name is NUL-terminated for a successful readdir result;
+        // copy it before the next call may invalidate the storage.
+        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+        Ok(Some(name.to_owned()))
+    }
+}
+
+impl Drop for DirStream {
+    fn drop(&mut self) {
+        // SAFETY: `self.0` is owned by this wrapper and closed exactly once.
+        unsafe { libc::closedir(self.0) };
+    }
+}
+
+/// Recursively chown a directory tree.
+///
+/// Every child is opened relative to the already-open parent with
+/// O_PATH|O_NOFOLLOW before it is inspected. Children are processed first,
+/// then the directory itself, matching `chown_recursive_internal()`.
 fn chown_recursive_dir(
-    dir: &Path,
+    dir_file: fs::File,
+    dir_meta: &Metadata,
     opts: &ChownOptions,
-    open_file: Option<fs::File>,
-    original_meta: Option<&Metadata>,
 ) -> io::Result<bool> {
-    let mut changed = false;
-    let dir_file = match open_file {
-        Some(file) => file,
-        None => open_directory(dir, false)?,
-    };
-    let current_meta = dir_file.metadata()?;
-    let dir_meta = original_meta.unwrap_or(&current_meta);
+    let mut stream = DirStream::from_file(dir_file)?;
 
-    let entries = fs::read_dir(dir)?;
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        let meta = fs::symlink_metadata(&path)?;
+    while let Some(name) = stream.next_name()? {
+        if name.as_bytes() == b"." || name.as_bytes() == b".." {
+            continue;
+        }
 
-        if meta.is_dir() {
-            if chown_recursive_dir(&path, opts, None, None)? {
-                changed = true;
-            }
-        } else if needs_change(&meta, opts) {
-            let file = fs::File::open(&path)?;
-            chown_one_fd(file.as_raw_fd(), &meta, opts)?;
-            changed = true;
+        let child = openat_file(
+            stream.fd(),
+            &name,
+            libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        )?;
+        let child_meta = child.metadata()?;
+
+        if child_meta.is_dir() {
+            let subdir = openat_file(
+                child.as_raw_fd(),
+                c".",
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOATIME,
+            )?;
+            chown_recursive_dir(subdir, &child_meta, opts)?;
+        } else {
+            chown_one_fd(child.as_raw_fd(), &child_meta, opts)?;
         }
     }
 
     // Chown the directory itself last.
-    if needs_change(&dir_meta, opts) {
-        chown_one_fd(dir_file.as_raw_fd(), dir_meta, opts)?;
-        return Ok(true);
-    }
+    chown_one_fd(stream.fd(), dir_meta, opts)?;
 
-    Ok(changed)
+    // C's chown_one() reports success as a change even when fchmod_and_chown()
+    // finds the inode already correct; mirror that observable return value.
+    Ok(true)
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -252,8 +394,8 @@ fn chown_recursive_dir(
 ///
 /// If `follow_symlinks` is true the initial `path` resolution follows a final
 /// symlink. `path` itself must resolve to a directory, matching the C
-/// `O_DIRECTORY` entry point. Nested directory opens use `O_NOFOLLOW`; the
-/// remaining non-directory traversal is still path-based (a documented P2).
+/// `O_DIRECTORY` entry point. All descendants are pinned and manipulated
+/// descriptor-relatively without following symlinks.
 ///
 /// Returns `Ok(true)` if any changes were made, `Ok(false)` if the shortcut
 /// optimisation determined no work is needed, or an error.
@@ -277,7 +419,7 @@ pub fn path_chown_recursive(
         return Ok(false);
     }
 
-    chown_recursive_dir(path, opts, Some(file), Some(&meta))
+    chown_recursive_dir(file, &meta, opts)
 }
 
 /// Recursively change ownership and permissions of a directory tree by fd.
@@ -316,9 +458,11 @@ pub fn fd_chown_recursive<Fd: AsRawFd>(fd: &Fd, opts: &ChownOptions) -> io::Resu
         return Ok(false);
     }
 
-    // Resolve the fd to a path and delegate.
-    let fd_path = std::path::PathBuf::from(format!("/proc/self/fd/{raw}"));
-    path_chown_recursive(&fd_path, opts, false)
+    // fdopendir takes ownership, so duplicate the caller's descriptor exactly
+    // as the C implementation does.
+    let duplicate = duplicate_fd(raw)?;
+    let meta = duplicate.metadata()?;
+    chown_recursive_dir(duplicate, &meta, opts)
 }
 
 // ── Convenience wrappers ──────────────────────────────────────────────────
@@ -503,7 +647,10 @@ mod tests {
 
     #[test]
     fn test_path_chown_noop_already_correct() {
-        let (_d, p, m) = tmp_file();
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("d");
+        fs::create_dir(&p).unwrap();
+        let m = fs::symlink_metadata(&p).unwrap();
         let opts = ChownOptions {
             uid: Some(m.uid()),
             gid: Some(m.gid()),
