@@ -12,6 +12,7 @@ use std::io;
 use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::notify_recv::{NotificationMessage, NotifyError, notify_recv};
@@ -128,6 +129,36 @@ impl Drop for ForkNotifyChild {
     }
 }
 
+/// Removes a notification socket pathname unless ownership is transferred to
+/// a successfully returned [`ForkNotifyChild`].
+///
+/// Unlike an unnamed socket, binding an AF_UNIX pathname creates a filesystem
+/// entry.  Keep that entry under RAII even while the process is still being
+/// spawned, so errors before the child handle is constructed cannot leave a
+/// stale, potentially colliding socket behind.
+struct SocketPathCleanup {
+    path: PathBuf,
+    keep: bool,
+}
+
+impl SocketPathCleanup {
+    fn new(path: PathBuf) -> Self {
+        Self { path, keep: false }
+    }
+
+    fn keep(&mut self) {
+        self.keep = true;
+    }
+}
+
+impl Drop for SocketPathCleanup {
+    fn drop(&mut self) {
+        if !self.keep {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
 // ── Runtime scope ──────────────────────────────────────────────────────────
 
 /// Scope for journal operations (system vs. user).
@@ -165,17 +196,28 @@ impl std::fmt::Display for RuntimeScope {
 
 // ── Socket path generation ─────────────────────────────────────────────────
 
+/// Per-process disambiguator for notification socket pathnames.
+///
+/// The timestamp prevents collisions with stale sockets from previous
+/// processes, while this counter makes concurrent calls from one process
+/// distinct even on clocks with coarse resolution.
+static NEXT_SOCKET_ID: AtomicU64 = AtomicU64::new(0);
+
 /// Generate a unique temporary socket path for notification passing.
 ///
-/// Uses the current nanosecond timestamp to avoid collisions in
-/// single-threaded use. The socket should be removed after use (handled
-/// automatically by [`ForkNotifyChild::drop`]).
+/// Uses the PID, a timestamp, and a process-local counter to avoid collisions.
+/// The socket should be removed after use (handled automatically by
+/// [`ForkNotifyChild::drop`]).
 fn make_socket_path() -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    PathBuf::from(format!("/run/systemd/fork-notify-{nonce}.sock"))
+    let id = NEXT_SOCKET_ID.fetch_add(1, Ordering::Relaxed);
+    PathBuf::from(format!(
+        "/run/systemd/fork-notify-{}-{nonce}-{id}.sock",
+        std::process::id()
+    ))
 }
 
 /// Generate a socket path in `/tmp` as a fallback when `/run/systemd` is
@@ -186,7 +228,11 @@ fn make_socket_path_tmp() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    PathBuf::from(format!("/tmp/systemd-fork-notify-test-{nonce}.sock"))
+    let id = NEXT_SOCKET_ID.fetch_add(1, Ordering::Relaxed);
+    PathBuf::from(format!(
+        "/tmp/systemd-fork-notify-test-{}-{nonce}-{id}.sock",
+        std::process::id()
+    ))
 }
 
 // ── Notification validation ────────────────────────────────────────────────
@@ -235,6 +281,18 @@ fn exit_status_to_error(pid: u32, status: ExitStatus) -> ForkNotifyError {
     }
 }
 
+/// Kill and reap a child after readiness setup fails.
+///
+/// `fork_notify()` owns a child until it has received and validated READY=1.
+/// Matching the C cleanup handler, failures during that interval must not
+/// leave the just-spawned command running or turn it into a zombie.  `Child`
+/// owns its PID, so this uses its safe, handle-scoped operations rather than
+/// a raw PID signal.
+fn kill_and_reap_failed_child(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 // ── Core API ───────────────────────────────────────────────────────────────
 
 /// Fork a child process and block until it signals readiness via
@@ -271,6 +329,7 @@ pub fn fork_notify_with_timeout(argv: &[String], timeout: Duration) -> Result<Fo
 
     let socket_path = make_socket_path();
     let socket = UnixDatagram::bind(&socket_path)?;
+    let mut socket_path_cleanup = SocketPathCleanup::new(socket_path.clone());
     socket.set_read_timeout(Some(timeout))?;
     socket.set_nonblocking(false)?;
 
@@ -284,36 +343,38 @@ pub fn fork_notify_with_timeout(argv: &[String], timeout: Duration) -> Result<Fo
     let mut child = command.spawn()?;
     let child_pid = child.id();
 
-    // Receive and validate the notification from the child.
-    let msg = match notify_recv(&socket) {
-        Ok(m) => m,
-        Err(NotifyError::Io(io::ErrorKind::TimedOut)) => {
-            // On timeout, check if the child is still alive.
-            match child.try_wait()? {
-                Some(status) => {
-                    return Err(exit_status_to_error(child_pid, status));
-                }
-                None => {
-                    return Err(ForkNotifyError::ChildNotReady { pid: child_pid });
+    let readiness = (|| {
+        // Receive and validate the notification from the child.
+        let msg = match notify_recv(&socket) {
+            Ok(m) => m,
+            Err(NotifyError::Io(io::ErrorKind::TimedOut)) => {
+                // On timeout, check if the child is still alive.
+                match child.try_wait()? {
+                    Some(status) => return Err(exit_status_to_error(child_pid, status)),
+                    None => return Err(ForkNotifyError::ChildNotReady { pid: child_pid }),
                 }
             }
-        }
-        Err(NotifyError::Io(io::ErrorKind::WouldBlock)) => match child.try_wait()? {
-            Some(status) => {
-                return Err(exit_status_to_error(child_pid, status));
+            Err(NotifyError::Io(io::ErrorKind::WouldBlock)) => match child.try_wait()? {
+                Some(status) => return Err(exit_status_to_error(child_pid, status)),
+                None => return Err(ForkNotifyError::ChildNotReady { pid: child_pid }),
+            },
+            Err(e) => {
+                return Err(ForkNotifyError::Io(io::Error::new(io::ErrorKind::Other, e)));
             }
-            None => {
-                return Err(ForkNotifyError::ChildNotReady { pid: child_pid });
-            }
-        },
-        Err(e) => return Err(ForkNotifyError::Io(io::Error::new(io::ErrorKind::Other, e))),
-    };
+        };
 
-    // The notification socket doesn't carry sender PID credentials in our
-    // pure-Rust implementation (the C version uses SO_PEERCRED). We treat
-    // the child PID as the sender.
-    validate_notification(&msg, child_pid, child_pid)?;
+        // The notification socket doesn't carry sender PID credentials in our
+        // pure-Rust implementation (the C version uses SO_PEERCRED). We treat
+        // the child PID as the sender.
+        validate_notification(&msg, child_pid, child_pid)
+    })();
 
+    if let Err(error) = readiness {
+        kill_and_reap_failed_child(&mut child);
+        return Err(error);
+    }
+
+    socket_path_cleanup.keep();
     Ok(ForkNotifyChild { child, socket_path })
 }
 
@@ -655,12 +716,11 @@ mod tests {
     fn test_make_socket_path_uniqueness() {
         let p1 = make_socket_path();
         let p2 = make_socket_path();
-        // Two rapid calls *might* collide in theory, but in practice they
-        // should differ. This is a weak sanity check.
         assert!(
             p1.to_string_lossy()
                 .starts_with("/run/systemd/fork-notify-")
         );
+        assert_ne!(p1, p2);
     }
 
     // ── fork_notify_terminate_many empty ──────────────────────────────

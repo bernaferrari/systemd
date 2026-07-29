@@ -217,7 +217,9 @@ pub fn acl_has_all_base_entries(has_user_obj: bool, has_group_obj: bool, has_oth
 pub struct AclTextEntry {
     /// Whether this is a default (directory inheritance) ACL entry.
     pub is_default: bool,
-    /// The qualifier string (user name, group name, or empty for base entries).
+    /// The entry tag exactly as supplied (for example, `user` or `group`).
+    pub tag: String,
+    /// The qualifier string (user/group name or ID), empty for base entries.
     pub qualifier: String,
     /// The permission string (e.g., "rwx", "rx").
     pub perms: String,
@@ -252,7 +254,9 @@ impl std::error::Error for AclParseError {}
 
 /// Parse a single ACL text entry (e.g., "user::rwx", "default:user:foo:rw", "group:bar:r-x").
 ///
-/// Returns the parsed entry with uppercase 'X' normalized to lowercase 'x'.
+/// Uppercase `X` is retained so that [`classify_acl_entry`] can route the entry
+/// through the conditional-execute path before a future libacl boundary
+/// normalizes it, matching `parse_acl()` in the C implementation.
 pub fn parse_acl_entry(text: &str) -> Result<AclTextEntry, AclParseError> {
     let parts: Vec<&str> = text.split(':').collect();
 
@@ -270,13 +274,11 @@ pub fn parse_acl_entry(text: &str) -> Result<AclTextEntry, AclParseError> {
         (false, &parts[..])
     };
 
-    // content_parts layout: [tag_type, qualifier_name, perms]
-    // Use the named qualifier if present (non-empty), otherwise fall back to tag type
-    let qualifier = if !content_parts[1].is_empty() {
-        content_parts[1].to_string()
-    } else {
-        content_parts[0].to_string()
-    };
+    // content_parts layout: [tag_type, qualifier_name, perms]. Keep tag and
+    // qualifier separate: conflating an empty qualifier with the tag loses the
+    // distinction between `user::rwx` and a named user entry.
+    let tag = content_parts[0].to_string();
+    let qualifier = content_parts[1].to_string();
     let perms = content_parts[2].to_string();
 
     if perms.is_empty() {
@@ -285,6 +287,7 @@ pub fn parse_acl_entry(text: &str) -> Result<AclTextEntry, AclParseError> {
 
     Ok(AclTextEntry {
         is_default,
+        tag,
         qualifier,
         perms,
     })
@@ -628,7 +631,8 @@ mod tests {
     fn test_parse_acl_entry_simple() {
         let entry = parse_acl_entry("user::rwx").unwrap();
         assert!(!entry.is_default);
-        assert_eq!(entry.qualifier, "user");
+        assert_eq!(entry.tag, "user");
+        assert_eq!(entry.qualifier, "");
         assert_eq!(entry.perms, "rwx");
     }
 
@@ -636,6 +640,7 @@ mod tests {
     fn test_parse_acl_entry_named_user() {
         let entry = parse_acl_entry("user:1000:rw-").unwrap();
         assert!(!entry.is_default);
+        assert_eq!(entry.tag, "user");
         assert_eq!(entry.qualifier, "1000");
         assert_eq!(entry.perms, "rw-");
     }
@@ -644,7 +649,8 @@ mod tests {
     fn test_parse_acl_entry_default() {
         let entry = parse_acl_entry("default:group::r-x").unwrap();
         assert!(entry.is_default);
-        assert_eq!(entry.qualifier, "group");
+        assert_eq!(entry.tag, "group");
+        assert_eq!(entry.qualifier, "");
         assert_eq!(entry.perms, "r-x");
     }
 
@@ -652,6 +658,7 @@ mod tests {
     fn test_parse_acl_entry_short_default() {
         let entry = parse_acl_entry("d:user:foo:rx").unwrap();
         assert!(entry.is_default);
+        assert_eq!(entry.tag, "user");
         assert_eq!(entry.qualifier, "foo");
         assert_eq!(entry.perms, "rx");
     }
@@ -689,6 +696,7 @@ mod tests {
     fn test_acl_entry_has_uppercase_x() {
         let entry = AclTextEntry {
             is_default: false,
+            tag: "user".to_string(),
             qualifier: "user".to_string(),
             perms: "rwX".to_string(),
         };
@@ -696,6 +704,7 @@ mod tests {
 
         let entry_lower = AclTextEntry {
             is_default: false,
+            tag: "user".to_string(),
             qualifier: "user".to_string(),
             perms: "rwx".to_string(),
         };
@@ -706,6 +715,7 @@ mod tests {
     fn test_classify_acl_entry() {
         let access = AclTextEntry {
             is_default: false,
+            tag: "user".to_string(),
             qualifier: "user".to_string(),
             perms: "rwx".to_string(),
         };
@@ -713,6 +723,7 @@ mod tests {
 
         let exec = AclTextEntry {
             is_default: false,
+            tag: "user".to_string(),
             qualifier: "user".to_string(),
             perms: "rwX".to_string(),
         };
@@ -720,6 +731,7 @@ mod tests {
 
         let default = AclTextEntry {
             is_default: true,
+            tag: "group".to_string(),
             qualifier: "group".to_string(),
             perms: "r-x".to_string(),
         };

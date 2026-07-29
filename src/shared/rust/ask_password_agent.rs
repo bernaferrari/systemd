@@ -1281,8 +1281,13 @@ fn parse_agent_reply(data: &[u8]) -> AskPasswordResult<Vec<String>> {
 
 fn receive_agent_message(socket_fd: RawFd) -> AskPasswordResult<Option<Vec<String>>> {
     let mut payload = [0u8; LINE_MAX + 1];
-    let mut cred_buf =
-        [0u8; unsafe { libc::CMSG_SPACE(mem::size_of::<crate::ffi::ucred>() as u32) } as usize];
+    let mut cred_buf = [
+        0u8;
+        // SAFETY: CMSG_SPACE only computes the aligned ancillary-buffer size for a
+        // `ucred` payload; its argument is the exact payload size and no pointer is
+        // dereferenced by the calculation.
+        unsafe { libc::CMSG_SPACE(mem::size_of::<crate::ffi::ucred>() as u32) } as usize
+    ];
     let mut iov = libc::iovec {
         iov_base: payload.as_mut_ptr().cast::<c_void>(),
         iov_len: payload.len(),

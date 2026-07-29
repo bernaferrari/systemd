@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
@@ -104,7 +104,9 @@ fn open_or_create_ask_password_directory(path: &Path) -> io::Result<fs::File> {
     match options.open(path) {
         Ok(directory) => Ok(directory),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            match fs::create_dir(path) {
+            let mut builder = fs::DirBuilder::new();
+            builder.mode(0o755);
+            match builder.create(path) {
                 Ok(()) => {}
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(error),
@@ -268,34 +270,73 @@ pub fn create_socket(askpwdir: &Path) -> io::Result<UnixDatagram> {
     Ok(socket)
 }
 
+/// Translate the compatibility facade's request into the implementation request.
+///
+/// The facade predates `ask_password_agent`, but it is still the public API used by
+/// the cryptsetup Rust ports. Keeping this conversion in one place lets the facade
+/// retain its stable, non-optional prompt while the protocol implementation follows
+/// C's nullable `message` field.
+fn agent_request(req: &AskPasswordRequest) -> crate::ask_password_agent::AskPasswordRequest {
+    crate::ask_password_agent::AskPasswordRequest {
+        message: Some(req.message.clone()),
+        keyring: req.keyring.clone(),
+        icon: req.icon.clone(),
+        id: req.id.clone(),
+        credential: req.credential.clone(),
+        flag_file: req.flag_file.clone(),
+        tty_fd: req.tty_fd,
+        hup_fd: req.hup_fd,
+        until: req.until,
+    }
+}
+
+/// The two modules deliberately use distinct bitflag types, so converting by the
+/// shared C bit representation avoids maintaining a second list of flag mappings.
+fn agent_flags(flags: AskPasswordFlags) -> crate::ask_password_agent::AskPasswordFlags {
+    crate::ask_password_agent::AskPasswordFlags::from_bits_retain(flags.bits())
+}
+
+/// Preserve the facade's `io::Result` contract at the boundary to the richer
+/// implementation. The explicit mappings are the errno values returned by the C
+/// entry points; `Io` retains its original Rust error kind.
+fn agent_error(error: crate::ask_password_agent::AskPasswordError) -> io::Error {
+    let errno = match error {
+        crate::ask_password_agent::AskPasswordError::Timeout => libc::ETIME,
+        crate::ask_password_agent::AskPasswordError::NotAvailable => libc::EUNATCH,
+        crate::ask_password_agent::AskPasswordError::NoEnt => libc::ENOENT,
+        crate::ask_password_agent::AskPasswordError::Canceled => libc::ECANCELED,
+        crate::ask_password_agent::AskPasswordError::Interrupted => libc::EINTR,
+        crate::ask_password_agent::AskPasswordError::NoExec => libc::ENOEXEC,
+        crate::ask_password_agent::AskPasswordError::ConnReset => libc::ECONNRESET,
+        crate::ask_password_agent::AskPasswordError::NotSupported => libc::EOPNOTSUPP,
+        crate::ask_password_agent::AskPasswordError::NoKey => libc::ENOKEY,
+        crate::ask_password_agent::AskPasswordError::Io(kind) => return io::Error::from(kind),
+    };
+    io::Error::from_raw_os_error(errno)
+}
+
 pub fn ask_password_agent(
-    _req: &AskPasswordRequest,
-    _flags: AskPasswordFlags,
+    req: &AskPasswordRequest,
+    flags: AskPasswordFlags,
 ) -> io::Result<Vec<String>> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "agent password querying not available in safe Rust shim",
-    ))
+    crate::ask_password_agent::ask_password_agent(&agent_request(req), agent_flags(flags))
+        .map_err(agent_error)
 }
 
 pub fn ask_password_tty(
-    _req: &AskPasswordRequest,
-    _flags: AskPasswordFlags,
+    req: &AskPasswordRequest,
+    flags: AskPasswordFlags,
 ) -> io::Result<Vec<String>> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "TTY password querying not available in safe Rust shim",
-    ))
+    crate::ask_password_agent::ask_password_tty(&agent_request(req), agent_flags(flags))
+        .map_err(agent_error)
 }
 
 pub fn ask_password_plymouth(
-    _req: &AskPasswordRequest,
-    _flags: AskPasswordFlags,
+    req: &AskPasswordRequest,
+    flags: AskPasswordFlags,
 ) -> io::Result<Vec<String>> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "Plymouth password querying not available in safe Rust shim",
-    ))
+    crate::ask_password_agent::ask_password_plymouth(&agent_request(req), agent_flags(flags))
+        .map_err(agent_error)
 }
 
 pub fn ask_password_credential(

@@ -1011,10 +1011,8 @@
       "unsafe_sites": 6
     },
     "src/shared/rust/ask_password_agent.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "1285:15:[0u8; unsafe { libc::CMSG_SPACE(mem::size_of::<crate::ffi::ucred>() as u32) } as usize];"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 40
     },
     "src/shared/rust/ask_password_api.rs": {
@@ -2104,7 +2102,7 @@
     }
   },
   "totals": {
-    "missing_safety": 545,
+    "missing_safety": 544,
     "unsafe_sites": 5706
   },
   "version": 2,
