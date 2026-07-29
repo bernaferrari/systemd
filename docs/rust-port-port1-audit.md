@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 13:17 UTC
+Generated: 2026-07-29 13:24 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **299**
+- Total modules audited: **297**
 - `genuine-rust`: **205**
-- `ffi-backed-rust`: **94**
+- `ffi-backed-rust`: **92**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -47,7 +47,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/dns_domain_validators.rs` | 4 | 27 | 0 | 7 |
 | `src/basic/rust/dns_label.rs` | 30 | 52 | 0 | 271 |
 | `src/basic/rust/dns_type_predicates.rs` | 16 | 48 | 0 | 16 |
-| `src/basic/rust/edid.rs` | 2 | 20 | 2 | 12 |
 | `src/basic/rust/efivars_util.rs` | 5 | 33 | 1 | 19 |
 | `src/basic/rust/env_util.rs` | 6 | 42 | 0 | 29 |
 | `src/basic/rust/errno_util.rs` | 34 | 57 | 2 | 12 |
@@ -113,7 +112,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/user_util.rs` | 7 | 27 | 0 | 31 |
 | `src/basic/rust/utf8.rs` | 19 | 33 | 0 | 120 |
 | `src/basic/rust/virt.rs` | 5 | 25 | 1 | 7 |
-| `src/basic/rust/xattr_util.rs` | 2 | 18 | 0 | 4 |
 | `src/basic/rust/xml_tokenizer.rs` | 1 | 34 | 0 | 73 |
 | `src/shared/rust/btrfs_util.rs` | 1 | 49 | 1 | 40 |
 | `src/shared/rust/daemon_util.rs` | 1 | 52 | 1 | 29 |

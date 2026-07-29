@@ -648,13 +648,12 @@ def allocator_boundary_is_c_compatible(path: Path) -> bool:
 def misc_inline_abi_boundary_is_reviewed() -> bool:
     header, hex_source, symbols = PARTIAL_SURFACES["misc_inline_abi"]
     format_header = PARTIAL_SURFACES["format_bytes_full"][0]
-    devnum_source, format_source, xattr_source = PARTIAL_EXTRA_SOURCES["misc_inline_abi"]
+    devnum_source, format_source = PARTIAL_EXTRA_SOURCES["misc_inline_abi"]
     test = PARTIAL_SHADOW_TESTS["misc_inline_abi"][0]
     header_text = header.read_text()
     hex_text = hex_source.read_text()
     devnum_text = devnum_source.read_text()
     format_text = format_source.read_text()
-    xattr_text = xattr_source.read_text()
     test_text = test.read_text()
 
     required_header = (
@@ -663,7 +662,6 @@ def misc_inline_abi_boundary_is_reviewed() -> bool:
         "#include <stdint.h>",
         "#include <sys/types.h>",
         "bool rs_devnum_is_zero(dev_t d);",
-        "bool rs_xattr_is_acl(const char *name);",
         "int rs_unhexmem(const char *p, void **ret_data, size_t *ret_size);",
         "ssize_t rs_base64mem(const void *p, size_t l, char **ret);",
     )
@@ -684,7 +682,7 @@ def misc_inline_abi_boundary_is_reviewed() -> bool:
         return False
 
     return (
-        len(symbols) == 7
+        len(symbols) == 5
         and all(snippet in header_text for snippet in required_header)
         and '#include "rust/misc_inline_abi.h"' in test_text
         and '#include "rust/format_util.h"' in test_text
@@ -706,7 +704,6 @@ def misc_inline_abi_boundary_is_reviewed() -> bool:
         and "Vec" not in format_bytes
         and "pub extern \"C\" fn rs_devnum_is_zero" in devnum_text
         and "pub extern \"C\" fn rs_devnum_set_and_equal" in devnum_text
-        and "CStr::from_ptr(name)" in xattr_text
     )
 
 

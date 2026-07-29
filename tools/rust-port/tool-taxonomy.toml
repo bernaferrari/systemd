@@ -37,7 +37,6 @@ paths = [
     "tools/rust-port/contracts/basic/format-util.toml",
     "tools/rust-port/contracts/basic/gunicode.toml",
     "tools/rust-port/contracts/basic/env-util.toml",
-    "tools/rust-port/contracts/basic/edid.toml",
     "tools/rust-port/contracts/basic/image-policy-util.toml",
     "tools/rust-port/contracts/basic/iovec-util.toml",
     "tools/rust-port/contracts/basic/iovec-wrapper.toml",

@@ -206,7 +206,6 @@ jobs:
           test-misc-inline-rust
           test-string-mutation-rust
           test-string-util-inline2-rust
-          test-xattr-util-rust
           test-devnum-util-rust
           test-iovec-util-rust
           test-bus-type-util-rust
@@ -240,7 +239,6 @@ jobs:
           test-recovery-key-rust
           test-hexdecoct-rust
           test-env-util-rust
-          test-edid-rust
           test-memory-util-rust
           test-hostname-util-rust
           test-id128-rust
@@ -340,7 +338,6 @@ jobs:
           test-misc-inline-rust
           test-string-mutation-rust
           test-string-util-inline2-rust
-          test-xattr-util-rust
           test-devnum-util-rust
           test-iovec-util-rust
           test-bus-type-util-rust
@@ -374,7 +371,6 @@ jobs:
           test-recovery-key-rust
           test-hexdecoct-rust
           test-env-util-rust
-          test-edid-rust
           test-memory-util-rust
           test-hostname-util-rust
           test-id128-rust

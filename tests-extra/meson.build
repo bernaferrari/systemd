@@ -1448,20 +1448,6 @@ if get_option('rust').enabled()
         test('test-namespace-mountpoint-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-xattr-util-rust',
-                files('test-xattr-util-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-xattr-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-recovery-key-rust',
                 files('test-recovery-key-rust.c'),
                 include_directories : includes,
@@ -1798,20 +1784,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-memeqbyte-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-edid-rust',
-                files('test-edid-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-edid-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-user-util-rust',

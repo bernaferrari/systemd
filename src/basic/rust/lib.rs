@@ -68,7 +68,6 @@ pub mod dlfcn_util;
 pub mod dns_domain_validators;
 pub mod dns_label;
 pub mod dns_type_predicates;
-pub mod edid;
 pub mod efivars_util;
 pub mod env_util;
 pub mod errno_classify;
@@ -135,7 +134,6 @@ pub mod user_shell_util;
 pub mod user_util;
 pub mod utf8;
 pub mod virt;
-pub mod xattr_util;
 pub mod xml_tokenizer;
 
 // Private implementation fragments. Keep these separate from the public

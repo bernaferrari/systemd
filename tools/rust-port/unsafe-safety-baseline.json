@@ -80,11 +80,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 102
     },
-    "src/basic/rust/edid.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 6
-    },
     "src/basic/rust/efivars_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -610,11 +605,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 3
-    },
-    "src/basic/rust/xattr_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
     },
     "src/basic/rust/xml_tokenizer.rs": {
       "missing_safety": 0,
@@ -1421,7 +1411,7 @@
   },
   "totals": {
     "missing_safety": 222,
-    "unsafe_sites": 5144
+    "unsafe_sites": 5106
   },
   "version": 2,
   "window": 3

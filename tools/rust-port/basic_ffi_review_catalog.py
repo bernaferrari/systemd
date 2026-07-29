@@ -888,15 +888,8 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_unbase64mem",
                     "rs_devnum_is_zero",
                     "rs_devnum_set_and_equal",
-                    "rs_xattr_is_acl",
-                    "rs_xattr_is_selinux",
                 }
             ),
-        ),
-        "xattr_util": (
-            basic_rust / "xattr_util.h",
-            basic_rust / "xattr_util.rs",
-            frozenset({"rs_xattr_is_acl", "rs_xattr_is_selinux"}),
         ),
         "misc_validator_registered": (
             basic_rust / "misc_validators.h",
@@ -1011,11 +1004,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "credential_validators.h",
             basic_rust / "credential_validators.rs",
             frozenset({"rs_credential_name_valid", "rs_credential_glob_valid"}),
-        ),
-        "edid": (
-            basic_rust / "edid.h",
-            basic_rust / "edid.rs",
-            frozenset({"rs_edid_parse_blob", "rs_edid_get_panel_id"}),
         ),
         "nsflags": (
             shared_rust / "nsflags.h",
@@ -1139,7 +1127,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "misc_inline_abi": (
             basic_rust / "devnum_util.rs",
             basic_rust / "format_util.rs",
-            basic_rust / "xattr_util.rs",
         ),
         "misc_validator_registered": (basic_rust / "process_util_str_tables.rs",),
         "string_mutation_registered": (basic_rust / "string_util_lines.rs",),
@@ -1291,7 +1278,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "gpt_partition_predicates": (tests_extra / "test-gpt-unit-install-rust.c",),
         "unit_install_predicates": (tests_extra / "test-gpt-unit-install-rust.c",),
         "misc_inline_abi": (tests_extra / "test-misc-inline-rust.c",),
-        "xattr_util": (tests_extra / "test-xattr-util-rust.c",),
         "misc_validator_registered": (tests_extra / "test-misc-validators-rust.c",),
         "mount_propagation_validator": (
             tests_extra / "test-namespace-mountpoint-rust.c",
@@ -1311,7 +1297,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "credential_validators": (
             tests_extra / "test-credential-validators-rust.c",
         ),
-        "edid": (tests_extra / "test-edid-rust.c",),
         "nsflags": (tests_extra / "test-nsflags-rust.c",),
         "memory_util": (tests_extra / "test-memory-util-rust.c",),
         "hostname_util": (tests_extra / "test-hostname-util-rust.c",),
@@ -1602,10 +1587,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/basic/format-util.h",
             root / "src/basic/hexdecoct.c",
             root / "src/basic/hexdecoct.h",
-            root / "src/basic/xattr-util.c",
-            root / "src/basic/xattr-util.h",
         ),
-        "xattr_util": (root / "src/basic/xattr-util.c", root / "src/basic/xattr-util.h"),
         "misc_validator_registered": (
             root / "src/basic/parse-util.c",
             root / "src/basic/parse-util.h",
@@ -1657,10 +1639,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "credential_validators": (
             root / "src/shared/creds-util.c",
             root / "src/shared/creds-util.h",
-        ),
-        "edid": (
-            root / "src/fundamental/edid.c",
-            root / "src/fundamental/edid.h",
         ),
         "nsflags": (
             root / "src/shared/nsflags.c",

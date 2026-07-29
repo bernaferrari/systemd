@@ -10,7 +10,6 @@
 #include "tests.h"
 #include "in-addr-util.h"
 #include "devnum-util.h"
-#include "xattr-util.h"
 #include "format-util.h"
 #include "hexdecoct.h"
 #include "rust/misc_inline_abi.h"
@@ -106,23 +105,6 @@ static void test_devnum_set_and_equal(void) {
         assert_se(devnum_set_and_equal(c, c) == rs_devnum_set_and_equal(c, c));
         assert_se(!devnum_set_and_equal(c, c)); /* both zero → false */
         assert_se(devnum_set_and_equal(a, d) == rs_devnum_set_and_equal(a, d));
-}
-
-/* ── xattr_is_acl ─────────────────────────────────────────────────────── */
-
-static void test_xattr_is_acl(void) {
-        assert_se(xattr_is_acl("system.posix_acl_access") == rs_xattr_is_acl("system.posix_acl_access"));
-        assert_se(xattr_is_acl("system.posix_acl_default") == rs_xattr_is_acl("system.posix_acl_default"));
-        assert_se(xattr_is_acl("security.selinux") == rs_xattr_is_acl("security.selinux"));
-        assert_se(xattr_is_acl("user.foo") == rs_xattr_is_acl("user.foo"));
-}
-
-/* ── xattr_is_selinux ─────────────────────────────────────────────────── */
-
-static void test_xattr_is_selinux(void) {
-        assert_se(xattr_is_selinux("security.selinux") == rs_xattr_is_selinux("security.selinux"));
-        assert_se(xattr_is_selinux("system.posix_acl_access") == rs_xattr_is_selinux("system.posix_acl_access"));
-        assert_se(xattr_is_selinux("user.foo") == rs_xattr_is_selinux("user.foo"));
 }
 
 /* ── format_bytes ──────────────────────────────────────────────────────── */
@@ -226,8 +208,6 @@ int main(int argc, char **argv) {
         test_in_addr_data_is_null();
         test_devnum_is_zero();
         test_devnum_set_and_equal();
-        test_xattr_is_acl();
-        test_xattr_is_selinux();
         test_format_bytes();
         test_unhexmem();
         test_base64mem();

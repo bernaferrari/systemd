@@ -347,9 +347,7 @@ if get_option('rust').enabled()
                 'rust/btrfs_util.rs',
                 'rust/mountpoint_util.rs',
                 'rust/credential_validators.rs',
-                'rust/edid.rs',
                 'rust/af_list.rs',
-                'rust/xattr_util.rs',
         )
         rust_sources += rust_workspace_inputs + [errno_to_name_rust]
 

@@ -15,9 +15,6 @@
 bool rs_devnum_is_zero(dev_t d);
 bool rs_devnum_set_and_equal(dev_t a, dev_t b);
 
-bool rs_xattr_is_acl(const char *name);
-bool rs_xattr_is_selinux(const char *name);
-
 int rs_unhexmem(const char *p, void **ret_data, size_t *ret_size);
 ssize_t rs_base64mem(const void *p, size_t l, char **ret);
 int rs_unbase64mem(const char *p, void **ret_data, size_t *ret_size);
