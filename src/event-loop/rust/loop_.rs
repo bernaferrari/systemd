@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, RawFd};
 
 use crate::Result;
 
 #[cfg(target_os = "linux")]
 use nix::errno::Errno;
 #[cfg(target_os = "linux")]
-use nix::sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags, EpollOp, EpollTimeout};
+use nix::sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags, EpollTimeout};
 
 // sd-event dispatches sources on the thread running the event loop. Requiring
 // callbacks to be Send forced PID 1's single-owner manager state behind a
@@ -60,9 +60,9 @@ impl EventLoop {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn add_source(
+    pub fn add_source<Fd: AsFd>(
         &mut self,
-        fd: RawFd,
+        fd: Fd,
         events: EpollFlags,
         data: u64,
         cb: Callback,
@@ -73,39 +73,37 @@ impl EventLoop {
             return Err(Errno::EEXIST);
         }
 
-        let mut event = EpollEvent::new(events, data);
-        // The source descriptor remains externally owned. Use nix's raw-FD syscall wrapper here
-        // rather than fabricating a BorrowedFd from unchecked caller input.
-        nix::sys::epoll::epoll_ctl(
-            self.epoll.as_raw_fd(),
-            EpollOp::EpollCtlAdd,
-            fd,
-            Some(&mut event),
-        )?;
-        self.sources.insert(data, Source { fd, callback: cb });
+        let fd = fd.as_fd();
+        let raw_fd = fd.as_raw_fd();
+        let event = EpollEvent::new(events, data);
+        self.epoll.add(fd, event)?;
+        self.sources.insert(
+            data,
+            Source {
+                fd: raw_fd,
+                callback: cb,
+            },
+        );
         Ok(())
     }
 
     #[cfg(target_os = "linux")]
-    pub fn modify_source(&self, fd: RawFd, events: EpollFlags, data: u64) -> Result<()> {
+    pub fn modify_source<Fd: AsFd>(&self, fd: Fd, events: EpollFlags, data: u64) -> Result<()> {
+        let fd = fd.as_fd();
         let source = self.sources.get(&data).ok_or(Errno::ENOENT)?;
-        if source.fd != fd {
+        if source.fd != fd.as_raw_fd() {
             return Err(Errno::EINVAL);
         }
 
         let mut event = EpollEvent::new(events, data);
-        nix::sys::epoll::epoll_ctl(
-            self.epoll.as_raw_fd(),
-            EpollOp::EpollCtlMod,
-            fd,
-            Some(&mut event),
-        )
+        self.epoll.modify(fd, &mut event)
     }
 
     #[cfg(target_os = "linux")]
-    pub fn remove_source(&mut self, fd: RawFd, data: u64) -> Result<()> {
+    pub fn remove_source<Fd: AsFd>(&mut self, fd: Fd, data: u64) -> Result<()> {
+        let fd = fd.as_fd();
         let source = self.sources.get(&data).ok_or(Errno::ENOENT)?;
-        if source.fd != fd {
+        if source.fd != fd.as_raw_fd() {
             return Err(Errno::EINVAL);
         }
 
@@ -113,7 +111,7 @@ impl EventLoop {
         // descriptor. epoll may still have a queued readiness event; dispatching it after the
         // source was removed would be less safe than reporting the removal error to the caller.
         self.sources.remove(&data);
-        nix::sys::epoll::epoll_ctl(self.epoll.as_raw_fd(), EpollOp::EpollCtlDel, fd, None)
+        self.epoll.delete(fd)
     }
 
     #[cfg(target_os = "linux")]
@@ -130,7 +128,9 @@ impl EventLoop {
 
         for event in &events[..n] {
             let data = event.data();
-            let events_bits = event.events().bits();
+            // EpollFlags is a 32-bit bitset; this conversion preserves every flag bit,
+            // including the high-bit flags represented by a negative signed c_int.
+            let events_bits = event.events().bits() as u32;
             if let Some(source) = self.sources.get_mut(&data) {
                 (source.callback)(events_bits, data)?;
             }
@@ -167,7 +167,7 @@ impl EventLoop {
     pub fn epoll_fd(&self) -> RawFd {
         #[cfg(target_os = "linux")]
         {
-            self.epoll.as_raw_fd()
+            self.epoll.0.as_fd().as_raw_fd()
         }
         #[cfg(not(target_os = "linux"))]
         {

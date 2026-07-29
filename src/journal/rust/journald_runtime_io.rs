@@ -4,6 +4,11 @@ use super::*;
 #[cfg(target_os = "linux")]
 use std::os::fd::OwnedFd;
 
+#[cfg(target_os = "linux")]
+// Defined by Linux UAPI <linux/socket.h>, but not yet exposed by libc on all
+// supported toolchains (see src/include/override/sys/socket.h).
+const SCM_SECURITY: libc::c_int = 0x03;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StdoutStreamState {
     Identifier,
@@ -253,12 +258,12 @@ impl AuditNetlinkReceiver {
             return Err(io::Error::last_os_error());
         }
 
-        let mut addr = libc::sockaddr_nl {
-            nl_family: libc::AF_NETLINK as libc::sa_family_t,
-            nl_pad: 0,
-            nl_pid: 0,
-            nl_groups: AUDIT_NLGRP_READLOG,
-        };
+        // SAFETY: all-zero is a valid sockaddr_nl initializer; nl_pad must
+        // remain zero, and the public fields below fully specify this address.
+        let mut addr = unsafe { std::mem::zeroed::<libc::sockaddr_nl>() };
+        addr.nl_family = libc::AF_NETLINK as libc::sa_family_t;
+        addr.nl_pid = 0;
+        addr.nl_groups = AUDIT_NLGRP_READLOG;
         // SAFETY: addr is initialized for AF_NETLINK and the pointer/length
         // describe exactly that live stack value.
         let bind_result = unsafe {
@@ -311,45 +316,50 @@ impl AuditNetlinkReceiver {
 
         let mut iov = [io::IoSliceMut::new(&mut self.buffer)];
         let mut cmsg_space = nix::cmsg_space!(libc::ucred);
-        let msg = recvmsg::<NetlinkAddr>(
-            self.fd.as_raw_fd(),
-            &mut iov,
-            Some(&mut cmsg_space),
-            MsgFlags::MSG_DONTWAIT,
-        )
-        .map_err(|errno| io::Error::from_raw_os_error(errno as i32));
-        let msg = match msg {
-            Ok(msg) => msg,
-            Err(err)
-                if matches!(
-                    err.kind(),
-                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
-                ) =>
-            {
+        let (bytes, sender_pid, addr_pid) = {
+            let msg = recvmsg::<NetlinkAddr>(
+                self.fd.as_raw_fd(),
+                &mut iov,
+                Some(&mut cmsg_space),
+                MsgFlags::MSG_DONTWAIT,
+            )
+            .map_err(|errno| io::Error::from_raw_os_error(errno as i32));
+            let msg = match msg {
+                Ok(msg) => msg,
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    return Ok(None);
+                }
+                Err(err) => return Err(err),
+            };
+
+            if msg.bytes == 0 {
                 return Ok(None);
             }
-            Err(err) => return Err(err),
-        };
 
-        if msg.bytes == 0 {
-            return Ok(None);
-        }
-
-        let mut sender_pid = None;
-        for cmsg in msg
-            .cmsgs()
-            .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?
-        {
-            if let ControlMessageOwned::ScmCredentials(cred) = cmsg {
-                sender_pid = Some(cred.pid());
+            let mut sender_pid = None;
+            for cmsg in msg
+                .cmsgs()
+                .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?
+            {
+                if let ControlMessageOwned::ScmCredentials(cred) = cmsg {
+                    sender_pid = Some(cred.pid());
+                }
             }
-        }
-        let addr_pid = msg.address.as_ref().map(|addr| addr.pid());
+            let addr_pid = msg.address.as_ref().map(|addr| addr.pid());
+            (msg.bytes, sender_pid, addr_pid)
+        };
+        drop(iov);
+
         if !is_valid_kernel_audit_sender(sender_pid, addr_pid) {
             return Ok(None);
         }
 
-        let Some((msg_type, payload_range)) = parse_audit_netlink_datagram(&self.buffer, msg.bytes)
+        let Some((msg_type, payload_range)) = parse_audit_netlink_datagram(&self.buffer, bytes)
         else {
             return Ok(None);
         };
@@ -539,46 +549,50 @@ pub(super) fn recv_stdout_stream_message(
     let mut buf = [0_u8; 8192];
     let mut iov = [io::IoSliceMut::new(&mut buf)];
     let mut cmsg_space = nix::cmsg_space!(libc::ucred);
-    let msg = recvmsg::<UnixAddr>(
-        stream.as_raw_fd(),
-        &mut iov,
-        Some(&mut cmsg_space),
-        MsgFlags::MSG_DONTWAIT | MsgFlags::MSG_CMSG_CLOEXEC,
-    )
-    .map_err(|errno| io::Error::from_raw_os_error(errno as i32));
-    let msg = match msg {
-        Ok(msg) => msg,
-        Err(err)
-            if matches!(
-                err.kind(),
-                io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
-            ) =>
+    let (bytes, creds) = {
+        let msg = recvmsg::<UnixAddr>(
+            stream.as_raw_fd(),
+            &mut iov,
+            Some(&mut cmsg_space),
+            MsgFlags::MSG_DONTWAIT | MsgFlags::MSG_CMSG_CLOEXEC,
+        )
+        .map_err(|errno| io::Error::from_raw_os_error(errno as i32));
+        let msg = match msg {
+            Ok(msg) => msg,
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ) =>
+            {
+                return Ok(None);
+            }
+            Err(err) => return Err(err),
+        };
+
+        if msg.bytes == 0 {
+            return Ok(Some(StdoutStreamRead::Eof));
+        }
+
+        let mut creds = None;
+        for cmsg in msg
+            .cmsgs()
+            .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?
         {
-            return Ok(None);
+            if let ControlMessageOwned::ScmCredentials(cred) = cmsg {
+                creds = Some(PeerCredentials {
+                    pid: cred.pid(),
+                    uid: cred.uid(),
+                    gid: cred.gid(),
+                });
+            }
         }
-        Err(err) => return Err(err),
+        (msg.bytes, creds)
     };
-
-    if msg.bytes == 0 {
-        return Ok(Some(StdoutStreamRead::Eof));
-    }
-
-    let mut creds = None;
-    for cmsg in msg
-        .cmsgs()
-        .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?
-    {
-        if let ControlMessageOwned::ScmCredentials(cred) = cmsg {
-            creds = Some(PeerCredentials {
-                pid: cred.pid(),
-                uid: cred.uid(),
-                gid: cred.gid(),
-            });
-        }
-    }
+    drop(iov);
 
     Ok(Some(StdoutStreamRead::Data {
-        payload: buf[..msg.bytes].to_vec(),
+        payload: buf[..bytes].to_vec(),
         creds,
     }))
 }
@@ -683,7 +697,7 @@ pub(super) fn recv_datagram_with_metadata(
                     let tv = unsafe { libc::CMSG_DATA(cmsg).cast::<libc::timeval>().read() };
                     metadata.source_realtime_timestamp_usec = Some(timeval_to_usec(tv));
                 }
-                libc::SCM_SECURITY => {
+                SCM_SECURITY => {
                     // SAFETY: CMSG_LEN is a pure layout calculation.
                     let data_offset = unsafe { libc::CMSG_LEN(0) as usize };
                     if let Some(payload_len) = (header.cmsg_len as usize).checked_sub(data_offset) {

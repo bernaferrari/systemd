@@ -584,7 +584,7 @@ fn run_event_loop(
     command_authorizer: &mut DenyAllPid1CommandAuthorizer,
 ) -> ManagerLoopExit {
     use nix::sys::epoll::EpollFlags;
-    use std::os::fd::{AsFd, AsRawFd};
+    use std::os::fd::AsFd;
     use systemd_event_loop_rs::loop_::EventLoop;
     use systemd_platform_rs::signal::SignalFd;
 
@@ -618,16 +618,15 @@ fn run_event_loop(
         Err(error) => fail_closed("manager signal-fd setup", error),
     });
 
-    let sfd_fd = signalfd.as_raw_fd();
     let signalfd_callback = Rc::clone(&signalfd);
     let signal_inbox_callback = Rc::clone(&signal_inbox);
 
     if let Err(error) = event_loop.add_source(
-        sfd_fd,
+        signalfd.as_fd(),
         EpollFlags::EPOLLIN,
         DATA_SIGNAL,
         Box::new(move |events, _data| {
-            if events & (EpollFlags::EPOLLIN.bits()) != 0 {
+            if events & (EpollFlags::EPOLLIN.bits() as u32) != 0 {
                 match signalfd_callback.read_signal()? {
                     Some(info) => {
                         signal_inbox_callback.borrow_mut().push_back(SignalRecord {
@@ -651,14 +650,13 @@ fn run_event_loop(
         .borrow()
         .clone_bound_stop_retry_timer_for_registration()
     {
-        let timer_fd = timer.as_fd().as_raw_fd();
         let callback_timer = Rc::clone(&timer);
         if let Err(error) = event_loop.add_source(
-            timer_fd,
+            timer.as_fd(),
             EpollFlags::EPOLLIN,
             DATA_BOUND_STOP_RETRY_TIMER,
             Box::new(move |events, _data| {
-                if events & EpollFlags::EPOLLIN.bits() != 0 {
+                if events & (EpollFlags::EPOLLIN.bits() as u32) != 0 {
                     callback_timer.consume().map_err(|error| {
                         nix::errno::Errno::from_raw(error.raw_os_error().unwrap_or(libc::EIO))
                     })?;
@@ -675,14 +673,13 @@ fn run_event_loop(
         if let Err(error) = systemd_event_loop_rs::timerfd::timerfd_settime(&timerfd, 5_000_000) {
             eprintln!("systemd: failed to arm timerfd: {error}");
         } else {
-            let tfd = timerfd.as_fd().as_raw_fd();
             let callback_timerfd = Rc::clone(&timerfd);
             if let Err(error) = event_loop.add_source(
-                tfd,
+                timerfd.as_fd(),
                 EpollFlags::EPOLLIN,
                 DATA_TIMER,
                 Box::new(move |events, _data| {
-                    if events & (EpollFlags::EPOLLIN.bits()) != 0 {
+                    if events & (EpollFlags::EPOLLIN.bits() as u32) != 0 {
                         systemd_event_loop_rs::timerfd::timerfd_read(&callback_timerfd)?;
                         systemd_event_loop_rs::timerfd::timerfd_settime(
                             &callback_timerfd,

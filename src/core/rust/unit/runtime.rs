@@ -3,7 +3,7 @@
 // PORT-SYNC: src/core/unit.c
 //
 use std::collections::BTreeSet;
-use std::fmt::Write as _;
+use std::fmt::{self, Write as _};
 use std::hash::{Hash, Hasher};
 
 use super::lifecycle::{unit_can_isolate, unit_kill, unit_release_resources};

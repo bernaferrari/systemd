@@ -1279,7 +1279,7 @@ impl RuntimeManager {
         );
     }
 
-    fn reload_finish(&mut self, name: &str, result: ServiceResult) {
+    pub(super) fn reload_finish(&mut self, name: &str, result: ServiceResult) {
         if let Some(service) = self.services.get_mut(name) {
             service_record_reload_result(service, result);
             service.control_command_id = None;
@@ -1662,7 +1662,8 @@ impl RuntimeManager {
         {
             self.service_operation_deadlines.remove(name);
         }
-        let start_prefixes = Self::service_phase_specs(info, ServiceExecCommand::Start)
+        let start_specs = Self::service_phase_specs(info, ServiceExecCommand::Start);
+        let start_prefixes = start_specs
             .first()
             .map(|spec| spec.prefixes.as_str())
             .unwrap_or("");

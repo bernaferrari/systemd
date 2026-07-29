@@ -14,7 +14,7 @@ use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::collections::{HashMap, VecDeque};
 #[cfg(target_os = "linux")]
-use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::fd::OwnedFd;
 #[cfg(target_os = "linux")]
 use std::rc::{Rc, Weak};
 
@@ -111,7 +111,7 @@ impl ExecStatusSourceOwner {
             let Some(source) = self.registered.remove(&pid) else {
                 continue;
             };
-            event_loop.remove_source(source.fd.as_raw_fd(), source.data_id)?;
+            event_loop.remove_source(&source.fd, source.data_id)?;
         }
 
         for (pid, status) in current {
@@ -126,18 +126,19 @@ impl ExecStatusSourceOwner {
                 // The child was reaped between snapshot and reconciliation.
                 continue;
             };
-            let raw_fd = fd.as_raw_fd();
             let data_id = self.next_data_id;
             self.next_data_id = self.next_data_id.checked_add(1).ok_or(Errno::EOVERFLOW)?;
 
             let callback_status = status.clone();
             let callback_inbox = Rc::clone(&self.inbox);
             event_loop.add_source(
-                raw_fd,
+                &fd,
                 EpollFlags::EPOLLIN | EpollFlags::EPOLLERR | EpollFlags::EPOLLHUP,
                 data_id,
                 Box::new(move |events, _data| {
-                    let ready = EpollFlags::from_bits_truncate(events).intersects(
+                    // Epoll reports this as an unsigned event mask, while nix models the
+                    // identical kernel bit pattern with c_int-backed EpollFlags.
+                    let ready = EpollFlags::from_bits_truncate(events as i32).intersects(
                         EpollFlags::EPOLLIN | EpollFlags::EPOLLERR | EpollFlags::EPOLLHUP,
                     );
                     if ready && callback_status.is_live() {

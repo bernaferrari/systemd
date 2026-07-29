@@ -12,7 +12,7 @@ use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::collections::{HashMap, VecDeque};
 #[cfg(target_os = "linux")]
-use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+use std::os::fd::{AsFd, OwnedFd};
 #[cfg(target_os = "linux")]
 use std::rc::Rc;
 #[cfg(target_os = "linux")]
@@ -124,7 +124,7 @@ impl SocketSourceOwner {
             let Some(source) = self.registered.remove(&key) else {
                 continue;
             };
-            event_loop.remove_source(source.fd.as_raw_fd(), source.data_id)?;
+            event_loop.remove_source(&source.fd, source.data_id)?;
         }
 
         for (key, listener) in current {
@@ -144,7 +144,6 @@ impl SocketSourceOwner {
                 .as_fd()
                 .try_clone_to_owned()
                 .map_err(|error| Errno::from_raw(error.raw_os_error().unwrap_or(libc::EIO)))?;
-            let raw_fd = fd.as_raw_fd();
             let data_id = self.next_data_id;
             self.next_data_id = self.next_data_id.checked_add(1).ok_or(Errno::EOVERFLOW)?;
 
@@ -152,11 +151,11 @@ impl SocketSourceOwner {
             let callback_inbox = Rc::clone(&self.inbox);
             let unit_name = listener.unit_name().to_string();
             event_loop.add_source(
-                raw_fd,
+                &fd,
                 EpollFlags::EPOLLIN,
                 data_id,
                 Box::new(move |events, _data| {
-                    if events & EpollFlags::EPOLLIN.bits() != 0
+                    if events & EpollFlags::EPOLLIN.bits() as u32 != 0
                         && callback_listener.upgrade().is_some()
                     {
                         let mut inbox =

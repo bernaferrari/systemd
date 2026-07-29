@@ -23,8 +23,8 @@ pub fn timerfd_create() -> Result<TimerFd> {
 
 #[cfg(target_os = "linux")]
 pub fn timerfd_settime(fd: &TimerFd, relative_usec: u64) -> Result<()> {
+    use nix::sys::time::{TimeSpec, TimeValLike};
     use nix::sys::timerfd::{Expiration, TimerSetTimeFlags};
-    use nix::time::{TimeSpec, TimeValLike};
 
     let relative_usec = i64::try_from(relative_usec).map_err(|_| nix::errno::Errno::EOVERFLOW)?;
     fd.set(

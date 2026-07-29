@@ -4,4 +4,4 @@
 pub use systemd_platform_rs::signal::SignalFd;
 
 #[cfg(target_os = "linux")]
-pub use systemd_platform_rs::signal::SignalEvent;
+pub use crate::source::SignalEvent;

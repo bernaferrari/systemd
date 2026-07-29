@@ -30,6 +30,14 @@ bitflags = { workspace = true }
 libc = { workspace = true }
 systemd-fundamental-rs = { path = "../../fundamental/rust" }
 
+[lints.rust]
+# Meson supplies these cfgs after probing the selected <seccomp.h>. Declare
+# them here too so standalone Cargo checks can validate their spelling.
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(systemd_seccomp_arch_loongarch64)',
+    'cfg(systemd_seccomp_arch_riscv64)',
+] }
+
 [lib]
 crate-type = ["lib", "staticlib"]
 name = "systemd_basic_rs"

@@ -72,7 +72,7 @@ impl RuntimeManager {
     ) {
         let name = self.canonical_unit_name(name);
 
-        if inactive_or_failed(new_state) {
+        if new_state.is_inactive_or_failed() {
             let dependents: Vec<String> = self
                 .units
                 .iter()

@@ -3,7 +3,7 @@
 use nix::errno::Errno;
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal};
 use nix::sys::signalfd::{self, SfdFlags};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 
 /// Block the given signals on the current thread, returning the previous signal set.
 pub fn block_signals(signals: &[Signal]) -> nix::Result<SigSet> {
@@ -147,5 +147,11 @@ impl std::fmt::Debug for SignalFd {
 impl AsRawFd for SignalFd {
     fn as_raw_fd(&self) -> RawFd {
         self.inner.as_raw_fd()
+    }
+}
+
+impl AsFd for SignalFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.inner.as_fd()
     }
 }
