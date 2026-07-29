@@ -145,60 +145,67 @@ static void test_documentation_url_is_valid(void) {
 
 /* ── rgb_to_hsv ───────────────────────────────────────────────────────── */
 
+/* The C/R shadow contract is exact output representation, including the sign
+ * of zero. Avoid a floating-point == expression, which systemd rightly
+ * rejects under -Werror=float-equal. */
+static bool double_bits_equal(double left, double right) {
+        return memcmp(&left, &right, sizeof left) == 0;
+}
+
 static void test_rgb_to_hsv(void) {
         double ch, cs, cv, rh, rs_r, rv;
 
         /* Black (0,0,0) → H=NaN, S=0, V=0 */
         rgb_to_hsv(0.0, 0.0, 0.0, &ch, &cs, &cv);
         rs_rgb_to_hsv(0.0, 0.0, 0.0, &rh, &rs_r, &rv);
-        assert_se(cv == rv);
-        assert_se(cs == rs_r);
+        assert_se(double_bits_equal(cv, rv));
+        assert_se(double_bits_equal(cs, rs_r));
         assert_se(isnan(ch) && isnan(rh));
 
         /* White (1,1,1) → H=NaN, S=0, V=100 */
         rgb_to_hsv(1.0, 1.0, 1.0, &ch, &cs, &cv);
         rs_rgb_to_hsv(1.0, 1.0, 1.0, &rh, &rs_r, &rv);
-        assert_se(cv == rv);
-        assert_se(cs == rs_r);
+        assert_se(double_bits_equal(cv, rv));
+        assert_se(double_bits_equal(cs, rs_r));
         assert_se(isnan(ch) && isnan(rh));
 
         /* Pure red (1,0,0) → H=0, S=100, V=100 */
         rgb_to_hsv(1.0, 0.0, 0.0, &ch, &cs, &cv);
         rs_rgb_to_hsv(1.0, 0.0, 0.0, &rh, &rs_r, &rv);
-        assert_se(ch == rh);
-        assert_se(cs == rs_r);
-        assert_se(cv == rv);
-        assert_se(ch == 0.0);
-        assert_se(cs == 100.0);
-        assert_se(cv == 100.0);
+        assert_se(double_bits_equal(ch, rh));
+        assert_se(double_bits_equal(cs, rs_r));
+        assert_se(double_bits_equal(cv, rv));
+        assert_se(double_bits_equal(ch, 0.0));
+        assert_se(double_bits_equal(cs, 100.0));
+        assert_se(double_bits_equal(cv, 100.0));
 
         /* Pure green (0,1,0) → H=120, S=100, V=100 */
         rgb_to_hsv(0.0, 1.0, 0.0, &ch, &cs, &cv);
         rs_rgb_to_hsv(0.0, 1.0, 0.0, &rh, &rs_r, &rv);
-        assert_se(ch == rh);
-        assert_se(cs == rs_r);
-        assert_se(cv == rv);
-        assert_se(ch == 120.0);
+        assert_se(double_bits_equal(ch, rh));
+        assert_se(double_bits_equal(cs, rs_r));
+        assert_se(double_bits_equal(cv, rv));
+        assert_se(double_bits_equal(ch, 120.0));
 
         /* Pure blue (0,0,1) → H=240, S=100, V=100 */
         rgb_to_hsv(0.0, 0.0, 1.0, &ch, &cs, &cv);
         rs_rgb_to_hsv(0.0, 0.0, 1.0, &rh, &rs_r, &rv);
-        assert_se(ch == rh);
-        assert_se(cs == rs_r);
-        assert_se(cv == rv);
-        assert_se(ch == 240.0);
+        assert_se(double_bits_equal(ch, rh));
+        assert_se(double_bits_equal(cs, rs_r));
+        assert_se(double_bits_equal(cv, rv));
+        assert_se(double_bits_equal(ch, 240.0));
 
         /* Gray (0.5, 0.5, 0.5) → H=NaN, S=0, V=50 */
         rgb_to_hsv(0.5, 0.5, 0.5, &ch, &cs, &cv);
         rs_rgb_to_hsv(0.5, 0.5, 0.5, &rh, &rs_r, &rv);
-        assert_se(cv == rv);
-        assert_se(cs == rs_r);
+        assert_se(double_bits_equal(cv, rv));
+        assert_se(double_bits_equal(cs, rs_r));
         assert_se(isnan(ch) && isnan(rh));
 
         /* Test with NULL outputs */
         rgb_to_hsv(0.5, 0.3, 0.1, NULL, NULL, &cv);
         rs_rgb_to_hsv(0.5, 0.3, 0.1, NULL, NULL, &rv);
-        assert_se(cv == rv);
+        assert_se(double_bits_equal(cv, rv));
 }
 
 /* ── hsv_to_rgb ───────────────────────────────────────────────────────── */
