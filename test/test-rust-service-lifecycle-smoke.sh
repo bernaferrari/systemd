@@ -238,7 +238,7 @@ Description=Lifecycle restart-on-failure smoke
 Type=simple
 Restart=on-failure
 RestartSec=2
-ExecStart=/bin/sh -c 'date +%s >> "$restart_log"; sleep infinity'
+ExecStart=/bin/sh -c 'date +%%s >> "$restart_log"; sleep infinity'
 EOF
 install_unit "$restart_unit"
 run as_root systemctl daemon-reload

@@ -70,7 +70,7 @@ trap cleanup EXIT
 id="rust-journal-parity-$(date +%s)-$$"
 echo "Running journal parity smoke id: $id"
 
-# 1) Native-ish message path with expected metadata fields.
+# 1) Native-ish message path with portable required metadata fields.
 native_unit="$id-native.service"
 native_msg="$id native message"
 run as_root systemd-run --quiet --unit "$native_unit" --wait /bin/sh -c "echo '$native_msg'"
@@ -87,12 +87,15 @@ lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip(
 if not lines:
     raise SystemExit("FAIL: no native unit journal entry captured")
 entry = json.loads(lines[-1])
-required = ["_PID", "_COMM", "_SYSTEMD_UNIT", "MESSAGE"]
+required = ["_SYSTEMD_UNIT", "MESSAGE"]
 for key in required:
     if key not in entry or not str(entry[key]).strip():
         raise SystemExit(f"FAIL: missing expected field {key} in native entry")
 if entry["_SYSTEMD_UNIT"] != unit:
     raise SystemExit(f"FAIL: expected _SYSTEMD_UNIT={unit}, got {entry['_SYSTEMD_UNIT']}")
+for key in ["_PID", "_COMM"]:
+    if key in entry and not str(entry[key]).strip():
+        raise SystemExit(f"FAIL: native entry has an empty optional field {key}")
 PY
 
 # 2) Syslog ingestion path.

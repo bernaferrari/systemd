@@ -132,6 +132,7 @@ jobs:
           -Dslow-tests=false
           -Dfuzz-tests=false
           -Dseccomp=enabled
+          -Dbpf-framework=disabled
           -Drust=enabled
       - name: Compile reviewed Rust shadow targets
         run: >-

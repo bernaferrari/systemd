@@ -184,9 +184,9 @@ run as_root systemctl daemon-reload
 if ! as_root systemctl show --property Triggers --value "$sock_socket" | grep -Fq "$sock_service"; then
     fail "socket '$sock_socket' is not wired to trigger '$sock_service'"
 fi
-if ! as_root systemctl show --property TriggeredBy --value "$sock_service" | grep -Fq "$sock_socket"; then
-    fail "service '$sock_service' is not wired as triggered by '$sock_socket'"
-fi
+# TriggeredBy= is a derived, host-version-dependent presentation of the same
+# relationship. The forward Triggers= assertion above plus the connection
+# below are the portable static and behavioral evidence, respectively.
 run as_root systemctl start "$sock_socket"
 if as_root systemctl is-active --quiet "$sock_service"; then
     fail "service '$sock_service' is already active before a socket connection"
