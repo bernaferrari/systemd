@@ -13,17 +13,17 @@ Scope: `src`
 ## Snapshot Totals
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1318**
+- All `src` Rust files: **1310**
 - Rust metadata adapters: **29**
-- Rust test/fuzz support files: **90**
-- Unverified Rust behavior candidates: **1199**
+- Rust test/fuzz support files: **86**
+- Unverified Rust behavior candidates: **1195**
 
 Excluding `src/test`:
 - C files: **1569**
-- Rust files: **1318**
+- Rust files: **1310**
 - Rust metadata adapters: **29**
-- Rust test/fuzz support files: **90**
-- Unverified Rust behavior candidates: **1199**
+- Rust test/fuzz support files: **86**
+- Unverified Rust behavior candidates: **1195**
 
 ## Per-Subsystem Inventory
 
@@ -142,7 +142,7 @@ Excluding `src/test`:
 | `tmpfiles` | 3 | 0 | 0 | 0 | 0 |
 | `tpm2-setup` | 4 | 0 | 0 | 0 | 0 |
 | `tty-ask-password-agent` | 1 | 3 | 0 | 0 | 3 |
-| `udev` | 68 | 76 | 0 | 13 | 63 |
+| `udev` | 68 | 68 | 0 | 9 | 59 |
 | `update-done` | 1 | 3 | 0 | 0 | 3 |
 | `update-utmp` | 1 | 3 | 0 | 0 | 3 |
 | `user-sessions` | 1 | 3 | 0 | 0 | 3 |

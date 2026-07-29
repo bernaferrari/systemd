@@ -5,21 +5,9 @@
 #![allow(dead_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-#[path = "ata_id/ata_id.rs"]
-pub mod ata_id_ata_id;
-#[path = "cdrom_id/cdrom_id.rs"]
-pub mod cdrom_id_cdrom_id;
 #[path = "dmi_memory_id/dmi_memory_id.rs"]
 pub mod dmi_memory_id_dmi_memory_id;
 pub mod ffi;
-#[path = "fido_id/fido_id.rs"]
-pub mod fido_id_fido_id;
-#[path = "fido_id/fido_id_desc.rs"]
-pub mod fido_id_fido_id_desc;
-#[path = "fido_id/fuzz-fido-id-desc.rs"]
-pub mod fido_id_fuzz_fido_id_desc;
-#[path = "fido_id/test-fido-id-desc.rs"]
-pub mod fido_id_test_fido_id_desc;
 #[path = "fuzz-udev-rule-parse-value.rs"]
 pub mod fuzz_udev_rule_parse_value;
 #[path = "fuzz-udev-rules.rs"]
@@ -30,12 +18,8 @@ pub mod iocost_iocost;
 pub mod mtd_probe_mtd_probe;
 #[path = "mtd_probe/probe_smartmedia.rs"]
 pub mod mtd_probe_probe_smartmedia;
-#[path = "net/fuzz-link-parser.rs"]
-pub mod net_fuzz_link_parser;
 #[path = "net/link-config.rs"]
 pub mod net_link_config;
-#[path = "net/test-link-config-tables.rs"]
-pub mod net_test_link_config_tables;
 #[path = "scsi_id/scsi_id.rs"]
 pub mod scsi_id_scsi_id;
 #[path = "scsi_id/scsi_serial.rs"]
