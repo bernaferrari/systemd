@@ -1363,11 +1363,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/shared/rust/libarchive_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
     "src/shared/rust/libaudit_util.rs": {
       "missing_safety": 12,
       "missing_safety_sites": [
