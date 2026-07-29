@@ -4,6 +4,7 @@
 
 use std::ffi::{CStr, CString, c_void};
 use std::fmt;
+use std::ptr::NonNull;
 use std::sync::OnceLock;
 
 use crate::ffi::Errno;
@@ -29,30 +30,67 @@ type Idn2LookupU8Fn = unsafe extern "C" fn(*const u8, *mut *mut u8, i32) -> i32;
 type Idn2StrerrorFn = unsafe extern "C" fn(i32) -> *const libc::c_char;
 type Idn2ToUnicode8z8zFn =
     unsafe extern "C" fn(*const libc::c_char, *mut *mut libc::c_char, i32) -> i32;
-type Idn2FreeFn = unsafe extern "C" fn(*mut c_void);
-
-const _: () = {
-    let _: Option<unsafe extern "C" fn(*const u8, *mut *mut u8, i32) -> i32> =
-        None::<Idn2LookupU8Fn>;
-    let _: Option<unsafe extern "C" fn(i32) -> *const libc::c_char> = None::<Idn2StrerrorFn>;
-    let _: Option<unsafe extern "C" fn(*const libc::c_char, *mut *mut libc::c_char, i32) -> i32> =
-        None::<Idn2ToUnicode8z8zFn>;
-    let _: Option<unsafe extern "C" fn(*mut c_void)> = None::<Idn2FreeFn>;
-};
 
 #[derive(Debug)]
 struct LibIdn2 {
-    _handle: *mut c_void,
     lookup_u8: Idn2LookupU8Fn,
     strerror: Idn2StrerrorFn,
     to_unicode_8z8z: Idn2ToUnicode8z8zFn,
-    free: Idn2FreeFn,
 }
 
-unsafe impl Send for LibIdn2 {}
-unsafe impl Sync for LibIdn2 {}
+#[derive(Debug)]
+struct DlHandle(NonNull<c_void>);
 
-static LIBIDN2: OnceLock<Result<LibIdn2, IdnError>> = OnceLock::new();
+impl DlHandle {
+    fn as_ptr(&self) -> *mut c_void {
+        self.0.as_ptr()
+    }
+
+    fn leak(self) {
+        std::mem::forget(self);
+    }
+}
+
+impl Drop for DlHandle {
+    fn drop(&mut self) {
+        // SAFETY: DlHandle is constructed only from a successful dlopen(), and
+        // ownership of that reference has not been transferred elsewhere.
+        unsafe {
+            libc::dlclose(self.as_ptr());
+        }
+    }
+}
+
+struct OwnedIdn2String {
+    ptr: NonNull<libc::c_char>,
+}
+
+impl OwnedIdn2String {
+    fn from_raw(ptr: *mut libc::c_char) -> Option<Self> {
+        NonNull::new(ptr).map(|ptr| Self { ptr })
+    }
+
+    fn into_string(self) -> Result<String, IdnError> {
+        // SAFETY: libidn2 returned this as a successful, NUL-terminated string,
+        // and self keeps the allocation alive for the duration of the copy.
+        unsafe { CStr::from_ptr(self.ptr.as_ptr()) }
+            .to_str()
+            .map(str::to_owned)
+            .map_err(|_| IdnError::InvalidUtf8Output)
+    }
+}
+
+impl Drop for OwnedIdn2String {
+    fn drop(&mut self) {
+        // SAFETY: ptr is the unique allocation returned by libidn2. Its public
+        // ABI requires the caller to free output buffers, as the C path does.
+        unsafe {
+            libc::free(self.ptr.as_ptr().cast());
+        }
+    }
+}
+
+static LIBIDN2: OnceLock<LibIdn2> = OnceLock::new();
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdnError {
@@ -69,11 +107,6 @@ pub enum IdnError {
         input: String,
         code: i32,
         message: String,
-    },
-    RoundtripMismatch {
-        input: String,
-        ascii: String,
-        unicode: String,
     },
     InvalidUtf8Output,
 }
@@ -103,14 +136,6 @@ impl fmt::Display for IdnError {
                 f,
                 "failed to decode domain name '{input}' with libidn2 ({code}): {message}"
             ),
-            Self::RoundtripMismatch {
-                input,
-                ascii,
-                unicode,
-            } => write!(
-                f,
-                "IDNA roundtrip mismatch: '{input}' -> '{ascii}' -> '{unicode}'"
-            ),
             Self::InvalidUtf8Output => write!(f, "libidn2 returned non-UTF-8 output"),
         }
     }
@@ -121,13 +146,13 @@ impl std::error::Error for IdnError {}
 impl From<IdnError> for i32 {
     fn from(error: IdnError) -> Self {
         match error {
-            IdnError::Unsupported | IdnError::DlopenFailed(_) | IdnError::SymbolNotFound(_) => {
-                Errno::EOPNOTSUPP.to_neg_errno()
+            IdnError::Unsupported | IdnError::DlopenFailed(_) => Errno::EOPNOTSUPP.to_neg_errno(),
+            IdnError::SymbolNotFound(_) => Errno::ELIBBAD.to_neg_errno(),
+            IdnError::InvalidInput(_) => Errno::EINVAL.to_neg_errno(),
+            IdnError::DecodeFailed { .. } | IdnError::InvalidUtf8Output => {
+                Errno::EUCLEAN.to_neg_errno()
             }
-            IdnError::InvalidInput(_)
-            | IdnError::RoundtripMismatch { .. }
-            | IdnError::InvalidUtf8Output => Errno::EINVAL.to_neg_errno(),
-            IdnError::LookupFailed { code, .. } | IdnError::DecodeFailed { code, .. } => {
+            IdnError::LookupFailed { code, .. } => {
                 if matches!(code, IDN2_TOO_BIG_DOMAIN | IDN2_TOO_BIG_LABEL) {
                     Errno::ENOSPC.to_neg_errno()
                 } else {
@@ -146,32 +171,49 @@ pub fn have_libidn2() -> bool {
     dlopen_idn().is_ok()
 }
 
-pub fn idn_name_to_ascii(name: &str) -> Result<String, IdnError> {
+/// Apply IDNA lookup conversion with the same tri-state contract as
+/// `dns_name_apply_idna()`:
+///
+/// * `Ok(Some(name))` means conversion succeeded;
+/// * `Ok(None)` means IDNA is unavailable or the input should be used unchanged;
+/// * `Err(error)` reports a hard failure.
+pub fn idn_name_to_ascii(name: &str) -> Result<Option<String>, IdnError> {
     validate_domain_input(name)?;
 
-    let api = libidn2()?;
+    let api = match libidn2() {
+        Ok(api) => api,
+        Err(IdnError::Unsupported | IdnError::DlopenFailed(_)) => return Ok(None),
+        Err(error) => return Err(error),
+    };
     let ascii = match call_lookup(api, name, IDN2008_LOOKUP_FLAGS) {
         Ok(ascii) => ascii,
         Err(IdnError::LookupFailed { code, .. }) if code == IDN2_DISALLOWED => {
-            call_lookup(api, name, IDN2003_LOOKUP_FLAGS)?
+            match call_lookup(api, name, IDN2003_LOOKUP_FLAGS) {
+                Ok(ascii) => ascii,
+                Err(IdnError::LookupFailed { code, .. }) if code == IDN2_2HYPHEN => {
+                    return Ok(None);
+                }
+                Err(error) => return Err(error),
+            }
         }
+        Err(IdnError::LookupFailed { code, .. }) if code == IDN2_2HYPHEN => return Ok(None),
         Err(error) => return Err(error),
     };
 
-    if has_punycode_label(name) {
-        return Ok(ascii);
+    if skips_roundtrip_check(name) {
+        return Ok(Some(ascii));
     }
 
-    let unicode = call_to_unicode(api, &ascii)?;
+    let unicode = match call_to_unicode(api, &ascii) {
+        Ok(unicode) => unicode,
+        Err(IdnError::DecodeFailed { .. }) => return Ok(None),
+        Err(error) => return Err(error),
+    };
     if unicode != name {
-        return Err(IdnError::RoundtripMismatch {
-            input: name.to_owned(),
-            ascii,
-            unicode,
-        });
+        return Ok(None);
     }
 
-    Ok(ascii)
+    Ok(Some(ascii))
 }
 
 pub fn idn_name_from_ascii(name: &str) -> Result<String, IdnError> {
@@ -180,10 +222,6 @@ pub fn idn_name_from_ascii(name: &str) -> Result<String, IdnError> {
 }
 
 fn validate_domain_input(name: &str) -> Result<(), IdnError> {
-    if name.is_empty() {
-        return Err(IdnError::InvalidInput("domain name must not be empty"));
-    }
-
     if name.as_bytes().contains(&0) {
         return Err(IdnError::InvalidInput(
             "domain name must not contain interior NUL bytes",
@@ -193,19 +231,32 @@ fn validate_domain_input(name: &str) -> Result<(), IdnError> {
     Ok(())
 }
 
-fn has_punycode_label(name: &str) -> bool {
-    name.split('.')
-        .any(|label| label.len() >= 4 && label.as_bytes()[..4].eq_ignore_ascii_case(b"xn--"))
+fn skips_roundtrip_check(name: &str) -> bool {
+    /* Match dns_name_apply_idna() exactly: only a lower-case ACE prefix at the
+     * beginning of the complete name suppresses the roundtrip check. */
+    name.starts_with("xn--")
 }
 
 fn libidn2() -> Result<&'static LibIdn2, IdnError> {
-    LIBIDN2
-        .get_or_init(load_libidn2)
-        .as_ref()
-        .map_err(Clone::clone)
+    if let Some(api) = LIBIDN2.get() {
+        return Ok(api);
+    }
+
+    let (api, handle) = load_libidn2()?;
+    match LIBIDN2.set(api) {
+        Ok(()) => handle.leak(),
+        Err(_) => {
+            /* Another thread installed an API first. Dropping our handle is safe
+             * because its function pointers were never published. */
+        }
+    }
+
+    Ok(LIBIDN2
+        .get()
+        .expect("the libidn2 API was installed by this or another thread"))
 }
 
-fn load_libidn2() -> Result<LibIdn2, IdnError> {
+fn load_libidn2() -> Result<(LibIdn2, DlHandle), IdnError> {
     let mut saw_dlopen_failure = false;
 
     for candidate in LIBIDN2_CANDIDATES {
@@ -225,21 +276,26 @@ fn load_libidn2() -> Result<LibIdn2, IdnError> {
     }
 }
 
-fn try_load_libidn2(lib_name: &str) -> Result<LibIdn2, IdnError> {
-    let handle = unsafe { dlopen_wrapper(lib_name) }?;
+fn try_load_libidn2(lib_name: &str) -> Result<(LibIdn2, DlHandle), IdnError> {
+    let handle = dlopen_wrapper(lib_name)?;
 
-    let lookup_u8 = unsafe { resolve_symbol(handle, "idn2_lookup_u8") }?;
-    let strerror = unsafe { resolve_symbol(handle, "idn2_strerror") }?;
-    let to_unicode_8z8z = unsafe { resolve_symbol(handle, "idn2_to_unicode_8z8z") }?;
-    let free = unsafe { resolve_symbol(handle, "idn2_free") }?;
+    let lookup_u8 = resolve_symbol(&handle, c"idn2_lookup_u8")?;
+    let strerror = resolve_symbol(&handle, c"idn2_strerror")?;
+    let to_unicode_8z8z = resolve_symbol(&handle, c"idn2_to_unicode_8z8z")?;
 
-    Ok(LibIdn2 {
-        _handle: handle,
-        lookup_u8,
-        strerror,
-        to_unicode_8z8z,
-        free,
-    })
+    // SAFETY: Each symbol was resolved by its exact public libidn2 ABI name,
+    // and the compile-time assertions above spell out the corresponding type.
+    let api = unsafe {
+        LibIdn2 {
+            lookup_u8: std::mem::transmute::<*mut c_void, Idn2LookupU8Fn>(lookup_u8.as_ptr()),
+            strerror: std::mem::transmute::<*mut c_void, Idn2StrerrorFn>(strerror.as_ptr()),
+            to_unicode_8z8z: std::mem::transmute::<*mut c_void, Idn2ToUnicode8z8zFn>(
+                to_unicode_8z8z.as_ptr(),
+            ),
+        }
+    };
+
+    Ok((api, handle))
 }
 
 fn call_lookup(api: &LibIdn2, name: &str, flags: i32) -> Result<String, IdnError> {
@@ -247,6 +303,8 @@ fn call_lookup(api: &LibIdn2, name: &str, flags: i32) -> Result<String, IdnError
         CString::new(name).map_err(|_| IdnError::InvalidInput("domain name contains NUL"))?;
     let mut output = std::ptr::null_mut();
 
+    // SAFETY: input is a live NUL-terminated UTF-8 string, output is writable,
+    // and lookup_u8 has the verified idn2_lookup_u8 ABI.
     let rc = unsafe { (api.lookup_u8)(input.as_ptr().cast(), &mut output, flags) };
     if rc != IDN2_OK {
         return Err(IdnError::LookupFailed {
@@ -256,7 +314,7 @@ fn call_lookup(api: &LibIdn2, name: &str, flags: i32) -> Result<String, IdnError
         });
     }
 
-    take_owned_output(api, output.cast())
+    take_owned_output(output.cast())
 }
 
 fn call_to_unicode(api: &LibIdn2, name: &str) -> Result<String, IdnError> {
@@ -264,6 +322,8 @@ fn call_to_unicode(api: &LibIdn2, name: &str) -> Result<String, IdnError> {
         CString::new(name).map_err(|_| IdnError::InvalidInput("domain name contains NUL"))?;
     let mut output = std::ptr::null_mut();
 
+    // SAFETY: input is a live NUL-terminated UTF-8 string, output is writable,
+    // and to_unicode_8z8z has the verified idn2_to_unicode_8z8z ABI.
     let rc = unsafe { (api.to_unicode_8z8z)(input.as_ptr(), &mut output, 0) };
     if rc != IDN2_OK {
         return Err(IdnError::DecodeFailed {
@@ -273,60 +333,73 @@ fn call_to_unicode(api: &LibIdn2, name: &str) -> Result<String, IdnError> {
         });
     }
 
-    take_owned_output(api, output)
+    take_owned_output(output)
 }
 
-fn take_owned_output(api: &LibIdn2, output: *mut libc::c_char) -> Result<String, IdnError> {
-    if output.is_null() {
-        return Err(IdnError::InvalidUtf8Output);
-    }
-
-    let bytes = unsafe { CStr::from_ptr(output).to_bytes().to_vec() };
-    unsafe { (api.free)(output.cast()) };
-
-    String::from_utf8(bytes).map_err(|_| IdnError::InvalidUtf8Output)
+fn take_owned_output(output: *mut libc::c_char) -> Result<String, IdnError> {
+    OwnedIdn2String::from_raw(output)
+        .ok_or(IdnError::InvalidUtf8Output)?
+        .into_string()
 }
 
 fn idn2_error_message(api: &LibIdn2, code: i32) -> String {
+    // SAFETY: strerror has the verified idn2_strerror ABI and accepts every
+    // libidn2 status code.
     let message = unsafe { (api.strerror)(code) };
     if message.is_null() {
         return format!("libidn2 error {code}");
     }
 
+    // SAFETY: idn2_strerror returns a borrowed, NUL-terminated static string.
     unsafe { CStr::from_ptr(message) }
         .to_string_lossy()
         .into_owned()
 }
 
-unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, IdnError> {
+fn dlopen_wrapper(lib_name: &str) -> Result<DlHandle, IdnError> {
     let c_name = CString::new(lib_name)
         .map_err(|e| IdnError::DlopenFailed(format!("invalid library name: {e}")))?;
 
     // SAFETY: c_name is NUL-terminated and remains live for the call.
-    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-    if handle.is_null() {
-        let detail = dlerror_string();
-        Err(IdnError::DlopenFailed(format!("{lib_name}: {detail}")))
-    } else {
-        Ok(handle)
-    }
+    let handle = unsafe {
+        libc::dlopen(
+            c_name.as_ptr(),
+            libc::RTLD_NOW | libc::RTLD_LOCAL | libc::RTLD_NODELETE,
+        )
+    };
+    NonNull::new(handle)
+        .map(DlHandle)
+        .ok_or_else(|| IdnError::DlopenFailed(format!("{lib_name}: {}", dlerror_string())))
 }
 
-unsafe fn resolve_symbol<T: Copy>(handle: *mut c_void, symbol: &str) -> Result<T, IdnError> {
-    let c_symbol = CString::new(symbol)
-        .map_err(|e| IdnError::SymbolNotFound(format!("{symbol}: invalid symbol name: {e}")))?;
-
-    // SAFETY: the caller supplies a live dlopen handle and c_symbol is NUL-terminated.
-    let ptr = unsafe { libc::dlsym(handle, c_symbol.as_ptr()) };
-    if ptr.is_null() {
-        return Err(IdnError::SymbolNotFound(symbol.to_owned()));
+fn resolve_symbol(handle: &DlHandle, symbol: &CStr) -> Result<NonNull<c_void>, IdnError> {
+    // POSIX requires clearing the thread-local error before dlsym() because a
+    // null symbol value is not, by itself, an error indication.
+    // SAFETY: dlerror has no arguments and clears the calling thread's pending
+    // dynamic-loader diagnostic.
+    unsafe {
+        libc::dlerror();
     }
 
-    // SAFETY: the caller chooses T to match the resolved C symbol's function signature.
-    Ok(unsafe { std::mem::transmute_copy(&ptr) })
+    // SAFETY: handle owns a live dlopen reference and symbol is NUL-terminated.
+    let ptr = unsafe { libc::dlsym(handle.as_ptr(), symbol.as_ptr()) };
+    // SAFETY: dlerror has no arguments and returns a thread-local diagnostic.
+    let error = unsafe { libc::dlerror() };
+    if !error.is_null() {
+        return Err(IdnError::SymbolNotFound(format!(
+            "{}: {}",
+            symbol.to_string_lossy(),
+            // SAFETY: dlerror() returned a non-null, NUL-terminated diagnostic.
+            unsafe { CStr::from_ptr(error) }.to_string_lossy()
+        )));
+    }
+
+    NonNull::new(ptr).ok_or_else(|| IdnError::SymbolNotFound(symbol.to_string_lossy().into_owned()))
 }
 
 fn dlerror_string() -> String {
+    // SAFETY: dlerror has no arguments; a non-null result is a borrowed,
+    // NUL-terminated diagnostic that remains valid until the next loader call.
     unsafe {
         let ptr = libc::dlerror();
         if ptr.is_null() {
@@ -342,11 +415,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn invalid_input_empty_is_rejected() {
-        assert_eq!(
-            validate_domain_input(""),
-            Err(IdnError::InvalidInput("domain name must not be empty"))
-        );
+    fn empty_input_is_passed_to_libidn2_like_the_c_path() {
+        assert_eq!(validate_domain_input(""), Ok(()));
     }
 
     #[test]
@@ -365,23 +435,23 @@ mod tests {
     }
 
     #[test]
-    fn punycode_detection_handles_single_label() {
-        assert!(has_punycode_label("xn--bcher-kva.example"));
+    fn leading_lowercase_punycode_prefix_skips_roundtrip() {
+        assert!(skips_roundtrip_check("xn--bcher-kva.example"));
     }
 
     #[test]
-    fn punycode_detection_handles_non_leading_label() {
-        assert!(has_punycode_label("www.xn--bcher-kva.example"));
+    fn non_leading_punycode_label_does_not_skip_roundtrip() {
+        assert!(!skips_roundtrip_check("www.xn--bcher-kva.example"));
     }
 
     #[test]
-    fn punycode_detection_is_case_insensitive() {
-        assert!(has_punycode_label("XN--BCHER-KVA.example"));
+    fn uppercase_punycode_prefix_does_not_skip_roundtrip() {
+        assert!(!skips_roundtrip_check("XN--BCHER-KVA.example"));
     }
 
     #[test]
-    fn punycode_detection_ignores_plain_ascii() {
-        assert!(!has_punycode_label("example.com"));
+    fn plain_ascii_does_not_skip_roundtrip() {
+        assert!(!skips_roundtrip_check("example.com"));
     }
 
     #[test]
@@ -401,10 +471,10 @@ mod tests {
     }
 
     #[test]
-    fn symbol_failure_maps_to_eopnotsupp() {
+    fn symbol_failure_maps_to_elibbad() {
         assert_eq!(
             i32::from(IdnError::SymbolNotFound("idn2_lookup_u8".into())),
-            Errno::EOPNOTSUPP.to_neg_errno()
+            Errno::ELIBBAD.to_neg_errno()
         );
     }
 
@@ -453,22 +523,22 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_mismatch_maps_to_einval() {
+    fn decode_failure_maps_to_euclean() {
         assert_eq!(
-            i32::from(IdnError::RoundtripMismatch {
-                input: "bücher.example".into(),
-                ascii: "xn--bcher-kva.example".into(),
-                unicode: "bucher.example".into(),
+            i32::from(IdnError::DecodeFailed {
+                input: "xn--invalid".into(),
+                code: IDN2_DISALLOWED,
+                message: "disallowed".into(),
             }),
-            Errno::EINVAL.to_neg_errno()
+            Errno::EUCLEAN.to_neg_errno()
         );
     }
 
     #[test]
-    fn invalid_utf8_output_maps_to_einval() {
+    fn invalid_utf8_output_maps_to_euclean() {
         assert_eq!(
             i32::from(IdnError::InvalidUtf8Output),
-            Errno::EINVAL.to_neg_errno()
+            Errno::EUCLEAN.to_neg_errno()
         );
     }
 
@@ -483,7 +553,7 @@ mod tests {
             return;
         }
 
-        let ascii = idn_name_to_ascii("example.com").unwrap();
+        let ascii = idn_name_to_ascii("example.com").unwrap().unwrap();
         assert_eq!(ascii, "example.com");
         assert_eq!(idn_name_from_ascii(&ascii).unwrap(), "example.com");
     }
@@ -496,7 +566,7 @@ mod tests {
 
         assert_eq!(
             idn_name_to_ascii("bücher.example").unwrap(),
-            "xn--bcher-kva.example"
+            Some("xn--bcher-kva.example".into())
         );
     }
 

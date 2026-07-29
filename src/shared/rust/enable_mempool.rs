@@ -136,12 +136,16 @@ fn current_thread_is_main_thread() -> bool {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         let pid = std::process::id() as libc::pid_t;
+        // SAFETY: gettid(2) takes no arguments and returns the caller's
+        // kernel thread ID; it neither borrows nor writes Rust memory.
         let tid = unsafe { libc::gettid() };
         return pid == tid;
     }
 
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
+        // SAFETY: pthread_main_np(3) takes no arguments and only reports
+        // whether the current thread is the process main thread.
         return unsafe { libc::pthread_main_np() == 1 };
     }
 

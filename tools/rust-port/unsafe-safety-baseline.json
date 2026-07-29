@@ -41,10 +41,8 @@
       "unsafe_sites": 2
     },
     "src/basic/rust/basic_validators.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "254:47:first == 0 || (first == b'-' as c_char && unsafe { *s.add(1) } == 0)"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 20
     },
     "src/basic/rust/bitmap.rs": {
@@ -953,11 +951,9 @@
       "unsafe_sites": 1
     },
     "src/platform/rust/process.rs": {
-      "missing_safety": 1,
-      "missing_safety_sites": [
-        "16:11:match unsafe { fork()? } {"
-      ],
-      "unsafe_sites": 1
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
     },
     "src/platform/rust/signal.rs": {
       "missing_safety": 0,
@@ -990,21 +986,9 @@
       "unsafe_sites": 1
     },
     "src/ptyfwd/rust/main.rs": {
-      "missing_safety": 11,
-      "missing_safety_sites": [
-        "91:22:let ptx_fd = unsafe {",
-        "102:12:if unsafe { libc::grantpt(ptx_fd) } != 0 || unsafe { libc::unlockpt(ptx_fd) } != 0 {",
-        "102:53:if unsafe { libc::grantpt(ptx_fd) } != 0 || unsafe { libc::unlockpt(ptx_fd) } != 0 {",
-        "104:13:unsafe { libc::close(ptx_fd) };",
-        "108:24:let pts_name = unsafe {",
-        "115:15:match unsafe { nix::unistd::fork() } {",
-        "117:17:unsafe { libc::close(libc::posix_openpt(libc::O_RDWR)) };",
-        "119:30:let pts_fd = unsafe {",
-        "134:25:unsafe {",
-        "152:17:unsafe {",
-        "178:17:unsafe {"
-      ],
-      "unsafe_sites": 11
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
     },
     "src/random-seed/rust/main.rs": {
       "missing_safety": 0,
@@ -1086,12 +1070,8 @@
       "unsafe_sites": 7
     },
     "src/shared/rust/binfmt_util.rs": {
-      "missing_safety": 3,
-      "missing_safety_sites": [
-        "147:15:let ret = unsafe { libc::fstatfs(fd, buf.as_mut_ptr()) };",
-        "151:8:Ok(unsafe { buf.assume_init() }.f_type as u64)",
-        "157:15:let ret = unsafe { libc::faccessat(fd, std::ptr::null(), mode, libc::AT_EMPTY_PATH) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 3
     },
     "src/shared/rust/blkid_util.rs": {
@@ -1312,22 +1292,13 @@
       "unsafe_sites": 1
     },
     "src/shared/rust/enable_mempool.rs": {
-      "missing_safety": 2,
-      "missing_safety_sites": [
-        "139:19:let tid = unsafe { libc::gettid() };",
-        "145:16:return unsafe { libc::pthread_main_np() == 1 };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 2
     },
     "src/shared/rust/env_file_label.rs": {
-      "missing_safety": 5,
-      "missing_safety_sites": [
-        "225:21:unsafe { libc::renameat(dir_fd, temp.as_ptr(), dir_fd, target.as_ptr()) };",
-        "247:14:let fd = unsafe {",
-        "260:8:Ok(unsafe { File::from_raw_fd(fd) })",
-        "264:13:let _ = unsafe { libc::unlinkat(dir_fd, path.as_ptr(), 0) };",
-        "272:18:let result = unsafe { libc::fcntl(dir_fd, libc::F_GETFD) };"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 5
     },
     "src/shared/rust/exec_util.rs": {
@@ -1436,30 +1407,9 @@
       "unsafe_sites": 1
     },
     "src/shared/rust/idn_util.rs": {
-      "missing_safety": 20,
-      "missing_safety_sites": [
-        "35:19:let _: Option<unsafe extern \"C\" fn(*const u8, *mut *mut u8, i32) -> i32> =",
-        "37:19:let _: Option<unsafe extern \"C\" fn(i32) -> *const libc::c_char> = None::<Idn2StrerrorFn>;",
-        "38:19:let _: Option<unsafe extern \"C\" fn(*const libc::c_char, *mut *mut libc::c_char, i32) -> i32> =",
-        "40:19:let _: Option<unsafe extern \"C\" fn(*mut c_void)> = None::<Idn2FreeFn>;",
-        "52:1:unsafe impl Send for LibIdn2 {}",
-        "53:1:unsafe impl Sync for LibIdn2 {}",
-        "229:18:let handle = unsafe { dlopen_wrapper(lib_name) }?;",
-        "231:21:let lookup_u8 = unsafe { resolve_symbol(handle, \"idn2_lookup_u8\") }?;",
-        "232:20:let strerror = unsafe { resolve_symbol(handle, \"idn2_strerror\") }?;",
-        "233:27:let to_unicode_8z8z = unsafe { resolve_symbol(handle, \"idn2_to_unicode_8z8z\") }?;",
-        "234:16:let free = unsafe { resolve_symbol(handle, \"idn2_free\") }?;",
-        "250:14:let rc = unsafe { (api.lookup_u8)(input.as_ptr().cast(), &mut output, flags) };",
-        "267:14:let rc = unsafe { (api.to_unicode_8z8z)(input.as_ptr(), &mut output, 0) };",
-        "284:17:let bytes = unsafe { CStr::from_ptr(output).to_bytes().to_vec() };",
-        "285:5:unsafe { (api.free)(output.cast()) };",
-        "291:19:let message = unsafe { (api.strerror)(code) };",
-        "296:5:unsafe { CStr::from_ptr(message) }",
-        "301:1:unsafe fn dlopen_wrapper(lib_name: &str) -> Result<*mut c_void, IdnError> {",
-        "315:1:unsafe fn resolve_symbol<T: Copy>(handle: *mut c_void, symbol: &str) -> Result<T, IdnError> {",
-        "330:5:unsafe {"
-      ],
-      "unsafe_sites": 23
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 14
     },
     "src/shared/rust/install_file.rs": {
       "missing_safety": 25,
@@ -2167,8 +2117,8 @@
     }
   },
   "totals": {
-    "missing_safety": 598,
-    "unsafe_sites": 5716
+    "missing_safety": 555,
+    "unsafe_sites": 5706
   },
   "version": 2,
   "window": 3

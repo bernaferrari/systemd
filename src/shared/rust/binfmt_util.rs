@@ -69,11 +69,6 @@ impl std::fmt::Display for BinfmtStatus {
 pub enum BinfmtError {
     /// An I/O error occurred.
     Io(std::io::Error),
-    /// The mount point exists but is not a binfmt_misc filesystem.
-    NotBinfmtFs {
-        /// The actual filesystem magic number detected.
-        actual_magic: u64,
-    },
     /// The status file contains unrecognised content.
     InvalidStatus(String),
 }
@@ -82,13 +77,6 @@ impl std::fmt::Display for BinfmtError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BinfmtError::Io(ref e) => write!(f, "I/O error: {e}"),
-            BinfmtError::NotBinfmtFs { actual_magic } => {
-                write!(
-                    f,
-                    "expected binfmt_misc filesystem (magic 0x{:08X}), found 0x{:08X}",
-                    BINFMTFS_MAGIC, actual_magic
-                )
-            }
             BinfmtError::InvalidStatus(ref content) => {
                 write!(f, "invalid binfmt_misc status: {content:?}")
             }
@@ -100,7 +88,7 @@ impl std::error::Error for BinfmtError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             BinfmtError::Io(ref e) => Some(e),
-            BinfmtError::NotBinfmtFs { .. } | BinfmtError::InvalidStatus(_) => None,
+            BinfmtError::InvalidStatus(_) => None,
         }
     }
 }
@@ -144,17 +132,30 @@ fn is_binfmt_mount_unavailable(err: &std::io::Error) -> bool {
 #[cfg(target_os = "linux")]
 fn fd_fs_type(fd: i32) -> Result<u64, std::io::Error> {
     let mut buf = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: `buf` provides writable storage for fstatfs(2), and `fd` is an
+    // open descriptor borrowed from the live File retained by the caller.
     let ret = unsafe { libc::fstatfs(fd, buf.as_mut_ptr()) };
     if ret < 0 {
         return Err(std::io::Error::last_os_error());
     }
+    // SAFETY: a successful fstatfs(2) call initialized the complete statfs.
     Ok(unsafe { buf.assume_init() }.f_type as u64)
 }
 
 /// Test file-descriptor accessibility using `faccessat` with `AT_EMPTY_PATH`.
 #[cfg(target_os = "linux")]
 fn access_fd(fd: i32, mode: i32) -> Result<(), std::io::Error> {
-    let ret = unsafe { libc::faccessat(fd, std::ptr::null(), mode, libc::AT_EMPTY_PATH) };
+    // SAFETY: AT_EMPTY_PATH makes this live empty C string refer to the
+    // supplied open descriptor; the call neither retains the descriptor nor
+    // writes through the pathname pointer.
+    let ret = unsafe {
+        libc::faccessat(
+            fd,
+            b"\0".as_ptr().cast::<libc::c_char>(),
+            mode,
+            libc::AT_EMPTY_PATH,
+        )
+    };
     if ret < 0 {
         Err(std::io::Error::last_os_error())
     } else {
@@ -177,6 +178,7 @@ fn access_fd(fd: i32, mode: i32) -> Result<(), std::io::Error> {
 /// - `Err`       — an unexpected error occurred.
 #[cfg(target_os = "linux")]
 pub fn binfmt_mounted_and_writable() -> Result<bool, BinfmtError> {
+    use std::os::fd::AsRawFd;
     use std::os::unix::fs::OpenOptionsExt;
 
     let file = match std::fs::OpenOptions::new()
@@ -199,9 +201,9 @@ pub fn binfmt_mounted_and_writable() -> Result<bool, BinfmtError> {
     // Verify the filesystem is actually binfmt_misc.
     let magic = fd_fs_type(fd)?;
     if magic != BINFMTFS_MAGIC {
-        return Err(BinfmtError::NotBinfmtFs {
-            actual_magic: magic,
-        });
+        // `fd_is_fs_type()` returns 0 for a different filesystem; C maps
+        // that to “not mounted and writable”, not an error.
+        return Ok(false);
     }
 
     // Check writability.
@@ -340,15 +342,6 @@ mod tests {
     }
 
     #[test]
-    fn test_binfmt_error_display_not_binfmt_fs() {
-        let err = BinfmtError::NotBinfmtFs {
-            actual_magic: 0xDEAD_BEEF,
-        };
-        let msg = format!("{err}");
-        assert!(msg.contains("DEADBEEF"));
-        assert!(msg.contains(&format!("{:08X}", BINFMTFS_MAGIC)));
-    }
-
     #[test]
     fn test_binfmt_error_display_invalid_status() {
         let err = BinfmtError::InvalidStatus("garbage".to_owned());
@@ -370,11 +363,8 @@ mod tests {
         let binfmt_err = BinfmtError::Io(io_err);
         assert!(binfmt_err.source().is_some());
 
-        let no_source = BinfmtError::NotBinfmtFs { actual_magic: 0 };
+        let no_source = BinfmtError::InvalidStatus(String::new());
         assert!(no_source.source().is_none());
-
-        let no_source2 = BinfmtError::InvalidStatus(String::new());
-        assert!(no_source2.source().is_none());
     }
 
     // ── is_fs_write_refused ────────────────────────────────────────────

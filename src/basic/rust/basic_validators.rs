@@ -251,6 +251,8 @@ pub unsafe extern "C" fn rs_empty_or_dash(s: *const c_char) -> bool {
     // NUL-terminated string, so the first byte and, for "-", the next byte are
     // readable.
     let first = unsafe { *s };
+    // SAFETY: the same NUL-terminated caller contract makes `s.add(1)`
+    // readable whenever the first byte is `'-'`.
     first == 0 || (first == b'-' as c_char && unsafe { *s.add(1) } == 0)
 }
 

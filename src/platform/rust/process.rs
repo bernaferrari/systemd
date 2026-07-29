@@ -3,23 +3,26 @@
 use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd::{Gid, Pid, Uid, fork, getgid, getpid, getppid, getuid};
 
-/// Fork a new child process and run the given closure in the child.
+/// Fork a new child process and run `f` in the child.
 ///
-/// Returns the child's PID in the parent. The child process will execute
-/// the provided closure and then exit.
+/// Returns the child's PID in the parent. The child exits immediately after
+/// `f` returns, without running Rust destructors or process-exit handlers.
 ///
 /// # Safety
 ///
-/// This is a safe wrapper around `fork()`. The child must only call
-/// async-signal-safe functions.
-pub fn fork_child(f: impl FnOnce()) -> nix::Result<Pid> {
+/// The caller must ensure that `f` only performs operations that are safe
+/// after `fork()` in a possibly multi-threaded process: it must not allocate,
+/// lock, panic, access thread-local state, or invoke non-async-signal-safe
+/// library code. `f` must also not retain references to parent-only state.
+pub unsafe fn fork_child(f: impl FnOnce()) -> nix::Result<Pid> {
+    // SAFETY: the caller upholds the post-fork contract documented above.
     match unsafe { fork()? } {
         nix::unistd::ForkResult::Parent { child } => Ok(child),
         nix::unistd::ForkResult::Child => {
             f();
-            // Exit the child process to avoid continuing execution
-            // of the parent's code path.
-            std::process::exit(0);
+            // SAFETY: _exit(2) terminates this child without invoking Rust
+            // destructors or process-exit handlers after fork.
+            unsafe { libc::_exit(0) }
         }
     }
 }
