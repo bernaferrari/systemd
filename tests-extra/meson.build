@@ -1616,20 +1616,6 @@ if get_option('rust').enabled()
         test('test-bitmap-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-bus-error-rust',
-                files('test-bus-error-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-bus-error-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-bus-type-util-rust',
                 files('test-bus-type-util-rust.c'),
                 include_directories : includes,

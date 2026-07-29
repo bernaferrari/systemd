@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 11:13 UTC
+Generated: 2026-07-29 11:19 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **380**
-- `genuine-rust`: **254**
-- `ffi-backed-rust`: **126**
+- Total modules audited: **374**
+- `genuine-rust`: **249**
+- `ffi-backed-rust`: **125**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -42,7 +42,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/bitmap.rs` | 11 | 35 | 0 | 55 |
 | `src/basic/rust/bootspec_util.rs` | 2 | 25 | 0 | 44 |
 | `src/basic/rust/btrfs_util.rs` | 1 | 21 | 0 | 13 |
-| `src/basic/rust/bus_error_util.rs` | 3 | 11 | 0 | 6 |
 | `src/basic/rust/bus_label.rs` | 2 | 15 | 0 | 17 |
 | `src/basic/rust/bus_type_util.rs` | 9 | 26 | 0 | 12 |
 | `src/basic/rust/capability_list.rs` | 4 | 23 | 0 | 15 |

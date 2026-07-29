@@ -60,11 +60,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/basic/rust/bus_error_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 21
-    },
     "src/basic/rust/bus_label.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -1025,24 +1020,6 @@
       ],
       "unsafe_sites": 20
     },
-    "src/shared/rust/base_filesystem.rs": {
-      "missing_safety": 7,
-      "missing_safety_sites": [
-        "254:14:let fd = unsafe { libc::open(root_c.as_ptr(), libc::O_DIRECTORY | libc::O_CLOEXEC) };",
-        "262:16:let file = unsafe { File::from_raw_fd(fd) };",
-        "361:5:unsafe { libc::faccessat(fd, path.as_ptr(), libc::F_OK, libc::AT_SYMLINK_NOFOLLOW) >= 0 }",
-        "365:8:if unsafe { libc::mkdirat(fd, path.as_ptr(), mode) } < 0 {",
-        "373:8:if unsafe { libc::fchmodat(fd, path.as_ptr(), mode, libc::AT_SYMLINK_NOFOLLOW) } < 0 {",
-        "381:8:if unsafe { libc::symlinkat(target.as_ptr(), fd, path.as_ptr()) } < 0 {",
-        "389:8:if unsafe { libc::fchownat(fd, path.as_ptr(), uid, gid, libc::AT_SYMLINK_NOFOLLOW) } < 0 {"
-      ],
-      "unsafe_sites": 7
-    },
-    "src/shared/rust/blockdev_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
     "src/shared/rust/bpf_program.rs": {
       "missing_safety": 5,
       "missing_safety_sites": [
@@ -1209,11 +1186,6 @@
       "unsafe_sites": 20
     },
     "src/shared/rust/device_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/shared/rust/enable_mempool.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2

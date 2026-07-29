@@ -265,7 +265,6 @@ jobs:
           test-locale-util-rust
           test-image-class-rust
           test-arphrd-util-rust
-          test-bus-error-rust
           test-fstype-util-rust
           test-dirent-util-rust
           test-glyph-util-rust
@@ -427,7 +426,6 @@ jobs:
           test-locale-util-rust
           test-image-class-rust
           test-arphrd-util-rust
-          test-bus-error-rust
           test-fstype-util-rust
           test-dirent-util-rust
           test-glyph-util-rust

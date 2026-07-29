@@ -63,7 +63,6 @@ pub mod basic_validators;
 pub mod bitmap;
 pub mod bootspec_util;
 pub mod btrfs_util;
-pub mod bus_error_util;
 pub mod bus_label;
 pub mod bus_type_util;
 pub mod capability_list;

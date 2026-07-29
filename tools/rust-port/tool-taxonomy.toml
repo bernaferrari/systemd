@@ -32,7 +32,6 @@ paths = [
     "tools/rust-port/contracts/basic/af-list.toml",
     "tools/rust-port/contracts/basic/arphrd-util.toml",
     "tools/rust-port/contracts/basic/bus-label.toml",
-    "tools/rust-port/contracts/basic/bus-error-util.toml",
     "tools/rust-port/contracts/basic/compare-operator.toml",
     "tools/rust-port/contracts/basic/compress-util.toml",
     "tools/rust-port/contracts/basic/confidential-virt.toml",

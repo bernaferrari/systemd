@@ -1171,17 +1171,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
-        "bus_error_util": (
-            basic_rust / "bus_error_util.h",
-            basic_rust / "bus_error_util.rs",
-            frozenset(
-                {
-                    "rs_bus_error_is_dirty",
-                    "rs_sd_bus_error_is_set",
-                    "rs_sd_bus_error_has_name",
-                }
-            ),
-        ),
         "fstype_util": (
             basic_rust / "fstype_util.h",
             basic_rust / "fstype_util.rs",
@@ -1607,7 +1596,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "locale_util": (tests_extra / "test-locale-util-rust.c",),
         "image_class": (tests_extra / "test-image-class-rust.c",),
         "arphrd_util": (tests_extra / "test-arphrd-util-rust.c",),
-        "bus_error_util": (tests_extra / "test-bus-error-rust.c",),
         "fstype_util": (tests_extra / "test-fstype-util-rust.c",),
         "namespace_util": (tests_extra / "test-namespace-mountpoint-rust.c",),
         "capability_list": (tests_extra / "test-capability-list-rust.c",),
@@ -2015,11 +2003,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "arphrd_util": (
             root / "src/basic/arphrd-util.c",
             root / "src/basic/arphrd-util.h",
-        ),
-        "bus_error_util": (
-            root / "src/libsystemd/sd-bus/bus-error.c",
-            root / "src/libsystemd/sd-bus/bus-error.h",
-            root / "src/systemd/sd-bus-protocol.h",
         ),
         "fstype_util": (
             root / "src/basic/mountpoint-util.c",

@@ -371,7 +371,6 @@ if get_option('rust').enabled()
                 'rust/hostname_setup.rs',
                 'rust/dirent_util.rs',
                 'rust/namespace_util.rs',
-                'rust/bus_error_util.rs',
                 'rust/bus_type_util.rs',
                 'rust/capability_list.rs',
                 'rust/btrfs_util.rs',

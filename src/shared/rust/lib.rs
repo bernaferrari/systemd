@@ -46,10 +46,7 @@
 
 pub mod acpi_fpdt;
 pub mod barrier;
-pub mod base_filesystem;
-pub mod battery_util;
 pub mod bitmap;
-pub mod blockdev_util;
 pub mod bond_util;
 pub mod boot_entry;
 pub mod boot_timestamps;
@@ -97,7 +94,6 @@ pub mod dns_rr;
 pub mod dns_type;
 pub mod efi_api;
 pub mod efivars;
-pub mod enable_mempool;
 pub mod env_file_label;
 pub mod ethtool_util;
 pub mod exec_util;
@@ -169,7 +165,6 @@ pub mod acl_util;
 pub mod ask_password_agent;
 pub mod ask_password_api;
 pub mod r#async;
-pub mod blockdev_list;
 pub mod bpf_link;
 pub mod btrfs_util;
 pub mod daemon_util;
