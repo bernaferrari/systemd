@@ -2,6 +2,8 @@
 /* RUST-CONTRACT: exit-status-lookup */
 /* RUST-CONTRACT: exit-status-from-string */
 /* RUST-CONTRACT: exit-status-class */
+/* RUST-CONTRACT: exit-status-set-queries */
+/* RUST-CONTRACT: exit-status-set-free */
 /* RUST-CONTRACT: securebit-name */
 /* Shadow test: C exit-status/securebits vs Rust */
 
@@ -191,6 +193,45 @@ static void test_exit_status_class(void) {
         assert_se(cv == NULL);
 }
 
+/* ── ExitStatusSet bitmap ABI ─────────────────────────────────────────── */
+
+static void test_exit_status_sets(void) {
+        ExitStatusSet c = {}, r = {};
+
+        assert_se(exit_status_set_is_empty(NULL) == rs_exit_status_set_is_empty(NULL));
+        assert_se(exit_status_set_is_empty(&c) == rs_exit_status_set_is_empty(&r));
+        assert_se(is_clean_exit(CLD_EXITED, 0, EXIT_CLEAN_COMMAND, NULL) ==
+                  rs_is_clean_exit(CLD_EXITED, 0, EXIT_CLEAN_COMMAND, NULL));
+        assert_se(is_clean_exit(CLD_KILLED, SIGTERM, EXIT_CLEAN_DAEMON, NULL) ==
+                  rs_is_clean_exit(CLD_KILLED, SIGTERM, EXIT_CLEAN_DAEMON, NULL));
+        assert_se(is_clean_exit(CLD_DUMPED, SIGTERM, EXIT_CLEAN_DAEMON, NULL) ==
+                  rs_is_clean_exit(CLD_DUMPED, SIGTERM, EXIT_CLEAN_DAEMON, NULL));
+
+        assert_se(bitmap_set(&c.status, 75) >= 0);
+        assert_se(bitmap_set(&r.status, 75) >= 0);
+        assert_se(bitmap_set(&c.signal, SIGTERM) >= 0);
+        assert_se(bitmap_set(&r.signal, SIGTERM) >= 0);
+
+        assert_se(exit_status_set_is_empty(&c) == rs_exit_status_set_is_empty(&r));
+        assert_se(exit_status_set_test(&c, CLD_EXITED, 75) ==
+                  rs_exit_status_set_test(&r, CLD_EXITED, 75));
+        assert_se(exit_status_set_test(&c, CLD_DUMPED, SIGTERM) ==
+                  rs_exit_status_set_test(&r, CLD_DUMPED, SIGTERM));
+        assert_se(exit_status_set_test(&c, CLD_KILLED, SIGHUP) ==
+                  rs_exit_status_set_test(&r, CLD_KILLED, SIGHUP));
+        assert_se(is_clean_exit(CLD_EXITED, 75, EXIT_CLEAN_COMMAND, &c) ==
+                  rs_is_clean_exit(CLD_EXITED, 75, EXIT_CLEAN_COMMAND, &r));
+        assert_se(is_clean_exit(CLD_KILLED, SIGTERM, EXIT_CLEAN_COMMAND, &c) ==
+                  rs_is_clean_exit(CLD_KILLED, SIGTERM, EXIT_CLEAN_COMMAND, &r));
+        assert_se(is_clean_exit(CLD_DUMPED, SIGTERM, EXIT_CLEAN_COMMAND, &c) ==
+                  rs_is_clean_exit(CLD_DUMPED, SIGTERM, EXIT_CLEAN_COMMAND, &r));
+
+        exit_status_set_free(&c);
+        rs_exit_status_set_free(&r);
+        assert_se(exit_status_set_is_empty(&c));
+        assert_se(rs_exit_status_set_is_empty(&r));
+}
+
 /* ── secure_bits_is_valid ─────────────────────────────────────────────── */
 
 static void test_secure_bits_is_valid(void) {
@@ -259,6 +300,7 @@ int main(int argc, char **argv) {
         test_exit_status_to_string();
         test_exit_status_from_string();
         test_exit_status_class();
+        test_exit_status_sets();
         test_secure_bits_is_valid();
         test_secure_bit_to_string();
         return 0;

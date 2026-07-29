@@ -145,6 +145,7 @@ jobs:
           test-device-nodes-rust
           test-gunicode-rust
           test-exit-status-rust
+          test-xml-rust
           test-parse-util-rust
           test-utf8-rust
           test-ansi-color-rust
@@ -198,6 +199,7 @@ jobs:
           test-strv-extra5-rust
           test-strv-extra6-rust
           test-strv-extra7-rust
+          test-remaining-untested-rust
           test-strv-fnmatch-rust
           test-strv-rust
           test-make-cstring-rust
@@ -309,6 +311,7 @@ jobs:
           test-device-nodes-rust
           test-gunicode-rust
           test-exit-status-rust
+          test-xml-rust
           test-parse-util-rust
           test-utf8-rust
           test-ansi-color-rust
@@ -362,6 +365,7 @@ jobs:
           test-strv-extra5-rust
           test-strv-extra6-rust
           test-strv-extra7-rust
+          test-remaining-untested-rust
           test-strv-fnmatch-rust
           test-strv-rust
           test-make-cstring-rust

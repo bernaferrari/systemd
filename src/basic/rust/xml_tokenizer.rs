@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/xml.c
+// PORT-SYNC: scope=shared.xml-tokenizer; authority=src/shared/xml.c,src/shared/xml.h
 //
 // Simplified XML tokenizer. Supports basic XML syntax with HTML5-like
 // simplifications (e.g. unquoted attribute values).
+
+use libc::{c_char, c_uint, c_void};
+use std::ffi::CStr;
+
+use crate::ffi::Errno;
 
 // ── XML token type constants ────────────────────────────────────────────
 
@@ -375,6 +380,354 @@ pub fn xml_tokenize_all(input: &str) -> Result<Vec<XmlToken>, XmlError> {
         tokens.push(token);
     }
     Ok(tokens)
+}
+
+// ── C ABI facade ──────────────────────────────────────────────────────────
+
+/// A token ready to be published through the C ABI.
+///
+/// `name`, when present, is an offset range into the input C string. The
+/// offsets deliberately describe bytes rather than UTF-8 character positions:
+/// `xml_tokenize()` is a byte-oriented C API and must accept non-UTF-8 input.
+struct RawXmlToken {
+    kind: i32,
+    name: Option<(usize, usize)>,
+    next: usize,
+    state: usize,
+    /// The C implementation increments lines only after successfully
+    /// allocating text. Other line changes occur while skipping syntax and
+    /// are applied directly by [`tokenize_raw_c_bytes`].
+    line_after_allocation: Option<(usize, usize)>,
+}
+
+fn increment_raw_lines(line: Option<&mut c_uint>, bytes: &[u8]) {
+    let Some(line) = line else {
+        return;
+    };
+
+    for byte in bytes {
+        if *byte == b'\n' {
+            // C's `unsigned` counter wraps modulo `UINT_MAX + 1`.
+            *line = line.wrapping_add(1);
+        }
+    }
+}
+
+fn find_raw_byte(bytes: &[u8], start: usize, needle: u8) -> Option<usize> {
+    bytes[start..]
+        .iter()
+        .position(|byte| *byte == needle)
+        .map(|offset| start + offset)
+}
+
+fn find_raw_subslice(bytes: &[u8], start: usize, needle: &[u8]) -> Option<usize> {
+    bytes[start..]
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .map(|offset| start + offset + needle.len())
+}
+
+fn is_raw_whitespace(byte: u8) -> bool {
+    WHITESPACE.contains(&byte)
+}
+
+fn is_raw_tag_name_terminator(byte: u8) -> bool {
+    is_raw_whitespace(byte) || matches!(byte, b'/' | b'>')
+}
+
+fn is_raw_attribute_name_terminator(byte: u8) -> bool {
+    is_raw_whitespace(byte) || matches!(byte, b'=' | b'/' | b'>')
+}
+
+/// Byte-for-byte implementation of the C `xml_tokenize()` state machine.
+///
+/// This is intentionally separate from the ergonomic Rust [`XmlTokenizer`]:
+/// the public Rust interface requires valid UTF-8, while the C ABI operates
+/// on arbitrary NUL-terminated byte strings. It preserves C's deferred state
+/// publication: only a returned token updates `*p` and `*state`.
+fn tokenize_raw_c_bytes(
+    bytes: &[u8],
+    initial_state: usize,
+    mut line: Option<&mut c_uint>,
+) -> std::result::Result<Option<RawXmlToken>, i32> {
+    let mut state = initial_state;
+    let mut current = 0;
+
+    if state == STATE_NULL {
+        if let Some(line) = line.as_deref_mut() {
+            *line = 1;
+        }
+        state = STATE_TEXT;
+    }
+
+    loop {
+        if current == bytes.len() {
+            // Like C, XML_END leaves `*p`, `*name`, and `*state` untouched.
+            return Ok(None);
+        }
+
+        match state {
+            STATE_TEXT => {
+                let tag = find_raw_byte(bytes, current, b'<').unwrap_or(bytes.len());
+                if tag > current {
+                    return Ok(Some(RawXmlToken {
+                        kind: XML_TEXT,
+                        name: Some((current, tag)),
+                        next: tag,
+                        state: STATE_TEXT,
+                        line_after_allocation: Some((current, tag)),
+                    }));
+                }
+
+                // `current < bytes.len()` and the scan above stopped on '<'.
+                let mut body = current + 1;
+
+                if bytes[body..].starts_with(b"!--") {
+                    let Some(after) = find_raw_subslice(bytes, body + 3, b"-->") else {
+                        return Err(Errno::EINVAL.to_neg_errno());
+                    };
+                    increment_raw_lines(line.as_deref_mut(), &bytes[body..after]);
+                    current = after;
+                    continue;
+                }
+
+                if bytes.get(body) == Some(&b'?') {
+                    let Some(after) = find_raw_subslice(bytes, body + 1, b"?>") else {
+                        return Err(Errno::EINVAL.to_neg_errno());
+                    };
+                    increment_raw_lines(line.as_deref_mut(), &bytes[body..after]);
+                    current = after;
+                    continue;
+                }
+
+                if bytes.get(body) == Some(&b'!') {
+                    let Some(end) = find_raw_byte(bytes, body + 1, b'>') else {
+                        return Err(Errno::EINVAL.to_neg_errno());
+                    };
+                    increment_raw_lines(line.as_deref_mut(), &bytes[body..end + 1]);
+                    current = end + 1;
+                    continue;
+                }
+
+                let kind = if bytes.get(body) == Some(&b'/') {
+                    body += 1;
+                    XML_TAG_CLOSE
+                } else {
+                    XML_TAG_OPEN
+                };
+
+                let Some(end) = bytes[body..]
+                    .iter()
+                    .position(|byte| is_raw_tag_name_terminator(*byte))
+                    .map(|offset| body + offset)
+                else {
+                    return Err(Errno::EINVAL.to_neg_errno());
+                };
+
+                // C's strndup() accepts an empty tag name, so this must not
+                // reject `<>` or `</>` even though callers normally avoid it.
+                return Ok(Some(RawXmlToken {
+                    kind,
+                    name: Some((body, end)),
+                    next: end,
+                    state: STATE_TAG,
+                    line_after_allocation: None,
+                }));
+            }
+
+            STATE_TAG => {
+                let next = current
+                    + bytes[current..]
+                        .iter()
+                        .take_while(|byte| is_raw_whitespace(**byte))
+                        .count();
+                if next == bytes.len() {
+                    return Err(Errno::EINVAL.to_neg_errno());
+                }
+
+                increment_raw_lines(line.as_deref_mut(), &bytes[current..next]);
+
+                let end = next
+                    + bytes[next..]
+                        .iter()
+                        .take_while(|byte| !is_raw_attribute_name_terminator(**byte))
+                        .count();
+                if end > next {
+                    return Ok(Some(RawXmlToken {
+                        kind: XML_ATTRIBUTE_NAME,
+                        name: Some((next, end)),
+                        next: end,
+                        state: STATE_ATTRIBUTE,
+                        line_after_allocation: None,
+                    }));
+                }
+
+                if bytes[next..].starts_with(b"/>") {
+                    return Ok(Some(RawXmlToken {
+                        kind: XML_TAG_CLOSE_EMPTY,
+                        name: None,
+                        next: next + 2,
+                        state: STATE_TEXT,
+                        line_after_allocation: None,
+                    }));
+                }
+
+                if bytes[next] != b'>' {
+                    return Err(Errno::EINVAL.to_neg_errno());
+                }
+
+                current = next + 1;
+                state = STATE_TEXT;
+            }
+
+            STATE_ATTRIBUTE => {
+                if bytes.get(current) == Some(&b'=') {
+                    current += 1;
+
+                    if let Some(quote @ (b'\'' | b'"')) = bytes.get(current).copied() {
+                        let Some(end) = find_raw_byte(bytes, current + 1, quote) else {
+                            return Err(Errno::EINVAL.to_neg_errno());
+                        };
+
+                        // C advances the line count before attempting the
+                        // strndup() allocation for a quoted value.
+                        increment_raw_lines(line.as_deref_mut(), &bytes[current..end]);
+                        return Ok(Some(RawXmlToken {
+                            kind: XML_ATTRIBUTE_VALUE,
+                            name: Some((current + 1, end)),
+                            next: end + 1,
+                            state: STATE_TAG,
+                            line_after_allocation: None,
+                        }));
+                    }
+
+                    let end = bytes[current..]
+                        .iter()
+                        .position(|byte| is_raw_whitespace(*byte) || *byte == b'>')
+                        .map(|offset| current + offset)
+                        // C uses `b = c` when strpbrk() finds no delimiter.
+                        .unwrap_or(current);
+                    return Ok(Some(RawXmlToken {
+                        kind: XML_ATTRIBUTE_VALUE,
+                        name: Some((current, end)),
+                        next: end,
+                        state: STATE_TAG,
+                        line_after_allocation: None,
+                    }));
+                }
+
+                state = STATE_TAG;
+            }
+
+            // The C source treats this as unreachable. Returning EINVAL keeps
+            // malformed foreign state from turning into undefined behavior.
+            _ => return Err(Errno::EINVAL.to_neg_errno()),
+        }
+    }
+}
+
+fn malloc_raw_name(bytes: &[u8]) -> *mut c_char {
+    let Some(allocation) = bytes.len().checked_add(1) else {
+        return std::ptr::null_mut();
+    };
+
+    // SAFETY: malloc accepts any `size_t`; its allocation is deliberately
+    // used so C callers may release the result with free(3), as xml.c does.
+    let output = unsafe { libc::malloc(allocation) }.cast::<c_char>();
+    if output.is_null() {
+        return output;
+    }
+
+    if !bytes.is_empty() {
+        // SAFETY: `output` has `bytes.len() + 1` writable bytes and the input
+        // slice is readable for `bytes.len()` bytes. The ranges cannot overlap
+        // because the output is a fresh allocation.
+        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), output.cast::<u8>(), bytes.len()) };
+    }
+    // SAFETY: the final byte is within the just-allocated output buffer.
+    unsafe { *output.cast::<u8>().add(bytes.len()) = 0 };
+    output
+}
+
+/// C ABI facade for `xml_tokenize()`.
+///
+/// The tokenizer accepts arbitrary non-NUL bytes, returns a C-allocator
+/// string for tokens with a name, and encodes state as the same small pointer
+/// values used by the C implementation. The returned name is always suitable
+/// for the caller's `free(3)`.
+///
+/// # Safety
+///
+/// `p`, `name`, and `state` must be writable, non-null pointer storage. `*p`
+/// must point to a live NUL-terminated C byte string for the call. `line`,
+/// when non-null, must be writable `unsigned` storage. The input and all
+/// pointed-to storage must remain valid and non-aliasing for writes throughout
+/// the call. The caller retains ownership of any old `*name`; this function
+/// never frees it, so callers must release an old allocation before allowing
+/// it to be overwritten. A returned token publishes a fresh allocation (or
+/// NULL for `XML_TAG_CLOSE_EMPTY`); `XML_END` and errors leave `*p`, `*name`,
+/// and `*state` unchanged. As in C, syntax skipped before an error may still
+/// have advanced the optional line counter.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_xml_tokenize(
+    p: *mut *const c_char,
+    name: *mut *mut c_char,
+    state: *mut *mut c_void,
+    line: *mut c_uint,
+) -> i32 {
+    if p.is_null() || name.is_null() || state.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: the ABI contract guarantees writable outer pointer storage.
+    let input = unsafe { *p };
+    if input.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+
+    // SAFETY: the ABI contract guarantees a live NUL-terminated C byte
+    // string. `CStr` intentionally performs no UTF-8 validation.
+    let bytes = unsafe { CStr::from_ptr(input) }.to_bytes();
+    // SAFETY: the ABI contract guarantees writable state storage.
+    let initial_state = unsafe { *state as usize };
+    let mut line = if line.is_null() {
+        None
+    } else {
+        // SAFETY: the ABI contract guarantees writable optional line storage.
+        Some(unsafe { &mut *line })
+    };
+
+    let token = match tokenize_raw_c_bytes(bytes, initial_state, line.as_deref_mut()) {
+        Ok(token) => token,
+        Err(error) => return error,
+    };
+    let Some(token) = token else {
+        return XML_END;
+    };
+
+    let allocated_name = if let Some((start, end)) = token.name {
+        let output = malloc_raw_name(&bytes[start..end]);
+        if output.is_null() {
+            return Errno::ENOMEM.to_neg_errno();
+        }
+        output
+    } else {
+        std::ptr::null_mut()
+    };
+
+    if let Some((start, end)) = token.line_after_allocation {
+        increment_raw_lines(line, &bytes[start..end]);
+    }
+
+    // SAFETY: the ABI contract guarantees writable output/state pointer
+    // storage. `token.next` is bounded by `bytes`, so this is an in-bounds
+    // position in the supplied C string (or its terminating NUL).
+    unsafe {
+        *name = allocated_name;
+        *p = input.add(token.next);
+        *state = token.state as *mut c_void;
+    }
+    token.kind
 }
 
 #[cfg(test)]

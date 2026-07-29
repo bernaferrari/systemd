@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C vs Rust for remaining untested pure functions */
+/* RUST-CONTRACT: strv-free-and-replace */
 
 #include <string.h>
 #include <stdlib.h>
@@ -244,10 +245,10 @@ static void test_strv_find_closest_by_levenshtein(void) {
 
 static void test_strv_find_closest_by_levenshtein_typo(void) {
         char *haystack[] = { (char *)"hello", (char *)"world", (char *)"foo", NULL };
-        /* "hell" has no prefix match; levenshtein: hello=1, world=4, foo=4.
+        /* "helo" has no prefix match; levenshtein: hello=1, world=4, foo=3.
          * Returns "hello". */
-        const char *c_result = strv_find_closest(haystack, "hell");
-        const char *r_result = rs_strv_find_closest_by_levenshtein(haystack, "hell");
+        const char *c_result = strv_find_closest(haystack, "helo");
+        const char *r_result = rs_strv_find_closest_by_levenshtein(haystack, "helo");
         assert_se(c_result && r_result);
         assert_se(streq(c_result, r_result));
         assert_se(streq(r_result, "hello"));
@@ -277,10 +278,12 @@ static void test_strv_free_and_replace(void) {
         c_new = strv_copy(r_strv);
         strv_free_and_replace(c_strv, c_new);
         r_new = strv_copy(c_strv);
-        rs_strv_free_and_replace(&r_strv, r_new);
+        rs_strv_free_and_replace(&r_strv, &r_new);
 
         assert_se(c_strv);
         assert_se(r_strv);
+        assert_se(c_new == NULL);
+        assert_se(r_new == NULL);
         assert_se(strv_equal(c_strv, r_strv));
         assert_se(streq(c_strv[0], "x"));
         assert_se(streq(c_strv[1], "y"));
@@ -292,11 +295,11 @@ static void test_strv_free_and_replace(void) {
 
 static void test_strv_free_and_replace_null(void) {
         /* Both NULL: should be no-op */
-        char **c_strv = NULL, **r_strv = NULL;
+        char **c_strv = NULL, **r_strv = NULL, **r_new = NULL;
         char **c_null = NULL;
 
         strv_free_and_replace(c_strv, c_null);
-        rs_strv_free_and_replace(&r_strv, NULL);
+        rs_strv_free_and_replace(&r_strv, &r_new);
 
         assert_se(c_strv == NULL);
         assert_se(r_strv == NULL);
@@ -304,13 +307,13 @@ static void test_strv_free_and_replace_null(void) {
 
 static void test_strv_free_and_replace_with_null(void) {
         char **c_strv = NULL, **r_strv = NULL;
-        char **c_new = NULL;
+        char **c_new = NULL, **r_new = NULL;
 
         r_strv = strv_new("a", NULL);
 
         c_new = strv_copy(r_strv);
         strv_free_and_replace(c_strv, c_new);
-        rs_strv_free_and_replace(&r_strv, NULL);
+        rs_strv_free_and_replace(&r_strv, &r_new);
 
         assert_se(c_strv);
         assert_se(r_strv == NULL);

@@ -291,11 +291,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-strv-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 53
+symbols = 54
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/strv.c" = "eb3cd8d4b213f16d1d770b32d2c1f60b63acefd6", "src/basic/strv.h" = "2a0c2730d1ac46f2548996f04d15f7b120124795", "src/fundamental/strv.h" = "0ede9c3b796a1cac05e018c25fb9a94915531b8d" }
-last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "3443da1dc7e6c9fd4116722a243838a1ffb6f536", "src/basic/rust/strv/allocating_transforms.rs" = "0b0903050580da0f587d8e683ae96e3a754197d4", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "19ff2e852070741f3723035d08e99face88d31cd" }
-notes = "Reviewed static behavior slice 2026-07-28; no build/tests/VM. Scope basic.strv owns the decomposed Rust leaves (strv.rs plus allocating_transforms/matching_escape) and rust/strv.h. Twenty-seven homogeneous machine-checked surfaces cover 53 dual-compared ABI symbols across registered strv fixtures, with borrowed-interior, borrowed-alias, libc-owned return, negative-errno, nullable, and boolean behaviors kept separate. Explicit exclusions cover free/print I/O, hashmap/set helpers, variadic constructors, and unreviewed static closest helpers. Partial provenance with static-only evidence; runtime parity unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "083c6b2a453044c55b92346db4df01fdf44e6d13", "src/basic/rust/strv/allocating_transforms.rs" = "0b0903050580da0f587d8e683ae96e3a754197d4", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "4ba2e30788318fccc50a66bfaab84fc2ea7af19f" }
+notes = "Reviewed static behavior slice 2026-07-29; no build/tests/VM. Scope basic.strv owns the decomposed Rust leaves (strv.rs plus allocating_transforms/matching_escape) and rust/strv.h. Twenty-nine machine-checked surfaces cover 54 dual-compared ABI symbols across registered strv fixtures, including the function-shaped consuming replacement macro. The two private closest-match components are exported for Rust decomposition but remain C-static helpers, with indirect C/R fixture coverage through strv_find_closest. Borrowed-interior, borrowed-alias, libc-owned return, negative-errno, nullable, and boolean behaviors remain separate. Explicit exclusions cover free/print I/O, hashmap/set helpers, variadic constructors, and unreviewed helpers. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 
 [escape]
@@ -1795,11 +1795,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-exit-status-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 5
+symbols = 9
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/exit-status.c" = "b40664d204ce207221836c981ec35cb07ae18ed0", "src/shared/exit-status.h" = "5a880d466406b1d2714e50d78ffebd5884be112b", "src/shared/securebits-util.c" = "bd682e6cbe9c336a02fa98693cfba3d2081875e2", "src/shared/securebits-util.h" = "cacae7347d7044a56ac7c655e817ffd280074135" }
-last_reviewed_rust_blobs = { "src/basic/rust/exit_status.rs" = "1ab38cf115675343de67e06ec3d92894d4c25751", "src/basic/rust/exit_status.h" = "241fe777769a4d0f225283166ecdce23a30eacd0" }
-notes = "Reviewed static exit-status ABI slice 2026-07-29; no build/tests/VM. Five facades preserve status class-mask lookup, status-name parsing, borrowed static names, securebit assertion behavior, and securebit mask validation. Bitmap-backed status-set ownership stays C-only. C remains production authority; runtime parity is unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/exit_status.rs" = "4d7e20b0853c817313a78d5b665c1166950ac7fb", "src/basic/rust/exit_status.h" = "241fe777769a4d0f225283166ecdce23a30eacd0" }
+notes = "Reviewed static exit-status ABI slice 2026-07-29; no build/tests/VM. Nine facades preserve status class-mask lookup, status-name parsing, borrowed static names, securebit assertion behavior, securebit mask validation, and C Bitmap-backed clean-exit/status-set operations. Native BTreeSet status sets remain Rust-only; C-layout bitmap sets retain C allocator ownership. C remains production authority; runtime parity is unclaimed."
 
 [file_classify]
 c_paths = [
@@ -1976,11 +1976,11 @@ c_provenance_edges = [
 test_file = "tests-extra/test-image-policy-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 4
+symbols = 12
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/image-policy.c" = "622b5c2aa14b32b3ab875d0b50b2472309413b61", "src/shared/image-policy.h" = "ae0d2f360bdc297959cc4dc0a3fd6581aab1973d" }
-last_reviewed_rust_blobs = { "src/basic/rust/image_policy_util.rs" = "81b2a6c1953892481283db10bcc858f434e90c10", "src/basic/rust/image_policy_util.h" = "a8a84eb99e33d2945283f1e44b6f294a48cfeb87" }
-notes = "Reviewed static image-policy flags ABI slice 2026-07-29; no build/tests/VM. Four scalar/C-string flag facades preserve valid parser and libc-string publication behavior. Flexible-array ImagePolicy ownership remains unclaimed. C remains production authority; runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/image_policy_util.rs" = "b068dba78ee53085a6aeca5fc5e7097587ca6267", "src/basic/rust/image_policy_util.h" = "56e40c78c8f718a97fef9fb86e63452250dcd166" }
+notes = "Reviewed static image-policy ABI slice 2026-07-29; no build/tests/VM. Twelve facades preserve scalar/C-string flag behavior plus C-layout flexible-array policy freeing, lookup, equality, and special-equivalence operations. Native Vec-backed policies remain Rust-only; the remaining parser, formatter, combine, and fstype APIs stay C-only. C remains production authority; runtime parity remains P2."
 
 [import_util]
 c_file = "src/shared/import-util.c, src/shared/reboot-util.c"
@@ -2559,13 +2559,23 @@ sync_status = "needs_review"
 
 [xml_tokenizer]
 c_paths = ["src/shared/xml.c", "src/shared/xml.h"]
-rust_file = "src/basic/rust/xml_tokenizer.rs"
-header_file = "src/shared/xml.h"
+rust_paths = ["src/basic/rust/xml_tokenizer.rs", "src/shared/rust/xml_tokenizer.h"]
+scope = "shared.xml-tokenizer"
+rust_scope_paths = ["src/basic/rust/xml_tokenizer.rs"]
+rust_interface_paths = ["src/shared/rust/xml_tokenizer.h"]
+contract_file = "tools/rust-port/contracts/basic/xml-tokenizer.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/xml.c", rust_paths = ["src/basic/rust/xml_tokenizer.rs", "src/shared/rust/xml_tokenizer.h"] },
+    { kind = "direct", path = "src/shared/xml.h", rust_paths = ["src/basic/rust/xml_tokenizer.rs", "src/shared/rust/xml_tokenizer.h"] },
+]
+test_file = "tests-extra/test-xml-rust.c"
 status = "in-progress"
 tier = 3
-symbols = 7
-sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored XML tokenization behavior to current shared source/header; behavioral completion remains unclaimed."
+symbols = 1
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/xml.c" = "a8a99ac348045c4bbfcae674ac3b2427d4d9b787", "src/shared/xml.h" = "1ef9de147d2efd8e528d0145349e409e220760de" }
+last_reviewed_rust_blobs = { "src/basic/rust/xml_tokenizer.rs" = "d9a181ecfc65ce7169438533c9348193048e057e", "src/shared/rust/xml_tokenizer.h" = "013b3f049d10be2cfb5557c569f6139ff2c109e2" }
+notes = "Reviewed static XML tokenizer ABI slice 2026-07-29; no build/tests/VM. The byte-oriented facade preserves C allocator strings, non-UTF-8 input, token-state/output publication, comments/PI/DTD handling, line updates, and XML_END output preservation. C remains production authority; runtime parity is unclaimed."
 
 #
 # src/core modules

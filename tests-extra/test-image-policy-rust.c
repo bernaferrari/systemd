@@ -1,5 +1,10 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C image-policy vs Rust rs_image_policy_* */
+/* RUST-CONTRACT: image-policy-free */
+/* RUST-CONTRACT: image-policy-lookup */
+/* RUST-CONTRACT: image-policy-equal */
+/* RUST-CONTRACT: image-policy-equivalent */
+/* RUST-CONTRACT: image-policy-special-equivalence */
 
 #include <stdlib.h>
 #include <string.h>
@@ -191,253 +196,6 @@ TEST(flags_to_string_fstype) {
         assert_se(streq(cp, rp));
 }
 
-/* ── image_policy_from_string (symbolic) ───────────────────────────────── */
-
-TEST(image_policy_from_string_ignore) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("-", false, &cp);
-        rr = rs_image_policy_from_string("-", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equiv_ignore(cp));
-        assert_se(rs_image_policy_equiv_ignore(rp));
-        assert_se(image_policy_equal(cp, rp));
-}
-
-TEST(image_policy_from_string_allow) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("*", false, &cp);
-        rr = rs_image_policy_from_string("*", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equiv_allow(cp));
-        assert_se(rs_image_policy_equiv_allow(rp));
-        assert_se(image_policy_equal(cp, rp));
-}
-
-TEST(image_policy_from_string_deny) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("~", false, &cp);
-        rr = rs_image_policy_from_string("~", false, &rp);
-        assert_se(cr == rr);
-        assert_se(image_policy_equiv_deny(cp));
-        assert_se(rs_image_policy_equiv_deny(rp));
-        assert_se(image_policy_equal(cp, rp));
-}
-
-TEST(image_policy_from_string_empty) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("", false, &cp);
-        rr = rs_image_policy_from_string("", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equal(cp, rp));
-}
-
-/* ── image_policy_from_string (complex) ────────────────────────────────── */
-
-TEST(image_policy_from_string_complex) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("root=verity+signed+encrypted:usr=verity+signed:=absent", false, &cp);
-        rr = rs_image_policy_from_string("root=verity+signed+encrypted:usr=verity+signed:=absent", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equal(cp, rp));
-        assert_se(image_policy_equivalent(cp, rp) == 1);
-        assert_se(rs_image_policy_equivalent(cp, rp) == 1);
-}
-
-TEST(image_policy_from_string_default_only) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("=verity+encrypted", false, &cp);
-        rr = rs_image_policy_from_string("=verity+encrypted", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equal(cp, rp));
-}
-
-TEST(image_policy_from_string_readonly_growfs) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("root=encrypted+read-only-on+growfs-off:=ignore", false, &cp);
-        rr = rs_image_policy_from_string("root=encrypted+read-only-on+growfs-off:=ignore", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equal(cp, rp));
-}
-
-TEST(image_policy_from_string_fstype) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("root=encrypted+ext4:usr=verity+signed+btrfs", false, &cp);
-        rr = rs_image_policy_from_string("root=encrypted+ext4:usr=verity+signed+btrfs", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equal(cp, rp));
-}
-
-TEST(image_policy_from_string_duplicate_designator) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("root=encrypted:root=verity", false, &cp);
-        rr = rs_image_policy_from_string("root=encrypted:root=verity", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == -ENOTUNIQ);
-}
-
-TEST(image_policy_from_string_unknown_designator) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("nonsense=encrypted", false, &cp);
-        rr = rs_image_policy_from_string("nonsense=encrypted", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == -EBADSLT);
-}
-
-TEST(image_policy_from_string_unknown_designator_graceful) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("root=encrypted:nonsense=verity", true, &cp);
-        rr = rs_image_policy_from_string("root=encrypted:nonsense=verity", true, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equal(cp, rp));
-}
-
-TEST(image_policy_from_string_duplicate_default) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL;
-        int cr, rr;
-
-        cr = image_policy_from_string("=encrypted:=verity", false, &cp);
-        rr = rs_image_policy_from_string("=encrypted:=verity", false, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == -ENOTUNIQ);
-}
-
-TEST(image_policy_from_string_ret_null) {
-        int cr = image_policy_from_string("*", false, NULL);
-        int rr = rs_image_policy_from_string("*", false, NULL);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-}
-
-/* ── image_policy_to_string ────────────────────────────────────────────── */
-
-TEST(image_policy_to_string_ignore) {
-        _cleanup_(image_policy_freep) ImagePolicy *p = NULL;
-        _cleanup_free_ char *cs = NULL, *rs = NULL;
-        int cr, rr;
-
-        assert_se(image_policy_from_string("-", false, &p) >= 0);
-        cr = image_policy_to_string(p, true, &cs);
-        rr = rs_image_policy_to_string(p, true, &rs);
-        assert_se(cr == rr);
-        assert_se(streq(cs, rs));
-        assert_se(streq(cs, "-"));
-}
-
-TEST(image_policy_to_string_allow) {
-        _cleanup_(image_policy_freep) ImagePolicy *p = NULL;
-        _cleanup_free_ char *cs = NULL, *rs = NULL;
-        int cr, rr;
-
-        assert_se(image_policy_from_string("*", false, &p) >= 0);
-        cr = image_policy_to_string(p, true, &cs);
-        rr = rs_image_policy_to_string(p, true, &rs);
-        assert_se(cr == rr);
-        assert_se(streq(cs, rs));
-        assert_se(streq(cs, "*"));
-}
-
-TEST(image_policy_to_string_complex) {
-        _cleanup_(image_policy_freep) ImagePolicy *p = NULL;
-        _cleanup_free_ char *cs = NULL, *rs = NULL;
-        int cr, rr;
-
-        assert_se(image_policy_from_string("root=verity+signed+encrypted:=absent", false, &p) >= 0);
-        cr = image_policy_to_string(p, false, &cs);
-        rr = rs_image_policy_to_string(p, false, &rs);
-        assert_se(cr == rr);
-        assert_se(streq(cs, rs));
-}
-
-TEST(image_policy_to_string_null_ret) {
-        _cleanup_(image_policy_freep) ImagePolicy *p = NULL;
-        int rr;
-
-        assert_se(rs_image_policy_from_string("*", false, &p) >= 0);
-        /* C version has assert_se(ret) so can't call with NULL; test Rust only */
-        rr = rs_image_policy_to_string(p, false, NULL);
-        assert_se(rr == -EINVAL);
-}
-
-/* ── image_policy_to_string roundtrip ──────────────────────────────────── */
-
-TEST(image_policy_to_string_roundtrip) {
-        const char *input = "root=verity+signed+encrypted+read-only-on+ext4:home=absent:=ignore";
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL, *cp2 = NULL;
-        _cleanup_free_ char *cs = NULL;
-        int cr;
-
-        cr = image_policy_from_string(input, false, &cp);
-        assert_se(cr == 0);
-
-        cr = image_policy_to_string(cp, false, &cs);
-        assert_se(cr >= 0);
-
-        cr = image_policy_from_string(cs, false, &cp2);
-        assert_se(cr == 0);
-
-        assert_se(image_policy_equivalent(cp, cp2) > 0);
-}
-
-TEST(rs_image_policy_to_string_roundtrip) {
-        const char *input = "root=verity+signed+encrypted+read-only-on+ext4:home=absent:=ignore";
-        _cleanup_(image_policy_freep) ImagePolicy *rp = NULL, *rp2 = NULL;
-        _cleanup_free_ char *rs = NULL;
-        int rr;
-
-        rr = rs_image_policy_from_string(input, false, &rp);
-        assert_se(rr == 0);
-
-        rr = rs_image_policy_to_string(rp, false, &rs);
-        assert_se(rr >= 0);
-
-        rr = rs_image_policy_from_string(rs, false, &rp2);
-        assert_se(rr == 0);
-
-        assert_se(rs_image_policy_equivalent(rp, rp2) == 1);
-}
-
 /* ── image_policy_get ──────────────────────────────────────────────────── */
 
 TEST(image_policy_get_null_policy) {
@@ -448,6 +206,14 @@ TEST(image_policy_get_null_policy) {
                 assert_se(cr == rr);
                 assert_se(cr >= 0);
         }
+}
+
+TEST(image_policy_lookup_out_of_range_designator) {
+        const int invalid = _PARTITION_DESIGNATOR_MAX;
+
+        assert_se(image_policy_get(NULL, invalid) == rs_image_policy_get(NULL, invalid));
+        assert_se(image_policy_get_exhaustively(NULL, invalid) ==
+                  rs_image_policy_get_exhaustively(NULL, invalid));
 }
 
 TEST(image_policy_get_explicit) {
@@ -483,13 +249,13 @@ TEST(image_policy_get_exhaustively_null) {
 /* ── image_policy_equal ────────────────────────────────────────────────── */
 
 TEST(image_policy_equal_same) {
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL, *rp = NULL;
+        _cleanup_(image_policy_freep) ImagePolicy *a = NULL, *b = NULL;
 
-        assert_se(image_policy_from_string("root=encrypted:=absent", false, &cp) >= 0);
-        assert_se(rs_image_policy_from_string("root=encrypted:=absent", false, &rp) >= 0);
+        assert_se(image_policy_from_string("root=encrypted:=absent", false, &a) >= 0);
+        assert_se(image_policy_from_string("root=encrypted:=absent", false, &b) >= 0);
 
-        assert_se(image_policy_equal(cp, rp));
-        assert_se(rs_image_policy_equal(cp, rp));
+        assert_se(image_policy_equal(a, b));
+        assert_se(rs_image_policy_equal(a, b));
 }
 
 TEST(image_policy_equal_null) {
@@ -505,6 +271,14 @@ TEST(image_policy_equal_different) {
 
         assert_se(!image_policy_equal(a, b));
         assert_se(!rs_image_policy_equal(a, b));
+}
+
+TEST(image_policy_free_c_allocation) {
+        ImagePolicy *p = NULL;
+
+        assert_se(image_policy_from_string("root=encrypted:=absent", false, &p) >= 0);
+        assert_se(p);
+        assert_se(rs_image_policy_free(p) == NULL);
 }
 
 /* ── image_policy_equiv_* ──────────────────────────────────────────────── */
@@ -544,92 +318,11 @@ TEST(image_policy_equivalent_null) {
         assert_se(rs_image_policy_equivalent(NULL, NULL) == 1);
 }
 
-/* ── image_policy_intersect / union ────────────────────────────────────── */
-
-TEST(image_policy_intersect_allow_allow) {
-        _cleanup_(image_policy_freep) ImagePolicy *a = NULL, *b = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL, *rp = NULL;
-        int cr, rr;
-
-        assert_se(image_policy_from_string("*", false, &a) >= 0);
-        assert_se(image_policy_from_string("*", false, &b) >= 0);
-
-        cr = image_policy_intersect(a, b, &cp);
-        rr = rs_image_policy_intersect(a, b, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equal(cp, rp));
-}
-
-TEST(image_policy_union_allow_deny) {
-        _cleanup_(image_policy_freep) ImagePolicy *a = NULL, *b = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL, *rp = NULL;
-        int cr, rr;
-
-        assert_se(image_policy_from_string("*", false, &a) >= 0);
-        assert_se(image_policy_from_string("~", false, &b) >= 0);
-
-        cr = image_policy_union(a, b, &cp);
-        rr = rs_image_policy_union(a, b, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(image_policy_equal(cp, rp));
-}
-
-TEST(image_policy_intersect_conflict) {
-        _cleanup_(image_policy_freep) ImagePolicy *a = NULL, *b = NULL;
-        _cleanup_(image_policy_freep) ImagePolicy *cp = NULL, *rp = NULL;
-        int cr, rr;
-
-        assert_se(image_policy_from_string("root=absent", false, &a) >= 0);
-        assert_se(image_policy_from_string("root=encrypted", false, &b) >= 0);
-
-        cr = image_policy_intersect(a, b, &cp);
-        rr = rs_image_policy_intersect(a, b, &rp);
-        assert_se(cr == rr);
-        assert_se(cr == -ENAVAIL);
-}
-
 /* ── image_policy_free ─────────────────────────────────────────────────── */
 
 TEST(image_policy_free_null) {
         assert_se(image_policy_free(NULL) == NULL);
         assert_se(rs_image_policy_free(NULL) == NULL);
-}
-
-/* ── partition_policy_determine_fstype ─────────────────────────────────── */
-
-TEST(determine_fstype_single) {
-        _cleanup_(image_policy_freep) ImagePolicy *p = NULL;
-        _cleanup_free_ char *cf = NULL, *rf = NULL;
-        bool ce = false, re = false;
-        int cr, rr;
-
-        assert_se(image_policy_from_string("root=encrypted+ext4", false, &p) >= 0);
-
-        cr = partition_policy_determine_fstype(p, PARTITION_ROOT, &ce, &cf);
-        rr = rs_partition_policy_determine_fstype(p, PARTITION_ROOT, &re, &rf);
-        assert_se(cr == rr);
-        assert_se(cr == 1);
-        assert_se(streq(cf, rf));
-        assert_se(streq(cf, "ext4"));
-        assert_se(ce == re);
-}
-
-TEST(determine_fstype_none) {
-        _cleanup_(image_policy_freep) ImagePolicy *p = NULL;
-        char *cf = NULL, *rf = NULL;
-        bool ce = false, re = false;
-        int cr, rr;
-
-        assert_se(image_policy_from_string("root=encrypted", false, &p) >= 0);
-
-        cr = partition_policy_determine_fstype(p, PARTITION_ROOT, &ce, &cf);
-        rr = rs_partition_policy_determine_fstype(p, PARTITION_ROOT, &re, &rf);
-        assert_se(cr == rr);
-        assert_se(cr == 0);
-        assert_se(cf == NULL);
-        assert_se(rf == NULL);
 }
 
 /* ── main ──────────────────────────────────────────────────────────────── */

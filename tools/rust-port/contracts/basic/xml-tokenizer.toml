@@ -1,0 +1,53 @@
+schema = 1
+module = "xml_tokenizer"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["inc_lines"]
+
+[authority]
+c_headers = ["src/shared/xml.h"]
+c_sources = ["src/shared/xml.c"]
+rust_headers = ["src/shared/rust/xml_tokenizer.h"]
+rust_sources = ["src/basic/rust/xml_tokenizer.rs"]
+
+[[surface]]
+id = "xml-tokenize"
+c_symbols = ["xml_tokenize"]
+rust_symbols = ["rs_xml_tokenize"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "xml-tokenize-required-pointer-fail-closed"
+deviation_rationale = "For valid C caller storage, arbitrary non-NUL bytes, C allocator ownership, state/line update timing, and output publication follow xml.c. Rust returns -EINVAL for malformed required outer pointers or an invalid foreign state instead of relying on C assertions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-29."
+
+[[surface.output]]
+arg = "name"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[[surface.output]]
+arg = "p"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[[surface.output]]
+arg = "state"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-xml-rust.c"
+meson_target = "test-xml-rust"
+labels = ["xml-tokenize"]

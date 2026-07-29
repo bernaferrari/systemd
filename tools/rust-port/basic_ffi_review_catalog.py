@@ -98,6 +98,23 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                 }
             ),
         ),
+        "exit_status_sets": (
+            basic_rust / "exit_status.h",
+            basic_rust / "exit_status.rs",
+            frozenset(
+                {
+                    "rs_is_clean_exit",
+                    "rs_exit_status_set_free",
+                    "rs_exit_status_set_is_empty",
+                    "rs_exit_status_set_test",
+                }
+            ),
+        ),
+        "xml_tokenizer": (
+            shared_rust / "xml_tokenizer.h",
+            basic_rust / "xml_tokenizer.rs",
+            frozenset({"rs_xml_tokenize"}),
+        ),
         "parse_util": (
             basic_rust / "parse_util.h",
             basic_rust / "parse_util.rs",
@@ -425,6 +442,14 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_partition_policy_flags_reduce",
                     "rs_partition_policy_flags_from_string",
                     "rs_partition_policy_flags_to_string",
+                    "rs_image_policy_free",
+                    "rs_image_policy_get",
+                    "rs_image_policy_get_exhaustively",
+                    "rs_image_policy_equal",
+                    "rs_image_policy_equivalent",
+                    "rs_image_policy_equiv_ignore",
+                    "rs_image_policy_equiv_allow",
+                    "rs_image_policy_equiv_deny",
                 }
             ),
         ),
@@ -681,6 +706,9 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
                     "rs_strv_extend_n",
                     "rs_strv_extend_strv_consume",
                     "rs_strv_find_closest",
+                    "rs_strv_find_closest_prefix",
+                    "rs_strv_find_closest_by_levenshtein",
+                    "rs_strv_free_and_replace",
                     "rs_strv_fnmatch",
                     "rs_strv_fnmatch_or_empty",
                     "rs_strv_insert",
@@ -1408,6 +1436,8 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         ),
         "exit_status_securebits": (tests_extra / "test-securebits-rust.c",),
         "exit_status_lookup": (tests_extra / "test-exit-status-rust.c",),
+        "exit_status_sets": (tests_extra / "test-exit-status-rust.c",),
+        "xml_tokenizer": (tests_extra / "test-xml-rust.c",),
         "parse_util": (
             tests_extra / "test-parse-util-rust.c",
             tests_extra / "test-parse-util-extra-rust.c",
@@ -1483,6 +1513,7 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-strv-extra5-rust.c",
             tests_extra / "test-strv-extra6-rust.c",
             tests_extra / "test-strv-extra7-rust.c",
+            tests_extra / "test-remaining-untested-rust.c",
         ),
         "string_mutation_registered": (
             tests_extra / "test-string-mutation-rust.c",
@@ -1676,6 +1707,11 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             root / "src/shared/securebits-util.c",
             root / "src/shared/securebits-util.h",
         ),
+        "exit_status_sets": (
+            root / "src/shared/exit-status.c",
+            root / "src/shared/exit-status.h",
+        ),
+        "xml_tokenizer": (root / "src/shared/xml.c", root / "src/shared/xml.h"),
         "parse_util": (root / "src/basic/parse-util.c", root / "src/basic/parse-util.h"),
         "utf8_abi": (
             root / "src/basic/utf8.c",

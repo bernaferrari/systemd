@@ -28,7 +28,9 @@ char **rs_strv_reverse(char **l);
 char **rs_strv_skip(char **l, size_t n);
 char *rs_strv_find_closest_prefix(char * const *l, const char *name);
 char *rs_strv_find_closest_by_levenshtein(char * const *l, const char *name);
-void rs_strv_free_and_replace(char ***a, char **b);
+/* Function-shaped equivalent of strv_free_and_replace(a, b): both arguments
+ * name writable lvalues, and the function assigns NULL to *b after moving it. */
+void rs_strv_free_and_replace(char ***a, char ***b);
 
 /*
  * Registered strv ABI surface. Borrowed vectors and strings remain owned by

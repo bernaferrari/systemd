@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C xml.c tokenizer vs Rust */
+/* RUST-CONTRACT: xml-tokenize */
 
 #include <assert.h>
 #include <string.h>
@@ -355,6 +356,29 @@ static void test_invalid_comment(void) {
         assert_se(cv == -EINVAL);
 }
 
+static void test_error_does_not_publish_outputs(void) {
+        const char *input = "<!-- unclosed";
+        const char *cp = input, *rp = input;
+        char c_sentinel[] = "c", r_sentinel[] = "r";
+        char *cn = c_sentinel, *rn = r_sentinel;
+        void *cs = NULL, *rs = NULL;
+        unsigned cl = 77, rl = 77;
+        int cv, rv;
+
+        cv = next_c(&cp, &cn, &cs, &cl);
+        rv = next_r(&rp, &rn, &rs, &rl);
+        assert_se(cv == rv);
+        assert_se(cv == -EINVAL);
+        assert_se(cp == input);
+        assert_se(rp == input);
+        assert_se(cn == c_sentinel);
+        assert_se(rn == r_sentinel);
+        assert_se(cs == NULL);
+        assert_se(rs == NULL);
+        assert_se(cl == 1);
+        assert_se(rl == 1);
+}
+
 static void test_invalid_processing_instruction(void) {
         const char *input = "<? unclosed";
         const char *cp = input, *rp = input;
@@ -377,6 +401,53 @@ static void test_empty_input(void) {
 
         cv = next_c(&cp, &cn, &cs, NULL);
         rv = next_r(&rp, &rn, &rs, NULL);
+        assert_se(cv == rv);
+        assert_se(cv == XML_END);
+}
+
+static void test_end_does_not_publish_outputs(void) {
+        const char *input = "";
+        const char *cp = input, *rp = input;
+        char c_sentinel[] = "c", r_sentinel[] = "r";
+        char *cn = c_sentinel, *rn = r_sentinel;
+        void *cs = NULL, *rs = NULL;
+        unsigned cl = 77, rl = 77;
+        int cv, rv;
+
+        cv = next_c(&cp, &cn, &cs, &cl);
+        rv = next_r(&rp, &rn, &rs, &rl);
+        assert_se(cv == rv);
+        assert_se(cv == XML_END);
+        assert_se(cp == input);
+        assert_se(rp == input);
+        assert_se(cn == c_sentinel);
+        assert_se(rn == r_sentinel);
+        assert_se(cs == NULL);
+        assert_se(rs == NULL);
+        assert_se(cl == 1);
+        assert_se(rl == 1);
+}
+
+static void test_non_utf8_text(void) {
+        const char input[] = { 'a', (char) 0xff, '\n', 'b', 0 };
+        const char *cp = input, *rp = input;
+        char *cn = NULL, *rn = NULL;
+        void *cs = NULL, *rs = NULL;
+        unsigned cl = 0, rl = 0;
+        int cv, rv;
+
+        cv = next_c(&cp, &cn, &cs, &cl);
+        rv = next_r(&rp, &rn, &rs, &rl);
+        assert_se(cv == rv);
+        assert_se(cv == XML_TEXT);
+        assert_se(memcmp(cn, rn, 4) == 0);
+        assert_se(memcmp(cn, input, 4) == 0);
+        assert_se(cl == rl);
+        assert_se(cl == 2);
+        free(cn); free(rn);
+
+        cv = next_c(&cp, &cn, &cs, &cl);
+        rv = next_r(&rp, &rn, &rs, &rl);
         assert_se(cv == rv);
         assert_se(cv == XML_END);
 }
@@ -463,8 +534,11 @@ int main(int argc, char **argv) {
         test_double_quoted_attribute();
         test_line_counting();
         test_invalid_comment();
+        test_error_does_not_publish_outputs();
         test_invalid_processing_instruction();
         test_empty_input();
+        test_end_does_not_publish_outputs();
+        test_non_utf8_text();
         test_nested_tags();
         test_multiple_attributes();
         return 0;

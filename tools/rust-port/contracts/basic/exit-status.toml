@@ -4,10 +4,6 @@ semantic_coverage = "partial"
 source_structure = "independent"
 deviation_policy = "explicit-only"
 excluded_c_symbols = [
-    "is_clean_exit",
-    "exit_status_set_free",
-    "exit_status_set_is_empty",
-    "exit_status_set_test",
     "secure_bits_to_strv",
     "secure_bits_from_string",
 ]
@@ -95,6 +91,53 @@ optional = false
 file = "tests-extra/test-exit-status-rust.c"
 meson_target = "test-exit-status-rust"
 labels = ["exit-status-class"]
+
+[[surface]]
+id = "exit-status-set-queries"
+c_symbols = [
+    "is_clean_exit",
+    "exit_status_set_is_empty",
+    "exit_status_set_test",
+]
+rust_symbols = [
+    "rs_is_clean_exit",
+    "rs_exit_status_set_is_empty",
+    "rs_exit_status_set_test",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-exit-status-rust.c"
+meson_target = "test-exit-status-rust"
+labels = ["exit-status-set-queries"]
+
+[[surface]]
+id = "exit-status-set-free"
+c_symbols = ["exit_status_set_free"]
+rust_symbols = ["rs_exit_status_set_free"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "x"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-exit-status-rust.c"
+meson_target = "test-exit-status-rust"
+labels = ["exit-status-set-free"]
 
 [[surface]]
 id = "securebit-name"

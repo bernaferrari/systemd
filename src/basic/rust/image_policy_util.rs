@@ -104,6 +104,25 @@ impl PartitionDesignator {
         }
     }
 
+    fn from_i32(value: i32) -> Option<Self> {
+        Some(match value {
+            0 => Self::Root,
+            1 => Self::Usr,
+            2 => Self::Home,
+            3 => Self::Srv,
+            4 => Self::Esp,
+            5 => Self::Xbootldr,
+            6 => Self::Swap,
+            7 => Self::RootVerity,
+            8 => Self::UsrVerity,
+            9 => Self::RootVeritySig,
+            10 => Self::UsrVeritySig,
+            11 => Self::Tmp,
+            12 => Self::Var,
+            _ => return None,
+        })
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             Self::Root => "root",
@@ -157,6 +176,26 @@ pub struct PartitionPolicy {
 pub struct ImagePolicy {
     pub default_flags: i32,
     pub policies: Vec<PartitionPolicy>,
+}
+
+/// ABI view of the fixed prefix of C's flexible-array `ImagePolicy`.
+///
+/// This is intentionally separate from the native, `Vec`-backed
+/// [`ImagePolicy`] above. Its layout mirrors the authoritative declaration in
+/// `src/shared/image-policy.h`; the `PartitionPolicy policies[]` array starts
+/// immediately after this prefix.
+#[repr(C)]
+pub struct CImagePolicy {
+    default_flags: i32,
+    n_policies: usize,
+}
+
+/// ABI view of C's `PartitionPolicy`.
+#[derive(Clone, Copy)]
+#[repr(C)]
+struct CPartitionPolicy {
+    designator: i32,
+    flags: i32,
 }
 
 impl Default for ImagePolicy {
@@ -286,12 +325,11 @@ impl ImagePolicy {
         }
 
         if let Some(data_designator) = designator.verity_hash_to_data() {
-            let raw_flags = self.get_raw_flags(data_designator);
-            if (raw_flags & (PARTITION_POLICY_SIGNED | PARTITION_POLICY_VERITY)) == 0 {
+            let data_flags = self.image_policy_get(data_designator)?;
+            if (data_flags & (PARTITION_POLICY_SIGNED | PARTITION_POLICY_VERITY)) == 0 {
                 return Err(Errno::EINVAL.to_neg_errno());
             }
 
-            let data_flags = self.image_policy_get(data_designator)?;
             return Ok(normalize(PartitionPolicy {
                 designator,
                 flags: PARTITION_POLICY_UNPROTECTED
@@ -301,12 +339,11 @@ impl ImagePolicy {
         }
 
         if let Some(data_designator) = designator.verity_sig_to_data() {
-            let raw_flags = self.get_raw_flags(data_designator);
-            if (raw_flags & PARTITION_POLICY_SIGNED) == 0 {
+            let data_flags = self.image_policy_get(data_designator)?;
+            if (data_flags & PARTITION_POLICY_SIGNED) == 0 {
                 return Err(Errno::EINVAL.to_neg_errno());
             }
 
-            let data_flags = self.image_policy_get(data_designator)?;
             return Ok(normalize(PartitionPolicy {
                 designator,
                 flags: PARTITION_POLICY_UNPROTECTED
@@ -317,61 +354,11 @@ impl ImagePolicy {
 
         Err(Errno::EINVAL.to_neg_errno())
     }
-
-    fn get_raw_flags(&self, designator: PartitionDesignator) -> i32 {
-        if let Some(policy) = self
-            .policies
-            .iter()
-            .find(|policy| policy.designator == designator)
-        {
-            return policy.flags;
-        }
-        self.default_flags
-    }
-
     pub fn image_policy_get_exhaustively(
         &self,
         designator: PartitionDesignator,
     ) -> Result<i32, i32> {
         self.image_policy_get(designator).or_else(|_| {
-            if let Some(data_designator) = designator.verity_hash_to_data() {
-                let raw_flags = self.get_raw_flags(data_designator);
-                if (raw_flags & (PARTITION_POLICY_SIGNED | PARTITION_POLICY_VERITY)) == 0 {
-                    return Ok(normalize(PartitionPolicy {
-                        designator,
-                        flags: self.default_flags,
-                    }));
-                }
-                let data_flags = normalize(PartitionPolicy {
-                    designator: data_designator,
-                    flags: raw_flags,
-                });
-                return Ok(normalize(PartitionPolicy {
-                    designator,
-                    flags: PARTITION_POLICY_UNPROTECTED
-                        | (data_flags & (PARTITION_POLICY_UNUSED | PARTITION_POLICY_ABSENT))
-                        | (data_flags & PFLAGS_MASK),
-                }));
-            }
-            if let Some(data_designator) = designator.verity_sig_to_data() {
-                let raw_flags = self.get_raw_flags(data_designator);
-                if (raw_flags & PARTITION_POLICY_SIGNED) == 0 {
-                    return Ok(normalize(PartitionPolicy {
-                        designator,
-                        flags: self.default_flags,
-                    }));
-                }
-                let data_flags = normalize(PartitionPolicy {
-                    designator: data_designator,
-                    flags: raw_flags,
-                });
-                return Ok(normalize(PartitionPolicy {
-                    designator,
-                    flags: PARTITION_POLICY_UNPROTECTED
-                        | (data_flags & (PARTITION_POLICY_UNUSED | PARTITION_POLICY_ABSENT))
-                        | (data_flags & PFLAGS_MASK),
-                }));
-            }
             Ok(normalize(PartitionPolicy {
                 designator,
                 flags: self.default_flags,
@@ -692,6 +679,167 @@ fn policy_flag_from_bytes(bytes: &[u8]) -> Option<i32> {
     })
 }
 
+/// # Safety
+///
+/// `policy` must be null or point to a complete, live C `ImagePolicy`
+/// allocation for the returned borrow's lifetime.
+#[inline]
+unsafe fn c_image_policy_entries<'a>(policy: *const CImagePolicy) -> &'a [CPartitionPolicy] {
+    if policy.is_null() {
+        return &[];
+    }
+
+    // SAFETY: the caller guarantees that `policy` points to a complete C
+    // `ImagePolicy` allocation. Its flexible array starts immediately after
+    // the repr(C) prefix mirrored by `CImagePolicy`.
+    let n_policies = unsafe { (*policy).n_policies };
+    // SAFETY: the allocation contract above includes `n_policies` complete
+    // `PartitionPolicy` entries following the prefix.
+    let entries = unsafe {
+        policy
+            .cast::<u8>()
+            .add(std::mem::size_of::<CImagePolicy>())
+            .cast::<CPartitionPolicy>()
+    };
+    // SAFETY: `entries` and `n_policies` describe the live flexible array by
+    // the function's input contract.
+    unsafe { std::slice::from_raw_parts(entries, n_policies) }
+}
+
+/// # Safety
+///
+/// `policy` must be null or point to a live C `ImagePolicy`.
+#[inline]
+unsafe fn c_image_policy_default(policy: *const CImagePolicy) -> i32 {
+    if policy.is_null() {
+        PARTITION_POLICY_OPEN
+    } else {
+        // SAFETY: non-null policy pointers passed to the ABI facade must point
+        // to a live C `ImagePolicy`.
+        unsafe { (*policy).default_flags }
+    }
+}
+
+/// # Safety
+///
+/// `policy` must be null or point to a complete, live C `ImagePolicy`.
+#[inline]
+unsafe fn c_image_policy_find(
+    policy: *const CImagePolicy,
+    designator: PartitionDesignator,
+) -> Option<CPartitionPolicy> {
+    // SAFETY: forwarded from this helper's C `ImagePolicy` contract.
+    unsafe { c_image_policy_entries(policy) }
+        .iter()
+        .copied()
+        .find(|entry| entry.designator == designator as i32)
+}
+
+/// # Safety
+///
+/// `policy` must be null or point to a complete, live C `ImagePolicy`.
+unsafe fn c_image_policy_get(policy: *const CImagePolicy, designator: PartitionDesignator) -> i32 {
+    if policy.is_null() {
+        return normalize(PartitionPolicy {
+            designator,
+            flags: PARTITION_POLICY_OPEN,
+        });
+    }
+
+    // SAFETY: forwarded from this helper's C `ImagePolicy` contract.
+    if let Some(entry) = unsafe { c_image_policy_find(policy, designator) } {
+        return normalize(PartitionPolicy {
+            designator,
+            flags: entry.flags,
+        });
+    }
+
+    if let Some(data_designator) = designator.verity_hash_to_data() {
+        // SAFETY: recursive lookup retains the same live policy allocation.
+        let data_flags = unsafe { c_image_policy_get(policy, data_designator) };
+        if data_flags < 0 {
+            return data_flags;
+        }
+        if (data_flags & (PARTITION_POLICY_SIGNED | PARTITION_POLICY_VERITY)) == 0 {
+            return Errno::EINVAL.to_neg_errno();
+        }
+        return normalize(PartitionPolicy {
+            designator,
+            flags: PARTITION_POLICY_UNPROTECTED
+                | (data_flags & (PARTITION_POLICY_UNUSED | PARTITION_POLICY_ABSENT))
+                | (data_flags & PFLAGS_MASK),
+        });
+    }
+
+    if let Some(data_designator) = designator.verity_sig_to_data() {
+        // SAFETY: recursive lookup retains the same live policy allocation.
+        let data_flags = unsafe { c_image_policy_get(policy, data_designator) };
+        if data_flags < 0 {
+            return data_flags;
+        }
+        if (data_flags & PARTITION_POLICY_SIGNED) == 0 {
+            return Errno::EINVAL.to_neg_errno();
+        }
+        return normalize(PartitionPolicy {
+            designator,
+            flags: PARTITION_POLICY_UNPROTECTED
+                | (data_flags & (PARTITION_POLICY_UNUSED | PARTITION_POLICY_ABSENT))
+                | (data_flags & PFLAGS_MASK),
+        });
+    }
+
+    Errno::EINVAL.to_neg_errno()
+}
+
+/// # Safety
+///
+/// `policy` must be null or point to a complete, live C `ImagePolicy`.
+unsafe fn c_image_policy_get_exhaustively(
+    policy: *const CImagePolicy,
+    designator: PartitionDesignator,
+) -> i32 {
+    // SAFETY: forwarded from this helper's C `ImagePolicy` contract.
+    let flags = unsafe { c_image_policy_get(policy, designator) };
+    if flags >= 0 {
+        return flags;
+    }
+
+    normalize(PartitionPolicy {
+        designator,
+        // SAFETY: forwarded from this helper's C `ImagePolicy` contract.
+        flags: unsafe { c_image_policy_default(policy) },
+    })
+}
+
+/// # Safety
+///
+/// `policy` must be null or point to a complete, live C `ImagePolicy`.
+unsafe fn c_image_policy_flags_all_match(policy: *const CImagePolicy, expected: i32) -> bool {
+    // SAFETY: forwarded from this helper's C `ImagePolicy` contract.
+    if !extended_equal(unsafe { c_image_policy_default(policy) }, expected) {
+        return false;
+    }
+
+    for designator in PartitionDesignator::ALL {
+        // SAFETY: each lookup borrows the same live policy allocation.
+        let flags = unsafe { c_image_policy_get_exhaustively(policy, designator) };
+        if flags < 0 {
+            // The C helper returns an `int`, which the public bool wrapper
+            // converts to true for any negative error.
+            return true;
+        }
+        if flags
+            != normalize(PartitionPolicy {
+                designator,
+                flags: expected,
+            })
+        {
+            return false;
+        }
+    }
+    true
+}
+
 /// C ABI facade for `partition_policy_flags_extend()`.
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_partition_policy_flags_extend(flags: i32) -> i32 {
@@ -775,6 +923,177 @@ pub unsafe extern "C" fn rs_partition_policy_flags_to_string(
     // happens only after a complete C-allocator string was obtained.
     unsafe { ptr::write(ret, output) };
     count
+}
+
+/// Release a C-allocator-owned `ImagePolicy` and return null, matching
+/// `image_policy_free()`.
+///
+/// # Safety
+///
+/// `policy` must be null or an allocation that may be released with
+/// `free(3)`. The pointer must not be used after this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_free(policy: *mut CImagePolicy) -> *mut CImagePolicy {
+    // SAFETY: the caller supplies a C-allocator-owned pointer or null.
+    unsafe { libc::free(policy.cast()) };
+    ptr::null_mut()
+}
+
+/// Look up the effective flags for one partition designator.
+///
+/// # Safety
+///
+/// `policy` must be null or point to a live C `ImagePolicy`, including its
+/// complete flexible array, for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_get(policy: *const CImagePolicy, designator: i32) -> i32 {
+    let Some(designator) = PartitionDesignator::from_i32(designator) else {
+        if policy.is_null() {
+            // C's NULL-policy fast path normalizes even an out-of-range enum.
+            // Every out-of-range value is non-verity, so `Home` is an exact
+            // representative for that normalization class.
+            return normalize(PartitionPolicy {
+                designator: PartitionDesignator::Home,
+                flags: PARTITION_POLICY_OPEN,
+            });
+        }
+        return Errno::EINVAL.to_neg_errno();
+    };
+    // SAFETY: forwarded from this export's C `ImagePolicy` contract.
+    unsafe { c_image_policy_get(policy, designator) }
+}
+
+/// Look up flags and fall back to the policy default when no explicit or
+/// derived rule exists.
+///
+/// # Safety
+///
+/// `policy` must be null or point to a live C `ImagePolicy`, including its
+/// complete flexible array, for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_get_exhaustively(
+    policy: *const CImagePolicy,
+    designator: i32,
+) -> i32 {
+    let Some(designator) = PartitionDesignator::from_i32(designator) else {
+        // C's exhaustive accessor falls back even for an out-of-range enum.
+        // Such a value has the same normalization rules as a generic,
+        // non-verity designator, represented here by `Home`.
+        return normalize(PartitionPolicy {
+            designator: PartitionDesignator::Home,
+            // SAFETY: forwarded from this export's C `ImagePolicy` contract.
+            flags: unsafe { c_image_policy_default(policy) },
+        });
+    };
+    // SAFETY: forwarded from this export's C `ImagePolicy` contract.
+    unsafe { c_image_policy_get_exhaustively(policy, designator) }
+}
+
+/// Compare two policies exactly as defined, including redundant entries.
+///
+/// # Safety
+///
+/// Each pointer must be null or point to a live C `ImagePolicy`, including
+/// its complete flexible array, for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_equal(
+    a: *const CImagePolicy,
+    b: *const CImagePolicy,
+) -> bool {
+    if a == b {
+        return true;
+    }
+
+    // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
+    let a_entries = unsafe { c_image_policy_entries(a) };
+    // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
+    let b_entries = unsafe { c_image_policy_entries(b) };
+    if a_entries.len() != b_entries.len() {
+        return false;
+    }
+    // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
+    if unsafe { c_image_policy_default(a) } != unsafe { c_image_policy_default(b) } {
+        return false;
+    }
+
+    a_entries
+        .iter()
+        .zip(b_entries)
+        .all(|(a, b)| a.designator == b.designator && a.flags == b.flags)
+}
+
+/// Check whether every partition resolves to the same outcome in both
+/// policies.
+///
+/// # Safety
+///
+/// Each pointer must be null or point to a live C `ImagePolicy`, including
+/// its complete flexible array, for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_equivalent(
+    a: *const CImagePolicy,
+    b: *const CImagePolicy,
+) -> i32 {
+    // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
+    if !extended_equal(unsafe { c_image_policy_default(a) }, unsafe {
+        c_image_policy_default(b)
+    }) {
+        return 0;
+    }
+
+    for designator in PartitionDesignator::ALL {
+        // SAFETY: each lookup borrows the live allocation supplied by the
+        // caller for the duration of this call.
+        let a_flags = unsafe { c_image_policy_get_exhaustively(a, designator) };
+        if a_flags < 0 {
+            return a_flags;
+        }
+        // SAFETY: as above, for `b`.
+        let b_flags = unsafe { c_image_policy_get_exhaustively(b, designator) };
+        if b_flags < 0 {
+            return b_flags;
+        }
+        if a_flags != b_flags {
+            return 0;
+        }
+    }
+    1
+}
+
+/// Check whether a policy is equivalent to the built-in ignore policy.
+///
+/// # Safety
+///
+/// `policy` must be null or point to a live C `ImagePolicy`, including its
+/// complete flexible array, for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_equiv_ignore(policy: *const CImagePolicy) -> bool {
+    // SAFETY: forwarded from this export's C `ImagePolicy` contract.
+    unsafe { c_image_policy_flags_all_match(policy, PARTITION_POLICY_IGNORE) }
+}
+
+/// Check whether a policy is equivalent to the built-in allow policy.
+///
+/// # Safety
+///
+/// `policy` must be null or point to a live C `ImagePolicy`, including its
+/// complete flexible array, for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_equiv_allow(policy: *const CImagePolicy) -> bool {
+    // SAFETY: forwarded from this export's C `ImagePolicy` contract.
+    unsafe { c_image_policy_flags_all_match(policy, PARTITION_POLICY_OPEN) }
+}
+
+/// Check whether a policy is equivalent to the built-in deny policy.
+///
+/// # Safety
+///
+/// `policy` must be null or point to a live C `ImagePolicy`, including its
+/// complete flexible array, for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_image_policy_equiv_deny(policy: *const CImagePolicy) -> bool {
+    // SAFETY: forwarded from this export's C `ImagePolicy` contract.
+    unsafe { c_image_policy_flags_all_match(policy, PARTITION_POLICY_ABSENT) }
 }
 
 fn policy_intersect_or_union(
@@ -882,6 +1201,24 @@ mod tests {
             .unwrap();
         assert!((flags & PARTITION_POLICY_UNPROTECTED) != 0);
         assert!((flags & PARTITION_POLICY_READ_ONLY_ON) != 0);
+    }
+
+    #[test]
+    fn verity_synthesis_uses_normalized_data_flags() {
+        // `-` is normalized to the permissive policy for a root data
+        // partition. C performs that normalization before deciding whether
+        // the corresponding verity partitions can be synthesized.
+        let policy = image_policy_from_string("root=-", false).unwrap();
+        assert!(
+            policy
+                .image_policy_get(PartitionDesignator::RootVerity)
+                .is_ok()
+        );
+        assert!(
+            policy
+                .image_policy_get(PartitionDesignator::RootVeritySig)
+                .is_ok()
+        );
     }
 
     #[test]

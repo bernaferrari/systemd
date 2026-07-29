@@ -9,6 +9,8 @@ use std::ptr;
 
 use bitflags::bitflags;
 
+use crate::bitmap::{self, CBitmap};
+
 pub const CLD_EXITED: i32 = 1;
 pub const CLD_KILLED: i32 = 2;
 pub const CLD_DUMPED: i32 = 3;
@@ -60,6 +62,17 @@ pub struct ExitStatusMapping {
 pub struct ExitStatusSet {
     statuses: BTreeSet<i32>,
     signals: BTreeSet<i32>,
+}
+
+/// C-layout-only `ExitStatusSet` used by the exported ABI facades below.
+///
+/// This deliberately remains distinct from the native `ExitStatusSet` above:
+/// the latter owns Rust `BTreeSet`s and must never cross the C ABI. The bitmap
+/// members retain the C allocator and ownership contract from `bitmap.h`.
+#[repr(C)]
+pub struct CExitStatusSet {
+    status: CBitmap,
+    signal: CBitmap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -293,6 +306,114 @@ pub extern "C" fn rs_secure_bit_to_string(bit: libc::c_int) -> *const libc::c_ch
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_secure_bits_is_valid(bits: libc::c_int) -> bool {
     secure_bits_is_valid(bits)
+}
+
+/// Exact C ABI shadow of `is_clean_exit()` for the C-layout status set.
+///
+/// # Safety
+/// A non-null `success_status` must point to a readable C `ExitStatusSet`.
+/// Each embedded `Bitmap` must satisfy `rs_bitmap_isset()`'s readable bitmap
+/// contract for the duration of this call. The status set is only borrowed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_is_clean_exit(
+    code: libc::c_int,
+    status: libc::c_int,
+    clean: libc::c_int,
+    success_status: *const CExitStatusSet,
+) -> bool {
+    if code == CLD_EXITED {
+        if status == 0 {
+            return true;
+        }
+
+        if success_status.is_null() {
+            return false;
+        }
+
+        // SAFETY: the FFI contract guarantees the nested C bitmap is readable.
+        return unsafe {
+            bitmap::rs_bitmap_isset(&raw const (*success_status).status, status as libc::c_uint)
+        };
+    }
+
+    if !matches!(code, CLD_KILLED | CLD_DUMPED) {
+        return false;
+    }
+
+    if clean == 0 && matches!(status, SIGHUP | SIGINT | SIGTERM | SIGPIPE) {
+        return true;
+    }
+
+    if success_status.is_null() {
+        return false;
+    }
+
+    // SAFETY: the FFI contract guarantees the nested C bitmap is readable.
+    unsafe { bitmap::rs_bitmap_isset(&raw const (*success_status).signal, status as libc::c_uint) }
+}
+
+/// Exact C ABI shadow of `exit_status_set_free()` for a C-layout status set.
+///
+/// # Safety
+/// `x` must point to a writable C `ExitStatusSet`. Both embedded bitmaps and
+/// their allocations must satisfy `rs_bitmap_clear()`'s libc-ownership
+/// contract. After return, their storage has been released and the set is
+/// empty. As in C, a null pointer violates this function's precondition.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_exit_status_set_free(x: *mut CExitStatusSet) {
+    // SAFETY: C has the same non-null precondition through assert(x), and the
+    // documented FFI contract guarantees each bitmap owns compatible storage.
+    unsafe {
+        bitmap::rs_bitmap_clear(&raw mut (*x).status);
+        bitmap::rs_bitmap_clear(&raw mut (*x).signal);
+    }
+}
+
+/// Exact C ABI shadow of `exit_status_set_is_empty()` for a C-layout set.
+///
+/// # Safety
+/// A non-null `x` must point to a readable C `ExitStatusSet`; each embedded
+/// bitmap must satisfy `rs_bitmap_isclear()`'s readable bitmap contract. A
+/// null pointer is accepted and denotes an empty set exactly as in C.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_exit_status_set_is_empty(x: *const CExitStatusSet) -> bool {
+    if x.is_null() {
+        return true;
+    }
+
+    // SAFETY: the FFI contract guarantees both embedded C bitmaps are readable.
+    unsafe {
+        bitmap::rs_bitmap_isclear(&raw const (*x).status)
+            && bitmap::rs_bitmap_isclear(&raw const (*x).signal)
+    }
+}
+
+/// Exact C ABI shadow of `exit_status_set_test()` for a C-layout status set.
+///
+/// # Safety
+/// `x` must point to a readable C `ExitStatusSet`; its embedded bitmaps must
+/// satisfy `rs_bitmap_isset()`'s readable bitmap contract. As in C, a null
+/// pointer violates this function's precondition.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_exit_status_set_test(
+    x: *const CExitStatusSet,
+    code: libc::c_int,
+    status: libc::c_int,
+) -> bool {
+    let bitmap = match code {
+        CLD_EXITED => {
+            // SAFETY: guaranteed by this entry point's C-layout contract.
+            unsafe { &raw const (*x).status }
+        }
+        CLD_KILLED | CLD_DUMPED => {
+            // SAFETY: guaranteed by this entry point's C-layout contract.
+            unsafe { &raw const (*x).signal }
+        }
+        _ => return false,
+    };
+
+    // SAFETY: the selected bitmap is readable by the FFI contract.
+    unsafe { bitmap::rs_bitmap_isset(bitmap, status as libc::c_uint) }
 }
 
 impl ExitStatusSet {

@@ -190,6 +190,36 @@ meson_target = "test-strv-extra-rust"
 labels = ["strv-find-closest"]
 
 [[surface]]
+id = "strv-free-and-replace"
+c_symbols = ["strv_free_and_replace"]
+rust_symbols = ["rs_strv_free_and_replace"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "a"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[[surface.output]]
+arg = "b"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-remaining-untested-rust.c"
+meson_target = "test-remaining-untested-rust"
+labels = ["strv-free-and-replace"]
+
+[[surface]]
 id = "strv-affix"
 c_symbols = ["startswith_strv_internal", "endswith_strv_internal"]
 rust_symbols = ["rs_startswith_strv_internal", "rs_endswith_strv_internal"]

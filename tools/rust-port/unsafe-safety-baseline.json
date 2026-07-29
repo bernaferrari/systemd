@@ -132,11 +132,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 8
     },
-    "src/basic/rust/env_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 21
-    },
     "src/basic/rust/dns_label.rs": {
       "missing_safety": 5,
       "missing_safety_sites": [
@@ -158,15 +153,10 @@
       "missing_safety_sites": [],
       "unsafe_sites": 10
     },
-    "src/basic/rust/exec_util.rs": {
+    "src/basic/rust/env_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 18
-    },
-    "src/basic/rust/exit_status.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 21
     },
     "src/basic/rust/errno_util.rs": {
       "missing_safety": 0,
@@ -192,6 +182,16 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 43
+    },
+    "src/basic/rust/exec_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 18
+    },
+    "src/basic/rust/exit_status.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 13
     },
     "src/basic/rust/extract_word.rs": {
       "missing_safety": 0,
@@ -222,6 +222,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 21
+    },
+    "src/basic/rust/glob_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 5
     },
     "src/basic/rust/glyph_util.rs": {
       "missing_safety": 0,
@@ -271,7 +276,7 @@
     "src/basic/rust/image_policy_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 5
+      "unsafe_sites": 46
     },
     "src/basic/rust/import_util.rs": {
       "missing_safety": 0,
@@ -295,16 +300,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/basic/rust/locale_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/basic/rust/log_target.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
     "src/basic/rust/iovec_util.rs": {
       "missing_safety": 2,
       "missing_safety_sites": [
@@ -317,6 +312,16 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 29
+    },
+    "src/basic/rust/locale_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
+    "src/basic/rust/log_target.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     },
     "src/basic/rust/memory_util.rs": {
       "missing_safety": 0,
@@ -393,31 +398,18 @@
       "unsafe_sites": 18
     },
     "src/basic/rust/parse_util.rs": {
-      "missing_safety": 18,
+      "missing_safety": 5,
       "missing_safety_sites": [
         "60:1:unsafe fn skip_whitespace(s: *const c_char) -> *const c_char {",
         "75:1:unsafe fn strcase_in_set(s: *const c_char, set: &[&CStr]) -> bool {",
         "106:1:unsafe fn startswith_set(s: *const c_char, prefixes: &[&CStr]) -> *const c_char {",
         "123:1:unsafe fn mangle_base(s: *const c_char, base: &mut u32) -> *const c_char {",
-        "165:1:unsafe fn parse_boolean_inner(v: *const c_char) -> i32 {",
-        "390:1:unsafe fn safe_atoi_inner(s: *const c_char, ret_i: *mut i32) -> i32 {",
-        "583:12:&& unsafe { *s.add(1) } != 0",
-        "953:1:unsafe fn startswith_cstr(s: *const c_char, suffix: &CStr) -> bool {",
-        "972:1:unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {",
-        "1113:1:unsafe fn parse_pid_inner(s: *const c_char, ret: *mut i32) -> i32 {",
-        "1165:1:unsafe fn parse_mode_inner(s: *const c_char, ret: *mut u32) -> i32 {",
-        "1205:1:unsafe fn parse_ifindex_inner(s: *const c_char) -> i32 {",
-        "1239:1:unsafe fn parse_fd_inner(s: *const c_char) -> i32 {",
-        "1273:1:unsafe fn parse_errno_inner(s: *const c_char) -> i32 {",
-        "1315:1:unsafe fn parse_nice_inner(s: *const c_char, ret: *mut i32) -> i32 {",
-        "1362:1:unsafe fn parse_oom_score_adjust_inner(s: *const c_char, ret: *mut i32) -> i32 {",
-        "1394:1:unsafe fn parse_ip_port_inner(s: *const c_char, ret: *mut u16) -> i32 {",
-        "1508:1:unsafe fn parse_ip_port_range_inner("
+        "165:1:unsafe fn parse_boolean_inner(v: *const c_char) -> i32 {"
       ],
       "unsafe_sites": 224
     },
     "src/basic/rust/path_util.rs": {
-      "missing_safety": 10,
+      "missing_safety": 8,
       "missing_safety_sites": [
         "25:1:unsafe fn startswith(s: *const c_char, p: *const c_char) -> bool {",
         "36:1:unsafe fn endswith(s: *const c_char, p: *const c_char) -> bool {",
@@ -426,9 +418,7 @@
         "81:1:unsafe fn streq(a: *const c_char, b: *const c_char) -> bool {",
         "89:1:unsafe fn skip_slash_or_dot(mut p: *const c_char) -> *const c_char {",
         "110:1:unsafe fn rs_path_is_valid_full(p: *const c_char, accept_dot_dot: bool) -> bool {",
-        "136:1:unsafe fn isempty(s: *const c_char) -> bool {",
-        "704:1:unsafe fn rs_path_find_first_component_inner(",
-        "762:1:unsafe fn skip_slash_or_dot_backward(path: *const c_char, mut q: *const c_char) -> *const c_char {"
+        "136:1:unsafe fn isempty(s: *const c_char) -> bool {"
       ],
       "unsafe_sites": 110
     },
@@ -436,6 +426,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 79
+    },
+    "src/basic/rust/pe_binary.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 29
     },
     "src/basic/rust/percent_util.rs": {
       "missing_safety": 0,
@@ -458,6 +453,11 @@
       "unsafe_sites": 9
     },
     "src/basic/rust/procfs_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 14
+    },
+    "src/basic/rust/ratelimit.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 14
@@ -497,6 +497,16 @@
       "missing_safety_sites": [],
       "unsafe_sites": 11
     },
+    "src/basic/rust/sha1.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 9
+    },
+    "src/basic/rust/sha256_hmac.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 11
+    },
     "src/basic/rust/shared_facades/lookups.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -517,6 +527,11 @@
       "missing_safety_sites": [],
       "unsafe_sites": 17
     },
+    "src/basic/rust/siphash24.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 17
+    },
     "src/basic/rust/socket_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -528,16 +543,6 @@
       "unsafe_sites": 20
     },
     "src/basic/rust/specifier_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 18
-    },
-    "src/basic/rust/sysctl_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 3
-    },
-    "src/basic/rust/syslog_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 18
@@ -586,6 +591,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 9
+    },
+    "src/basic/rust/strbuf.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 11
     },
     "src/basic/rust/string_table.rs": {
       "missing_safety": 0,
@@ -636,15 +646,13 @@
       "unsafe_sites": 17
     },
     "src/basic/rust/strv.rs": {
-      "missing_safety": 7,
+      "missing_safety": 5,
       "missing_safety_sites": [
         "49:1:unsafe fn strv_iter(l: *const *const c_char) -> StrvIter<'static> {",
         "80:1:unsafe fn strcmp_ptr(a: *const c_char, b: *const c_char) -> i32 {",
         "108:1:unsafe fn strv_isempty(l: *const *const c_char) -> bool {",
         "643:1:unsafe fn startswith_internal(s: *const c_char, prefix: *const c_char) -> *const c_char {",
-        "662:1:unsafe fn endswith_internal(s: *const c_char, suffix: *const c_char) -> *const c_char {",
-        "963:1:unsafe fn streq_ptr(a: *const c_char, b: *const c_char) -> bool {",
-        "2334:5:unsafe fn free_strv(l: *mut *mut c_char) {"
+        "662:1:unsafe fn endswith_internal(s: *const c_char, suffix: *const c_char) -> *const c_char {"
       ],
       "unsafe_sites": 307
     },
@@ -664,6 +672,16 @@
       "unsafe_sites": 2
     },
     "src/basic/rust/strxcpyx.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 18
+    },
+    "src/basic/rust/sysctl_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
+    },
+    "src/basic/rust/syslog_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 18
@@ -732,18 +750,19 @@
       ],
       "unsafe_sites": 306
     },
+    "src/basic/rust/user_shell_util.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 13
+    },
     "src/basic/rust/user_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 17
     },
     "src/basic/rust/utf8.rs": {
-      "missing_safety": 3,
-      "missing_safety_sites": [
-        "58:1:unsafe fn utf8_encoded_to_unichar_inner(str: *const c_char, ret_unichar: *mut u32) -> i32 {",
-        "112:1:unsafe fn utf8_encode_unichar_raw(out_utf8: *mut u8, g: u32) -> usize {",
-        "254:1:unsafe fn utf8_next_char(p: *const c_char) -> *const c_char {"
-      ],
+      "missing_safety": 0,
+      "missing_safety_sites": [],
       "unsafe_sites": 50
     },
     "src/basic/rust/virt.rs": {
@@ -755,6 +774,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 4
+    },
+    "src/basic/rust/xml_tokenizer.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 10
     },
     "src/battery-check/rust/battery_check.rs": {
       "missing_safety": 0,
@@ -2160,51 +2184,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
-    },
-    "src/basic/rust/glob_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/basic/rust/pe_binary.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 29
-    },
-    "src/basic/rust/ratelimit.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 14
-    },
-    "src/basic/rust/sha1.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 9
-    },
-    "src/basic/rust/sha256_hmac.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 11
-    },
-    "src/basic/rust/siphash24.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 17
-    },
-    "src/basic/rust/strbuf.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 11
-    },
-    "src/basic/rust/user_shell_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 13
     }
   },
   "totals": {
-    "missing_safety": 615,
-    "unsafe_sites": 5436
+    "missing_safety": 613,
+    "unsafe_sites": 5517
   },
   "version": 2,
   "window": 3

@@ -4,39 +4,13 @@
       "rs_get_color_mode",
       "rs_underline_enabled"
     ],
-    "src/basic/rust/exec_util.h": [],
-    "src/basic/rust/exit_status.h": [
-      "rs_exit_status_set_free",
-      "rs_exit_status_set_is_empty",
-      "rs_exit_status_set_test",
-      "rs_is_clean_exit"
-    ],
-    "src/basic/rust/extract_word.h": [],
-    "src/basic/rust/hexdecoct.h": [],
     "src/basic/rust/image_policy_util.h": [
-      "rs_image_policy_equal",
-      "rs_image_policy_equiv_allow",
-      "rs_image_policy_equiv_deny",
-      "rs_image_policy_equiv_ignore",
-      "rs_image_policy_equivalent",
-      "rs_image_policy_free",
       "rs_image_policy_from_string",
-      "rs_image_policy_get",
-      "rs_image_policy_get_exhaustively",
       "rs_image_policy_intersect",
       "rs_image_policy_to_string",
       "rs_image_policy_union",
       "rs_partition_policy_determine_fstype"
     ],
-    "src/basic/rust/mempool.h": [],
-    "src/basic/rust/parse_util.h": [],
-    "src/basic/rust/path_util.h": [],
-    "src/basic/rust/pe_binary.h": [],
-    "src/basic/rust/ratelimit.h": [],
-    "src/basic/rust/serialize.h": [],
-    "src/basic/rust/sha1.h": [],
-    "src/basic/rust/sha256_hmac.h": [],
-    "src/basic/rust/siphash24.h": [],
     "src/basic/rust/socket_util.h": [
       "rs_sockaddr_equal",
       "rs_sockaddr_in_addr",
@@ -53,14 +27,6 @@
       "rs_socket_address_parse_vsock",
       "rs_socket_address_verify"
     ],
-    "src/basic/rust/strbuf.h": [],
-    "src/basic/rust/strv.h": [
-      "rs_strv_find_closest_by_levenshtein",
-      "rs_strv_find_closest_prefix",
-      "rs_strv_free_and_replace"
-    ],
-    "src/basic/rust/syslog_util.h": [],
-    "src/basic/rust/time_util.h": [],
     "src/basic/rust/uid_range.h": [
       "rs_uid_range_add_internal",
       "rs_uid_range_add_str_full",
@@ -79,8 +45,6 @@
       "rs_uid_range_size",
       "rs_uid_range_translate"
     ],
-    "src/basic/rust/unit_def.h": [],
-    "src/basic/rust/utf8.h": [],
     "src/shared/rust/dns_label.h": [
       "rs_dns_label_escape",
       "rs_dns_label_escape_new",
@@ -112,12 +76,6 @@
       "rs_dns_name_to_wire_format",
       "rs_dns_service_join",
       "rs_dns_service_split"
-    ],
-    "src/shared/rust/exit_status.h": [],
-    "src/shared/rust/glob_util.h": [],
-    "src/shared/rust/user_shell_util.h": [],
-    "src/shared/rust/xml_tokenizer.h": [
-      "rs_xml_tokenize"
     ]
   },
   "version": 1

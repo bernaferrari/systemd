@@ -72,6 +72,7 @@ C_TYPES = {
     "CompareOperatorParseFlags": "i32",
     "ConditionType": "i32",
     "ExitStatusClass": "i32",
+    "ExitClean": "i32",
     # Glyph has int ABI. The Rust facade accepts the raw integer so C callers
     # retain the header's assertion contract for out-of-range positive values.
     "Glyph": "i32",
@@ -88,6 +89,13 @@ C_TYPES = {
     "OutputMode": "i32",
     "RuntimeScope": "i32",
     "PartitionPolicyFlags": "i32",
+    "PartitionDesignator": "i32",
+    # These C layouts are deliberately represented by separate repr(C)
+    # boundary mirrors, never by the native Rust collection/vector types.
+    "const ExitStatusSet *": "*constCExitStatusSet",
+    "ExitStatusSet *": "*mutCExitStatusSet",
+    "const ImagePolicy *": "*constCImagePolicy",
+    "ImagePolicy *": "*mutCImagePolicy",
     "IfnameValidFlags": "i32",
     "RateLimit *": "*mutRateLimit",
     "const RateLimit *": "*constRateLimit",
@@ -3007,6 +3015,24 @@ def main() -> int:
                 if "#define strv_contains(l, s) (!!strv_find((l), (s)))" not in authority:
                     return fail(
                         "strv_registered: strv_contains macro no longer matches current C authority"
+                    )
+                authority_curated += 1
+                continue
+            if name == "strv_registered" and symbol == "rs_strv_free_and_replace":
+                # The C API is a lvalue-consuming macro, not a callable
+                # function. The Rust export deliberately exposes both
+                # lvalue slots so it can preserve free/assign/NULL ordering.
+                if (
+                    not re.search(
+                        r"#define\s+strv_free_and_replace\s*\(\s*a\s*,\s*b\s*\)"
+                        r"\s*\\\s*\n\s*free_and_replace_full\s*\(\s*a\s*,\s*b\s*,\s*strv_free\s*\)",
+                        authority,
+                    )
+                    or expected
+                    != (("*mut*mut*mutc_char", "*mut*mut*mutc_char"), "()")
+                ):
+                    return fail(
+                        "strv_registered: strv_free_and_replace macro or two-slot ownership ABI changed"
                     )
                 authority_curated += 1
                 continue

@@ -33,15 +33,17 @@ bool rs_image_policy_equiv_ignore(const ImagePolicy *policy);
 bool rs_image_policy_equiv_allow(const ImagePolicy *policy);
 bool rs_image_policy_equiv_deny(const ImagePolicy *policy);
 
-/* Policy parsing/formatting */
+/*
+ * ABI debt only: the five declarations below describe the intended Rust
+ * surface, but no Rust definitions exist yet. Do not reference them from
+ * linked code until their implementations leave the inventory baseline.
+ */
 int rs_image_policy_from_string(const char *s, bool graceful, ImagePolicy **ret);
 int rs_image_policy_to_string(const ImagePolicy *policy, bool simplify, char **ret);
 
-/* Policy combination */
 int rs_image_policy_intersect(const ImagePolicy *a, const ImagePolicy *b, ImagePolicy **ret);
 int rs_image_policy_union(const ImagePolicy *a, const ImagePolicy *b, ImagePolicy **ret);
 
-/* Fstype determination */
 int rs_partition_policy_determine_fstype(
                 const ImagePolicy *policy,
                 int designator,

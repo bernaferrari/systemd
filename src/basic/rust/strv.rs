@@ -689,8 +689,9 @@ unsafe fn endswith_internal(s: *const c_char, suffix: *const c_char) -> *const c
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_strv_find_closest_prefix(
-    l: *const *const c_char,
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strv_find_closest_prefix(
+    l: *const *mut c_char,
     name: *const c_char,
 ) -> *mut c_char {
     if name.is_null() {
@@ -702,7 +703,7 @@ pub unsafe fn rs_strv_find_closest_prefix(
     let mut best: *mut c_char = std::ptr::null_mut();
 
     // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    for entry in unsafe { strv_iter(l) } {
+    for entry in unsafe { strv_iter(l.cast()) } {
         let s_bytes = entry.to_bytes();
         if s_bytes.len() >= name_bytes.len() && &s_bytes[..name_bytes.len()] == name_bytes {
             let n = s_bytes.len() - name_bytes.len();
@@ -725,8 +726,9 @@ pub unsafe fn rs_strv_find_closest_prefix(
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_strv_find_closest_by_levenshtein(
-    l: *const *const c_char,
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strv_find_closest_by_levenshtein(
+    l: *const *mut c_char,
     name: *const c_char,
 ) -> *mut c_char {
     if name.is_null() {
@@ -736,7 +738,7 @@ pub unsafe fn rs_strv_find_closest_by_levenshtein(
     let mut best: *mut c_char = std::ptr::null_mut();
 
     // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    for entry in unsafe { strv_iter(l) } {
+    for entry in unsafe { strv_iter(l.cast()) } {
         // SAFETY: entry and name are live C strings.
         let distance = unsafe { crate::string_util::rs_strlevenshtein(entry.as_ptr(), name) };
         if distance < 0 {
@@ -960,6 +962,12 @@ pub unsafe extern "C" fn rs_strv_join_full(
 
 // ── strv_sort_uniq ──────────────────────────────────────────────────────
 
+/// Compare two optional C strings.
+///
+/// # Safety
+/// Each non-null pointer must designate a live, NUL-terminated C string for
+/// the duration of the comparison. Null is accepted and has the same ordering
+/// semantics as `strcmp_ptr`.
 unsafe fn streq_ptr(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: this helper forwards its optional C-string contracts.
     (unsafe { strcmp_ptr(a, b) }) == 0
@@ -1964,28 +1972,35 @@ pub unsafe extern "C" fn rs_strv_contains(l: *const *mut c_char, s: *const c_cha
 
 // ── strv_free_and_replace ─────────────────────────────────────────────────
 
-/// Free *a and replace it with b, taking ownership of b.
-/// The caller must not free b after this call.
+/// Free `*a` and replace it with `*b`, consuming `*b`.
+///
+/// This is the function-shaped C ABI equivalent of
+/// `strv_free_and_replace(a, b)`: both arguments point to the caller's
+/// lvalues, and `*b` is reset to NULL after the replacement.
 ///
 /// # Safety
-/// Every non-null input pointer must be valid and properly aligned for all
-/// reads performed by this call, and every non-null output pointer must be
-/// valid and properly aligned for all writes. Pointer ranges must not alias
-/// in ways forbidden by the operation's documented ownership contract.
-/// C-string inputs must remain NUL-terminated and live for the call.
-pub unsafe fn rs_strv_free_and_replace(a: *mut *mut *mut c_char, b: *mut *mut c_char) {
-    if a.is_null() {
-        return;
-    }
+/// `a` and `b` must be non-null pointers to writable lvalue slots. `*a` must
+/// be null or an owned, NULL-terminated vector whose entries use the C
+/// allocator; `*b` is moved without copying and must satisfy the same
+/// ownership contract. Both slots must remain live for the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rs_strv_free_and_replace(
+    a: *mut *mut *mut c_char,
+    b: *mut *mut *mut c_char,
+) {
     // Free existing array
-    // SAFETY: the caller guarantees a is readable/writable.
+    // SAFETY: the caller guarantees a and b name readable/writable lvalues.
     let old = unsafe { *a };
     if !old.is_null() {
         // SAFETY: old is the owned vector currently stored in *a.
         unsafe { free_owned_strv(old) };
     }
-    // SAFETY: a is writable by the caller contract.
-    unsafe { *a = b };
+    // SAFETY: this mirrors free_and_replace_full: read b after freeing a,
+    // assign it to a, then consume b by clearing its caller-visible lvalue.
+    unsafe {
+        *a = *b;
+        *b = std::ptr::null_mut();
+    }
 }
 
 // ── strv_extend_strv_consume ──────────────────────────────────────────────
@@ -2026,8 +2041,10 @@ pub unsafe extern "C" fn rs_strv_extend_strv_consume(
     let p = unsafe { rs_strv_length(*a as *const *mut c_char) };
     if p == 0 {
         // Take over b entirely
-        // SAFETY: this function forwards a's ownership contract and transfers b.
-        unsafe { rs_strv_free_and_replace(a, b) };
+        let mut b_consume = b;
+        // SAFETY: b_consume is this function's local ownership slot, matching
+        // the C implementation's cleanup-managed b_consume lvalue.
+        unsafe { rs_strv_free_and_replace(a, &mut b_consume) };
         if filter_duplicates {
             // SAFETY: *a now owns b and remains a writable vector.
             unsafe { rs_strv_uniq(*a) };
@@ -2331,6 +2348,11 @@ mod tests {
         ptr
     }
 
+    /// Release a test vector allocated by `make_strv`.
+    ///
+    /// # Safety
+    /// `l` must be null or be the null-terminated, libc-allocated vector
+    /// returned by `make_strv`; this consumes the vector exactly once.
     unsafe fn free_strv(l: *mut *mut c_char) {
         // SAFETY: test vectors are allocated entry-by-entry with the C allocator.
         unsafe { super::free_owned_strv(l) };
