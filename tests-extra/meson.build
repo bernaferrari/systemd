@@ -45,7 +45,6 @@ simple_tests += files(
         'test-in-addr-util-extra.c',
         'test-initrd-util.c',
         'test-install-extra.c',
-        'test-iovec-wrapper.c',
         'test-ioprio-util.c',
         'test-ipvlan-util.c',
         'test-kernel-image.c',
@@ -503,7 +502,6 @@ simple_tests += files(
         'test-signal-util-extra3.c',
         'test-chase-extra.c',
         'test-pidfd-util-extra3.c',
-        'test-iovec-wrapper-extra2.c',
 )
 
 # Rust shadow tests — only built when -Drust=enabled

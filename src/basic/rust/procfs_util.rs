@@ -126,36 +126,39 @@ fn open_proc_reader(path: &Path) -> Result<BufReader<File>, Errno> {
 fn read_proc_line(reader: &mut BufReader<File>) -> Result<Option<Vec<u8>>, Errno> {
     let mut line = Vec::new();
     loop {
-        let buffer = io_result(reader.fill_buf())?;
-        if buffer.is_empty() {
-            if line.len() >= LONG_LINE_MAX {
+        let (consumed, complete) = {
+            let buffer = io_result(reader.fill_buf())?;
+            if buffer.is_empty() {
+                if line.len() >= LONG_LINE_MAX {
+                    return Err(Errno::ENOBUFS);
+                }
+                return if line.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(line))
+                };
+            }
+
+            // `read_line_full()` recognizes CR, LF, and NUL as line delimiters.
+            // Consume at most a bounded chunk so an unterminated procfs record
+            // never makes Rust allocate past LONG_LINE_MAX.
+            let marker = buffer
+                .iter()
+                .position(|byte| matches!(*byte, b'\n' | b'\r' | 0));
+            let content_len = marker.unwrap_or(buffer.len());
+            if line.len().saturating_add(content_len) >= LONG_LINE_MAX {
                 return Err(Errno::ENOBUFS);
             }
-            return if line.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(line))
-            };
-        }
-
-        // `read_line_full()` recognizes CR, LF, and NUL as line delimiters.
-        // Consume at most a bounded chunk so an unterminated procfs record
-        // never makes Rust allocate past LONG_LINE_MAX.
-        let marker = buffer
-            .iter()
-            .position(|byte| matches!(*byte, b'\n' | b'\r' | 0));
-        let content_len = marker.unwrap_or(buffer.len());
-        if line.len().saturating_add(content_len) >= LONG_LINE_MAX {
-            return Err(Errno::ENOBUFS);
-        }
-        line.try_reserve(content_len).map_err(|_| Errno::ENOMEM)?;
-        line.extend_from_slice(&buffer[..content_len]);
-        match marker {
-            Some(index) => {
-                reader.consume(index + 1);
-                return Ok(Some(line));
-            }
-            None => reader.consume(buffer.len()),
+            line.try_reserve(content_len).map_err(|_| Errno::ENOMEM)?;
+            line.extend_from_slice(&buffer[..content_len]);
+            (
+                marker.map_or(buffer.len(), |index| index + 1),
+                marker.is_some(),
+            )
+        };
+        reader.consume(consumed);
+        if complete {
+            return Ok(Some(line));
         }
     }
 }
@@ -290,7 +293,7 @@ fn procfs_tasks_get_current_at(path: &Path) -> Result<u64, Errno> {
         .ok_or(Errno::EINVAL)?;
     let digits_len = value[slash + 1..]
         .iter()
-        .take_while(u8::is_ascii_digit)
+        .take_while(|byte| byte.is_ascii_digit())
         .count();
     parse_u64_systemd_bytes(&value[slash + 1..slash + 1 + digits_len])
 }
@@ -299,7 +302,7 @@ fn procfs_cpu_get_usage_at(path: &Path) -> Result<u64, Errno> {
     let first_line = read_one_line(path)?;
     let fields = first_word_after(&first_line, b"cpu").ok_or(Errno::EINVAL)?;
     let mut fields = fields
-        .split(is_ascii_whitespace)
+        .split(|byte| is_ascii_whitespace(*byte))
         .filter(|field| !field.is_empty());
     let mut next_required = || fields.next().and_then(parse_cpu_field).ok_or(Errno::EINVAL);
     let user_ticks = next_required()?;

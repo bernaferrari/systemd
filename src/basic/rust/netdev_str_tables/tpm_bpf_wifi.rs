@@ -157,21 +157,21 @@ pub extern "C" fn rs_tpm2_pcr_index_to_string(v: i32) -> *const c_char {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_tpm2_pcr_index_from_string(s: *const c_char) -> i32 {
-    if s.is_null() {
+    // SAFETY: required by this C ABI entry point's contract.
+    let Some(input) = (unsafe { input_bytes(s) }) else {
         return Errno::EINVAL.to_neg_errno();
-    }
+    };
     // Try table lookup first
-    for &(idx, name) in TPM2_PCR_INDEX_TABLE {
-        // SAFETY: the caller guarantees s is a live NUL-terminated C string.
-        if unsafe { cstr_eq_static(s, name) } {
-            return idx;
-        }
+    if let Some(idx) = from_bytes(TPM2_PCR_INDEX_TABLE, input) {
+        return idx;
     }
     // Numeric fallback: 0..TPM2_PCRS_MAX-1
-    // SAFETY: the same caller contract makes s readable through its terminating NUL.
-    let u = unsafe { parse_uint(s) };
-    if u >= 0 && u < TPM2_PCRS_MAX {
-        return u;
+    // SAFETY: the entry point's C-string contract remains valid for the
+    // delegated safe_atou-compatible numeric parser.
+    if let Some(u) = unsafe { parse_uint(s) }
+        && u < TPM2_PCRS_MAX as u32
+    {
+        return u as i32;
     }
     Errno::EINVAL.to_neg_errno()
 }
@@ -299,7 +299,7 @@ pub extern "C" fn rs_tpm2_pcr_mask_to_string(mask: u32) -> *mut c_char {
     // Max: "23+23+23+..." = 3*n_bits chars + NUL
     let alloc_size = 3 * n_bits + 1;
     // SAFETY: malloc accepts the bounded allocation size derived from a u32 bit count.
-    let buf = unsafe { malloc(alloc_size) } as *mut u8;
+    let buf = malloc(alloc_size) as *mut u8;
     if buf.is_null() {
         return std::ptr::null_mut();
     }

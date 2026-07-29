@@ -22,6 +22,7 @@ const PARTITION_HOME: c_int = 2;
 const PARTITION_SRV: c_int = 3;
 const PARTITION_ESP: c_int = 4;
 const PARTITION_XBOOTLDR: c_int = 5;
+const PARTITION_SWAP: c_int = 6;
 const PARTITION_ROOT_VERITY: c_int = 7;
 const PARTITION_USR_VERITY: c_int = 8;
 const PARTITION_ROOT_VERITY_SIG: c_int = 9;

@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "chattr-util.h"
+#include "fd-util.h"
 #include "siphash24.h"
 #include "stat-util.h"
 #include "tests.h"
@@ -532,6 +533,7 @@ static void test_statfs_queries(void) {
                           rs_is_fs_type_at(AT_FDCWD, NULL, c_statfs.f_type));
 
         assert_se(fd_is_read_only_fs(AT_FDCWD) == rs_fd_is_read_only_fs(AT_FDCWD));
+        assert_se(fd_is_read_only_fs(XAT_FDROOT) == rs_fd_is_read_only_fs(XAT_FDROOT));
         assert_se(path_is_read_only_fs(".") == rs_path_is_read_only_fs("."));
         assert_se(fd_is_temporary_fs(AT_FDCWD) == rs_fd_is_temporary_fs(AT_FDCWD));
         assert_se(fd_is_network_fs(AT_FDCWD) == rs_fd_is_network_fs(AT_FDCWD));

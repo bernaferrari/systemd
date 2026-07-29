@@ -44,8 +44,8 @@ const fn encoded_len(unichar: u32) -> usize {
 #[inline]
 const fn valid_unichar(unichar: u32) -> bool {
     unichar < 0x110000
-        && !(0xd800..=0xdfff).contains(&unichar)
-        && !(0xfdd0..=0xfdef).contains(&unichar)
+        && !(unichar >= 0xd800 && unichar <= 0xdfff)
+        && !(unichar >= 0xfdd0 && unichar <= 0xfdef)
         && unichar & 0xfffe != 0xfffe
 }
 

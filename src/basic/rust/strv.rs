@@ -444,7 +444,8 @@ pub unsafe extern "C" fn rs_strv_copy_n(l: *const *mut c_char, n: usize) -> *mut
     let count = if n < total { n } else { total };
 
     // SAFETY: malloc accepts the finite pointer-array size.
-    let result = unsafe { malloc((count + 1) * std::mem::size_of::<*mut c_char>()) }.cast();
+    let result =
+        unsafe { malloc((count + 1) * std::mem::size_of::<*mut c_char>()) }.cast::<*mut c_char>();
     if result.is_null() {
         return std::ptr::null_mut();
     }
@@ -922,7 +923,7 @@ pub unsafe extern "C" fn rs_strv_join_full(
         return std::ptr::null_mut();
     };
     // SAFETY: calloc accepts the checked finite size computed above.
-    let buf = unsafe { calloc(allocation_size, 1) }.cast();
+    let buf = unsafe { calloc(allocation_size, 1) }.cast::<c_char>();
     if buf.is_null() {
         return std::ptr::null_mut();
     }
@@ -1081,7 +1082,7 @@ pub unsafe extern "C" fn rs_strv_push_pair(
             std::mem::size_of::<*mut c_char>(),
         )
     }
-    .cast();
+    .cast::<*mut c_char>();
     if c.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1149,7 +1150,7 @@ pub unsafe extern "C" fn rs_strv_insert(
             std::mem::size_of::<*mut c_char>(),
         )
     }
-    .cast();
+    .cast::<*mut c_char>();
     if c.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1256,7 +1257,7 @@ pub unsafe extern "C" fn rs_strv_extend_n(
             std::mem::size_of::<*mut c_char>(),
         )
     }
-    .cast();
+    .cast::<*mut c_char>();
     if nl.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1395,7 +1396,7 @@ pub unsafe extern "C" fn rs_strv_push_with_size(
             std::mem::size_of::<*mut c_char>(),
         )
     }
-    .cast();
+    .cast::<*mut c_char>();
     if c.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1525,7 +1526,7 @@ pub unsafe extern "C" fn rs_strv_extend_assignment(
     let total = lhs_len + 1 + rhs_len + 1;
 
     // SAFETY: malloc accepts the checked finite total.
-    let j = unsafe { crate::ffi::malloc(total) }.cast();
+    let j = unsafe { crate::ffi::malloc(total) }.cast::<c_char>();
     if j.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1614,7 +1615,7 @@ pub unsafe extern "C" fn rs_strv_split_full(
                 std::mem::size_of::<*mut c_char>(),
             )
         }
-        .cast();
+        .cast::<*mut c_char>();
         if new_l.is_null() {
             // Cleanup
             let mut j: usize = 0;
@@ -1642,7 +1643,7 @@ pub unsafe extern "C" fn rs_strv_split_full(
     // C behavior: if no words found, allocate empty array [NULL]
     if l.is_null() {
         // SAFETY: calloc accepts one pointer-sized element.
-        l = unsafe { calloc(1, std::mem::size_of::<*mut c_char>()) }.cast();
+        l = unsafe { calloc(1, std::mem::size_of::<*mut c_char>()) }.cast::<*mut c_char>();
         if l.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
@@ -1775,12 +1776,12 @@ pub unsafe extern "C" fn rs_strv_rebreak_lines(
     while !unsafe { (*l.add(i)).is_null() } {
         // SAFETY: i currently indexes a live vector entry.
         let line = unsafe { *l.add(i) };
-        let mut start = line;
+        let mut start: *const c_char = line;
         let mut whitespace_begin: *const c_char = std::ptr::null();
         let mut whitespace_end: *const c_char = std::ptr::null();
         let mut in_prefix: bool = true;
         let mut w: usize = 0;
-        let mut p = line;
+        let mut p: *const c_char = line;
 
         // SAFETY: each line is a live NUL-terminated C string.
         while unsafe { *p } != 0 {
@@ -2087,7 +2088,7 @@ pub unsafe extern "C" fn rs_strv_extend_strv_consume(
             std::mem::size_of::<*mut c_char>(),
         )
     }
-    .cast();
+    .cast::<*mut c_char>();
     if t.is_null() {
         if !b.is_null() {
             // SAFETY: no entries were moved, so b remains owned here.

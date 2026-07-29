@@ -19,6 +19,7 @@ mod table_core;
 use table_core::{from_bytes, input_bytes, static_cstr, static_cstr_ptr};
 
 #[inline]
+#[cfg(test)]
 // SAFETY: `s` must be a live NUL-terminated C string; `table_entry` is static
 // NUL-terminated table storage.
 unsafe fn cstr_eq_static(s: *const c_char, table_entry: &'static [u8]) -> bool {
@@ -127,8 +128,12 @@ pub unsafe extern "C" fn rs_coredump_filter_mask_from_string(
 
     loop {
         let mut word: *mut c_char = std::ptr::null_mut();
-        let r =
-            crate::extract_word::rs_extract_first_word(&mut pos, &mut word, std::ptr::null(), 0);
+        // SAFETY: `pos` initially comes from the caller's live C string and is
+        // subsequently advanced only by `rs_extract_first_word`; `word` is a
+        // writable output slot owned by this stack frame.
+        let r = unsafe {
+            crate::extract_word::rs_extract_first_word(&mut pos, &mut word, std::ptr::null(), 0)
+        };
         if r < 0 {
             return r;
         }
@@ -159,7 +164,9 @@ pub unsafe extern "C" fn rs_coredump_filter_mask_from_string(
         }
 
         // Try named filter (word still alive)
-        let named = rs_coredump_filter_from_string(word);
+        // SAFETY: a positive `rs_extract_first_word` result supplied `word` as
+        // a live NUL-terminated allocation, which remains owned here.
+        let named = unsafe { rs_coredump_filter_from_string(word) };
         if named >= 0 {
             mask |= 1u64 << named;
             // SAFETY: `rs_extract_first_word` returned an owned C allocation.
@@ -169,7 +176,9 @@ pub unsafe extern "C" fn rs_coredump_filter_mask_from_string(
 
         // Try hex value (word still alive)
         let mut x: u64 = 0;
-        let hr = crate::parse_util::rs_safe_atoux64(word.cast::<libc::c_char>(), &mut x);
+        // SAFETY: `word` is still a live NUL-terminated allocation and `x` is
+        // a writable output local.
+        let hr = unsafe { crate::parse_util::rs_safe_atoux64(word.cast::<libc::c_char>(), &mut x) };
         // SAFETY: `rs_extract_first_word` returned an owned C allocation.
         unsafe { crate::ffi::free(word as *mut c_void) };
         if hr < 0 {
@@ -179,7 +188,9 @@ pub unsafe extern "C" fn rs_coredump_filter_mask_from_string(
         mask |= x;
     }
 
-    *ret = mask;
+    // SAFETY: `ret` was checked non-null above and is writable by the caller
+    // contract.
+    unsafe { *ret = mask };
     0
 }
 
@@ -570,79 +581,20 @@ string_table!(
 
 // ── Helper: parse_boolean (returns 1, 0, or negative errno) ─────────────
 
-// SAFETY: `v` must be null or a live NUL-terminated C string for the duration
-// of this call.
-unsafe fn parse_boolean(v: *const c_char) -> i32 {
-    if v.is_null() {
-        return Errno::EINVAL.to_neg_errno();
-    }
-    // SAFETY: `s` must be a live NUL-terminated C string for each comparison.
-    unsafe fn is_true(s: *const c_char) -> bool {
-        // SAFETY: the caller guarantees s is a live NUL-terminated C string.
-        unsafe {
-            cstr_eq_ignore_ascii_case_static(s, b"1\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"yes\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"y\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"true\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"t\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"on\0")
-        }
-    }
-    // SAFETY: `s` must be a live NUL-terminated C string for each comparison.
-    unsafe fn is_false(s: *const c_char) -> bool {
-        // SAFETY: the caller guarantees s is a live NUL-terminated C string.
-        unsafe {
-            cstr_eq_ignore_ascii_case_static(s, b"0\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"no\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"n\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"false\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"f\0")
-                || cstr_eq_ignore_ascii_case_static(s, b"off\0")
-        }
-    }
-    // SAFETY: parse_boolean's caller supplies the required C string.
-    if unsafe { is_true(v) } {
+fn parse_boolean(v: &[u8]) -> i32 {
+    if [b"1".as_slice(), b"yes", b"y", b"true", b"t", b"on"]
+        .iter()
+        .any(|candidate| v.eq_ignore_ascii_case(candidate))
+    {
         return 1;
     }
-    // SAFETY: parse_boolean's caller supplies the required C string.
-    if unsafe { is_false(v) } {
+    if [b"0".as_slice(), b"no", b"n", b"false", b"f", b"off"]
+        .iter()
+        .any(|candidate| v.eq_ignore_ascii_case(candidate))
+    {
         return 0;
     }
     Errno::EINVAL.to_neg_errno()
-}
-
-// SAFETY: `s` must be null or readable through its terminating NUL while this
-// parser traverses it.
-unsafe fn parse_uint_result(s: *const c_char) -> Result<i32, i32> {
-    if s.is_null() {
-        return Err(Errno::EINVAL.to_neg_errno());
-    }
-
-    let mut result: i32 = 0;
-    let mut i: usize = 0;
-    // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-    unsafe {
-        if *s == 0 {
-            return Err(Errno::EINVAL.to_neg_errno());
-        }
-
-        loop {
-            let c = *s.add(i) as u8;
-            if c == 0 {
-                return Ok(result);
-            }
-            if !c.is_ascii_digit() {
-                return Err(Errno::EINVAL.to_neg_errno());
-            }
-
-            let digit = (c - b'0') as i32;
-            if result > (i32::MAX - digit) / 10 {
-                return Err(Errno::ERANGE.to_neg_errno());
-            }
-            result = result * 10 + digit;
-            i += 1;
-        }
-    }
 }
 
 // ── Macro for WITH_BOOLEAN tables ────────────────────────────────────────
@@ -679,7 +631,7 @@ macro_rules! string_table_boolean {
             let Some(input) = (unsafe { input_bytes(s) }) else {
                 return Errno::EINVAL.to_neg_errno();
             };
-            let b = parse_boolean(s);
+            let b = parse_boolean(input);
             if b == 0 {
                 return 0;
             }
@@ -847,8 +799,7 @@ unsafe fn rust_strdup(s: *const c_char) -> *mut c_char {
     while unsafe { *s.add(len) } != 0 {
         len += 1;
     }
-    // SAFETY: malloc accepts the finite length derived from the source string.
-    let dst = unsafe { malloc(len + 1) } as *mut c_char;
+    let dst = malloc(len + 1) as *mut c_char;
     if dst.is_null() {
         return std::ptr::null_mut();
     }
@@ -861,13 +812,15 @@ unsafe fn rust_strdup(s: *const c_char) -> *mut c_char {
     dst
 }
 
-/// Parse a non-negative decimal integer from a NUL-terminated C string.
-/// Returns the parsed value on success, or -1 on failure.
-// SAFETY: `s` must be null or readable through its terminating NUL while it is
-// forwarded to `parse_uint_result`.
-unsafe fn parse_uint(s: *const c_char) -> i32 {
-    // SAFETY: the caller supplies the C string required by parse_uint_result.
-    unsafe { parse_uint_result(s) }.unwrap_or(-1)
+/// Parse the full `safe_atou()` grammar from a NUL-terminated C string.
+///
+/// # Safety
+/// `s` must be a live NUL-terminated C string for the duration of this call.
+unsafe fn parse_uint(s: *const c_char) -> Option<u32> {
+    let mut value = 0;
+    // SAFETY: propagated from this helper's C-string contract; `value` is a
+    // writable stack local and base zero matches C's safe_atou().
+    (unsafe { crate::parse_util::safe_atou_full_inner(s, 0, &mut value) } >= 0).then_some(value)
 }
 
 /// Generates a pair of FFI functions with numeric fallback support.
@@ -895,7 +848,9 @@ macro_rules! string_table_fallback {
             if ret.is_null() {
                 return Errno::EINVAL.to_neg_errno();
             }
-            *ret = std::ptr::null_mut();
+            // SAFETY: `ret` was checked non-null and is writable by this ABI
+            // entry point's caller contract.
+            unsafe { *ret = std::ptr::null_mut() };
             if v < 0 || v > $max as i32 {
                 return Errno::ERANGE.to_neg_errno(); // -ERANGE
             }
@@ -908,11 +863,13 @@ macro_rules! string_table_fallback {
                 }
             }
             if !found.is_null() {
-                let dup = rust_strdup(found);
+                // SAFETY: `found` points into validated static table storage.
+                let dup = unsafe { rust_strdup(found) };
                 if dup.is_null() {
                     return Errno::ENOMEM.to_neg_errno(); // -ENOMEM
                 }
-                *ret = dup;
+                // SAFETY: `ret` was checked non-null above.
+                unsafe { *ret = dup };
                 return 0;
             }
             // Numeric fallback: format the number as string
@@ -920,8 +877,12 @@ macro_rules! string_table_fallback {
             if buf.is_null() {
                 return Errno::ENOMEM.to_neg_errno(); // -ENOMEM
             }
-            snprintf(buf, 16, b"%d\0".as_ptr().cast::<c_char>(), v);
-            *ret = buf;
+            // SAFETY: `buf` is a live 16-byte allocation, the format string is
+            // static and NUL-terminated, and the sole variadic argument matches
+            // `%d`.
+            unsafe { snprintf(buf, 16, b"%d\0".as_ptr().cast::<c_char>(), v) };
+            // SAFETY: `ret` was checked non-null above.
+            unsafe { *ret = buf };
             0
         }
 
@@ -943,9 +904,12 @@ macro_rules! string_table_fallback {
                 return value;
             }
             // Numeric fallback
-            let u = parse_uint(s);
-            if u >= 0 && u <= $max as i32 {
-                return u;
+            // SAFETY: the entry point's C-string contract remains valid for
+            // the delegated safe_atou-compatible numeric parser.
+            if let Some(u) = unsafe { parse_uint(s) }
+                && u <= $max as u32
+            {
+                return u as i32;
             }
             Errno::EINVAL.to_neg_errno()
         }
@@ -1034,8 +998,7 @@ pub unsafe extern "C" fn rs_wol_options_to_string_alloc(opts: u32, ret: *mut *mu
         return 1;
     }
 
-    // SAFETY: malloc accepts the checked length derived from static table entries.
-    let buf = unsafe { malloc(total_len + 1) } as *mut c_char;
+    let buf = malloc(total_len + 1) as *mut c_char;
     if buf.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }

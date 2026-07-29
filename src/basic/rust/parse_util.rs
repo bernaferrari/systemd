@@ -8,7 +8,7 @@
 use crate::errno_util::errno_from_name as errno_from_name_rs;
 use crate::ffi::{Errno, clear_errno, get_errno, is_whitespace};
 use crate::process_util_str_tables::oom_score_adjust_is_valid as oom_score_adjust_is_valid_rs;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 
 use libc::{c_char, c_long, c_ulong};
 

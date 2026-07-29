@@ -105,7 +105,7 @@ fn import_url_change_suffix_prefix_end(
 fn tar_strip_suffixes_end(name: &[u8]) -> Result<usize, Errno> {
     let end = TAR_SUFFIXES
         .iter()
-        .find_map(|suffix| name.strip_suffix(suffix).map(|prefix| prefix.len()))
+        .find_map(|suffix| name.ends_with(suffix).then_some(name.len() - suffix.len()))
         .unwrap_or(name.len());
     (end != 0).then_some(end).ok_or(Errno::EINVAL)
 }

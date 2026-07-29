@@ -70,6 +70,35 @@ fn xfstatfs(fd: libc::c_int) -> Result<libc::statfs, libc::c_int> {
     Ok(unsafe { statfs.assume_init() })
 }
 
+/// Retrieve the mount flags using `statvfs`, whose `f_flag` field is exposed
+/// by libc on all Linux targets. Some libc `statfs` layouts (including
+/// aarch64) intentionally omit `f_flags`, despite the kernel ABI carrying
+/// the same read-only bit.
+fn xstatvfs_flags(fd: libc::c_int) -> Result<u64, libc::c_int> {
+    if !wildcard_fd_is_valid(fd) {
+        return Err(-libc::EBADF);
+    }
+
+    let mut statvfs = MaybeUninit::<libc::statvfs>::uninit();
+    // SAFETY: `statvfs` is writable native storage. The special descriptors
+    // use the same paths as `xfstatfs`; all other descriptors are borrowed.
+    let result = unsafe {
+        if fd == libc::AT_FDCWD {
+            libc::statvfs(c".".as_ptr(), statvfs.as_mut_ptr())
+        } else if fd == XAT_FDROOT {
+            libc::statvfs(c"/".as_ptr(), statvfs.as_mut_ptr())
+        } else {
+            libc::fstatvfs(fd, statvfs.as_mut_ptr())
+        }
+    };
+    if result < 0 {
+        return Err(negative_errno());
+    }
+
+    // SAFETY: the successful libc call initialized the complete native value.
+    Ok(unsafe { statvfs.assume_init() }.f_flag as u64)
+}
+
 fn xstatfsat(dir_fd: libc::c_int, path: Option<&CStr>) -> Result<libc::statfs, libc::c_int> {
     if !wildcard_fd_is_valid(dir_fd) {
         return Err(-libc::EBADF);
@@ -145,7 +174,11 @@ fn fd_is_read_only_fs(fd: libc::c_int) -> libc::c_int {
         Err(error) => return error,
     };
 
-    if statfs.f_flags as u64 & ST_RDONLY != 0 {
+    let flags = match xstatvfs_flags(fd) {
+        Ok(flags) => flags,
+        Err(error) => return error,
+    };
+    if flags & ST_RDONLY != 0 {
         return 1;
     }
     if is_network_fs(&statfs) {

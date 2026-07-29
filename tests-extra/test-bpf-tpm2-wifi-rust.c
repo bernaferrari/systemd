@@ -215,6 +215,16 @@ static void test_tpm2_pcr_index(void) {
         rv = rs_tpm2_pcr_index_from_string("23");
         assert_se(rv == 23);
 
+        /* Match safe_atou() numeric syntax used by the C fallback. */
+        rv = rs_tpm2_pcr_index_from_string("0x8");
+        assert_se(rv == 8);
+        rv = rs_tpm2_pcr_index_from_string("0b1000");
+        assert_se(rv == 8);
+        rv = rs_tpm2_pcr_index_from_string("0o10");
+        assert_se(rv == 8);
+        rv = rs_tpm2_pcr_index_from_string(" +8");
+        assert_se(rv == 8);
+
         /* from_string out of range */
         rv = rs_tpm2_pcr_index_from_string("24");
         assert_se(rv < 0);

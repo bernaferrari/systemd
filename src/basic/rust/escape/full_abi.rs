@@ -41,7 +41,8 @@ fn try_byte_buffer(capacity: usize) -> Result<Vec<u8>, ()> {
 /// The Rust result leaves out that final terminator because `malloc_c_string()`
 /// supplies it at the ownership edge.
 fn try_cunescape_with_prefix(source: &[u8], prefix: &[u8], flags: u32) -> Result<Vec<u8>, isize> {
-    try_cunescape_bytes(source, prefix, UnescapeFlags::from_bits_retain(flags)).map_err(isize::from)
+    try_cunescape_bytes(source, prefix, UnescapeFlags::from_bits_retain(flags))
+        .map_err(|error| error as isize)
 }
 
 /// C's `xescape_full()` on arbitrary C-string bytes.

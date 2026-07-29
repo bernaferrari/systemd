@@ -535,8 +535,12 @@ pub unsafe extern "C" fn rs_prioq_peek_by_index(q: *mut RsPrioq, index: u32) -> 
     if q.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: the public contract establishes a readable live queue.
-    unsafe { (*q).items.get(index as usize) }.map_or(std::ptr::null_mut(), |item| item.data)
+    // SAFETY: the public contract establishes a readable live queue. The
+    // resulting borrow is used only to inspect its item slice.
+    let items = unsafe { &(*q).items };
+    items
+        .get(index as usize)
+        .map_or(std::ptr::null_mut(), |item| item.data)
 }
 
 /// C ABI facade for `prioq_pop()`.

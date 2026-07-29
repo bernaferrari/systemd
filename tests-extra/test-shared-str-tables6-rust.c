@@ -82,6 +82,21 @@ static void test_ioprio_class(void) {
         assert_se(cv == rv);
         assert_se(cv == 7);
 
+        /* safe_atou() grammar used by the C fallback parser */
+        static const char * const numeric_forms[] = {
+                "0x5",
+                "0b101",
+                "0o5",
+                " +5",
+                "\t5",
+        };
+        for (size_t i = 0; i < ELEMENTSOF(numeric_forms); i++) {
+                cv = ioprio_class_from_string(numeric_forms[i]);
+                rv = rs_ioprio_class_from_string(numeric_forms[i]);
+                assert_se(cv == rv);
+                assert_se(cv == 5);
+        }
+
         /* from_string: out of range numeric */
         cv = ioprio_class_from_string("8");
         rv = rs_ioprio_class_from_string("8");

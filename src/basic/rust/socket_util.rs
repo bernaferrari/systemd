@@ -536,6 +536,7 @@ pub fn socket_address_equal_unix(a: &str, b: &str) -> Result<bool, i32> {
 // really pass `union sockaddr_union` and `SocketAddress` objects from C.
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 struct CSockaddrLl {
     sll_family: libc::sa_family_t,
     sll_protocol: u16,
@@ -547,6 +548,7 @@ struct CSockaddrLl {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 struct CSockaddrNl {
     nl_family: libc::sa_family_t,
     nl_pad: u16,
@@ -555,6 +557,7 @@ struct CSockaddrNl {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 struct CSockaddrVm {
     svm_family: libc::sa_family_t,
     svm_reserved1: u16,

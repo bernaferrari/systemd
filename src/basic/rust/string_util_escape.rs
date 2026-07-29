@@ -240,10 +240,10 @@ fn try_xescape_without_bad(input: &[u8], console_width: usize, flags: i32) -> Re
 /// Safe, byte-preserving implementation of `utf8_escape_non_printable_full`.
 pub(crate) fn try_utf8_escape_non_printable(
     input: &[u8],
-    console_width: usize,
+    max_width: usize,
     force_ellipsis: bool,
 ) -> Result<Vec<u8>, ()> {
-    if console_width == 0 {
+    if max_width == 0 {
         return Ok(Vec::new());
     }
     let capacity = input
@@ -253,7 +253,7 @@ pub(crate) fn try_utf8_escape_non_printable(
         .ok_or(())?;
     let mut output = try_bytes(capacity)?;
     let mut input_index = 0;
-    let mut display_width = 0;
+    let mut display_width: usize = 0;
     let mut previous = 0;
 
     loop {
@@ -264,7 +264,7 @@ pub(crate) fn try_utf8_escape_non_printable(
             }
             if display_width
                 .checked_add(1)
-                .map_or(true, |width| width > console_width)
+                .map_or(true, |width| width > max_width)
             {
                 output.truncate(previous);
             }
@@ -278,11 +278,11 @@ pub(crate) fn try_utf8_escape_non_printable(
                 let width = console_width(character);
                 if display_width
                     .checked_add(width)
-                    .map_or(true, |total| total > console_width)
+                    .map_or(true, |total| total > max_width)
                 {
                     if display_width
                         .checked_add(1)
-                        .map_or(true, |total| total > console_width)
+                        .map_or(true, |total| total > max_width)
                     {
                         output.truncate(previous);
                     }
@@ -296,11 +296,11 @@ pub(crate) fn try_utf8_escape_non_printable(
                 for _ in 0..length {
                     if display_width
                         .checked_add(4)
-                        .map_or(true, |total| total > console_width)
+                        .map_or(true, |total| total > max_width)
                     {
                         if display_width
                             .checked_add(1)
-                            .map_or(true, |total| total > console_width)
+                            .map_or(true, |total| total > max_width)
                         {
                             output.truncate(previous);
                         }
@@ -321,11 +321,11 @@ pub(crate) fn try_utf8_escape_non_printable(
         } else {
             if display_width
                 .checked_add(1)
-                .map_or(true, |total| total > console_width)
+                .map_or(true, |total| total > max_width)
             {
                 if display_width
                     .checked_add(1)
-                    .map_or(true, |total| total > console_width)
+                    .map_or(true, |total| total > max_width)
                 {
                     output.truncate(previous);
                 }

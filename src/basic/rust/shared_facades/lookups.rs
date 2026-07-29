@@ -267,7 +267,7 @@ const DNSSEC_MODE_TABLE: [&[u8]; 3] = [b"no\0", b"allow-downgrade\0", b"yes\0"];
 const DNS_OVER_TLS_MODE_TABLE: [&[u8]; 3] = [b"no\0", b"opportunistic\0", b"yes\0"];
 const DNS_CACHE_MODE_TABLE: [&[u8]; 3] = [b"no\0", b"yes\0", b"no-negative\0"];
 
-fn static_text(entry: &'static [u8]) -> &'static str {
+fn static_text(entry: &[u8]) -> &str {
     // All table literals above are audited ASCII, NUL-terminated C strings.
     std::str::from_utf8(&entry[..entry.len() - 1])
         .expect("shared string-table entries must be valid UTF-8")

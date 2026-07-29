@@ -9,8 +9,6 @@
 // Also provides octescape, decescape, shell_escape, shell_maybe_quote,
 // xescape_full, and quote_command_line.
 
-use libc::c_char;
-
 mod allocating;
 mod core_abi;
 mod full_abi;
@@ -690,7 +688,9 @@ pub fn shell_maybe_quote(s: &str, flags: ShellEscapeFlags) -> String {
 
     // Escape the rest
     let bad: &[u8] = if posix { b"\\'" } else { b"\"\\`$" };
-    result.extend_from_slice(&strcpy_backslash_escaped(&s_bytes[pi..], bad));
+    let escaped = try_strcpy_backslash_escaped(&s_bytes[pi..], bad)
+        .expect("shell_maybe_quote allocation failed");
+    result.extend_from_slice(&escaped);
 
     if posix {
         result.push(b'\'');

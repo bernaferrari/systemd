@@ -337,7 +337,8 @@ pub unsafe fn memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void {
 /// buf must be valid for size bytes, fmt must be a valid format string.
 #[inline]
 pub unsafe fn snprintf(buf: *mut c_char, size: usize, fmt: *const c_char) -> c_int {
-    libc::snprintf(buf, size, fmt)
+    // SAFETY: upheld by this function's contract.
+    unsafe { libc::snprintf(buf, size, fmt) }
 }
 
 /// Match a filename against a shell pattern.

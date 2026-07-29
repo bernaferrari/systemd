@@ -1704,7 +1704,13 @@ def stat_filesystem_boundary_is_reviewed() -> bool:
         and "libc::faccessat(fd, c\"\".as_ptr(), mode, libc::AT_EMPTY_PATH)"
         in filesystem
         and "const ST_RDONLY: u64 = 1;" in filesystem
-        and "statfs.f_flags as u64 & ST_RDONLY" in filesystem
+        and "fn xstatvfs_flags(fd: libc::c_int) -> Result<u64, libc::c_int>" in filesystem
+        and "MaybeUninit::<libc::statvfs>::uninit()" in filesystem
+        and "libc::fstatvfs(fd, statvfs.as_mut_ptr())" in filesystem
+        and 'libc::statvfs(c".".as_ptr(), statvfs.as_mut_ptr())' in filesystem
+        and 'libc::statvfs(c"/".as_ptr(), statvfs.as_mut_ptr())' in filesystem
+        and "Ok(unsafe { statvfs.assume_init() }.f_flag as u64)" in filesystem
+        and "flags & ST_RDONLY != 0" in filesystem
         and "access_fd(fd, libc::W_OK) == -libc::EROFS" in filesystem
         and "unsafe { ret.write(statfs) };" in filesystem
         and "statfs.f_type as StatFsType == magic_value" in filesystem
@@ -1714,6 +1720,8 @@ def stat_filesystem_boundary_is_reviewed() -> bool:
         and "xstatfsat(AT_FDCWD, NULL, &c_statfs)" in test
         and "is_fs_type_at(AT_FDCWD, NULL, c_statfs.f_type) ==" in test
         and "fd_is_read_only_fs(AT_FDCWD) == rs_fd_is_read_only_fs(AT_FDCWD)"
+        in test
+        and "fd_is_read_only_fs(XAT_FDROOT) == rs_fd_is_read_only_fs(XAT_FDROOT)"
         in test
         and "path_is_read_only_fs(\".\") == rs_path_is_read_only_fs(\".\")"
         in test

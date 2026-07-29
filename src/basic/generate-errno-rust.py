@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -90,8 +91,16 @@ def preprocessor_source(names: list[str]) -> str:
 def load_values(names: list[str], compiler: list[str]) -> list[tuple[int, str]]:
     if not compiler:
         raise ValueError("target C preprocessor command is required")
+
+    # Meson passes its `cpp` setting as one command element (normally
+    # `cc -E`). Split only that element: the remaining arguments are already
+    # individually quoted target include flags and must stay byte-for-byte.
+    compiler_command = shlex.split(compiler[0])
+    if not compiler_command:
+        raise ValueError("target C preprocessor command is empty")
+
     result = subprocess.run(
-        [*compiler, "-E", "-P", "-x", "c", "-"],
+        [*compiler_command, *compiler[1:], "-E", "-P", "-x", "c", "-"],
         input=preprocessor_source(names),
         text=True,
         capture_output=True,
