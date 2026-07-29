@@ -848,15 +848,31 @@ impl RuntimeManager {
     fn canonical_block_device(
         mut device: (u64, u64),
     ) -> Result<(u64, u64), CgroupRealizationError> {
+        let configured_device = device;
         // Mirror block_get_originating(..., recursive=true): follow a single
         // backing-device chain, or multiple partitions only when they all
-        // resolve to the same whole disk. Ambiguous RAID-style fan-out stays
-        // on the configured device, exactly as the C caller does after its
-        // best-effort originating-device lookup fails.
+        // resolve to the same whole disk. The C caller deliberately ignores
+        // failures from that best-effort lookup, then resolves the configured
+        // device to a whole disk. Preserve that fallback for an ambiguous
+        // fan-out, cycle, or unreasonable chain depth.
         for _ in 0..256 {
             let slaves = PathBuf::from(format!("/sys/dev/block/{}:{}/slaves", device.0, device.1));
-            let Ok(entries) = std::fs::read_dir(slaves) else {
-                break;
+            let entries = match std::fs::read_dir(slaves) {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    // A device with no sysfs ancestry is ordinary, not a
+                    // control-normalization failure. Resolve the current
+                    // device exactly as the C code's subsequent
+                    // block_get_whole_disk() does.
+                    return Ok(Self::whole_block_device(device).unwrap_or(device));
+                }
+                Err(_) => {
+                    // lookup_block_device() ignores a failed originating
+                    // lookup and keeps its original device number.
+                    return Ok(
+                        Self::whole_block_device(configured_device).unwrap_or(configured_device)
+                    );
+                }
             };
             let mut first = None;
             let mut first_whole = None;
@@ -885,22 +901,19 @@ impl RuntimeManager {
                     first_whole = Some(whole);
                 }
             }
-            let Some(next) = first.filter(|_| !ambiguous) else {
+            if ambiguous {
+                return Ok(Self::whole_block_device(configured_device).unwrap_or(configured_device));
+            }
+            let Some(next) = first else {
                 return Ok(Self::whole_block_device(device).unwrap_or(device));
             };
             if next == device {
-                return Err(CgroupRealizationError::invalid(
-                    "IODevice",
-                    "cycle in sysfs block-device ancestry",
-                ));
+                return Ok(Self::whole_block_device(configured_device).unwrap_or(configured_device));
             }
             device = next;
         }
 
-        Err(CgroupRealizationError::invalid(
-            "IODevice",
-            "sysfs block-device ancestry exceeds 256 layers",
-        ))
+        Ok(Self::whole_block_device(configured_device).unwrap_or(configured_device))
     }
 
     fn normalized_io_weight(

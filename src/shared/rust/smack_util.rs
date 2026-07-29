@@ -114,6 +114,17 @@ impl SmackAttr {
     }
 }
 
+/// Return an xattr name as the C string pointer required by the Linux ABI.
+///
+/// Attribute names in this module are static NUL-terminated byte strings.
+/// Keeping them as bytes avoids an allocation, while this cast preserves that
+/// representation on targets where `libc::c_char` is signed.
+#[cfg(target_os = "linux")]
+fn xattr_name_ptr(xattr_name: &[u8]) -> *const libc::c_char {
+    debug_assert_eq!(xattr_name.last(), Some(&0));
+    xattr_name.as_ptr().cast()
+}
+
 // ── Availability check ───────────────────────────────────────────────────
 
 static SMACK_USE_CACHED: AtomicI32 = AtomicI32::new(-1);
@@ -161,7 +172,7 @@ fn read_xattr_path(path: &Path, xattr_name: &[u8]) -> Result<Option<String>, Sma
     let buf_size = unsafe {
         libc::lgetxattr(
             path_cstr.as_ptr(),
-            xattr_name.as_ptr(),
+            xattr_name_ptr(xattr_name),
             std::ptr::null_mut(),
             0,
         )
@@ -182,7 +193,7 @@ fn read_xattr_path(path: &Path, xattr_name: &[u8]) -> Result<Option<String>, Sma
     let read = unsafe {
         libc::lgetxattr(
             path_cstr.as_ptr(),
-            xattr_name.as_ptr(),
+            xattr_name_ptr(xattr_name),
             buf.as_mut_ptr() as *mut libc::c_void,
             buf.len(),
         )
@@ -200,7 +211,8 @@ fn read_xattr_path(path: &Path, xattr_name: &[u8]) -> Result<Option<String>, Sma
 #[cfg(target_os = "linux")]
 fn read_xattr_fd(fd: i32, xattr_name: &[u8]) -> Result<Option<String>, SmackError> {
     // SAFETY: xattr_name is a valid null-terminated byte string.
-    let buf_size = unsafe { libc::fgetxattr(fd, xattr_name.as_ptr(), std::ptr::null_mut(), 0) };
+    let buf_size =
+        unsafe { libc::fgetxattr(fd, xattr_name_ptr(xattr_name), std::ptr::null_mut(), 0) };
     if buf_size < 0 {
         let errno = std::io::Error::last_os_error();
         let code = errno.raw_os_error().unwrap_or(0);
@@ -217,7 +229,7 @@ fn read_xattr_fd(fd: i32, xattr_name: &[u8]) -> Result<Option<String>, SmackErro
     let read = unsafe {
         libc::fgetxattr(
             fd,
-            xattr_name.as_ptr(),
+            xattr_name_ptr(xattr_name),
             buf.as_mut_ptr() as *mut libc::c_void,
             buf.len(),
         )
@@ -277,7 +289,7 @@ fn apply_xattr_path(path: &Path, xattr_name: &[u8], label: Option<&str>) -> Resu
             let ret = unsafe {
                 libc::lsetxattr(
                     path_cstr.as_ptr(),
-                    xattr_name.as_ptr(),
+                    xattr_name_ptr(xattr_name),
                     c_label.as_ptr() as *const libc::c_void,
                     c_label.as_bytes().len(),
                     0,
@@ -291,7 +303,7 @@ fn apply_xattr_path(path: &Path, xattr_name: &[u8], label: Option<&str>) -> Resu
         }
         None => {
             // SAFETY: pointers are valid.
-            let ret = unsafe { libc::lremovexattr(path_cstr.as_ptr(), xattr_name.as_ptr()) };
+            let ret = unsafe { libc::lremovexattr(path_cstr.as_ptr(), xattr_name_ptr(xattr_name)) };
             if ret < 0 {
                 Err(SmackError::from(std::io::Error::last_os_error()))
             } else {
@@ -312,7 +324,7 @@ fn apply_xattr_fd(fd: i32, xattr_name: &[u8], label: Option<&str>) -> Result<(),
             let ret = unsafe {
                 libc::fsetxattr(
                     fd,
-                    xattr_name.as_ptr(),
+                    xattr_name_ptr(xattr_name),
                     c_label.as_ptr() as *const libc::c_void,
                     c_label.as_bytes().len(),
                     0,
@@ -327,7 +339,7 @@ fn apply_xattr_fd(fd: i32, xattr_name: &[u8], label: Option<&str>) -> Result<(),
         None => {
             // SAFETY: `fd` is passed through to the kernel and `xattr_name` is
             // a valid NUL-terminated attribute name.
-            let ret = unsafe { libc::fremovexattr(fd, xattr_name.as_ptr()) };
+            let ret = unsafe { libc::fremovexattr(fd, xattr_name_ptr(xattr_name)) };
             if ret < 0 {
                 Err(SmackError::from(std::io::Error::last_os_error()))
             } else {
@@ -414,7 +426,7 @@ fn smack_fix_fd_inner(fd: i32, label_path: &Path, flags: LabelFixFlags) -> Resul
                 .expect("a decimal file descriptor contains no NUL bytes");
             libc::setxattr(
                 proc_fd_path.as_ptr(),
-                XATTR_SMACK64.as_ptr(),
+                xattr_name_ptr(XATTR_SMACK64),
                 c_label.as_ptr() as *const libc::c_void,
                 c_label.as_bytes().len(),
                 0,
@@ -422,7 +434,7 @@ fn smack_fix_fd_inner(fd: i32, label_path: &Path, flags: LabelFixFlags) -> Resul
         } else {
             libc::fsetxattr(
                 fd,
-                XATTR_SMACK64.as_ptr(),
+                xattr_name_ptr(XATTR_SMACK64),
                 c_label.as_ptr() as *const libc::c_void,
                 c_label.as_bytes().len(),
                 0,

@@ -32,7 +32,7 @@ add_test_setup(
 
 if get_option('rust-init-milestones').enabled()
         add_test_setup(
-                'rust-init-milestones',
+                'rust_init_milestones',
                 exclude_suites : ['clang-tidy', 'unused-symbols'],
                 is_default : false,
         )
@@ -2304,7 +2304,6 @@ subdir('src/xdg-autostart-generator')
 subdir('src/systemd')
 
 subdir('src/test')
-subdir('tests-extra')
 subdir('src/fuzz')
 subdir('src/ukify/test')  # needs to be last for test_env variable
 subdir('test/fuzz')
