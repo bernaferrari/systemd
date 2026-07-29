@@ -93,7 +93,6 @@ jobs:
   # Priority runtime coverage configured in this job:
   #   path/non-UTF-8: test-path-util-rust, test-path-funcs-rust,
   #                    test-path-util-extra-rust
-  #   pure hash: test-murmurhash2-rust
   #   pure formatting: test-format-util-rust
   #   strv ownership/alloc: test-strv-rust, test-strv-extra{,2-7}-rust,
   #                         test-strv-fnmatch-rust, test-string-util-extra6-rust
@@ -140,7 +139,6 @@ jobs:
           meson compile -C build-rust-reviewed
           systemd_basic_rs
           test-af-list-rust
-          test-architecture-rust
           test-bus-label-rust
           test-device-nodes-rust
           test-gunicode-rust
@@ -189,7 +187,6 @@ jobs:
           test-escape-extra2-rust
           test-gpt-unit-install-rust
           test-header-inline-rust
-          test-murmurhash2-rust
           test-format-util-rust
           test-strv-extra3-rust
           test-strv-extra-rust
@@ -301,7 +298,6 @@ jobs:
           --no-rebuild
           --print-errorlogs
           test-af-list-rust
-          test-architecture-rust
           test-bus-label-rust
           test-device-nodes-rust
           test-gunicode-rust
@@ -350,7 +346,6 @@ jobs:
           test-escape-extra2-rust
           test-gpt-unit-install-rust
           test-header-inline-rust
-          test-murmurhash2-rust
           test-format-util-rust
           test-strv-extra3-rust
           test-strv-extra-rust

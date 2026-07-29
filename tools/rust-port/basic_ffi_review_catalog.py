@@ -34,7 +34,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     tests_extra = root / "tests-extra"
     surfaces = {
         "af_list": (basic_rust / "af_list.h", basic_rust / "af_list.rs"),
-        "architecture": (basic_rust / "architecture.h", basic_rust / "architecture.rs"),
         "basic_validators": (basic_rust / "basic_validators.h", basic_rust / "basic_validators.rs"),
         "bus_type_util": (basic_rust / "bus_type_util.h", basic_rust / "bus_type_util.rs"),
         "capability_util": (basic_rust / "capability_util.h", basic_rust / "capability_util.rs"),
@@ -641,11 +640,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             basic_rust / "format_util.h",
             basic_rust / "format_util.rs",
             frozenset({"rs_format_bytes", "rs_format_bytes_full"}),
-        ),
-        "murmurhash2": (
-            basic_rust / "murmurhash2.h",
-            basic_rust / "murmurhash2.rs",
-            frozenset({"rs_MurmurHash2"}),
         ),
         "path_base_predicates": (
             basic_rust / "path_util.h",
@@ -1412,7 +1406,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     }
     shadow_tests = {
         "af_list": (tests_extra / "test-af-list-rust.c",),
-        "architecture": (tests_extra / "test-architecture-rust.c",),
         "basic_validators": (tests_extra / "test-basic-validators-rust.c",),
         "bus_type_util": (
             tests_extra / "test-bus-type-util-rust.c",
@@ -1511,7 +1504,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
             tests_extra / "test-format-util-rust.c",
             tests_extra / "test-misc-inline-rust.c",
         ),
-        "murmurhash2": (tests_extra / "test-murmurhash2-rust.c",),
         "path_base_predicates": (tests_extra / "test-path-util-rust.c",),
         "path_extra_abi": (tests_extra / "test-path-util-rust.c",),
         "escape": (
@@ -1640,7 +1632,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
     )
     c_authorities = {
         "af_list": (root / "src/basic/af-list.c",),
-        "architecture": (root / "src/basic/architecture.c", root / "src/basic/architecture.h"),
         "basic_validators": (
             root / "src/basic/cgroup-util.h",
             root / "src/basic/io-util.h",
@@ -1836,10 +1827,6 @@ def build_catalog(root: Path) -> BasicFfiReviewCatalog:
         "format_bytes_full": (
             root / "src/basic/format-util.c",
             root / "src/basic/format-util.h",
-        ),
-        "murmurhash2": (
-            root / "src/basic/MurmurHash2.c",
-            root / "src/basic/MurmurHash2.h",
         ),
         "path_base_predicates": (
             root / "src/basic/path-util.c",

@@ -2983,11 +2983,7 @@ def main() -> int:
             r"\b_[A-Za-z0-9_]+_\s*(?:\([^)]*\))?", "", authority_code
         )
         for symbol, expected in declarations:
-            c_symbol = (
-                "MurmurHash2"
-                if name == "murmurhash2" and symbol == "rs_MurmurHash2"
-                else symbol.removeprefix("rs_")
-            )
+            c_symbol = symbol.removeprefix("rs_")
             if name == "strv_registered" and symbol == "rs_strv_contains":
                 if "#define strv_contains(l, s) (!!strv_find((l), (s)))" not in authority:
                     return fail(

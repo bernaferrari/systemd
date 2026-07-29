@@ -734,20 +734,6 @@ if get_option('rust').enabled()
         test('test-siphash24-rust', rust_test_exe)
 
         rust_test_exe = executable(
-                'test-murmurhash2-rust',
-                files('test-murmurhash2-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-murmurhash2-rust', rust_test_exe)
-
-        rust_test_exe = executable(
                 'test-format-util-rust',
                 files('test-format-util-rust.c'),
                 include_directories : includes,
@@ -956,20 +942,6 @@ if get_option('rust').enabled()
                 install_dir : unittestsdir,
         )
         test('test-iovec-util-rust', rust_test_exe)
-
-        rust_test_exe = executable(
-                'test-architecture-rust',
-                files('test-architecture-rust.c'),
-                include_directories : includes,
-                link_with : [libshared, rust_staticlib],
-                dependencies : userspace,
-                c_args : test_cflags,
-                link_depends : runtest_env,
-                build_by_default : want_tests != 'false',
-                install : install_tests,
-                install_dir : unittestsdir,
-        )
-        test('test-architecture-rust', rust_test_exe)
 
         rust_test_exe = executable(
                 'test-device-nodes-rust',

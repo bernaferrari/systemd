@@ -25,11 +25,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 7
     },
-    "src/basic/rust/architecture.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
     "src/basic/rust/argv_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -326,11 +321,6 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 3
-    },
-    "src/basic/rust/murmurhash2.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
     },
     "src/basic/rust/netdev_str_tables.rs": {
       "missing_safety": 8,

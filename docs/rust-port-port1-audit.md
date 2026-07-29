@@ -1,6 +1,6 @@
 # Port 1 Basic/Shared Audit
 
-Generated: 2026-07-29 11:19 UTC
+Generated: 2026-07-29 11:26 UTC
 Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Scope
@@ -10,9 +10,9 @@ Repository: `/Users/bernardoferrari/Downloads/systemd/systemd`
 
 ## Classification Summary
 
-- Total modules audited: **374**
-- `genuine-rust`: **249**
-- `ffi-backed-rust`: **125**
+- Total modules audited: **369**
+- `genuine-rust`: **246**
+- `ffi-backed-rust`: **123**
 - `thin-ffi-wrapper`: **0**
 - `stub-wrapper`: **0**
 - `metadata`: **0**
@@ -35,7 +35,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/af_list.rs` | 6 | 29 | 0 | 16 |
 | `src/basic/rust/alloc_util.rs` | 6 | 41 | 0 | 25 |
 | `src/basic/rust/ansi_color.rs` | 7 | 39 | 0 | 50 |
-| `src/basic/rust/architecture.rs` | 2 | 18 | 0 | 41 |
 | `src/basic/rust/argv_util.rs` | 2 | 34 | 0 | 15 |
 | `src/basic/rust/arphrd_util.rs` | 3 | 27 | 0 | 10 |
 | `src/basic/rust/basic_validators.rs` | 27 | 40 | 0 | 9 |
@@ -91,7 +90,6 @@ No thin/stub/metadata modules were detected in the audited Basic/Shared scope.
 | `src/basic/rust/misc_validators.rs` | 11 | 64 | 0 | 38 |
 | `src/basic/rust/mount_setup.rs` | 2 | 12 | 0 | 20 |
 | `src/basic/rust/mountpoint_util.rs` | 4 | 57 | 0 | 17 |
-| `src/basic/rust/murmurhash2.rs` | 1 | 18 | 0 | 3 |
 | `src/basic/rust/namespace_util.rs` | 2 | 30 | 0 | 6 |
 | `src/basic/rust/netdev_str_tables.rs` | 16 | 18 | 0 | 61 |
 | `src/basic/rust/nsflags.rs` | 4 | 33 | 0 | 30 |

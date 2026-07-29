@@ -56,7 +56,6 @@ pub fn startswith<'a>(s: &'a str, prefix: &'a str) -> Option<&'a str> {
 pub mod af_list;
 pub mod alloc_util;
 pub mod ansi_color;
-pub mod architecture;
 pub mod argv_util;
 pub mod arphrd_util;
 pub mod basic_validators;
@@ -114,7 +113,6 @@ pub mod mempool;
 pub mod misc_validators;
 pub mod mount_setup;
 pub mod mountpoint_util;
-pub mod murmurhash2;
 pub mod namespace_util;
 pub mod netdev_str_tables;
 pub mod nsflags;

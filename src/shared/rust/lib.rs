@@ -47,9 +47,6 @@
 pub mod acpi_fpdt;
 pub mod barrier;
 pub mod bitmap;
-pub mod bond_util;
-pub mod boot_entry;
-pub mod boot_timestamps;
 pub mod bootspec;
 pub mod bpf_dlopen;
 pub mod bpf_program;
