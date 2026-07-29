@@ -60,7 +60,6 @@ members = [
     "src/nss-mymachines/rust",
     "src/nss-resolve/rust",
     "src/path/rust",
-    "src/pcrextend/rust",
     "src/pstore/rust",
     "src/ptyfwd/rust",
     "src/quotacheck/rust",

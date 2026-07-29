@@ -2999,16 +2999,6 @@ symbols = 3
 sync_status = "needs_review"
 notes = "2026-07-27 static source review: ACPI FPDT table parsing/timestamp behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
 
-[apparmor_util]
-c_file = "src/shared/apparmor-util.c"
-rust_file = "src/shared/rust/apparmor_util.rs"
-header_file = "src/shared/apparmor-util.h"
-status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: AppArmor policy/filesystem behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
-
 [async_util]
 c_paths = ["src/shared/async.c", "src/shared/async.h"]
 rust_file = "src/shared/rust/async_util.rs"
@@ -3622,16 +3612,6 @@ tier = 2
 symbols = 3
 sync_status = "needs_review"
 notes = "2026-07-27 static source review: GENEVE netlink option behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
-
-[idn_util]
-c_file = "src/shared/idn-util.c"
-rust_file = "src/shared/rust/idn_util.rs"
-header_file = "src/shared/idn-util.h"
-status = "in-progress"
-tier = 3
-symbols = 3
-sync_status = "needs_review"
-notes = "2026-07-27 static source review: IDN conversion/library error behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
 
 [ima_util]
 c_file = "src/shared/ima-util.c"

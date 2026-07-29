@@ -1312,11 +1312,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
-    "src/shared/rust/idn_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
     "src/shared/rust/install_file.rs": {
       "missing_safety": 25,
       "missing_safety_sites": [

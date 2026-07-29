@@ -45,7 +45,6 @@
 #![allow(clippy::nonminimal_bool)]
 
 pub mod acpi_fpdt;
-pub mod apparmor_util;
 pub mod async_util;
 pub mod barrier;
 pub mod base_filesystem;
@@ -119,7 +118,6 @@ pub mod fuzz_calendarspec;
 pub mod geneve_util;
 pub mod group_record;
 pub mod id128_print;
-pub mod idn_util;
 pub mod ima_util;
 pub mod in_addr_prefix_util;
 pub mod ioprio_util;

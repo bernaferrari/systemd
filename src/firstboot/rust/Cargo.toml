@@ -6,8 +6,6 @@ publish = false
 name = "systemd-firstboot-rs"
 version = "0.0.1"
 edition = "2024"
-[dependencies]
-systemd-shared-rs = { path = "../../shared/rust" }
 [lib]
 crate-type = ["lib"]
 name = "systemd_firstboot_rs"
