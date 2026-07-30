@@ -412,14 +412,15 @@ mod tests {
 
     #[test]
     fn test_packet_header_to_bytes_roundtrip() {
-        let mut hdr = DnsHeader::default();
-        hdr.id = 42;
-        hdr.flags = HeaderFlags::QR | HeaderFlags::AA | HeaderFlags::RD;
-        hdr.rcode = DNS_RCODE_SUCCESS;
-        hdr.qdcount = 0;
-        hdr.ancount = 1;
-        hdr.nscount = 0;
-        hdr.arcount = 0;
+        let hdr = DnsHeader {
+            id: 42,
+            flags: HeaderFlags::QR | HeaderFlags::AA | HeaderFlags::RD,
+            rcode: DNS_RCODE_SUCCESS,
+            qdcount: 0,
+            ancount: 1,
+            nscount: 0,
+            arcount: 0,
+        };
         let bytes = hdr.to_bytes();
         assert_eq!(u16::from_be_bytes([bytes[0], bytes[1]]), 42);
         let flags = u16::from_be_bytes([bytes[2], bytes[3]]);

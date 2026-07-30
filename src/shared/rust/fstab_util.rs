@@ -485,7 +485,6 @@ proc /proc proc nosuid,nodev,noexec 0 0
         assert!(!fstab_test_option(Some("ro"), &["rbind", "bind"]));
     }
 
-    #[test]
     // fn fstab_test_yes_no_option() {
     // assert!(fstab_test_yes_no_option(Some("auto"), &["auto", "noauto"]));
     // assert!(!fstab_test_yes_no_option(
@@ -648,7 +647,6 @@ proc /proc proc nosuid,nodev,noexec 0 0
     // );
     // assert!(find_by_mountpoint(&entries, "/var").is_none());
     // }
-    #[test]
     // fn find_by_device() {
     // let entries = vec![FstabEntry {
     // device_spec: "/dev/sda1".into(),

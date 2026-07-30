@@ -787,8 +787,8 @@ mod tests {
     #[test]
     fn test_constants() {
         assert_eq!(AT_FDCWD, -100);
-        assert!(S_IFSOCK > 0);
-        assert!(S_IFREG > 0);
-        assert!(S_IFDIR > 0);
+        assert_eq!(S_IFSOCK, 0o140000);
+        assert_eq!(S_IFREG, 0o100000);
+        assert_eq!(S_IFDIR, 0o040000);
     }
 }

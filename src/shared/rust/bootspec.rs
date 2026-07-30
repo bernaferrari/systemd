@@ -1773,6 +1773,6 @@ mod tests {
         assert!(!LOADER_ENTRIES_DIR.is_empty());
         assert!(!EFI_LINUX_DIR.is_empty());
         assert!(!LOADER_CONF_PATH.is_empty());
-        assert!(UNIFIED_PROFILES_MAX > 0);
+        const { assert!(UNIFIED_PROFILES_MAX > 0) };
     }
 }

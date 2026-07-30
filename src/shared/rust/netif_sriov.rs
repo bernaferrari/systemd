@@ -1462,8 +1462,7 @@ mod tests {
             },
             {
                 // Missing VF index - should be dropped.
-                let v = SriovVf::new();
-                v
+                SriovVf::new()
             },
             {
                 // Out of bounds - should be dropped.

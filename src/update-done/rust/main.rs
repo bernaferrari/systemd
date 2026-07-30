@@ -3,13 +3,9 @@
 //
 // Binary entry point for systemd-update-done
 
-use systemd_update_done_rs::{
-    Timespec, UPDATE_DIRS, USR_PATH, UpdateDoneArgs, generate_updated_content,
-};
+use systemd_update_done_rs::{Timespec, UPDATE_DIRS, UpdateDoneArgs, generate_updated_content};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const UPDATED_FILE: &str = "/etc/.updated";
-const USR_UPDATED_FILE: &str = "/usr/.updated";
 
 fn print_help() {
     println!("systemd-update-done [OPTIONS...]");

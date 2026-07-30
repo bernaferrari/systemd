@@ -588,21 +588,21 @@ mod tests {
     #[test]
     fn test_shorten_ifname_already_short() {
         let mut name = String::from("eth0");
-        assert_eq!(netif_shorten_ifname(&mut name, true).unwrap(), false);
+        assert!(!netif_shorten_ifname(&mut name, true).unwrap());
         assert_eq!(name, "eth0");
     }
 
     #[test]
     fn test_shorten_ifname_truncate() {
         let mut name = "a".repeat(20);
-        assert_eq!(netif_shorten_ifname(&mut name, false).unwrap(), true);
+        assert!(netif_shorten_ifname(&mut name, false).unwrap());
         assert_eq!(name.len(), IFNAMSIZ_MINUS1);
     }
 
     #[test]
     fn test_shorten_ifname_hash() {
         let mut name = "verylonginterfacename".to_string();
-        assert_eq!(netif_shorten_ifname(&mut name, true).unwrap(), true);
+        assert!(netif_shorten_ifname(&mut name, true).unwrap());
         assert_eq!(name.len(), IFNAMSIZ_MINUS1);
         // The last 4 chars should be URL-safe base64 characters.
         let suffix = &name[IFNAMSIZ_MINUS1 - 4..];

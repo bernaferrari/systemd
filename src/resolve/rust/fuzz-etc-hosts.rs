@@ -65,7 +65,7 @@ impl EtcHosts {
     /// non-empty line should contain an IP address followed by one or
     /// more hostnames, separated by whitespace.
     pub fn parse(&mut self, content: &str) -> Result<(), EtcHostsError> {
-        for (line_num, line) in content.lines().enumerate() {
+        for line in content.lines() {
             let line = line.trim();
 
             // Skip empty lines and comments

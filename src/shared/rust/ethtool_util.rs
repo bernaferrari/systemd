@@ -896,7 +896,8 @@ mod tests {
 
     #[test]
     fn feature_constants() {
-        assert!(NET_DEV_FEAT_SIMPLE_MAX < NET_DEV_FEAT_MAX);
+        assert_eq!(NET_DEV_FEAT_SIMPLE_MAX, 62);
+        assert_eq!(NET_DEV_FEAT_MAX, 63);
         assert_eq!(N_ADVERTISE, 4);
     }
 }

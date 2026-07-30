@@ -5,7 +5,7 @@
 
 use std::fs::{self, File};
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const FSTAB_PATH: &str = "/etc/fstab";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -18,7 +18,6 @@ struct Entry {
     where_: String,
     fstype: String,
     options: String,
-    passno: i32,
 }
 
 fn print_help() {
@@ -175,7 +174,6 @@ fn parse_line(line: &str) -> Option<Entry> {
         where_: parts[1].to_string(),
         fstype: parts[2].to_string(),
         options: parts[3].to_string(),
-        passno: parts[5].parse::<i32>().unwrap_or(0),
     })
 }
 

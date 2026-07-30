@@ -5,8 +5,6 @@
 // DNS resource records: key creation, equality, matching (CNAME/DNAME/SOA),
 // record comparison, wire format, TTL clamping, and string representation.
 
-use std::cmp::Ordering;
-
 // ── DNS type and class constants ────────────────────────────────────────────
 
 const DNS_CLASS_IN: u16 = 1;
@@ -85,7 +83,7 @@ impl DnsResourceKey {
             return false;
         }
         let labels = name_labels(&self.name);
-        let last = labels.last().map(|l| *l);
+        let last = labels.last().copied();
         if last != Some("local") {
             return false;
         }
@@ -188,18 +186,18 @@ impl DnsResourceKey {
             }
             let self_name = self.normalized_name();
             let dname_name = cname_key.normalized_name();
-            if let Some(sd) = search_domain {
-                if let Some(pos) = self_name.find('.').or_else(|| {
+            if let Some(sd) = search_domain
+                && let Some(pos) = self_name.find('.').or({
                     if self_name.len() < dname_name.len() {
                         None
                     } else {
                         Some(self_name.len())
                     }
-                }) {
-                    let combined = format!("{}.{}", &self_name[..pos], sd);
-                    if normalize_name(&combined) == dname_name {
-                        return true;
-                    }
+                })
+            {
+                let combined = format!("{}.{}", &self_name[..pos], sd);
+                if normalize_name(&combined) == dname_name {
+                    return true;
                 }
             }
             let self_labels = name_labels(&self_name);
@@ -212,7 +210,7 @@ impl DnsResourceKey {
             return suffix == dname_labels
                 && names_match_with_domain(
                     &self_name,
-                    &format!("{}.{}", &self_labels[..suffix_start].join("."), dname_name),
+                    &format!("{}.{}", self_labels[..suffix_start].join("."), dname_name),
                     search_domain,
                 );
         }
@@ -242,11 +240,9 @@ impl DnsResourceKey {
 
     fn new_redirect(&self, rr: &DnsResourceRecord) -> Option<Self> {
         if rr.key.rtype == DNS_TYPE_CNAME {
-            if let Some(ref cname) = rr.cname {
-                Some(Self::new(self.class, self.rtype, cname))
-            } else {
-                None
-            }
+            rr.cname
+                .as_ref()
+                .map(|cname| Self::new(self.class, self.rtype, cname))
         } else if rr.key.rtype == DNS_TYPE_DNAME {
             if let Some(ref dname) = rr.dname {
                 let self_name = self.normalized_name();
@@ -411,7 +407,7 @@ impl DnsResourceRecord {
             if a.priority != b.priority {
                 return false;
             }
-            if a.exchange.to_ascii_lowercase() != b.exchange.to_ascii_lowercase() {
+            if !a.exchange.eq_ignore_ascii_case(&b.exchange) {
                 return false;
             }
         } else if self.mx.is_some() || other.mx.is_some() {
@@ -421,7 +417,7 @@ impl DnsResourceRecord {
             if a.priority != b.priority || a.weight != b.weight || a.port != b.port {
                 return false;
             }
-            if a.target.to_ascii_lowercase() != b.target.to_ascii_lowercase() {
+            if !a.target.eq_ignore_ascii_case(&b.target) {
                 return false;
             }
         } else if self.srv.is_some() || other.srv.is_some() {
@@ -431,9 +427,7 @@ impl DnsResourceRecord {
             return false;
         }
         if let (Some(a), Some(b)) = (&self.hinfo, &other.hinfo) {
-            if a.cpu.to_ascii_lowercase() != b.cpu.to_ascii_lowercase()
-                || a.os.to_ascii_lowercase() != b.os.to_ascii_lowercase()
-            {
+            if !a.cpu.eq_ignore_ascii_case(&b.cpu) || !a.os.eq_ignore_ascii_case(&b.os) {
                 return false;
             }
         } else if self.hinfo.is_some() || other.hinfo.is_some() {
@@ -574,7 +568,7 @@ mod tests {
     #[test]
     fn test_resource_key_match_rr() {
         let key = DnsResourceKey::new(DNS_CLASS_IN, DNS_TYPE_A, "www.example.com");
-        let mut rr = DnsResourceRecord::new(DNS_CLASS_IN, DNS_TYPE_A, "www.example.com");
+        let rr = DnsResourceRecord::new(DNS_CLASS_IN, DNS_TYPE_A, "www.example.com");
         assert!(key.match_rr(&rr, None));
 
         let key_any_class = DnsResourceKey::new(DNS_CLASS_ANY, DNS_TYPE_A, "www.example.com");

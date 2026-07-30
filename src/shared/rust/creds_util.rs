@@ -1051,7 +1051,7 @@ mod tests {
         assert_eq!(CREDENTIAL_NAME_MAX, 255);
         assert_eq!(CREDENTIAL_SIZE_MAX, 1024 * 1024);
         assert_eq!(CREDENTIALS_TOTAL_SIZE_MAX, CREDENTIAL_SIZE_MAX);
-        assert!(CREDENTIAL_ENCRYPTED_SIZE_MAX > CREDENTIAL_SIZE_MAX);
+        const { assert!(CREDENTIAL_ENCRYPTED_SIZE_MAX > CREDENTIAL_SIZE_MAX) };
         assert_eq!(
             CREDENTIAL_ENCRYPTED_SIZE_MAX,
             CREDENTIAL_SIZE_MAX + 128 * 1024
@@ -1060,13 +1060,11 @@ mod tests {
 
     // -- credential flags --
 
-    #[test]
     // fn test_credential_secret_flags() {
     // assert_eq!(CredentialSecretFlags::GENERATE.0, 1);
     // assert_eq!(CredentialSecretFlags::WARN_NOT_ENCRYPTED.0, 2);
     // assert_eq!(CredentialSecretFlags::FAIL_ON_TEMPORARY_FS.0, 4);
     // }
-    #[test]
     // fn test_credential_flags() {
     // assert_eq!(CredentialFlags::ALLOW_NULL.0, 1);
     // assert_eq!(CredentialFlags::REFUSE_NULL.0, 2);

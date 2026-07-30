@@ -41,7 +41,7 @@ fn cmd_list_units(runtime: &tokio::runtime::Runtime) -> Result<(), String> {
         .map_err(|error| format!("failed to list units over system D-Bus: {error}"))?;
 
     units.sort_by(|a, b| a.name.cmp(&b.name));
-    println!("{:<50} {:<12} {:<10} {}", "UNIT", "LOAD", "ACTIVE", "SUB");
+    println!("{:<50} {:<12} {:<10} SUB", "UNIT", "LOAD", "ACTIVE");
     for unit in units {
         println!(
             "{:<50} {:<12} {:<10} {}  {}",

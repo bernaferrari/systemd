@@ -94,7 +94,7 @@ impl DnsResourceRecord {
     fn matches(&self, other: &Self) -> bool {
         self.key.class == other.key.class
             && self.key.rtype == other.key.rtype
-            && self.key.name.to_ascii_lowercase() == other.key.name.to_ascii_lowercase()
+            && self.key.name.eq_ignore_ascii_case(&other.key.name)
     }
 }
 
@@ -121,7 +121,7 @@ impl DnsAnswer {
         self.records.iter().any(|r| {
             r.key.class == key.class
                 && r.key.rtype == key.rtype
-                && r.key.name.to_ascii_lowercase() == key.name.to_ascii_lowercase()
+                && r.key.name.eq_ignore_ascii_case(&key.name)
         })
     }
 }
@@ -172,13 +172,13 @@ fn dns_synthesize_answer(
                 rr.a_addr = Some(LOCAL_DNS_PROXY_IPV4);
                 answer.records.push(rr);
                 found = true;
-            } else if let Some(ref hostname) = mgr.full_hostname {
-                if name_lower == hostname.to_ascii_lowercase() {
-                    let mut rr = DnsResourceRecord::new(DNS_CLASS_IN, DNS_TYPE_A, hostname);
-                    rr.a_addr = Some(LOCALHOST_IPV4);
-                    answer.records.push(rr);
-                    found = true;
-                }
+            } else if let Some(ref hostname) = mgr.full_hostname
+                && name_lower == hostname.to_ascii_lowercase()
+            {
+                let mut rr = DnsResourceRecord::new(DNS_CLASS_IN, DNS_TYPE_A, hostname);
+                rr.a_addr = Some(LOCALHOST_IPV4);
+                answer.records.push(rr);
+                found = true;
             }
         }
 
@@ -223,22 +223,20 @@ fn dns_synthesize_answer(
             } else if name_lower.ends_with(".in-addr.arpa") {
                 let octets_str = name_lower.strip_suffix(".in-addr.arpa").unwrap();
                 let octets: Vec<&str> = octets_str.split('.').collect();
-                if octets.len() == 4 {
-                    if let Some(ref hostname) = mgr.full_hostname {
-                        let ip_bytes: Vec<u8> =
-                            octets.iter().filter_map(|o| o.parse::<u8>().ok()).collect();
-                        if ip_bytes.len() == 4 {
-                            let ip = u32::from_be_bytes([
-                                ip_bytes[0],
-                                ip_bytes[1],
-                                ip_bytes[2],
-                                ip_bytes[3],
-                            ]);
-                            if ip == 0x7f000002_u32.to_be() {
-                                // handled by 2.0.0.127 above
-                            } else if ip == 0x7f000000_u32.to_be() {
-                                return Err(-6);
-                            }
+                if octets.len() == 4 && mgr.full_hostname.is_some() {
+                    let ip_bytes: Vec<u8> =
+                        octets.iter().filter_map(|o| o.parse::<u8>().ok()).collect();
+                    if ip_bytes.len() == 4 {
+                        let ip = u32::from_be_bytes([
+                            ip_bytes[0],
+                            ip_bytes[1],
+                            ip_bytes[2],
+                            ip_bytes[3],
+                        ]);
+                        if ip == 0x7f000002_u32.to_be() {
+                            // handled by 2.0.0.127 above
+                        } else if ip == 0x7f000000_u32.to_be() {
+                            return Err(-6);
                         }
                     }
                 }

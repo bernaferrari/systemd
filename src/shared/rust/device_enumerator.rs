@@ -1130,7 +1130,7 @@ mod tests {
             "/sys/devices/pci0000:00/block/sda",
             Some("block"),
             Some("/dev/sda"),
-            Some((8 << 8) | 0),
+            Some(8 << 8),
         );
         assert!(en.matches(&info));
     }

@@ -110,7 +110,7 @@ mod tests {
     #[test]
     fn response_buffer_size_includes_name_and_tuples() {
         let size = response_buffer_size("machine", 2);
-        assert!(size >= 2 * GAIH_ADDRTUPLE_SIZE + "machine".len() + 1);
+        assert!(size > 2 * GAIH_ADDRTUPLE_SIZE + "machine".len());
     }
 
     #[test]

@@ -39,6 +39,10 @@ pub struct DnsHeader {
 }
 
 impl DnsHeader {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The DNS header flag fields deliberately mirror the C helper and make every encoded bit explicit."
+    )]
     pub fn make_flags(
         qr: bool,
         opcode: u8,
@@ -179,7 +183,7 @@ impl DnsPacketBuilder {
         let text_len = text.len();
         let opt = OptRecord {
             udp_size: ADVERTISE_DATAGRAM_SIZE_MAX,
-            extended_rcode: ((rcode & 0x0FF0) << 4) as u16,
+            extended_rcode: (rcode & 0x0FF0) << 4,
             edns_version: 0,
             dnssec_ok: false,
             ede_code,
@@ -187,7 +191,7 @@ impl DnsPacketBuilder {
         };
 
         let rdata_len = 2 + 2 + 2 + text_len;
-        if rdata_len > 0xFFFF as usize {
+        if rdata_len > 0xFFFF_usize {
             return Err(PacketError::BufferOverflow);
         }
 
@@ -222,6 +226,12 @@ impl DnsPacketBuilder {
             true,
             rcode,
         );
+    }
+}
+
+impl Default for DnsPacketBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -306,13 +316,15 @@ mod tests {
             true,
             DNS_RCODE_SERVFAIL,
         );
-        assert_eq!(flags & 0xF, DNS_RCODE_SERVFAIL as u16 & 0xF);
+        assert_eq!(flags & 0xF, DNS_RCODE_SERVFAIL & 0xF);
     }
 
     #[test]
     fn dns_header_rd_flag() {
-        let mut h = DnsHeader::default();
-        h.flags = 1 << 8;
+        let mut h = DnsHeader {
+            flags: 1 << 8,
+            ..Default::default()
+        };
         assert!(h.rd());
         h.flags = 0;
         assert!(!h.rd());
@@ -398,7 +410,7 @@ mod tests {
     fn handle_server_action_unhandled_fails() {
         let mut p = DnsPacketBuilder::new();
         handle_server_action(ServerAction::Unhandled, &mut p).unwrap();
-        assert_eq!(p.header.flags & 0xF, DNS_RCODE_NXDOMAIN as u16 & 0xF);
+        assert_eq!(p.header.flags & 0xF, DNS_RCODE_NXDOMAIN & 0xF);
     }
 
     #[test]

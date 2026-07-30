@@ -182,7 +182,7 @@ mod tests {
     fn test_search_domain_new_system_limit() {
         let mut mgr = Manager::new();
         for i in 0..MANAGER_SEARCH_DOMAINS_MAX {
-            let sd = mgr.add_system("local").unwrap();
+            let _sd = mgr.add_system("local").unwrap();
             assert_eq!(mgr.n_search_domains(), i + 1);
         }
         let result = mgr.add_system("local");
@@ -214,9 +214,9 @@ mod tests {
     #[test]
     fn test_search_domain_unlink_system() {
         let mut mgr = Manager::new();
-        let sd1 = mgr.add_system("local").unwrap();
+        let _sd1 = mgr.add_system("local").unwrap();
         let sd2 = mgr.add_system("vpn.example.com").unwrap();
-        let sd3 = mgr.add_system("org").unwrap();
+        let _sd3 = mgr.add_system("org").unwrap();
 
         assert!(sd2.borrow().linked);
         assert_eq!(mgr.n_search_domains(), 3);
@@ -230,9 +230,9 @@ mod tests {
     fn test_search_domain_unlink_link() {
         let mut mgr = Manager::new();
         let mut link = Link::new(1);
-        let sd1 = link.add(&mut mgr, "local").unwrap();
+        let _sd1 = link.add(&mut mgr, "local").unwrap();
         let sd2 = link.add(&mut mgr, "vpn.example.com").unwrap();
-        let sd3 = link.add(&mut mgr, "org").unwrap();
+        let _sd3 = link.add(&mut mgr, "org").unwrap();
 
         assert!(sd2.borrow().linked);
         assert_eq!(link.n_search_domains(), 3);

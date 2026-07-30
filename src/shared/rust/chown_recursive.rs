@@ -689,10 +689,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sub = dir.path().join("d");
         fs::create_dir(&sub).unwrap();
-        assert_eq!(
-            path_chown_recursive(&sub, &ChownOptions::default(), false).unwrap(),
-            false
-        );
+        assert!(!path_chown_recursive(&sub, &ChownOptions::default(), false).unwrap());
     }
 
     #[test]
@@ -707,7 +704,7 @@ mod tests {
             mode_mask: MODE_MASK_FULL,
         };
         // Shortcut: already matches, should return false without touching the fs.
-        assert_eq!(path_chown_recursive(&p, &opts, false).unwrap(), false);
+        assert!(!path_chown_recursive(&p, &opts, false).unwrap());
     }
 
     #[test]
@@ -754,10 +751,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let d = fs::File::open(dir.path()).unwrap();
         // Default opts = noop → should return false without error.
-        assert_eq!(
-            fd_chown_recursive(&d, &ChownOptions::default()).unwrap(),
-            false
-        );
+        assert!(!fd_chown_recursive(&d, &ChownOptions::default()).unwrap());
     }
 
     // ── Convenience wrappers ───────────────────────────────────────────

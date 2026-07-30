@@ -1603,7 +1603,7 @@ mod tests {
         data[6..8].copy_from_slice(&2u16.to_be_bytes());
         data[8..16].copy_from_slice(&0x2000u64.to_be_bytes()); // hdr_len = 0x2000
         // No JSON with integrity → returns false (LUKS2 but no integrity).
-        assert_eq!(partition_is_luks2_integrity(&data).unwrap(), false);
+        assert!(!partition_is_luks2_integrity(&data).unwrap());
     }
 
     #[test]
@@ -1617,7 +1617,7 @@ mod tests {
         let json_start = LUKS2_FIXED_HDR_SIZE as usize;
         let json_end = json_start + json.len().min(data.len() - json_start);
         data[json_start..json_end].copy_from_slice(&json.as_bytes()[..json_end - json_start]);
-        assert_eq!(partition_is_luks2_integrity(&data).unwrap(), true);
+        assert!(partition_is_luks2_integrity(&data).unwrap());
     }
 
     // ── acquire_sig_for_roothash ───────────────────────────────────────────
@@ -1763,12 +1763,16 @@ mod tests {
         let v = VeritySettings::default();
         assert!(!v.is_set());
 
-        let mut v2 = VeritySettings::default();
-        v2.root_hash = Some(vec![0u8; 32]);
+        let v2 = VeritySettings {
+            root_hash: Some(vec![0u8; 32]),
+            ..Default::default()
+        };
         assert!(v2.is_set());
 
-        let mut v3 = VeritySettings::default();
-        v3.data_path = Some("/foo".into());
+        let v3 = VeritySettings {
+            data_path: Some("/foo".into()),
+            ..Default::default()
+        };
         assert!(v3.is_set());
     }
 

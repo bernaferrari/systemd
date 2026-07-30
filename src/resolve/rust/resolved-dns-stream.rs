@@ -146,12 +146,12 @@ mod tests {
 
     #[test]
     fn streams_max_is_positive() {
-        assert!(DNS_STREAMS_MAX > 0);
+        const { assert!(DNS_STREAMS_MAX > 0) };
     }
 
     #[test]
     fn queries_per_stream_is_positive() {
-        assert!(DNS_QUERIES_PER_STREAM > 0);
+        const { assert!(DNS_QUERIES_PER_STREAM > 0) };
     }
 
     #[test]

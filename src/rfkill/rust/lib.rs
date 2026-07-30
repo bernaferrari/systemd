@@ -166,8 +166,8 @@ mod tests {
 
     #[test]
     fn parse_saved_state_accepts_true_and_false() {
-        assert_eq!(parse_saved_state("yes").unwrap(), true);
-        assert_eq!(parse_saved_state("0").unwrap(), false);
+        assert!(parse_saved_state("yes").unwrap());
+        assert!(!parse_saved_state("0").unwrap());
     }
 
     #[test]
@@ -189,7 +189,7 @@ mod tests {
         queue_save_state(&mut queue, &sample_event(7, RfkillType::Wlan, true), None);
 
         assert_eq!(queue.len(), 1);
-        assert_eq!(queue[0].state, true);
+        assert!(queue[0].state);
     }
 
     #[test]

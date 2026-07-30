@@ -122,7 +122,7 @@ mod tests {
             None,
             None,
         );
-        assert_eq!(slot.set_floating(true).unwrap(), true);
+        assert!(slot.set_floating(true).unwrap());
         slot.disconnect();
         assert_eq!(slot.set_floating(false), Err(SlotError::Disconnected));
     }

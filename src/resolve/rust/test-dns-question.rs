@@ -6,8 +6,6 @@
 // matches_rr, matches_cname_or_dname, is_valid_for_query, is_equal,
 // cname_redirect, dump, first_name, and merge.
 
-use std::io::Write;
-
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const DNS_CLASS_IN: u16 = 1;
@@ -109,7 +107,7 @@ impl DnsQuestion {
         }
     }
 
-    fn new_reverse(family: i32, addr: u32) -> Self {
+    fn new_reverse(_family: i32, addr: u32) -> Self {
         let ptr_name = format!(
             "{}.{}.{}.{}.in-addr.arpa",
             addr & 0xFF,

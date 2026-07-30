@@ -33,6 +33,11 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let refs: Vec<&str> = args[1..].iter().map(|s| s.as_str()).collect();
 
+    if refs.contains(&"--version") {
+        print_version();
+        return;
+    }
+
     match lib::parse_ask_password_args(&refs) {
         Ok(parsed) => {
             if let Some(ref msg) = parsed.message {

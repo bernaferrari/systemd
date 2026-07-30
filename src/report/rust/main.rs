@@ -97,7 +97,7 @@ fn main() {
                                 };
                                 metrics.push(Metric {
                                     name,
-                                    object: parts.get(0).map(|s| (*s).to_string()),
+                                    object: parts.first().map(|s| (*s).to_string()),
                                     fields: parts.get(1).map(|s| (*s).to_string()),
                                 });
                             }
@@ -133,7 +133,7 @@ fn main() {
                 println!("]");
             } else {
                 if !no_legend {
-                    println!("{:<50} {:<20} {}", "METRIC", "OBJECT", "FIELDS");
+                    println!("{:<50} {:<20} FIELDS", "METRIC", "OBJECT");
                 }
                 for m in &metrics {
                     println!(

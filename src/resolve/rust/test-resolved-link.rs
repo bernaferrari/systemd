@@ -6,8 +6,6 @@
 // address lookup, and scope allocation. Pure Rust port of the C test cases.
 
 use std::fmt;
-use std::net::Ipv4Addr;
-
 // ── Constants ──────────────────────────────────────────────────────────────
 
 pub const AF_UNSPEC: i32 = 0;
@@ -385,8 +383,10 @@ mod tests {
         let ip = InAddrUnion::ipv4(192, 168, 67, 1);
         link.add_address(AF_INET, &ip, &ip);
 
-        let mut manager = Manager::default();
-        manager.llmnr_support = ResolveSupport::Yes;
+        let manager = Manager {
+            llmnr_support: ResolveSupport::Yes,
+            ..Default::default()
+        };
 
         allocate_scopes(&mut link, &manager);
 
@@ -412,8 +412,10 @@ mod tests {
         ]);
         link.add_address(AF_INET6, &ip, &ip);
 
-        let mut manager = Manager::default();
-        manager.llmnr_support = ResolveSupport::Yes;
+        let manager = Manager {
+            llmnr_support: ResolveSupport::Yes,
+            ..Default::default()
+        };
 
         allocate_scopes(&mut link, &manager);
 
@@ -436,8 +438,10 @@ mod tests {
         let ip = InAddrUnion::ipv4(192, 168, 67, 1);
         link.add_address(AF_INET, &ip, &ip);
 
-        let mut manager = Manager::default();
-        manager.mdns_support = ResolveSupport::Yes;
+        let manager = Manager {
+            mdns_support: ResolveSupport::Yes,
+            ..Default::default()
+        };
 
         allocate_scopes(&mut link, &manager);
 
@@ -462,8 +466,10 @@ mod tests {
         ]);
         link.add_address(AF_INET6, &ip, &ip);
 
-        let mut manager = Manager::default();
-        manager.mdns_support = ResolveSupport::Yes;
+        let manager = Manager {
+            mdns_support: ResolveSupport::Yes,
+            ..Default::default()
+        };
 
         allocate_scopes(&mut link, &manager);
 

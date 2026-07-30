@@ -663,7 +663,7 @@ mod tests {
     #[test]
     fn test_format_devnum() {
         // Test with a known device number: major=8, minor=0 → (8 << 8) | 0 = 2048
-        let devnum = (8u64 << 8) | 0;
+        let devnum = 8u64 << 8;
         assert_eq!(format_devnum(devnum), "8:0");
     }
 

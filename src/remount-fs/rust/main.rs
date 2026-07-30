@@ -3,9 +3,7 @@
 //
 // Binary entry point for systemd-remount-fs
 
-use systemd_remount_fs_rs::remount_fs::{
-    build_remount_args, is_api_mount, mount_option_needs_remount, parse_remount_env,
-};
+use systemd_remount_fs_rs::remount_fs::{mount_option_needs_remount, parse_remount_env};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const FSTAB_PATH: &str = "/etc/fstab";
@@ -22,7 +20,7 @@ fn do_remount(target: &str, options: &str) -> Result<(), String> {
     use systemd_platform_rs::mount::{self, MountFlags};
 
     let flags = MountFlags::MS_REMOUNT;
-    let mut data = options.to_string();
+    let data = options.to_string();
     let fstype = if target == "/" || target == "/usr" {
         ""
     } else {

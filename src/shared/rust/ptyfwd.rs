@@ -1100,7 +1100,7 @@ mod tests {
     #[test]
     fn test_ansi_color_state_debug_clone() {
         let s = AnsiColorState::CsiSequence;
-        let s2 = s.clone();
+        let s2 = s;
         assert_eq!(s, s2);
         assert_eq!(format!("{:?}", s), "CsiSequence");
     }

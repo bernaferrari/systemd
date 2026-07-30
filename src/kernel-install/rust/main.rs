@@ -52,11 +52,11 @@ fn main() {
     match lib::parse_action(&args[1]) {
         Ok(action) => {
             let mut ctx = lib::new_context(action);
-            if args.len() > 2 {
-                if let Err(e) = lib::set_version(&mut ctx, &args[2]) {
-                    eprintln!("Error: {}", e);
-                    std::process::exit(1);
-                }
+            if args.len() > 2
+                && let Err(e) = lib::set_version(&mut ctx, &args[2])
+            {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
             }
             println!("{:?}", ctx);
         }

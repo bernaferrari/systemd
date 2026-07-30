@@ -748,14 +748,14 @@ mod tests {
             via_shell: true,
             ..Default::default()
         };
-        let cloned = flags.clone();
+        let cloned = flags;
         assert_eq!(flags, cloned);
     }
 
     #[test]
     fn test_exec_dir_flags_clone() {
         let flags = ExecDirFlags::parallel();
-        let cloned = flags.clone();
+        let cloned = flags;
         assert_eq!(flags, cloned);
     }
 }

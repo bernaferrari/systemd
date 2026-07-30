@@ -7,7 +7,6 @@
 // Provides command-line compatibility with the resolvconf(8) tool.
 
 use std::fmt;
-use std::io::{self, BufRead};
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -150,10 +149,10 @@ fn parse_search_domain(string: &str, state: &mut ResolvconfState) {
 
 fn first_word<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let trimmed = line.trim_start();
-    if let Some(rest) = trimmed.strip_prefix(keyword) {
-        if rest.is_empty() || rest.starts_with(char::is_whitespace) {
-            return Some(rest.trim_start());
-        }
+    if let Some(rest) = trimmed.strip_prefix(keyword)
+        && (rest.is_empty() || rest.starts_with(char::is_whitespace))
+    {
+        return Some(rest.trim_start());
     }
     None
 }
@@ -214,12 +213,12 @@ pub fn resolvconf_parse_argv(
 ) -> Result<ResolvconfState, ResolvconfError> {
     let mut state = ResolvconfState::new();
     let mut lookup_type = LookupType::Regular;
-    let mut args_iter = args.iter().peekable();
+    let args_iter = args.iter();
 
     // Check environment-variable equivalents
     // (In the real system these would be env vars; here they're just defaults)
 
-    while let Some(&arg) = args_iter.next() {
+    for &arg in args_iter {
         if arg == "-h" || arg == "--help" {
             return Ok(state);
         }
@@ -282,10 +281,10 @@ pub fn resolvconf_parse_argv(
         return Err(ResolvconfError::MissingInterface);
     }
 
-    if state.mode == ExecutionMode::SetLink {
-        if let Some(content) = stdin_content {
-            parse_stdin_content(content, lookup_type, &mut state)?;
-        }
+    if state.mode == ExecutionMode::SetLink
+        && let Some(content) = stdin_content
+    {
+        parse_stdin_content(content, lookup_type, &mut state)?;
     }
 
     Ok(state)

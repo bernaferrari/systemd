@@ -3,9 +3,7 @@
 //
 // Binary entry point for systemd-ac-power
 
-use systemd_ac_power_rs::{
-    AcPowerAction, compute_exit_code, parse_ac_power_args, run_ac_power, run_low_battery, yes_no,
-};
+use systemd_ac_power_rs::{AcPowerAction, parse_ac_power_args, run_ac_power, run_low_battery};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -116,12 +114,11 @@ fn detect_low_battery() -> Result<bool, i32> {
         }
 
         // Check capacity if available
-        if let Ok(cap_str) = std::fs::read_to_string(path.join("capacity")) {
-            if let Ok(cap) = cap_str.trim().parse::<u32>() {
-                if cap < 10 {
-                    return Ok(true);
-                }
-            }
+        if let Ok(cap_str) = std::fs::read_to_string(path.join("capacity"))
+            && let Ok(cap) = cap_str.trim().parse::<u32>()
+            && cap < 10
+        {
+            return Ok(true);
         }
     }
 

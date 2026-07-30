@@ -259,7 +259,6 @@ mod tests {
     fn test_calculate_start_port_in_range() {
         let port = calculate_start_port("some-device", IpFamily::V4);
         assert!(port >= NVME_PORT_MIN);
-        assert!(port <= NVME_PORT_MAX);
     }
 
     #[test]

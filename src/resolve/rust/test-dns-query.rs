@@ -136,7 +136,7 @@ impl DnsQuery {
         }
 
         if !all_names.is_empty() {
-            let first = all_names[0];
+            let _first = all_names[0];
             // All names in a single question must match
             // But utf8 and idna can have different domains
         }
@@ -152,15 +152,15 @@ impl DnsQuery {
     }
 
     fn query_string(&self) -> &str {
-        if let Some(ref q) = self.question_utf8 {
-            if let Some(name) = q.first_name() {
-                return name; // simplified, leaks lifetime but ok for tests
-            }
+        if let Some(ref q) = self.question_utf8
+            && let Some(name) = q.first_name()
+        {
+            return name; // simplified, leaks lifetime but ok for tests
         }
-        if let Some(ref q) = self.question_idna {
-            if let Some(name) = q.first_name() {
-                return name;
-            }
+        if let Some(ref q) = self.question_idna
+            && let Some(name) = q.first_name()
+        {
+            return name;
         }
         ""
     }
@@ -186,40 +186,40 @@ impl DnsQuery {
             }
 
             // Check for CNAME redirect
-            if rr.key.rtype == DNS_TYPE_CNAME {
-                if let Some(ref target) = rr.cname_target {
-                    for qk in &question.keys {
-                        if rr.key.name.eq_ignore_ascii_case(&qk.name) {
-                            // Redirect: create new question for the target
-                            let new_q = DnsQuestion::new_address(
-                                if qk.rtype == DNS_TYPE_AAAA { 2 } else { 1 },
-                                target,
-                            );
-                            self.collected_questions.push(question.clone());
-                            self.question_idna = Some(new_q);
-                            self.n_cname_redirects += 1;
-                            return QueryResult::Cname;
-                        }
+            if rr.key.rtype == DNS_TYPE_CNAME
+                && let Some(ref target) = rr.cname_target
+            {
+                for qk in &question.keys {
+                    if rr.key.name.eq_ignore_ascii_case(&qk.name) {
+                        // Redirect: create new question for the target
+                        let new_q = DnsQuestion::new_address(
+                            if qk.rtype == DNS_TYPE_AAAA { 2 } else { 1 },
+                            target,
+                        );
+                        self.collected_questions.push(question.clone());
+                        self.question_idna = Some(new_q);
+                        self.n_cname_redirects += 1;
+                        return QueryResult::Cname;
                     }
                 }
             }
 
             // Check for DNAME redirect
-            if rr.key.rtype == DNS_TYPE_DNAME {
-                if let Some(ref dname_target) = rr.dname_target {
-                    for qk in &question.keys {
-                        if qk.name.ends_with(&format!(".{}", rr.key.name)) {
-                            let prefix = &qk.name[..qk.name.len() - rr.key.name.len() - 1];
-                            let new_name = format!("{}.{}", prefix, dname_target);
-                            let new_q = DnsQuestion::new_address(
-                                if qk.rtype == DNS_TYPE_AAAA { 2 } else { 1 },
-                                &new_name,
-                            );
-                            self.collected_questions.push(question.clone());
-                            self.question_idna = Some(new_q);
-                            self.n_cname_redirects += 1;
-                            return QueryResult::Cname;
-                        }
+            if rr.key.rtype == DNS_TYPE_DNAME
+                && let Some(ref dname_target) = rr.dname_target
+            {
+                for qk in &question.keys {
+                    if qk.name.ends_with(&format!(".{}", rr.key.name)) {
+                        let prefix = &qk.name[..qk.name.len() - rr.key.name.len() - 1];
+                        let new_name = format!("{}.{}", prefix, dname_target);
+                        let new_q = DnsQuestion::new_address(
+                            if qk.rtype == DNS_TYPE_AAAA { 2 } else { 1 },
+                            &new_name,
+                        );
+                        self.collected_questions.push(question.clone());
+                        self.question_idna = Some(new_q);
+                        self.n_cname_redirects += 1;
+                        return QueryResult::Cname;
                     }
                 }
             }
@@ -410,10 +410,10 @@ mod tests {
         let mut query1 = DnsQuery::new(Some(q1), None)?;
 
         let q2 = DnsQuestion::new_address(1, "www.example.net");
-        let mut query2 = DnsQuery::new(Some(q2), None)?;
+        let _query2 = DnsQuery::new(Some(q2), None)?;
 
         let q3 = DnsQuestion::new_address(1, "www.example.org");
-        let mut query3 = DnsQuery::new(Some(q3), None)?;
+        let _query3 = DnsQuery::new(Some(q3), None)?;
 
         // Make q2 and q3 auxiliary of q1
         query1.n_auxiliary_queries = 2;

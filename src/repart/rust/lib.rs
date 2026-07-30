@@ -179,8 +179,10 @@ mod tests {
 
     #[test]
     fn config_validation_rejects_too_small_size() {
-        let mut config = RepartConfig::default();
-        config.size = Some(1);
+        let config = RepartConfig {
+            size: Some(1),
+            ..RepartConfig::default()
+        };
         assert_eq!(config.validate(), Err(Error::SizeTooSmall(1)));
     }
 

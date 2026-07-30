@@ -982,7 +982,7 @@ mod tests {
     #[test]
     fn test_shovel_result_debug_clone() {
         let r = ShovelResult::SourceEof;
-        let r2 = r.clone();
+        let r2 = r;
         assert_eq!(format!("{r:?}"), "SourceEof");
         assert_eq!(format!("{r2:?}"), "SourceEof");
         assert_eq!(r, r2);

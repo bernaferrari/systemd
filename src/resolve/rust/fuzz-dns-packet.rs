@@ -173,15 +173,13 @@ pub fn fuzz_dns_packet(data: &[u8]) -> Result<(), DnsPacketError> {
     packet.append_blob(data)?;
 
     // Pad to minimum header size if needed
-    if data.len() < DNS_PACKET_HEADER_SIZE {
-        if packet.allocated >= DNS_PACKET_HEADER_SIZE {
-            // Zero-fill from data.len() to DNS_PACKET_HEADER_SIZE
-            let padding = DNS_PACKET_HEADER_SIZE - data.len();
-            let mut padded = packet.data().to_vec();
-            padded.extend(std::iter::repeat(0u8).take(padding));
-            packet.data = padded;
-            packet.set_size(DNS_PACKET_HEADER_SIZE);
-        }
+    if data.len() < DNS_PACKET_HEADER_SIZE && packet.allocated >= DNS_PACKET_HEADER_SIZE {
+        // Zero-fill from data.len() to DNS_PACKET_HEADER_SIZE
+        let padding = DNS_PACKET_HEADER_SIZE - data.len();
+        let mut padded = packet.data().to_vec();
+        padded.extend(std::iter::repeat_n(0u8, padding));
+        packet.data = padded;
+        packet.set_size(DNS_PACKET_HEADER_SIZE);
     }
 
     // Attempt extraction (result is intentionally discarded in the fuzzer)

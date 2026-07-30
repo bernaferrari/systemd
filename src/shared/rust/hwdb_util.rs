@@ -1649,6 +1649,13 @@ usb:v046DpC312d*
 
 // ── Hwdb from-raw helper (test support) ──────────────────────────────────
 
+#[cfg_attr(
+    test,
+    expect(
+        clippy::items_after_test_module,
+        reason = "The test-only raw-data constructor stays next to the tests that exercise binary parsing."
+    )
+)]
 impl Hwdb {
     /// Create an `Hwdb` from raw binary data (useful for testing without
     /// touching the filesystem).

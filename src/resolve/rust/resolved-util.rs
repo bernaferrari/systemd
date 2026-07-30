@@ -157,7 +157,7 @@ pub fn resolve_system_hostname(hostname_input: &str) -> Result<HostnameInfo, Hos
         return Err(HostnameError::CannotDetermine("empty hostname".to_string()));
     }
 
-    let (label, rest_offset) = dns_label_unescape(h)?;
+    let (label, _) = dns_label_unescape(h)?;
 
     let escaped = dns_label_escape(&label)?;
 
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_dns_label_escape_high_byte() {
-        let escaped = dns_label_escape(&"t".to_string()).unwrap();
+        let escaped = dns_label_escape("t").unwrap();
         assert_eq!(escaped, "t");
     }
 

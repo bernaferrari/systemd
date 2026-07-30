@@ -1132,8 +1132,6 @@ mod tests {
         assert_eq!(AF_NETLINK, 16);
         assert_eq!(AF_UNIX, 1);
         assert_eq!(AF_VSOCK, 40);
-        assert!(AF_INET < AF_INET6);
-        assert!(AF_INET6 < AF_NETLINK);
     }
 
     #[test]
@@ -1150,9 +1148,6 @@ mod tests {
         assert_eq!(NETLINK_AUDIT, 9);
         assert_eq!(NETLINK_KOBJECT_UEVENT, 15);
         assert_eq!(NETLINK_GENERIC, 30);
-        assert!(NETLINK_ROUTE < NETLINK_AUDIT);
-        assert!(NETLINK_AUDIT < NETLINK_KOBJECT_UEVENT);
-        assert!(NETLINK_KOBJECT_UEVENT < NETLINK_GENERIC);
     }
 
     #[test]

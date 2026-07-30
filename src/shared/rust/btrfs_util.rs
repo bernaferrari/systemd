@@ -546,8 +546,10 @@ mod tests {
 
     #[test]
     fn test_search_key_inc_offset() {
-        let mut key = BtrfsSearchKey::default();
-        key.min_offset = 100;
+        let mut key = BtrfsSearchKey {
+            min_offset: 100,
+            ..Default::default()
+        };
         assert!(search_key_inc(&mut key));
         assert_eq!(key.min_offset, 101);
         assert_eq!(key.min_type, 0);
@@ -556,9 +558,11 @@ mod tests {
 
     #[test]
     fn test_search_key_inc_offset_overflow() {
-        let mut key = BtrfsSearchKey::default();
-        key.min_offset = u64::MAX;
-        key.min_type = 5;
+        let mut key = BtrfsSearchKey {
+            min_offset: u64::MAX,
+            min_type: 5,
+            ..Default::default()
+        };
         assert!(search_key_inc(&mut key));
         assert_eq!(key.min_offset, 0);
         assert_eq!(key.min_type, 6);
@@ -566,10 +570,12 @@ mod tests {
 
     #[test]
     fn test_search_key_inc_type_overflow() {
-        let mut key = BtrfsSearchKey::default();
-        key.min_offset = u64::MAX;
-        key.min_type = u8::MAX as u64;
-        key.min_objectid = 42;
+        let mut key = BtrfsSearchKey {
+            min_offset: u64::MAX,
+            min_type: u8::MAX as u64,
+            min_objectid: 42,
+            ..Default::default()
+        };
         assert!(search_key_inc(&mut key));
         assert_eq!(key.min_offset, 0);
         assert_eq!(key.min_type, 0);
@@ -578,10 +584,12 @@ mod tests {
 
     #[test]
     fn test_search_key_inc_full_overflow() {
-        let mut key = BtrfsSearchKey::default();
-        key.min_offset = u64::MAX;
-        key.min_type = u8::MAX as u64;
-        key.min_objectid = u64::MAX;
+        let mut key = BtrfsSearchKey {
+            min_offset: u64::MAX,
+            min_type: u8::MAX as u64,
+            min_objectid: u64::MAX,
+            ..Default::default()
+        };
         assert!(!search_key_inc(&mut key));
     }
 

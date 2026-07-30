@@ -10,6 +10,9 @@ name = "systemd-resolve-rs"
 version = "0.0.1"
 edition = "2024"
 
+[features]
+meson = []
+
 [dependencies]
 bitflags = { workspace = true }
 libc = { workspace = true }

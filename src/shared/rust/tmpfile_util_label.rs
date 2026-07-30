@@ -866,7 +866,7 @@ mod tests {
             temporary
                 .temp_path()
                 .parent()
-                .map_or(true, |p| p.as_os_str().is_empty())
+                .is_none_or(|p| p.as_os_str().is_empty())
         );
         assert!(name.starts_with(".#relative-name"));
         assert_eq!(name.len(), 2 + "relative-name".len() + RANDOM_SUFFIX_LEN);

@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn test_secret_bytes_borrowed_access() {
         let sv = SecretBytes::from_vec(vec![b'A', b'B', b'C']);
-        assert_eq!(sv.as_bytes(), &[b'A', b'B', b'C']);
+        assert_eq!(sv.as_bytes(), b"ABC");
         assert_eq!(sv.len(), 3);
         assert!(!sv.is_empty());
     }

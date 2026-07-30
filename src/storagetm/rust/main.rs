@@ -6,9 +6,8 @@
 // PORT-SYNC: src/storagetm/storagetm.c
 
 use systemd_storagetm_rs::{
-    IpFamily, NVME_PORT_MAX, NVME_PORT_MAX_ATTEMPTS, NVME_PORTS_PATH, NVME_SUBSYSTEMS_PATH,
-    NvmePortInfo, NvmeSubsystemInfo, all_devices_allowed, build_subsystem_name,
-    calculate_start_port, should_ignore_sysname, truncate_for_nvme,
+    IpFamily, NVME_PORTS_PATH, NVME_SUBSYSTEMS_PATH, build_subsystem_name, calculate_start_port,
+    should_ignore_sysname, truncate_for_nvme,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -91,20 +90,18 @@ fn main() {
         return;
     }
 
-    if all_count > 0 && devices.is_empty() {
-        if let Ok(entries) = std::fs::read_dir("/sys/class/block") {
-            for entry in entries.flatten() {
-                let sysname = entry.file_name().to_string_lossy().to_string();
-                if should_ignore_sysname(&sysname) {
-                    continue;
-                }
-                let dev_path = format!("/dev/{}", sysname);
-                if std::path::Path::new(&dev_path).exists() {
-                    if !all_devices_allowed(all_count) {
-                        let _ = dev_path;
-                    }
-                    devices.push(dev_path);
-                }
+    if all_count > 0
+        && devices.is_empty()
+        && let Ok(entries) = std::fs::read_dir("/sys/class/block")
+    {
+        for entry in entries.flatten() {
+            let sysname = entry.file_name().to_string_lossy().to_string();
+            if should_ignore_sysname(&sysname) {
+                continue;
+            }
+            let dev_path = format!("/dev/{}", sysname);
+            if std::path::Path::new(&dev_path).exists() {
+                devices.push(dev_path);
             }
         }
     }
@@ -127,10 +124,10 @@ fn main() {
         let _ = std::fs::create_dir_all(NVME_PORTS_PATH);
 
         let notify_socket = std::env::var("NOTIFY_SOCKET").unwrap_or_default();
-        if !notify_socket.is_empty() {
-            if let Ok(sock) = std::os::unix::net::UnixDatagram::unbound() {
-                let _ = sock.send_to(b"READY=1", notify_socket.trim_start_matches('@'));
-            }
+        if !notify_socket.is_empty()
+            && let Ok(sock) = std::os::unix::net::UnixDatagram::unbound()
+        {
+            let _ = sock.send_to(b"READY=1", notify_socket.trim_start_matches('@'));
         }
 
         for device in &devices {
@@ -164,21 +161,16 @@ fn main() {
                 let port = calculate_start_port(&subsys_name, *family);
                 let port_dir = format!("{}/{}", NVME_PORTS_PATH, port);
 
-                if !std::path::Path::new(&port_dir).exists() {
-                    if std::fs::create_dir_all(&port_dir).is_ok() {
-                        let _ = std::fs::write(format!("{}/addr_trtype", port_dir), "tcp");
-                        let _ =
-                            std::fs::write(format!("{}/addr_adrfam", port_dir), family.adrfam());
-                        let _ = std::fs::write(
-                            format!("{}/addr_traddr", port_dir),
-                            family.wildcard_addr(),
-                        );
-                        let _ = std::fs::write(
-                            format!("{}/addr_trsvcid", port_dir),
-                            format!("{}", port),
-                        );
-                        let _ = std::fs::write(format!("{}/addr_treq", port_dir), "not specified");
-                    }
+                if !std::path::Path::new(&port_dir).exists()
+                    && std::fs::create_dir_all(&port_dir).is_ok()
+                {
+                    let _ = std::fs::write(format!("{}/addr_trtype", port_dir), "tcp");
+                    let _ = std::fs::write(format!("{}/addr_adrfam", port_dir), family.adrfam());
+                    let _ =
+                        std::fs::write(format!("{}/addr_traddr", port_dir), family.wildcard_addr());
+                    let _ =
+                        std::fs::write(format!("{}/addr_trsvcid", port_dir), format!("{}", port));
+                    let _ = std::fs::write(format!("{}/addr_treq", port_dir), "not specified");
                 }
 
                 let link_dir = format!("{}/subsystems/{}", port_dir, subsys_name);

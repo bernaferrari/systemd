@@ -1155,7 +1155,7 @@ mod tests {
             "CPUUsagePerCent",
             None,
             BusPrintPropertyFlags::empty(),
-            3.14,
+            314_f64 / 100.0,
         );
         assert_eq!(result, Some("CPUUsagePerCent=3.14".into()));
     }

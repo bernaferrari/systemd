@@ -158,6 +158,6 @@ mod tests {
 
     #[test]
     fn graveyard_max_is_positive() {
-        assert!(SOCKET_GRAVEYARD_MAX > 0);
+        const { assert!(SOCKET_GRAVEYARD_MAX > 0) };
     }
 }

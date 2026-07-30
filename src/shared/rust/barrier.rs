@@ -634,12 +634,12 @@ mod tests {
     #[test]
     fn test_abort_constants_invariant() {
         // C comment: "keep @WE < @THEY < @I"
-        assert!(BARRIER_WE_ABORTED < BARRIER_THEY_ABORTED);
-        assert!(BARRIER_THEY_ABORTED < BARRIER_I_ABORTED);
+        const { assert!(BARRIER_WE_ABORTED < BARRIER_THEY_ABORTED) };
+        const { assert!(BARRIER_THEY_ABORTED < BARRIER_I_ABORTED) };
         // All abort sentinels are negative
-        assert!(BARRIER_WE_ABORTED < 0);
-        assert!(BARRIER_THEY_ABORTED < 0);
-        assert!(BARRIER_I_ABORTED < 0);
+        const { assert!(BARRIER_WE_ABORTED < 0) };
+        const { assert!(BARRIER_THEY_ABORTED < 0) };
+        const { assert!(BARRIER_I_ABORTED < 0) };
     }
 
     #[test]

@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn test_uid_invalid() {
         assert_eq!(UID_INVALID, u32::MAX);
-        assert!(UID_INVALID > 0);
+        const { assert!(UID_INVALID > 0) };
     }
 
     // ── mkdir_label Tests ──────────────────────────────────────────────

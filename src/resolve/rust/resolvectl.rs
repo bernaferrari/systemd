@@ -306,10 +306,10 @@ pub fn parse_address_auto(input: &str) -> Option<(AddressFamily, IpAddr, i32)> {
     if let Some(percent_pos) = input.rfind('%') {
         let addr_part = &input[..percent_pos];
         let scope_part = &input[percent_pos + 1..];
-        if let Ok(ipv6) = addr_part.parse::<Ipv6Addr>() {
-            if let Ok(ifindex) = scope_part.parse::<i32>() {
-                return Some((AddressFamily::Ipv6, IpAddr::V6(ipv6), ifindex));
-            }
+        if let Ok(ipv6) = addr_part.parse::<Ipv6Addr>()
+            && let Ok(ifindex) = scope_part.parse::<i32>()
+        {
+            return Some((AddressFamily::Ipv6, IpAddr::V6(ipv6), ifindex));
         }
     }
     None

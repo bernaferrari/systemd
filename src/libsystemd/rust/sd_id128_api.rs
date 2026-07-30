@@ -301,7 +301,7 @@ mod tests {
             std::env::temp_dir().join(format!("systemd-missing-machine-id-{}", std::process::id())),
         ));
         clear_sd_id128_caches();
-        assert_eq!(sd_id128_get_machine(), Err(-(libc::ENOENT as i32)));
+        assert_eq!(sd_id128_get_machine(), Err(-libc::ENOENT));
     }
 
     #[test]

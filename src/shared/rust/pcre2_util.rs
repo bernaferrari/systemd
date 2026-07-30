@@ -728,7 +728,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_pcre2_error_display_unsupported() {
         let e = Pcre2Error::Unsupported;
         assert!(e.to_string().contains("not compiled in"));

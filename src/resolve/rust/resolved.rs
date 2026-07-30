@@ -724,6 +724,7 @@ fn render_resolv_conf_contents(config: &ResolvedConfig) -> String {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
+#[cfg_attr(test, allow(clippy::items_after_test_module))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -955,12 +956,12 @@ fn default_runtime_dir(is_root: bool) -> PathBuf {
     } else {
         #[cfg(test)]
         {
-            return unique_test_runtime_dir();
+            unique_test_runtime_dir()
         }
 
         #[cfg(not(test))]
         {
-            return PathBuf::from(RUNTIME_DIR);
+            PathBuf::from(RUNTIME_DIR)
         }
     }
 }

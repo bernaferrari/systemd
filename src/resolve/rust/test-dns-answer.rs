@@ -5,8 +5,6 @@
 // DNS answer container: add, match, find SOA, merge, extend, remove,
 // copy, move, dump, and scope-ordering tests.
 
-use std::collections::HashMap;
-
 // ── DNS class / type constants ──────────────────────────────────────────────
 
 const DNS_CLASS_IN: u16 = 1;
@@ -383,14 +381,14 @@ mod tests {
         let global: u32 = 0xc0a80404;
 
         fn is_link_local(addr: u32) -> bool {
-            (addr & 0xffff0000) == 0xa9fe0000 && addr >= 0xa9fe0100 && addr <= 0xa9fefeff
+            (addr & 0xffff0000) == 0xa9fe0000 && (0xa9fe0100..=0xa9fefeff).contains(&addr)
         }
 
         assert!(is_link_local(link_local_min));
         assert!(is_link_local(link_local_max));
         assert!(!is_link_local(global));
 
-        let mut addrs = vec![global, link_local_min, link_local_max];
+        let mut addrs = [global, link_local_min, link_local_max];
         addrs.sort_by(|a, b| {
             let a_ll = is_link_local(*a);
             let b_ll = is_link_local(*b);

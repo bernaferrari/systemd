@@ -160,7 +160,7 @@ fn address_info_error(code: libc::c_int) -> io::Error {
             CStr::from_ptr(pointer).to_string_lossy().into_owned()
         }
     };
-    io::Error::new(io::ErrorKind::Other, message)
+    io::Error::other(message)
 }
 
 fn connect_tcp(host: &str, service: &str) -> io::Result<OwnedFd> {
@@ -274,7 +274,7 @@ fn proxy_bidirectionally(client: OwnedFd, remote: OwnedFd) -> io::Result<()> {
         let downstream = forward_one(remote, client);
         let upstream = upstream
             .join()
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "forwarding thread panicked"))?;
+            .map_err(|_| io::Error::other("forwarding thread panicked"))?;
         upstream?;
         downstream?;
         Ok(())

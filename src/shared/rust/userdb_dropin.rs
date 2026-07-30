@@ -1491,7 +1491,6 @@ mod tests {
     #[test]
     fn test_userdb_suppress_shadow_flag() {
         assert_eq!(USERDB_SUPPRESS_SHADOW, 1 << 3);
-        assert!(USERDB_SUPPRESS_SHADOW != 0);
     }
 
     #[cfg(target_os = "linux")]

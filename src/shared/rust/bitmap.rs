@@ -151,15 +151,15 @@ mod tests {
         assert!(!b.contains(5));
         assert!(b.set(5).is_ok());
         assert!(b.contains(5));
-        assert_eq!(b.set(5).unwrap(), false);
+        assert!(!b.set(5).unwrap());
     }
 
     #[test]
     fn test_set_returns_newly_inserted() {
         let mut b = Bitmap::new();
-        assert_eq!(b.set(10).unwrap(), true);
-        assert_eq!(b.set(10).unwrap(), false);
-        assert_eq!(b.set(20).unwrap(), true);
+        assert!(b.set(10).unwrap());
+        assert!(!b.set(10).unwrap());
+        assert!(b.set(20).unwrap());
     }
 
     #[test]
@@ -407,7 +407,7 @@ mod tests {
         let mut b = Bitmap::new();
         let expected: Vec<u64> = (0..=BITMAPS_MAX_ENTRY)
             .step_by(7)
-            .filter_map(|i| if b.set(i).unwrap() { Some(i) } else { None })
+            .filter(|&i| b.set(i).unwrap())
             .collect();
         assert_eq!(b.iterate().collect::<Vec<_>>(), expected);
     }

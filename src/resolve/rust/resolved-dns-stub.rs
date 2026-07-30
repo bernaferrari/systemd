@@ -170,7 +170,9 @@ mod tests {
 
     #[test]
     fn advertise_datagram_size_is_sane() {
-        assert!(ADVERTISE_DATAGRAM_SIZE_MAX > 0);
-        assert!(ADVERTISE_DATAGRAM_SIZE_MAX < 65536);
+        const {
+            assert!(ADVERTISE_DATAGRAM_SIZE_MAX > 0);
+            assert!(ADVERTISE_DATAGRAM_SIZE_MAX < 65536);
+        }
     }
 }

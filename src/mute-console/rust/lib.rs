@@ -262,10 +262,10 @@ mod tests {
 
     #[test]
     fn parse_boolean_arguments() {
-        assert_eq!(parse_boolean_arg("yes").unwrap(), true);
-        assert_eq!(parse_boolean_arg("NO").unwrap(), false);
-        assert_eq!(parse_boolean_arg("1").unwrap(), true);
-        assert_eq!(parse_boolean_arg("0").unwrap(), false);
+        assert!(parse_boolean_arg("yes").unwrap());
+        assert!(!parse_boolean_arg("NO").unwrap());
+        assert!(parse_boolean_arg("1").unwrap());
+        assert!(!parse_boolean_arg("0").unwrap());
         assert!(parse_boolean_arg("maybe").is_err());
     }
 

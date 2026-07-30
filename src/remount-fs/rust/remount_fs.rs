@@ -110,9 +110,9 @@ mod tests {
 
     #[test]
     fn remount_env_parsing() {
-        assert_eq!(super::parse_remount_env("1").unwrap(), true);
-        assert_eq!(super::parse_remount_env("true").unwrap(), true);
-        assert_eq!(super::parse_remount_env("0").unwrap(), false);
+        assert!(super::parse_remount_env("1").unwrap());
+        assert!(super::parse_remount_env("true").unwrap());
+        assert!(!super::parse_remount_env("0").unwrap());
         assert!(super::parse_remount_env("bad").is_err());
     }
 }

@@ -754,7 +754,7 @@ mod tests {
     fn test_read_full_file_binary() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("data.bin");
-        fs::write(&path, &[0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
+        fs::write(&path, [0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
         let data = read_full_file_binary(&path, ReadFileFlags::empty()).unwrap();
         assert_eq!(data, vec![0xDE, 0xAD, 0xBE, 0xEF]);
     }

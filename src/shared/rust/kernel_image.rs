@@ -725,7 +725,7 @@ mod tests {
         if value == 0 {
             0
         } else {
-            ((value + alignment - 1) / alignment) * alignment
+            value.div_ceil(alignment) * alignment
         }
     }
 

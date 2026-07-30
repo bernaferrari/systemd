@@ -338,7 +338,7 @@ mod tests {
         let data: Vec<u8> = vec![
             0x00, 0x42, 0x80, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
-        assert_eq!(validate_query(&data, "DNS")?, false);
+        assert!(!validate_query(&data, "DNS")?);
         Ok(())
     }
 
@@ -347,7 +347,7 @@ mod tests {
         let data: Vec<u8> = vec![
             0x00, 0x42, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
-        assert_eq!(validate_query(&data, "DNS")?, true);
+        assert!(validate_query(&data, "DNS")?);
         Ok(())
     }
 
@@ -374,7 +374,7 @@ mod tests {
         let data: Vec<u8> = vec![
             0x00, 0x42, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
-        assert_eq!(validate_reply(&data, "DNS")?, true);
+        assert!(validate_reply(&data, "DNS")?);
         Ok(())
     }
 
@@ -383,7 +383,7 @@ mod tests {
         let data: Vec<u8> = vec![
             0x00, 0x42, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
-        assert_eq!(validate_reply(&data, "DNS")?, false);
+        assert!(!validate_reply(&data, "DNS")?);
         Ok(())
     }
 

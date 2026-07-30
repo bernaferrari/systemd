@@ -545,87 +545,107 @@ mod tests {
 
     #[test]
     fn test_dqblk_populated_with_bhardlimit() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid = QuotaInfoFields::all().bits();
-        dq.dqb_bhardlimit = 1024;
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::all().bits(),
+            dqb_bhardlimit: 1024,
+            ..Default::default()
+        };
         assert!(dq.is_populated());
         assert!(dq.has_block_limit());
     }
 
     #[test]
     fn test_dqblk_populated_with_bsoftlimit() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid = QuotaInfoFields::all().bits();
-        dq.dqb_bsoftlimit = 512;
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::all().bits(),
+            dqb_bsoftlimit: 512,
+            ..Default::default()
+        };
         assert!(dq.is_populated());
         assert!(dq.has_block_limit());
     }
 
     #[test]
     fn test_dqblk_populated_with_ihardlimit() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid = QuotaInfoFields::all().bits();
-        dq.dqb_ihardlimit = 100;
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::all().bits(),
+            dqb_ihardlimit: 100,
+            ..Default::default()
+        };
         assert!(dq.is_populated());
         assert!(dq.has_inode_limit());
     }
 
     #[test]
     fn test_dqblk_populated_with_isoftlimit() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid = QuotaInfoFields::all().bits();
-        dq.dqb_isoftlimit = 50;
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::all().bits(),
+            dqb_isoftlimit: 50,
+            ..Default::default()
+        };
         assert!(dq.is_populated());
         assert!(dq.has_inode_limit());
     }
 
     #[test]
     fn test_dqblk_populated_with_curspace() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid = QuotaInfoFields::all().bits();
-        dq.dqb_curspace = 4096;
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::all().bits(),
+            dqb_curspace: 4096,
+            ..Default::default()
+        };
         assert!(dq.is_populated());
         assert_eq!(dq.space_used(), 4096);
     }
 
     #[test]
     fn test_dqblk_populated_with_curinodes() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid = QuotaInfoFields::all().bits();
-        dq.dqb_curinodes = 7;
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::all().bits(),
+            dqb_curinodes: 7,
+            ..Default::default()
+        };
         assert!(dq.is_populated());
         assert_eq!(dq.inodes_used(), 7);
     }
 
     #[test]
     fn test_dqblk_populated_with_btime() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid = QuotaInfoFields::all().bits();
-        dq.dqb_btime = 86400;
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::all().bits(),
+            dqb_btime: 86400,
+            ..Default::default()
+        };
         assert!(dq.is_populated());
     }
 
     #[test]
     fn test_dqblk_populated_with_itime() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid = QuotaInfoFields::all().bits();
-        dq.dqb_itime = 604800;
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::all().bits(),
+            dqb_itime: 604800,
+            ..Default::default()
+        };
         assert!(dq.is_populated());
     }
 
     #[test]
     fn test_dqblk_not_populated_missing_flags() {
-        let mut dq = Dqblk::default();
         // Only BLIMITS set — missing 5 other required fields.
-        dq.dqb_valid = QuotaInfoFields::BLIMITS.bits();
-        dq.dqb_bhardlimit = 9999;
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::BLIMITS.bits(),
+            dqb_bhardlimit: 9999,
+            ..Default::default()
+        };
         assert!(!dq.is_populated());
     }
 
     #[test]
     fn test_dqblk_not_populated_all_flags_zero_values() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid = QuotaInfoFields::all().bits();
+        let dq = Dqblk {
+            dqb_valid: QuotaInfoFields::all().bits(),
+            ..Default::default()
+        };
         // All quota values are zero despite all flags being set.
         assert!(!dq.is_populated());
     }
@@ -633,7 +653,8 @@ mod tests {
     #[test]
     fn test_dqblk_populated_per_field_exhaustive() {
         let all_bits = QuotaInfoFields::all().bits();
-        let setters: &[(&str, fn(&mut Dqblk))] = &[
+        type Setter = fn(&mut Dqblk);
+        let setters: &[(&str, Setter)] = &[
             ("bhardlimit", |d| d.dqb_bhardlimit = 1),
             ("bsoftlimit", |d| d.dqb_bsoftlimit = 1),
             ("ihardlimit", |d| d.dqb_ihardlimit = 1),
@@ -644,8 +665,10 @@ mod tests {
             ("itime", |d| d.dqb_itime = 1),
         ];
         for (name, setter) in setters {
-            let mut dq = Dqblk::default();
-            dq.dqb_valid = all_bits;
+            let mut dq = Dqblk {
+                dqb_valid: all_bits,
+                ..Default::default()
+            };
             setter(&mut dq);
             assert!(dq.is_populated(), "should be populated when {name} > 0");
         }
@@ -657,8 +680,10 @@ mod tests {
         let b = Dqblk::default();
         assert_eq!(a, b);
 
-        let mut c = Dqblk::default();
-        c.dqb_bhardlimit = 1;
+        let c = Dqblk {
+            dqb_bhardlimit: 1,
+            ..Default::default()
+        };
         assert_ne!(a, c);
     }
 
@@ -824,10 +849,14 @@ mod tests {
 
     #[test]
     fn test_dqblk_partial_flags_not_populated() {
-        let mut dq = Dqblk::default();
-        dq.dqb_valid =
-            (QuotaInfoFields::BLIMITS | QuotaInfoFields::SPACE | QuotaInfoFields::ILIMITS).bits();
-        dq.dqb_bhardlimit = 1;
+        let dq = Dqblk {
+            dqb_valid: (QuotaInfoFields::BLIMITS
+                | QuotaInfoFields::SPACE
+                | QuotaInfoFields::ILIMITS)
+                .bits(),
+            dqb_bhardlimit: 1,
+            ..Default::default()
+        };
         // Missing INODES, BTIME, ITIME flags.
         assert!(!dq.is_populated());
     }

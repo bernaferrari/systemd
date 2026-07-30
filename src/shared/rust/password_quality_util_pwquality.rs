@@ -686,8 +686,8 @@ mod tests {
     #[test]
     fn test_pw_setting_constants() {
         // Dict path and dict check should be distinct positive integers.
-        assert!(PWQ_SETTING_DICT_PATH > 0);
-        assert!(PWQ_SETTING_DICT_CHECK > 0);
+        assert_eq!(PWQ_SETTING_DICT_PATH, 10);
+        assert_eq!(PWQ_SETTING_DICT_CHECK, 15);
         assert_ne!(PWQ_SETTING_DICT_PATH, PWQ_SETTING_DICT_CHECK);
     }
 

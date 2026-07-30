@@ -4,7 +4,7 @@
 // Binary entry point for systemd-gpt-auto-generator
 
 use systemd_gpt_auto_generator_rs::gpt_auto_generator::{
-    MOUNT_GROWFS, MOUNT_RW, Role, classify, mount_point, mount_unit_name, root_options,
+    MOUNT_RW, Role, classify, mount_point, mount_unit_name, root_options,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

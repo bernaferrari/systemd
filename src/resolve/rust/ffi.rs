@@ -4,8 +4,7 @@
 //
 // FFI boundary helpers and type declarations for Rust↔C interop in systemd-resolve-rs.
 
-use std::ffi::c_void;
-use std::os::raw::{c_char, c_int, c_uint, c_ushort};
+use std::os::raw::c_int;
 
 #[cfg(not(feature = "meson"))]
 pub use self::local_ffi::*;

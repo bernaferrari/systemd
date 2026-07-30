@@ -274,6 +274,7 @@ fn resolve_explicit_config_file_from_dirs(
     ))
 }
 
+#[cfg(not(target_os = "linux"))]
 fn unsupported() -> io::Error {
     io::Error::new(
         io::ErrorKind::Unsupported,
@@ -356,13 +357,13 @@ pub fn apply_rule_bytes(rule: &[u8]) -> io::Result<()> {
     let name = extract_rule_name_bytes(rule)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid binfmt rule name"))?;
 
-    if let Err(error) = fs::write(rule_delete_path_bytes(name), "-1") {
-        if error.kind() != io::ErrorKind::NotFound {
-            eprintln!(
-                "binfmt: failed to delete rule {:?}, ignoring: {error}",
-                OsStr::from_bytes(name)
-            );
-        }
+    if let Err(error) = fs::write(rule_delete_path_bytes(name), "-1")
+        && error.kind() != io::ErrorKind::NotFound
+    {
+        eprintln!(
+            "binfmt: failed to delete rule {:?}, ignoring: {error}",
+            OsStr::from_bytes(name)
+        );
     }
 
     fs::write(BINFMT_REGISTER_PATH, rule)

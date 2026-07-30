@@ -118,7 +118,7 @@ mod tests {
     }
     #[test]
     fn new_mount_needed() {
-        assert_eq!(mount_cgroups("/x", true, false, true).unwrap(), true);
+        assert!(mount_cgroups("/x", true, false, true).unwrap());
     }
     #[test]
     fn bind_mount_skipped_for_root() {

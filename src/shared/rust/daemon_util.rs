@@ -524,7 +524,7 @@ mod tests {
     #[test]
     fn test_sd_notify_no_socket() {
         let r = sd_notify_preserve_environment("READY=1");
-        assert_eq!(r.unwrap(), false);
+        assert!(!r.unwrap());
     }
 
     #[test]
@@ -536,7 +536,7 @@ mod tests {
         // SAFETY: TestEnvironment serializes process-environment mutation for
         // the full duration of this test.
         let r = unsafe { sd_notify(true, "READY=1") };
-        assert_eq!(r.unwrap(), false);
+        assert!(!r.unwrap());
     }
 
     #[test]

@@ -614,7 +614,7 @@ mod tests {
 
     #[test]
     fn test_fd_type_ordering() {
-        let types = vec![
+        let types = [
             FdType::Fifo,
             FdType::Socket,
             FdType::RegularFile,

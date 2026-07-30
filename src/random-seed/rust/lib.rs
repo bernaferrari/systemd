@@ -83,14 +83,14 @@ mod tests {
 
     #[test]
     fn parse_boolean_accepts_true_values() {
-        assert_eq!(parse_boolean("yes").unwrap(), true);
-        assert_eq!(parse_boolean("1").unwrap(), true);
+        assert!(parse_boolean("yes").unwrap());
+        assert!(parse_boolean("1").unwrap());
     }
 
     #[test]
     fn parse_boolean_accepts_false_values() {
-        assert_eq!(parse_boolean("no").unwrap(), false);
-        assert_eq!(parse_boolean("0").unwrap(), false);
+        assert!(!parse_boolean("no").unwrap());
+        assert!(!parse_boolean("0").unwrap());
     }
 
     #[test]

@@ -1460,7 +1460,7 @@ mod tests {
 
     #[test]
     fn test_constants_sanity() {
-        assert!(DNS_PACKET_SIZE_START > DNS_PACKET_HEADER_SIZE);
+        assert_eq!(DNS_PACKET_SIZE_START, 512);
         assert_eq!(DNS_PACKET_SIZE_MAX, 65535);
         assert_eq!(DNS_PACKET_HEADER_SIZE, 12);
         assert_eq!(DNS_LABEL_MAX, 63);

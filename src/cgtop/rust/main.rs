@@ -34,6 +34,11 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let refs: Vec<&str> = args[1..].iter().map(|s| s.as_str()).collect();
 
+    if refs.contains(&"--version") {
+        print_version();
+        return;
+    }
+
     match lib::parse_cgtop_args(&refs) {
         Ok(parsed) => {
             println!(

@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn delegates_max_is_positive() {
-        assert!(DNS_DELEGATES_MAX > 0);
+        const { assert!(DNS_DELEGATES_MAX > 0) };
     }
 
     #[test]

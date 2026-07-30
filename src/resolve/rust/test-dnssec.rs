@@ -96,7 +96,7 @@ pub fn dnssec_keytag(flags: u16, protocol: u8, algorithm: u8, key_data: &[u8]) -
     }
 
     ac += (ac >> 16) & 0xFFFF;
-    (ac & 0xFFFF) as u32
+    ac & 0xFFFF
 }
 
 // ── DS record verification ─────────────────────────────────────────────────

@@ -1066,7 +1066,7 @@ mod tests {
 
     #[test]
     fn test_system_mac_default() {
-        let mac = SystemMac::default();
+        let mac = SystemMac;
         assert_eq!(mac, SystemMac::new());
     }
 

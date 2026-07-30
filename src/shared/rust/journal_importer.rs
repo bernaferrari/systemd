@@ -979,12 +979,11 @@ mod tests {
 
     #[test]
     fn test_constants() {
-        assert!(ENTRY_SIZE_MAX > DATA_SIZE_MAX);
-        assert!(DATA_SIZE_MAX < ENTRY_SIZE_MAX);
-        assert!(ENTRY_SIZE_UNPRIV_MAX < ENTRY_SIZE_MAX);
+        assert_eq!(ENTRY_SIZE_MAX, 1024 * 1024 * 770);
+        assert_eq!(DATA_SIZE_MAX, 1024 * 1024 * 768);
+        assert_eq!(ENTRY_SIZE_UNPRIV_MAX, 1024 * 1024 * 32);
         assert_eq!(LINE_CHUNK, 8 * 1024);
         assert_eq!(ENTRY_FIELD_COUNT_MAX, 1024);
-        assert!(DATA_SIZE_MAX < ENTRY_SIZE_MAX);
     }
 
     #[test]

@@ -110,12 +110,9 @@ fn add_entropy(urandom: &File, data: &[u8]) -> io::Result<()> {
         .checked_add(data.len())
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "seed request is too large"))?;
     let mut request = Vec::new();
-    request.try_reserve_exact(request_size).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            "unable to allocate RNDADDENTROPY request",
-        )
-    })?;
+    request
+        .try_reserve_exact(request_size)
+        .map_err(|_| io::Error::other("unable to allocate RNDADDENTROPY request"))?;
     request.extend_from_slice(&entropy_count.to_ne_bytes());
     request.extend_from_slice(&buf_size.to_ne_bytes());
     debug_assert_eq!(request.len(), RNDADDENTROPY_HEADER_SIZE);
@@ -203,7 +200,7 @@ fn save_seed(seed_path: &str) -> std::io::Result<()> {
 #[cfg(target_os = "linux")]
 fn write_new_seed(seed_path: &str) -> std::io::Result<()> {
     let mut buf = vec![0u8; POOL_SIZE];
-    getrandom::fill(&mut buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    getrandom::fill(&mut buf).map_err(std::io::Error::other)?;
 
     if let Some(parent) = std::path::Path::new(seed_path).parent() {
         std::fs::create_dir_all(parent)?;

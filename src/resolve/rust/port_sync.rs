@@ -74,15 +74,15 @@ impl<'a> PortSyncModule<'a> {
         }
         ensure_unique(
             self.functions.iter().map(|function| function.rust_name),
-            |name| PortSyncError::DuplicateRustName(name),
+            PortSyncError::DuplicateRustName,
         )?;
         ensure_unique(
             self.functions.iter().map(|function| function.c_name),
-            |name| PortSyncError::DuplicateCName(name),
+            PortSyncError::DuplicateCName,
         )?;
         ensure_unique(
             self.constants.iter().map(|constant| constant.name),
-            |name| PortSyncError::DuplicateConstant(name),
+            PortSyncError::DuplicateConstant,
         )?;
         Ok(())
     }

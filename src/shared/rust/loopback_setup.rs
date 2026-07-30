@@ -1017,7 +1017,7 @@ mod tests {
 
         // Ensure IFA_F flags are distinct
         assert_ne!(IFA_F_PERMANENT, IFA_F_NOPREFIXROUTE);
-        assert!(IFA_F_PERMANENT & IFA_F_NOPREFIXROUTE == 0);
+        assert_eq!(IFA_F_PERMANENT & IFA_F_NOPREFIXROUTE, 0);
 
         // Ensure scope values make sense
         assert_eq!(RT_SCOPE_HOST, 254);

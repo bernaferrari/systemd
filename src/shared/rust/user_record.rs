@@ -1062,10 +1062,11 @@ mod tests {
 
     #[test]
     fn test_rebalance_weight_constants() {
-        assert!(REBALANCE_WEIGHT_OFF < REBALANCE_WEIGHT_MIN);
-        assert!(REBALANCE_WEIGHT_MIN < REBALANCE_WEIGHT_DEFAULT);
-        assert!(REBALANCE_WEIGHT_DEFAULT < REBALANCE_WEIGHT_MAX);
-        assert!(REBALANCE_WEIGHT_MAX < REBALANCE_WEIGHT_UNSET);
+        assert_eq!(REBALANCE_WEIGHT_OFF, 0);
+        assert_eq!(REBALANCE_WEIGHT_MIN, 2);
+        assert_eq!(REBALANCE_WEIGHT_DEFAULT, 100);
+        assert_eq!(REBALANCE_WEIGHT_MAX, 10_000);
+        assert_eq!(REBALANCE_WEIGHT_UNSET, u64::MAX);
         assert_eq!(REBALANCE_WEIGHT_BACKING, 20);
     }
 

@@ -122,10 +122,10 @@ fn get_cname_target(
 ) -> Result<Option<String>, i32> {
     match rr.key.rtype {
         DNS_TYPE_CNAME => {
-            if let Some(ref target) = rr.cname_target {
-                if rr.key.name.eq_ignore_ascii_case(&query_key.name) {
-                    return Ok(Some(target.clone()));
-                }
+            if let Some(ref target) = rr.cname_target
+                && rr.key.name.eq_ignore_ascii_case(&query_key.name)
+            {
+                return Ok(Some(target.clone()));
             }
             Err(-EUNATCH)
         }

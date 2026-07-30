@@ -1517,7 +1517,7 @@ mod tests {
         for i in 0..50 {
             current = current.join(format!("d{i}"));
             fs::create_dir_all(&current).unwrap();
-            fs::write(current.join("file.txt"), &i.to_string()).unwrap();
+            fs::write(current.join("file.txt"), i.to_string()).unwrap();
         }
 
         rm_rf_directory(&dir).unwrap();
