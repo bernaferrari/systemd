@@ -284,6 +284,8 @@ pub fn render_journal_file_as_text(path: &Path) -> io::Result<String> {
     Ok(out)
 }
 
+// The on-disk creation API needs each independently validated journal-file input.
+#[allow(clippy::too_many_arguments)]
 pub fn create_empty_journal_file_at(
     path: &Path,
     mode: u32,
@@ -332,10 +334,10 @@ pub fn create_empty_journal_file_at(
         incompatible_flags,
     );
 
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
     }
 
     let mut file = OpenOptions::new()

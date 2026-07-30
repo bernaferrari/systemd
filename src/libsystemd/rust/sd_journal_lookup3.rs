@@ -75,9 +75,7 @@ pub fn jenkins_hashword(words: &[u32], initval: u32) -> u32 {
 
     let remainder = chunks.remainder();
     if !remainder.is_empty() {
-        if remainder.len() >= 1 {
-            a = a.wrapping_add(remainder[0]);
-        }
+        a = a.wrapping_add(remainder[0]);
         if remainder.len() >= 2 {
             b = b.wrapping_add(remainder[1]);
         }
@@ -107,9 +105,7 @@ pub fn jenkins_hashword2(words: &[u32], pc: u32, pb: u32) -> (u32, u32) {
 
     let remainder = chunks.remainder();
     if !remainder.is_empty() {
-        if remainder.len() >= 1 {
-            a = a.wrapping_add(remainder[0]);
-        }
+        a = a.wrapping_add(remainder[0]);
         if remainder.len() >= 2 {
             b = b.wrapping_add(remainder[1]);
         }

@@ -2,8 +2,8 @@
 //
 // PORT-SYNC: src/libsystemd/sd-journal/test-journal-dump.c
 
-const NEG_EBADF: i32 = -(libc::EBADF as i32);
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+const NEG_EBADF: i32 = -libc::EBADF;
+const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const HEADER_SIGNATURE: [u8; 8] = *b"LPKSHHRH";
 
 #[derive(Clone, Debug, PartialEq, Eq)]

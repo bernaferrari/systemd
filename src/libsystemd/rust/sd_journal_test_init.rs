@@ -2,8 +2,8 @@
 //
 // PORT-SYNC: src/libsystemd/sd-journal/test-journal-init.c
 
-const NEG_ECHILD: i32 = -(libc::ECHILD as i32);
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+const NEG_ECHILD: i32 = -libc::ECHILD;
+const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const SD_JOURNAL_ASSUME_IMMUTABLE: i32 = 2;
 pub const SD_JOURNAL_LOCAL_ONLY: i32 = 1;
 

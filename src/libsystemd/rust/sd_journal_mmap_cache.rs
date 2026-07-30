@@ -5,8 +5,8 @@
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EADDRNOTAVAIL: i32 = -(libc::EADDRNOTAVAIL as i32);
-pub const NEG_EEXIST: i32 = -(libc::EEXIST as i32);
+pub const NEG_EADDRNOTAVAIL: i32 = -libc::EADDRNOTAVAIL;
+pub const NEG_EEXIST: i32 = -libc::EEXIST;
 pub const WINDOWS_MIN: usize = 64;
 pub const UNUSED_MIN: usize = 4;
 pub const WINDOW_SIZE: usize = 8 * 1024 * 1024;

@@ -195,35 +195,23 @@ fn link_entry_into_array_plus_one(
     file: &mut File,
     header: &mut Header,
     extra: u64,
-    first: u64,
-    idx: u64,
-    tail: Option<u32>,
-    tail_idx: Option<u32>,
+    state: EntryArrayLinkState,
     object_offset: u64,
 ) -> io::Result<(u64, EntryArrayLinkState)> {
-    if idx == u64::MAX {
+    if state.idx == u64::MAX {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "entry array index overflow",
         ));
     }
 
-    if idx == 0 {
-        Ok((
-            object_offset,
-            EntryArrayLinkState {
-                first,
-                idx: 1,
-                tail,
-                tail_idx,
-            },
-        ))
+    if state.idx == 0 {
+        Ok((object_offset, EntryArrayLinkState { idx: 1, ..state }))
     } else {
+        let idx = state.idx;
         let mut state = EntryArrayLinkState {
-            first,
             idx: idx - 1,
-            tail,
-            tail_idx,
+            ..state
         };
         state = link_entry_into_array(file, header, state, object_offset)?;
         state.idx = idx + 1;
@@ -503,6 +491,8 @@ pub fn find_data_object_with_hash(
     Ok(None)
 }
 
+// The journal's on-disk entry fields deliberately remain explicit in this API.
+#[allow(clippy::too_many_arguments)]
 pub fn append_entry_object(
     file: &mut File,
     header: &mut Header,
@@ -602,10 +592,12 @@ pub fn link_data_object_to_entry(
         file,
         header,
         extra,
-        first,
-        idx,
-        tail,
-        tail_idx,
+        EntryArrayLinkState {
+            first,
+            idx,
+            tail,
+            tail_idx,
+        },
         entry_offset,
     )?;
     write_u64_at(file, data_offset + DATA_ENTRY_OFFSET_OFFSET, new_extra)?;

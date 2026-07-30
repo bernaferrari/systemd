@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const SD_JOURNAL_LOCAL_ONLY: i32 = 1;
 pub const SD_JOURNAL_ASSUME_IMMUTABLE: i32 = 2;
 
@@ -60,6 +60,7 @@ impl MockJournal {
         Ok(false)
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<bool, i32> {
         let start = self.cursor.map(|i| i + 1).unwrap_or(0);
         for idx in start..self.entries.len() {
