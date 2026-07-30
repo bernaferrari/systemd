@@ -63,31 +63,31 @@ impl Bitmap {
         self.clone()
     }
 
-    /// Set bit `n`. Returns `Ok(true)` if the bit was newly set,
-    /// `Ok(false)` if it was already set.
+    /// Set bit `n`.
     ///
     /// Returns `Err(BitmapError::OutOfRange)` if `n > BITMAPS_MAX_ENTRY`.
     ///
     /// Equivalent to C `bitmap_set()` which returns 0 on success,
     /// `-ERANGE` if `n > BITMAPS_MAX_ENTRY`, or `-ENOMEM` on allocation failure.
-    /// In safe Rust, allocation failure is not possible with `BTreeSet`.
-    pub fn set(&mut self, n: u64) -> Result<bool, BitmapError> {
+    /// `BTreeSet` cannot report allocation failure through this safe API.
+    pub fn set(&mut self, n: u64) -> Result<(), BitmapError> {
         if n > BITMAPS_MAX_ENTRY {
             return Err(BitmapError::OutOfRange);
         }
-        Ok(self.set.insert(n))
+        self.set.insert(n);
+        Ok(())
     }
 
-    /// Unset bit `n`. Returns `true` if the bit was previously set,
-    /// `false` if it was not set (or out of range).
+    /// Unset bit `n`.
     ///
-    /// Equivalent to C `bitmap_unset()` which silently ignores null/out-of-range.
-    pub fn unset(&mut self, n: u64) -> bool {
+    /// Equivalent to C `bitmap_unset()` which silently ignores absent and
+    /// out-of-range bits.
+    pub fn unset(&mut self, n: u64) {
         // Silently ignore out-of-range values, matching C behavior
         if n > BITMAPS_MAX_ENTRY {
-            return false;
+            return;
         }
-        self.set.remove(&n)
+        self.set.remove(&n);
     }
 
     /// Check if bit `n` is set.
@@ -151,15 +151,17 @@ mod tests {
         assert!(!b.contains(5));
         assert!(b.set(5).is_ok());
         assert!(b.contains(5));
-        assert!(!b.set(5).unwrap());
+        assert_eq!(b.set(5), Ok(()));
+        assert!(b.contains(5));
     }
 
     #[test]
-    fn test_set_returns_newly_inserted() {
+    fn test_set_is_idempotent() {
         let mut b = Bitmap::new();
-        assert!(b.set(10).unwrap());
-        assert!(!b.set(10).unwrap());
-        assert!(b.set(20).unwrap());
+        b.set(10).unwrap();
+        b.set(10).unwrap();
+        b.set(20).unwrap();
+        assert_eq!(b.iterate().collect::<Vec<_>>(), vec![10, 20]);
     }
 
     #[test]
@@ -167,25 +169,27 @@ mod tests {
         let mut b = Bitmap::new();
         b.set(7).unwrap();
         assert!(b.contains(7));
-        assert!(b.unset(7));
+        b.unset(7);
         assert!(!b.contains(7));
     }
 
     #[test]
-    fn test_unset_nonexistent_returns_false() {
+    fn test_unset_absent_is_a_noop() {
         let mut b = Bitmap::new();
-        assert!(!b.unset(99));
+        b.unset(99);
+        assert!(b.is_clear());
     }
 
     #[test]
     fn test_set_unset_roundtrip() {
         let mut b = Bitmap::new();
         for i in [0, 1, 63, 64, 65, 100, 1000, 0xffff] {
-            assert!(b.set(i).unwrap());
+            b.set(i).unwrap();
             assert!(b.contains(i));
-            assert!(b.unset(i));
+            b.unset(i);
             assert!(!b.contains(i));
-            assert!(!b.unset(i));
+            b.unset(i);
+            assert!(!b.contains(i));
         }
     }
 
@@ -206,7 +210,8 @@ mod tests {
     #[test]
     fn test_unset_exceeds_max_entry() {
         let mut b = Bitmap::new();
-        assert!(!b.unset(BITMAPS_MAX_ENTRY + 1));
+        b.unset(BITMAPS_MAX_ENTRY + 1);
+        assert!(b.is_clear());
     }
 
     #[test]
@@ -398,17 +403,17 @@ mod tests {
         let mut b = Bitmap::new();
         assert!(b.set(0).is_ok());
         assert!(b.contains(0));
-        assert!(b.unset(0));
+        b.unset(0);
         assert!(!b.contains(0));
     }
 
     #[test]
     fn test_many_bits() {
         let mut b = Bitmap::new();
-        let expected: Vec<u64> = (0..=BITMAPS_MAX_ENTRY)
-            .step_by(7)
-            .filter(|&i| b.set(i).unwrap())
-            .collect();
+        let expected: Vec<u64> = (0..=BITMAPS_MAX_ENTRY).step_by(7).collect();
+        for bit in &expected {
+            b.set(*bit).unwrap();
+        }
         assert_eq!(b.iterate().collect::<Vec<_>>(), expected);
     }
 
