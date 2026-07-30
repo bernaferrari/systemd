@@ -73,7 +73,7 @@ trace_cmd=(
     -o
     "$trace_dir/strace"
     -e
-    trace=%process,%file,%memory,%signal,%desc,%network,%ipc,%mount
+    trace=%process,%file,%memory,%signal,%desc,%network,%ipc,mount,umount2
     "$systemd_bin"
     --test
 )
