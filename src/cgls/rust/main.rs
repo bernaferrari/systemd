@@ -29,6 +29,7 @@ fn print_version() {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let refs: Vec<&str> = args[1..].iter().map(|s| s.as_str()).collect();
+    let show_version = refs.contains(&"--version");
 
     match lib::parse_cgls_args(&refs) {
         Ok(parsed) => {
@@ -41,8 +42,13 @@ fn main() {
             );
         }
         Err(0) => {
-            // --help or --version from the parser
-            print_help();
+            // The C-compatible parser uses zero for both informational
+            // requests; retain the requested distinction at the CLI boundary.
+            if show_version {
+                print_version();
+            } else {
+                print_help();
+            }
         }
         Err(code) => {
             eprintln!("Failed to parse arguments (errno {}).", -code);

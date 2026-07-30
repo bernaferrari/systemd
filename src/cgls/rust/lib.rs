@@ -14,9 +14,10 @@ pub const CGROUP_PATH_PREFIX: &str = "/sys/fs/cgroup";
 // ── Types ─────────────────────────────────────────────────────────────────
 
 /// Which type of unit to show.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ShowUnit {
     /// No unit filtering (default).
+    #[default]
     None,
     /// Show system units.
     System,
@@ -24,14 +25,8 @@ pub enum ShowUnit {
     User,
 }
 
-impl Default for ShowUnit {
-    fn default() -> Self {
-        ShowUnit::None
-    }
-}
-
-/// Output flags for cgroup display (mirrors OutputFlags from C).
 bitflags::bitflags! {
+    /// Output flags for cgroup display (mirrors OutputFlags from C).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct OutputFlags: u32 {
         const SHOW_ALL       = 1 << 0;
