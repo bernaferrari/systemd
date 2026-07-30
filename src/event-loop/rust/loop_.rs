@@ -15,6 +15,18 @@ use nix::sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags, EpollTime
 type Callback = Box<dyn FnMut(u32, u64) -> Result<()>>;
 
 #[cfg(target_os = "linux")]
+fn normalize_epoll_wait_result(result: Result<usize>) -> Result<Option<usize>> {
+    match result {
+        Ok(count) => Ok(Some(count)),
+        // sd_event turns an interrupted epoll wait into a pending loop turn
+        // rather than reporting a fatal dispatcher error. Do the same here:
+        // retrying a finite timeout would accidentally extend its deadline.
+        Err(Errno::EINTR) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(target_os = "linux")]
 struct Source {
     fd: RawFd,
     callback: Callback,
@@ -124,7 +136,9 @@ impl EventLoop {
 
         let mut events = [EpollEvent::empty(); 64];
         let timeout = EpollTimeout::try_from(timeout_ms as i32).map_err(|_| Errno::EINVAL)?;
-        let n = self.epoll.wait(&mut events, timeout)?;
+        let Some(n) = normalize_epoll_wait_result(self.epoll.wait(&mut events, timeout))? else {
+            return Ok(true);
+        };
 
         for event in &events[..n] {
             let data = event.data();
@@ -173,5 +187,28 @@ impl EventLoop {
         {
             -1
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interrupted_epoll_wait_is_a_nonfatal_pending_turn() {
+        assert_eq!(normalize_epoll_wait_result(Err(Errno::EINTR)), Ok(None));
+    }
+
+    #[test]
+    fn other_epoll_errors_remain_fatal() {
+        assert_eq!(
+            normalize_epoll_wait_result(Err(Errno::EBADF)),
+            Err(Errno::EBADF)
+        );
+    }
+
+    #[test]
+    fn ready_event_counts_are_preserved() {
+        assert_eq!(normalize_epoll_wait_result(Ok(3)), Ok(Some(3)));
     }
 }
