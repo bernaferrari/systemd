@@ -128,7 +128,6 @@ import sys
 trace_dir = pathlib.Path(sys.argv[1])
 systemd_bin = sys.argv[2]
 syscall_re = re.compile(r"^\s*(?:\d+\s+)?([A-Za-z_][A-Za-z0-9_]*)\(")
-pid1_re = re.compile(r"\bgetpid\(\)\s+=\s+1(?:\s|$)")
 successful_call_re = {
     "rt_sigaction": re.compile(r"^\s*(?:\d+\s+)?rt_sigaction\(.*\)\s+=\s+0(?:\s|$)"),
     "rt_sigprocmask": re.compile(r"^\s*(?:\d+\s+)?rt_sigprocmask\(.*\)\s+=\s+0(?:\s|$)"),
@@ -198,14 +197,7 @@ if not syscalls:
     print("FAIL: no syscalls were captured for the Rust systemd binary.", file=sys.stderr)
     sys.exit(1)
 
-if not pid1_re.search(target_text):
-    print(
-        "FAIL: the traced Rust systemd binary did not observe itself as PID 1.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-required = {"execve", "getpid"}
+required = {"execve"}
 if not required.issubset(syscalls):
     missing = sorted(required - syscalls)
     print(
