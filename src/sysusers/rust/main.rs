@@ -4,8 +4,8 @@
 // Binary entry point for systemd-sysusers
 
 use systemd_sysusers_rs::{
-    GSHADOW_PATH, Item, ItemType, PASSWORD_LOCKED_AND_INVALID, PASSWORD_SEE_SHADOW, SHADOW_PATH,
-    backup_path, group_path, parse_config_line, passwd_path,
+    Item, ItemType, PASSWORD_LOCKED_AND_INVALID, PASSWORD_SEE_SHADOW, SHADOW_PATH, group_path,
+    parse_config_line, passwd_path,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -63,10 +63,10 @@ fn next_available_uid(passwd: &str, min: u32, max: u32) -> u32 {
     if let Ok(content) = std::fs::read_to_string(passwd) {
         for line in content.lines() {
             let fields: Vec<&str> = line.split(':').collect();
-            if fields.len() >= 3 {
-                if let Ok(uid) = fields[2].parse::<u32>() {
-                    used.insert(uid);
-                }
+            if fields.len() >= 3
+                && let Ok(uid) = fields[2].parse::<u32>()
+            {
+                used.insert(uid);
             }
         }
     }
@@ -83,10 +83,10 @@ fn next_available_gid(group_file: &str, min: u32, max: u32) -> u32 {
     if let Ok(content) = std::fs::read_to_string(group_file) {
         for line in content.lines() {
             let fields: Vec<&str> = line.split(':').collect();
-            if fields.len() >= 3 {
-                if let Ok(gid) = fields[2].parse::<u32>() {
-                    used.insert(gid);
-                }
+            if fields.len() >= 3
+                && let Ok(gid) = fields[2].parse::<u32>()
+            {
+                used.insert(gid);
             }
         }
     }

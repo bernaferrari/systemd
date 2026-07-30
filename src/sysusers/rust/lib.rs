@@ -243,11 +243,11 @@ pub fn parse_config_line(line: &str, filename: &str, line_num: u32) -> Result<It
                 let uid_spec = fields[1];
                 if let Some(uid_str) = uid_spec.strip_prefix('/') {
                     item.uid_path = Some(uid_str.to_string());
-                } else if !uid_spec.is_empty() {
-                    if let Ok(uid) = uid_spec.parse::<u32>() {
-                        item.uid = uid;
-                        item.uid_set = true;
-                    }
+                } else if !uid_spec.is_empty()
+                    && let Ok(uid) = uid_spec.parse::<u32>()
+                {
+                    item.uid = uid;
+                    item.uid_set = true;
                 }
             }
 
@@ -283,11 +283,11 @@ pub fn parse_config_line(line: &str, filename: &str, line_num: u32) -> Result<It
 
             if fields.len() > 1 {
                 let gid_spec = fields[1];
-                if !gid_spec.is_empty() {
-                    if let Ok(gid) = gid_spec.parse::<u32>() {
-                        item.gid = gid;
-                        item.gid_set = true;
-                    }
+                if !gid_spec.is_empty()
+                    && let Ok(gid) = gid_spec.parse::<u32>()
+                {
+                    item.gid = gid;
+                    item.gid_set = true;
                 }
             }
 
@@ -336,7 +336,7 @@ fn parse_range(spec: &str) -> Result<(u32, u32), i32> {
 // ── Argument parsing ──────────────────────────────────────────────────────
 
 /// Parsed arguments for the sysusers tool.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SysusersArgs {
     /// Root directory for operations
     pub root: Option<String>,
@@ -348,18 +348,6 @@ pub struct SysusersArgs {
     pub inline: bool,
     /// Replace mode (only process specified config)
     pub replace: Option<String>,
-}
-
-impl Default for SysusersArgs {
-    fn default() -> Self {
-        Self {
-            root: None,
-            image: None,
-            dry_run: false,
-            inline: false,
-            replace: None,
-        }
-    }
 }
 
 // ── Backup file path ──────────────────────────────────────────────────────
