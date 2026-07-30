@@ -4,9 +4,14 @@
 //
 // BPF library dynamic loading utilities.
 //
-// Provides lazy dlopen-based loading of libbpf, symbol resolution for all
-// BPF helpers (map operations, program attach/detach, ring buffers, object
-// skeletons), and error-code translation for kernel-internal BPF errors.
+// Provides a safe loader-state and symbol-presence model for libbpf. The
+// authoritative C implementation owns the process-global typed function
+// pointers, configures libbpf logging, and calls `libbpf_get_error()` on
+// opaque libbpf pointers. This module deliberately does none of those things:
+// it never turns a `dlsym()` address into a callable Rust function pointer.
+//
+// That boundary is intentional. A production Rust replacement must introduce
+// a typed, lifetime-safe libbpf ABI table before it can replace C callers.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -108,11 +113,13 @@ const COMMON_SYMBOLS: &[&str] = &[
     "ring_buffer__poll",
 ];
 
-/// Optional compatibility/features symbols resolved by the C implementation.
+/// Optional compatibility/features symbol names from the C implementation.
 ///
-/// Their absence does not reject an otherwise usable libbpf. The C globals
-/// retain null or fallback initializers when these lookups fail.
-const OPTIONAL_SYMBOLS: &[&str] = &[
+/// Their absence does not reject an otherwise usable libbpf. C stores the
+/// successfully resolved function pointers (or retains NULL / the
+/// `bpf_token_create` `-ENOSYS` fallback). This safe model intentionally does
+/// not expose callable optional symbols until it has a typed ABI table.
+const OPTIONAL_SYMBOL_NAMES: &[&str] = &[
     "bpf_create_map",
     "bpf_map_create",
     "bpf_object__next_map",
@@ -121,11 +128,16 @@ const OPTIONAL_SYMBOLS: &[&str] = &[
 
 // ── Kernel error translation ───────────────────────────────────────────────
 
-/// Translate a libbpf / kernel BPF error code to a standard errno value.
+/// Translate an already-decoded libbpf error code to a standard errno value.
+///
+/// C's `bpf_get_error_translated(const void *)` first calls the dynamically
+/// loaded `libbpf_get_error(ptr)`, then performs this translation. Passing an
+/// opaque pointer across that ABI is deliberately out of scope for this safe
+/// value model; callers must supply the resulting integer error code.
 ///
 /// libbpf sometimes returns kernel-internal error codes that don't map to
-/// standard errnos. This function translates the known ones (e.g. -524
-/// → `-EOPNOTSUPP`) and passes everything else through unchanged.
+/// standard errnos. This function translates the known one (`-524` to
+/// `-EOPNOTSUPP`) and passes every other value through unchanged.
 ///
 /// See: <https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/include/linux/errno.h?h=v6.9&id=a38297e3fb012ddfa7ce0321a7e5a8daeb1872b6#n27>
 pub fn bpf_get_error_translated(raw_error: i32) -> i32 {
@@ -154,11 +166,13 @@ pub fn dlopen_bpf() -> Result<(), BpfError> {
 /// Attempt to dynamically load libbpf.
 ///
 /// This function is idempotent: after the first successful call it returns
-/// `Ok(())` immediately. Caches the first failure too, exactly as C's
-/// `dlopen_bpf()` does, so later calls return the same error without retrying.
+/// `Ok(())` immediately. It caches the final failure from C's soname order as
+/// C's `dlopen_bpf()` does, so later calls return the same error without
+/// retrying.
 ///
-/// `log_level` controls the verbosity of log messages emitted on failure
-/// (0 = silent, higher = more verbose).
+/// `log_level` is accepted for call-shape parity. C uses it only for process
+/// logging; this safe state model neither installs C's libbpf print callback
+/// nor emits process logs.
 pub fn dlopen_bpf_full(log_level: i32) -> Result<(), BpfError> {
     if BPF_LOADED.load(Ordering::Acquire) {
         return Ok(());
@@ -204,12 +218,17 @@ pub fn dlopen_bpf_full(log_level: i32) -> Result<(), BpfError> {
 fn try_load_libbpf(lib_name: &str, _log_level: i32) -> Result<(), BpfError> {
     let handle = dlopen_library(lib_name)?;
 
-    let missing = find_missing_symbols(&handle, COMMON_SYMBOLS);
-    if !missing.is_empty() {
-        return Err(BpfError::SymbolNotFound(missing.join(", ")));
+    if let Some(symbol) = find_first_missing_symbol(&handle, COMMON_SYMBOLS) {
+        // `dlsym_many_or_warnv()` in src/basic/dlfcn-util.c resolves the
+        // required entries in declaration order and returns `-ELIBBAD` at the
+        // first missing one. Do the same rather than reporting a synthetic
+        // aggregate that C never produces.
+        return Err(BpfError::SymbolNotFound(symbol));
     }
 
-    // The resolved symbols are process-lifetime state, matching the C loader.
+    // The validated library reference is process-lifetime state, matching the
+    // C loader. Unlike C, this module intentionally does not retain or call
+    // individual libbpf symbol addresses.
     handle.publish();
 
     Ok(())
@@ -217,17 +236,26 @@ fn try_load_libbpf(lib_name: &str, _log_level: i32) -> Result<(), BpfError> {
 
 // ── Symbol resolution helpers ──────────────────────────────────────────────
 
-/// Check which symbols from `names` are missing in the loaded library.
-fn find_missing_symbols(handle: &UnpublishedDlopenHandle, names: &[&str]) -> Vec<String> {
-    names
-        .iter()
-        .filter_map(|&symbol| {
-            handle
-                .resolve_required(symbol)
-                .err()
-                .map(|error| error.to_string())
-        })
-        .collect()
+/// Return the first required symbol missing from a loaded library.
+///
+/// This preserves the sequential failure behavior of C's
+/// `dlsym_many_or_warnv()`. The detailed `dlerror()` text is intentionally
+/// kept inside the shared loader diagnostic; C's public result is only
+/// `-ELIBBAD` for this condition.
+fn find_first_missing_symbol(handle: &UnpublishedDlopenHandle, names: &[&str]) -> Option<String> {
+    first_missing_symbol(names, |symbol| handle.resolve_required(symbol).is_err())
+        .map(str::to_owned)
+}
+
+/// Select the first missing entry from C's ordered required-symbol list.
+///
+/// Kept separate from the loader call so the C-visible first-failure rule is
+/// directly testable without opening a host library.
+fn first_missing_symbol<'a>(
+    names: &'a [&'a str],
+    mut is_missing: impl FnMut(&str) -> bool,
+) -> Option<&'a str> {
+    names.iter().copied().find(|symbol| is_missing(symbol))
 }
 
 // ── Platform dlopen / dlsym wrappers ────────────────────────────────────────
@@ -285,15 +313,18 @@ pub fn bpf_library_candidates() -> &'static [&'static str] {
 
 // ── Symbol name introspection ───────────────────────────────────────────────
 
-/// Returns the full set of symbols required from a modern libbpf.
+/// Returns the set of symbols C requires from either supported libbpf soname.
 ///
-/// The required set is soname-independent; compatibility and newer feature
-/// entry points are optional in the C implementation.
+/// The C `MODERN_LIBBPF` preprocessor branch changes only the C type-checking
+/// macro used for three attach functions, not the symbol names. Compatibility
+/// and newer feature entry points are optional in C.
 pub fn bpf_required_symbols_modern() -> HashSet<&'static str> {
     COMMON_SYMBOLS.iter().copied().collect()
 }
 
-/// Returns the full set of symbols required from a legacy libbpf.
+/// Returns the set of symbols C requires from a legacy libbpf.
+///
+/// See [`bpf_required_symbols_modern`] for why this has the same members.
 pub fn bpf_required_symbols_legacy() -> HashSet<&'static str> {
     COMMON_SYMBOLS.iter().copied().collect()
 }
@@ -422,6 +453,17 @@ mod tests {
     }
 
     #[test]
+    fn test_first_missing_symbol_preserves_c_resolution_order() {
+        let names = ["first", "second", "third"];
+
+        assert_eq!(
+            first_missing_symbol(&names, |symbol| symbol == "second" || symbol == "third"),
+            Some("second")
+        );
+        assert_eq!(first_missing_symbol(&names, |_| false), None);
+    }
+
+    #[test]
     fn test_bpf_feature_description() {
         let desc = bpf_feature_description();
         assert!(!desc.is_empty());
@@ -506,8 +548,8 @@ mod tests {
     #[test]
     fn test_optional_symbols_are_not_required() {
         let common: HashSet<_> = COMMON_SYMBOLS.iter().copied().collect();
-        assert!(!OPTIONAL_SYMBOLS.is_empty());
-        for symbol in OPTIONAL_SYMBOLS {
+        assert!(!OPTIONAL_SYMBOL_NAMES.is_empty());
+        for symbol in OPTIONAL_SYMBOL_NAMES {
             assert!(
                 !common.contains(symbol),
                 "optional symbol {symbol} also in COMMON"
