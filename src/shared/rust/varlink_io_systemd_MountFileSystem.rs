@@ -76,6 +76,10 @@ impl PartitionDesignator {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "root" => Some(PartitionDesignator::Root),
@@ -135,6 +139,10 @@ impl MountMapMode {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "root" => Some(MountMapMode::Root),
@@ -382,9 +390,33 @@ pub fn is_valid_fd(fd: i64) -> bool {
     fd >= 0
 }
 
+macro_rules! impl_varlink_from_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::str::FromStr for $ty {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                <$ty>::from_str(s)
+                    .ok_or_else(|| format!("unknown {}: {s}", stringify!($ty)))
+            }
+        }
+    )+};
+}
+
+impl_varlink_from_str!(PartitionDesignator, MountMapMode);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parsers() {
+        assert_eq!(
+            "root".parse::<PartitionDesignator>(),
+            Ok(PartitionDesignator::Root)
+        );
+        assert_eq!("root".parse::<MountMapMode>(), Ok(MountMapMode::Root));
+    }
 
     #[test]
     fn test_interface_name() {

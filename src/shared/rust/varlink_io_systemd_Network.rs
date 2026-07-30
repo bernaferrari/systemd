@@ -40,6 +40,10 @@ impl LinkState {
     ];
 
     /// Parse from the varlink wire string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "pending" => Ok(Self::Pending),
@@ -80,6 +84,10 @@ impl LinkAddressState {
     pub const VALUES: &[Self] = &[Self::Off, Self::Degraded, Self::Routable];
 
     /// Parse from the varlink wire string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "off" => Ok(Self::Off),
@@ -112,6 +120,10 @@ impl LinkOnlineState {
     pub const VALUES: &[Self] = &[Self::Offline, Self::Partial, Self::Online];
 
     /// Parse from the varlink wire string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "offline" => Ok(Self::Offline),
@@ -145,6 +157,10 @@ impl LinkRequiredAddressFamily {
     pub const VALUES: &[Self] = &[Self::Any, Self::Ipv4, Self::Ipv6, Self::Both];
 
     /// Parse from the varlink wire string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "any" => Ok(Self::Any),
@@ -236,6 +252,10 @@ pub enum NetworkError {
 
 impl NetworkError {
     /// Parse from the varlink error string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "AlreadyReloading" => Ok(Self::AlreadyReloading),
@@ -285,9 +305,47 @@ pub struct GetNamespaceIdOutput {
     pub namespace_nsid: Option<i64>,
 }
 
+macro_rules! impl_varlink_from_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::str::FromStr for $ty {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                <$ty>::from_str(s)
+            }
+        }
+    )+};
+}
+
+impl_varlink_from_str!(
+    LinkState,
+    LinkAddressState,
+    LinkOnlineState,
+    LinkRequiredAddressFamily,
+    NetworkError
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parsers() {
+        assert_eq!("pending".parse::<LinkState>(), Ok(LinkState::Pending));
+        assert_eq!("off".parse::<LinkAddressState>(), Ok(LinkAddressState::Off));
+        assert_eq!(
+            "offline".parse::<LinkOnlineState>(),
+            Ok(LinkOnlineState::Offline)
+        );
+        assert_eq!(
+            "any".parse::<LinkRequiredAddressFamily>(),
+            Ok(LinkRequiredAddressFamily::Any)
+        );
+        assert_eq!(
+            "AlreadyReloading".parse::<NetworkError>(),
+            Ok(NetworkError::AlreadyReloading)
+        );
+    }
 
     #[test]
     fn test_interface_name() {

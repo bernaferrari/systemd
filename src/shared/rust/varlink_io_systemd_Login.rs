@@ -50,6 +50,10 @@ impl SessionType {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "unspecified" => Some(SessionType::Unspecified),
@@ -118,6 +122,10 @@ impl SessionClass {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "user" => Some(SessionClass::User),
@@ -294,9 +302,30 @@ pub const ERROR_IDS: &[&str] = &[
     "io.systemd.Login.NoSessionPIDFD",
 ];
 
+macro_rules! impl_varlink_from_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::str::FromStr for $ty {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                <$ty>::from_str(s)
+                    .ok_or_else(|| format!("unknown {}: {s}", stringify!($ty)))
+            }
+        }
+    )+};
+}
+
+impl_varlink_from_str!(SessionType, SessionClass);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parsers() {
+        assert_eq!("tty".parse::<SessionType>(), Ok(SessionType::Tty));
+        assert_eq!("user".parse::<SessionClass>(), Ok(SessionClass::User));
+    }
 
     #[test]
     fn test_interface_name() {

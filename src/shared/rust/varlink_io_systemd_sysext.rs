@@ -41,6 +41,10 @@ pub enum ImageClass {
 
 impl ImageClass {
     /// Parse from string
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, i32> {
         match s {
             "sysext" => Ok(ImageClass::Sysext),
@@ -75,6 +79,10 @@ pub enum ImageType {
 
 impl ImageType {
     /// Parse from string
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, i32> {
         match s {
             "directory" => Ok(ImageType::Directory),
@@ -193,9 +201,29 @@ pub fn error_names() -> &'static [&'static str] {
     &[ERROR_NO_IMAGES_FOUND, ERROR_ALREADY_MERGED]
 }
 
+macro_rules! impl_varlink_from_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::str::FromStr for $ty {
+            type Err = i32;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                <$ty>::from_str(s)
+            }
+        }
+    )+};
+}
+
+impl_varlink_from_str!(ImageClass, ImageType);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parsers() {
+        assert_eq!("sysext".parse::<ImageClass>(), Ok(ImageClass::Sysext));
+        assert_eq!("directory".parse::<ImageType>(), Ok(ImageType::Directory));
+    }
 
     #[test]
     fn test_interface_name() {

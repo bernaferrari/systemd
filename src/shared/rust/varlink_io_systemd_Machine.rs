@@ -61,6 +61,10 @@ impl AcquireMetadata {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "no" => Some(AcquireMetadata::No),
@@ -93,6 +97,10 @@ impl KillWhom {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "leader" => Some(KillWhom::Leader),
@@ -123,6 +131,10 @@ impl MachineOpenMode {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "tty" => Some(MachineOpenMode::Tty),
@@ -295,9 +307,31 @@ pub fn is_valid_machine_name(name: &str) -> bool {
     !name.is_empty() && !name.contains('\0') && name.len() <= 255
 }
 
+macro_rules! impl_varlink_from_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::str::FromStr for $ty {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                <$ty>::from_str(s)
+                    .ok_or_else(|| format!("unknown {}: {s}", stringify!($ty)))
+            }
+        }
+    )+};
+}
+
+impl_varlink_from_str!(AcquireMetadata, KillWhom, MachineOpenMode);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parsers() {
+        assert_eq!("no".parse::<AcquireMetadata>(), Ok(AcquireMetadata::No));
+        assert_eq!("leader".parse::<KillWhom>(), Ok(KillWhom::Leader));
+        assert_eq!("tty".parse::<MachineOpenMode>(), Ok(MachineOpenMode::Tty));
+    }
 
     #[test]
     fn test_interface_name() {

@@ -53,6 +53,10 @@ impl ProgressPhase {
     ];
 
     /// Parse from the varlink wire string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "loading_definitions" => Ok(Self::LoadingDefinitions),
@@ -110,6 +114,10 @@ impl EmptyMode {
     pub const VALUES: &[Self] = &[Self::Refuse, Self::Allow, Self::Require, Self::Force];
 
     /// Parse from the varlink wire string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "refuse" => Ok(Self::Refuse),
@@ -298,6 +306,10 @@ pub enum RepartError {
 
 impl RepartError {
     /// Parse from the varlink error string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "NoCandidateDevices" => Ok(Self::NoCandidateDevices),
@@ -329,9 +341,36 @@ pub fn error_names() -> &'static [&'static str] {
     ]
 }
 
+macro_rules! impl_varlink_from_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::str::FromStr for $ty {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                <$ty>::from_str(s)
+            }
+        }
+    )+};
+}
+
+impl_varlink_from_str!(ProgressPhase, EmptyMode, RepartError);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parsers() {
+        assert_eq!(
+            "loading_definitions".parse::<ProgressPhase>(),
+            Ok(ProgressPhase::LoadingDefinitions)
+        );
+        assert_eq!("refuse".parse::<EmptyMode>(), Ok(EmptyMode::Refuse));
+        assert_eq!(
+            "NoCandidateDevices".parse::<RepartError>(),
+            Ok(RepartError::NoCandidateDevices)
+        );
+    }
 
     #[test]
     fn test_interface_name() {

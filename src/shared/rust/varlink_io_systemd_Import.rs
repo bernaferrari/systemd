@@ -51,6 +51,10 @@ impl ImageClass {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "machine" => Some(ImageClass::Machine),
@@ -79,6 +83,10 @@ impl RemoteType {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "raw" => Some(RemoteType::Raw),
@@ -124,6 +132,10 @@ impl TransferType {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "import_tar" => Some(TransferType::ImportTar),
@@ -176,6 +188,10 @@ impl ImageVerify {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "no" => Some(ImageVerify::No),
@@ -350,9 +366,36 @@ pub fn is_valid_progress(percent: f64) -> bool {
     (0.0..=100.0).contains(&percent)
 }
 
+macro_rules! impl_varlink_from_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::str::FromStr for $ty {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                <$ty>::from_str(s)
+                    .ok_or_else(|| format!("unknown {}: {s}", stringify!($ty)))
+            }
+        }
+    )+};
+}
+
+impl_varlink_from_str!(ImageClass, RemoteType, TransferType, ImageVerify);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parsers() {
+        assert_eq!("machine".parse::<ImageClass>(), Ok(ImageClass::Machine));
+        assert_eq!("raw".parse::<RemoteType>(), Ok(RemoteType::Raw));
+        assert_eq!(
+            "import_tar".parse::<TransferType>(),
+            Ok(TransferType::ImportTar)
+        );
+        assert_eq!("no".parse::<ImageVerify>(), Ok(ImageVerify::No));
+        assert!("invalid".parse::<ImageClass>().is_err());
+    }
 
     #[test]
     fn test_interface_name() {

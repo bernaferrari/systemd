@@ -64,6 +64,10 @@ pub enum DNSProtocol {
 
 impl DNSProtocol {
     /// Parse from string
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, i32> {
         match s {
             "dns" => Ok(DNSProtocol::Dns),
@@ -96,6 +100,10 @@ pub enum DNSOverTLSMode {
 
 impl DNSOverTLSMode {
     /// Parse from string
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, i32> {
         match s {
             "no" => Ok(DNSOverTLSMode::No),
@@ -128,6 +136,10 @@ pub enum ResolveSupport {
 
 impl ResolveSupport {
     /// Parse from string
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, i32> {
         match s {
             "no" => Ok(ResolveSupport::No),
@@ -155,6 +167,10 @@ pub enum ResolvConfMode {
 
 impl ResolvConfMode {
     /// Parse from string
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, i32> {
         match s {
             "uplink" => Ok(ResolvConfMode::Uplink),
@@ -178,6 +194,10 @@ pub enum BrowseServiceUpdateFlag {
 
 impl BrowseServiceUpdateFlag {
     /// Parse from string
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, i32> {
         match s {
             "added" => Ok(BrowseServiceUpdateFlag::Added),
@@ -342,9 +362,44 @@ pub fn is_known_error(name: &str) -> bool {
     )
 }
 
+macro_rules! impl_varlink_from_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::str::FromStr for $ty {
+            type Err = i32;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                <$ty>::from_str(s)
+            }
+        }
+    )+};
+}
+
+impl_varlink_from_str!(
+    DNSProtocol,
+    DNSOverTLSMode,
+    ResolveSupport,
+    ResolvConfMode,
+    BrowseServiceUpdateFlag
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parsers() {
+        assert_eq!("dns".parse::<DNSProtocol>(), Ok(DNSProtocol::Dns));
+        assert_eq!("no".parse::<DNSOverTLSMode>(), Ok(DNSOverTLSMode::No));
+        assert_eq!("no".parse::<ResolveSupport>(), Ok(ResolveSupport::No));
+        assert_eq!(
+            "uplink".parse::<ResolvConfMode>(),
+            Ok(ResolvConfMode::Uplink)
+        );
+        assert_eq!(
+            "added".parse::<BrowseServiceUpdateFlag>(),
+            Ok(BrowseServiceUpdateFlag::Added)
+        );
+    }
 
     #[test]
     fn test_interface_name() {

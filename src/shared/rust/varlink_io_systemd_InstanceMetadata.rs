@@ -63,6 +63,10 @@ impl WellKnown {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "base" => Some(WellKnown::Base),
@@ -236,9 +240,23 @@ pub fn is_valid_refresh_usec(usec: i64) -> bool {
     usec >= 0
 }
 
+impl std::str::FromStr for WellKnown {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        WellKnown::from_str(s).ok_or_else(|| format!("unknown WellKnown: {s}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parser() {
+        assert_eq!("base".parse::<WellKnown>(), Ok(WellKnown::Base));
+        assert!("unknown".parse::<WellKnown>().is_err());
+    }
 
     #[test]
     fn test_interface_name() {

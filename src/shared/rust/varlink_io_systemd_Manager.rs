@@ -61,6 +61,10 @@ impl SystemState {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "initializing" => Some(SystemState::Initializing),
@@ -262,9 +266,23 @@ pub fn is_valid_log_level(level: &str) -> bool {
     )
 }
 
+impl std::str::FromStr for SystemState {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        SystemState::from_str(s).ok_or_else(|| format!("unknown SystemState: {s}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parser() {
+        assert_eq!("running".parse::<SystemState>(), Ok(SystemState::Running));
+        assert!("unknown".parse::<SystemState>().is_err());
+    }
 
     #[test]
     fn test_interface_name() {

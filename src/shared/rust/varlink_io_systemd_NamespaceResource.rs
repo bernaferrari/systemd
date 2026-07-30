@@ -28,6 +28,10 @@ impl AllocateUserRangeType {
     pub const VALUES: &[Self] = &[Self::Managed, Self::Self_];
 
     /// Parse from the varlink wire string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "managed" => Ok(Self::Managed),
@@ -184,6 +188,10 @@ pub enum NetworkMode {
 
 impl NetworkMode {
     /// Parse from varlink wire string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "veth" => Ok(Self::Veth),
@@ -260,6 +268,10 @@ impl NamespaceResourceError {
     ];
 
     /// Parse from the varlink error string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the generated inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "UserNamespaceInterfaceNotSupported" => Ok(Self::UserNamespaceInterfaceNotSupported),
@@ -340,9 +352,36 @@ pub fn validate_delegate_ranges(ranges: Option<i64>) -> Result<(), String> {
     }
 }
 
+macro_rules! impl_varlink_from_str {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl std::str::FromStr for $ty {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                <$ty>::from_str(s)
+            }
+        }
+    )+};
+}
+
+impl_varlink_from_str!(AllocateUserRangeType, NetworkMode, NamespaceResourceError);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standard_from_str_matches_wire_parsers() {
+        assert_eq!(
+            "managed".parse::<AllocateUserRangeType>(),
+            Ok(AllocateUserRangeType::Managed)
+        );
+        assert_eq!("veth".parse::<NetworkMode>(), Ok(NetworkMode::Veth));
+        assert_eq!(
+            "NameExists".parse::<NamespaceResourceError>(),
+            Ok(NamespaceResourceError::NameExists)
+        );
+    }
 
     #[test]
     fn test_interface_name() {
