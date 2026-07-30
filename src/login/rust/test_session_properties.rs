@@ -3,6 +3,7 @@
 
 use crate::logind_core::SessionType;
 use crate::logind_session::Session;
+use std::str::FromStr;
 
 pub fn all_session_types() -> [SessionType; 5] {
     [

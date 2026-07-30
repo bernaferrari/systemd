@@ -3,6 +3,7 @@
 
 use crate::logind_core::{SessionClass, SessionType};
 use crate::logind_session::Session;
+use std::str::FromStr;
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

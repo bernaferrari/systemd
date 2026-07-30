@@ -33,6 +33,8 @@ pub fn source_lines() -> usize {
 mod ffi_tests {
     #[test]
     fn source_is_embedded() {
+        assert_eq!(super::SOURCE_PATH, "src/login/test-login-shared.c");
         assert!(!super::SOURCE_TEXT.is_empty());
+        assert!(super::source_lines() > 0);
     }
 }

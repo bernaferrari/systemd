@@ -62,6 +62,12 @@ mod tests {
             HandleAction::Suspend,
             None
         ));
+        assert!(!logind_wall_tty_filter(
+            "/dev/tty1",
+            true,
+            HandleAction::Sleep,
+            None
+        ));
     }
 
     #[test]

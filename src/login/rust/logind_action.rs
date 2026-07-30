@@ -13,9 +13,12 @@ pub enum HandleAction {
     Hibernate,
     HybridSleep,
     SuspendThenHibernate,
+    /// The C high-level HANDLE_SLEEP action. It is selected into a concrete
+    /// sleep operation before execution.
+    Sleep,
+    SecureAttentionKey,
     Lock,
     FactoryReset,
-    SecureAttentionKey,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +112,25 @@ const HANDLE_ACTIONS: &[HandleActionData] = &[
         message: "System is suspending, then hibernating",
         verb: "sleep",
     },
+    // C's HANDLE_SLEEP has public string-table entries but no executable
+    // action-data entry: logind resolves it to a concrete sleep action first.
+    // Keep the safe model total for parsing, wall filtering, and metadata.
+    HandleActionData {
+        action: HandleAction::Sleep,
+        name: "sleep",
+        target: None,
+        polkit_action: None,
+        message: "System is sleeping",
+        verb: "sleep",
+    },
+    HandleActionData {
+        action: HandleAction::SecureAttentionKey,
+        name: "secure-attention-key",
+        target: None,
+        polkit_action: None,
+        message: "Secure attention key pressed",
+        verb: "secure attention",
+    },
     HandleActionData {
         action: HandleAction::Lock,
         name: "lock",
@@ -124,14 +146,6 @@ const HANDLE_ACTIONS: &[HandleActionData] = &[
         polkit_action: Some("org.freedesktop.login1.set-reboot-parameter"),
         message: "System is performing a factory reset",
         verb: "factory reset",
-    },
-    HandleActionData {
-        action: HandleAction::SecureAttentionKey,
-        name: "secure-attention-key",
-        target: None,
-        polkit_action: None,
-        message: "Secure attention key pressed",
-        verb: "secure attention",
     },
 ];
 
@@ -150,7 +164,11 @@ impl HandleAction {
     pub fn is_sleep(self) -> bool {
         matches!(
             self,
-            Self::Suspend | Self::Hibernate | Self::HybridSleep | Self::SuspendThenHibernate
+            Self::Suspend
+                | Self::Hibernate
+                | Self::HybridSleep
+                | Self::SuspendThenHibernate
+                | Self::Sleep
         )
     }
 
@@ -161,14 +179,26 @@ impl HandleAction {
     pub fn message(self) -> &'static str {
         self.data().message
     }
+}
 
-    pub fn from_str(name: &str) -> Result<Self, String> {
+impl std::str::FromStr for HandleAction {
+    type Err = String;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
         HANDLE_ACTIONS
             .iter()
             .find(|entry| entry.name == name)
             .map(|entry| entry.action)
             .ok_or_else(|| format!("unknown handle action: {name}"))
     }
+}
+
+/// C-parity facade for `handle_action_from_string()`.
+///
+/// Keep parsing at the string-table boundary so Rust callers do not need to
+/// rely on the inherent-method spelling that predates `FromStr`.
+pub fn handle_action_from_string(name: &str) -> Result<HandleAction, String> {
+    name.parse()
 }
 
 pub fn handle_action_lookup(action: HandleAction) -> &'static HandleActionData {
@@ -178,11 +208,13 @@ pub fn handle_action_lookup(action: HandleAction) -> &'static HandleActionData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn sleep_actions_are_detected() {
         assert!(HandleAction::Suspend.is_sleep());
         assert!(HandleAction::HybridSleep.is_sleep());
+        assert!(HandleAction::Sleep.is_sleep());
         assert!(!HandleAction::Reboot.is_sleep());
     }
 
@@ -192,8 +224,24 @@ mod tests {
             HandleAction::PowerOff,
             HandleAction::Reboot,
             HandleAction::Hibernate,
+            HandleAction::Sleep,
         ] {
             assert_eq!(HandleAction::from_str(action.as_str()), Ok(action));
+            assert_eq!(handle_action_from_string(action.as_str()), Ok(action));
         }
+
+        assert_eq!(
+            handle_action_from_string("invalid"),
+            Err("unknown handle action: invalid".into())
+        );
+    }
+
+    #[test]
+    fn high_level_sleep_keeps_the_c_public_string_table_shape() {
+        let sleep = handle_action_lookup(HandleAction::Sleep);
+        assert_eq!(sleep.name, "sleep");
+        assert_eq!(sleep.verb, "sleep");
+        assert_eq!(sleep.target, None);
+        assert_eq!(sleep.polkit_action, None);
     }
 }

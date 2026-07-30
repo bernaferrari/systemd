@@ -26,8 +26,16 @@ pub mod logind_wall;
 pub mod pam_systemd;
 pub mod pam_systemd_loadkey;
 pub mod sysfs_show;
-pub mod test_inhibit;
-pub mod test_login_shared;
-pub mod test_login_tables;
-pub mod test_session_properties;
+// These mirror C test executables and are intentionally absent from the
+// production library. Keeping the module boundary here (rather than only
+// gating individual test bodies) also prevents their test-only imports and
+// source fixtures from becoming production API.
+#[cfg(test)]
+mod test_inhibit;
+#[cfg(test)]
+mod test_login_shared;
+#[cfg(test)]
+mod test_login_tables;
+#[cfg(test)]
+mod test_session_properties;
 pub mod user_runtime_dir;

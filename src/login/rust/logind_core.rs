@@ -96,8 +96,12 @@ impl SessionType {
             Self::Web => "web",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, String> {
+impl std::str::FromStr for SessionType {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "unspecified" => Ok(Self::Unspecified),
             "tty" => Ok(Self::Tty),
@@ -108,6 +112,14 @@ impl SessionType {
             _ => Err(format!("unknown session type: {value}")),
         }
     }
+}
+
+/// C-parity facade for `session_type_from_string()`.
+///
+/// This keeps the parser associated with the C string-table operation while
+/// Rust's standard `FromStr` trait provides the idiomatic parsing API.
+pub fn session_type_from_string(value: &str) -> Result<SessionType, String> {
+    value.parse()
 }
 
 impl SessionClass {
@@ -147,6 +159,7 @@ pub fn session_id_valid(id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn defaults_follow_c_shape() {
@@ -161,5 +174,14 @@ mod tests {
         assert!(seat_name_is_valid("seat0"));
         assert!(session_id_valid("c1"));
         assert!(!session_id_valid(""));
+    }
+
+    #[test]
+    fn session_type_parser_matches_string_table() {
+        assert_eq!(SessionType::from_str("wayland"), Ok(SessionType::Wayland));
+        assert_eq!(
+            session_type_from_string("invalid"),
+            Err("unknown session type: invalid".into())
+        );
     }
 }
