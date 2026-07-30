@@ -381,7 +381,7 @@ mod tests {
     use super::*;
 
     fn make_minimal_bmp(depth: u16, width: u32, height: u32) -> Vec<u8> {
-        let row_size = ((depth as usize) * (width as usize) + 31) / 32 * 4;
+        let row_size = ((depth as usize) * (width as usize)).div_ceil(32) * 4;
         let pixel_data_size = row_size * (height as usize);
         let dib_size: u32 = 40;
         let offset = (BMP_FILE_HEADER_SIZE + dib_size as usize) as u32;

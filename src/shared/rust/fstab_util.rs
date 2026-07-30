@@ -621,7 +621,6 @@ proc /proc proc nosuid,nodev,noexec 0 0
         assert_eq!(result, PathBuf::from("/dev/disk/by-uuid/ab\\x20cd"));
     }
 
-    #[test]
     // fn find_by_mountpoint() {
     // let entries = vec![
     // FstabEntry {

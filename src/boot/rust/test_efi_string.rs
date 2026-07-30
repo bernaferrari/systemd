@@ -189,7 +189,7 @@ mod tests {
         assert_eq!(strlen8(Some(b"")), 0);
         assert_eq!(strlen8(Some(b"1")), 1);
         assert_eq!(strlen8(Some(b"123456789")), 9);
-        assert_eq!(strlen8(Some(b"12\045")), 2);
+        assert_eq!(strlen8(Some(b"12\x0045")), 2);
     }
 
     #[test]

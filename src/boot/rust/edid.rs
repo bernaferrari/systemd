@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn test_get_panel_id_valid() {
         let header = EdidHeader {
-            manufacturer: [b'A', b'B', b'C'],
+            manufacturer: *b"ABC",
             product_code: 0x1234,
             version: 1,
             revision: 4,
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn test_get_panel_id_zero_product() {
         let header = EdidHeader {
-            manufacturer: [b'X', b'Y', b'Z'],
+            manufacturer: *b"XYZ",
             product_code: 0x0000,
             version: 1,
             revision: 0,
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn test_get_panel_id_invalid_manufacturer() {
         let header = EdidHeader {
-            manufacturer: [b'1', b'2', b'3'],
+            manufacturer: *b"123",
             product_code: 0,
             version: 1,
             revision: 4,
