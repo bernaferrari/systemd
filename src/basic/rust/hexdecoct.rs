@@ -159,8 +159,13 @@ pub fn hexmem(data: &[u8]) -> String {
     out
 }
 
+#[inline]
+const fn is_systemd_whitespace_char(ch: char) -> bool {
+    matches!(ch, ' ' | '\t' | '\n' | '\r')
+}
+
 fn unhex_next(chars: &[char], index: &mut usize) -> Result<Option<i32>, i32> {
-    while *index < chars.len() && chars[*index].is_ascii_whitespace() {
+    while *index < chars.len() && is_systemd_whitespace_char(chars[*index]) {
         *index += 1;
     }
     if *index >= chars.len() {
@@ -170,7 +175,7 @@ fn unhex_next(chars: &[char], index: &mut usize) -> Result<Option<i32>, i32> {
     let value = unhexchar(chars[*index])?;
     *index += 1;
 
-    while *index < chars.len() && chars[*index].is_ascii_whitespace() {
+    while *index < chars.len() && is_systemd_whitespace_char(chars[*index]) {
         *index += 1;
     }
 
@@ -368,7 +373,7 @@ pub fn base64mem(data: &[u8]) -> Result<String, i32> {
 }
 
 fn unbase64_next(chars: &[char], index: &mut usize) -> Result<Option<Option<i32>>, i32> {
-    while *index < chars.len() && chars[*index].is_ascii_whitespace() {
+    while *index < chars.len() && is_systemd_whitespace_char(chars[*index]) {
         *index += 1;
     }
     if *index >= chars.len() {
@@ -376,7 +381,7 @@ fn unbase64_next(chars: &[char], index: &mut usize) -> Result<Option<Option<i32>
     }
     let ch = chars[*index];
     *index += 1;
-    while *index < chars.len() && chars[*index].is_ascii_whitespace() {
+    while *index < chars.len() && is_systemd_whitespace_char(chars[*index]) {
         *index += 1;
     }
     if ch == '=' {
@@ -413,14 +418,22 @@ pub fn unbase64mem_full(s: &str) -> Result<Vec<u8>, i32> {
         match (c, d) {
             (None, Some(_)) => return Err(Errno::EINVAL.to_neg_errno()),
             (None, None) => {
-                if b & 15 != 0 || chars[index..].iter().any(|ch| !ch.is_ascii_whitespace()) {
+                if b & 15 != 0
+                    || chars[index..]
+                        .iter()
+                        .any(|ch| !is_systemd_whitespace_char(*ch))
+                {
                     return Err(Errno::EINVAL.to_neg_errno());
                 }
                 out.push(((a << 2) | (b >> 4)) as u8);
                 break;
             }
             (Some(c), None) => {
-                if c & 3 != 0 || chars[index..].iter().any(|ch| !ch.is_ascii_whitespace()) {
+                if c & 3 != 0
+                    || chars[index..]
+                        .iter()
+                        .any(|ch| !is_systemd_whitespace_char(*ch))
+                {
                     return Err(Errno::EINVAL.to_neg_errno());
                 }
                 out.push(((a << 2) | (b >> 4)) as u8);
@@ -1573,6 +1586,25 @@ mod tests {
             unhexmem_full("de ad\nbe\tef").unwrap(),
             vec![0xde, 0xad, 0xbe, 0xef]
         );
+    }
+
+    #[test]
+    fn full_decoders_use_c_whitespace_grammar() {
+        for separator in [' ', '\t', '\n', '\r'] {
+            assert_eq!(
+                unhexmem_full(&format!("de{separator}ad")).unwrap(),
+                vec![0xde, 0xad]
+            );
+            assert_eq!(
+                unbase64mem_full(&format!("aG{separator}VsbG8=")).unwrap(),
+                b"hello"
+            );
+        }
+
+        for separator in ['\u{b}', '\u{c}'] {
+            assert!(unhexmem_full(&format!("de{separator}ad")).is_err());
+            assert!(unbase64mem_full(&format!("aG{separator}VsbG8=")).is_err());
+        }
     }
 
     #[test]
