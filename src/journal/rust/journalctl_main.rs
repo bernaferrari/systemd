@@ -74,10 +74,10 @@ fn backend_candidates(self_exe: &Path) -> Vec<PathBuf> {
     out.push(PathBuf::from("/usr/lib/systemd/journalctl-c"));
     out.push(PathBuf::from("/usr/local/lib/systemd/journalctl-c"));
 
-    if allow_path_search() {
-        if let Some(path_var) = env::var_os("PATH") {
-            out.extend(env::split_paths(&path_var).map(|dir| dir.join("journalctl-c")));
-        }
+    if allow_path_search()
+        && let Some(path_var) = env::var_os("PATH")
+    {
+        out.extend(env::split_paths(&path_var).map(|dir| dir.join("journalctl-c")));
     }
 
     out

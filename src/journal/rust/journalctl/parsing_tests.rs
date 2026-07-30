@@ -18,7 +18,6 @@ use super::{
 };
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 use systemd_shared_rs::output_mode::{OutputMode, output_mode_to_json_format_flags};
 use systemd_shared_rs::pcre2_util::{PatternCompileCase, Pcre2Error, pattern_compile};
 
@@ -135,7 +134,7 @@ fn parse_lines_matches_c_behavior() {
 #[test]
 fn truncate_task_comm_enforces_byte_ceiling() {
     let truncated = truncate_task_comm("ééééééééé");
-    assert!(truncated.len() <= TASK_COMM_LEN - 1);
+    assert!(truncated.len() < TASK_COMM_LEN);
 }
 
 #[test]

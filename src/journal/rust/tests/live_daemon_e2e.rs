@@ -244,10 +244,7 @@ fn send_with_retry(sender: &UnixDatagram, socket: &Path, payload: &[u8]) -> io::
     }
 
     Err(last_error.unwrap_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("failed to send datagram to {}", socket.display()),
-        )
+        io::Error::other(format!("failed to send datagram to {}", socket.display()))
     }))
 }
 
@@ -307,10 +304,10 @@ fn recv_notify_fd(socket: &UnixDatagram, timeout: Duration) -> io::Result<libc::
                     .cmsgs()
                     .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?
                 {
-                    if let ControlMessageOwned::ScmRights(fds) = cmsg {
-                        if let Some(fd) = fds.first() {
-                            return Ok(*fd);
-                        }
+                    if let ControlMessageOwned::ScmRights(fds) = cmsg
+                        && let Some(fd) = fds.first()
+                    {
+                        return Ok(*fd);
                     }
                 }
             }
