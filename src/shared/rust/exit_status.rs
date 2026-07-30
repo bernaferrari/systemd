@@ -548,7 +548,7 @@ impl ExitStatusSet {
 }
 
 const fn is_valid_bitmap_entry(value: i32) -> bool {
-    (0..=BITMAP_MAX_ENTRY).contains(&value)
+    value >= 0 && value <= BITMAP_MAX_ENTRY
 }
 
 pub fn exit_status_to_string(code: i32, class: ExitStatusClass) -> Option<&'static str> {
