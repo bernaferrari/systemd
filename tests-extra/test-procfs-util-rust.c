@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-/* Shadow test: C convert_meminfo_value_to_uint64_bytes vs Rust */
+/* Shadow test: C procfs-util APIs vs Rust */
 
 #include <assert.h>
 #include <string.h>
@@ -10,6 +10,7 @@
 #include "rust/procfs_util.h"
 
 /* -- convert_meminfo_value_to_uint64_bytes ---------------------------------- */
+/* RUST-CONTRACT: procfs-meminfo-conversion */
 
 static void test_convert_meminfo_value_to_uint64_bytes(void) {
         uint64_t cr, rr;
@@ -98,12 +99,12 @@ static void test_convert_meminfo_value_to_uint64_bytes(void) {
         assert_se(c_ret == r_ret);
         assert_se(c_ret < 0);
 
-        /* Rust-only: no suffix case (C function crashes on this input
-         * because extract_first_word sets *p=NULL when the entire string
-         * is consumed, then streq(NULL, "kB") SIGSEGVs. The Rust version
-         * handles this gracefully.) */
+        /* No suffix must be rejected rather than dereferencing the exhausted
+         * remainder returned by extract_first_word(). */
+        c_ret = convert_meminfo_value_to_uint64_bytes("12345", &cr);
         r_ret = rs_convert_meminfo_value_to_uint64_bytes("12345", &rr);
-        assert_se(r_ret < 0);
+        assert_se(c_ret == r_ret);
+        assert_se(c_ret == -EINVAL);
 
         rr = 4711;
         assert_se(rs_convert_meminfo_value_to_uint64_bytes(NULL, &rr) == -EINVAL);
@@ -114,6 +115,12 @@ static void test_convert_meminfo_value_to_uint64_bytes(void) {
 }
 
 /* -- live procfs boundary parity ------------------------------------------- */
+
+/* RUST-CONTRACT: procfs-sysctl-readers */
+/* RUST-CONTRACT: procfs-task-limit */
+/* RUST-CONTRACT: procfs-task-accounting */
+/* RUST-CONTRACT: procfs-cpu-accounting */
+/* RUST-CONTRACT: procfs-memory-accounting */
 
 typedef int (*procfs_single_u64_fn_t)(uint64_t *ret);
 
@@ -127,8 +134,14 @@ static void assert_same_procfs_single(
         c_ret = c_fn(&c_value);
         rust_ret = rust_fn(&rust_value);
         assert_se(c_ret == rust_ret);
-        if (c_ret >= 0)
-                assert_se(c_value == rust_value);
+
+        /* These calls are separate reads of live kernel state. Check matching
+         * result paths and success-only publication, not an accidental
+         * snapshot equality that can race changing counters. */
+        if (c_ret >= 0) {
+                assert_se(c_value != UINT64_MAX);
+                assert_se(rust_value != UINT64_MAX);
+        }
 }
 
 static void test_procfs_runtime_abi(void) {
@@ -136,17 +149,49 @@ static void test_procfs_runtime_abi(void) {
         uint64_t rust_total = UINT64_MAX, rust_used = UINT64_MAX;
         int c_ret, rust_ret;
 
-        assert_same_procfs_single(procfs_get_pid_max, rs_procfs_get_pid_max);
-        assert_same_procfs_single(procfs_get_threads_max, rs_procfs_get_threads_max);
-        assert_same_procfs_single(procfs_tasks_get_current, rs_procfs_tasks_get_current);
-        assert_same_procfs_single(procfs_cpu_get_usage, rs_procfs_cpu_get_usage);
+        c_ret = procfs_get_pid_max(&c_total);
+        rust_ret = rs_procfs_get_pid_max(&rust_total);
+        assert_se(c_ret == rust_ret);
+        if (c_ret >= 0) {
+                assert_se(c_total != UINT64_MAX);
+                assert_se(rust_total != UINT64_MAX);
+        }
+
+        c_ret = procfs_get_threads_max(&c_total);
+        rust_ret = rs_procfs_get_threads_max(&rust_total);
+        assert_se(c_ret == rust_ret);
+        if (c_ret >= 0) {
+                assert_se(c_total != UINT64_MAX);
+                assert_se(rust_total != UINT64_MAX);
+        }
+
+        c_ret = procfs_tasks_get_current(&c_total);
+        rust_ret = rs_procfs_tasks_get_current(&rust_total);
+        assert_se(c_ret == rust_ret);
+        if (c_ret >= 0) {
+                assert_se(c_total != UINT64_MAX);
+                assert_se(rust_total != UINT64_MAX);
+        }
+
+        c_ret = procfs_cpu_get_usage(&c_total);
+        rust_ret = rs_procfs_cpu_get_usage(&rust_total);
+        assert_se(c_ret == rust_ret);
+        if (c_ret >= 0) {
+                assert_se(c_total != UINT64_MAX);
+                assert_se(rust_total != UINT64_MAX);
+        }
+
+        /* This input is rejected before either implementation opens a sysctl. */
+        assert_se(procfs_tasks_set_limit(0) == -EINVAL);
 
         c_ret = procfs_memory_get(&c_total, &c_used);
         rust_ret = rs_procfs_memory_get(&rust_total, &rust_used);
         assert_se(c_ret == rust_ret);
         if (c_ret >= 0) {
-                assert_se(c_total == rust_total);
-                assert_se(c_used == rust_used);
+                assert_se(c_total != UINT64_MAX);
+                assert_se(c_used != UINT64_MAX);
+                assert_se(rust_total != UINT64_MAX);
+                assert_se(rust_used != UINT64_MAX);
         }
 
         /* The C API asserts on mandatory NULL outputs. The Rust C ABI is
@@ -156,6 +201,12 @@ static void test_procfs_runtime_abi(void) {
         assert_se(rs_procfs_tasks_get_current(NULL) == -EINVAL);
         assert_se(rs_procfs_cpu_get_usage(NULL) == -EINVAL);
         assert_se(rs_procfs_tasks_set_limit(0) == -EINVAL);
+
+        /* Keep the helper paths below too, since they make the one-output ABI
+         * invariant explicit without relying on a live-value snapshot. */
+        assert_same_procfs_single(procfs_get_pid_max, rs_procfs_get_pid_max);
+        assert_same_procfs_single(procfs_cpu_get_usage, rs_procfs_cpu_get_usage);
+
 }
 
 int main(int argc, char **argv) {

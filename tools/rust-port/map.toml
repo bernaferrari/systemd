@@ -1527,14 +1527,24 @@ last_reviewed_rust_blobs = { "src/basic/rust/pe_binary.rs" = "72453927e74fa8af42
 notes = "Reviewed static PE binary inspection slice 2026-07-29; no build/tests/VM. Seven borrowed packed-header/section facades cover classification, lookup, and data-directory inspection. File I/O, allocation, hashing, and checksums remain C-only. C remains production authority; runtime parity remains P2."
 
 [procfs_util]
-c_file = "src/basic/procfs-util.c"
-rust_file = "src/basic/rust/procfs_util.rs"
-header_file = "src/basic/rust/procfs_util.h"
+c_paths = ["src/basic/procfs-util.c", "src/basic/procfs-util.h"]
+rust_paths = ["src/basic/rust/procfs_util.rs", "src/basic/rust/procfs_util.h"]
+scope = "basic.procfs-util"
+rust_scope_paths = ["src/basic/rust/procfs_util.rs"]
+rust_interface_paths = ["src/basic/rust/procfs_util.h"]
+contract_file = "tools/rust-port/contracts/basic/procfs-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/procfs-util.c", rust_paths = ["src/basic/rust/procfs_util.rs", "src/basic/rust/procfs_util.h"] },
+    { kind = "direct", path = "src/basic/procfs-util.h", rust_paths = ["src/basic/rust/procfs_util.rs", "src/basic/rust/procfs_util.h"] },
+]
+test_file = "tests-extra/test-procfs-util-rust.c"
 status = "in-progress"
 tier = 1
 symbols = 7
-sync_status = "needs_review"
-notes = "All seven current C surfaces (the six procfs runtime APIs plus meminfo conversion) now have ABI-complete Rust shadow implementations with bounded byte parsing and output-on-success wrappers. The Meson topology deliberately leaves C as production authority and links Rust only into shadow tests; differential runtime validation on real /proc and sysctl write failures remains tracked separately."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/procfs-util.c" = "6856cd636331fcd01d3e87e02d2a99f56e26143f", "src/basic/procfs-util.h" = "cf091d1e07e8365ba81dc28f113acab9415f3ef1" }
+last_reviewed_rust_blobs = { "src/basic/rust/procfs_util.rs" = "ac6f4dd459ca11179f389f58056667ae8b648e1d", "src/basic/rust/procfs_util.h" = "21f128948b39ac8f018ebbf0bf65839cacb626fc" }
+notes = "Reviewed static procfs ABI slice 2026-07-30. Seven C exports have bounded byte-parsing Rust shadows and success-only output publication; procfs_memory_get_used() remains a C-only inline convenience wrapper. The C converter now rejects a missing unit instead of dereferencing an exhausted parser remainder. The fixture has a real-/proc smoke comparison, but the contract remains static-only: no durable kernel/sysctl-failure runtime evidence is recorded. C remains production authority."
 
 [seccomp_util]
 c_file = "src/shared/seccomp-util.c"
@@ -1672,14 +1682,35 @@ symbols = 17
 sync_status = "needs_review"
 
 [user_util]
-c_file = "src/basic/user-util.c"
-rust_file = "src/basic/rust/user_util.rs"
-header_file = "src/basic/user-util.h"
+c_paths = [
+    "src/basic/user-util.c",
+    "src/basic/user-util.h",
+    "src/basic/capsule-util.c",
+    "src/basic/capsule-util.h",
+    "src/libsystemd/sd-id128/id128-util.c",
+    "src/libsystemd/sd-id128/id128-util.h",
+]
+rust_paths = ["src/basic/rust/user_util.rs", "src/basic/rust/user_util.h"]
+scope = "basic.user-util-abi"
+rust_scope_paths = ["src/basic/rust/user_util.rs"]
+rust_interface_paths = ["src/basic/rust/user_util.h"]
+contract_file = "tools/rust-port/contracts/basic/user-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/user-util.c", rust_paths = ["src/basic/rust/user_util.rs", "src/basic/rust/user_util.h"] },
+    { kind = "direct", path = "src/basic/user-util.h", rust_paths = ["src/basic/rust/user_util.rs", "src/basic/rust/user_util.h"] },
+    { kind = "direct", path = "src/basic/capsule-util.c", rust_paths = ["src/basic/rust/user_util.rs", "src/basic/rust/user_util.h"] },
+    { kind = "direct", path = "src/basic/capsule-util.h", rust_paths = ["src/basic/rust/user_util.rs", "src/basic/rust/user_util.h"] },
+    { kind = "direct", path = "src/libsystemd/sd-id128/id128-util.c", rust_paths = ["src/basic/rust/user_util.rs", "src/basic/rust/user_util.h"] },
+    { kind = "direct", path = "src/libsystemd/sd-id128/id128-util.h", rust_paths = ["src/basic/rust/user_util.rs", "src/basic/rust/user_util.h"] },
+]
+test_file = "tests-extra/test-user-util-rust.c"
 status = "in-progress"
 tier = 3
 symbols = 7
-sync_status = "needs_review"
-notes = "Static ABI correction 2026-07-27: seven tested symbols use exact extern-C definitions, target libc::c_char, explicit pointer contracts, allocation-free capsule validation, and an authoritative Rust-owned header. Exact Rust-linked Meson/function-body/CI coverage is pinned. This is only the validator/UID/ID128/password subset, not full user-util parity; no build/tests/VM run."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/user-util.c" = "fe4c0e6a36858f6b915705f50219a00c104a50f1", "src/basic/user-util.h" = "8355548b00ca3cd41ad52990f7f66f0807e47bc0", "src/basic/capsule-util.c" = "6cff1aa27fdc36705670a3e79d66a14711884abe", "src/basic/capsule-util.h" = "02b00220f1ec8ca676e3280389b54f0e1bd2e0e7", "src/libsystemd/sd-id128/id128-util.c" = "b961be0659d97014864bfab73746e77e5995171e", "src/libsystemd/sd-id128/id128-util.h" = "874fc9f4460e08648b6dcaf7459d1db708cb01f0" }
+last_reviewed_rust_blobs = { "src/basic/rust/user_util.rs" = "04035f2cba9901bd515db45447e90436a46e094f", "src/basic/rust/user_util.h" = "e73c8f32194f3d75258d16821046426d08d092af" }
+notes = "Reviewed static user-util ABI slice 2026-07-30; no build/tests/VM. Seven C-ABI facades cover strict/relaxed user-name validation, capsule-name validation, UID predicate/parsing/ranges, ID128 validation, and the password-lock predicate. C remains production authority. Intentional fail-closed behavior for C assertion-precondition violations, omission of VALID_USER_WARN logging, and allocation-free capsule validation are explicit contract deviations. NSS, account lookup/mutation, group, passwd/shadow, shell/home, and remaining ID128 operations remain C-only P2 gaps; runtime and allocator-fault differential parity are unclaimed."
 
 [xml_tokenizer]
 c_paths = ["src/shared/xml.c", "src/shared/xml.h"]

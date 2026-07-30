@@ -1,0 +1,216 @@
+schema = 1
+module = "user_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "strerror_user",
+    "strerror_group",
+    "gid_is_valid",
+    "parse_gid",
+    "getlogname_malloc",
+    "getusername_malloc",
+    "default_root_shell_at",
+    "default_root_shell",
+    "is_nologin_shell",
+    "shell_is_placeholder",
+    "get_user_creds",
+    "get_group_creds",
+    "uid_to_name",
+    "gid_to_name",
+    "in_gid",
+    "in_group",
+    "merge_gid_lists",
+    "getgroups_alloc",
+    "get_home_dir",
+    "get_shell",
+    "fully_set_uid_gid",
+    "reset_uid_gid",
+    "take_etc_passwd_lock",
+    "valid_gecos",
+    "mangle_gecos",
+    "valid_home",
+    "valid_shell",
+    "maybe_setgroups",
+    "synthesize_nobody",
+    "fgetpwent_sane",
+    "fgetspent_sane",
+    "fgetgrent_sane",
+    "putpwent_sane",
+    "putspent_sane",
+    "putgrent_sane",
+    "fgetsgent_sane",
+    "putsgent_sane",
+    "is_this_me",
+    "get_home_root",
+    "sysconf_ngroups_max",
+    "lookup_pwent_in_files",
+    "lookup_grent_in_files",
+    "lookup_groups_in_files",
+    "getgrouplist_malloc",
+    "initgroups_wrapper",
+    "getpwuid_malloc",
+    "getpwnam_malloc",
+    "getgrnam_malloc",
+    "getgrgid_malloc",
+    "id128_from_string_nonzero",
+    "id128_read_fd",
+    "id128_read_at",
+    "id128_read",
+    "id128_write_fd",
+    "id128_write_at",
+    "id128_write",
+    "id128_get_machine",
+    "id128_get_machine_at",
+    "id128_hash_func",
+    "id128_compare_func",
+    "id128_make_v4_uuid",
+    "id128_get_product",
+    "id128_digest",
+    "id128_get_boot",
+    "id128_get_boot_for_machine",
+]
+
+[authority]
+c_headers = [
+    "src/basic/user-util.h",
+    "src/basic/capsule-util.h",
+    "src/libsystemd/sd-id128/id128-util.h",
+]
+c_sources = [
+    "src/basic/user-util.c",
+    "src/basic/capsule-util.c",
+    "src/libsystemd/sd-id128/id128-util.c",
+]
+rust_headers = ["src/basic/rust/user_util.h"]
+rust_sources = ["src/basic/rust/user_util.rs"]
+
+[[surface]]
+id = "user-name-validation"
+c_symbols = ["valid_user_group_name"]
+rust_symbols = ["rs_valid_user_group_name"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "user-name-warn-no-log"
+deviation_rationale = "Return values preserve the strict and relaxed byte rules, including NULL rejection. Rust intentionally does not emit C's VALID_USER_WARN structured log side effect."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[surface.static_fixture]
+file = "tests-extra/test-user-util-rust.c"
+meson_target = "test-user-util-rust"
+labels = ["user-name-validation"]
+
+[[surface]]
+id = "capsule-name-validation"
+c_symbols = ["capsule_name_is_valid"]
+rust_symbols = ["rs_capsule_name_is_valid"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "capsule-validation-no-allocation"
+deviation_rationale = "Valid names preserve C's filename and prefixed strict-user-name rules. Rust avoids C's temporary strjoin allocation, so it cannot return C's -ENOMEM allocation failure."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[surface.static_fixture]
+file = "tests-extra/test-user-util-rust.c"
+meson_target = "test-user-util-rust"
+labels = ["capsule-name-validation"]
+
+[[surface]]
+id = "uid-validation"
+c_symbols = ["uid_is_valid"]
+rust_symbols = ["rs_uid_is_valid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-user-util-rust.c"
+meson_target = "test-user-util-rust"
+labels = ["uid-validation"]
+
+[[surface]]
+id = "uid-parsing"
+c_symbols = ["parse_uid", "parse_uid_range"]
+rust_symbols = ["rs_parse_uid", "rs_parse_uid_range"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "uid-parser-null-fail-closed"
+deviation_rationale = "Valid C strings preserve target-libc UID width, strict decimal syntax, errno selection, aliasing order, optional parse_uid output, and success-only publication. Rust returns -EINVAL without writing outputs for NULL inputs or required range outputs, where C asserts caller preconditions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[[surface.output]]
+symbols = ["parse_uid"]
+arg = "ret_uid"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+symbols = ["parse_uid_range"]
+arg = "ret_lower"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+
+[[surface.output]]
+symbols = ["parse_uid_range"]
+arg = "ret_upper"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+
+[surface.static_fixture]
+file = "tests-extra/test-user-util-rust.c"
+meson_target = "test-user-util-rust"
+labels = ["uid-parsing"]
+
+[[surface]]
+id = "id128-validation"
+c_symbols = ["id128_is_valid"]
+rust_symbols = ["rs_id128_is_valid"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "id128-null-fail-closed"
+deviation_rationale = "For valid strings, Rust preserves plain and UUID-formatted hex validation. Rust returns false for NULL where C declares a non-NULL assertion precondition."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[surface.static_fixture]
+file = "tests-extra/test-user-util-rust.c"
+meson_target = "test-user-util-rust"
+labels = ["id128-validation"]
+
+[[surface]]
+id = "password-lock-predicate"
+c_symbols = ["hashed_password_is_locked_or_invalid"]
+rust_symbols = ["rs_hashed_password_is_locked_or_invalid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-user-util-rust.c"
+meson_target = "test-user-util-rust"
+labels = ["password-lock-predicate"]

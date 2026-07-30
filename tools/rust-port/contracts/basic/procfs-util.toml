@@ -1,0 +1,163 @@
+schema = 1
+module = "procfs_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["procfs_memory_get_used"]
+
+[authority]
+c_headers = ["src/basic/procfs-util.h"]
+c_sources = ["src/basic/procfs-util.c"]
+rust_headers = ["src/basic/rust/procfs_util.h"]
+rust_sources = ["src/basic/rust/procfs_util.rs"]
+
+[[surface]]
+id = "procfs-meminfo-conversion"
+c_symbols = ["convert_meminfo_value_to_uint64_bytes"]
+rust_symbols = ["rs_convert_meminfo_value_to_uint64_bytes"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "procfs-converter-null-fail-closed"
+deviation_rationale = "Rust rejects NULL input or output pointers with -EINVAL rather than invoking C assertion preconditions; valid C strings preserve word parsing, exact kB suffix handling, errno, and success-only output publication."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-procfs-util-rust.c"
+meson_target = "test-procfs-util-rust"
+labels = ["procfs-meminfo-conversion"]
+
+[[surface]]
+id = "procfs-sysctl-readers"
+c_symbols = ["procfs_get_pid_max", "procfs_get_threads_max"]
+rust_symbols = ["rs_procfs_get_pid_max", "rs_procfs_get_threads_max"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "io"
+verification = "static-only"
+deviation_id = "procfs-reader-null-fail-closed"
+deviation_rationale = "Rust returns -EINVAL for a NULL mandatory output pointer rather than reaching C assertion preconditions; valid calls use the same procfs paths and base-zero value grammar."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[[surface.output]]
+symbols = ["procfs_get_pid_max", "procfs_get_threads_max"]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-procfs-util-rust.c"
+meson_target = "test-procfs-util-rust"
+labels = ["procfs-sysctl-readers"]
+
+[[surface]]
+id = "procfs-task-limit"
+c_symbols = ["procfs_tasks_set_limit"]
+rust_symbols = ["rs_procfs_tasks_set_limit"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "kernel"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-procfs-util-rust.c"
+meson_target = "test-procfs-util-rust"
+labels = ["procfs-task-limit"]
+
+[[surface]]
+id = "procfs-task-accounting"
+c_symbols = ["procfs_tasks_get_current"]
+rust_symbols = ["rs_procfs_tasks_get_current"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "io"
+verification = "static-only"
+deviation_id = "procfs-task-current-null-fail-closed"
+deviation_rationale = "Rust returns -EINVAL for a NULL mandatory output pointer rather than reaching C assertion preconditions; valid calls preserve the slash-delimited loadavg task-count parse and success-only output publication."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-procfs-util-rust.c"
+meson_target = "test-procfs-util-rust"
+labels = ["procfs-task-accounting"]
+
+[[surface]]
+id = "procfs-cpu-accounting"
+c_symbols = ["procfs_cpu_get_usage"]
+rust_symbols = ["rs_procfs_cpu_get_usage"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "kernel"
+verification = "static-only"
+deviation_id = "procfs-cpu-null-fail-closed"
+deviation_rationale = "Rust returns -EINVAL for a NULL mandatory output pointer rather than reaching C assertion preconditions; valid calls preserve /proc/stat field selection, unsigned arithmetic, and ceil tick conversion."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-procfs-util-rust.c"
+meson_target = "test-procfs-util-rust"
+labels = ["procfs-cpu-accounting"]
+
+[[surface]]
+id = "procfs-memory-accounting"
+c_symbols = ["procfs_memory_get"]
+rust_symbols = ["rs_procfs_memory_get"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "io"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret_total"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[[surface.output]]
+arg = "ret_used"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-procfs-util-rust.c"
+meson_target = "test-procfs-util-rust"
+labels = ["procfs-memory-accounting"]

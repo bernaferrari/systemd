@@ -1,5 +1,11 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C user-util validators vs Rust */
+/* RUST-CONTRACT: user-name-validation */
+/* RUST-CONTRACT: capsule-name-validation */
+/* RUST-CONTRACT: uid-validation */
+/* RUST-CONTRACT: uid-parsing */
+/* RUST-CONTRACT: id128-validation */
+/* RUST-CONTRACT: password-lock-predicate */
 
 #include <assert.h>
 #include <string.h>
@@ -276,6 +282,16 @@ static void test_parse_uid(void) {
         assert_se(cr == rr);
         assert_se(cr == -ENXIO);
 
+        /* Error returns do not publish a partially parsed UID. */
+        cv = 1111;
+        rv = 2222;
+        cr = parse_uid("not-a-uid", &cv);
+        rr = rs_parse_uid("not-a-uid", &rv);
+        assert_se(cr == rr);
+        assert_se(cr < 0);
+        assert_se(cv == 1111);
+        assert_se(rv == 2222);
+
         /* NULL ret pointer */
         cr = parse_uid("0", NULL);
         rr = rs_parse_uid("0", NULL);
@@ -298,6 +314,31 @@ static void test_parse_uid_range(void) {
                         assert_se(cu == ru);
                 }
         }
+
+        /* Both C and Rust publish range bounds only on success. */
+        cl = 1111;
+        cu = 2222;
+        rl = 3333;
+        ru = 4444;
+        cr = parse_uid_range("1000-", &cl, &cu);
+        rr = rs_parse_uid_range("1000-", &rl, &ru);
+        assert_se(cr == rr);
+        assert_se(cr < 0);
+        assert_se(cl == 1111);
+        assert_se(cu == 2222);
+        assert_se(rl == 3333);
+        assert_se(ru == 4444);
+
+        /* The Rust facade fails closed instead of evaluating C assertions. */
+        rl = 3333;
+        ru = 4444;
+        assert_se(rs_parse_uid(NULL, &rl) == -EINVAL);
+        assert_se(rl == 3333);
+        assert_se(rs_parse_uid_range(NULL, &rl, &ru) == -EINVAL);
+        assert_se(rl == 3333);
+        assert_se(ru == 4444);
+        assert_se(rs_parse_uid_range("1000", NULL, &ru) == -EINVAL);
+        assert_se(ru == 4444);
 }
 
 /* -- hashed_password_is_locked_or_invalid -------------------------------- */

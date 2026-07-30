@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/procfs-util.c
+// PORT-SYNC: scope=basic.procfs-util; authority=src/basic/procfs-util.c,src/basic/procfs-util.h
 //
 // Procfs sysctl and accounting helpers. The parsing and file handling core is
 // safe Rust. The only unsafe operations are the audited C ABI entry points and

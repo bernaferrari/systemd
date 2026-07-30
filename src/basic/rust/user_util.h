@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #pragma once
 
+/* PORT-SYNC: scope=basic.user-util-abi; authority=src/basic/user-util.c,src/basic/user-util.h,src/basic/capsule-util.c,src/basic/capsule-util.h,src/libsystemd/sd-id128/id128-util.c,src/libsystemd/sd-id128/id128-util.h */
+
 #include <stdbool.h>
 #include <sys/types.h>
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/user-util.c (valid_user_group_name, capsule_name_is_valid)
+// PORT-SYNC: scope=basic.user-util-abi; authority=src/basic/user-util.c,src/basic/user-util.h,src/basic/capsule-util.c,src/basic/capsule-util.h,src/libsystemd/sd-id128/id128-util.c,src/libsystemd/sd-id128/id128-util.h
 //
 // User/group name validation and closely related pure helpers.
 

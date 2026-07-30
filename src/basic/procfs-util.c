@@ -186,7 +186,7 @@ int convert_meminfo_value_to_uint64_bytes(const char *s, uint64_t *ret) {
                 return -EINVAL;
 
         /* Ensure the line ends in "kB" */
-        if (!streq(s, "kB"))
+        if (!streq_ptr(s, "kB"))
                 return -EINVAL;
 
         r = safe_atou64(w, &v);

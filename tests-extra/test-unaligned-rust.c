@@ -8,7 +8,8 @@
 #include "unaligned.h"
 #include "rust/unaligned.h"
 
-#define TEST_MISALIGNED_READ_WRITE(suffix, type, value) do {                    \
+#define TEST_MISALIGNED_READ_WRITE(suffix, type, value, ...) do {               \
+        const uint8_t expected[sizeof(type)] = { __VA_ARGS__ };                  \
         for (size_t offset = 1; offset < sizeof(type); offset++) {               \
                 uint64_t c_storage[3], rust_storage[3];                          \
                 uint8_t *c_bytes = (uint8_t*) c_storage;                         \
@@ -19,10 +20,12 @@
                 unaligned_write_##suffix(c_bytes + offset, (type) (value));      \
                 rs_unaligned_write_##suffix(rust_bytes + offset, (type) (value));\
                                                                                 \
+                assert_se(memcmp(c_bytes + offset, expected, sizeof(expected)) == 0); \
+                assert_se(memcmp(rust_bytes + offset, expected, sizeof(expected)) == 0); \
                 assert_se(memcmp(c_bytes + offset,                               \
                                  rust_bytes + offset, sizeof(type)) == 0);        \
-                assert_se(unaligned_read_##suffix(c_bytes + offset) ==           \
-                          rs_unaligned_read_##suffix(rust_bytes + offset));       \
+                assert_se(unaligned_read_##suffix(c_bytes + offset) == (type) (value)); \
+                assert_se(rs_unaligned_read_##suffix(rust_bytes + offset) == (type) (value)); \
                 assert_se(c_bytes[offset - 1] == 0xa5);                          \
                 assert_se(rust_bytes[offset - 1] == 0x5a);                       \
                 assert_se(c_bytes[offset + sizeof(type)] == 0xa5);               \
@@ -196,12 +199,14 @@ static void test_unaligned_le64(void) {
 }
 
 static void test_misaligned_independent_buffers(void) {
-        TEST_MISALIGNED_READ_WRITE(be16, uint16_t, UINT16_C(0x1234));
-        TEST_MISALIGNED_READ_WRITE(be32, uint32_t, UINT32_C(0x12345678));
-        TEST_MISALIGNED_READ_WRITE(be64, uint64_t, UINT64_C(0x0123456789abcdef));
-        TEST_MISALIGNED_READ_WRITE(le16, uint16_t, UINT16_C(0x1234));
-        TEST_MISALIGNED_READ_WRITE(le32, uint32_t, UINT32_C(0x12345678));
-        TEST_MISALIGNED_READ_WRITE(le64, uint64_t, UINT64_C(0x0123456789abcdef));
+        TEST_MISALIGNED_READ_WRITE(be16, uint16_t, UINT16_C(0x1234), 0x12, 0x34);
+        TEST_MISALIGNED_READ_WRITE(be32, uint32_t, UINT32_C(0x12345678), 0x12, 0x34, 0x56, 0x78);
+        TEST_MISALIGNED_READ_WRITE(be64, uint64_t, UINT64_C(0x0123456789abcdef),
+                                   0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef);
+        TEST_MISALIGNED_READ_WRITE(le16, uint16_t, UINT16_C(0x1234), 0x34, 0x12);
+        TEST_MISALIGNED_READ_WRITE(le32, uint32_t, UINT32_C(0x12345678), 0x78, 0x56, 0x34, 0x12);
+        TEST_MISALIGNED_READ_WRITE(le64, uint64_t, UINT64_C(0x0123456789abcdef),
+                                   0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01);
 }
 
 int main(int argc, char **argv) {

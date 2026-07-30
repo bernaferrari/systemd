@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.procfs-util; authority=src/basic/procfs-util.c,src/basic/procfs-util.h */
 #pragma once
 
 #include <stdint.h>
