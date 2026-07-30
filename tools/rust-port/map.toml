@@ -2452,7 +2452,7 @@ status = "in-progress"
 tier = 1
 symbols = 5
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: shared exit-status classification/string behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 bounded source audit: src/shared/exit-status.c/.h and src/shared/bitmap.c confirm the status/class mapping table, class masks, clean-exit rules, safe_atou8 base-zero successful-value language, and Bitmap entry domain. The Rust shared shadow now accepts C octal/hex and systemd 0b/0o numeric forms (including C-locale/prefix-local whitespace and negative zero) and rejects nonrepresentable native set entries. P2: the native error type still collapses C -EINVAL/-ERANGE, and its BTreeSet mutation API cannot report C Bitmap allocation/range errno; it is not an ABI/runtime replacement. The basic Rust facade remains the C-ABI shadow and C remains production authority."
 
 [fdset]
 c_file = "src/shared/fdset.c"
