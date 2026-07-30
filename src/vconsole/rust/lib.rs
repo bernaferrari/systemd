@@ -65,10 +65,8 @@ pub struct VconsoleContext {
 fn merge_field(dst: &mut Option<String>, src: &Option<String>, compat: Option<&Option<String>>) {
     if src.is_some() {
         *dst = src.clone();
-    } else if let Some(compat_val) = compat {
-        if compat_val.is_some() {
-            *dst = compat_val.clone();
-        }
+    } else if let Some(Some(compat_val)) = compat {
+        *dst = Some(compat_val.clone());
     }
 }
 

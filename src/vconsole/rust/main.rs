@@ -6,8 +6,6 @@
 use systemd_vconsole_setup_rs::{VconsoleContext, effective_keymap, font_loading_needed};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const VC_KEYMAP_PATH: &str = "/etc/vconsole.keymap";
-const VC_FONT_PATH: &str = "/etc/vconsole.font";
 const KBD_LOADKEYS: &str = "/usr/bin/loadkeys";
 const KBD_SETFONT: &str = "/usr/bin/setfont";
 
@@ -82,14 +80,13 @@ fn main() {
         }
     }
 
-    if font_loading_needed(&ctx) {
-        if let Some(ref font) = ctx.font {
-            if !font.is_empty() {
-                match set_font(font) {
-                    Ok(()) => eprintln!("vconsole: set font {}", font),
-                    Err(e) => eprintln!("vconsole: {}", e),
-                }
-            }
+    if font_loading_needed(&ctx)
+        && let Some(font) = ctx.font.as_deref()
+        && !font.is_empty()
+    {
+        match set_font(font) {
+            Ok(()) => eprintln!("vconsole: set font {}", font),
+            Err(e) => eprintln!("vconsole: {}", e),
         }
     }
 }

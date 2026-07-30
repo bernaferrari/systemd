@@ -18,22 +18,12 @@ impl std::fmt::Display for Errno {
 
 impl std::error::Error for Errno {}
 
+#[derive(Default)]
 pub struct PtyForwardConfig {
     pub pty_path: Option<String>,
     pub listen: bool,
     pub pipe: bool,
     pub keep_seat: bool,
-}
-
-impl Default for PtyForwardConfig {
-    fn default() -> Self {
-        Self {
-            pty_path: None,
-            listen: false,
-            pipe: false,
-            keep_seat: false,
-        }
-    }
 }
 
 impl PtyForwardConfig {

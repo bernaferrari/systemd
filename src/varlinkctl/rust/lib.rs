@@ -75,9 +75,10 @@ pub enum VarlinkAction {
     Help,
 }
 
-impl VarlinkAction {
-    /// Parse an action from its command name.
-    pub fn from_str(s: &str) -> Result<Self, i32> {
+impl std::str::FromStr for VarlinkAction {
+    type Err = i32;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "info" => Ok(Self::Info),
             "list-interfaces" => Ok(Self::ListInterfaces),
@@ -242,7 +243,16 @@ pub struct VarlinkctlArgs {
     pub collect: bool,
     /// Whether to suppress method reply output
     pub quiet: bool,
-    /// Whether to exec a command with the response
+    /// Whether to exec a command with the response.
+    ///
+    /// PORT-GAP: C's `--exec` state is consumed by `verb_call()` and its
+    /// executor in `src/varlinkctl/varlinkctl.c`. This Rust shadow does not
+    /// yet parse or dispatch commands, so retaining the state is more
+    /// faithful than pretending the feature is implemented.
+    #[expect(
+        dead_code,
+        reason = "the C --exec parser and call executor must be ported together"
+    )]
     exec: bool,
     /// Whether to ask for password
     pub ask_password: bool,
@@ -318,10 +328,10 @@ mod tests {
 
     #[test]
     fn test_varlink_action_from_str() {
-        assert_eq!(VarlinkAction::from_str("info"), Ok(VarlinkAction::Info));
-        assert_eq!(VarlinkAction::from_str("call"), Ok(VarlinkAction::Call));
-        assert_eq!(VarlinkAction::from_str("help"), Ok(VarlinkAction::Help));
-        assert!(VarlinkAction::from_str("unknown").is_err());
+        assert_eq!("info".parse(), Ok(VarlinkAction::Info));
+        assert_eq!("call".parse(), Ok(VarlinkAction::Call));
+        assert_eq!("help".parse(), Ok(VarlinkAction::Help));
+        assert_eq!("unknown".parse::<VarlinkAction>(), Err(-libc::EINVAL));
     }
 
     #[test]

@@ -4,8 +4,9 @@
 
 pub const EINVAL: i32 = -22;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Action {
+    #[default]
     Escape,
     Unescape,
     Mangle,
@@ -23,12 +24,6 @@ pub struct Config {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Error(pub i32);
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl Default for Action {
-    fn default() -> Self {
-        Self::Escape
-    }
-}
 
 pub fn validate(cfg: &Config) -> Result<()> {
     if cfg.template.is_some() && cfg.suffix.is_some() {

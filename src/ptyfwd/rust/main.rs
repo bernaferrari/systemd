@@ -84,7 +84,7 @@ fn open_pty_pair() -> std::io::Result<(std::os::fd::OwnedFd, std::os::fd::OwnedF
     // follow the open(2) contract without requiring a mode argument.
     let raw_master = unsafe {
         libc::open(
-            b"/dev/ptmx\0".as_ptr().cast::<libc::c_char>(),
+            c"/dev/ptmx".as_ptr(),
             libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC,
         )
     };
@@ -269,10 +269,10 @@ fn run() -> i32 {
             }
 
             let mut stdout = io::stdout().lock();
-            if let Err(error) = io::copy(&mut output, &mut stdout) {
-                if error.raw_os_error() != Some(libc::EIO) {
-                    eprintln!("{PROGRAM}: failed to forward pseudo tty output: {error}");
-                }
+            if let Err(error) = io::copy(&mut output, &mut stdout)
+                && error.raw_os_error() != Some(libc::EIO)
+            {
+                eprintln!("{PROGRAM}: failed to forward pseudo tty output: {error}");
             }
 
             match nix::sys::wait::waitpid(child, None) {
