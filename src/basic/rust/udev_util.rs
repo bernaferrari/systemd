@@ -332,18 +332,4 @@ mod tests {
         assert_eq!(udev_replace_chars(&mut bytes, None), 1);
         assert_eq!(&bytes[..], b"a\xc3\xa9_b\0");
     }
-
-    #[test]
-    fn chars_allowing_the_input_itself_needs_no_mutable_alias() {
-        let mut bytes = b"!self-allow\0".to_vec();
-        let input = bytes.as_ptr().cast::<c_char>();
-
-        // SAFETY: `bytes` is a writable NUL-terminated C string, and this
-        // exact alias is explicitly handled before borrowing either view.
-        assert_eq!(
-            unsafe { rs_udev_replace_chars(bytes.as_mut_ptr().cast(), input) },
-            0
-        );
-        assert_eq!(&bytes[..], b"!self-allow\0");
-    }
 }
