@@ -60,41 +60,22 @@ impl std::fmt::Display for RandomSeedError {
 impl std::error::Error for RandomSeedError {}
 
 /// Input model for a UEFI RNG source.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RngSource {
     pub available: bool,
     pub ready: bool,
     pub data: Vec<u8>,
 }
 
-impl Default for RngSource {
-    fn default() -> Self {
-        Self {
-            available: false,
-            ready: false,
-            data: Vec::new(),
-        }
-    }
-}
-
 /// Input model for LoaderSystemToken.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SystemToken {
     pub available: bool,
     pub data: Vec<u8>,
 }
 
-impl Default for SystemToken {
-    fn default() -> Self {
-        Self {
-            available: false,
-            data: Vec::new(),
-        }
-    }
-}
-
 /// Input model for `\loader\random-seed`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SeedFile {
     pub exists: bool,
     pub writable: bool,
@@ -102,19 +83,8 @@ pub struct SeedFile {
     pub newly_created: bool,
 }
 
-impl Default for SeedFile {
-    fn default() -> Self {
-        Self {
-            exists: false,
-            writable: false,
-            content: Vec::new(),
-            newly_created: false,
-        }
-    }
-}
-
 /// Combined random seed processing context
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RandomSeedContext {
     pub rng: RngSource,
     pub system_token: SystemToken,
@@ -127,23 +97,6 @@ pub struct RandomSeedContext {
     pub uefi_time: Option<[u8; 16]>,
     pub seed_table_installed: bool,
     pub written_seed: Option<Vec<u8>>,
-}
-
-impl Default for RandomSeedContext {
-    fn default() -> Self {
-        Self {
-            rng: RngSource::default(),
-            system_token: SystemToken::default(),
-            seed_file: SeedFile::default(),
-            secure_boot_enabled: false,
-            uefi_monotonic_counter: 0,
-            monotonic_counter_available: false,
-            previous_seed: Vec::new(),
-            uefi_time: None,
-            seed_table_installed: false,
-            written_seed: None,
-        }
-    }
 }
 
 impl RandomSeedContext {
@@ -266,7 +219,7 @@ pub fn derive_seed_material(ctx: &RandomSeedContext) -> Result<DerivedSeeds, Ran
         .system_token
         .available
         .then_some(ctx.system_token.data.as_slice());
-    if system_token.map_or(true, |token| token.len() < DESIRED_SEED_SIZE) && !seeded_by_efi {
+    if system_token.is_none_or(|token| token.len() < DESIRED_SEED_SIZE) && !seeded_by_efi {
         return Err(RandomSeedError::SystemTokenTooShort);
     }
 

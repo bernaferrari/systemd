@@ -120,24 +120,6 @@ fn bad_struct(offset: u64, struct_size: usize, max: u64) -> bool {
     bad_offset(offset, struct_size as u64, max)
 }
 
-/// Check if an array within a struct would fit within bounds.
-#[cfg(test)]
-fn bad_array(
-    offset: u64,
-    array_offset: usize,
-    element_size: usize,
-    array_len: u64,
-    max: u64,
-) -> bool {
-    let Some(start) = offset.checked_add(array_offset as u64) else {
-        return true;
-    };
-    let Some(len) = (element_size as u64).checked_mul(array_len) else {
-        return true;
-    };
-    bad_offset(start, len, max)
-}
-
 /// Case-insensitive comparison of two byte strings up to `len` bytes.
 fn strncaseeq(a: &[u8], b: &[u8], len: usize) -> bool {
     if a.len() < len || b.len() < len {
@@ -147,7 +129,7 @@ fn strncaseeq(a: &[u8], b: &[u8], len: usize) -> bool {
     a[..len]
         .iter()
         .zip(b[..len].iter())
-        .all(|(ca, cb)| ca.to_ascii_lowercase() == cb.to_ascii_lowercase())
+        .all(|(ca, cb)| ca.eq_ignore_ascii_case(cb))
 }
 
 /// Check if a character is valid in a GUID string.
@@ -214,10 +196,11 @@ fn get_key(bcd: &[u8], offset: u32, name: &[u8]) -> Result<KeyInfo, BcdError> {
     let mut key = key_at(bcd, offset)?;
     let mut path = name.split(|byte| *byte == 0);
 
-    if let Some(first) = path.next() {
-        if !first.is_empty() && !key_name_eq(&key, first) {
-            return Err(BcdError::KeyNotFound);
-        }
+    if let Some(first) = path.next()
+        && !first.is_empty()
+        && !key_name_eq(&key, first)
+    {
+        return Err(BcdError::KeyNotFound);
     }
 
     for component in path.filter(|component| !component.is_empty()) {

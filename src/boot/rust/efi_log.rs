@@ -158,7 +158,7 @@ impl LogState {
     ///
     /// Mirrors `log_set_max_level`.
     pub fn set_max_level(&mut self, level: i32) -> Result<i32, LogError> {
-        if level < 0 || level >= LOG_LEVEL_MAX {
+        if !(0..LOG_LEVEL_MAX).contains(&level) {
             return Err(LogError::LevelOutOfRange(level));
         }
         let old = self.max_level;
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_should_log() {
-        let mut state = LogState::new(); // max = INFO
+        let state = LogState::new(); // max = INFO
         assert!(state.should_log(LOG_ERR));
         assert!(state.should_log(LOG_INFO));
         assert!(!state.should_log(LOG_DEBUG));

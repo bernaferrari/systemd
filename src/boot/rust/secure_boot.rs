@@ -28,6 +28,11 @@ pub enum SecureBootMode {
     Unsupported,
     /// Secure boot is disabled
     Disabled,
+    /// Firmware reported a combination of secure-boot state variables outside
+    /// the UEFI-defined modes.
+    Unknown,
+    /// Shim has disabled verification even though firmware secure boot is on.
+    Tainted,
     /// Secure boot is enabled, setup mode
     Setup,
     /// Secure boot is enabled, user mode
@@ -69,8 +74,13 @@ impl std::fmt::Display for SecureBootError {
 impl std::error::Error for SecureBootError {}
 
 /// Simulated EFI variable store for testing
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct EfiVarStore {
+    /// Whether reading the firmware `SecureBoot` variable succeeds.
+    ///
+    /// A failed read means the firmware does not expose Secure Boot state;
+    /// that is distinct from a readable variable whose value is `false`.
+    pub secure_boot_readable: bool,
     pub secure_boot: bool,
     pub audit_mode: bool,
     pub deployed_mode: bool,
@@ -80,6 +90,21 @@ pub struct EfiVarStore {
     pub in_hypervisor: bool,
 }
 
+impl Default for EfiVarStore {
+    fn default() -> Self {
+        Self {
+            secure_boot_readable: true,
+            secure_boot: false,
+            audit_mode: false,
+            deployed_mode: false,
+            setup_mode: false,
+            mok_sb_state: false,
+            custom_mode: false,
+            in_hypervisor: false,
+        }
+    }
+}
+
 impl EfiVarStore {
     pub fn new() -> Self {
         Self::default()
@@ -87,6 +112,11 @@ impl EfiVarStore {
 
     pub fn with_secure_boot(mut self, enabled: bool) -> Self {
         self.secure_boot = enabled;
+        self
+    }
+
+    pub fn with_secure_boot_readable(mut self, readable: bool) -> Self {
+        self.secure_boot_readable = readable;
         self
     }
 
@@ -134,7 +164,7 @@ impl SecurityOverride {
 
 /// Check if secure boot is enabled
 pub fn secure_boot_enabled(vars: &EfiVarStore) -> bool {
-    vars.secure_boot
+    vars.secure_boot_readable && vars.secure_boot
 }
 
 /// Decode the secure boot mode from individual flags
@@ -146,28 +176,32 @@ pub fn decode_secure_boot_mode(
     setup: bool,
     moksb: bool,
 ) -> SecureBootMode {
-    if audit {
-        return SecureBootMode::Audit;
+    // Keep this decision table in the same order as
+    // `src/fundamental/efivars.c:decode_secure_boot_mode`.
+    if secure && moksb {
+        return SecureBootMode::Tainted;
     }
-    if deployed {
+    if secure && deployed && !audit && !setup {
         return SecureBootMode::Deployed;
     }
-    if !secure {
-        return if moksb {
-            SecureBootMode::Disabled
-        } else {
-            SecureBootMode::Disabled
-        };
+    if secure && !deployed && !audit && !setup {
+        return SecureBootMode::User;
     }
-    if setup {
+    if !secure && !deployed && audit && setup {
+        return SecureBootMode::Audit;
+    }
+    if !secure && !deployed && !audit && setup {
         return SecureBootMode::Setup;
     }
-    SecureBootMode::User
+    if !secure && !deployed && !audit && !setup {
+        return SecureBootMode::Disabled;
+    }
+    SecureBootMode::Unknown
 }
 
 /// Determine the current secure boot mode
 pub fn secure_boot_mode(vars: &EfiVarStore) -> SecureBootMode {
-    if !vars.secure_boot {
+    if !vars.secure_boot_readable {
         return SecureBootMode::Unsupported;
     }
     decode_secure_boot_mode(
@@ -287,9 +321,25 @@ mod tests {
     }
 
     #[test]
+    fn test_secure_boot_unreadable_is_not_enabled() {
+        let vars = EfiVarStore::new()
+            .with_secure_boot(true)
+            .with_secure_boot_readable(false);
+        assert!(!secure_boot_enabled(&vars));
+    }
+
+    #[test]
     fn test_secure_boot_mode_unsupported() {
-        let vars = EfiVarStore::new().with_secure_boot(false);
+        let vars = EfiVarStore::new().with_secure_boot_readable(false);
         assert_eq!(secure_boot_mode(&vars), SecureBootMode::Unsupported);
+    }
+
+    #[test]
+    fn test_secure_boot_mode_disabled() {
+        assert_eq!(
+            secure_boot_mode(&EfiVarStore::new()),
+            SecureBootMode::Disabled
+        );
     }
 
     #[test]
@@ -300,17 +350,15 @@ mod tests {
 
     #[test]
     fn test_secure_boot_mode_setup() {
-        let vars = EfiVarStore::new()
-            .with_secure_boot(true)
-            .with_setup_mode(true);
+        let vars = EfiVarStore::new().with_setup_mode(true);
         assert_eq!(secure_boot_mode(&vars), SecureBootMode::Setup);
     }
 
     #[test]
     fn test_secure_boot_mode_audit() {
         let vars = EfiVarStore::new()
-            .with_secure_boot(true)
-            .with_audit_mode(true);
+            .with_audit_mode(true)
+            .with_setup_mode(true);
         assert_eq!(secure_boot_mode(&vars), SecureBootMode::Audit);
     }
 
@@ -341,16 +389,32 @@ mod tests {
     #[test]
     fn test_decode_secure_boot_mode_setup() {
         assert_eq!(
-            decode_secure_boot_mode(true, false, false, true, false),
+            decode_secure_boot_mode(false, false, false, true, false),
             SecureBootMode::Setup
         );
     }
 
     #[test]
-    fn test_decode_secure_boot_mode_audit_priority() {
+    fn test_decode_secure_boot_mode_audit() {
         assert_eq!(
-            decode_secure_boot_mode(true, true, true, false, false),
+            decode_secure_boot_mode(false, true, false, true, false),
             SecureBootMode::Audit
+        );
+    }
+
+    #[test]
+    fn test_decode_secure_boot_mode_tainted_overrides_other_flags() {
+        assert_eq!(
+            decode_secure_boot_mode(true, true, true, true, true),
+            SecureBootMode::Tainted
+        );
+    }
+
+    #[test]
+    fn test_decode_secure_boot_mode_unknown_for_invalid_combination() {
+        assert_eq!(
+            decode_secure_boot_mode(true, true, false, false, false),
+            SecureBootMode::Unknown
         );
     }
 

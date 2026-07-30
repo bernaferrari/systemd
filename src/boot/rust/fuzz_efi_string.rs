@@ -45,7 +45,7 @@ impl std::error::Error for StringFuzzError {}
 // ── Input validation ─────────────────────────────────────────────────────
 
 pub fn is_valid_size(size: usize) -> bool {
-    size >= FUZZ_MIN_SIZE && size <= FUZZ_MAX_SIZE
+    (FUZZ_MIN_SIZE..=FUZZ_MAX_SIZE).contains(&size)
 }
 
 // ── Length extraction ─────────────────────────────────────────────────────

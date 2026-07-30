@@ -142,7 +142,6 @@ pub fn get_all_urls(path: &DevicePath) -> Vec<String> {
 pub fn make_uri_node(uri: &str) -> DevicePathNode {
     let mut data = uri.as_bytes().to_vec();
     data.push(0); // NUL terminate
-    let length = (4 + data.len()) as u16;
     DevicePathNode {
         type_: MESSAGING_DEVICE_PATH,
         sub_type: MSG_URI_DP,
@@ -296,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_disk_get_url_null_terminated() {
-        let mut data = b"http://example.com\0extra".to_vec();
+        let data = b"http://example.com\0extra".to_vec();
         let path = DevicePath {
             nodes: vec![DevicePathNode {
                 type_: MESSAGING_DEVICE_PATH,

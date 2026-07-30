@@ -120,7 +120,7 @@ pub fn combine_initrds(initrds: &[Option<&InitrdSegment>]) -> Result<Vec<u8>, St
     for initrd in initrds.iter().flatten() {
         result.extend_from_slice(&initrd.data);
         let pad = (4 - (initrd.data.len() % 4)) % 4;
-        result.extend(std::iter::repeat(0u8).take(pad));
+        result.extend(std::iter::repeat_n(0u8, pad));
     }
 
     Ok(result)
@@ -152,8 +152,8 @@ pub fn parse_profile_from_cmdline(cmdline: &str) -> Result<(&str, u32), StubErro
         return Err(StubError::InvalidProfile);
     }
 
-    let remaining = if tail.starts_with(' ') {
-        &tail[1..]
+    let remaining = if let Some(stripped) = tail.strip_prefix(' ') {
+        stripped
     } else {
         tail
     };
@@ -213,8 +213,12 @@ pub fn iovec_array_extend(arr: &mut Vec<InitrdSegment>, elem: InitrdSegment) {
 ///
 /// Mirrors `initrds_free()` in C.
 pub fn initrds_free_dynamic(initrds: &mut [Option<InitrdSegment>; INITRD_MAX]) {
-    for i in INITRD_DYNAMIC_FIRST..INITRD_MAX {
-        initrds[i] = None;
+    for initrd in initrds
+        .iter_mut()
+        .take(INITRD_MAX)
+        .skip(INITRD_DYNAMIC_FIRST)
+    {
+        *initrd = None;
     }
 }
 

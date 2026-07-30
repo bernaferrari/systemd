@@ -137,10 +137,10 @@ pub fn validate_section(
 }
 
 /// Load PE sections into a target buffer, handling BSS (uninitialized data).
-pub fn load_sections<'a>(
+pub fn load_sections(
     sections: &[PeSection],
     kernel_data: &[u8],
-    target: &'a mut [u8],
+    target: &mut [u8],
 ) -> Result<Vec<(usize, usize)>, LinuxBootError> {
     let mut code_sections = Vec::new();
 

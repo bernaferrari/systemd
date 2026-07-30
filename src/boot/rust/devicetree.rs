@@ -131,11 +131,11 @@ impl FdtHeader {
             return Err(DevicetreeError::BadHeader);
         }
 
-        if self.off_dt_struct % 4 != 0 {
+        if !self.off_dt_struct.is_multiple_of(4) {
             return Err(DevicetreeError::BadHeader);
         }
 
-        if self.size_dt_struct % 4 != 0 {
+        if !self.size_dt_struct.is_multiple_of(4) {
             return Err(DevicetreeError::BadHeader);
         }
 
@@ -169,6 +169,10 @@ impl DevicetreeState {
 // ── Core functions ────────────────────────────────────────────────────────
 
 /// Calculate the number of pages needed for a given size.
+#[expect(
+    clippy::manual_div_ceil,
+    reason = "Mirrors the C round-up expression, including its established overflow behavior."
+)]
 pub fn pages_for_size(size: usize) -> usize {
     (size + EFI_PAGE_SIZE - 1) / EFI_PAGE_SIZE
 }
@@ -189,7 +193,6 @@ pub fn devicetree_get_compatible(dtb: &[u8]) -> Result<String, DevicetreeError> 
     let header = FdtHeader::parse(dtb)?;
     header.validate(dtb.len())?;
 
-    let strings_off = header.off_dt_struct as usize;
     let struct_size = header.size_dt_struct as usize;
     let strings_block_start = header.off_dt_strings as usize;
     let strings_size = header.size_dt_strings as usize;
@@ -249,6 +252,10 @@ pub fn devicetree_get_compatible(dtb: &[u8]) -> Result<String, DevicetreeError> 
                     struct_data[(i + 2) * 4 + 3],
                 ]) as usize;
 
+                #[expect(
+                    clippy::manual_div_ceil,
+                    reason = "Mirrors the C FDT property-word round-up expression."
+                )]
                 let len_words = ((len as usize) + 3) / 4;
 
                 if name_off + "compatible".len() < strings_size {
@@ -316,7 +323,7 @@ pub fn devicetree_match(uki_dtb: &[u8], fw_compat: &str) -> Result<(), Devicetre
 
 /// Check if the device tree alignment is valid.
 pub fn is_valid_alignment(ptr: usize) -> bool {
-    ptr % std::mem::align_of::<u32>() == 0
+    ptr.is_multiple_of(std::mem::align_of::<u32>())
 }
 
 #[cfg(test)]

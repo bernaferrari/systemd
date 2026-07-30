@@ -120,7 +120,7 @@ pub fn verify_dos(dos: &DosFileHeader) -> bool {
 
 /// Verify a PE file header
 pub fn verify_pe(
-    dos: &DosFileHeader,
+    _dos: &DosFileHeader,
     pe: &PeFileHeader,
     opt: &PeOptionalHeader,
     target_machine: u16,

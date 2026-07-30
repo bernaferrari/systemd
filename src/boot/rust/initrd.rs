@@ -101,21 +101,10 @@ impl std::error::Error for InitrdError {}
 
 /// Tracks registered initrd state. In the C code, this is a static
 /// `struct initrd_loader` that wraps EFI_LOAD_FILE_PROTOCOL.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct InitrdLoader {
     /// The initrd data
     data: IoVec,
-    /// Whether this loader has been registered
-    registered: bool,
-}
-
-impl Default for InitrdLoader {
-    fn default() -> Self {
-        Self {
-            data: IoVec::default(),
-            registered: false,
-        }
-    }
 }
 
 // ── EFI Protocol Registry (simulated) ─────────────────────────────────────
@@ -265,7 +254,6 @@ mod tests {
     fn test_initrd_load_file_basic() {
         let loader = InitrdLoader {
             data: IoVec::new(vec![0xDE, 0xAD, 0xBE, 0xEF]),
-            registered: true,
         };
         let mut buffer = vec![0u8; 16];
         let result = initrd_load_file(&loader, &DevicePath::default(), false, &mut buffer);
@@ -277,7 +265,6 @@ mod tests {
     fn test_initrd_load_file_boot_policy_rejected() {
         let loader = InitrdLoader {
             data: IoVec::new(vec![1, 2, 3]),
-            registered: true,
         };
         let mut buffer = vec![0u8; 16];
         let result = initrd_load_file(&loader, &DevicePath::default(), true, &mut buffer);
@@ -296,7 +283,6 @@ mod tests {
     fn test_initrd_load_file_buffer_too_small() {
         let loader = InitrdLoader {
             data: IoVec::new(vec![1, 2, 3, 4, 5]),
-            registered: true,
         };
         let mut buffer = vec![0u8; 3];
         let result = initrd_load_file(&loader, &DevicePath::default(), false, &mut buffer);

@@ -64,6 +64,13 @@ pub struct ShimLoadResult {
     pub success: bool,
 }
 
+/// Signature of the shim lock protocol's image verification callback.
+///
+/// The lifetime is explicit so a caller may use a verifier that borrows
+/// state from the image-load operation; the callback is not required to be
+/// `'static`.
+pub type ShimVerifyFn<'a> = dyn Fn(&[u8]) -> bool + 'a;
+
 /// Error type for shim operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShimError {
@@ -149,7 +156,7 @@ pub fn needs_lock_protocol(status: ShimStatus) -> bool {
 /// safe port, we only validate the provided buffer.
 pub fn shim_validate_buffer(
     file_buffer: Option<&[u8]>,
-    shim_verify_fn: Option<&dyn Fn(&[u8]) -> bool>,
+    shim_verify_fn: Option<&ShimVerifyFn<'_>>,
 ) -> Result<bool, ShimError> {
     let buffer = file_buffer.ok_or(ShimError::NullParameter)?;
     let verify = shim_verify_fn.ok_or(ShimError::NoProtocol)?;
@@ -160,7 +167,7 @@ pub fn shim_validate_buffer(
 ///
 /// In C, `shim_load_image()` checks whether to install the security
 /// override. Returns whether the lock protocol should be used.
-pub fn shim_load_strategy(status: ShimStatus, boot_policy: bool) -> ShimLoadResult {
+pub fn shim_load_strategy(status: ShimStatus, _boot_policy: bool) -> ShimLoadResult {
     let use_lock = needs_lock_protocol(status);
     // In C: if have_shim, install_security_override, then BS->LoadImage, then uninstall
     ShimLoadResult {
@@ -254,6 +261,16 @@ mod tests {
     fn test_shim_validate_buffer_success() {
         let result = shim_validate_buffer(Some(b"PE data"), Some(&|_buf| true));
         assert_eq!(result, Ok(true));
+    }
+
+    #[test]
+    fn test_shim_validate_buffer_accepts_borrowed_verifier() {
+        let expected = b"trusted";
+        let verifier = |buffer: &[u8]| buffer == expected;
+        assert_eq!(
+            shim_validate_buffer(Some(expected), Some(&verifier)),
+            Ok(true)
+        );
     }
 
     #[test]

@@ -128,15 +128,15 @@ pub fn find_configuration_table(
     entry3: Option<&[u8]>,
     entry: Option<&[u8]>,
 ) -> Option<SmbiosEntryPoint> {
-    if let Some(e3) = entry3 {
-        if let Ok(ep) = parse_smbios3_entry(e3) {
-            return Some(ep);
-        }
+    if let Some(e3) = entry3
+        && let Ok(ep) = parse_smbios3_entry(e3)
+    {
+        return Some(ep);
     }
-    if let Some(e) = entry {
-        if let Ok(ep) = parse_smbios_entry(e) {
-            return Some(ep);
-        }
+    if let Some(e) = entry
+        && let Ok(ep) = parse_smbios_entry(e)
+    {
+        return Some(ep);
     }
     None
 }
@@ -148,11 +148,11 @@ pub fn find_configuration_table(
 /// Returns (header, remaining_data_starting_at_header) on success.
 /// Mirrors `get_smbios_table()` in C, which iterates through the table
 /// entries skipping string tables.
-pub fn get_smbios_table<'a>(
-    data: &'a [u8],
+pub fn get_smbios_table(
+    data: &[u8],
     type_: u8,
     min_size: usize,
-) -> Result<(SmbiosHeader, &'a [u8]), SmbiosError> {
+) -> Result<(SmbiosHeader, &[u8]), SmbiosError> {
     let mut pos = 0;
     let size = data.len();
 
@@ -277,10 +277,10 @@ pub fn find_oem_string(type11_data: &[u8], header_length: usize, name: &str) -> 
     let string_area = &type11_data[header_length..];
 
     for substring in split_null_strings(string_area) {
-        if let Some(suffix) = substring.strip_prefix(name) {
-            if !suffix.is_empty() {
-                return Some(suffix.to_string());
-            }
+        if let Some(suffix) = substring.strip_prefix(name)
+            && !suffix.is_empty()
+        {
+            return Some(suffix.to_string());
         }
     }
 
@@ -333,13 +333,12 @@ pub fn raw_info_populate(
         }
     }
 
-    if let Some(data) = type2_data {
-        if data.len() > type2_header_length {
-            info.baseboard_manufacturer =
-                smbios_get_string(data, type2_header_length, 1).map(String::from);
-            info.baseboard_product =
-                smbios_get_string(data, type2_header_length, 2).map(String::from);
-        }
+    if let Some(data) = type2_data
+        && data.len() > type2_header_length
+    {
+        info.baseboard_manufacturer =
+            smbios_get_string(data, type2_header_length, 1).map(String::from);
+        info.baseboard_product = smbios_get_string(data, type2_header_length, 2).map(String::from);
     }
 
     info

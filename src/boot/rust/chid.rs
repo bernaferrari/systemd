@@ -126,7 +126,7 @@ impl Device {
 pub const CHID_PRIORITY: [usize; 11] = [
     EXTRA_CHID_BASE + 2,
     EXTRA_CHID_BASE + 1,
-    EXTRA_CHID_BASE + 0,
+    EXTRA_CHID_BASE,
     3,
     6,
     8,

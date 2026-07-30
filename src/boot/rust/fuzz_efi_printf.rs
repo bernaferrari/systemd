@@ -7,7 +7,7 @@
 // Ports the `Input` struct and the input-validation logic from the C
 // fuzzer.  The actual printf formatting is delegated to the `efi_string`
 // module; this module focuses on the fuzzer's input parsing and the
-/// various format-string combinations it tests.
+// various format-string combinations it tests.
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ pub struct PrintfInput {
 
 /// Check whether the input size is within the accepted range.
 pub fn is_valid_size(size: usize) -> bool {
-    size >= INPUT_HEADER_SIZE && size <= FUZZ_MAX_SIZE
+    (INPUT_HEADER_SIZE..=FUZZ_MAX_SIZE).contains(&size)
 }
 
 // ── Input parsing ────────────────────────────────────────────────────────

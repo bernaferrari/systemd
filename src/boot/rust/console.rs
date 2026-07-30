@@ -229,7 +229,7 @@ pub fn select_target_mode(
             1,
         ),
         CONSOLE_MODE_FIRMWARE_MAX => (state.max_mode - 1, -1),
-        m if m >= CONSOLE_MODE_RANGE_MIN && m <= CONSOLE_MODE_RANGE_MAX => (m, 1),
+        m if (CONSOLE_MODE_RANGE_MIN..=CONSOLE_MODE_RANGE_MAX).contains(&m) => (m, 1),
         _ => return Err(ConsoleError::InvalidMode),
     };
 

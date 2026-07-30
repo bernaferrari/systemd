@@ -131,7 +131,7 @@ pub fn validate_header(blob: &[u8]) -> Result<(&str, usize), FirmwareError> {
     }
 
     // 1. Alignment check (simulated: in C this checks pointer alignment)
-    if (blob.as_ptr() as usize) % FW_HEADER_ALIGN != 0 {
+    if !(blob.as_ptr() as usize).is_multiple_of(FW_HEADER_ALIGN) {
         return Err(FirmwareError::Misaligned);
     }
 
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_validate_header_too_small() {
-        let mut blob = vec![0u8; 10];
+        let blob = vec![0u8; 10];
         assert_eq!(validate_header(&blob), Err(FirmwareError::BlobTooSmall));
     }
 

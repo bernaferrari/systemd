@@ -30,8 +30,7 @@ pub fn is_ascii(s: &[u16]) -> bool {
 pub fn convert_efi_path(path: &mut Vec<u16>) {
     let src = path.clone();
     let mut fixed = 0usize;
-    for i in 0..src.len() {
-        let ch = src[i];
+    for &ch in &src {
         path[fixed] = if ch == b'/' as u16 { '\\' as u16 } else { ch };
 
         if fixed > 0 && path[fixed - 1] == '\\' as u16 && path[fixed] == '\\' as u16 {
@@ -58,10 +57,7 @@ pub fn mangle_stub_cmdline(input: &str) -> String {
     let mut prev_was_ws = false;
 
     let mut chars = input.chars().peekable();
-    while chars
-        .peek()
-        .map_or(false, |c| shall_be_whitespace(*c as u16))
-    {
+    while chars.peek().is_some_and(|c| shall_be_whitespace(*c as u16)) {
         chars.next();
     }
 
@@ -138,8 +134,8 @@ pub fn url_replace_last_component(url: &str, filename: &str) -> Option<String> {
     }
 
     let mut last_slash = None;
-    for i in path_start..path_end {
-        if bytes[i] == b'/' {
+    for (i, byte) in bytes.iter().enumerate().take(path_end).skip(path_start) {
+        if *byte == b'/' {
             last_slash = Some(i);
         }
     }
@@ -179,8 +175,7 @@ pub fn remove_boot_count(path: &mut String) {
     let rest = &path[end_of_match..];
 
     // Optional `-N` suffix
-    if rest.starts_with('-') {
-        let after_dash = &rest[1..];
+    if let Some(after_dash) = rest.strip_prefix('-') {
         match parse_number_len(after_dash) {
             Some(l) => end_of_match += 1 + l,
             None => return,

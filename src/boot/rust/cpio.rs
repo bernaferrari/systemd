@@ -75,7 +75,7 @@ pub fn align4(len: usize) -> usize {
 /// Returns the new offset after padding.
 pub fn pad4(buf: &mut [u8], offset: usize, start: usize) -> usize {
     let mut pos = offset;
-    while (pos - start) % 4 != 0 {
+    while !(pos - start).is_multiple_of(4) {
         buf[pos] = 0;
         pos += 1;
     }
@@ -101,6 +101,14 @@ pub fn mangle_filename(utf16_chars: &[u16]) -> Result<Vec<u8>, CpioError> {
 
 // ── CPIO record generation ────────────────────────────────────────────────
 
+fn validate_cpio_file_size(contents_len: usize) -> Result<(), CpioError> {
+    if contents_len > u32::MAX as usize {
+        Err(CpioError::FileTooLarge)
+    } else {
+        Ok(())
+    }
+}
+
 /// Build a CPIO file record header and return it as a byte vector.
 pub fn pack_cpio_one(
     fname: &str,
@@ -109,9 +117,7 @@ pub fn pack_cpio_one(
     access_mode: u32,
     inode: u32,
 ) -> Result<(Vec<u8>, u32), CpioError> {
-    if contents.len() > u32::MAX as usize {
-        return Err(CpioError::FileTooLarge);
-    }
+    validate_cpio_file_size(contents.len())?;
     if inode == u32::MAX {
         return Err(CpioError::TooManyInodes);
     }
@@ -341,8 +347,7 @@ mod tests {
 
     #[test]
     fn test_pack_cpio_one_too_large() {
-        let big_content = vec![0u8; u32::MAX as usize + 1];
-        let result = pack_cpio_one("big", &big_content, "", 0o0644, 1);
+        let result = validate_cpio_file_size(u32::MAX as usize + 1);
         assert_eq!(result, Err(CpioError::FileTooLarge));
     }
 

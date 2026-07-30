@@ -30,8 +30,7 @@ pub fn strnlen8(s: Option<&[u8]>, n: usize) -> usize {
         None => 0,
         Some(data) => {
             let end = std::cmp::min(data.len(), n);
-            let pos = data[..end].iter().position(|&c| c == 0).unwrap_or(end);
-            pos
+            data[..end].iter().position(|&c| c == 0).unwrap_or(end)
         }
     }
 }
@@ -103,7 +102,7 @@ pub fn strncasecmp8(s1: &[u8], s2: &[u8], n: usize) -> std::cmp::Ordering {
 
 /// Lowercase a single byte.
 fn tolower(c: u8) -> u8 {
-    if c >= b'A' && c <= b'Z' {
+    if c.is_ascii_uppercase() {
         c + (b'a' - b'A')
     } else {
         c
@@ -204,12 +203,12 @@ pub fn utf8_to_unichar(utf8: &[u8]) -> (u32, usize) {
         return (0xFFFF_FFFF, len);
     }
 
-    for i in 1..len {
-        if (utf8[i] & 0xC0) != 0x80 {
+    for &byte in utf8.iter().take(len).skip(1) {
+        if (byte & 0xC0) != 0x80 {
             return (0xFFFF_FFFF, len);
         }
         unichar <<= 6;
-        unichar |= (utf8[i] & 0x3F) as u32;
+        unichar |= (byte & 0x3F) as u32;
     }
 
     (unichar, len)
@@ -391,6 +390,10 @@ fn fnmatch_prefix_impl(pattern: &[u16], haystack: &[u16]) -> (usize, usize, bool
 }
 
 /// Match the prefix (non-star portion), returns (pi, hi) after match.
+#[expect(
+    dead_code,
+    reason = "Retained as the direct Rust counterpart of the C prefix matcher for future FFI callers."
+)]
 fn fnmatch_match_prefix_impl(pattern: &[u16], haystack: &[u16]) -> (usize, usize) {
     let (pi, hi, _) = fnmatch_prefix_impl(pattern, haystack);
     (pi, hi)
@@ -665,6 +668,13 @@ pub fn hexdump(data: &[u8]) -> Vec<u16> {
 pub const EFI_ERROR_MASK: u64 = 1u64 << 63;
 
 /// Known EFI status codes and their string representations.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Retained as the direct Rust counterpart of the C EFI status formatter for future FFI callers."
+    )
+)]
 fn status_to_string(status: u64) -> Option<&'static str> {
     match status {
         0 => return Some("Success"),

@@ -8,7 +8,7 @@
 // variables in various formats: raw bytes, UTF-16 strings, little-endian
 // integers, and boolean values.  The byte-encoding logic is faithfully
 // ported from the C source; the EFI runtime calls are abstracted behind
-/// a `Vars` trait so the pure logic remains fully testable.
+// a `Vars` trait so the pure logic remains fully testable.
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ impl std::error::Error for EfivarError {}
 /// Mirrors the byte-by-byte encoding in `efivar_set_uint32_le`.
 pub fn encode_uint32_le(value: u32) -> [u8; 4] {
     [
-        (value >> 0 & 0xFF) as u8,
+        value as u8,
         (value >> 8 & 0xFF) as u8,
         (value >> 16 & 0xFF) as u8,
         (value >> 24 & 0xFF) as u8,
@@ -77,7 +77,7 @@ pub fn decode_uint32_le(buf: &[u8]) -> Result<u32, EfivarError> {
     if buf.len() != 4 {
         return Err(EfivarError::UnexpectedSize);
     }
-    Ok(u32::from(buf[0]) << 0
+    Ok(u32::from(buf[0])
         | u32::from(buf[1]) << 8
         | u32::from(buf[2]) << 16
         | u32::from(buf[3]) << 24)
@@ -88,7 +88,7 @@ pub fn decode_uint32_le(buf: &[u8]) -> Result<u32, EfivarError> {
 /// Mirrors the byte-by-byte encoding in `efivar_set_uint64_le`.
 pub fn encode_uint64_le(value: u64) -> [u8; 8] {
     [
-        (value >> 0 & 0xFF) as u8,
+        value as u8,
         (value >> 8 & 0xFF) as u8,
         (value >> 16 & 0xFF) as u8,
         (value >> 24 & 0xFF) as u8,
@@ -106,7 +106,7 @@ pub fn decode_uint64_le(buf: &[u8]) -> Result<u64, EfivarError> {
     if buf.len() != 8 {
         return Err(EfivarError::UnexpectedSize);
     }
-    Ok(u64::from(buf[0]) << 0
+    Ok(u64::from(buf[0])
         | u64::from(buf[1]) << 8
         | u64::from(buf[2]) << 16
         | u64::from(buf[3]) << 24

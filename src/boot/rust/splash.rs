@@ -264,7 +264,7 @@ pub fn bmp_parse_header(data: &[u8]) -> Result<(BmpDib, usize, usize), SplashErr
         _ => return Err(SplashError::UnsupportedDepth),
     }
 
-    let row_size = ((dib.depth as usize) * (dib.x as usize) + 31) / 32 * 4;
+    let row_size = ((dib.depth as usize) * (dib.x as usize)).div_ceil(32) * 4;
     let total_pixel_data = (dib.y as usize) * row_size;
     let pixel_available = if file_hdr.size >= file_hdr.offset {
         (file_hdr.size - file_hdr.offset) as usize
@@ -365,7 +365,7 @@ pub fn read_channel_mask(dib: &BmpDib) -> ChannelMasks {
         masks.mask[CHANNEL_B] = if bpp16 { 0x001F } else { 0x0000FF };
         masks.shift[CHANNEL_R] = if bpp16 { 0xA } else { 0x10 };
         masks.shift[CHANNEL_G] = if bpp16 { 0x5 } else { 0x08 };
-        masks.shift[CHANNEL_B] = if bpp16 { 0x0 } else { 0x00 };
+        masks.shift[CHANNEL_B] = 0;
         masks.scale[CHANNEL_R] = if bpp16 { 0x08 } else { 0x1 };
         masks.scale[CHANNEL_G] = if bpp16 { 0x08 } else { 0x1 };
         masks.scale[CHANNEL_B] = if bpp16 { 0x08 } else { 0x1 };

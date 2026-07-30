@@ -6,7 +6,7 @@
 //
 // Ports the input validation and `line_get_key_value` iteration from the C
 // fuzzer.  The separator handling and key-value extraction are fully
-/// testable without libFuzzer.
+// testable without libFuzzer.
 
 // ── Constants ─────────────────────────────────────────────────────────────
 

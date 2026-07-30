@@ -143,7 +143,7 @@ pub fn detect_hyperv_cvm(platform: &dyn PlatformInfo, isoltype: u32) -> bool {
     };
 
     let feat = vendor_leaf.eax;
-    if feat < CPUID_HYPERV_MIN || feat > CPUID_HYPERV_MAX {
+    if !(CPUID_HYPERV_MIN..=CPUID_HYPERV_MAX).contains(&feat) {
         return false;
     }
 
@@ -153,7 +153,7 @@ pub fn detect_hyperv_cvm(platform: &dyn PlatformInfo, isoltype: u32) -> bool {
     sig[0..4].copy_from_slice(&r.ebx.to_le_bytes());
     sig[4..8].copy_from_slice(&r.edx.to_le_bytes());
     sig[8..12].copy_from_slice(&r.ecx.to_le_bytes());
-    if &sig[..12] != &CPUID_SIG_HYPERV[..12] {
+    if sig[..12] != CPUID_SIG_HYPERV[..12] {
         return false;
     }
 
@@ -190,10 +190,10 @@ pub fn detect_sev(platform: &dyn PlatformInfo) -> bool {
         return detect_hyperv_cvm(platform, CPUID_HYPERV_ISOLATION_TYPE_SNP);
     }
 
-    if let Some(msrval) = platform.read_msr(MSR_AMD64_SEV) {
-        if (msrval & (MSR_SEV_SNP | MSR_SEV_ES | MSR_SEV)) != 0 {
-            return true;
-        }
+    if let Some(msrval) = platform.read_msr(MSR_AMD64_SEV)
+        && (msrval & (MSR_SEV_SNP | MSR_SEV_ES | MSR_SEV)) != 0
+    {
+        return true;
     }
 
     false
@@ -215,7 +215,7 @@ pub fn detect_tdx(platform: &dyn PlatformInfo) -> bool {
         sig[0..4].copy_from_slice(&r.eax.to_le_bytes());
         sig[4..8].copy_from_slice(&r.ecx.to_le_bytes());
         sig[8..12].copy_from_slice(&r.edx.to_le_bytes());
-        if &sig[..12] == &CPUID_SIG_INTEL_TDX[..12] {
+        if sig[..12] == CPUID_SIG_INTEL_TDX[..12] {
             return true;
         }
     }
@@ -231,10 +231,10 @@ pub fn is_confidential_vm(platform: &dyn PlatformInfo) -> bool {
     }
 
     let vendor = cpuid_vendor(platform);
-    if &vendor[..12] == &CPUID_SIG_AMD[..12] {
+    if vendor[..12] == CPUID_SIG_AMD[..12] {
         return detect_sev(platform);
     }
-    if &vendor[..12] == &CPUID_SIG_INTEL[..12] {
+    if vendor[..12] == CPUID_SIG_INTEL[..12] {
         return detect_tdx(platform);
     }
 
@@ -248,10 +248,10 @@ pub fn detect_vmm_type(platform: &dyn PlatformInfo) -> VmmType {
     }
 
     let vendor = cpuid_vendor(platform);
-    if &vendor[..12] == &CPUID_SIG_AMD[..12] && detect_sev(platform) {
+    if vendor[..12] == CPUID_SIG_AMD[..12] && detect_sev(platform) {
         return VmmType::ConfidentialSev;
     }
-    if &vendor[..12] == &CPUID_SIG_INTEL[..12] && detect_tdx(platform) {
+    if vendor[..12] == CPUID_SIG_INTEL[..12] && detect_tdx(platform) {
         return VmmType::ConfidentialTdx;
     }
     if detect_hyperv_cvm(platform, CPUID_HYPERV_ISOLATION_TYPE_SNP) {
@@ -285,12 +285,12 @@ pub const QEMU_KERNEL_LOADER_FS_MEDIA_GUID: [u8; 16] = [
 /// or firmware volume).  Mirrors `is_direct_boot()` in vmm.c.
 pub fn is_direct_boot(device_paths: &[DevicePathHeader], vendor_guid: Option<&[u8; 16]>) -> bool {
     for dp in device_paths {
-        if dp.dp_type == MEDIA_DEVICE_PATH && dp.sub_type == MEDIA_VENDOR_DP {
-            if let Some(guid) = vendor_guid {
-                if guid == &QEMU_KERNEL_LOADER_FS_MEDIA_GUID {
-                    return true;
-                }
-            }
+        if dp.dp_type == MEDIA_DEVICE_PATH
+            && dp.sub_type == MEDIA_VENDOR_DP
+            && let Some(guid) = vendor_guid
+            && guid == &QEMU_KERNEL_LOADER_FS_MEDIA_GUID
+        {
+            return true;
         }
         if dp.dp_type == MEDIA_DEVICE_PATH && dp.sub_type == MEDIA_PIWG_FW_VOL_DP {
             return true;
@@ -324,10 +324,6 @@ mod tests {
         }
         fn with_cpuid(mut self, leaf: u32, result: CpuidResult) -> Self {
             self.cpuid_results.insert((leaf, 0), result);
-            self
-        }
-        fn with_cpuid_count(mut self, leaf: u32, sub: u32, result: CpuidResult) -> Self {
-            self.cpuid_results.insert((leaf, sub), result);
             self
         }
         fn with_msr(mut self, idx: u32, val: u64) -> Self {

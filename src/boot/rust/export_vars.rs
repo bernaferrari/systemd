@@ -6,8 +6,8 @@
 //
 // Manages the creation of `Loader*` EFI variables that communicate
 // boot-device information to the OS.  The pure logic (which variables to
-/// set, under what conditions) is faithfully ported; the EFI runtime
-/// calls are abstracted behind a `VarWriter` trait.
+// set, under what conditions) is faithfully ported; the EFI runtime
+// calls are abstracted behind a `VarWriter` trait.
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -126,26 +126,27 @@ pub fn export_common_variables(
     vendor: &str,
 ) -> Result<(), ExportError> {
     // Export device partition UUID
-    if info.device_handle.is_some() && !store.var_exists(vendor, LOADER_DEVICE_PART_UUID) {
-        if !info.device_part_uuid.is_empty() {
-            store.set_str(vendor, LOADER_DEVICE_PART_UUID, &info.device_part_uuid)?;
-        }
+    if info.device_handle.is_some()
+        && !store.var_exists(vendor, LOADER_DEVICE_PART_UUID)
+        && !info.device_part_uuid.is_empty()
+    {
+        store.set_str(vendor, LOADER_DEVICE_PART_UUID, &info.device_part_uuid)?;
     }
 
     // Export device URL
-    if info.device_handle.is_some() && !store.var_exists(vendor, LOADER_DEVICE_URL) {
-        if !info.device_url.is_empty() {
-            store.set_str(vendor, LOADER_DEVICE_URL, &info.device_url)?;
-        }
+    if info.device_handle.is_some()
+        && !store.var_exists(vendor, LOADER_DEVICE_URL)
+        && !info.device_url.is_empty()
+    {
+        store.set_str(vendor, LOADER_DEVICE_URL, &info.device_url)?;
     }
 
     // Export image identifier
-    if info.file_path.is_some() && !store.var_exists(vendor, LOADER_IMAGE_IDENTIFIER) {
-        if let Some(ref fp) = info.file_path {
-            if !fp.is_empty() {
-                store.set_str(vendor, LOADER_IMAGE_IDENTIFIER, fp)?;
-            }
+    match info.file_path.as_deref() {
+        Some(fp) if !store.var_exists(vendor, LOADER_IMAGE_IDENTIFIER) && !fp.is_empty() => {
+            store.set_str(vendor, LOADER_IMAGE_IDENTIFIER, fp)?;
         }
+        _ => {}
     }
 
     // Export firmware info

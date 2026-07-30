@@ -183,7 +183,7 @@ pub fn device_path_startswith(path: &[DevicePathNode], prefix: &[DevicePathNode]
         }
     }
 
-    prefix.last().map_or(false, |n| n.is_end_entire())
+    prefix.last().is_some_and(|n| n.is_end_entire())
 }
 
 /// Replace a node in a device path with a new node.
@@ -253,7 +253,7 @@ pub fn device_path_to_str(nodes: &[DevicePathNode]) -> String {
 pub fn make_file_device_path(base_nodes: &[DevicePathNode], filename: &str) -> Vec<DevicePathNode> {
     let mut result = base_nodes.to_vec();
 
-    if result.last().map_or(true, |n| n.is_end_entire()) {
+    if result.last().is_none_or(|n| n.is_end_entire()) {
         result.pop();
     }
 
@@ -278,10 +278,6 @@ mod tests {
 
     fn make_node(type_: u8, subtype: u8) -> DevicePathNode {
         DevicePathNode::new(type_, subtype, vec![])
-    }
-
-    fn make_node_with_data(type_: u8, subtype: u8, data: &[u8]) -> DevicePathNode {
-        DevicePathNode::new(type_, subtype, data.to_vec())
     }
 
     #[test]

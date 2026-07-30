@@ -18,8 +18,9 @@ pub const MAX_TYPE1_FILENAME_LEN: usize = 255;
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LoaderType {
+    #[default]
     Undefined,
     Auto,
     Efi,
@@ -30,12 +31,6 @@ pub enum LoaderType {
     SecureBootKeys,
     Bad,
     Ignore,
-}
-
-impl Default for LoaderType {
-    fn default() -> Self {
-        LoaderType::Undefined
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -226,7 +221,7 @@ pub fn valid_type1_filename(name: &str) -> bool {
     if name.starts_with('.') {
         return false;
     }
-    if !name.chars().all(|c| c.is_ascii()) {
+    if !name.is_ascii() {
         return false;
     }
 

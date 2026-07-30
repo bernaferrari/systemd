@@ -214,7 +214,7 @@ pub fn verify_gpt(raw: &[u8], lba_expected: u64) -> Result<GptHeader, PartDiscov
         return Err(PartDiscoveryError::InvalidGpt);
     }
 
-    if (header.size_of_partition_entry as usize % EFI_PARTITION_ENTRY_SIZE) != 0 {
+    if !(header.size_of_partition_entry as usize).is_multiple_of(EFI_PARTITION_ENTRY_SIZE) {
         return Err(PartDiscoveryError::InvalidGpt);
     }
 
@@ -237,7 +237,7 @@ pub fn verify_gpt(raw: &[u8], lba_expected: u64) -> Result<GptHeader, PartDiscov
 /// Search for a partition by type GUID
 pub fn find_partition_by_type<'a>(
     partitions: &'a [PartitionEntry],
-    entry_size: u32,
+    _entry_size: u32,
     type_guid: &[u8; 16],
 ) -> Option<(usize, &'a PartitionEntry)> {
     for (i, entry) in partitions.iter().enumerate() {
@@ -528,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_find_partition_by_type() {
-        let mut entry = PartitionEntry {
+        let entry = PartitionEntry {
             partition_type_guid: [0xAA; 16],
             unique_partition_guid: [0u8; 16],
             starting_lba: 100,

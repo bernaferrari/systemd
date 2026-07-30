@@ -132,7 +132,7 @@ pub fn edid_parse_blob(data: &[u8]) -> Result<EdidHeader, EdidError> {
 /// in the range `A..=Z`.
 pub fn edid_get_panel_id(header: &EdidHeader) -> Result<String, EdidError> {
     for &c in &header.manufacturer {
-        if !(b'A'..=b'Z').contains(&c) {
+        if !c.is_ascii_uppercase() {
             return Err(EdidError::InvalidPanelId);
         }
     }
