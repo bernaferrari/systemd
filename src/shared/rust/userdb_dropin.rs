@@ -237,6 +237,11 @@ struct JsonParser<'a> {
     pos: usize,
 }
 
+#[inline]
+const fn is_systemd_json_whitespace(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\n' | b'\r')
+}
+
 impl<'a> JsonParser<'a> {
     fn new(input: &'a str) -> Self {
         Self { input, pos: 0 }
@@ -244,7 +249,9 @@ impl<'a> JsonParser<'a> {
 
     /// Skip whitespace characters.
     fn skip_whitespace(&mut self) {
-        while self.pos < self.input.len() && self.input.as_bytes()[self.pos].is_ascii_whitespace() {
+        while self.pos < self.input.len()
+            && is_systemd_json_whitespace(self.input.as_bytes()[self.pos])
+        {
             self.pos += 1;
         }
     }
@@ -1098,6 +1105,19 @@ mod tests {
     #[test]
     fn test_parse_json_trailing_content() {
         assert!(parse_json(r#"{} extra"#).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_parse_json_uses_c_whitespace_grammar() {
+        for whitespace in [' ', '\t', '\n', '\r'] {
+            assert!(parse_json(&format!("{whitespace}{{}}{whitespace}")).is_ok());
+        }
+
+        for whitespace in ['\u{b}', '\u{c}'] {
+            assert!(parse_json(&format!("{whitespace}{{}}")).is_err());
+            assert!(parse_json(&format!("{{}}{whitespace}")).is_err());
+        }
     }
 
     // ── JSON merging ───────────────────────────────────────────────────
