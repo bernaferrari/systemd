@@ -2045,7 +2045,7 @@ status = "in-progress"
 tier = 1
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored device action tables to current sd-device private source/declarations and public enum; behavioral completion remains unclaimed."
+notes = "2026-07-30 bounded static parity review: device-private.c owns the eight-entry add/remove/change/move/online/offline/bind/unbind table and the private ACTION setter/parser path; device-private.h declares the two lookup symbols and setter; sd-device.h supplies the public 64-bit enum, max/invalid sentinels, and action-consuming API declarations. The Rust shadow now preserves all enum sentinels and the C lookup's NULL-on-out-of-table behavior, and its focused unit tests cover every table entry, discriminants, invalid sentinels, and rejected spellings. C remains production authority. P2: no Rust device property mutation/ACTION ingestion, public sd_device action getter/trigger integration, C ABI export, arbitrary raw enum or nullable/raw-C-string boundary, or C/R runtime differential test is implemented or claimed."
 
 [event_source_type]
 c_file = "src/libsystemd/sd-event/sd-event.c"
@@ -2058,14 +2058,14 @@ sync_status = "needs_review"
 notes = "2026-07-30 static source review: enum values, string table, and time-prioq/rate-limit predicates were checked against sd-event.c and event-source.h, including CPU/I/O pressure sources. C remains production authority; runtime/lifetime/ABI parity is unclaimed."
 
 [id128_util_lib]
-c_file = "src/libsystemd/sd-id128/sd-id128.c"
+c_paths = ["src/libsystemd/sd-id128/id128-util.c", "src/libsystemd/sd-id128/id128-util.h", "src/libsystemd/sd-id128/sd-id128.c", "src/systemd/sd-id128.h"]
 rust_file = "src/libsystemd/rust/id128_util.rs"
-header_file = "src/systemd/sd-id128.h"
+header_file = "src/libsystemd/sd-id128/id128-util.h"
 status = "in-progress"
 tier = 1
 symbols = 3
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: libsystemd ID128 parsing/layout behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 bounded static parity/provenance audit: direct authority is id128-util.c/.h for id128_compare(), id128_make_v4_uuid(), id128_is_valid(), and id128_from_string_nonzero(), plus sd-id128.c and public sd-id128.h for SdId128's layout, UUID display, and canonical parser. FromStr now rejects braced IDs, matching sd_id128_from_string(). C remains production authority. P2: the Rust type's forced 8-byte alignment lacks cross-target C ABI validation, and no cross-language runtime or filesystem/keyring/cache behavior validation is claimed."
 
 [journal_object_type]
 c_paths = ["src/libsystemd/sd-journal/journal-file.c", "src/libsystemd/sd-journal/journal-file.h", "src/libsystemd/sd-journal/journal-def.h"]
@@ -2075,7 +2075,7 @@ status = "in-progress"
 tier = 1
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored journal object-type strings and enum declaration to current journal-file/journal-def authorities; behavioral completion remains unclaimed."
+notes = "2026-07-30 static source review: journal-def.h enum discriminants/sentinels and journal-file.c string table now have a single Rust table with exhaustive round-trip coverage; the C lookup's NULL result for negative/out-of-range values and check_object_header's rejection of stored OBJECT_UNUSED are represented explicitly. C remains production authority; journal-file object layout, mmap/I/O, header-size, compression, hash-table, and runtime/ABI integration parity remain P2."
 
 [netlink_sock_diag]
 c_file = "src/libsystemd/sd-netlink/netlink-sock-diag.c"
@@ -2125,7 +2125,7 @@ status = "in-progress"
 tier = 1
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored Varlink state table and enum to current sd-varlink source/private declaration; behavioral completion remains unclaimed."
+notes = "2026-07-30 static source review: the current private VarlinkState enum/table was rechecked after four upgrade states were added upstream. Rust now has the exact 0..24 discriminants, state strings, alive predicate, and wants-reply predicate, covered by an exhaustive table test. C remains production authority; transport, JSON stream, events, protocol upgrade handoff, server lifecycle, ABI, and runtime integration parity are unclaimed."
 
 #
 # src/shared modules

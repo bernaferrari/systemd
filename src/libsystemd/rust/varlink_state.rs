@@ -20,15 +20,19 @@ pub enum VarlinkState {
     ProcessingMethod = 9,
     ProcessingMethodMore = 10,
     ProcessingMethodOneway = 11,
-    ProcessedMethod = 12,
-    PendingMethod = 13,
-    PendingMethodMore = 14,
-    PendingDisconnect = 15,
-    PendingTimeout = 16,
-    ProcessingDisconnect = 17,
-    ProcessingTimeout = 18,
-    ProcessingFailure = 19,
-    Disconnected = 20,
+    ProcessingMethodUpgrade = 12,
+    ProcessedMethod = 13,
+    ProcessedMethodUpgrade = 14,
+    PendingMethod = 15,
+    PendingMethodMore = 16,
+    PendingMethodUpgrade = 17,
+    Upgrading = 18,
+    PendingDisconnect = 19,
+    PendingTimeout = 20,
+    ProcessingDisconnect = 21,
+    ProcessingTimeout = 22,
+    ProcessingFailure = 23,
+    Disconnected = 24,
 }
 
 impl VarlinkState {
@@ -46,9 +50,13 @@ impl VarlinkState {
             Self::ProcessingMethod => "processing-method",
             Self::ProcessingMethodMore => "processing-method-more",
             Self::ProcessingMethodOneway => "processing-method-oneway",
+            Self::ProcessingMethodUpgrade => "processing-method-upgrade",
             Self::ProcessedMethod => "processed-method",
+            Self::ProcessedMethodUpgrade => "processed-method-upgrade",
             Self::PendingMethod => "pending-method",
             Self::PendingMethodMore => "pending-method-more",
+            Self::PendingMethodUpgrade => "pending-method-upgrade",
+            Self::Upgrading => "upgrading",
             Self::PendingDisconnect => "pending-disconnect",
             Self::PendingTimeout => "pending-timeout",
             Self::ProcessingDisconnect => "processing-disconnect",
@@ -73,14 +81,21 @@ impl VarlinkState {
                 | Self::ProcessingMethod
                 | Self::ProcessingMethodMore
                 | Self::ProcessingMethodOneway
+                | Self::ProcessingMethodUpgrade
                 | Self::ProcessedMethod
+                | Self::ProcessedMethodUpgrade
                 | Self::PendingMethod
                 | Self::PendingMethodMore
+                | Self::PendingMethodUpgrade
+                | Self::Upgrading
         )
     }
 
     pub fn wants_reply(self) -> bool {
-        matches!(self, Self::ProcessingMethod | Self::ProcessingMethodMore)
+        matches!(
+            self,
+            Self::ProcessingMethod | Self::ProcessingMethodMore | Self::ProcessingMethodUpgrade
+        )
     }
 }
 
@@ -98,9 +113,13 @@ pub fn varlink_state_from_string(s: &str) -> Result<VarlinkState> {
         "processing-method" => Ok(VarlinkState::ProcessingMethod),
         "processing-method-more" => Ok(VarlinkState::ProcessingMethodMore),
         "processing-method-oneway" => Ok(VarlinkState::ProcessingMethodOneway),
+        "processing-method-upgrade" => Ok(VarlinkState::ProcessingMethodUpgrade),
         "processed-method" => Ok(VarlinkState::ProcessedMethod),
+        "processed-method-upgrade" => Ok(VarlinkState::ProcessedMethodUpgrade),
         "pending-method" => Ok(VarlinkState::PendingMethod),
         "pending-method-more" => Ok(VarlinkState::PendingMethodMore),
+        "pending-method-upgrade" => Ok(VarlinkState::PendingMethodUpgrade),
+        "upgrading" => Ok(VarlinkState::Upgrading),
         "pending-disconnect" => Ok(VarlinkState::PendingDisconnect),
         "pending-timeout" => Ok(VarlinkState::PendingTimeout),
         "processing-disconnect" => Ok(VarlinkState::ProcessingDisconnect),
@@ -159,5 +178,51 @@ mod tests {
     #[test]
     fn pending_disconnect_does_not_want_reply() {
         assert!(!VarlinkState::PendingDisconnect.wants_reply());
+    }
+
+    #[test]
+    fn state_table_matches_current_c_enum_and_strings() {
+        let states = [
+            (VarlinkState::IdleClient, 0),
+            (VarlinkState::AwaitingReply, 1),
+            (VarlinkState::AwaitingReplyMore, 2),
+            (VarlinkState::Calling, 3),
+            (VarlinkState::Called, 4),
+            (VarlinkState::Collecting, 5),
+            (VarlinkState::CollectingReply, 6),
+            (VarlinkState::ProcessingReply, 7),
+            (VarlinkState::IdleServer, 8),
+            (VarlinkState::ProcessingMethod, 9),
+            (VarlinkState::ProcessingMethodMore, 10),
+            (VarlinkState::ProcessingMethodOneway, 11),
+            (VarlinkState::ProcessingMethodUpgrade, 12),
+            (VarlinkState::ProcessedMethod, 13),
+            (VarlinkState::ProcessedMethodUpgrade, 14),
+            (VarlinkState::PendingMethod, 15),
+            (VarlinkState::PendingMethodMore, 16),
+            (VarlinkState::PendingMethodUpgrade, 17),
+            (VarlinkState::Upgrading, 18),
+            (VarlinkState::PendingDisconnect, 19),
+            (VarlinkState::PendingTimeout, 20),
+            (VarlinkState::ProcessingDisconnect, 21),
+            (VarlinkState::ProcessingTimeout, 22),
+            (VarlinkState::ProcessingFailure, 23),
+            (VarlinkState::Disconnected, 24),
+        ];
+
+        for (state, discriminant) in states {
+            assert_eq!(state as i32, discriminant);
+            assert_eq!(varlink_state_from_string(state.as_str()), Ok(state));
+        }
+    }
+
+    #[test]
+    fn upgrade_states_are_alive_and_want_reply_when_processing() {
+        assert!(VarlinkState::ProcessingMethodUpgrade.is_alive());
+        assert!(VarlinkState::ProcessedMethodUpgrade.is_alive());
+        assert!(VarlinkState::PendingMethodUpgrade.is_alive());
+        assert!(VarlinkState::Upgrading.is_alive());
+        assert!(VarlinkState::ProcessingMethodUpgrade.wants_reply());
+        assert!(!VarlinkState::PendingMethodUpgrade.wants_reply());
     }
 }

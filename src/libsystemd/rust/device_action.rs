@@ -5,7 +5,7 @@ pub type Result<T> = std::result::Result<T, i32>;
 
 pub const NEG_EINVAL: i32 = -libc::EINVAL;
 
-#[repr(i32)]
+#[repr(i64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DeviceAction {
     Add = 0,
@@ -16,24 +16,29 @@ pub enum DeviceAction {
     Offline = 5,
     Bind = 6,
     Unbind = 7,
+    Max = 8,
+    Invalid = NEG_EINVAL as i64,
+    ForceS64Min = i64::MIN,
+    ForceS64Max = i64::MAX,
 }
 
 impl DeviceAction {
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> Option<&'static str> {
         match self {
-            Self::Add => "add",
-            Self::Remove => "remove",
-            Self::Change => "change",
-            Self::Move => "move",
-            Self::Online => "online",
-            Self::Offline => "offline",
-            Self::Bind => "bind",
-            Self::Unbind => "unbind",
+            Self::Add => Some("add"),
+            Self::Remove => Some("remove"),
+            Self::Change => Some("change"),
+            Self::Move => Some("move"),
+            Self::Online => Some("online"),
+            Self::Offline => Some("offline"),
+            Self::Bind => Some("bind"),
+            Self::Unbind => Some("unbind"),
+            Self::Max | Self::Invalid | Self::ForceS64Min | Self::ForceS64Max => None,
         }
     }
 }
 
-pub fn device_action_to_string(action: DeviceAction) -> &'static str {
+pub fn device_action_to_string(action: DeviceAction) -> Option<&'static str> {
     action.as_str()
 }
 
@@ -54,45 +59,49 @@ pub fn device_action_from_string(s: &str) -> Result<DeviceAction> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ACTIONS: &[(DeviceAction, &str)] = &[
+        (DeviceAction::Add, "add"),
+        (DeviceAction::Remove, "remove"),
+        (DeviceAction::Change, "change"),
+        (DeviceAction::Move, "move"),
+        (DeviceAction::Online, "online"),
+        (DeviceAction::Offline, "offline"),
+        (DeviceAction::Bind, "bind"),
+        (DeviceAction::Unbind, "unbind"),
+    ];
+
     #[test]
-    fn formats_add() {
-        assert_eq!(device_action_to_string(DeviceAction::Add), "add");
+    fn converts_every_c_table_entry_in_both_directions() {
+        for &(action, string) in ACTIONS {
+            assert_eq!(device_action_to_string(action), Some(string));
+            assert_eq!(device_action_from_string(string), Ok(action));
+        }
     }
+
     #[test]
-    fn formats_remove() {
-        assert_eq!(device_action_to_string(DeviceAction::Remove), "remove");
+    fn preserves_c_enum_discriminants_and_invalid_lookup_result() {
+        assert_eq!(DeviceAction::Add as i64, 0);
+        assert_eq!(DeviceAction::Unbind as i64, 7);
+        assert_eq!(DeviceAction::Max as i64, 8);
+        assert_eq!(DeviceAction::Invalid as i64, NEG_EINVAL as i64);
+        assert_eq!(DeviceAction::ForceS64Min as i64, i64::MIN);
+        assert_eq!(DeviceAction::ForceS64Max as i64, i64::MAX);
+
+        for action in [
+            DeviceAction::Max,
+            DeviceAction::Invalid,
+            DeviceAction::ForceS64Min,
+            DeviceAction::ForceS64Max,
+        ] {
+            assert_eq!(device_action_to_string(action), None);
+        }
     }
+
     #[test]
-    fn parses_change() {
-        assert_eq!(
-            device_action_from_string("change"),
-            Ok(DeviceAction::Change)
-        );
-    }
-    #[test]
-    fn parses_move() {
-        assert_eq!(device_action_from_string("move"), Ok(DeviceAction::Move));
-    }
-    #[test]
-    fn parses_online() {
-        assert_eq!(
-            device_action_from_string("online"),
-            Ok(DeviceAction::Online)
-        );
-    }
-    #[test]
-    fn parses_offline() {
-        assert_eq!(
-            device_action_from_string("offline"),
-            Ok(DeviceAction::Offline)
-        );
-    }
-    #[test]
-    fn parses_bind() {
-        assert_eq!(device_action_from_string("bind"), Ok(DeviceAction::Bind));
-    }
-    #[test]
-    fn rejects_invalid_action() {
-        assert_eq!(device_action_from_string("detach"), Err(NEG_EINVAL));
+    fn rejects_noncanonical_action_strings_with_c_errno() {
+        for string in ["", "detach", "ADD", "add ", "unbound"] {
+            assert_eq!(device_action_from_string(string), Err(NEG_EINVAL));
+        }
     }
 }

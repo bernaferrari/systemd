@@ -224,6 +224,46 @@ expanded, or re-synchronized:
   authority, formatting, and diff checks; record any unrelated aggregate
   failures without weakening the focused gate.
 
+## Daily upstream integration
+
+Keep this fork as a linear Rust-port patch stack on top of `origin/main`.
+Do not create merge commits for ordinary upstream pulls: they obscure the C
+range that must be re-reviewed and make later re-porting needlessly difficult.
+
+Only integrate upstream with a clean worktree, after each bounded Rust review
+is committed. First fetch and inspect the exact queue without changing files:
+
+```sh
+git fetch origin
+RUST_PORT_BASE=$(git merge-base HEAD origin/main)
+git rev-list --left-right --count HEAD...origin/main
+python3 tools/rust-port/diff-report.py \
+    --range "$RUST_PORT_BASE..origin/main" --map tools/rust-port/map.toml
+```
+
+`diff-report.py` is the daily routing step: every `upstream:` path maps the C
+change to its Rust twin, while `Unmapped files` identifies authority that needs
+an explicit map decision before any porting is claimed. Assign each mapped
+module independently, keep the C diff and its Rust response in the same small
+commit, and leave unchanged/unsupported runtime domains C-authoritative.
+
+If `origin/main` is already an ancestor of `HEAD`, there is nothing to
+integrate. Otherwise, after reviewing the report, rebase the port stack and
+audit the resulting authority tree:
+
+```sh
+git rebase origin/main
+python3 tools/rust-port/sync-metadata-gate.py --upstream-ref origin/main
+python3 tools/rust-port/check-behavior-contract.py
+git push --force-with-lease fork main
+```
+
+Use `--force-with-lease`, never a blind force push, because rebasing rewrites
+the fork's Rust-only commits. Do not rebase while an audit or validation is in
+flight. `last_reviewed_*` anchors are evidence of a completed review, not an
+automatic acknowledgement: update them only after the mapped C change has
+actually been compared and validated.
+
 ## Updating After an Upstream C Change
 
 1. Run `diff-report.py` over the upstream range. Each `upstream:` line names a

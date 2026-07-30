@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// PORT-SYNC: src/libsystemd/sd-id128/id128-util.c, src/libsystemd/sd-id128/id128-util.h
+// PORT-SYNC: src/libsystemd/sd-id128/id128-util.c, src/libsystemd/sd-id128/id128-util.h,
+//            src/libsystemd/sd-id128/sd-id128.c, src/systemd/sd-id128.h
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -42,14 +43,7 @@ impl FromStr for SdId128 {
     type Err = i32;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let inner = if s.starts_with('{') && s.ends_with('}') {
-            &s[1..s.len() - 1]
-        } else if s.starts_with('{') || s.ends_with('}') {
-            return Err(NEG_EINVAL);
-        } else {
-            s
-        };
-        parse_id128(inner)
+        parse_id128(s)
     }
 }
 
@@ -183,17 +177,17 @@ mod tests {
     }
 
     #[test]
-    fn from_str_accepts_plain_uuid_and_braced_uuid() {
+    fn from_str_accepts_plain_and_uuid() {
         assert_eq!(SdId128::from_str(STR_WALDI).unwrap(), WALDI);
         assert_eq!(SdId128::from_str(UUID_WALDI).unwrap(), WALDI);
-        assert_eq!(
-            SdId128::from_str("{01020304-0506-0708-090a-0b0c0d0e0f10}").unwrap(),
-            WALDI
-        );
     }
 
     #[test]
-    fn from_str_rejects_unbalanced_braces() {
+    fn from_str_rejects_braced_ids() {
+        assert_eq!(
+            SdId128::from_str("{01020304-0506-0708-090a-0b0c0d0e0f10}"),
+            Err(NEG_EINVAL)
+        );
         assert_eq!(
             SdId128::from_str("{0102030405060708090a0b0c0d0e0f10"),
             Err(NEG_EINVAL)
