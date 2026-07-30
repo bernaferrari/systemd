@@ -989,6 +989,7 @@ dependencies = [
 name = "systemd-run-rs"
 version = "0.0.1"
 dependencies = [
+ "systemd-basic-rs",
  "systemd-shared-rs",
 ]
 

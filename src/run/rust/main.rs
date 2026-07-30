@@ -30,6 +30,12 @@ fn print_version() {
     println!("systemd-run {}", VERSION);
 }
 
+fn print_job_mode_help() {
+    for mode in lib::JobMode::ALL {
+        println!("{}", mode.as_str());
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -47,10 +53,27 @@ fn main() {
         }
     }
 
+    let arguments = args[1..].iter().map(String::as_str).collect::<Vec<_>>();
+    let job_mode = match lib::parse_job_mode_option(&arguments) {
+        Ok(Some(lib::JobModeArgument::Help)) => {
+            print_job_mode_help();
+            return;
+        }
+        Ok(Some(lib::JobModeArgument::Mode(mode))) => mode,
+        Ok(None) => lib::DEFAULT_JOB_MODE,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+
     let scope = args[1..].iter().any(|a| a == "--scope");
     if let Err(e) = lib::validate_trigger_compatibility(false, false, false) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
-    eprintln!("{}: scope={}, job_mode=fail", env!("CARGO_PKG_NAME"), scope);
+    eprintln!(
+        "{}: scope={scope}, job_mode={job_mode}",
+        env!("CARGO_PKG_NAME")
+    );
 }

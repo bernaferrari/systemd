@@ -25,7 +25,11 @@ pub const TIMER_PROPERTIES: &[&str] = &[
 pub const DEFAULT_SERVICE_TYPE: &str = "exec";
 
 /// Default job mode.
-pub const DEFAULT_JOB_MODE: &str = "fail";
+pub const DEFAULT_JOB_MODE: JobMode = JobMode::Fail;
+
+pub use systemd_basic_rs::unit_def::{
+    JobMode, ParseJobModeError, job_mode_from_string, job_mode_to_string,
+};
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
@@ -54,38 +58,6 @@ pub enum BusTransport {
 pub enum RuntimeScope {
     System,
     User,
-}
-
-/// Job mode for scheduling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JobMode {
-    Fail,
-    Replace,
-    Irreversible,
-    Isolate,
-    IgnoreDependencies,
-    IgnoreRequirements,
-    Flush,
-    Quiet,
-    Enqueue,
-}
-
-impl JobMode {
-    /// Parse from string.
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "fail" => Some(JobMode::Fail),
-            "replace" => Some(JobMode::Replace),
-            "irreversible" => Some(JobMode::Irreversible),
-            "isolate" => Some(JobMode::Isolate),
-            "ignore-dependencies" => Some(JobMode::IgnoreDependencies),
-            "ignore-requirements" => Some(JobMode::IgnoreRequirements),
-            "flush" => Some(JobMode::Flush),
-            "quiet" => Some(JobMode::Quiet),
-            "enqueue" => Some(JobMode::Enqueue),
-            _ => None,
-        }
-    }
 }
 
 // ── Structs ───────────────────────────────────────────────────────────────
@@ -264,6 +236,55 @@ pub fn parse_timer_property(name: &str, value: &str) -> String {
     format!("{}={}", name, value)
 }
 
+/// Result of parsing `--job-mode`, whose `help` value is handled by the CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobModeArgument {
+    /// A valid C job mode.
+    Mode(JobMode),
+    /// The C command's `--job-mode=help` meta-value.
+    Help,
+}
+
+/// Find the final `--job-mode` option in command-line arguments.
+///
+/// This recognizes both GNU long-option spellings and stops at `--`, matching
+/// the boundary between systemd-run options and the invoked command. The
+/// special `help` value is not a [`JobMode`]; callers render the table and
+/// exit successfully when it is returned.
+pub fn parse_job_mode_option(args: &[&str]) -> Result<Option<JobModeArgument>, RunError> {
+    let mut parsed = None;
+    let mut index = 0;
+
+    while let Some(argument) = args.get(index) {
+        if *argument == "--" {
+            break;
+        }
+
+        let value = if let Some(value) = argument.strip_prefix("--job-mode=") {
+            value
+        } else if *argument == "--job-mode" {
+            index += 1;
+            args.get(index).copied().ok_or_else(|| {
+                RunError::InvalidArgument("Option --job-mode requires an argument.".to_string())
+            })?
+        } else {
+            index += 1;
+            continue;
+        };
+
+        if value == "help" {
+            return Ok(Some(JobModeArgument::Help));
+        }
+
+        let mode = job_mode_from_string(value)
+            .ok_or_else(|| RunError::InvalidArgument(format!("Invalid job mode: {value}")))?;
+        parsed = Some(JobModeArgument::Mode(mode));
+        index += 1;
+    }
+
+    Ok(parsed)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -345,11 +366,44 @@ mod tests {
     }
 
     #[test]
-    fn test_job_mode_from_str() {
-        assert_eq!(JobMode::from_str("fail"), Some(JobMode::Fail));
-        assert_eq!(JobMode::from_str("replace"), Some(JobMode::Replace));
-        assert_eq!(JobMode::from_str("enqueue"), Some(JobMode::Enqueue));
-        assert_eq!(JobMode::from_str("invalid"), None);
+    fn test_job_mode_option() {
+        assert_eq!(DEFAULT_JOB_MODE, JobMode::Fail);
+        assert_eq!(
+            parse_job_mode_option(&["--job-mode", "lenient"]),
+            Ok(Some(JobModeArgument::Mode(JobMode::Lenient)))
+        );
+        assert_eq!(
+            parse_job_mode_option(&["--job-mode=replace-irreversibly"]),
+            Ok(Some(JobModeArgument::Mode(JobMode::ReplaceIrreversibly)))
+        );
+        assert_eq!(
+            parse_job_mode_option(&["--job-mode=fail", "--job-mode", "triggering"]),
+            Ok(Some(JobModeArgument::Mode(JobMode::Triggering)))
+        );
+        assert_eq!(
+            parse_job_mode_option(&["--job-mode=help"]),
+            Ok(Some(JobModeArgument::Help))
+        );
+        assert_eq!(
+            parse_job_mode_option(&["--", "--job-mode=replace"]),
+            Ok(None)
+        );
+    }
+
+    #[test]
+    fn test_job_mode_option_rejects_invalid_input() {
+        assert_eq!(
+            parse_job_mode_option(&["--job-mode=quiet"]),
+            Err(RunError::InvalidArgument(
+                "Invalid job mode: quiet".to_string()
+            ))
+        );
+        assert_eq!(
+            parse_job_mode_option(&["--job-mode"]),
+            Err(RunError::InvalidArgument(
+                "Option --job-mode requires an argument.".to_string()
+            ))
+        );
     }
 
     #[test]

@@ -263,8 +263,9 @@ pub enum NotifyAccess {
 }
 
 /// Job mode enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JobMode {
+    #[default]
     Fail,
     Lenient,
     Replace,
@@ -275,6 +276,64 @@ pub enum JobMode {
     IgnoreRequirements,
     Triggering,
     RestartDependencies,
+}
+
+/// Error returned when a job mode name is not part of C's `job_mode` table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParseJobModeError;
+
+impl std::fmt::Display for ParseJobModeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("invalid job mode")
+    }
+}
+
+impl std::error::Error for ParseJobModeError {}
+
+impl JobMode {
+    /// Every mode in the C `job_mode` table, in its defined order.
+    pub const ALL: [Self; 10] = [
+        Self::Fail,
+        Self::Lenient,
+        Self::Replace,
+        Self::ReplaceIrreversibly,
+        Self::Isolate,
+        Self::Flush,
+        Self::IgnoreDependencies,
+        Self::IgnoreRequirements,
+        Self::Triggering,
+        Self::RestartDependencies,
+    ];
+
+    /// Return the canonical, case-sensitive C table name.
+    pub fn as_str(self) -> &'static str {
+        <Self as StringTable>::to_str(self)
+            .expect("every JobMode variant is present in the job_mode table")
+    }
+}
+
+impl std::fmt::Display for JobMode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for JobMode {
+    type Err = ParseJobModeError;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        job_mode_from_string(input).ok_or(ParseJobModeError)
+    }
+}
+
+/// Parse a job mode with the exact, case-sensitive C `job_mode_from_string()` table.
+pub fn job_mode_from_string(input: &str) -> Option<JobMode> {
+    <JobMode as StringTable>::from_str(input)
+}
+
+/// Return the exact C `job_mode_to_string()` name for a valid mode.
+pub fn job_mode_to_string(mode: JobMode) -> &'static str {
+    mode.as_str()
 }
 
 /// Exec directory type enum.
@@ -1016,15 +1075,40 @@ mod tests {
 
     #[test]
     fn test_job_mode_roundtrip() {
-        let all = [
-            JobMode::Fail,
-            JobMode::Replace,
-            JobMode::Isolate,
-            JobMode::RestartDependencies,
+        let names = [
+            "fail",
+            "lenient",
+            "replace",
+            "replace-irreversibly",
+            "isolate",
+            "flush",
+            "ignore-dependencies",
+            "ignore-requirements",
+            "triggering",
+            "restart-dependencies",
         ];
-        for mode in all {
-            let s = mode.to_str().unwrap();
-            assert_eq!(JobMode::from_str(s), Some(mode));
+        assert_eq!(JobMode::ALL.len(), names.len());
+
+        for (mode, name) in JobMode::ALL.into_iter().zip(names) {
+            assert_eq!(mode.as_str(), name);
+            assert_eq!(job_mode_to_string(mode), name);
+            assert_eq!(job_mode_from_string(name), Some(mode));
+            assert_eq!(name.parse::<JobMode>(), Ok(mode));
+        }
+    }
+
+    #[test]
+    fn test_job_mode_rejects_non_c_names() {
+        for name in [
+            "",
+            "irreversible",
+            "irreversibly",
+            "quiet",
+            "enqueue",
+            "trigger",
+        ] {
+            assert_eq!(job_mode_from_string(name), None);
+            assert_eq!(name.parse::<JobMode>(), Err(ParseJobModeError));
         }
     }
 
