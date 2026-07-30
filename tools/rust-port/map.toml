@@ -62,8 +62,8 @@ tier = 1
 symbols = 18
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/hexdecoct.c" = "bbe624cc4f2ed9edb72ff364123372ad8e1992d3", "src/basic/hexdecoct.h" = "ed3c9dc39d8ecdcc4a5f3d0d0a0af3c5f30cec2e" }
-last_reviewed_rust_blobs = { "src/basic/rust/hexdecoct.rs" = "aff1ec00f0fc519c169805e304f9bf1fbb2355ac", "src/basic/rust/hexdecoct.h" = "3e8148f327859e62b6b33d0c972136b82333c5da" }
-notes = "Reviewed static codec ABI slice 2026-07-29; no build/tests/VM. Eighteen facades preserve scalar masking/decoding plus reviewed libc allocation, pointer/length, padding, line wrapping, secure-wipe, and success-only output publication. FILE* diagnostics remain C-only. C remains production authority; runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/hexdecoct.rs" = "0b426eaf1d7c66c8659a8e4f5bc778364c09d0b6", "src/basic/rust/hexdecoct.h" = "3e8148f327859e62b6b33d0c972136b82333c5da" }
+notes = "Reviewed static codec ABI slice 2026-07-30; no build/tests/VM. Eighteen facades preserve scalar masking/decoding plus reviewed libc allocation, pointer/length, padding, C WHITESPACE (space/tab/LF/CR) decoding, line wrapping, secure-wipe, and success-only output publication. FILE* diagnostics remain C-only. C remains production authority; runtime parity remains P2."
 
 [sort-util]
 c_paths = ["src/basic/sort-util.c", "src/basic/sort-util.h"]
@@ -927,8 +927,8 @@ tier = 1
 symbols = 9
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/memory-util.c" = "10a5157ca64666934769ffea67ccfba54ecb508e", "src/basic/memory-util.h" = "7a73e76c94ef3c096cc0cbed39873c087ceaf9f0", "src/fundamental/memory-util.c" = "39d116cc8b65dbfd7a84f802ed82b25d6f3040fb", "src/fundamental/memory-util.h" = "55ed19e15ca8e6e0e6b5bcd99290d42f4a93f843" }
-last_reviewed_rust_blobs = { "src/basic/rust/memory_util.rs" = "45d2104cd729c36db42f438a8504578693441a8b", "src/basic/rust/memory_util.h" = "440819374c0cdd4ac9967df6046ebf8c3fa81707" }
-notes = "Reviewed static memory slice 2026-07-28; no build/tests/VM. Nine C-backed facades cover the current basic/fundamental memory APIs exposed by rust/memory_util.h, preserving C assertions, zero-length pointer exceptions, borrowed interior results, and the fundamental memeqbyte first-16/self-compare algorithm. The stale rs_memdup_reverse declaration and fixture claim were removed: upstream deleted that C API in 75bc106095. erase_and_free and other allocation/erase surfaces remain excluded. C remains production authority; runtime parity unclaimed."
+last_reviewed_rust_blobs = { "src/basic/rust/memory_util.rs" = "c6411b29d1e4947b650ebfe748ff2d30cf8d9f8d", "src/basic/rust/memory_util.h" = "440819374c0cdd4ac9967df6046ebf8c3fa81707" }
+notes = "Reviewed static memory slice 2026-07-30; no build/tests/VM. Nine C-backed facades cover the current basic/fundamental memory APIs exposed by rust/memory_util.h, preserving C assertions, zero-length pointer exceptions, borrowed interior results, cached page-size semantics, and the fundamental memeqbyte first-16/self-compare algorithm. The stale rs_memdup_reverse declaration and fixture claim were removed: upstream deleted that C API in 75bc106095. erase_and_free and other allocation/erase surfaces remain excluded. C remains production authority; runtime parity unclaimed."
 
 [edid]
 c_paths = ["src/fundamental/edid.c", "src/fundamental/edid.h"]
