@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/udev-util.c (udev_replace_whitespace, udev_replace_chars)
+// PORT-SYNC: scope=shared.udev-util.transforms;
+// authority=src/shared/udev-util.c,src/shared/udev-util.h,
+// src/basic/device-nodes.c,src/basic/device-nodes.h,
+// src/basic/utf8.c,src/basic/utf8.h,src/fundamental/string-util.h
 //
 // Udev string transformations. The byte-slice core deliberately owns all
 // parsing and mutation; the two C exports are only checked pointer adapters.
@@ -271,10 +274,20 @@ pub unsafe extern "C" fn rs_udev_replace_whitespace(
 /// # Safety
 /// `str_` must be a non-NULL, writable NUL-terminated C string. If non-NULL,
 /// `allow` must be a readable NUL-terminated C string for the duration of the
-/// call. `allow` must not overlap `str_`.
+/// call. `allow` may equal `str_`, matching the C implementation's
+/// no-replacement result; other overlapping ranges are not supported by this
+/// safe adapter.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_udev_replace_chars(str_: *mut c_char, allow: *const c_char) -> usize {
     if str_.is_null() {
+        return 0;
+    }
+
+    // With `allow == str_`, C's strchr() sees every byte of the input in its
+    // allow-list, so the loop cannot mutate the string. Handle that valid
+    // alias before making either borrowed CStr view, which avoids creating an
+    // immutable and mutable Rust reference to the same bytes.
+    if allow == str_.cast_const() {
         return 0;
     }
 
@@ -318,5 +331,19 @@ mod tests {
         let mut bytes = b"a\xc3\xa9\xffb\0".to_vec();
         assert_eq!(udev_replace_chars(&mut bytes, None), 1);
         assert_eq!(&bytes[..], b"a\xc3\xa9_b\0");
+    }
+
+    #[test]
+    fn chars_allowing_the_input_itself_needs_no_mutable_alias() {
+        let mut bytes = b"!self-allow\0".to_vec();
+        let input = bytes.as_ptr().cast::<c_char>();
+
+        // SAFETY: `bytes` is a writable NUL-terminated C string, and this
+        // exact alias is explicitly handled before borrowing either view.
+        assert_eq!(
+            unsafe { rs_udev_replace_chars(bytes.as_mut_ptr().cast(), input) },
+            0
+        );
+        assert_eq!(&bytes[..], b"!self-allow\0");
     }
 }

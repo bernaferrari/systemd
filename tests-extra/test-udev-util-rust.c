@@ -217,6 +217,19 @@ static void test_udev_replace_chars(void) {
          * space is allowed, but it still counts as a replacement. */
         assert_replace_chars_equal("a\fb", " ", "a b", 1);
 
+        /* The C implementation permits the exact alias allow == str. Every
+         * byte is then found in the allow-list, so the input stays unchanged. */
+        {
+                char c_buf[] = "!self-allow";
+                char r_buf[] = "!self-allow";
+
+                r = udev_replace_chars(c_buf, c_buf);
+                assert_se(r == rs_udev_replace_chars(r_buf, r_buf));
+                assert_se(r == 0);
+                assert_se(streq(c_buf, r_buf));
+                assert_se(streq(c_buf, "!self-allow"));
+        }
+
         /* Empty string */
         strcpy(buf, "");
         r = udev_replace_chars(buf, NULL);
