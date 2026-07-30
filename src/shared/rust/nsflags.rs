@@ -114,15 +114,17 @@ impl std::error::Error for NamespaceFlagsParseError {}
 pub fn namespace_flags_from_string(
     input: &str,
 ) -> Result<NamespaceFlags, NamespaceFlagsParseError> {
-    let mut flags = NamespaceFlags::empty();
+    // Keep the token grammar in one place. In particular, C's
+    // `extract_first_word(..., NULL, 0)` treats only space, tab, newline, and
+    // carriage return as separators, and accepts a backslash-quoted byte.
+    // `str::split_whitespace()` has different Unicode semantics.
+    let flags = systemd_basic_rs::nsflags::namespace_flags_from_string(input)
+        // The C API reports just -EINVAL, so the Rust-only diagnostic retains
+        // the supplied input rather than pretending a Unicode tokenization
+        // identified the failed word.
+        .map_err(|_| NamespaceFlagsParseError::InvalidName(input.to_owned()))?;
 
-    for word in input.split_whitespace() {
-        let namespace = NamespaceType::from_proc_name(word)
-            .ok_or_else(|| NamespaceFlagsParseError::InvalidName(word.to_owned()))?;
-        flags |= namespace.flag();
-    }
-
-    Ok(flags)
+    Ok(NamespaceFlags::from_bits_retain(flags))
 }
 
 pub fn namespace_flags_to_string(flags: NamespaceFlags) -> String {
@@ -184,18 +186,37 @@ mod tests {
 
     #[test]
     fn parse_invalid_name_returns_error() {
-        assert_eq!(
+        assert!(matches!(
             namespace_flags_from_string("bogus"),
-            Err(NamespaceFlagsParseError::InvalidName("bogus".to_owned()))
-        );
+            Err(NamespaceFlagsParseError::InvalidName(_))
+        ));
     }
 
     #[test]
     fn parse_stops_on_invalid_name() {
-        assert_eq!(
+        assert!(matches!(
             namespace_flags_from_string("mnt bogus net"),
-            Err(NamespaceFlagsParseError::InvalidName("bogus".to_owned()))
+            Err(NamespaceFlagsParseError::InvalidName(_))
+        ));
+    }
+
+    #[test]
+    fn parse_uses_c_word_splitting_and_escaping() {
+        assert_eq!(
+            namespace_flags_from_string("m\\nt n\\et"),
+            Ok(NamespaceFlags::MNT | NamespaceFlags::NET)
         );
+        assert_eq!(
+            namespace_flags_from_string("\tmnt\nnet\ruser "),
+            Ok(NamespaceFlags::MNT | NamespaceFlags::NET | NamespaceFlags::USER)
+        );
+    }
+
+    #[test]
+    fn parse_rejects_non_c_whitespace_and_dangling_escapes() {
+        for input in ["mnt\u{b}net", "mnt\u{c}net", "mnt\u{a0}net", "mnt\\"] {
+            assert!(namespace_flags_from_string(input).is_err(), "{input:?}");
+        }
     }
 
     #[test]
