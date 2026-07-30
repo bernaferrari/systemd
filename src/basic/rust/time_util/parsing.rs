@@ -365,7 +365,7 @@ pub unsafe extern "C" fn rs_parse_time(t: *const c_char, ret: *mut u64, default_
 
         // Don't allow "-0"
         // SAFETY: p remains within the caller's C string.
-        if unsafe { *p } == '-' as c_char {
+        if unsafe { *p } == b'-' as c_char {
             return Errno::ERANGE.to_neg_errno();
         }
 
@@ -376,7 +376,7 @@ pub unsafe extern "C" fn rs_parse_time(t: *const c_char, ret: *mut u64, default_
         };
 
         // SAFETY: parse_nonnegative_decimal returns an in-bounds pointer.
-        let had_dot = unsafe { *endptr } == '.' as c_char;
+        let had_dot = unsafe { *endptr } == b'.' as c_char;
         if had_dot {
             // Skip past dot and any digits after it
             p = endptr;

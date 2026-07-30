@@ -103,11 +103,11 @@ unsafe fn skip_slash_or_dot(mut p: *const c_char) -> *const c_char {
     // documented caller contract covers every pointer traversal and C call below.
     unsafe {
         while !isempty(p) {
-            if *p == '/' as c_char {
+            if *p == b'/' as c_char {
                 p = p.add(1);
                 continue;
             }
-            if *p == '.' as c_char && *p.add(1) == '/' as c_char {
+            if *p == b'.' as c_char && *p.add(1) == b'/' as c_char {
                 p = p.add(2);
                 continue;
             }
@@ -250,7 +250,7 @@ pub unsafe extern "C" fn rs_filename_part_is_valid(p: *const c_char) -> bool {
 
         // Find first '/' or NUL
         let mut e = p;
-        while *e != 0 && *e != '/' as c_char {
+        while *e != 0 && *e != b'/' as c_char {
             e = e.add(1);
         }
 
@@ -342,7 +342,7 @@ pub unsafe extern "C" fn rs_hidden_or_backup_file(filename: *const c_char) -> bo
             return false;
         }
 
-        if *filename == '.' as c_char {
+        if *filename == b'.' as c_char {
             return true;
         }
 
@@ -421,7 +421,7 @@ pub unsafe extern "C" fn rs_empty_or_root(path: *const c_char) -> bool {
             return true;
         }
         // path_equal(path, "/")
-        *path == '/' as c_char && *path.add(1) == 0
+        *path == b'/' as c_char && *path.add(1) == 0
     }
 }
 
@@ -527,7 +527,7 @@ pub unsafe extern "C" fn rs_path_is_absolute(p: *const c_char) -> bool {
         if p.is_null() {
             return false;
         }
-        *p == '/' as c_char
+        *p == b'/' as c_char
     }
 }
 
@@ -757,7 +757,7 @@ unsafe fn rs_path_find_first_component_inner(
 
         // Find end of first component
         let mut end_first = first;
-        while *end_first != 0 && *end_first != '/' as c_char {
+        while *end_first != 0 && *end_first != b'/' as c_char {
             end_first = end_first.add(1);
         }
 
@@ -765,8 +765,7 @@ unsafe fn rs_path_find_first_component_inner(
         if len > NAME_MAX {
             return Errno::EINVAL.to_neg_errno();
         }
-        if !accept_dot_dot && len == 2 && *first == '.' as c_char && *first.add(1) == '.' as c_char
-        {
+        if !accept_dot_dot && len == 2 && *first == b'.' as _ && *first.add(1) == b'.' as _ {
             return Errno::EINVAL.to_neg_errno();
         }
 
@@ -801,11 +800,11 @@ unsafe fn skip_slash_or_dot_backward(path: *const c_char, mut q: *const c_char) 
                 return std::ptr::null();
             }
             let c = *q;
-            if c == '/' as c_char {
+            if c == b'/' as c_char {
                 // continue
-            } else if q > path && *q.sub(1) == '/' as c_char && c == '.' as c_char {
+            } else if q > path && *q.sub(1) == b'/' as c_char && c == b'.' as c_char {
                 // "/." — continue
-            } else if q == path && c == '.' as c_char {
+            } else if q == path && c == b'.' as c_char {
                 // "." at start — continue
             } else {
                 break;
@@ -883,7 +882,7 @@ pub unsafe fn rs_path_find_last_component(
 
         // Walk backward to find beginning of last component
         let mut qb = q;
-        while !qb.is_null() && *qb != '/' as c_char {
+        while !qb.is_null() && *qb != b'/' as c_char {
             if qb == path {
                 qb = std::ptr::null();
                 break;
@@ -899,8 +898,8 @@ pub unsafe fn rs_path_find_last_component(
         }
         if !accept_dot_dot
             && len == 2
-            && *last_begin == '.' as c_char
-            && *last_begin.add(1) == '.' as c_char
+            && *last_begin == b'.' as c_char
+            && *last_begin.add(1) == b'.' as c_char
         {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -942,7 +941,7 @@ pub unsafe fn rs_last_path_component(path: *const c_char) -> *const c_char {
         }
 
         let mut k = l;
-        while k > 0 && *path.add(k - 1) == '/' as c_char {
+        while k > 0 && *path.add(k - 1) == b'/' as c_char {
             k -= 1;
         }
 
@@ -951,7 +950,7 @@ pub unsafe fn rs_last_path_component(path: *const c_char) -> *const c_char {
             return path.add(l - 1);
         }
 
-        while k > 0 && *path.add(k - 1) != '/' as c_char {
+        while k > 0 && *path.add(k - 1) != b'/' as c_char {
             k -= 1;
         }
 
@@ -1063,8 +1062,8 @@ pub unsafe fn rs_path_startswith_full(
         let mut path = original_path;
 
         // Both must be absolute or both relative
-        let pa = *path == '/' as c_char;
-        let pb = *prefix == '/' as c_char;
+        let pa = *path == b'/' as c_char;
+        let pb = *prefix == b'/' as c_char;
         if pa != pb {
             return std::ptr::null();
         }
@@ -1094,7 +1093,7 @@ pub unsafe fn rs_path_startswith_full(
                         return std::ptr::null();
                     }
                     result = result.sub(1);
-                    if *result != '/' as c_char {
+                    if *result != b'/' as c_char {
                         return std::ptr::null();
                     }
                 }
@@ -1168,7 +1167,7 @@ pub unsafe fn rs_path_simplify_full(path: *mut c_char, flags: u32) -> *mut c_cha
             beginning = false;
 
             if add_slash {
-                *f = '/' as c_char;
+                *f = b'/' as c_char;
                 f = f.add(1);
             }
 
@@ -1195,12 +1194,12 @@ pub unsafe fn rs_path_simplify_full(path: *mut c_char, flags: u32) -> *mut c_cha
 
         // If we stripped everything, add "."
         if f == path {
-            *f = '.' as c_char;
+            *f = b'.' as c_char;
             f = f.add(1);
         }
 
-        if *f.sub(1) != '/' as c_char && keep_trailing_slash {
-            *f = '/' as c_char;
+        if *f.sub(1) != b'/' as c_char && keep_trailing_slash {
+            *f = b'/' as c_char;
             f = f.add(1);
         }
 
@@ -1602,10 +1601,10 @@ pub unsafe fn rs_prefixed_path_strv_contains(l: *mut *const c_char, path: *const
         let mut i: usize = 0;
         while !l.add(i).is_null() && !(*l.add(i)).is_null() {
             let mut j = *l.add(i);
-            if *j == '-' as c_char {
+            if *j == b'-' as c_char {
                 j = j.add(1);
             }
-            if *j == '+' as c_char {
+            if *j == b'+' as c_char {
                 j = j.add(1);
             }
             if rs_path_equal(j, path) {
@@ -1656,7 +1655,7 @@ pub unsafe fn rs_path_split_prefix_filename(
 
         if !ret_dir.is_null() {
             if next == path {
-                if *path != '/' as c_char {
+                if *path != b'/' as c_char {
                     // filename only
                     if ret_filename.is_null() {
                         return Errno::EDESTADDRREQ.to_neg_errno();

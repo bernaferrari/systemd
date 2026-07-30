@@ -166,7 +166,7 @@ const fn flags_set(value: u32, flags: u32) -> bool {
 /// IN_SET equivalent: check if value matches any of the given values.
 #[inline]
 fn in_set<T: PartialEq>(value: T, set: &[T]) -> bool {
-    set.iter().any(|s| *s == value)
+    set.contains(&value)
 }
 
 // ── parse_boolean ─────────────────────────────────────────────────────────
@@ -220,7 +220,7 @@ pub unsafe extern "C" fn rs_parse_boolean(v: *const c_char) -> i32 {
 /// C-string inputs must remain NUL-terminated and live for the call.
 pub(crate) unsafe fn safe_atou_full_inner(s: *const c_char, base: u32, ret_u: *mut u32) -> i32 {
     let mut x: *mut c_char = std::ptr::null_mut();
-    let whitespace: [u8; 4] = [b' ', b'\t', b'\n', b'\r'];
+    let whitespace: [u8; 4] = *b" \t\n\r";
 
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -245,7 +245,7 @@ pub(crate) unsafe fn safe_atou_full_inner(s: *const c_char, base: u32, ret_u: *m
 
     // Check +/- refusal flag
     // SAFETY: skip_whitespace returns an in-bounds C-string pointer.
-    if flags_set(base, SAFE_ATO_REFUSE_PLUS_MINUS) && in_set(unsafe { *s } as u8, &[b'+', b'-']) {
+    if flags_set(base, SAFE_ATO_REFUSE_PLUS_MINUS) && in_set(unsafe { *s } as u8, b"+-") {
         return Errno::EINVAL.to_neg_errno();
     }
 
@@ -580,7 +580,7 @@ pub unsafe extern "C" fn rs_safe_atolli(s: *const c_char, ret_lli: *mut i64) -> 
 /// C-string inputs must remain NUL-terminated and live for the call.
 pub(crate) unsafe fn safe_atollu_full_inner(s: *const c_char, base: u32, ret_llu: *mut u64) -> i32 {
     let mut x: *mut c_char = std::ptr::null_mut();
-    let whitespace: [u8; 4] = [b' ', b'\t', b'\n', b'\r'];
+    let whitespace: [u8; 4] = *b" \t\n\r";
 
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
@@ -602,7 +602,7 @@ pub(crate) unsafe fn safe_atollu_full_inner(s: *const c_char, base: u32, ret_llu
     s = unsafe { skip_whitespace(s) };
 
     // SAFETY: skip_whitespace returns an in-bounds C-string pointer.
-    if flags_set(base, SAFE_ATO_REFUSE_PLUS_MINUS) && in_set(unsafe { *s } as u8, &[b'+', b'-']) {
+    if flags_set(base, SAFE_ATO_REFUSE_PLUS_MINUS) && in_set(unsafe { *s } as u8, b"+-") {
         return Errno::EINVAL.to_neg_errno();
     }
 

@@ -55,6 +55,7 @@ const UNIT_NAME_INSTANCE: i32 = 1 << 2;
 const UNIT_NAME_ANY: i32 = UNIT_NAME_PLAIN | UNIT_NAME_TEMPLATE | UNIT_NAME_INSTANCE;
 
 const UNIT_NAME_MANGLE_GLOB: i32 = 1 << 0;
+#[cfg(test)]
 const UNIT_NAME_MANGLE_WARN: i32 = 1 << 1;
 
 // ── Internal helpers ──────────────────────────────────────────────────────
@@ -114,8 +115,7 @@ unsafe fn strndup_owned(s: *const c_char, n: usize) -> *mut c_char {
     let Some(allocation) = checked_c_allocation(&[copy_len, 1]) else {
         return ptr::null_mut();
     };
-    // SAFETY: requesting an allocation from the process C allocator.
-    let ptr = unsafe { malloc(allocation) } as *mut c_char;
+    let ptr = malloc(allocation) as *mut c_char;
     if ptr.is_null() {
         return ptr::null_mut();
     }
@@ -162,8 +162,7 @@ unsafe fn strjoin3(a: *const c_char, b: *const c_char, c: *const c_char) -> *mut
     let Some(allocation) = checked_c_allocation(&[la, lb, lc, 1]) else {
         return ptr::null_mut();
     };
-    // SAFETY: requesting an allocation from the process C allocator.
-    let ptr = unsafe { malloc(allocation) } as *mut c_char;
+    let ptr = malloc(allocation) as *mut c_char;
     if ptr.is_null() {
         return ptr::null_mut();
     }
@@ -687,8 +686,7 @@ pub unsafe extern "C" fn rs_unit_name_change_suffix(
     let Some(allocation) = checked_c_allocation(&[a, b, 1]) else {
         return Errno::ENOMEM.to_neg_errno();
     };
-    // SAFETY: requesting an allocation from the process C allocator.
-    let s = unsafe { malloc(allocation) } as *mut c_char;
+    let s = malloc(allocation) as *mut c_char;
     if s.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -775,8 +773,7 @@ pub unsafe extern "C" fn rs_unit_name_build_from_type(
         let Some(total) = checked_c_allocation(&[prefix_len, 1, instance_len, 1, ut_len, 1]) else {
             return Errno::ENOMEM.to_neg_errno();
         };
-        // SAFETY: requesting an allocation from the process C allocator.
-        let ptr = unsafe { malloc(total) } as *mut c_char;
+        let ptr = malloc(total) as *mut c_char;
         if ptr.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
@@ -796,8 +793,7 @@ pub unsafe extern "C" fn rs_unit_name_build_from_type(
         let Some(total) = checked_c_allocation(&[prefix_len, 1, ut_len, 1]) else {
             return Errno::ENOMEM.to_neg_errno();
         };
-        // SAFETY: requesting an allocation from the process C allocator.
-        let ptr = unsafe { malloc(total) } as *mut c_char;
+        let ptr = malloc(total) as *mut c_char;
         if ptr.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
@@ -916,8 +912,7 @@ pub unsafe extern "C" fn rs_slice_build_subslice(
         let Some(total) = checked_c_allocation(&[elen, 1, nlen, 6, 1]) else {
             return Errno::ENOMEM.to_neg_errno();
         };
-        // SAFETY: requesting an allocation from the process C allocator.
-        let s = unsafe { malloc(total) } as *mut c_char;
+        let s = malloc(total) as *mut c_char;
         if s.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
@@ -1011,8 +1006,7 @@ pub unsafe extern "C" fn rs_unit_name_escape(f: *const c_char) -> *mut c_char {
     let Some(allocation) = checked_escape_allocation(len, 1) else {
         return ptr::null_mut();
     };
-    // SAFETY: requesting an allocation from the process C allocator.
-    let r = unsafe { malloc(allocation) } as *mut c_char;
+    let r = malloc(allocation) as *mut c_char;
     if r.is_null() {
         return ptr::null_mut();
     }
@@ -1149,8 +1143,7 @@ pub unsafe extern "C" fn rs_unit_name_replace_instance_full(
     let Some(allocation) = checked_c_allocation(&[pl, ilen, slen, 1]) else {
         return Errno::ENOMEM.to_neg_errno();
     };
-    // SAFETY: requesting an allocation from the process C allocator.
-    let s = unsafe { malloc(allocation) } as *mut c_char;
+    let s = malloc(allocation) as *mut c_char;
     if s.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1196,8 +1189,7 @@ pub unsafe extern "C" fn rs_unit_name_template(f: *const c_char, ret: *mut *mut 
     let Some(allocation) = checked_c_allocation(&[a, 1, elen, 1]) else {
         return Errno::ENOMEM.to_neg_errno();
     };
-    // SAFETY: requesting an allocation from the process C allocator.
-    let s = unsafe { malloc(allocation) } as *mut c_char;
+    let s = malloc(allocation) as *mut c_char;
     if s.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1391,8 +1383,7 @@ unsafe fn unit_name_from_path_simple(
         unsafe { free(escaped as *mut c_void) };
         return Errno::ENOMEM.to_neg_errno();
     };
-    // SAFETY: requesting an allocation from the process C allocator.
-    let s = unsafe { malloc(allocation) } as *mut c_char;
+    let s = malloc(allocation) as *mut c_char;
     if s.is_null() {
         // SAFETY: `escaped` is the unique allocation returned above.
         unsafe { free(escaped as *mut c_void) };
@@ -1500,8 +1491,7 @@ pub unsafe fn rs_unit_name_mangle_with_suffix(
     else {
         return Errno::ENOMEM.to_neg_errno();
     };
-    // SAFETY: requesting an allocation from the process C allocator.
-    let s = unsafe { malloc(allocation) } as *mut c_char;
+    let s = malloc(allocation) as *mut c_char;
     if s.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }

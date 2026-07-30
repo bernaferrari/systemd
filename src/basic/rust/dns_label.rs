@@ -1084,27 +1084,22 @@ fn rs_unhexchar(c: c_char) -> i32 {
 /// # Safety
 /// `s1` and `s2` must each reference a live NUL-terminated string.
 unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> i32 {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        let mut i = 0usize;
-        loop {
-            // SAFETY: the caller supplies readable NUL-terminated strings; this
-            // loop advances both pointers in lockstep until either terminator.
-            let (a, b) = unsafe { (*s1.add(i) as u8, *s2.add(i) as u8) };
-            if a != b || a == 0 || b == 0 {
-                return (a as i32) - (b as i32);
-            }
-            i += 1;
+    let mut i = 0usize;
+    loop {
+        // SAFETY: the caller supplies readable NUL-terminated strings; this
+        // loop advances both pointers in lockstep until either terminator.
+        let (a, b) = unsafe { (*s1.add(i) as u8, *s2.add(i) as u8) };
+        if a != b || a == 0 || b == 0 {
+            return (a as i32) - (b as i32);
         }
+        i += 1;
     }
 }
 
 /// Helper: allocate a NUL-terminated C string from a Rust string.
 fn alloc_c_string(s: &str) -> *mut c_char {
     let bytes = s.as_bytes();
-    // SAFETY: requesting a byte allocation from the process C allocator.
-    let ptr = unsafe { malloc(bytes.len() + 1) } as *mut c_char;
+    let ptr = malloc(bytes.len() + 1) as *mut c_char;
     if ptr.is_null() {
         return ptr;
     }
@@ -1219,7 +1214,7 @@ pub unsafe extern "C" fn rs_dns_name_address(
         }
         if r > 0 {
             let mut octets: [u8; 4] = [0; 4];
-            for i in 0..4 {
+            for octet in &mut octets {
                 let mut label: [c_char; DNS_LABEL_MAX + 1] = [0; DNS_LABEL_MAX + 1];
                 let lr = rs_dns_label_unescape(&mut name, label.as_mut_ptr(), DNS_LABEL_MAX + 1, 0);
                 if lr < 0 {
@@ -1236,7 +1231,7 @@ pub unsafe extern "C" fn rs_dns_name_address(
                 if parsed < 0 {
                     return parsed;
                 }
-                octets[i] = value;
+                *octet = value;
             }
 
             // Verify remaining name equals "in-addr.arpa"
@@ -1493,7 +1488,7 @@ pub unsafe extern "C" fn rs_dns_label_unescape_suffix(
                     y = ptr_sub1(y, name);
                 }
 
-                if slashes % 2 == 0 {
+                if slashes.is_multiple_of(2) {
                     // The '.' was not escaped
                     name = terminal.add(1);
                     break;
@@ -1996,7 +1991,7 @@ unsafe fn alloc_strjoin(a: *const c_char, b: *const c_char) -> *mut c_char {
             return ptr;
         }
         ptr::copy_nonoverlapping(a, ptr, la);
-        *ptr.add(la) = '.' as c_char;
+        *ptr.add(la) = b'.' as c_char;
         ptr::copy_nonoverlapping(b, ptr.add(la + 1), lb + 1); // include NUL
         ptr
     }

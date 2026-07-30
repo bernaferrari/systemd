@@ -444,8 +444,7 @@ pub unsafe extern "C" fn rs_strv_copy_n(l: *const *mut c_char, n: usize) -> *mut
     let count = if n < total { n } else { total };
 
     // SAFETY: malloc accepts the finite pointer-array size.
-    let result =
-        unsafe { malloc((count + 1) * std::mem::size_of::<*mut c_char>()) }.cast::<*mut c_char>();
+    let result = malloc((count + 1) * std::mem::size_of::<*mut c_char>()).cast::<*mut c_char>();
     if result.is_null() {
         return std::ptr::null_mut();
     }
@@ -923,7 +922,7 @@ pub unsafe extern "C" fn rs_strv_join_full(
         return std::ptr::null_mut();
     };
     // SAFETY: calloc accepts the checked finite size computed above.
-    let buf = unsafe { calloc(allocation_size, 1) }.cast::<c_char>();
+    let buf = calloc(allocation_size, 1).cast::<c_char>();
     if buf.is_null() {
         return std::ptr::null_mut();
     }
@@ -933,9 +932,9 @@ pub unsafe extern "C" fn rs_strv_join_full(
     for (i, entry) in unsafe { strv_iter(l.cast()) }.enumerate() {
         if i > 0 {
             // stpcpy: copy separator
-            for j in 0..k {
+            for &byte in sep.iter().take(k) {
                 // SAFETY: n includes every separator byte written here.
-                unsafe { *buf.add(pos) = sep[j] as c_char };
+                unsafe { *buf.add(pos) = byte as c_char };
                 pos += 1;
             }
         }
@@ -943,9 +942,9 @@ pub unsafe extern "C" fn rs_strv_join_full(
         if !prefix.is_null() {
             // SAFETY: the caller guarantees prefix is a live C string.
             let p_bytes = unsafe { CStr::from_ptr(prefix) }.to_bytes();
-            for j in 0..p_bytes.len() {
+            for &byte in p_bytes {
                 // SAFETY: n includes every prefix byte written here.
-                unsafe { *buf.add(pos) = p_bytes[j] as c_char };
+                unsafe { *buf.add(pos) = byte as c_char };
                 pos += 1;
             }
         }
@@ -954,20 +953,20 @@ pub unsafe extern "C" fn rs_strv_join_full(
         let needs_escaping = escape_separator && s_bytes.contains(&sep[0]);
 
         if needs_escaping {
-            for j in 0..s_bytes.len() {
-                if s_bytes[j] == sep[0] {
+            for &byte in s_bytes {
+                if byte == sep[0] {
                     // SAFETY: n includes every required escape byte.
                     unsafe { *buf.add(pos) = b'\\' as c_char };
                     pos += 1;
                 }
                 // SAFETY: n includes every entry byte and escape byte.
-                unsafe { *buf.add(pos) = s_bytes[j] as c_char };
+                unsafe { *buf.add(pos) = byte as c_char };
                 pos += 1;
             }
         } else {
-            for j in 0..s_bytes.len() {
+            for &byte in s_bytes {
                 // SAFETY: n includes every entry byte written here.
-                unsafe { *buf.add(pos) = s_bytes[j] as c_char };
+                unsafe { *buf.add(pos) = byte as c_char };
                 pos += 1;
             }
         }
@@ -1526,7 +1525,7 @@ pub unsafe extern "C" fn rs_strv_extend_assignment(
     let total = lhs_len + 1 + rhs_len + 1;
 
     // SAFETY: malloc accepts the checked finite total.
-    let j = unsafe { crate::ffi::malloc(total) }.cast::<c_char>();
+    let j = crate::ffi::malloc(total).cast::<c_char>();
     if j.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1643,7 +1642,7 @@ pub unsafe extern "C" fn rs_strv_split_full(
     // C behavior: if no words found, allocate empty array [NULL]
     if l.is_null() {
         // SAFETY: calloc accepts one pointer-sized element.
-        l = unsafe { calloc(1, std::mem::size_of::<*mut c_char>()) }.cast::<*mut c_char>();
+        l = calloc(1, std::mem::size_of::<*mut c_char>()).cast::<*mut c_char>();
         if l.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }

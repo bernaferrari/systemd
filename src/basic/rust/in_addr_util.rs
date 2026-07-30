@@ -79,9 +79,7 @@ pub struct In6Addr {
 /// # Safety
 /// `a` must be non-null, valid, and properly aligned for an `In6Addr` while the result is used.
 unsafe fn s6_addr32(a: *const In6Addr) -> *const [u32; 4] {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe { a as *const [u32; 4] }
+    a as *const [u32; 4]
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -801,7 +799,7 @@ pub unsafe fn rs_in4_addr_prefixlen_to_netmask(addr: *mut InAddr, prefixlen: u8)
         if prefixlen == 0 {
             (*addr).s_addr = 0;
         } else {
-            (*addr).s_addr = htobe32((0xffffffffu32 << (32 - prefixlen)) & 0xffffffff);
+            (*addr).s_addr = htobe32(0xffffffffu32 << (32 - prefixlen));
         }
         addr
     }
@@ -1375,8 +1373,6 @@ pub unsafe fn rs_IN4_ADDR_TO_PTR(a: *const InAddr) -> *mut c_void {
 
 // ── in_addr_from_string / in_addr_from_string_auto ────────────────────
 
-const INET_ADDRSTRLEN: usize = 16;
-const INET6_ADDRSTRLEN: usize = 46;
 const EAFNOSUPPORT: i32 = 97;
 
 use crate::ffi::{free, malloc};
@@ -1592,7 +1588,7 @@ pub unsafe fn rs_in_addr_prefix_from_string(
         let mut e: *const c_char = ptr::null();
         let mut pp = p;
         while *pp != 0 {
-            if *pp == '/' as c_char {
+            if *pp == b'/' as c_char {
                 e = pp;
                 break;
             }
@@ -1648,8 +1644,8 @@ pub unsafe fn rs_in_addr_prefix_from_string(
         // Copy results
         if !ret_prefix.is_null() {
             let dst = ret_prefix;
-            for i in 0..16 {
-                *dst.add(i) = buffer[i];
+            for (i, byte) in buffer.iter().enumerate() {
+                *dst.add(i) = *byte;
             }
         }
         if !ret_prefixlen.is_null() {
@@ -1800,7 +1796,7 @@ pub unsafe fn rs_in_addr_prefix_from_string_auto_full(
         let mut e: *const c_char = ptr::null();
         let mut pp = p;
         while *pp != 0 {
-            if *pp == '/' as c_char {
+            if *pp == b'/' as c_char {
                 e = pp;
                 break;
             }
@@ -1859,8 +1855,8 @@ pub unsafe fn rs_in_addr_prefix_from_string_auto_full(
         }
         if !ret_prefix.is_null() {
             let dst = ret_prefix;
-            for i in 0..16 {
-                *dst.add(i) = buffer[i];
+            for (i, byte) in buffer.iter().enumerate() {
+                *dst.add(i) = *byte;
             }
         }
         if !ret_prefixlen.is_null() {
@@ -1886,6 +1882,14 @@ pub unsafe fn rs_in_addr_prefix_from_string_auto_full(
  * its normal `free()` contract rather than a Rust allocator.
  */
 macro_rules! ffi_forward {
+    (safe $symbol:literal, $wrapper:ident, ($($argument:ident : $ty:ty),* $(,)?) -> $result:ty, $implementation:path) => {
+        #[unsafe(export_name = $symbol)]
+        /// # Safety
+        /// Caller must uphold generated or platform ABI invariants; raw Rust references may not outlive the call.
+        pub unsafe extern "C" fn $wrapper($($argument: $ty),*) -> $result {
+            $implementation($($argument),*)
+        }
+    };
     ($symbol:literal, $wrapper:ident, ($($argument:ident : $ty:ty),* $(,)?) -> $result:ty, $implementation:path) => {
         #[unsafe(export_name = $symbol)]
         // SAFETY: the forwarding call has exactly the raw-pointer contract
@@ -1895,13 +1899,9 @@ macro_rules! ffi_forward {
         /// The caller must uphold the generated or platform ABI invariants documented
         /// by this operation; no raw Rust references may outlive the call.
         pub unsafe extern "C" fn $wrapper($($argument: $ty),*) -> $result {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
             // SAFETY: upheld by the C ABI contract documented above.
             unsafe { $implementation($($argument),*) }
-
-    }}
+        }
     };
 }
 
@@ -1964,7 +1964,7 @@ ffi_forward!("rs_in_addr_prefix_covers_full", ffi_in_addr_prefix_covers_full, (f
 ffi_forward!("rs_in_addr_parse_prefixlen", ffi_in_addr_parse_prefixlen, (family: i32, p: *const c_char, ret: *mut u8) -> i32, rs_in_addr_parse_prefixlen);
 ffi_forward!("rs_PTR_TO_IN4_ADDR", ffi_ptr_to_in4_addr, (p: *const c_void, ret: *mut InAddr) -> (), rs_PTR_TO_IN4_ADDR);
 ffi_forward!("rs_IN4_ADDR_TO_PTR", ffi_in4_addr_to_ptr, (a: *const InAddr) -> *mut c_void, rs_IN4_ADDR_TO_PTR);
-ffi_forward!("rs_FAMILY_ADDRESS_SIZE", ffi_family_address_size, (family: i32) -> usize, rs_FAMILY_ADDRESS_SIZE);
+ffi_forward!(safe "rs_FAMILY_ADDRESS_SIZE", ffi_family_address_size, (family: i32) -> usize, rs_FAMILY_ADDRESS_SIZE);
 
 ffi_forward!("rs_in_addr_from_string", ffi_in_addr_from_string, (family: i32, s: *const c_char, ret: *mut u8) -> i32, rs_in_addr_from_string);
 ffi_forward!("rs_in_addr_from_string_auto", ffi_in_addr_from_string_auto, (s: *const c_char, ret_family: *mut i32, ret: *mut u8) -> i32, rs_in_addr_from_string_auto);
