@@ -432,25 +432,22 @@ impl DeviceMonitor {
 
         // Check match sysattr filters
         for f in &self.match_sysattr_filters {
-            if let Some(val) = sysattrs.get(&f.sysattr) {
-                if let Some(ref expected) = f.value {
-                    if val != expected {
-                        return false;
-                    }
+            match sysattrs.get(&f.sysattr) {
+                Some(val) if f.value.as_ref().is_some_and(|expected| val != expected) => {
+                    return false;
                 }
-            } else {
-                return false;
+                Some(_) => {}
+                None => return false,
             }
         }
 
         // Check nomatch sysattr filters
         for f in &self.nomatch_sysattr_filters {
-            if let Some(val) = sysattrs.get(&f.sysattr) {
-                if let Some(ref expected) = f.value {
-                    if val == expected {
-                        return false;
-                    }
-                }
+            if sysattrs
+                .get(&f.sysattr)
+                .is_some_and(|val| f.value.as_ref().is_some_and(|expected| val == expected))
+            {
+                return false;
             }
         }
 

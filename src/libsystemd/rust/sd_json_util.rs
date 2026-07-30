@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonVariant {
@@ -134,7 +134,7 @@ pub fn json_dispatch_const_path(variant: &JsonVariant) -> Result<Option<PathBuf>
 }
 
 fn decode_hex(s: &str) -> Result<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(NEG_EINVAL);
     }
     let mut out = Vec::with_capacity(s.len() / 2);

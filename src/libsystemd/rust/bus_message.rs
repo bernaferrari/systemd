@@ -6,9 +6,9 @@ use std::collections::BTreeMap;
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-pub const NEG_ENODATA: i32 = -(libc::ENODATA as i32);
-pub const NEG_EOPNOTSUPP: i32 = -(libc::EOPNOTSUPP as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_ENODATA: i32 = -libc::ENODATA;
+pub const NEG_EOPNOTSUPP: i32 = -libc::EOPNOTSUPP;
 
 pub const SD_BUS_MAXIMUM_SIGNATURE_LENGTH: usize = 255;
 pub const SD_BUS_MAXIMUM_NAME_LENGTH: usize = 255;

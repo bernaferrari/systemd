@@ -4,13 +4,11 @@
 //
 
 use crate::id128_util::SdId128;
-use crate::sd_journal_send::{
-    JournalField, LONG_LINE_MAX, journal_perror, journal_print, journal_send,
-};
+use crate::sd_journal_send::{JournalField, LONG_LINE_MAX};
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_ENOBUFS: i32 = -(libc::ENOBUFS as i32);
+pub const NEG_ENOBUFS: i32 = -libc::ENOBUFS;
 pub const LOG_INFO: i32 = 6;
 pub const LOG_NOTICE: i32 = 5;
 pub const HUGE_SIZE: usize = 4096 * 1024;
@@ -84,6 +82,7 @@ pub fn hello_message_id() -> SdId128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sd_journal_send::{journal_perror, journal_print, journal_send};
 
     #[test]
     fn journal_print_accepts_short_messages() {

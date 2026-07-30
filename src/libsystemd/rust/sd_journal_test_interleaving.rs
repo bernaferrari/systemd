@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+const NEG_EINVAL: i32 = -libc::EINVAL;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SdId128 {
@@ -77,6 +77,8 @@ impl MockJournal {
         self.position = None;
     }
 
+    // This intentionally mirrors sd_journal_next(), rather than Iterator::next().
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<bool, i32> {
         let indexes = self.filtered_indexes();
         let start = self.position.map(|i| i + 1).unwrap_or(0);
