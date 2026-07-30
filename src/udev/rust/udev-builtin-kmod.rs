@@ -23,7 +23,7 @@ pub fn plan_kmod_load(module: &str, builtin_modules: &[&str]) -> Result<KmodRequ
     }
     Ok(KmodRequest {
         module: module.into(),
-        builtin: builtin_modules.iter().any(|candidate| *candidate == module),
+        builtin: builtin_modules.contains(&module),
     })
 }
 

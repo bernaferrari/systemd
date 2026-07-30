@@ -29,22 +29,6 @@ pub enum DeviceAction {
 }
 
 impl DeviceAction {
-    /// Parse a device action from a string.
-    /// Returns `None` for unrecognised strings.
-    pub fn from_str(s: &str) -> Option<DeviceAction> {
-        match s {
-            "add" => Some(DeviceAction::Add),
-            "remove" => Some(DeviceAction::Remove),
-            "change" => Some(DeviceAction::Change),
-            "move" => Some(DeviceAction::Move),
-            "online" => Some(DeviceAction::Online),
-            "offline" => Some(DeviceAction::Offline),
-            "bind" => Some(DeviceAction::Bind),
-            "unbind" => Some(DeviceAction::Unbind),
-            _ => None,
-        }
-    }
-
     /// Convert to the string the kernel understands.
     pub fn to_str(self) -> &'static str {
         match self {
@@ -71,6 +55,25 @@ impl DeviceAction {
             DeviceAction::Bind,
             DeviceAction::Unbind,
         ]
+    }
+}
+
+impl std::str::FromStr for DeviceAction {
+    type Err = ();
+
+    /// Parse a device action from a string.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "add" => Ok(DeviceAction::Add),
+            "remove" => Ok(DeviceAction::Remove),
+            "change" => Ok(DeviceAction::Change),
+            "move" => Ok(DeviceAction::Move),
+            "online" => Ok(DeviceAction::Online),
+            "offline" => Ok(DeviceAction::Offline),
+            "bind" => Ok(DeviceAction::Bind),
+            "unbind" => Ok(DeviceAction::Unbind),
+            _ => Err(()),
+        }
     }
 }
 
@@ -213,14 +216,14 @@ mod tests {
     #[test]
     fn test_device_action_roundtrip() {
         for action in DeviceAction::all() {
-            assert_eq!(DeviceAction::from_str(action.to_str()), Some(*action));
+            assert_eq!(action.to_str().parse(), Ok(*action));
         }
     }
 
     #[test]
     fn test_device_action_unknown() {
-        assert_eq!(DeviceAction::from_str("unknown"), None);
-        assert_eq!(DeviceAction::from_str(""), None);
+        assert_eq!("unknown".parse::<DeviceAction>(), Err(()));
+        assert_eq!("".parse::<DeviceAction>(), Err(()));
     }
 
     #[test]

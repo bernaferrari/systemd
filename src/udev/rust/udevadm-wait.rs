@@ -16,16 +16,20 @@ pub enum WaitUntil {
     Removed,
 }
 
-impl WaitUntil {
-    pub fn from_str(s: &str) -> Option<WaitUntil> {
+impl std::str::FromStr for WaitUntil {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "initialized" => Some(WaitUntil::Initialized),
-            "added" => Some(WaitUntil::Added),
-            "removed" => Some(WaitUntil::Removed),
-            _ => None,
+            "initialized" => Ok(WaitUntil::Initialized),
+            "added" => Ok(WaitUntil::Added),
+            "removed" => Ok(WaitUntil::Removed),
+            _ => Err(()),
         }
     }
+}
 
+impl WaitUntil {
     pub fn to_str(self) -> &'static str {
         match self {
             WaitUntil::Initialized => "initialized",
@@ -163,11 +167,8 @@ pub fn check_all_devices(
     queue_empty: Option<bool>,
     devices: &[(bool, bool)],
 ) -> bool {
-    if settle {
-        match queue_empty {
-            Some(false) => return false,
-            Some(true) | None => {}
-        }
+    if settle && queue_empty == Some(false) {
+        return false;
     }
     devices.iter().all(|&(exists, processed)| {
         check_device_condition(wait_until, exists, processed) == DeviceCheckResult::Satisfied
@@ -182,7 +183,7 @@ pub fn is_device_path(p: &str) -> bool {
 
 pub fn is_path_safe(p: &str) -> bool {
     let components: Vec<&str> = p.split('/').collect();
-    !components.iter().any(|c| *c == "..")
+    !components.contains(&"..")
 }
 
 pub fn simplify_path(p: &str) -> String {
@@ -261,9 +262,9 @@ mod tests {
     #[test]
     fn test_wait_until_roundtrip() {
         for s in &["initialized", "added", "removed"] {
-            assert_eq!(WaitUntil::from_str(s).unwrap().to_str(), *s);
+            assert_eq!(s.parse::<WaitUntil>().unwrap().to_str(), *s);
         }
-        assert!(WaitUntil::from_str("bad").is_none());
+        assert!("bad".parse::<WaitUntil>().is_err());
     }
 
     #[test]

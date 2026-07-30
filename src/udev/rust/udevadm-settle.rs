@@ -119,7 +119,7 @@ pub fn evaluate_settle(
     file_exists: Option<bool>,
     queue_empty: Option<bool>,
 ) -> SettleCheckResult {
-    if let Some(path) = exit_if_exists {
+    if let Some(_path) = exit_if_exists {
         match file_exists {
             Some(true) => return SettleCheckResult::FileExists,
             Some(false) => {}

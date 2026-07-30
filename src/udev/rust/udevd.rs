@@ -72,15 +72,9 @@ impl LibLoadResults {
 
 // ── Daemon configuration ─────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DaemonConfig {
     pub daemonize: bool,
-}
-
-impl Default for DaemonConfig {
-    fn default() -> Self {
-        Self { daemonize: false }
-    }
 }
 
 // ── Startup sequence ──────────────────────────────────────────────────────
@@ -137,7 +131,7 @@ impl StartupSequence {
     }
 
     pub fn is_complete(&self) -> bool {
-        self.steps.last().map_or(false, |s| {
+        self.steps.last().is_some_and(|s| {
             matches!(s.phase, StartupPhase::RunMain) || matches!(s.status, StartupStatus::Err(_))
         })
     }

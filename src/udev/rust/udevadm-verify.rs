@@ -16,13 +16,15 @@ pub enum ResolveNameTiming {
     Never,
 }
 
-impl ResolveNameTiming {
-    pub fn from_str(s: &str) -> Option<ResolveNameTiming> {
+impl std::str::FromStr for ResolveNameTiming {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "early" => Some(ResolveNameTiming::Early),
-            "late" => Some(ResolveNameTiming::Late),
-            "never" => Some(ResolveNameTiming::Never),
-            _ => None,
+            "early" => Ok(ResolveNameTiming::Early),
+            "late" => Ok(ResolveNameTiming::Late),
+            "never" => Ok(ResolveNameTiming::Never),
+            _ => Err(()),
         }
     }
 }
@@ -201,7 +203,8 @@ impl VerifySummary {
 // ── Validation ────────────────────────────────────────────────────────────
 
 pub fn validate_resolve_name(s: &str) -> Result<ResolveNameTiming, VerifyError> {
-    ResolveNameTiming::from_str(s).ok_or_else(|| VerifyError::InvalidResolveName(s.to_string()))
+    s.parse()
+        .map_err(|()| VerifyError::InvalidResolveName(s.to_string()))
 }
 
 pub fn validate_root_path(s: &str) -> Result<String, VerifyError> {
@@ -235,19 +238,10 @@ mod tests {
 
     #[test]
     fn test_resolve_name_from_str() {
-        assert_eq!(
-            ResolveNameTiming::from_str("early"),
-            Some(ResolveNameTiming::Early)
-        );
-        assert_eq!(
-            ResolveNameTiming::from_str("late"),
-            Some(ResolveNameTiming::Late)
-        );
-        assert_eq!(
-            ResolveNameTiming::from_str("never"),
-            Some(ResolveNameTiming::Never)
-        );
-        assert_eq!(ResolveNameTiming::from_str("bad"), None);
+        assert_eq!("early".parse(), Ok(ResolveNameTiming::Early));
+        assert_eq!("late".parse(), Ok(ResolveNameTiming::Late));
+        assert_eq!("never".parse(), Ok(ResolveNameTiming::Never));
+        assert_eq!("bad".parse::<ResolveNameTiming>(), Err(()));
     }
 
     #[test]

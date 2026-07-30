@@ -89,16 +89,14 @@ impl DeviceNumber {
 
 /// A sorted, deduplicated list of device numbers.
 /// Mirrors the find_devno() logic in C: binary search + insert + re-sort.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DeviceNumberList {
     entries: Vec<DeviceNumber>,
 }
 
 impl DeviceNumberList {
     pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
+        Self::default()
     }
 
     /// Try to add a device number. Returns false if already present.

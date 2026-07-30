@@ -440,17 +440,16 @@ fn apply_static_dev_perms(rules: &[Rule]) {
             continue;
         }
 
-        if let Some(mode) = spec.mode {
-            if let Err(err) =
+        if let Some(mode) = spec.mode
+            && let Err(err) =
                 std::fs::set_permissions(&spec.path, std::fs::Permissions::from_mode(mode))
-            {
-                eprintln!(
-                    "systemd-udevd: failed applying static mode on {}: {}",
-                    spec.path.display(),
-                    err
-                );
-                continue;
-            }
+        {
+            eprintln!(
+                "systemd-udevd: failed applying static mode on {}: {}",
+                spec.path.display(),
+                err
+            );
+            continue;
         }
 
         if spec.uid.is_some() || spec.gid.is_some() {
@@ -493,10 +492,10 @@ fn action_to_str(action: &UeventAction) -> Option<&'static str> {
 fn kernel_from_uevent(event: &UeventMessage) -> String {
     if let Some(devname) = event.devname.as_ref() {
         let trimmed = devname.trim_start_matches('/');
-        if let Some(name) = trimmed.rsplit('/').next() {
-            if !name.is_empty() {
-                return name.to_string();
-            }
+        if let Some(name) = trimmed.rsplit('/').next()
+            && !name.is_empty()
+        {
+            return name.to_string();
         }
     }
     event
@@ -746,10 +745,10 @@ fn run_processing_loop(
 ) -> ! {
     let mut queue_file = QueueFileLifecycle::new(&run_dir);
 
-    if let Some(resources) = runtime.as_mut() {
-        if let Err(err) = resources.control.set_nonblocking(true) {
-            eprintln!("systemd-udevd: failed to make control socket non-blocking: {err}");
-        }
+    if let Some(resources) = runtime.as_mut()
+        && let Err(err) = resources.control.set_nonblocking(true)
+    {
+        eprintln!("systemd-udevd: failed to make control socket non-blocking: {err}");
     }
 
     loop {

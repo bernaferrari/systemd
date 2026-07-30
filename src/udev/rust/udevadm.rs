@@ -32,6 +32,10 @@ pub enum Verb {
 }
 
 impl Verb {
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "the C-facing parser intentionally returns Option, preserving its established unknown-verb contract"
+    )]
     pub fn from_str(s: &str) -> Option<Verb> {
         match s {
             "cat" => Some(Verb::Cat),
@@ -112,15 +116,9 @@ impl Verb {
 
 // ── Global options ────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GlobalOptions {
     pub debug: bool,
-}
-
-impl Default for GlobalOptions {
-    fn default() -> Self {
-        Self { debug: false }
-    }
 }
 
 // ── Error type ────────────────────────────────────────────────────────────
@@ -150,19 +148,10 @@ impl std::error::Error for UdevadmError {}
 
 // ── Parsed global result ──────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParsedGlobal {
     pub options: GlobalOptions,
     pub verb: Option<Verb>,
-}
-
-impl Default for ParsedGlobal {
-    fn default() -> Self {
-        Self {
-            options: GlobalOptions::default(),
-            verb: None,
-        }
-    }
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────

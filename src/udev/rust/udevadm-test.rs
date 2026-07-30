@@ -21,15 +21,6 @@ pub enum ResolveNameTiming {
 }
 
 impl ResolveNameTiming {
-    pub fn from_str(s: &str) -> Option<ResolveNameTiming> {
-        match s {
-            "early" => Some(ResolveNameTiming::Early),
-            "late" => Some(ResolveNameTiming::Late),
-            "never" => Some(ResolveNameTiming::Never),
-            _ => None,
-        }
-    }
-
     pub fn to_str(self) -> &'static str {
         match self {
             ResolveNameTiming::Early => "early",
@@ -47,6 +38,19 @@ impl ResolveNameTiming {
     }
 }
 
+impl std::str::FromStr for ResolveNameTiming {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "early" => Ok(ResolveNameTiming::Early),
+            "late" => Ok(ResolveNameTiming::Late),
+            "never" => Ok(ResolveNameTiming::Never),
+            _ => Err(()),
+        }
+    }
+}
+
 // ── JSON format flags ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,15 +61,6 @@ pub enum JsonFormat {
 }
 
 impl JsonFormat {
-    pub fn from_str(s: &str) -> Option<JsonFormat> {
-        match s {
-            "off" => Some(JsonFormat::Off),
-            "pretty" => Some(JsonFormat::Pretty),
-            "short" => Some(JsonFormat::Short),
-            _ => None,
-        }
-    }
-
     pub fn to_str(self) -> &'static str {
         match self {
             JsonFormat::Off => "off",
@@ -76,6 +71,19 @@ impl JsonFormat {
 
     pub fn is_enabled(self) -> bool {
         self != JsonFormat::Off
+    }
+}
+
+impl std::str::FromStr for JsonFormat {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "off" => Ok(JsonFormat::Off),
+            "pretty" => Ok(JsonFormat::Pretty),
+            "short" => Ok(JsonFormat::Short),
+            _ => Err(()),
+        }
     }
 }
 
@@ -161,11 +169,13 @@ pub fn validate_action(action: &str) -> Result<&str, TestError> {
 }
 
 pub fn validate_resolve_name(s: &str) -> Result<ResolveNameTiming, TestError> {
-    ResolveNameTiming::from_str(s).ok_or_else(|| TestError::InvalidResolveName(s.to_string()))
+    s.parse()
+        .map_err(|()| TestError::InvalidResolveName(s.to_string()))
 }
 
 pub fn validate_json_format(s: &str) -> Result<JsonFormat, TestError> {
-    JsonFormat::from_str(s).ok_or_else(|| TestError::InvalidJson(s.to_string()))
+    s.parse()
+        .map_err(|()| TestError::InvalidJson(s.to_string()))
 }
 
 pub fn validate_syspath(syspath: &str) -> Result<(), TestError> {
@@ -245,21 +255,21 @@ mod tests {
     #[test]
     fn test_resolve_name_roundtrip() {
         for timing in ResolveNameTiming::all() {
-            assert_eq!(ResolveNameTiming::from_str(timing.to_str()), Some(*timing));
+            assert_eq!(timing.to_str().parse(), Ok(*timing));
         }
     }
 
     #[test]
     fn test_resolve_name_unknown() {
-        assert_eq!(ResolveNameTiming::from_str("bad"), None);
+        assert_eq!("bad".parse::<ResolveNameTiming>(), Err(()));
     }
 
     #[test]
     fn test_json_format_roundtrip() {
-        assert_eq!(JsonFormat::from_str("off"), Some(JsonFormat::Off));
-        assert_eq!(JsonFormat::from_str("pretty"), Some(JsonFormat::Pretty));
-        assert_eq!(JsonFormat::from_str("short"), Some(JsonFormat::Short));
-        assert_eq!(JsonFormat::from_str("bad"), None);
+        assert_eq!("off".parse(), Ok(JsonFormat::Off));
+        assert_eq!("pretty".parse(), Ok(JsonFormat::Pretty));
+        assert_eq!("short".parse(), Ok(JsonFormat::Short));
+        assert_eq!("bad".parse::<JsonFormat>(), Err(()));
     }
 
     #[test]

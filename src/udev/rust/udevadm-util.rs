@@ -17,20 +17,24 @@ pub enum ResolveNameTiming {
 }
 
 impl ResolveNameTiming {
-    pub fn from_str(s: &str) -> Option<ResolveNameTiming> {
-        match s {
-            "early" => Some(ResolveNameTiming::Early),
-            "late" => Some(ResolveNameTiming::Late),
-            "never" => Some(ResolveNameTiming::Never),
-            _ => None,
-        }
-    }
-
     pub fn to_str(self) -> &'static str {
         match self {
             ResolveNameTiming::Early => "early",
             ResolveNameTiming::Late => "late",
             ResolveNameTiming::Never => "never",
+        }
+    }
+}
+
+impl std::str::FromStr for ResolveNameTiming {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "early" => Ok(ResolveNameTiming::Early),
+            "late" => Ok(ResolveNameTiming::Late),
+            "never" => Ok(ResolveNameTiming::Never),
+            _ => Err(()),
         }
     }
 }
@@ -50,20 +54,6 @@ pub enum DeviceAction {
 }
 
 impl DeviceAction {
-    pub fn from_str(s: &str) -> Option<DeviceAction> {
-        match s {
-            "add" => Some(DeviceAction::Add),
-            "remove" => Some(DeviceAction::Remove),
-            "change" => Some(DeviceAction::Change),
-            "move" => Some(DeviceAction::Move),
-            "online" => Some(DeviceAction::Online),
-            "offline" => Some(DeviceAction::Offline),
-            "bind" => Some(DeviceAction::Bind),
-            "unbind" => Some(DeviceAction::Unbind),
-            _ => None,
-        }
-    }
-
     pub fn to_str(self) -> &'static str {
         match self {
             DeviceAction::Add => "add",
@@ -88,6 +78,24 @@ impl DeviceAction {
             DeviceAction::Bind,
             DeviceAction::Unbind,
         ]
+    }
+}
+
+impl std::str::FromStr for DeviceAction {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "add" => Ok(DeviceAction::Add),
+            "remove" => Ok(DeviceAction::Remove),
+            "change" => Ok(DeviceAction::Change),
+            "move" => Ok(DeviceAction::Move),
+            "online" => Ok(DeviceAction::Online),
+            "offline" => Ok(DeviceAction::Offline),
+            "bind" => Ok(DeviceAction::Bind),
+            "unbind" => Ok(DeviceAction::Unbind),
+            _ => Err(()),
+        }
     }
 }
 
@@ -152,13 +160,15 @@ impl std::error::Error for UtilError {}
 /// Parse a device action string. Returns `help` mode if the string is "help".
 /// Mirrors `parse_device_action()`.
 pub fn parse_device_action(s: &str) -> Result<DeviceAction, UtilError> {
-    DeviceAction::from_str(s).ok_or_else(|| UtilError::InvalidAction(s.to_string()))
+    s.parse()
+        .map_err(|()| UtilError::InvalidAction(s.to_string()))
 }
 
 /// Parse a resolve-name timing string.
 /// Mirrors `parse_resolve_name_timing()`.
 pub fn parse_resolve_name_timing(s: &str) -> Result<ResolveNameTiming, UtilError> {
-    ResolveNameTiming::from_str(s).ok_or_else(|| UtilError::InvalidResolveName(s.to_string()))
+    s.parse()
+        .map_err(|()| UtilError::InvalidResolveName(s.to_string()))
 }
 
 /// Parse a KEY=VALUE argument, optionally requiring the value.
@@ -339,18 +349,18 @@ mod tests {
     #[test]
     fn test_resolve_name_roundtrip() {
         for s in &["early", "late", "never"] {
-            let timing = ResolveNameTiming::from_str(s).unwrap();
+            let timing: ResolveNameTiming = s.parse().unwrap();
             assert_eq!(timing.to_str(), *s);
         }
-        assert!(ResolveNameTiming::from_str("sometimes").is_none());
+        assert!("sometimes".parse::<ResolveNameTiming>().is_err());
     }
 
     #[test]
     fn test_device_action_roundtrip() {
         for action in DeviceAction::all() {
-            assert_eq!(DeviceAction::from_str(action.to_str()), Some(*action));
+            assert_eq!(action.to_str().parse(), Ok(*action));
         }
-        assert!(DeviceAction::from_str("explode").is_none());
+        assert!("explode".parse::<DeviceAction>().is_err());
     }
 
     #[test]

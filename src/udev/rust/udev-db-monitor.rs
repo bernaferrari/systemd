@@ -413,10 +413,10 @@ impl RulesInotifyWatcher {
                 return Err(io::Error::last_os_error());
             }
             // SAFETY: fd is newly created and uniquely owned.
-            return Ok(Self {
+            Ok(Self {
                 fd: unsafe { OwnedFd::from_raw_fd(fd) },
                 watched_dirs: BTreeMap::new(),
-            });
+            })
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -442,7 +442,7 @@ impl RulesInotifyWatcher {
                 return Err(io::Error::last_os_error());
             }
             self.watched_dirs.insert(wd, path.to_path_buf());
-            return Ok(());
+            Ok(())
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -471,7 +471,7 @@ impl RulesInotifyWatcher {
                 }
                 return Err(err);
             }
-            return Ok(parse_inotify_events(&buf[..n as usize], &self.watched_dirs));
+            Ok(parse_inotify_events(&buf[..n as usize], &self.watched_dirs))
         }
 
         #[cfg(not(target_os = "linux"))]

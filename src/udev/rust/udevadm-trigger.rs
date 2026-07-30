@@ -17,6 +17,10 @@ pub enum ScanType {
 }
 
 impl ScanType {
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "the C-facing parser intentionally returns Option, preserving its established unknown-type contract"
+    )]
     pub fn from_str(s: &str) -> Option<ScanType> {
         match s {
             "devices" => Some(ScanType::Devices),
@@ -37,17 +41,12 @@ impl ScanType {
 
 // ── Initialized match ────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InitializedMatch {
+    #[default]
     Any,
     Yes,
     No,
-}
-
-impl Default for InitializedMatch {
-    fn default() -> Self {
-        InitializedMatch::Any
-    }
 }
 
 // ── Match filters ─────────────────────────────────────────────────────────
@@ -195,9 +194,7 @@ pub enum ExecStatus {
 /// Mirrors the error-handling logic in C `exec_list()`.
 pub fn classify_trigger_error(err: i32, quiet: bool) -> (ExecStatus, i32) {
     let ignore = err == -2 || err == -19; // -ENOENT, -ENODEV
-    let level = if quiet {
-        7 // LOG_DEBUG
-    } else if err == -2 {
+    let level = if quiet || err == -2 {
         7
     } else if err == -19 {
         4 // LOG_WARNING
@@ -313,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_parse_key_value_eq_only() {
-        let (k, v) = parse_key_value("=bar").unwrap();
+        let (k, _v) = parse_key_value("=bar").unwrap();
         assert_eq!(k, "");
         assert!(parse_key_value("").is_err());
     }

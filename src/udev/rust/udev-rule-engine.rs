@@ -391,8 +391,8 @@ fn create_or_open_device_node(
         DeviceNodeKind::Block => libc::S_IFBLK,
         DeviceNodeKind::Char => libc::S_IFCHR,
     };
-    // SAFETY: makedev is a pure libc encoding operation.
-    let device = unsafe { libc::makedev(major as _, minor as _) };
+    // `makedev` is a pure libc encoding operation.
+    let device = libc::makedev(major as _, minor as _);
 
     // SAFETY: the parent descriptor is live, the name is a single
     // NUL-terminated component, and mknodat cannot traverse through it.
@@ -471,10 +471,10 @@ fn fstatat_nofollow(path: &ResolvedPath) -> Result<Option<libc::stat>, NodeApply
 
 #[cfg(target_os = "linux")]
 fn replace_symlink_atomic(path: &ResolvedPath, target: &CStr) -> Result<(), NodeApplyError> {
-    if let Some(stat) = fstatat_nofollow(path)? {
-        if stat.st_mode & libc::S_IFMT != libc::S_IFLNK {
-            return Err(NodeApplyError::Io(-libc::EEXIST));
-        }
+    if let Some(stat) = fstatat_nofollow(path)?
+        && stat.st_mode & libc::S_IFMT != libc::S_IFLNK
+    {
+        return Err(NodeApplyError::Io(-libc::EEXIST));
     }
 
     static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
