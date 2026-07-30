@@ -6,10 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EBADF: i32 = -(libc::EBADF as i32);
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-pub const NEG_ENODATA: i32 = -(libc::ENODATA as i32);
-pub const NEG_ENXIO: i32 = -(libc::ENXIO as i32);
+pub const NEG_EBADF: i32 = -libc::EBADF;
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_ENODATA: i32 = -libc::ENODATA;
+pub const NEG_ENXIO: i32 = -libc::ENXIO;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionRecord {

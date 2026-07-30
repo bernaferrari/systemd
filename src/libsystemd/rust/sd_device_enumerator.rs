@@ -9,7 +9,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::rc::Rc;
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -46,18 +46,13 @@ pub type Result<T> = std::result::Result<T, EnumeratorError>;
 
 /// What kind of devices to enumerate.
 /// Corresponds to `DeviceEnumerationType` in the C code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EnumerationType {
     Devices,
     Subsystems,
     All,
+    #[default]
     Invalid,
-}
-
-impl Default for EnumerationType {
-    fn default() -> Self {
-        EnumerationType::Invalid
-    }
 }
 
 // ── Match flags ───────────────────────────────────────────────────────────
@@ -114,18 +109,13 @@ impl MatchFlag {
 
 /// Whether to match only initialized devices.
 /// Corresponds to `MatchInitializedType` in the C code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum MatchInitialized {
+    #[default]
     Compat,
     Yes,
     No,
     All,
-}
-
-impl Default for MatchInitialized {
-    fn default() -> Self {
-        MatchInitialized::Compat
-    }
 }
 
 // ── Device record ─────────────────────────────────────────────────────────
@@ -417,10 +407,10 @@ impl DeviceEnumerator {
 
         // Sysattr nomatch
         for (attr, values) in &self.nomatch_sysattr {
-            if let Some(dev_val) = device.sysattr(attr) {
-                if values.iter().any(|v| v == dev_val) {
-                    return false;
-                }
+            if let Some(dev_val) = device.sysattr(attr)
+                && values.iter().any(|v| v == dev_val)
+            {
+                return false;
             }
         }
 
@@ -746,9 +736,9 @@ mod tests {
     #[test]
     fn test_enumerator_sort() {
         let e = DeviceEnumerator::new().unwrap();
-        let mut dev_c = Device::from_syspath("/sys/devices/c");
-        let mut dev_a = Device::from_syspath("/sys/devices/a");
-        let mut dev_b = Device::from_syspath("/sys/devices/b");
+        let dev_c = Device::from_syspath("/sys/devices/c");
+        let dev_a = Device::from_syspath("/sys/devices/a");
+        let dev_b = Device::from_syspath("/sys/devices/b");
 
         e.borrow_mut().add_device(dev_c);
         e.borrow_mut().add_device(dev_a);

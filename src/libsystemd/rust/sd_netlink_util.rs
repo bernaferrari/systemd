@@ -131,24 +131,26 @@ pub fn rtnl_resolve_ifname_full<R: LinkRepository>(
     flags: ResolveInterfaceNameFlag,
     name: &str,
 ) -> Result<LinkInfo, NetlinkUtilError> {
-    if flags.contains(ResolveInterfaceNameFlag::MAIN) && ifname_valid(name) {
-        if let Some(info) = repo.by_name(name) {
-            return Ok(info);
-        }
+    if flags.contains(ResolveInterfaceNameFlag::MAIN)
+        && ifname_valid(name)
+        && let Some(info) = repo.by_name(name)
+    {
+        return Ok(info);
     }
 
-    if flags.contains(ResolveInterfaceNameFlag::ALTERNATIVE) && ifname_valid(name) {
-        if let Some(info) = repo.by_alternative_name(name) {
-            return Ok(info);
-        }
+    if flags.contains(ResolveInterfaceNameFlag::ALTERNATIVE)
+        && ifname_valid(name)
+        && let Some(info) = repo.by_alternative_name(name)
+    {
+        return Ok(info);
     }
 
-    if flags.contains(ResolveInterfaceNameFlag::NUMERIC) {
-        if let Some(ifindex) = parse_ifindex(name) {
-            return repo
-                .by_ifindex(ifindex)
-                .ok_or(NetlinkUtilError::NameNotFound);
-        }
+    if flags.contains(ResolveInterfaceNameFlag::NUMERIC)
+        && let Some(ifindex) = parse_ifindex(name)
+    {
+        return repo
+            .by_ifindex(ifindex)
+            .ok_or(NetlinkUtilError::NameNotFound);
     }
 
     Err(NetlinkUtilError::NameNotFound)

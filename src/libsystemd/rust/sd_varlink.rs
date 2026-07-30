@@ -133,30 +133,30 @@ impl Varlink {
 
         if let Some(message) = self.output_queue.pop_front() {
             self.current = Some(message.clone());
-            if let Some(method) = self.get_current_method()? {
-                if let Some(handler) = self.methods.get(method) {
-                    let parameters = self
-                        .get_current_parameters()?
-                        .unwrap_or(JsonValue::Object(BTreeMap::new()));
-                    let reply = handler(&parameters)?;
-                    if let Some(callback) = self.reply_callback {
-                        callback(&VarlinkReply {
-                            status: 0,
-                            payload: Some(reply),
-                        });
-                    }
-                    self.state = VarlinkState::IdleServer;
-                    return Ok(1);
+            if let Some(method) = self.get_current_method()?
+                && let Some(handler) = self.methods.get(method)
+            {
+                let parameters = self
+                    .get_current_parameters()?
+                    .unwrap_or(JsonValue::Object(BTreeMap::new()));
+                let reply = handler(&parameters)?;
+                if let Some(callback) = self.reply_callback {
+                    callback(&VarlinkReply {
+                        status: 0,
+                        payload: Some(reply),
+                    });
                 }
+                self.state = VarlinkState::IdleServer;
+                return Ok(1);
             }
             return Ok(1);
         }
 
-        if let Some(timeout) = self.timeout_usec {
-            if self.timestamp_usec >= timeout {
-                self.state = VarlinkState::PendingDisconnect;
-                return Ok(1);
-            }
+        if let Some(timeout) = self.timeout_usec
+            && self.timestamp_usec >= timeout
+        {
+            self.state = VarlinkState::PendingDisconnect;
+            return Ok(1);
         }
 
         Ok(0)
@@ -195,7 +195,7 @@ impl Varlink {
             return Err(VarlinkError::NotConnected);
         }
         if self.connecting {
-            return Ok(libc::POLLOUT as i16);
+            return Ok(libc::POLLOUT);
         }
 
         let mut events = 0;
@@ -212,7 +212,7 @@ impl Varlink {
         if !self.write_disconnected && !self.output_queue.is_empty() {
             events |= libc::POLLOUT;
         }
-        Ok(events as i16)
+        Ok(events)
     }
 
     pub fn get_timeout(&self) -> Result<Option<u64>> {

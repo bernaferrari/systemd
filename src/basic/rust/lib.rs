@@ -132,7 +132,7 @@ pub mod xml_tokenizer;
 mod ffi_string_table;
 mod header_inline_abi;
 mod string_util_ffi;
-mod string_util_fundamental;
+pub mod string_util_fundamental;
 mod unit_inline_abi;
 
 pub use std::ffi::c_void;

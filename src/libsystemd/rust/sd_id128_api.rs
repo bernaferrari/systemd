@@ -23,7 +23,7 @@ const BOOT_ID_PATH: &str = "/proc/sys/kernel/random/boot_id";
 pub const NEG_ENOMEDIUM: i32 = -LINUX_ENOMEDIUM;
 pub const NEG_EUCLEAN: i32 = -LINUX_EUCLEAN;
 pub const NEG_ENOPKG: i32 = -LINUX_ENOPKG;
-pub const NEG_ENOSYS: i32 = -(libc::ENOSYS as i32);
+pub const NEG_ENOSYS: i32 = -libc::ENOSYS;
 
 static MACHINE_ID_CACHE: OnceLock<Mutex<Option<SdId128>>> = OnceLock::new();
 static BOOT_ID_CACHE: OnceLock<Mutex<Option<SdId128>>> = OnceLock::new();
@@ -47,7 +47,7 @@ pub fn sd_id128_get_machine() -> Result<SdId128> {
 
 pub fn sd_id128_get_boot() -> Result<SdId128> {
     match read_cached_id(&BOOT_ID_CACHE, || read_id128_file(&boot_id_path(), true)) {
-        Err(e) if e == -(libc::ENOENT as i32) => Err(NEG_ENOSYS),
+        Err(e) if e == -libc::ENOENT => Err(NEG_ENOSYS),
         other => other,
     }
 }
@@ -135,11 +135,11 @@ fn fill_random(bytes: &mut [u8]) -> Result<()> {
 }
 
 fn io_to_errno(err: std::io::Error) -> i32 {
-    -(err.raw_os_error().unwrap_or(libc::EIO) as i32)
+    -err.raw_os_error().unwrap_or(libc::EIO)
 }
 
 fn getrandom_to_errno(err: getrandom::Error) -> i32 {
-    -(err.raw_os_error().unwrap_or(libc::EIO) as i32)
+    -err.raw_os_error().unwrap_or(libc::EIO)
 }
 
 fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

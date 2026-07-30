@@ -5,10 +5,10 @@ use crate::varlink_state::VarlinkState;
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-pub const NEG_ENOMEM: i32 = -(libc::ENOMEM as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_ENOMEM: i32 = -libc::ENOMEM;
 pub const NEG_EBADR: i32 = -53;
-pub const NEG_EPERM: i32 = -(libc::EPERM as i32);
+pub const NEG_EPERM: i32 = -libc::EPERM;
 
 pub const PROJECT_URL: &str = "https://systemd.io/";
 pub const PROJECT_VENDOR: &str = "The systemd Project";

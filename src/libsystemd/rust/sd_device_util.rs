@@ -4,13 +4,11 @@
 //
 
 use std::collections::HashMap;
-use std::os::unix::fs::FileTypeExt;
-use std::path::PathBuf;
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-pub const NEG_ENOENT: i32 = -(libc::ENOENT as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_ENOENT: i32 = -libc::ENOENT;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceAction {

@@ -4,9 +4,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-const NEG_EBADMSG: i32 = -(libc::EBADMSG as i32);
+const NEG_EBADMSG: i32 = -libc::EBADMSG;
 const NEG_ENOKEY: i32 = -126; // ENOKEY = 126 (Linux)
-const NEG_EOPNOTSUPP: i32 = -(libc::EOPNOTSUPP as i32);
+const NEG_EOPNOTSUPP: i32 = -libc::EOPNOTSUPP;
 
 pub const OBJECT_COMPRESSED_XZ: u8 = 1;
 pub const OBJECT_COMPRESSED_LZ4: u8 = 2;
@@ -90,10 +90,9 @@ pub fn journal_file_verify(file: &JournalFile, key: Option<&str>) -> Result<Veri
         stats.n_objects += 1;
         if object.flags & (OBJECT_COMPRESSED_XZ | OBJECT_COMPRESSED_LZ4 | OBJECT_COMPRESSED_ZSTD)
             != 0
+            && (object.object_type != ObjectType::Data || !compression_allowed(file, object.flags))
         {
-            if object.object_type != ObjectType::Data || !compression_allowed(file, object.flags) {
-                return Err(NEG_EBADMSG);
-            }
+            return Err(NEG_EBADMSG);
         }
 
         match object.object_type {
