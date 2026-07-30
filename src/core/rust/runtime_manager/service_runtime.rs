@@ -12,16 +12,19 @@ use std::time::{Duration, Instant};
 use super::unit_file::{ExecContextConfig, UnitFileInfo};
 use super::unit_load::{UnitConditionEvaluation, unit_condition_evaluation};
 use super::{
-    ChildExitCleanMode, PreparedStdio, Result, RuntimeManager, StdioFd, StdioSpec, StdioTargetMode,
+    ChildExitCleanMode, PreparedStdio, RuntimeManager, StdioFd, StdioSpec, StdioTargetMode,
     TrackedPidRole, child_state_considered_clean_with_mode, infer_service_type, specs_or_single,
 };
+
+#[cfg(test)]
+use super::Result;
 use crate::ffi::Errno;
 use crate::service::{
     ServiceState, ServiceType, service_record_reload_result, service_record_result,
     service_reset_reload_result, service_reset_result, service_restart_usec_next,
 };
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
-use crate::transaction::{JobMode, JobType as TxJobType};
+use crate::transaction::JobMode;
 use crate::unit::DependencyKind;
 use systemd_libsystemd_rs::sd_journal_send::sd_journal_stream_fd;
 use systemd_platform_rs::spawn::{self, ChildProcess, ChildState};
@@ -347,10 +350,10 @@ impl RuntimeManager {
         let stderr_spec = Self::parse_stdio_spec(info.exec_context.standard_error.as_deref());
         if let Some((fd, _)) = self.resolve_output_stdio_fd(unit_name, info, &stderr_spec) {
             prepared.stdio.stderr_fd = Some(fd.into_raw_for(&mut prepared));
-        } else if stdout_console_mirror {
-            if let Some(fd) = Self::open_write_fd("/dev/console", false, false, false) {
-                prepared.stdio.stderr_fd = Some(prepared.retain_owned_fd(fd));
-            }
+        } else if stdout_console_mirror
+            && let Some(fd) = Self::open_write_fd("/dev/console", false, false, false)
+        {
+            prepared.stdio.stderr_fd = Some(prepared.retain_owned_fd(fd));
         }
 
         prepared
@@ -431,34 +434,34 @@ impl RuntimeManager {
             .tty_path
             .as_deref()
             .unwrap_or("/dev/console");
-        if info.exec_context.tty_reset.unwrap_or(false) {
-            if let Some(fd) = Self::open_write_fd(tty_path, false, false, false) {
-                // SAFETY: fd is owned and valid, and the escape sequence is a
-                // valid four-byte buffer for the duration of this call.
-                let _ = unsafe { libc::write(fd.as_raw_fd(), b"\x1bc\n".as_ptr().cast(), 4) };
-            }
+        if info.exec_context.tty_reset.unwrap_or(false)
+            && let Some(fd) = Self::open_write_fd(tty_path, false, false, false)
+        {
+            // SAFETY: fd is owned and valid, and the escape sequence is a
+            // valid four-byte buffer for the duration of this call.
+            let _ = unsafe { libc::write(fd.as_raw_fd(), b"\x1bc\n".as_ptr().cast(), 4) };
         }
 
-        if info.exec_context.tty_vhangup.unwrap_or(false) {
-            if let Some(fd) = Self::open_write_fd(tty_path, false, false, false) {
-                #[cfg(target_os = "linux")]
-                {
-                    const TIOCVHANGUP_IOCTL: libc::c_ulong = 0x5437;
-                    // SAFETY: fd is owned and valid; this ioctl takes only an
-                    // integer argument and does not dereference the zero value.
-                    let _ = unsafe { libc::ioctl(fd.as_raw_fd(), TIOCVHANGUP_IOCTL, 0) };
-                }
+        if info.exec_context.tty_vhangup.unwrap_or(false)
+            && let Some(fd) = Self::open_write_fd(tty_path, false, false, false)
+        {
+            #[cfg(target_os = "linux")]
+            {
+                const TIOCVHANGUP_IOCTL: libc::c_ulong = 0x5437;
+                // SAFETY: fd is owned and valid; this ioctl takes only an
+                // integer argument and does not dereference the zero value.
+                let _ = unsafe { libc::ioctl(fd.as_raw_fd(), TIOCVHANGUP_IOCTL, 0) };
             }
         }
 
         #[cfg(target_os = "linux")]
-        if info.exec_context.tty_vt_disallocate.unwrap_or(false) {
-            if let Some(fd) = Self::open_write_fd(tty_path, false, false, false) {
-                const VT_DISALLOCATE: libc::c_ulong = 0x5608;
-                // SAFETY: fd is owned and valid; this ioctl takes only an
-                // integer argument and does not dereference the zero value.
-                let _ = unsafe { libc::ioctl(fd.as_raw_fd(), VT_DISALLOCATE, 0) };
-            }
+        if info.exec_context.tty_vt_disallocate.unwrap_or(false)
+            && let Some(fd) = Self::open_write_fd(tty_path, false, false, false)
+        {
+            const VT_DISALLOCATE: libc::c_ulong = 0x5608;
+            // SAFETY: fd is owned and valid; this ioctl takes only an
+            // integer argument and does not dereference the zero value.
+            let _ = unsafe { libc::ioctl(fd.as_raw_fd(), VT_DISALLOCATE, 0) };
         }
     }
 
@@ -1382,7 +1385,7 @@ impl RuntimeManager {
                     .service
                     .bus_name
                     .as_deref()
-                    .map_or(true, |name| name.trim().is_empty()) =>
+                    .is_none_or(|name| name.trim().is_empty()) =>
             {
                 Some("Type=dbus requires a non-empty BusName=")
             }

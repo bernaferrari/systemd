@@ -5,7 +5,7 @@
 use super::activation::unit_queue_job_check_and_mangle_type;
 use super::dependency::unit_success_failure_handler_has_jobs;
 use super::lifecycle::{unit_reload, unit_start, unit_stop};
-use super::model::{ActiveState, JobKind, QueueKind, Result, Unit, UnitError};
+use super::model::{JobKind, QueueKind, Result, Unit, UnitError};
 use super::runtime::{unit_get_nice, unit_set_exec_params};
 
 pub fn unit_validate_on_termination_job_modes(unit: &Unit) -> Result<()> {

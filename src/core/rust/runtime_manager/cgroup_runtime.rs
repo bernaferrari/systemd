@@ -562,10 +562,10 @@ impl RuntimeManager {
         }
 
         let mut components = Vec::new();
-        if let Some(parent_slice) = Self::unit_parent_slice_for(unit_name, info) {
-            if let Some(slice_components) = Self::cgroup_slice_components(&parent_slice) {
-                components.extend(slice_components);
-            }
+        if let Some(parent_slice) = Self::unit_parent_slice_for(unit_name, info)
+            && let Some(slice_components) = Self::cgroup_slice_components(&parent_slice)
+        {
+            components.extend(slice_components);
         }
         components.push(Self::cgroup_unit_component(unit_name));
         components
@@ -1660,7 +1660,7 @@ impl RuntimeManager {
         let wd = linux_cgroup::inotify_add_watch_fd(
             inotify.as_fd(),
             cgroup.events_fd(),
-            (libc::IN_MODIFY | libc::IN_ATTRIB | libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO) as u32,
+            libc::IN_MODIFY | libc::IN_ATTRIB | libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO,
         )
         .map_err(|source| {
             CgroupRealizationError::io(
@@ -1824,14 +1824,14 @@ impl RuntimeManager {
             };
 
             for event in events {
-                if event.watch_descriptor >= 0 && (event.mask & (libc::IN_IGNORED as u32)) == 0 {
-                    if let Some(name) = self
+                if event.watch_descriptor >= 0
+                    && (event.mask & libc::IN_IGNORED) == 0
+                    && let Some(name) = self
                         .cgroup_watch_by_wd
                         .get(&event.watch_descriptor)
                         .cloned()
-                    {
-                        touched.insert(name);
-                    }
+                {
+                    touched.insert(name);
                 }
             }
         }

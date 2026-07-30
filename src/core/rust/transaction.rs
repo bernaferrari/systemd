@@ -216,6 +216,10 @@ impl Transaction {
         )
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the explicit flags mirror transaction_add_job_and_dependencies() and keep call-site policy choices reviewable"
+    )]
     pub fn add_job_and_dependencies_with_flags(
         &mut self,
         job_type: JobType,
@@ -238,6 +242,10 @@ impl Transaction {
         )
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the explicit policies mirror systemd's transaction recursion and avoid obscuring propagation semantics in a catch-all options object"
+    )]
     pub fn add_job_and_dependencies_with_policies(
         &mut self,
         job_type: JobType,
@@ -644,20 +652,16 @@ impl Transaction {
                 return Ok(());
             };
 
-            match result {
-                Ok(drop_id) => {
-                    let Some(unit) = self.jobs.get(&drop_id).map(|job| job.unit.clone()) else {
-                        continue;
-                    };
-                    if let Some(ids) = self.jobs_by_unit.get(&unit).cloned() {
-                        for id in ids {
-                            self.delete_job(id, false);
-                        }
-                    }
-                    self.collect_garbage();
+            let drop_id = result?;
+            let Some(unit) = self.jobs.get(&drop_id).map(|job| job.unit.clone()) else {
+                continue;
+            };
+            if let Some(ids) = self.jobs_by_unit.get(&unit).cloned() {
+                for id in ids {
+                    self.delete_job(id, false);
                 }
-                Err(error) => return Err(error),
             }
+            self.collect_garbage();
         }
     }
 
@@ -725,7 +729,7 @@ impl Transaction {
                 .get(&ids[0])
                 .map(|job| job.job_type)
                 .unwrap_or(JobType::Nop);
-            for id in ids.iter().skip(1).copied() {
+            for &id in ids.iter().skip(1) {
                 let other = self.jobs.get(&id).unwrap().job_type;
                 merged = merge_job_types(merged, other)
                     .ok_or_else(|| TransactionError::ConflictingJobs(unit.clone()))?;
@@ -797,7 +801,7 @@ impl Transaction {
                 .installed_job
                 .is_some_and(|installed| job_types_conflict(installed, job.job_type))
             {
-                return Err(TransactionError::Destructive(format!("{}", job.unit)));
+                return Err(TransactionError::Destructive(job.unit.clone()));
             }
         }
 

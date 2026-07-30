@@ -31,11 +31,14 @@ use crate::transaction::{
     UnitState,
 };
 use crate::unit::{
-    ActiveState, DependencyKind, KillContext, LoadState, ManagerRecord as UnitManagerRecord,
-    PidRef, Unit, UnitMarker, UnitType, unit_add_default_target_dependency,
-    unit_add_slice_dependencies, unit_reset_failed, unit_set_default_slice,
+    ActiveState, DependencyKind, LoadState, ManagerRecord as UnitManagerRecord, Unit, UnitMarker,
+    UnitType, unit_add_default_target_dependency, unit_add_slice_dependencies, unit_reset_failed,
+    unit_set_default_slice,
 };
 use systemd_platform_rs::spawn::{self, ChildState, ProcessTracker};
+
+#[cfg(test)]
+use crate::unit::PidRef;
 
 pub type Result<T> = std::result::Result<T, Errno>;
 
@@ -60,7 +63,6 @@ mod unit_load;
 mod unit_specifier;
 
 use cgroup_runtime::RealizedUnitCgroup;
-pub(crate) use cgroup_runtime::{CgroupRealizationError, CgroupRealizationOperation};
 use linux_cgroup::CgroupRoot;
 
 #[cfg(test)]
@@ -848,7 +850,7 @@ impl RuntimeManager {
         let Some(mut dirs) = self.service_runtime_dirs.remove(unit_name) else {
             return;
         };
-        dirs.sort_by(|a, b| b.components().count().cmp(&a.components().count()));
+        dirs.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
         for path in dirs {
             let _ = fs::remove_dir_all(path);
         }
@@ -966,10 +968,10 @@ impl RuntimeManager {
 
         if self.units.contains_key(&key) {
             self.register_unit_alias(name, &key);
-            if name != key {
-                if let Some(unit) = self.units.get_mut(&key) {
-                    unit.aliases.insert(name.to_string());
-                }
+            if name != key
+                && let Some(unit) = self.units.get_mut(&key)
+            {
+                unit.aliases.insert(name.to_string());
             }
             return Ok(());
         }
@@ -1074,10 +1076,7 @@ impl RuntimeManager {
 
         if info.unit_type == UnitType::Scope {
             apply_cgroup_config(&mut unit, &info.scope.cgroup);
-            let mut kill = unit
-                .kill_context
-                .clone()
-                .unwrap_or_else(KillContext::default);
+            let mut kill = unit.kill_context.clone().unwrap_or_default();
             if let Some(signal) = info.scope.kill_signal {
                 kill.kill_signal = signal;
             }
@@ -1529,10 +1528,10 @@ impl RuntimeManager {
                 pids.insert(pid.0);
             }
         }
-        if matches!(who, UnitKillWho::Control | UnitKillWho::All) {
-            if let Some(pid) = unit.control_pid {
-                pids.insert(pid.0);
-            }
+        if matches!(who, UnitKillWho::Control | UnitKillWho::All)
+            && let Some(pid) = unit.control_pid
+        {
+            pids.insert(pid.0);
         }
         if matches!(who, UnitKillWho::All) {
             for pid in &unit.watched_pids {
@@ -1563,10 +1562,10 @@ impl RuntimeManager {
         let name = self.canonical_unit_name(name);
         let unit = self.units.get_mut(&name).ok_or(Errno::ENOENT)?;
         unit_reset_failed(unit);
-        if let Some(service) = self.services.get_mut(&name) {
-            if matches!(service.state, ServiceState::Failed) {
-                service.state = ServiceState::Dead;
-            }
+        if let Some(service) = self.services.get_mut(&name)
+            && matches!(service.state, ServiceState::Failed)
+        {
+            service.state = ServiceState::Dead;
         }
         Ok(())
     }
@@ -1685,5 +1684,11 @@ impl RuntimeManager {
     pub fn fail_socket_activation(&mut self, socket_unit: &str) {
         self.execute_socket_stop(socket_unit);
         self.publish_nonservice_state(socket_unit, ActiveState::Failed);
+    }
+}
+
+impl Default for RuntimeManager {
+    fn default() -> Self {
+        Self::new()
     }
 }

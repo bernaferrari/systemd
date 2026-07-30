@@ -14,7 +14,7 @@ use super::unit_specifier::{
     is_instance_unit_name, is_template_unit_name,
 };
 use crate::service::{NotifyAccess, ServiceType};
-use crate::unit::{CgroupContext, KillContext, OomPolicy, Unit, UnitType, oom_policy_from_string};
+use crate::unit::{KillContext, OomPolicy, Unit, UnitType, oom_policy_from_string};
 use systemd_shared_rs::unit_file::{UnitFile, UnitFileParseError};
 
 const VALID_SUFFIXES: &[&str] = &[
@@ -1887,10 +1887,7 @@ fn append_or_clear_io_limit(cgroup: &mut CgroupConfig, kind: CgroupIoLimitKind, 
 }
 
 pub(super) fn apply_cgroup_config(unit: &mut Unit, config: &CgroupConfig) {
-    let mut ctx = unit
-        .cgroup_context
-        .clone()
-        .unwrap_or_else(CgroupContext::default);
+    let mut ctx = unit.cgroup_context.clone().unwrap_or_default();
 
     if let Some(v) = config.io_accounting {
         ctx.io_accounting = v;

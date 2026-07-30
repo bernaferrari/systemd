@@ -86,15 +86,15 @@ impl RuntimeManager {
             return;
         }
 
-        if self.socket_mgr.get(unit_name).is_none() {
-            if let Err(error) = self.socket_mgr.register_listen_streams(
+        if self.socket_mgr.get(unit_name).is_none()
+            && let Err(error) = self.socket_mgr.register_listen_streams(
                 unit_name,
                 &info.socket.listen_stream,
                 info.socket.file_descriptor_name.as_deref(),
-            ) {
-                self.fail_socket_start(unit_name, &error);
-                return;
-            }
+            )
+        {
+            self.fail_socket_start(unit_name, &error);
+            return;
         }
         self.service_activation_sockets
             .entry(service_name)

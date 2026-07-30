@@ -8,8 +8,7 @@ use super::lifecycle::{
     unit_add_name, unit_is_bound_by_inactive, unit_is_unneeded, unit_is_upheld_by_active,
 };
 use super::model::{
-    ActiveState, DependencyKind, QueueKind, Result, Unit, UnitError, UnitMarker,
-    UnitMountDependencyType,
+    ActiveState, DependencyKind, QueueKind, Result, Unit, UnitMarker, UnitMountDependencyType,
 };
 use super::relationships::{unit_add_dependency, unit_add_dependency_by_name};
 use super::runtime::{unit_add_mounts_for, unit_patch_contexts};
