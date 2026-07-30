@@ -2,10 +2,10 @@
 //
 // PORT-SYNC: src/libsystemd/sd-journal/test-journal-flush.c
 
-const NEG_EBADMSG: i32 = -(libc::EBADMSG as i32);
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-const NEG_EIO: i32 = -(libc::EIO as i32);
-const NEG_EPROTONOSUPPORT: i32 = -(libc::EPROTONOSUPPORT as i32);
+const NEG_EBADMSG: i32 = -libc::EBADMSG;
+const NEG_EINVAL: i32 = -libc::EINVAL;
+const NEG_EIO: i32 = -libc::EIO;
+const NEG_EPROTONOSUPPORT: i32 = -libc::EPROTONOSUPPORT;
 const NEG_EREMCHG: i32 = -78;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -8,11 +8,11 @@ use std::sync::{Arc, Mutex};
 
 type Result<T> = std::result::Result<T, i32>;
 
-const EINVAL: i32 = -(libc::EINVAL as i32);
-const ENOENT: i32 = -(libc::ENOENT as i32);
-const ENODEV: i32 = -(libc::ENODEV as i32);
-const ENOTSUP: i32 = -(libc::EOPNOTSUPP as i32);
-const EBADF: i32 = -(libc::EBADF as i32);
+const EINVAL: i32 = -libc::EINVAL;
+const ENOENT: i32 = -libc::ENOENT;
+const ENODEV: i32 = -libc::ENODEV;
+const ENOTSUP: i32 = -libc::EOPNOTSUPP;
+const EBADF: i32 = -libc::EBADF;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceAction {
@@ -376,6 +376,12 @@ impl SdDevice {
             .properties
             .insert("DEVPATH".into(), format!("/{devpath}"));
         Ok(())
+    }
+}
+
+impl Default for SdDevice {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

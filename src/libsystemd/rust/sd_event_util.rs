@@ -5,9 +5,9 @@
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-pub const NEG_ESRCH: i32 = -(libc::ESRCH as i32);
-pub const NEG_EREMOTE: i32 = -(libc::EREMOTE as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_ESRCH: i32 = -libc::ESRCH;
+pub const NEG_EREMOTE: i32 = -libc::EREMOTE;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventSourceKind {
@@ -53,6 +53,9 @@ pub struct PidRef {
     pub remote: bool,
 }
 
+// Mirrors the corresponding C helper's call shape so its port remains easy to
+// compare and callers do not need an artificial parameter object.
+#[allow(clippy::too_many_arguments)]
 pub fn event_reset_time(
     _event: &Event,
     source: &mut Option<EventSource>,
@@ -101,6 +104,8 @@ pub fn event_reset_time(
     Ok(true)
 }
 
+// Keep this signature aligned with `event_reset_time` and the C helper.
+#[allow(clippy::too_many_arguments)]
 pub fn event_reset_time_relative(
     event: &Event,
     source: &mut Option<EventSource>,

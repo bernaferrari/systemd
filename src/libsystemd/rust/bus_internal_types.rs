@@ -3,7 +3,7 @@
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const BUS_PATH_SIZE_MAX: usize = 64 * 1024;
 pub const SD_BUS_MAXIMUM_NAME_LENGTH: usize = 255;
 
@@ -166,8 +166,8 @@ fn dotted_name_is_valid(name: &str, allow_leading_colon: bool) -> bool {
 
 fn complex_pattern_check(separator: char, a: Option<&str>, b: Option<&str>) -> bool {
     match (a, b) {
-        (None, None) => return true,
-        (Some(_), None) | (None, Some(_)) => return false,
+        (None, None) => true,
+        (Some(_), None) | (None, Some(_)) => false,
         (Some(a), Some(b)) => {
             let a = a.as_bytes();
             let b = b.as_bytes();
@@ -194,8 +194,8 @@ fn complex_pattern_check(separator: char, a: Option<&str>, b: Option<&str>) -> b
 
 fn simple_pattern_check(separator: char, a: Option<&str>, b: Option<&str>) -> bool {
     match (a, b) {
-        (None, None) => return true,
-        (Some(_), None) | (None, Some(_)) => return false,
+        (None, None) => true,
+        (Some(_), None) | (None, Some(_)) => false,
         (Some(a), Some(b)) => {
             let a = a.as_bytes();
             let b = b.as_bytes();

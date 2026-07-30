@@ -3,12 +3,12 @@
 // PORT-SYNC: src/libsystemd/sd-journal/test-journal.c
 //
 use std::cell::Cell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 type Result<T> = std::result::Result<T, i32>;
 
-const EINVAL: i32 = -(libc::EINVAL as i32);
+const EINVAL: i32 = -libc::EINVAL;
 
 pub const DEFAULT_MIN_COMPRESS_SIZE: usize = 512;
 pub const MIN_COMPRESS_THRESHOLD: usize = 8;
@@ -126,15 +126,12 @@ impl JournalFile {
         direction: i32,
     ) -> Option<&JournalEntry> {
         match direction {
-            DIRECTION_DOWN => self
-                .entries
-                .iter()
-                .find(|e| e.fields.iter().any(|f| *f == object.0)),
+            DIRECTION_DOWN => self.entries.iter().find(|e| e.fields.contains(&object.0)),
             DIRECTION_UP => self
                 .entries
                 .iter()
                 .rev()
-                .find(|e| e.fields.iter().any(|f| *f == object.0)),
+                .find(|e| e.fields.contains(&object.0)),
             _ => None,
         }
     }
@@ -186,7 +183,7 @@ pub fn set_compact_mode(enabled: bool) {
 }
 
 pub fn is_valid_secpar(secpar: u32) -> bool {
-    secpar >= 16 && secpar <= 16384 && secpar % 16 == 0
+    (16..=16384).contains(&secpar) && secpar.is_multiple_of(16)
 }
 
 pub fn validate_seqnum(seqnum_bytes: &[u8; 8], expected: u64) -> bool {

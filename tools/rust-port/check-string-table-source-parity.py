@@ -131,11 +131,57 @@ def uapi_values(enum_name: str) -> dict[str, int]:
         if symbol.endswith("_MAX"):
             continue
         if value:
-            if not re.fullmatch(r"[0-9() +<|&~-]+", value.strip()):
-                raise ValueError(f"{UAPI}: unsupported enum expression {value!r}")
-            next_value = int(eval(value, {"__builtins__": {}}, {}))
+            next_value = enum_expression(value.strip(), values)
         values[symbol], next_value = next_value, next_value + 1
     return values
+
+
+def enum_expression(expression: str, values: dict[str, int]) -> int:
+    """Resolve the deliberately small integer-expression subset used by nl80211.
+
+    UAPI command names are occasionally kept as aliases while their preferred
+    spelling changes.  Enum initializers may therefore refer to an earlier
+    enumerator.  Parse those references instead of evaluating header text; a
+    reference to an unknown (or forward) symbol remains a hard failure.
+    """
+    try:
+        node = ast.parse(expression, mode="eval").body
+    except SyntaxError as error:
+        raise ValueError(f"{UAPI}: unsupported enum expression {expression!r}") from error
+
+    def resolve(node: ast.expr) -> int:
+        if isinstance(node, ast.Constant) and type(node.value) is int:
+            return node.value
+        if isinstance(node, ast.Name):
+            try:
+                return values[node.id]
+            except KeyError as error:
+                raise ValueError(
+                    f"{UAPI}: unknown or forward enum symbol {node.id!r} in {expression!r}"
+                ) from error
+        if isinstance(node, ast.UnaryOp):
+            operand = resolve(node.operand)
+            if isinstance(node.op, ast.UAdd):
+                return operand
+            if isinstance(node.op, ast.USub):
+                return -operand
+            if isinstance(node.op, ast.Invert):
+                return ~operand
+        if isinstance(node, ast.BinOp):
+            left, right = resolve(node.left), resolve(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.LShift):
+                return left << right
+            if isinstance(node.op, ast.BitOr):
+                return left | right
+            if isinstance(node.op, ast.BitAnd):
+                return left & right
+        raise ValueError(f"{UAPI}: unsupported enum expression {expression!r}")
+
+    return resolve(node)
 
 
 def platform_entries(c_table: str, rust_table: str, enum_name: str) -> tuple[dict[int, bytes], dict[int, bytes]]:

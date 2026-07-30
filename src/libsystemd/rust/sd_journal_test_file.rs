@@ -4,10 +4,10 @@
 
 use libc::uid_t;
 
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-const NEG_EISDIR: i32 = -(libc::EISDIR as i32);
-const NEG_ENXIO: i32 = -(libc::ENXIO as i32);
-const NEG_EREMOTE: i32 = -(libc::EREMOTE as i32);
+const NEG_EINVAL: i32 = -libc::EINVAL;
+const NEG_EISDIR: i32 = -libc::EISDIR;
+const NEG_ENXIO: i32 = -libc::ENXIO;
+const NEG_EREMOTE: i32 = -libc::EREMOTE;
 
 pub const UID_INVALID: uid_t = uid_t::MAX;
 

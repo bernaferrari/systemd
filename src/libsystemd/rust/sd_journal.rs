@@ -8,10 +8,10 @@ use crate::id128_util::SdId128;
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EBADF: i32 = -(libc::EBADF as i32);
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-pub const NEG_ENODATA: i32 = -(libc::ENODATA as i32);
-pub const NEG_ENOENT: i32 = -(libc::ENOENT as i32);
+pub const NEG_EBADF: i32 = -libc::EBADF;
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_ENODATA: i32 = -libc::ENODATA;
+pub const NEG_ENOENT: i32 = -libc::ENOENT;
 
 const DEFAULT_DATA_THRESHOLD: usize = 64 * 1024;
 
@@ -47,6 +47,12 @@ pub struct SdJournal {
     flags: i32,
     fd: i32,
     catalogs: HashMap<SdId128, String>,
+}
+
+impl Default for SdJournal {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SdJournal {
@@ -174,6 +180,8 @@ impl SdJournal {
         Ok(())
     }
 
+    // This intentionally mirrors sd_journal_next(), rather than Iterator::next().
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<i32> {
         let start = self.current.map(|index| index + 1).unwrap_or(0);
         for index in start..self.entries.len() {
@@ -403,8 +411,7 @@ impl SdJournal {
     fn entry_matches(&self, entry: &JournalEntry) -> bool {
         self.match_groups
             .iter()
-            .filter(|group| !group.is_empty())
-            .next()
+            .find(|group| !group.is_empty())
             .is_none()
             || self
                 .match_groups

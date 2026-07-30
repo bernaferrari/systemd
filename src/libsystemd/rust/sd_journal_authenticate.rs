@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/libsystemd/sd-journal/journal-authenticate.c
+// PORT-SYNC: src/shared/journal-authenticate.c
+//
+// PORT-STATUS: test-only model. This module is currently disconnected from the
+// runtime and is not wire-compatible authentication code; keep the C
+// implementation authoritative until the FSPRG and HMAC paths are ported.
 
 pub type Result<T> = std::result::Result<T, i32>;
 
@@ -9,9 +13,9 @@ pub const FSPRG_RECOMMENDED_SECPAR: u16 = 2048;
 pub const FSPRG_RECOMMENDED_SEEDLEN: usize = 64;
 pub const JOURNAL_HEADER_SEALED_FLAG: u8 = 1;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-pub const NEG_EOPNOTSUPP: i32 = -(libc::EOPNOTSUPP as i32);
-pub const NEG_ESTALE: i32 = -(libc::ESTALE as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_EOPNOTSUPP: i32 = -libc::EOPNOTSUPP;
+pub const NEG_ESTALE: i32 = -libc::ESTALE;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VerificationKey {
@@ -221,7 +225,7 @@ pub fn journal_file_next_evolve_usec(
 }
 
 fn decode_hex(s: &str) -> Result<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(NEG_EINVAL);
     }
     let mut out = Vec::with_capacity(s.len() / 2);

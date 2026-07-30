@@ -38,7 +38,7 @@ fn hash_table_is_valid(
     if offset == 0 {
         return true;
     }
-    if size % HashItem::SERIALIZED_LEN as u64 != 0 {
+    if !size.is_multiple_of(HashItem::SERIALIZED_LEN as u64) {
         return false;
     }
     if offset <= std::mem::size_of::<ObjectHeader>() as u64 {
@@ -233,7 +233,7 @@ pub(crate) fn verify_object_shallow(
                 REGULAR_ENTRY_ITEM_SIZE
             };
             if object_header.size <= ENTRY_OBJECT_STATIC_SIZE
-                || (object_header.size - ENTRY_OBJECT_STATIC_SIZE) % item_size != 0
+                || !(object_header.size - ENTRY_OBJECT_STATIC_SIZE).is_multiple_of(item_size)
             {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -322,7 +322,7 @@ pub(crate) fn verify_object_shallow(
         OBJECT_ENTRY_ARRAY => {
             let item_size = entry_array_item_size(header);
             if object_header.size <= ENTRY_ARRAY_OBJECT_STATIC_SIZE
-                || (object_header.size - ENTRY_ARRAY_OBJECT_STATIC_SIZE) % item_size != 0
+                || !(object_header.size - ENTRY_ARRAY_OBJECT_STATIC_SIZE).is_multiple_of(item_size)
             {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -452,10 +452,7 @@ pub fn validate_journal_header(header: &Header, file_len: u64, writable: bool) -
         ));
     }
     if writable && header.state != STATE_OFFLINE {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "writable journal is not offline",
-        ));
+        return Err(io::Error::other("writable journal is not offline"));
     }
 
     let arena_end = header
@@ -637,12 +634,11 @@ pub fn journal_file_rotate_suggested(
     if header.n_data > 0 && header.n_fields == 0 {
         return true;
     }
-    if let Some(max_file_usec) = max_file_usec {
-        if header.head_entry_realtime > 0
-            && now_realtime_usec > header.head_entry_realtime.saturating_add(max_file_usec)
-        {
-            return true;
-        }
+    if let Some(max_file_usec) = max_file_usec
+        && header.head_entry_realtime > 0
+        && now_realtime_usec > header.head_entry_realtime.saturating_add(max_file_usec)
+    {
+        return true;
     }
 
     false
