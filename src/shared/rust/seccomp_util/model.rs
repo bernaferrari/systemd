@@ -111,10 +111,10 @@ impl std::error::Error for SeccompError {}
 impl SeccompError {
     /// Construct from a negative errno-style return code.
     pub fn from_neg_errno(code: i32) -> Self {
-        match -code {
-            libc::EINVAL => Self::InvalidArgument(format!("errno {}", code)),
-            libc::ENOMEM => Self::OutOfMemory,
-            libc::EOPNOTSUPP => Self::NotAvailable,
+        match code {
+            code if code == -libc::EINVAL => Self::InvalidArgument(format!("errno {}", code)),
+            code if code == -libc::ENOMEM => Self::OutOfMemory,
+            code if code == -libc::EOPNOTSUPP => Self::NotAvailable,
             _ => Self::LibSeccomp(code),
         }
     }
@@ -145,7 +145,6 @@ pub enum SyscallFilterSet {
     IoEvent,
     Ipc,
     Keyring,
-    Log,
     Memlock,
     Module,
     Mount,

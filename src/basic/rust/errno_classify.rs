@@ -588,14 +588,19 @@ mod tests {
     // ── ABS INTMAX_MIN guard ──────────────────────────────────────────
 
     #[test]
-    fn test_abs_i64_min() {
+    fn test_abs_intmax_min() {
         assert!(!errno_is_transient(intmax_t::MIN));
         assert!(!errno_is_disconnect(intmax_t::MIN));
+        assert!(!errno_is_accept_again(intmax_t::MIN));
         assert!(!errno_is_resource(intmax_t::MIN));
         assert!(!errno_is_not_supported(intmax_t::MIN));
+        assert!(!errno_is_ioctl_not_supported(intmax_t::MIN));
         assert!(!errno_is_privilege(intmax_t::MIN));
+        assert!(!errno_is_fs_write_refused(intmax_t::MIN));
         assert!(!errno_is_disk_space(intmax_t::MIN));
         assert!(!errno_is_device_absent(intmax_t::MIN));
+        assert!(!errno_is_device_absent_or_empty(intmax_t::MIN));
+        assert!(!errno_is_xattr_absent(intmax_t::MIN));
         assert!(!errno_is_seccomp_fatal(intmax_t::MIN));
     }
 
@@ -605,11 +610,16 @@ mod tests {
     fn test_zero_values() {
         assert!(!errno_is_neg_transient(0));
         assert!(!errno_is_neg_disconnect(0));
+        assert!(!errno_is_neg_accept_again(0));
         assert!(!errno_is_neg_resource(0));
         assert!(!errno_is_neg_not_supported(0));
+        assert!(!errno_is_neg_ioctl_not_supported(0));
         assert!(!errno_is_neg_privilege(0));
+        assert!(!errno_is_neg_fs_write_refused(0));
         assert!(!errno_is_neg_disk_space(0));
         assert!(!errno_is_neg_device_absent(0));
+        assert!(!errno_is_neg_device_absent_or_empty(0));
+        assert!(!errno_is_neg_xattr_absent(0));
         assert!(!errno_is_neg_seccomp_fatal(0));
     }
 

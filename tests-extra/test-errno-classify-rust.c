@@ -47,7 +47,12 @@ static void test_ERRNO_IS_NEG_DISCONNECT(void) {
 }
 
 static void test_ERRNO_IS_NEG_ACCEPT_AGAIN(void) {
-        TEST_NEG(ACCEPT_AGAIN, -ECONNABORTED, -EAGAIN, -EINTR, -EOPNOTSUPP);
+        TEST_NEG(ACCEPT_AGAIN,
+                 -ECONNABORTED, -ECONNREFUSED, -ECONNRESET,
+                 -EHOSTDOWN, -EHOSTUNREACH, -ENETDOWN, -ENETRESET, -ENETUNREACH,
+                 -ENONET, -ENOPROTOOPT, -ENOTCONN, -EPIPE, -EPROTO,
+                 -ESHUTDOWN, -ETIMEDOUT,
+                 -EAGAIN, -EINTR, -EOPNOTSUPP);
 }
 
 static void test_ERRNO_IS_NEG_RESOURCE(void) {
@@ -61,7 +66,10 @@ static void test_ERRNO_IS_NEG_NOT_SUPPORTED(void) {
 }
 
 static void test_ERRNO_IS_NEG_IOCTL_NOT_SUPPORTED(void) {
-        TEST_NEG(IOCTL_NOT_SUPPORTED, -EOPNOTSUPP, -ENOTTY, -ENOSYS, -EINVAL);
+        TEST_NEG(IOCTL_NOT_SUPPORTED,
+                 -EOPNOTSUPP, -ENOTTY, -ENOSYS,
+                 -EAFNOSUPPORT, -EPFNOSUPPORT, -EPROTONOSUPPORT,
+                 -ESOCKTNOSUPPORT, -ENOPROTOOPT, -EINVAL);
 }
 
 static void test_ERRNO_IS_NEG_PRIVILEGE(void) {
@@ -85,7 +93,11 @@ static void test_ERRNO_IS_NEG_DEVICE_ABSENT_OR_EMPTY(void) {
 }
 
 static void test_ERRNO_IS_NEG_XATTR_ABSENT(void) {
-        TEST_NEG(XATTR_ABSENT, -ENODATA, -EOPNOTSUPP, -ENOTTY, -ENOSYS);
+        TEST_NEG(XATTR_ABSENT,
+                 -ENODATA, -ENOENT,
+                 -EOPNOTSUPP, -ENOTTY, -ENOSYS,
+                 -EAFNOSUPPORT, -EPFNOSUPPORT, -EPROTONOSUPPORT,
+                 -ESOCKTNOSUPPORT, -ENOPROTOOPT);
 }
 
 #if HAVE_SECCOMP

@@ -11,13 +11,14 @@ use super::{
     SCMP_ARCH_MIPSEL64N32, SCMP_ARCH_NATIVE, SCMP_ARCH_PARISC, SCMP_ARCH_PARISC64, SCMP_ARCH_PPC,
     SCMP_ARCH_PPC64, SCMP_ARCH_PPC64LE, SCMP_ARCH_RISCV64, SCMP_ARCH_S390, SCMP_ARCH_S390X,
     SCMP_ARCH_X32, SCMP_ARCH_X86, SCMP_ARCH_X86_64, SECCOMP_ERROR_NUMBER_KILL,
-    SECCOMP_LOCAL_ARCH_BLOCKED, SECCOMP_LOCAL_ARCH_END, SeccompParseFlags, SyscallFilterOperation,
-    SyscallFilterSet, arch_has_sysctl, arch_supports_socket_filter, build_syscall_filter_map,
-    errno_is_seccomp_fatal, expand_filter_set, filter_set_add_logic, foreach_local_arch,
-    override_default_action, parse_syscall_and_errno, parse_syscall_archs, scmp_act_errno,
-    seccomp_arch_from_string, seccomp_arch_to_string, seccomp_errno_or_action_is_valid,
-    seccomp_errno_or_action_to_string, seccomp_parse_errno_or_action,
-    seccomp_parse_syscall_filter_spec, sync_syscall_needs_fd_check, syscall_filter_set_find,
+    SECCOMP_LOCAL_ARCH_BLOCKED, SECCOMP_LOCAL_ARCH_END, SeccompError, SeccompParseFlags,
+    SyscallFilterOperation, SyscallFilterSet, arch_has_sysctl, arch_supports_socket_filter,
+    build_syscall_filter_map, errno_is_seccomp_fatal, expand_filter_set, filter_set_add_logic,
+    foreach_local_arch, override_default_action, parse_syscall_and_errno, parse_syscall_archs,
+    scmp_act_errno, seccomp_arch_from_string, seccomp_arch_to_string,
+    seccomp_errno_or_action_is_valid, seccomp_errno_or_action_to_string,
+    seccomp_parse_errno_or_action, seccomp_parse_syscall_filter_spec, sync_syscall_needs_fd_check,
+    syscall_filter_set_find,
 };
 
 #[test]
@@ -137,6 +138,11 @@ fn test_syscall_filter_set_default_starts_with_sandbox() {
 fn test_syscall_filter_set_known_starts_with_obsolete() {
     let syscalls = SyscallFilterSet::Known.syscalls();
     assert_eq!(syscalls[0], "@obsolete");
+    let generated_authority: Vec<_> =
+        include_str!("../../../include/override/sys/syscall-list.txt")
+            .lines()
+            .collect();
+    assert_eq!(&syscalls[1..], generated_authority);
 }
 
 #[test]
@@ -161,13 +167,17 @@ fn test_seccomp_parse_errno_or_action() {
         seccomp_parse_errno_or_action("kill"),
         Ok(SECCOMP_ERROR_NUMBER_KILL)
     );
-    assert_eq!(seccomp_parse_errno_or_action("0"), Err(Errno::EINVAL));
+    assert_eq!(seccomp_parse_errno_or_action("0"), Ok(0));
     assert_eq!(seccomp_parse_errno_or_action("1"), Ok(1));
     assert_eq!(seccomp_parse_errno_or_action("EINVAL"), Ok(libc::EINVAL));
     assert_eq!(seccomp_parse_errno_or_action("22"), Ok(22));
+    assert_eq!(seccomp_parse_errno_or_action("  02"), Ok(2));
+    assert_eq!(seccomp_parse_errno_or_action("0x2"), Ok(2));
+    assert_eq!(seccomp_parse_errno_or_action("0b10"), Ok(2));
+    assert_eq!(seccomp_parse_errno_or_action("0o2"), Ok(2));
     assert_eq!(seccomp_parse_errno_or_action("4095"), Ok(4095));
-    assert_eq!(seccomp_parse_errno_or_action("4096"), Err(Errno::EINVAL));
-    assert_eq!(seccomp_parse_errno_or_action("-1"), Err(Errno::EINVAL));
+    assert_eq!(seccomp_parse_errno_or_action("4096"), Err(Errno::ERANGE));
+    assert_eq!(seccomp_parse_errno_or_action("-1"), Err(Errno::ERANGE));
     assert_eq!(seccomp_parse_errno_or_action("abc"), Err(Errno::EINVAL));
 }
 
@@ -175,11 +185,11 @@ fn test_seccomp_parse_errno_or_action() {
 fn test_seccomp_errno_or_action_to_string() {
     assert_eq!(
         seccomp_errno_or_action_to_string(SECCOMP_ERROR_NUMBER_KILL),
-        "kill"
+        Some("kill")
     );
-    assert_eq!(seccomp_errno_or_action_to_string(0), "errno");
-    assert_eq!(seccomp_errno_or_action_to_string(22), "EINVAL");
-    assert_eq!(seccomp_errno_or_action_to_string(EPERM), "EPERM");
+    assert_eq!(seccomp_errno_or_action_to_string(0), None);
+    assert_eq!(seccomp_errno_or_action_to_string(22), Some("EINVAL"));
+    assert_eq!(seccomp_errno_or_action_to_string(EPERM), Some("EPERM"));
 }
 
 #[test]
@@ -218,6 +228,7 @@ fn test_errno_is_seccomp_fatal() {
     assert!(!errno_is_seccomp_fatal(-libc::EDOM));
     assert!(!errno_is_seccomp_fatal(0));
     assert!(!errno_is_seccomp_fatal(1));
+    assert!(!errno_is_seccomp_fatal(i32::MIN));
 }
 
 #[test]
@@ -252,9 +263,15 @@ fn test_parse_syscall_and_errno_errors() {
     assert!(parse_syscall_and_errno(":22").is_err());
 
     // Invalid errno
-    assert!(parse_syscall_and_errno("foo:-1").is_err());
+    assert_eq!(
+        parse_syscall_and_errno("foo:-1"),
+        Err(SeccompError::LibSeccomp(-libc::ERANGE))
+    );
     assert!(parse_syscall_and_errno("foo:abc").is_err());
-    assert!(parse_syscall_and_errno("foo:4096").is_err());
+    assert_eq!(
+        parse_syscall_and_errno("foo:4096"),
+        Err(SeccompError::LibSeccomp(-libc::ERANGE))
+    );
 }
 
 #[test]
@@ -413,24 +430,76 @@ fn test_seccomp_parse_syscall_filter_spec() {
             .unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].name, "read");
+
+    assert!(seccomp_parse_syscall_filter_spec(&["read:22"], SeccompParseFlags::empty()).is_err());
+    assert_eq!(
+        seccomp_parse_syscall_filter_spec(&["read:22"], SeccompParseFlags::INVERT).unwrap()[0]
+            .errno,
+        22
+    );
 }
 
 #[test]
-fn test_build_syscall_filter_map() {
-    let entries = vec![
-        ParsedSyscallEntry {
-            name: "read".to_owned(),
-            errno: -1,
-        },
-        ParsedSyscallEntry {
-            name: "write".to_owned(),
-            errno: 22,
-        },
-    ];
-    let map = build_syscall_filter_map(&entries, SeccompParseFlags::empty()).unwrap();
-    assert_eq!(map.len(), 2);
-    assert_eq!(map.get("read"), Some(&-1));
-    assert_eq!(map.get("write"), Some(&22));
+fn test_build_syscall_filter_map_truth_table() {
+    let ordinary = [ParsedSyscallEntry {
+        name: "read".to_owned(),
+        errno: -1,
+    }];
+    assert!(
+        build_syscall_filter_map(&ordinary, SeccompParseFlags::empty())
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        build_syscall_filter_map(&ordinary, SeccompParseFlags::ALLOW_LIST)
+            .unwrap()
+            .get("read"),
+        Some(&-1)
+    );
+    assert_eq!(
+        build_syscall_filter_map(&ordinary, SeccompParseFlags::INVERT)
+            .unwrap()
+            .get("read"),
+        Some(&-1)
+    );
+    assert!(
+        build_syscall_filter_map(
+            &ordinary,
+            SeccompParseFlags::INVERT | SeccompParseFlags::ALLOW_LIST
+        )
+        .unwrap()
+        .is_empty()
+    );
+
+    let overridden = [ParsedSyscallEntry {
+        name: "write".to_owned(),
+        errno: libc::EINVAL,
+    }];
+    assert!(build_syscall_filter_map(&overridden, SeccompParseFlags::empty()).is_err());
+    assert!(build_syscall_filter_map(&overridden, SeccompParseFlags::ALLOW_LIST).is_err());
+    assert_eq!(
+        build_syscall_filter_map(&overridden, SeccompParseFlags::INVERT)
+            .unwrap()
+            .get("write"),
+        Some(&libc::EINVAL)
+    );
+    assert_eq!(
+        build_syscall_filter_map(
+            &overridden,
+            SeccompParseFlags::INVERT | SeccompParseFlags::ALLOW_LIST
+        )
+        .unwrap()
+        .get("write"),
+        Some(&libc::EINVAL)
+    );
+}
+
+#[test]
+fn test_seccomp_error_from_neg_errno_is_total() {
+    assert_eq!(
+        SeccompError::from_neg_errno(i32::MIN),
+        SeccompError::LibSeccomp(i32::MIN)
+    );
 }
 
 #[test]

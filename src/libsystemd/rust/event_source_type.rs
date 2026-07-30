@@ -22,6 +22,8 @@ pub enum EventSourceType {
     Watchdog = 11,
     Inotify = 12,
     MemoryPressure = 13,
+    CpuPressure = 14,
+    IoPressure = 15,
 }
 
 #[repr(i32)]
@@ -51,6 +53,8 @@ impl EventSourceType {
             Self::Watchdog => "watchdog",
             Self::Inotify => "inotify",
             Self::MemoryPressure => "memory-pressure",
+            Self::CpuPressure => "cpu-pressure",
+            Self::IoPressure => "io-pressure",
         }
     }
 
@@ -78,6 +82,8 @@ impl EventSourceType {
                 | Self::Defer
                 | Self::Inotify
                 | Self::MemoryPressure
+                | Self::CpuPressure
+                | Self::IoPressure
         )
     }
 
@@ -102,6 +108,8 @@ pub fn event_source_type_from_string(s: &str) -> Result<EventSourceType> {
         "watchdog" => Ok(EventSourceType::Watchdog),
         "inotify" => Ok(EventSourceType::Inotify),
         "memory-pressure" => Ok(EventSourceType::MemoryPressure),
+        "cpu-pressure" => Ok(EventSourceType::CpuPressure),
+        "io-pressure" => Ok(EventSourceType::IoPressure),
         _ => Err(NEG_EINVAL),
     }
 }
@@ -154,5 +162,17 @@ mod tests {
     #[test]
     fn wakeup_type_values_are_stable() {
         assert_eq!(WakeupType::InotifyData as i32, 4);
+    }
+
+    #[test]
+    fn formats_and_parses_pressure_sources() {
+        for (kind, name) in [
+            (EventSourceType::CpuPressure, "cpu-pressure"),
+            (EventSourceType::IoPressure, "io-pressure"),
+        ] {
+            assert_eq!(event_source_type_to_string(kind), name);
+            assert_eq!(event_source_type_from_string(name), Ok(kind));
+            assert!(kind.can_rate_limit());
+        }
     }
 }

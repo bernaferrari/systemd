@@ -7,7 +7,7 @@ use super::syscall_lists;
 
 impl SyscallFilterSet {
     /// Total number of filter-set variants.
-    pub const MAX: usize = 31;
+    pub const MAX: usize = 30;
 
     /// The `@`-prefixed name of this filter set.
     pub const fn name(self) -> &'static str {
@@ -23,7 +23,6 @@ impl SyscallFilterSet {
             Self::IoEvent => "@io-event",
             Self::Ipc => "@ipc",
             Self::Keyring => "@keyring",
-            Self::Log => "@log",
             Self::Memlock => "@memlock",
             Self::Module => "@module",
             Self::Mount => "@mount",
@@ -60,7 +59,6 @@ impl SyscallFilterSet {
             Self::IoEvent => "Event loop system calls",
             Self::Ipc => "SysV IPC, POSIX Message Queues or other IPC",
             Self::Keyring => "Kernel keyring access",
-            Self::Log => "System calls for kernel logging",
             Self::Memlock => "Memory locking control",
             Self::Module => "Loading and unloading of kernel modules",
             Self::Mount => "Mounting and unmounting of file systems",
@@ -105,7 +103,6 @@ impl SyscallFilterSet {
             SyscallFilterSet::IoEvent,
             SyscallFilterSet::Ipc,
             SyscallFilterSet::Keyring,
-            SyscallFilterSet::Log,
             SyscallFilterSet::Memlock,
             SyscallFilterSet::Module,
             SyscallFilterSet::Mount,

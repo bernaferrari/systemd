@@ -1554,7 +1554,7 @@ status = "in-progress"
 tier = 1
 symbols = 12
 sync_status = "needs_review"
-notes = "Static architecture/parity audit only; no build/tests/VM. The shared Rust facade preserves 83 prior public definitions and adds current-C LoongArch64 support, but has zero in-tree consumers, zero C ABI exports, and no Meson membership. Remaining runtime/filter/parser/list gaps are enumerated in src/shared/rust/seccomp_util/ARCHITECTURE.md and tracked by P0 systemd-newl.4. The separate Meson-built basic Rust comparison surface now backs all five rs_seccomp_* declarations with exact extern-C exports, target-libc errno mappings, stable static C strings, corrected libseccomp architecture tokens, C shadow fixtures, and check-seccomp-basic-abi.py. This repairs the comparison ABI only; it does not wire a production Rust libseccomp runtime."
+notes = "Reviewed static policy-shadow slice 2026-07-30. The 30 current C syscall-filter groups, generated @known source, parser errno/error semantics, nullable errno-name conversion, and invert/allow-list insertion truth table are checked by focused source-derived tests and check-seccomp-shared-policy.py. This unbuilt, uncalled module has no C ABI exports or Meson production membership; it is not a libseccomp runtime. Runtime P2 gaps (dynamic loading, filter contexts/rules, syscall-number resolution, full architecture matrix, and C/R Linux differential execution) remain explicit in src/shared/rust/seccomp_util/ARCHITECTURE.md. The separate Meson-built basic comparison ABI backs five rs_seccomp_* declarations, but does not wire a production Rust libseccomp runtime."
 
 [serialize]
 c_paths = ["src/shared/serialize.c", "src/shared/serialize.h"]
@@ -1988,7 +1988,7 @@ status = "in-progress"
 tier = 1
 symbols = 1
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: sd-bus common-error mapping has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 static source review: all 142 current bus_common_errors table entries were checked against bus-common-errors.c and bus-common-errors.h. C remains production authority; ABI and runtime/error-path parity are unclaimed."
 
 [bus_internal_types]
 c_file = "src/libsystemd/sd-bus/bus-internal.h"
@@ -2013,12 +2013,12 @@ notes = "2026-07-27 static source review: sd-bus kernel transport behavior has n
 [bus_match_types]
 c_file = "src/libsystemd/sd-bus/bus-match.c"
 rust_file = "src/libsystemd/rust/bus_match_types.rs"
-header_file = "src/systemd/sd-bus.h"
+header_file = "src/libsystemd/sd-bus/bus-match.h"
 status = "in-progress"
 tier = 1
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: sd-bus match parser/type behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 static source review: node-type string conversion was checked against bus-match.c and bus-match.h; internal root/value/leaf labels are output-only and rejected as parsed match keys. C remains production authority; runtime/integration parity is unclaimed."
 
 [bus_signature]
 c_file = "src/libsystemd/sd-bus/bus-signature.c"
@@ -2044,12 +2044,12 @@ notes = "2026-07-27 provenance audit re-anchored device action tables to current
 [event_source_type]
 c_file = "src/libsystemd/sd-event/sd-event.c"
 rust_file = "src/libsystemd/rust/event_source_type.rs"
-header_file = "src/systemd/sd-event.h"
+header_file = "src/libsystemd/sd-event/event-source.h"
 status = "in-progress"
 tier = 1
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: sd-event source layout/lifetime behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 static source review: enum values, string table, and time-prioq/rate-limit predicates were checked against sd-event.c and event-source.h, including CPU/I/O pressure sources. C remains production authority; runtime/lifetime/ABI parity is unclaimed."
 
 [id128_util_lib]
 c_file = "src/libsystemd/sd-id128/sd-id128.c"
@@ -2102,12 +2102,12 @@ sync_status = "needs_review"
 c_file = "src/libsystemd/sd-id128/sd-id128.c"
 rust_file = "src/libsystemd/rust/sd_id128_strings.rs"
 header_file = "src/systemd/sd-id128.h"
-test_file = "src/test/test-id128.c"
+test_file = "src/libsystemd/sd-id128/test-id128.c"
 status = "in-progress"
 tier = 1
 symbols = 2
 sync_status = "needs_review"
-notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-id128.c); re-anchor to current upstream files before claiming completion."
+notes = "2026-07-30 static source review: current C formatter/parser/string-equality implementation, public header constants, and current id128 unit fixture were located. C remains production authority; runtime/ABI parity is unclaimed."
 
 [varlink_state]
 c_paths = ["src/libsystemd/sd-varlink/sd-varlink.c", "src/libsystemd/sd-varlink/varlink-internal.h"]

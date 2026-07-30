@@ -25,30 +25,22 @@ pub fn seccomp_errno_or_action_is_valid(n: i32) -> bool {
 
 /// Parse an errno number or the string `"kill"` from `p`.
 ///
-/// Returns the parsed value on success or `Err(Errno::EINVAL)` on failure.
+/// Returns `EINVAL` for malformed syntax and `ERANGE` for numeric values
+/// outside the range accepted by C `parse_errno()`.
 ///
 /// Corresponds to `seccomp_parse_errno_or_action()` in the C source.
 pub fn seccomp_parse_errno_or_action(p: &str) -> std::result::Result<i32, Errno> {
-    if p == "kill" {
-        return Ok(SECCOMP_ERROR_NUMBER_KILL);
-    }
-    if let Ok(n) = systemd_basic_rs::errno_util::errno_from_name(p) {
-        return Ok(n);
-    }
-    match p.parse::<i32>() {
-        Ok(n) if seccomp_errno_or_action_is_valid(n) => Ok(n),
-        _ => Err(Errno::EINVAL),
-    }
+    systemd_basic_rs::seccomp_util::seccomp_parse_errno_or_action(p)
+        .map_err(|error| Errno::from_neg_errno(error).unwrap_or(Errno::EINVAL))
 }
 
 /// Convert an errno-or-action value back to a display string.
 ///
+/// Returns `None` for values for which C returns `NULL`.
+///
 /// Corresponds to `seccomp_errno_or_action_to_string()` in the C source.
-pub fn seccomp_errno_or_action_to_string(n: i32) -> &'static str {
-    if n == SECCOMP_ERROR_NUMBER_KILL {
-        return "kill";
-    }
-    systemd_basic_rs::errno_util::errno_name_no_fallback(n).unwrap_or("errno")
+pub fn seccomp_errno_or_action_to_string(n: i32) -> Option<&'static str> {
+    systemd_basic_rs::seccomp_util::seccomp_errno_or_action_to_string(n).ok()
 }
 
 // ── Default-Action Override ──────────────────────────────────────────────
@@ -76,7 +68,7 @@ pub fn override_default_action(default_action: u32) -> u32 {
 ///
 /// Corresponds to `ERRNO_IS_NEG_SECCOMP_FATAL()` in the C source.
 pub fn errno_is_seccomp_fatal(r: i32) -> bool {
-    matches!(-r, libc::EPERM | libc::EACCES | libc::ENOMEM | libc::EFAULT)
+    r == -libc::EPERM || r == -libc::EACCES || r == -libc::ENOMEM || r == -libc::EFAULT
 }
 
 // ── Parsing Utilities ────────────────────────────────────────────────────
@@ -99,8 +91,12 @@ pub fn parse_syscall_and_errno(input: &str) -> Result<(&str, i32)> {
         if name.is_empty() {
             return Err(SeccompError::InvalidArgument("empty syscall name".into()));
         }
-        let errno_val = seccomp_parse_errno_or_action(errno_str).map_err(|_| {
-            SeccompError::InvalidArgument(format!("invalid errno/action: {}", errno_str))
+        let errno_val = seccomp_parse_errno_or_action(errno_str).map_err(|error| {
+            if error == Errno::EINVAL {
+                SeccompError::InvalidArgument(format!("invalid errno/action: {}", errno_str))
+            } else {
+                SeccompError::from_errno(error)
+            }
         })?;
         Ok((name, errno_val))
     } else {
@@ -150,6 +146,11 @@ pub fn seccomp_parse_syscall_filter_spec(
 
     for &item in items {
         let (name, errno) = parse_syscall_and_errno(item)?;
+        if !flags.contains(SeccompParseFlags::INVERT) && errno >= 0 {
+            return Err(SeccompError::InvalidArgument(
+                "errno override requires an inverted filter".into(),
+            ));
+        }
 
         if name.starts_with('@') {
             let set = match syscall_filter_set_find(name) {
@@ -200,15 +201,23 @@ pub fn build_syscall_filter_map(
 
     for entry in entries {
         let effective_errno = entry.errno;
+        if !invert && effective_errno >= 0 {
+            return Err(SeccompError::InvalidArgument(
+                "errno override requires an inverted filter".into(),
+            ));
+        }
 
-        // Determine whether to insert or remove
-        // The four C parser modes reduce to one rule: ordinary parsing and
-        // deny-lists retain every entry; an inverted allow-list omits only
-        // entries without an explicit errno override.
-        let should_insert = !invert || !allow_list || effective_errno >= 0;
+        // Exact truth table from seccomp_parse_syscall_filter(): ordinary
+        // deny-list parsing removes entries, ordinary allow-list and inverted
+        // deny-list parsing insert them, and an inverted allow-list inserts
+        // only entries carrying an explicit errno override.
+        let should_insert =
+            (!invert == allow_list) || (invert && allow_list && effective_errno >= 0);
 
         if should_insert {
             filter.insert(entry.name.clone(), effective_errno);
+        } else {
+            filter.remove(&entry.name);
         }
     }
 

@@ -61,9 +61,6 @@ impl BusMatchNodeType {
 
 pub fn bus_match_node_type_from_string(key: &str) -> Result<BusMatchNodeType> {
     match key {
-        "root" => return Ok(BusMatchNodeType::Root),
-        "value" => return Ok(BusMatchNodeType::Value),
-        "leaf" => return Ok(BusMatchNodeType::Leaf),
         "type" => return Ok(BusMatchNodeType::MessageType),
         "sender" => return Ok(BusMatchNodeType::Sender),
         "destination" => return Ok(BusMatchNodeType::Destination),
@@ -226,6 +223,13 @@ mod tests {
 
         assert_eq!(int_to_node_type(-1), Err(NEG_EINVAL));
         assert_eq!(int_to_node_type(266), Err(NEG_EINVAL));
+    }
+
+    #[test]
+    fn rejects_internal_node_labels_as_match_keys() {
+        for key in ["root", "value", "leaf"] {
+            assert_eq!(bus_match_node_type_from_string(key), Err(NEG_EINVAL));
+        }
     }
 
     #[test]
