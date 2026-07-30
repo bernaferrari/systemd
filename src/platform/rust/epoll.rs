@@ -9,7 +9,7 @@ pub struct Epoll {
 
 impl Epoll {
     pub fn new() -> nix::Result<Self> {
-        let inner = nix::sys::epoll::Epoll::new(EpollCreateFlags::empty())?;
+        let inner = nix::sys::epoll::Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC)?;
         Ok(Self { inner })
     }
 
@@ -49,12 +49,21 @@ impl AsRawFd for Epoll {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nix::fcntl::{FcntlArg, FdFlag, fcntl};
     use nix::sys::eventfd::{EfdFlags, EventFd};
 
     #[test]
     fn test_epoll_create() {
         let epoll = Epoll::new();
         assert!(epoll.is_ok());
+    }
+
+    #[test]
+    fn test_epoll_is_close_on_exec() {
+        let epoll = Epoll::new().unwrap();
+        let flags = fcntl(&epoll.inner.0, FcntlArg::F_GETFD).unwrap();
+
+        assert!(FdFlag::from_bits_retain(flags).contains(FdFlag::FD_CLOEXEC));
     }
 
     #[test]
