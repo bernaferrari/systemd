@@ -25,10 +25,10 @@ const S_IFREG: u32 = 0o100000;
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
-/// Flags controlling labeled file write behavior.
-///
-/// Mirrors the C `WriteStringFileFlags` where relevant.
 bitflags::bitflags! {
+    /// Flags controlling labeled file write behavior.
+    ///
+    /// Mirrors the C `WriteStringFileFlags` where relevant.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct WriteFileFlags: u32 {
         /// Create the file if it doesn't exist.
@@ -58,8 +58,8 @@ bitflags::bitflags! {
     }
 }
 
-/// Flags controlling labeled file read behavior.
 bitflags::bitflags! {
+    /// Flags controlling labeled file read behavior.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ReadFileFlags: u32 {
         /// Erase internal buffers after use (secure read).

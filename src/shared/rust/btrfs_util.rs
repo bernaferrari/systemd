@@ -133,8 +133,8 @@ impl Default for BtrfsQuotaInfo {
     }
 }
 
-/// Flags controlling btrfs subvolume snapshot creation.
 bitflags::bitflags! {
+    /// Flags controlling btrfs subvolume snapshot creation.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct BtrfsSnapshotFlags: u32 {
         const FALLBACK_COPY      = 1 << 0;
@@ -149,8 +149,8 @@ bitflags::bitflags! {
     }
 }
 
-/// Flags controlling btrfs subvolume removal.
 bitflags::bitflags! {
+    /// Flags controlling btrfs subvolume removal.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct BtrfsRemoveFlags: u32 {
         const RECURSIVE = 1 << 0;

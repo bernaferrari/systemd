@@ -266,23 +266,18 @@ pub fn format_uint64_property(
         format_capability_set(value)
     } else if CPU_WEIGHT_IDLE_NAMES.contains(&name) && value == CGROUP_WEIGHT_IDLE {
         "idle".into()
-    } else if WEIGHT_INVALID_NAMES.contains(&name) && value == CGROUP_WEIGHT_INVALID {
-        "[not set]".into()
-    } else if CURRENT_UINT64_MAX_NAMES.contains(&name) && value == u64::MAX {
-        "[not set]".into()
-    } else if name.starts_with("Memory")
-        && MEMORY_CURRENT_PEAK_SUFFIXES
-            .iter()
-            .any(|s| name.ends_with(s))
-        && value == CGROUP_LIMIT_MAX
+    } else if (WEIGHT_INVALID_NAMES.contains(&name) && value == CGROUP_WEIGHT_INVALID)
+        || (CURRENT_UINT64_MAX_NAMES.contains(&name) && value == u64::MAX)
+        || (name.starts_with("Memory")
+            && MEMORY_CURRENT_PEAK_SUFFIXES
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
+            && value == CGROUP_LIMIT_MAX)
+        || (name.starts_with("IO")
+            && IO_SUFFIXES.iter().any(|suffix| name.ends_with(suffix))
+            && value == u64::MAX)
+        || (name.ends_with("NSec") && value == u64::MAX)
     {
-        "[not set]".into()
-    } else if name.starts_with("IO")
-        && IO_SUFFIXES.iter().any(|s| name.ends_with(s))
-        && value == u64::MAX
-    {
-        "[not set]".into()
-    } else if name.ends_with("NSec") && value == u64::MAX {
         "[not set]".into()
     } else if MEMORY_LIMIT_SUFFIXES.iter().any(|s| name.ends_with(s)) && value == CGROUP_LIMIT_MAX {
         "infinity".into()
@@ -633,16 +628,16 @@ fn format_timestamp_style(usec: u64, utc: bool) -> String {
         return "--- XXXX-XX-XX XX:XX:XX".into();
     }
 
-    let mut seconds = (usec / USEC_PER_SEC) as libc::time_t;
+    let seconds = (usec / USEC_PER_SEC) as libc::time_t;
     let mut tm = std::mem::MaybeUninit::<libc::tm>::zeroed();
-    // SAFETY: `seconds` and `tm` are valid, writable pointers for localtime_r
-    // or gmtime_r; each function is reentrant and a successful return
-    // initializes `tm`.
+    // SAFETY: `seconds` is initialized and `tm` is valid writable storage for
+    // localtime_r or gmtime_r; each function is reentrant and a successful
+    // return initializes `tm`.
     let tm = unsafe {
         let result = if utc {
-            libc::gmtime_r(&mut seconds, tm.as_mut_ptr())
+            libc::gmtime_r(&seconds, tm.as_mut_ptr())
         } else {
-            libc::localtime_r(&mut seconds, tm.as_mut_ptr())
+            libc::localtime_r(&seconds, tm.as_mut_ptr())
         };
         if result.is_null() {
             return String::new();

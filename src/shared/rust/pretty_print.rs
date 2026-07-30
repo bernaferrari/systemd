@@ -202,7 +202,6 @@ fn cat_file_impl(
         }
 
         let mut line_out = line.to_string();
-        let mut escaped = false;
         let mut prev_backslash = false;
         for c in line.chars() {
             if prev_backslash {
@@ -211,7 +210,7 @@ fn cat_file_impl(
                 prev_backslash = true;
             }
         }
-        escaped = prev_backslash;
+        let escaped = prev_backslash;
 
         if escaped {
             if let Some(idx) = line_out.rfind('\\') {

@@ -26,8 +26,8 @@ pub const ESCAPE_USEC: u64 = 1_000_000;
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
-/// PTY forwarder configuration flags.
 bitflags::bitflags! {
+    /// PTY forwarder configuration flags.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct PTYForwardFlags: u32 {
         /// Only output to STDOUT, never try to read from STDIN.

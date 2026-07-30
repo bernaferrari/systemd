@@ -91,8 +91,8 @@ pub type ParseResult = Result<Option<()>, ConfigParseError>;
 
 // ── Parse flags ───────────────────────────────────────────────────────────
 
-/// Flags controlling parser behaviour (mirrors C `ConfigParseFlags`).
 bitflags::bitflags! {
+    /// Flags controlling parser behaviour (mirrors C `ConfigParseFlags`).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ConfigParseFlags: u32 {
         /// Do not warn about unknown fields.

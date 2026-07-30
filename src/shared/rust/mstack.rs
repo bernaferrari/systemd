@@ -109,10 +109,10 @@ impl std::fmt::Display for MStackMountType {
     }
 }
 
-/// Flags controlling mount stack behavior.
-///
-/// Mirrors the C `MStackFlags` bitfield from `mstack.h`.
 bitflags::bitflags! {
+    /// Flags controlling mount stack behavior.
+    ///
+    /// Mirrors the C `MStackFlags` bitfield from `mstack.h`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct MStackFlags: u32 {
         /// When mounting, create top-level inode to mount on top.

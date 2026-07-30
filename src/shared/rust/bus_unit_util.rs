@@ -19,8 +19,8 @@ pub const INFINITY_KEYWORD: &str = "infinity";
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
-/// Flags controlling exec-command prefix parsing.
 bitflags::bitflags! {
+    /// Flags controlling exec-command prefix parsing.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ExecCommandFlags: u32 {
         const IGNORE_FAILURE     = 1 << 0;
@@ -31,8 +31,8 @@ bitflags::bitflags! {
     }
 }
 
-/// Flags for exec directories (mirrors C `ExecDirectoryFlags`).
 bitflags::bitflags! {
+    /// Flags for exec directories (mirrors C `ExecDirectoryFlags`).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ExecDirectoryFlags: u32 {
         const READ_ONLY    = 1 << 0;

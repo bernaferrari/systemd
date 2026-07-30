@@ -25,8 +25,8 @@ pub enum RuntimeScope {
     User,
 }
 
-/// Bitflags controlling which optional features are available.
 bitflags::bitflags! {
+    /// Bitflags controlling which optional features are available.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct HelpFlags: u32 {
         const BUS_INTROSPECT = 1 << 0;

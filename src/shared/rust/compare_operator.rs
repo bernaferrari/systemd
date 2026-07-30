@@ -40,8 +40,8 @@ impl CompareOperator {
     pub const INVALID: i32 = -22; // -EINVAL
 }
 
-/// Parse flags for compare operators
 bitflags::bitflags! {
+    /// Parse flags for compare operators
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct CompareOperatorParseFlags: u32 {
         const ALLOW_FNMATCH = 1 << 0;

@@ -80,8 +80,8 @@ impl Drop for SubMount {
     }
 }
 
-/// Flags controlling mount-in-namespace operations.
 bitflags::bitflags! {
+    /// Flags controlling mount-in-namespace operations.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct MountInNamespaceFlags: u32 {
         const READ_ONLY              = 1 << 0;

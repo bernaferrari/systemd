@@ -83,8 +83,8 @@ pub type PromptResult<T> = Result<T, PromptError>;
 
 // ── PromptFlags ───────────────────────────────────────────────────────────
 
-/// Flags controlling prompt behaviour.
 bitflags::bitflags! {
+    /// Flags controlling prompt behaviour.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct PromptFlags: u32 {
         /// The question may be skipped by entering empty input.

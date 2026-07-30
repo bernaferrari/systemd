@@ -93,8 +93,8 @@ pub enum SethostnameResult {
     Changed,
 }
 
-/// Flags for [`gethostname_full`].
 bitflags::bitflags! {
+    /// Flags for [`gethostname_full`].
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct GetHostnameFlags: u32 {
         /// Accept "localhost" and its variants as a valid hostname.
@@ -106,8 +106,8 @@ bitflags::bitflags! {
     }
 }
 
-/// Flags for [`hostname_is_valid`].
 bitflags::bitflags! {
+    /// Flags for [`hostname_is_valid`].
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ValidHostnameFlags: u32 {
         /// Allow a single trailing dot (FQDN notation).

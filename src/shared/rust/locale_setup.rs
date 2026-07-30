@@ -175,8 +175,8 @@ impl LocaleVariable {
 
 // ── LocaleLoadFlag ────────────────────────────────────────────────────────
 
-/// Flags controlling locale loading behavior.
 bitflags::bitflags! {
+    /// Flags controlling locale loading behavior.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct LocaleLoadFlag: u32 {
         /// Load locale from /proc/cmdline (highest priority source).

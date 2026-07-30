@@ -91,13 +91,13 @@ impl From<std::ffi::NulError> for RebootError {
 
 // ── Flags ─────────────────────────────────────────────────────────────────
 
-/// Flags controlling reboot behavior.
-///
-/// Bit values match the C `RebootFlags` enum in `reboot-util.h`:
-/// - `LOG`      = 1 (log about actions and errors)
-/// - `DRY_RUN`  = 2 (skip the actual reboot syscall)
-/// - `FALLBACK` = 4 (fall back to classic reboot on failure)
 bitflags::bitflags! {
+    /// Flags controlling reboot behavior.
+    ///
+    /// Bit values match the C `RebootFlags` enum in `reboot-util.h`:
+    /// - `LOG`      = 1 (log about actions and errors)
+    /// - `DRY_RUN`  = 2 (skip the actual reboot syscall)
+    /// - `FALLBACK` = 4 (fall back to classic reboot on failure)
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct RebootFlags: u32 {
         const LOG      = 1 << 0;

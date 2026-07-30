@@ -133,8 +133,8 @@ const VIRTUALIZATION_BHYVE: libc::c_int = 12;
 
 // ── Enums / Flags ─────────────────────────────────────────────────────────
 
-/// Flags controlling `machine_id_setup` behaviour.
 bitflags::bitflags! {
+    /// Flags controlling `machine_id_setup` behaviour.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct MachineIdSetupFlags: u32 {
         /// Write "uninitialized" to disk and mount a transient file.

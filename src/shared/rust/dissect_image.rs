@@ -297,8 +297,8 @@ impl std::fmt::Display for PartitionDesignator {
     }
 }
 
-/// Flags that control image dissection behaviour.
 bitflags::bitflags! {
+    /// Flags that control image dissection behaviour.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct DissectImageFlags: u64 {
         const DEVICE_READ_ONLY       = 1 << 0;
@@ -345,8 +345,8 @@ impl DissectImageFlags {
         .union(DissectImageFlags::DISCARD_ON_CRYPTO);
 }
 
-/// Partition protection policy flags.
 bitflags::bitflags! {
+    /// Partition protection policy flags.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct PartitionPolicyFlags: u32 {
         const ABSENT                 = 1 << 0;

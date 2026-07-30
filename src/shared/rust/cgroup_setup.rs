@@ -102,8 +102,8 @@ pub const CGROUP_MASK_V2: CGroupMask = CGroupController::Cpu.mask()
     | CGroupController::Pids.mask()
     | CGroupController::Rdma.mask();
 
-/// Flags controlling cgroup migration behaviour.
 bitflags::bitflags! {
+    /// Flags controlling cgroup migration behaviour.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct CGroupFlags: u32 {
         /// Skip the current process during migration.
