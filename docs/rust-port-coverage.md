@@ -13,17 +13,17 @@ Scope: `src`
 ## Snapshot Totals
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1282**
+- All `src` Rust files: **1283**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1167**
+- Unverified Rust behavior candidates: **1168**
 
 Excluding `src/test`:
 - C files: **1569**
-- Rust files: **1282**
+- Rust files: **1283**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1167**
+- Unverified Rust behavior candidates: **1168**
 
 ## Per-Subsystem Inventory
 
@@ -62,7 +62,7 @@ Excluding `src/test`:
 | `fsck` | 1 | 3 | 0 | 0 | 3 |
 | `fstab-generator` | 1 | 3 | 0 | 0 | 3 |
 | `fundamental` | 9 | 21 | 0 | 0 | 21 |
-| `fuzz` | 15 | 0 | 0 | 0 | 0 |
+| `fuzz` | 15 | 1 | 0 | 0 | 1 |
 | `getty-generator` | 1 | 3 | 0 | 0 | 3 |
 | `gpt-auto-generator` | 1 | 3 | 0 | 0 | 3 |
 | `growfs` | 2 | 0 | 0 | 0 | 0 |
