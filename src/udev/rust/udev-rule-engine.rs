@@ -669,6 +669,84 @@ pub fn process_device_event(
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    fn device_node_creation_permitted(spec: &DeviceNodeSpec) -> Result<bool, NodeApplyError> {
+        let root = open_device_root(&spec.dev_root)?;
+        let kind_bits: libc::mode_t = match spec.kind {
+            DeviceNodeKind::Block => libc::S_IFBLK,
+            DeviceNodeKind::Char => libc::S_IFCHR,
+        };
+        let device = libc::makedev(spec.major as _, spec.minor as _);
+        let probe = c".udev-rs-mknod-capability-probe";
+
+        // SAFETY: `root` is a live directory descriptor, `probe` is one
+        // constant NUL-terminated component, and the mode/device are valid.
+        if unsafe { libc::mknodat(root.as_raw_fd(), probe.as_ptr(), kind_bits | 0o600, device) }
+            >= 0
+        {
+            // SAFETY: cleanup is confined to the constant probe name below
+            // the test-owned directory.
+            if unsafe { libc::unlinkat(root.as_raw_fd(), probe.as_ptr(), 0) } < 0 {
+                return Err(NodeApplyError::from(io::Error::last_os_error()));
+            }
+            return Ok(true);
+        }
+
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() == Some(libc::EPERM) {
+            Ok(false)
+        } else {
+            Err(NodeApplyError::from(error))
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn apply_node_if_permitted(
+        spec: &DeviceNodeSpec,
+        relative_node: &Path,
+        symlinks: &BTreeSet<String>,
+    ) -> bool {
+        match device_node_creation_permitted(spec) {
+            Ok(true) => {
+                apply_node_and_symlinks(spec, symlinks)
+                    .unwrap_or_else(|error| panic!("unexpected device-node error: {error:?}"));
+                true
+            }
+            Ok(false) => {
+                // Creating a block or character device requires CAP_MKNOD.
+                // The canonical C tests likewise skip device-node assertions
+                // when mknod() returns EPERM in an unprivileged container.
+                //
+                // Only the direct probe's EPERM is accepted. Errors from the
+                // actual node, permission, and symlink operations still fail.
+                assert!(!spec.path.exists());
+                for link in symlinks {
+                    assert_eq!(
+                        fs::symlink_metadata(spec.dev_root.join(link))
+                            .unwrap_err()
+                            .kind(),
+                        io::ErrorKind::NotFound
+                    );
+                }
+
+                // Retain coverage of the safe, dirfd-scoped symlink path even
+                // without CAP_MKNOD by substituting a regular test target.
+                let root = open_device_root(&spec.dev_root).unwrap();
+                resolve_parent(&root, relative_node).unwrap();
+                fs::write(&spec.path, []).unwrap();
+                for link in symlinks {
+                    let relative_link = Path::new(link);
+                    let resolved = resolve_parent(&root, relative_link).unwrap();
+                    let target = relative_symlink_target(relative_node, relative_link).unwrap();
+                    replace_symlink_atomic(&resolved, &target).unwrap();
+                }
+
+                false
+            }
+            Err(error) => panic!("unexpected device-node capability probe error: {error:?}"),
+        }
+    }
+
     fn sample_event() -> DeviceEvent {
         let mut env = BTreeMap::new();
         env.insert("ID_VENDOR".to_string(), "Acme".to_string());
@@ -731,8 +809,11 @@ mod tests {
         assert!(out.tags.contains("second"));
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn node_and_symlink_creation_works() {
+        use std::os::unix::fs::FileTypeExt;
+
         let root = std::env::temp_dir().join(format!("udev-node-engine-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
@@ -750,16 +831,32 @@ mod tests {
 
         let mut links = BTreeSet::new();
         links.insert("disk/by-id/mock-disk".to_string());
-        apply_node_and_symlinks(&spec, &links).unwrap();
+        let node_created = apply_node_if_permitted(&spec, Path::new("sda"), &links);
 
-        assert!(spec.path.exists());
-        assert!(root.join("disk/by-id/mock-disk").exists());
+        let node_type = fs::symlink_metadata(&spec.path).unwrap().file_type();
+        if node_created {
+            assert!(node_type.is_block_device());
+        } else {
+            assert!(node_type.is_file());
+        }
+
+        let link = root.join("disk/by-id/mock-disk");
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(fs::read_link(link).unwrap(), Path::new("../../sda"));
 
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn nested_node_keeps_symlinks_at_device_root() {
+        use std::os::unix::fs::FileTypeExt;
+
         let root =
             std::env::temp_dir().join(format!("udev-node-engine-nested-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -777,8 +874,26 @@ mod tests {
         };
         let links = BTreeSet::from(["input/by-id/mock-event".to_string()]);
 
-        apply_node_and_symlinks(&spec, &links).unwrap();
-        assert!(root.join("input/by-id/mock-event").exists());
+        let node_created = apply_node_if_permitted(&spec, Path::new("input/event0"), &links);
+
+        let node_type = fs::symlink_metadata(&spec.path).unwrap().file_type();
+        if node_created {
+            assert!(node_type.is_char_device());
+        } else {
+            assert!(node_type.is_file());
+        }
+
+        let link = root.join("input/by-id/mock-event");
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read_link(link).unwrap(),
+            Path::new("../../input/event0")
+        );
         assert!(!root.join("input/input/by-id/mock-event").exists());
 
         let _ = fs::remove_dir_all(&root);
