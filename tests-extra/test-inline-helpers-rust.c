@@ -96,7 +96,7 @@ TEST(memcmp_nn_empty) {
 /* ── mempset ──────────────────────────────────────────────────────────── */
 
 TEST(mempset_basic) {
-        char buf_c[10], buf_r[10];
+        char buf_c[10] = {}, buf_r[10] = {};
         void *ret_c = mempset(buf_c, 'X', 5);
         void *ret_r = rs_mempset(buf_r, 'X', 5);
         assert_se(ret_c == buf_c + 5);

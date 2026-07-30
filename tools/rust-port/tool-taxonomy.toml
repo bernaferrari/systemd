@@ -120,6 +120,7 @@ paths = [
     "tools/rust-port/test-workspace-architecture-gate.py",
     "tools/rust-port/workspace-layers.toml",
     "tools/rust-port/large-rust-files.toml",
+    "tools/rust-port/large-rust-files-baseline.toml",
 ]
 
 [[category]]

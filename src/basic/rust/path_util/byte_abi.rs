@@ -35,6 +35,8 @@ struct LastComponent {
     next: usize,
 }
 
+type SplitPrefixFilename = (Option<Vec<u8>>, Option<Vec<u8>>, bool);
+
 fn skip_slash_or_dot(path: &[u8], mut cursor: usize) -> usize {
     while cursor < path.len() {
         if path[cursor] == b'/' {
@@ -241,9 +243,7 @@ fn path_startswith_offset(path: &[u8], prefix: &[u8], flags: c_uint) -> Option<u
             }
             return Some(result);
         };
-        let Some(path_component) = path_component else {
-            return None;
-        };
+        let path_component = path_component?;
         if path[path_component.start..path_component.end]
             != prefix[prefix_component.start..prefix_component.end]
         {
@@ -287,7 +287,6 @@ fn simplify_bytes(path: &[u8], flags: c_uint) -> Vec<u8> {
                 cursor = component.next;
             }
             Err(_) => {
-                beginning = false;
                 if add_slash {
                     output.push(b'/');
                 }
@@ -409,7 +408,7 @@ fn split_prefix_filename_bytes(
     path: &[u8],
     want_dir: bool,
     want_filename: bool,
-) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, bool), i32> {
+) -> Result<SplitPrefixFilename, i32> {
     if path.is_empty() {
         return Err(-libc::EINVAL);
     }

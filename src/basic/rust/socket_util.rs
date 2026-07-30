@@ -343,8 +343,8 @@ pub fn sockaddr_equal(a: &SocketAddress, b: &SocketAddress) -> bool {
 
 pub fn sockaddr_ll_len(sa: &SockaddrLl) -> usize {
     let mac_len = match sa.hatype {
-        ARPHRD_ETHER => 8usize.max(6),
-        ARPHRD_INFINIBAND => 8usize.max(20),
+        ARPHRD_ETHER => 8,
+        ARPHRD_INFINIBAND => 20,
         _ => 8,
     };
     12 + mac_len
@@ -759,8 +759,8 @@ pub unsafe extern "C" fn rs_sockaddr_ll_len(sa: *const c_void) -> usize {
     // SAFETY: AF_PACKET selects the `sockaddr_ll` C union member.
     let sa = unsafe { &*sa.cast::<CSockaddrLl>() };
     let mac_len = match u16::from_be(sa.sll_hatype) {
-        ARPHRD_ETHER => 8usize.max(6),
-        ARPHRD_INFINIBAND => 8usize.max(20),
+        ARPHRD_ETHER => 8,
+        ARPHRD_INFINIBAND => 20,
         _ => 8,
     };
     offset_of!(CSockaddrLl, sll_addr) + mac_len

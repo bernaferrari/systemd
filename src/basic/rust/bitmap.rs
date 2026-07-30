@@ -48,15 +48,9 @@ pub struct Bitmap {
     bitmaps: Vec<u64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BitmapIterator {
     idx: u32,
-}
-
-impl Default for BitmapIterator {
-    fn default() -> Self {
-        Self { idx: 0 }
-    }
 }
 
 impl Bitmap {
