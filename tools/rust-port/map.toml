@@ -1598,12 +1598,12 @@ notes = "Reviewed static SHA-1 ABI slice 2026-07-29; no build/tests/VM. Three re
 
 [shared_lookup_facades]
 c_paths = ["src/shared/condition.c", "src/shared/condition.h", "src/shared/resolve-util.c", "src/shared/resolve-util.h", "src/shared/netif-util.c", "src/shared/netif-util.h", "src/basic/compress.c", "src/basic/compress.h", "src/basic/socket-util.c", "src/basic/socket-util.h", "src/shared/output-mode.c", "src/shared/output-mode.h"]
-rust_paths = ["src/basic/rust/shared_facades/lookups.rs", "src/basic/rust/shared_facades/lookups.h"]
+rust_paths = ["src/basic/rust/shared_facades/lookups.rs", "src/basic/rust/shared_facades/lookups.h", "src/shared/rust/output_mode.rs"]
 status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "needs_review"
-notes = "2026-07-29 provenance audit records each current table/predicate authority behind this heterogeneous facade. The compression facade now exactly shadows compression_to_string()/compression_from_string(): uncompressed, xz, lz4, zstd, gzip, and bzip2, not the obsolete lowercase-only table. Behavioral completion beyond the focused shadow tests remains unclaimed."
+notes = "2026-07-30 direct output-mode.c/h audit: the shared Rust convenience layer now preserves all sixteen OutputMode values and all fourteen OutputFlags bits, including OUTPUT_SKIP_UNPRINTABLE; regression tests lock the enum/flag layout alongside existing string/JSON checks. P2: it delegates JSON conversion to the basic facade and has no C ABI/production wiring or logs/process rendering integration claim."
 
 [shared_validation_facades]
 c_paths = ["src/shared/compare-operator.c", "src/shared/compare-operator.h", "src/shared/web-util.c", "src/shared/web-util.h", "src/shared/color-util.c", "src/shared/color-util.h", "src/shared/boot-entry.c", "src/shared/boot-entry.h", "src/shared/pkcs11-util.c", "src/shared/pkcs11-util.h", "src/shared/user-record.c", "src/shared/user-record.h"]
@@ -1660,7 +1660,7 @@ symbols = 2
 sync_status = "needs_review"
 test_file = "tests-extra/test-udev-util-rust.c"
 last_reviewed_upstream_blobs = { "src/shared/udev-util.c" = "a54720d9591cb58f4af81ce3639dadd5d94567b6" }
-last_reviewed_rust_blobs = { "src/basic/rust/udev_util.rs" = "0e72e9946d8d95e4cd893c49603fd15e08582faf" }
+last_reviewed_rust_blobs = { "src/basic/rust/udev_util.rs" = "764196e91ed30008b8f9425fc3187bce1b00d75f" }
 notes = "2026-07-30 static source review: this entry deliberately covers only udev_replace_whitespace() and udev_replace_chars(), not the rest of udev-util.c/.h. The basic Rust staticlib exports two ABI facades and tests them against C in the registered tests-extra fixture. Whitespace preserves bounded fixed-width and in-place behavior; character replacement preserves C-string, malformed \\x prefix, raw-byte UTF-8 scalar, and exact allow == str alias behavior. C remains the production authority: null assertion behavior, arbitrary partial allow/string overlap, locale/ctype edge cases, and the remaining udev-util surface are P2."
 
 [unaligned]
