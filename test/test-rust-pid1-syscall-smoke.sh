@@ -31,8 +31,15 @@ if ! command -v unshare >/dev/null 2>&1; then
     skip_or_fail_ci "unshare is not available for the PID1 syscall trace smoke check."
 fi
 
-if ! unshare --user --map-root-user --pid --fork true >/dev/null 2>&1; then
-    skip_or_fail_ci "unprivileged user namespace support is unavailable for the PID1 syscall trace smoke check."
+if unshare --user --map-root-user --pid --fork true >/dev/null 2>&1; then
+    namespace=(unshare --user --map-root-user --pid --fork)
+elif command -v sudo >/dev/null 2>&1 && sudo -n unshare --pid --fork true >/dev/null 2>&1; then
+    # GitHub-hosted runners disable unprivileged user namespaces, but their
+    # passwordless root execution can still create a PID namespace. Both
+    # forms run the traced program as PID 1 in its own namespace.
+    namespace=(sudo -n unshare --pid --fork)
+else
+    skip_or_fail_ci "no usable PID namespace path is available for the PID1 syscall trace smoke check."
 fi
 
 run() {
@@ -59,11 +66,7 @@ if [[ ! -x "$systemd_bin" ]]; then
 fi
 
 trace_cmd=(
-    unshare
-    --user
-    --map-root-user
-    --pid
-    --fork
+    "${namespace[@]}"
     strace
     -ff
     -qq
