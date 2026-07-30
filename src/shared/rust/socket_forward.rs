@@ -701,7 +701,7 @@ fn collect_rights(
         };
         if is_rights {
             let payload_len = cmsg_len - header_len;
-            if payload_len % std::mem::size_of::<RawFd>() != 0 {
+            if !payload_len.is_multiple_of(std::mem::size_of::<RawFd>()) {
                 return Err(invalid_cmsg_data());
             }
 

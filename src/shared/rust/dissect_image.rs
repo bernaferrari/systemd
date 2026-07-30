@@ -786,7 +786,7 @@ pub fn check_partition_flags(_node: &str, pflags: u64, supported: u64) -> Vec<u6
     if unexpected != 0 {
         for i in 0..64 {
             let bit = 1u64 << i;
-            if (unexpected & bit != 0) {
+            if unexpected & bit != 0 {
                 result.push(bit);
             }
         }
@@ -1243,7 +1243,7 @@ fn extract_json_string(json: &str, key: &str) -> Option<String> {
 
 /// Decode a hex string to bytes.
 fn hex_decode(hex: &str) -> Result<Vec<u8>, String> {
-    if hex.len() % 2 != 0 {
+    if !hex.len().is_multiple_of(2) {
         return Err("odd length".into());
     }
     let mut result = Vec::with_capacity(hex.len() / 2);

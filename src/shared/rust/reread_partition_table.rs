@@ -419,13 +419,13 @@ pub fn validate_partition_number(nr: u32) -> Result<()> {
 /// Returns `InvalidPartition` if `start_bytes` or `size_bytes` are not
 /// sector-aligned, or if the sector representation would overflow.
 pub fn validate_partition_geometry(start_bytes: u64, size_bytes: u64) -> Result<()> {
-    if start_bytes % SECTOR_SIZE != 0 {
+    if !start_bytes.is_multiple_of(SECTOR_SIZE) {
         return Err(RereadPartitionTableError::InvalidPartition(format!(
             "start offset {} is not sector-aligned (sector size {})",
             start_bytes, SECTOR_SIZE
         )));
     }
-    if size_bytes % SECTOR_SIZE != 0 {
+    if !size_bytes.is_multiple_of(SECTOR_SIZE) {
         return Err(RereadPartitionTableError::InvalidPartition(format!(
             "size {} is not sector-aligned (sector size {})",
             size_bytes, SECTOR_SIZE

@@ -336,7 +336,7 @@ fn parse_auxv_64(data: &[u8], info: &mut AuxvInfo) -> Result<(), ParseAuxvError>
 fn parse_auxv_impl<T: AuxvWord>(data: &[u8], info: &mut AuxvInfo) -> Result<(), ParseAuxvError> {
     let elem_size = std::mem::size_of::<T>();
 
-    if data.len() % (2 * elem_size) != 0 {
+    if !data.len().is_multiple_of(2 * elem_size) {
         return Err(ParseAuxvError::IncompleteStructure(data.len()));
     }
 

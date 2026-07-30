@@ -279,13 +279,15 @@ pub fn format_uint64_property(
         || (name.ends_with("NSec") && value == u64::MAX)
     {
         "[not set]".into()
-    } else if MEMORY_LIMIT_SUFFIXES.iter().any(|s| name.ends_with(s)) && value == CGROUP_LIMIT_MAX {
-        "infinity".into()
-    } else if name.ends_with("TasksMax") && value == u64::MAX {
-        "infinity".into()
-    } else if name.starts_with("Limit") && value == u64::MAX {
-        "infinity".into()
-    } else if name.starts_with("DefaultLimit") && value == u64::MAX {
+    } else if (MEMORY_LIMIT_SUFFIXES
+        .iter()
+        .any(|suffix| name.ends_with(suffix))
+        && value == CGROUP_LIMIT_MAX)
+        || ((name.ends_with("TasksMax")
+            || name.starts_with("Limit")
+            || name.starts_with("DefaultLimit"))
+            && value == u64::MAX)
+    {
         "infinity".into()
     } else if NO_DATA_NAMES.contains(&name) && value == u64::MAX {
         "[no data]".into()

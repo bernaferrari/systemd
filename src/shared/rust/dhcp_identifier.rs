@@ -35,7 +35,7 @@ pub const INFINIBAND_ALEN: usize = 20;
 pub const HW_ADDR_MAX_SIZE: usize = INFINIBAND_ALEN;
 
 /// Microseconds since 2000-01-01 00:00:00 UTC
-const USEC_2000: u64 = 946684800_000_000;
+const USEC_2000: u64 = 946_684_800_000_000;
 
 /// SipHash-2-4 key for IAID and DUID-EN generation
 const HASH_KEY: [u8; 16] = [

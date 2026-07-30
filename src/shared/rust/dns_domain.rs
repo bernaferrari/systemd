@@ -227,7 +227,7 @@ pub fn dns_label_unescape_suffix(
                 j -= 1;
             }
 
-            if slashes % 2 == 0 {
+            if slashes.is_multiple_of(2) {
                 label_start = i + 1;
                 new_terminal = i.checked_sub(1);
                 break;

@@ -420,7 +420,7 @@ fn recv_notification_with_sender(
         }
 
         if header.cmsg_level == libc::SOL_SOCKET && header.cmsg_type == libc::SCM_RIGHTS {
-            if payload_len % mem::size_of::<libc::c_int>() != 0 {
+            if !payload_len.is_multiple_of(mem::size_of::<libc::c_int>()) {
                 malformed_control = true;
                 break;
             }
