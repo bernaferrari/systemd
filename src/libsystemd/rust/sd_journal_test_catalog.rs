@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const SD_MESSAGE_COREDUMP: &str = "fc2e22bc6ee647b6b90729ab34a250b1";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

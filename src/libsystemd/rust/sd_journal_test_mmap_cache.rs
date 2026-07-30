@@ -149,7 +149,7 @@ impl MmapCache {
     fn allocate_window(&mut self, offset: u64, size: u64) -> Window {
         let aligned_offset = offset & !4095;
         let page_tail = offset - aligned_offset;
-        let aligned_size = ((size + page_tail + 4095) / 4096) * 4096;
+        let aligned_size = (size + page_tail).div_ceil(4096) * 4096;
         let final_size = aligned_size.max(WINDOW_SIZE);
         let base = self.next_base;
         self.next_base += final_size as usize + 0x1000;

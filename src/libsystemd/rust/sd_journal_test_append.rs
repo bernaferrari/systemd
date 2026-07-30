@@ -12,7 +12,7 @@ pub struct JournalMessage {
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MockJournalFile {
     pub data: Vec<u8>,
     pub messages: Vec<JournalMessage>,

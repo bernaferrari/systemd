@@ -11,7 +11,7 @@ pub const BIT_TOGGLE_START: u64 = 38448 * 8;
 pub const DEFAULT_VERIFICATION_KEY: &str = "c262bd-85187f-0b1b04-877cc5/1c7af8-35a4e900";
 pub const JOURNAL_COMPRESS: u32 = 1;
 pub const JOURNAL_SEAL: u32 = 2;
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VerifyParams {

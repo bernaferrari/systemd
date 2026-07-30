@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const DEPTH_MAX: u16 = 2 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -4,7 +4,7 @@
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EOPNOTSUPP: i32 = -(libc::EOPNOTSUPP as i32);
+pub const NEG_EOPNOTSUPP: i32 = -libc::EOPNOTSUPP;
 const NLMSG_ERROR: u16 = 0x2;
 const NLMSG_DONE: u16 = 0x3;
 

@@ -295,8 +295,7 @@ pub fn lookup_paths_init(
     Ok(LookupPaths {
         search_path: search
             .into_iter()
-            .map(|path| patch_root_prefix(Some(path), root_dir))
-            .flatten()
+            .filter_map(|path| patch_root_prefix(Some(path), root_dir))
             .collect(),
         persistent_config: patch_root_prefix(persistent_config, root_dir),
         runtime_config: patch_root_prefix(runtime_config, root_dir),

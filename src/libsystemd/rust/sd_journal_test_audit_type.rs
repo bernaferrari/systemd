@@ -3,7 +3,7 @@
 // PORT-SYNC: src/libsystemd/sd-journal/test-audit-type.c
 
 pub const AUDIT_KERNEL: u32 = 2000;
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+const NEG_EINVAL: i32 = -libc::EINVAL;
 
 const KNOWN_TYPES: &[(u32, &str)] = &[
     (0, "AUDIT_GET"),
