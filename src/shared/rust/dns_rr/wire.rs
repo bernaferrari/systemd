@@ -265,7 +265,10 @@ fn decode_rdata(rr_type: u16, data: &[u8]) -> Result<Rdata, ParseError> {
                     .map_err(|_| ParseError::InvalidRdata("AAAA requires 16 bytes"))?,
             ),
         },
-        x if matches!(x, y if y == DnsType::Ptr as u16 || y == DnsType::Ns as u16 || y == DnsType::Cname as u16 || y == DnsType::Dname as u16) =>
+        x if x == DnsType::Ptr as u16
+            || x == DnsType::Ns as u16
+            || x == DnsType::Cname as u16
+            || x == DnsType::Dname as u16 =>
         {
             let name = decode_name(data, &mut cursor)?;
             expect_end(cursor, data.len())?;

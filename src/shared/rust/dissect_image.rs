@@ -512,12 +512,12 @@ impl VeritySettings {
 
     /// True if the root hash field is set (non-empty).
     pub fn has_root_hash(&self) -> bool {
-        self.root_hash.as_ref().map_or(false, |h| !h.is_empty())
+        self.root_hash.as_ref().is_some_and(|h| !h.is_empty())
     }
 
     /// True if the root hash signature field is set.
     pub fn has_root_hash_sig(&self) -> bool {
-        self.root_hash_sig.as_ref().map_or(false, |h| !h.is_empty())
+        self.root_hash_sig.as_ref().is_some_and(|h| !h.is_empty())
     }
 
     /// True if any verity data has been configured.
@@ -652,7 +652,7 @@ impl DissectedImage {
 
     /// True if the given designator was found in the image.
     pub fn has_partition(&self, d: PartitionDesignator) -> bool {
-        self.partitions.get(&d).map_or(false, |p| p.found)
+        self.partitions.get(&d).is_some_and(|p| p.found)
     }
 
     /// True if no partitions were found at all.
@@ -1065,7 +1065,7 @@ pub fn partition_pick_mount_options(
         PartitionDesignator::Esp | PartitionDesignator::Xbootldr => {
             flags |= MS_NOSUID | MS_NOEXEC | MS_NOSYMFOLLOW;
             // ESP/XBOOTLDR is almost certainly VFAT.
-            if fstype.map_or(true, |f| f.eq_ignore_ascii_case("vfat")) {
+            if fstype.is_none_or(|f| f.eq_ignore_ascii_case("vfat")) {
                 options_parts.push("fmask=0177,dmask=0077".to_owned());
             }
         }

@@ -194,11 +194,10 @@ impl EfiApi {
 
         for entry in std::fs::read_dir(path)
             .map_err(|e| EfiError::Io(format!("Failed to list EFI variables: {}", e)))?
+            .flatten()
         {
-            if let Ok(entry) = entry {
-                let name = entry.file_name();
-                vars.push(name.to_string_lossy().to_string());
-            }
+            let name = entry.file_name();
+            vars.push(name.to_string_lossy().to_string());
         }
 
         Ok(vars)

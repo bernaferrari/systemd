@@ -323,7 +323,7 @@ impl FdSet {
     /// Equivalent to C's `fdset_close()` with `async=false`.
     pub fn close_all(&mut self) {
         while let Some(fd) = self.fds.pop_first() {
-            let _ = close_fd(fd);
+            close_fd(fd);
         }
     }
 
@@ -332,7 +332,7 @@ impl FdSet {
     /// Equivalent to C's `fdset_free_async()`.
     pub fn close_all_async(&mut self) {
         while let Some(fd) = self.fds.pop_first() {
-            let _ = async_close_fd(fd);
+            async_close_fd(fd);
         }
     }
 

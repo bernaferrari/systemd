@@ -80,6 +80,10 @@ pub enum DeviceAction {
 
 impl DeviceAction {
     /// Parse a device action from its string representation.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "add" => Some(Self::Add),
@@ -120,6 +124,14 @@ impl DeviceAction {
             DeviceAction::Bind,
             DeviceAction::Unbind,
         ]
+    }
+}
+
+impl std::str::FromStr for DeviceAction {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        DeviceAction::from_str(s).ok_or(())
     }
 }
 
@@ -458,6 +470,8 @@ mod tests {
         assert_eq!(DeviceAction::from_str("unbind"), Some(DeviceAction::Unbind));
         assert_eq!(DeviceAction::from_str("unknown"), None);
         assert_eq!(DeviceAction::from_str(""), None);
+        assert_eq!("add".parse(), Ok(DeviceAction::Add));
+        assert_eq!("unknown".parse::<DeviceAction>(), Err(()));
     }
 
     #[test]

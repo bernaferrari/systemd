@@ -703,7 +703,7 @@ pub fn stats_by_path_equal(a: &StatsByPath, b: &StatsByPath) -> bool {
 pub fn find_unused_line(sections: &[ConfigSection], filename: Option<&str>) -> Option<u32> {
     let mut max_line: u32 = 0;
     for cs in sections {
-        if filename.map_or(true, |f| cs.filename == f) {
+        if filename.is_none_or(|f| cs.filename == f) {
             max_line = max_line.max(cs.line);
         }
     }

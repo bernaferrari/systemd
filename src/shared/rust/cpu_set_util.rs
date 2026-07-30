@@ -269,6 +269,10 @@ impl CpuSet {
     /// Serialize as a space-separated list of individual CPU numbers.
     ///
     /// Example: `CpuSet` containing {0, 5, 10} → `"0 5 10"`
+    #[expect(
+        clippy::inherent_to_string_shadow_display,
+        reason = "the established API exposes individual CPUs while Display intentionally renders ranges"
+    )]
     pub fn to_string(&self) -> String {
         self.cpus
             .iter()
@@ -372,7 +376,7 @@ impl CpuSet {
         }
 
         let max_cpu = *self.cpus.last().unwrap();
-        let size = (max_cpu as usize / 8) + 1;
+        let size = (max_cpu as usize).div_ceil(8);
         let mut buf = vec![0u8; size];
 
         for &cpu in &self.cpus {
@@ -406,7 +410,7 @@ impl CpuSet {
 
 impl fmt::Display for CpuSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_range_string())
+        f.write_str(&self.to_range_string())
     }
 }
 
@@ -421,7 +425,7 @@ pub fn cpus_in_affinity_mask() -> Result<usize, CpuSetError> {
     let mut n = 16usize;
 
     loop {
-        let size = (n + 7) / 8;
+        let size = n.div_ceil(8);
         let mut mask: Vec<u8> = vec![0u8; size];
 
         // SAFETY: pid=0 (current process), buffer is valid and sized.
@@ -490,7 +494,7 @@ pub fn sched_getaffinity(pid: libc::pid_t) -> Result<CpuSet, CpuSetError> {
     let mut n = 16usize;
 
     loop {
-        let size = (n + 7) / 8;
+        let size = n.div_ceil(8);
         let mut mask: Vec<u8> = vec![0u8; size];
 
         // SAFETY: buffer is valid and sized.

@@ -48,7 +48,7 @@ pub const UID_RANGE: u32 = 0x10000;
 /// Linux filesystem magic numbers that are fully userns-compatible.
 /// These filesystems can be mounted inside user namespaces but their
 /// inodes relate to host resources, so no UID/GID patching should be applied.
-
+///
 /// binfmt_misc magic
 pub const BINFMTFS_MAGIC: u64 = 0x42494E4D;
 /// cgroup v1 magic
@@ -592,7 +592,7 @@ mod tests {
     #[test]
     fn test_shift_to_invalid_uid() {
         // Shifting should never produce UID_INVALID.
-        let shift = (UID_INVALID & UID_BUSY_MASK) | 0;
+        let shift = UID_INVALID & UID_BUSY_MASK;
         let uid = UID_INVALID & UID_LOWER_MASK;
         // If shift | uid_lower == UID_INVALID, we should get None.
         if (shift | uid) == UID_INVALID {

@@ -255,7 +255,7 @@ pub fn cg_pid_get_path(pid: i32) -> io::Result<PathBuf> {
         let parts: Vec<&str> = line.splitn(3, ':').collect();
         if parts.len() >= 3 {
             // cgroup v2 has empty controller list (or no controllers)
-            if parts[1].is_empty() || parts[1] == "" {
+            if parts[1].is_empty() {
                 let cgroup_path = parts[2].trim_start_matches('/');
                 return Ok(PathBuf::from(CGROUP_V2_MOUNT).join(cgroup_path));
             }
@@ -378,7 +378,7 @@ pub fn show_cgroup_one_by_path<W: FmtWrite>(
 
     sort_and_dedup_pids(&mut pids);
     let rendered = format_pid_array(&pids, prefix, false, more, n_columns);
-    write!(out, "{}", rendered).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    write!(out, "{}", rendered).map_err(io::Error::other)?;
 
     Ok(())
 }
@@ -636,7 +636,7 @@ pub fn show_extra_pids<W: FmtWrite>(
 
     sort_and_dedup_pids(&mut extra);
     let rendered = format_pid_array(&extra, prefix, true, false, effective_columns);
-    write!(out, "{}", rendered).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    write!(out, "{}", rendered).map_err(io::Error::other)?;
 
     Ok(())
 }

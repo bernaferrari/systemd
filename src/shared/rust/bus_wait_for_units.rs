@@ -282,7 +282,7 @@ impl BusWaitForUnits {
         if name.is_empty() {
             return Err(UnitWaitError::InvalidUnit(name.to_owned()));
         }
-        if flags.intersects(WaitForUnitsFlags::TARGET_MASK) == false {
+        if !flags.intersects(WaitForUnitsFlags::TARGET_MASK) {
             return Err(UnitWaitError::InvalidFlags);
         }
 

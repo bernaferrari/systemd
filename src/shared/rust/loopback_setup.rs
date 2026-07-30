@@ -319,7 +319,7 @@ fn rtnl_call(fd: i32, msg_type: u16, flags: u16, payload: &[u8]) -> Result<i32> 
 fn append_attr_u32(buf: &mut Vec<u8>, attr_type: u16, value: u32) {
     // Align to 4 bytes (NETLINK_ALIGN)
     let pad = (4 - (buf.len() % 4)) % 4;
-    buf.extend(std::iter::repeat(0).take(pad));
+    buf.extend(std::iter::repeat_n(0, pad));
 
     let attr = RtAttr::new(attr_type, 4);
     // SAFETY: `attr` is a live repr(C) attribute header, and the byte slice covers exactly its size.
@@ -336,7 +336,7 @@ fn append_attr_u32(buf: &mut Vec<u8>, attr_type: u16, value: u32) {
 /// Append a raw byte attribute to the buffer (properly aligned).
 fn append_attr_bytes(buf: &mut Vec<u8>, attr_type: u16, data: &[u8]) {
     let pad = (4 - (buf.len() % 4)) % 4;
-    buf.extend(std::iter::repeat(0).take(pad));
+    buf.extend(std::iter::repeat_n(0, pad));
 
     let attr = RtAttr::new(attr_type, data.len() as u16);
     // SAFETY: `attr` is a live repr(C) attribute header, and the byte slice covers exactly its size.
@@ -351,7 +351,7 @@ fn append_attr_bytes(buf: &mut Vec<u8>, attr_type: u16, data: &[u8]) {
 
     // Pad the data to 4-byte alignment
     let data_pad = (4 - (data.len() % 4)) % 4;
-    buf.extend(std::iter::repeat(0).take(data_pad));
+    buf.extend(std::iter::repeat_n(0, data_pad));
 }
 
 // ── Core operations ──────────────────────────────────────────────────────

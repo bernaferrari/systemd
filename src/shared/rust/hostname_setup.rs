@@ -68,6 +68,10 @@ impl HostnameSource {
     }
 
     /// Parse from a string representation.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "static" => Some(HostnameSource::Static),
@@ -75,6 +79,14 @@ impl HostnameSource {
             "default" => Some(HostnameSource::Default),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for HostnameSource {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        HostnameSource::from_str(s).ok_or(())
     }
 }
 
@@ -1094,6 +1106,8 @@ mod tests {
             assert_eq!(format!("{src}"), s);
         }
         assert_eq!(HostnameSource::from_str("bogus"), None);
+        assert_eq!("static".parse(), Ok(HostnameSource::Static));
+        assert_eq!("bogus".parse::<HostnameSource>(), Err(()));
     }
 
     #[test]

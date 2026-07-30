@@ -373,7 +373,7 @@ impl<'a> ElfFile<'a> {
         if data.len() < EI_NIDENT {
             return Err(ElfError::TooShort);
         }
-        if &data[0..4] != &ELF_MAGIC {
+        if data[0..4] != ELF_MAGIC {
             return Err(ElfError::InvalidMagic);
         }
 
@@ -904,7 +904,7 @@ impl<'a> ElfFile<'a> {
 
 /// Returns `true` if `data` begins with the ELF magic number.
 pub fn elf_is_elf(data: &[u8]) -> bool {
-    data.len() >= 4 && &data[0..4] == &ELF_MAGIC
+    data.len() >= 4 && data[0..4] == ELF_MAGIC
 }
 
 /// Detect the ELF class (32-bit or 64-bit) from raw bytes.
@@ -912,7 +912,7 @@ pub fn elf_detect_class(data: &[u8]) -> Result<ElfClass, ElfError> {
     if data.len() < EI_NIDENT {
         return Err(ElfError::TooShort);
     }
-    if &data[0..4] != &ELF_MAGIC {
+    if data[0..4] != ELF_MAGIC {
         return Err(ElfError::InvalidMagic);
     }
     match data[EI_CLASS] {
@@ -927,7 +927,7 @@ pub fn elf_detect_encoding(data: &[u8]) -> Result<ElfData, ElfError> {
     if data.len() < EI_NIDENT {
         return Err(ElfError::TooShort);
     }
-    if &data[0..4] != &ELF_MAGIC {
+    if data[0..4] != ELF_MAGIC {
         return Err(ElfError::InvalidMagic);
     }
     match data[EI_DATA] {

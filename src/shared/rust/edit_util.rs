@@ -239,10 +239,7 @@ fn select_source_file(
     target_exists: bool,
     original_exists: bool,
 ) -> Option<&str> {
-    let has_original = record
-        .original_path
-        .as_deref()
-        .and_then(|p| if original_exists { Some(p) } else { None });
+    let has_original = record.original_path.as_deref().filter(|_| original_exists);
 
     if has_original.is_some() && (!target_exists || overwrite_with_origin) {
         record.original_path.as_deref()

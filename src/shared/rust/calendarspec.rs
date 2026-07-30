@@ -1199,12 +1199,7 @@ fn matches_day(spec: &CalendarSpec, year: i32, month: i32, day: i32) -> bool {
 
 fn next_matching_day(spec: &CalendarSpec, year: i32, month: i32, from_day: i32) -> Option<i32> {
     let dim = days_in_month(year, month);
-    for day in from_day.max(1)..=dim {
-        if matches_day(spec, year, month, day) {
-            return Some(day);
-        }
-    }
-    None
+    (from_day.max(1)..=dim).find(|&day| matches_day(spec, year, month, day))
 }
 
 fn next_matching_time(

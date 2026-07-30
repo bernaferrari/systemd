@@ -384,16 +384,8 @@ pub fn format_location(
     let _ = version;
     let ns = if latitude >= 1u32 << 31 { 'N' } else { 'S' };
     let ew = if longitude >= 1u32 << 31 { 'E' } else { 'W' };
-    let lat = if latitude >= 1u32 << 31 {
-        latitude - (1u32 << 31)
-    } else {
-        (1u32 << 31) - latitude
-    };
-    let lon = if longitude >= 1u32 << 31 {
-        longitude - (1u32 << 31)
-    } else {
-        (1u32 << 31) - longitude
-    };
+    let lat = latitude.abs_diff(1u32 << 31);
+    let lon = longitude.abs_diff(1u32 << 31);
     let alt = if altitude >= 10_000_000 {
         f64::from(altitude - 10_000_000)
     } else {

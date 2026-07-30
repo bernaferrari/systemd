@@ -795,7 +795,7 @@ pub fn user_record_show(record: &UserRecord, show_full_group_info: bool) -> Stri
     out
 }
 
-pub fn group_record_show(record: &GroupRecord, show_full_user_info: bool) -> String {
+pub fn group_record_show(record: &GroupRecord, _show_full_user_info: bool) -> String {
     let mut out = String::new();
 
     let _ = writeln!(out, "  Group name: {}", record.group_name_and_realm());
@@ -818,24 +818,13 @@ pub fn group_record_show(record: &GroupRecord, show_full_user_info: bool) -> Str
     }
 
     let members = &record.members;
-    if show_full_user_info {
-        for (index, member) in members.iter().enumerate() {
-            let prefix = if index == 0 {
-                "     Members:"
-            } else {
-                "             "
-            };
-            let _ = writeln!(out, "{} {}", prefix, member);
-        }
-    } else {
-        for (index, member) in members.iter().enumerate() {
-            let prefix = if index == 0 {
-                "     Members:"
-            } else {
-                "             "
-            };
-            let _ = writeln!(out, "{} {}", prefix, member);
-        }
+    for (index, member) in members.iter().enumerate() {
+        let prefix = if index == 0 {
+            "     Members:"
+        } else {
+            "             "
+        };
+        let _ = writeln!(out, "{} {}", prefix, member);
     }
 
     for (index, admin) in record.administrators.iter().enumerate() {
@@ -909,9 +898,9 @@ pub fn user_record_show_table(records: &[UserRecord]) -> String {
 
     for (index, width) in widths.iter().enumerate() {
         if index + 1 < widths.len() {
-            let _ = write!(out, "{:-<width$} ", width = *width);
+            let _ = write!(out, "{:-<width$} ", "", width = *width);
         } else {
-            let _ = write!(out, "{:-<width$}", width = headers[index].len());
+            let _ = write!(out, "{:-<width$}", "", width = headers[index].len());
         }
     }
     out.push('\n');

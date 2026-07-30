@@ -77,11 +77,7 @@ pub fn dns_label_unescape(name: &str, flags: DNSLabelFlags) -> DnsResult<(Vec<u8
     let mut i = 0usize;
     let mut last_char = None::<u8>;
 
-    loop {
-        let Some(&c) = bytes.get(i) else {
-            break;
-        };
-
+    while let Some(&c) = bytes.get(i) {
         if c == b'.' {
             if flags.contains(DNSLabelFlags::LDH) && last_char == Some(b'-') {
                 return errno(Errno::EINVAL);

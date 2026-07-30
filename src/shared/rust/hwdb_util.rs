@@ -25,7 +25,7 @@ use std::time::SystemTime;
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Magic signature for hwdb binary files: "KSPLPHHR".
-const HWDB_SIGNATURE: [u8; 8] = [b'K', b'S', b'L', b'P', b'H', b'H', b'R', b'H'];
+const HWDB_SIGNATURE: [u8; 8] = *b"KSLPHHRH";
 
 /// On-disk header size: 8 (sig) + 9×8 (le64 fields) = 80 bytes.
 const HWDB_HEADER_SIZE: u64 = 80;
@@ -657,7 +657,7 @@ mod le {
 }
 
 /// Read a NUL-terminated C string from `data` at `offset`.
-fn read_cstring<'a>(data: &'a [u8], offset: usize) -> &'a str {
+fn read_cstring(data: &[u8], offset: usize) -> &str {
     if offset >= data.len() {
         return "";
     }
@@ -1075,7 +1075,7 @@ fn parse_header(data: &[u8]) -> HwdbResult<HwdbHeader> {
             "file too small for hwdb header".into(),
         ));
     }
-    if &data[..8] != HWDB_SIGNATURE {
+    if data[..8] != HWDB_SIGNATURE {
         return Err(HwdbError::InvalidFormat("invalid hwdb signature".into()));
     }
 
@@ -1208,7 +1208,7 @@ pub fn hwdb_should_reload(last_modified: Option<SystemTime>) -> bool {
         let p = Path::new(path);
         match fs::metadata(p) {
             Ok(meta) => {
-                if let Some(current) = meta.modified().ok() {
+                if let Ok(current) = meta.modified() {
                     if let Some(last) = last_modified {
                         if current != last {
                             return true;

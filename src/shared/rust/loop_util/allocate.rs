@@ -113,11 +113,7 @@ pub fn loop_device_make_by_path_at(
 
     let fd = match fd {
         Ok(f) => {
-            let actual_open = if open_flags.is_none() {
-                O_RDWR
-            } else {
-                open_flags.unwrap()
-            };
+            let actual_open = open_flags.unwrap_or(O_RDWR);
             return loop_device_make_internal(
                 if dir_fd == libc::AT_FDCWD {
                     Some(path.to_path_buf())

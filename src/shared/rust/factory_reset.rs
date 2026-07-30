@@ -368,9 +368,9 @@ fn parse_id128(value: &str) -> Result<Id128, String> {
     }
 
     let mut output = [0u8; 16];
-    for index in 0..16 {
+    for (index, byte) in output.iter_mut().enumerate() {
         let offset = index * 2;
-        output[index] = u8::from_str_radix(&hex[offset..offset + 2], 16)
+        *byte = u8::from_str_radix(&hex[offset..offset + 2], 16)
             .map_err(|_| format!("invalid UUID byte: {}", &hex[offset..offset + 2]))?;
     }
     Ok(output)

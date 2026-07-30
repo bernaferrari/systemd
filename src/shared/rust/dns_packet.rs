@@ -575,9 +575,7 @@ impl DnsPacket {
 
     /// Create a new DNS packet with the specified minimum allocation and maximum size.
     pub fn with_capacity(protocol: DnsProtocol, min_alloc: usize, max_size: usize) -> Self {
-        let max_size = max_size
-            .max(DNS_PACKET_HEADER_SIZE)
-            .min(DNS_PACKET_SIZE_MAX);
+        let max_size = max_size.clamp(DNS_PACKET_HEADER_SIZE, DNS_PACKET_SIZE_MAX);
         let alloc = if min_alloc < DNS_PACKET_HEADER_SIZE {
             DNS_PACKET_SIZE_START
         } else {
@@ -711,11 +709,9 @@ impl DnsPacket {
                     return Err(DnsPacketError::BadMessage);
                 }
             }
-            DnsProtocol::Mdns => {
-                // mDNS replies must have rcode 0
-                if hdr.rcode() != 0 {
-                    return Err(DnsPacketError::BadMessage);
-                }
+            // mDNS replies must have rcode 0
+            DnsProtocol::Mdns if hdr.rcode() != 0 => {
+                return Err(DnsPacketError::BadMessage);
             }
             _ => {}
         }

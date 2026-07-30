@@ -303,7 +303,7 @@ impl BootEntry {
         self.show_title
             .as_deref()
             .or(self.title.as_deref())
-            .or_else(|| {
+            .or({
                 if self.id.is_empty() {
                     None
                 } else {
@@ -449,15 +449,12 @@ pub fn boot_filename_extract_tries(fname: &str) -> TriesInfo {
     let ext = &fname[suffix_pos..];
 
     // Find the last '+' before the suffix
-    let plus_pos = match base.rfind('+') {
-        Some(pos) => pos,
-        None => {
-            return TriesInfo {
-                stripped: fname.to_owned(),
-                tries_left: TRIES_NOT_SET,
-                tries_done: TRIES_NOT_SET,
-            };
-        }
+    let Some(plus_pos) = base.rfind('+') else {
+        return TriesInfo {
+            stripped: fname.to_owned(),
+            tries_left: TRIES_NOT_SET,
+            tries_done: TRIES_NOT_SET,
+        };
     };
 
     let after_plus = &base[plus_pos + 1..];

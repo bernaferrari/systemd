@@ -11,7 +11,6 @@
 // loader; an integer file descriptor alone is not a `struct bpf_link *`.
 
 use std::io::{self, Write};
-use std::mem;
 
 use crate::bpf_dlopen::{BpfError, bpf_get_error_translated};
 use crate::ffi::Errno;
@@ -149,7 +148,6 @@ impl BpfLink {
     /// claiming to destroy an opaque libbpf allocation (which this type does
     /// not possess).
     pub fn free(self) -> Option<Self> {
-        mem::drop(self);
         None
     }
 }
@@ -216,7 +214,6 @@ impl RingBuffer {
     ///
     /// Equivalent to the C `_cleanup_(bpf_ring_buffer_freep)` pattern.
     pub fn free(self) -> Option<Self> {
-        mem::drop(self);
         None
     }
 }

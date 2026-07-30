@@ -36,6 +36,10 @@ impl KernelImageType {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "unknown" => Some(Self::Unknown),
@@ -44,6 +48,14 @@ impl KernelImageType {
             "pe" => Some(Self::Pe),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for KernelImageType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        KernelImageType::from_str(s).ok_or(())
     }
 }
 
@@ -438,6 +450,8 @@ mod tests {
                 Some(image_type)
             );
         }
+        assert_eq!("uki".parse(), Ok(KernelImageType::Uki));
+        assert_eq!("nope".parse::<KernelImageType>(), Err(()));
     }
 
     #[test]

@@ -87,11 +87,6 @@ const _: () = assert!(
     "ACL permission bits must be non-overlapping bitmasks"
 );
 
-/// Verify that the unsigned cast round-trips (matching C assert_cc checks).
-const _: () = assert!(ACL_READ as u32 == ACL_READ as u32);
-const _: () = assert!(ACL_WRITE as u32 == ACL_WRITE as u32);
-const _: () = assert!(ACL_EXECUTE as u32 == ACL_EXECUTE as u32);
-
 // ── Pure logic: inode type can have ACL ────────────────────────────────────
 
 /// Check whether an inode of the given mode can support ACLs.

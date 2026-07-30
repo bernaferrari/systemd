@@ -519,9 +519,7 @@ fn parse_one_word(input: &str, mut cursor: usize, mode: ParseMode) -> Option<(us
                 }
                 ParseMode::UnquoteCUnescape => {
                     if character == '\\' {
-                        let Some((next_cursor, unescaped)) = parse_c_escape(input, cursor) else {
-                            return None;
-                        };
+                        let (next_cursor, unescaped) = parse_c_escape(input, cursor)?;
                         word.push_str(&unescaped);
                         cursor = next_cursor;
                     } else {
@@ -556,9 +554,7 @@ fn parse_one_word(input: &str, mut cursor: usize, mode: ParseMode) -> Option<(us
                     quote = Some(character);
                     cursor += width;
                 } else if character == '\\' {
-                    let Some((next_cursor, unescaped)) = parse_c_escape(input, cursor) else {
-                        return None;
-                    };
+                    let (next_cursor, unescaped) = parse_c_escape(input, cursor)?;
                     word.push_str(&unescaped);
                     cursor = next_cursor;
                 } else {

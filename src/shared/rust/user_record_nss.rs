@@ -344,9 +344,7 @@ pub fn nss_passwd_to_user_record(
         _ => Vec::new(),
     };
 
-    let locked = spwd
-        .and_then(|sp| sp.sp_expire)
-        .map(|expires| expires <= 1);
+    let locked = spwd.and_then(|sp| sp.sp_expire).map(|expires| expires <= 1);
 
     // notAfterUSec
     let not_after_usec = spwd

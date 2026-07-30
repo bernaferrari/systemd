@@ -343,13 +343,13 @@ pub fn partition_policy_flags_from_string(
 /// Extend flags: fill in unspecified fields with "all options allowed".
 pub fn partition_policy_flags_extend(flags: PartitionPolicyFlags) -> PartitionPolicyFlags {
     let mut f = flags;
-    if f.intersects(PartitionPolicyFlags::_USE_MASK) == false {
+    if !f.intersects(PartitionPolicyFlags::_USE_MASK) {
         f |= PartitionPolicyFlags::OPEN;
     }
-    if f.intersects(PartitionPolicyFlags::_READ_ONLY_MASK) == false {
+    if !f.intersects(PartitionPolicyFlags::_READ_ONLY_MASK) {
         f |= PartitionPolicyFlags::READ_ONLY_ON | PartitionPolicyFlags::READ_ONLY_OFF;
     }
-    if f.intersects(PartitionPolicyFlags::_GROWFS_MASK) == false {
+    if !f.intersects(PartitionPolicyFlags::_GROWFS_MASK) {
         f |= PartitionPolicyFlags::GROWFS_ON | PartitionPolicyFlags::GROWFS_OFF;
     }
     f
@@ -358,8 +358,7 @@ pub fn partition_policy_flags_extend(flags: PartitionPolicyFlags) -> PartitionPo
 /// Reduce flags: if all options are set for a field, clear them to shorten.
 pub fn partition_policy_flags_reduce(flags: PartitionPolicyFlags) -> PartitionPolicyFlags {
     let mut f = flags;
-    if f.intersects(PartitionPolicyFlags::_USE_MASK) == true
-        && f.contains(PartitionPolicyFlags::_USE_MASK)
+    if f.intersects(PartitionPolicyFlags::_USE_MASK) && f.contains(PartitionPolicyFlags::_USE_MASK)
     {
         f.remove(PartitionPolicyFlags::_USE_MASK);
     }

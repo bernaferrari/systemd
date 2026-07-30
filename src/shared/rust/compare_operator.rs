@@ -206,10 +206,10 @@ static OPERATOR_TABLE: &[OperatorEntry] = &[
 
 /// Parse a comparison operator from a string slice.
 /// Returns (operator, remaining_string) on success, or None on failure.
-pub fn parse_compare_operator<'a>(
-    s: &'a str,
+pub fn parse_compare_operator(
+    s: &str,
     flags: CompareOperatorParseFlags,
-) -> Option<(CompareOperator, &'a str)> {
+) -> Option<(CompareOperator, &str)> {
     for entry in OPERATOR_TABLE {
         // Check need_mask - skip if flag not set
         if entry.need_mask != 0

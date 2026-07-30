@@ -88,7 +88,7 @@ fn empty_to_dash(s: Option<&str>) -> &str {
 }
 
 // Mirrors systemd's `strempty`.
-fn strempty<'a>(s: Option<&'a str>) -> &'a str {
+fn strempty(s: Option<&str>) -> &str {
     s.unwrap_or("")
 }
 

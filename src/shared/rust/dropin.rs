@@ -150,7 +150,7 @@ pub struct DropInPaths {
 /// * `dir`   - Base directory (e.g. `"/etc/systemd/system"`).
 /// * `unit`  - Unit name (e.g. `"foo.service"`).
 /// * `level` - Optional priority level. When `Some(n)`, the filename is
-///             prefixed with `"<n>-"`. Pass `None` for no prefix.
+///   prefixed with `"<n>-"`. Pass `None` for no prefix.
 /// * `name`  - Drop-in name (will be escaped).
 ///
 /// # Errors
@@ -456,9 +456,9 @@ pub fn parent_unit_from_dash_prefix(name: &str) -> Option<String> {
 /// * `unit_path`  - A single search root (e.g. `"/etc/systemd/system"`).
 /// * `name`       - The unit name (e.g. `"foo-bar.service"`).
 /// * `dir_suffix` - Typically `".d"` — appended to the unit name to form the
-///                  drop-in directory name.
+///   drop-in directory name.
 /// * `existing_dirs` - Set of paths known to exist (mirrors `unit_path_cache`).
-///                      Pass `None` to skip existence checks.
+///   Pass `None` to skip existence checks.
 ///
 /// # Returns
 /// A vector of directory paths to search (not filtered for existence here;

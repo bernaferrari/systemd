@@ -271,10 +271,11 @@ pub fn find_executable_in_path(name: &str) -> Option<PathBuf> {
 
 /// Check if a path refers to an executable file using the access() syscall
 pub fn executable_is_executable(path: &Path) -> bool {
-    let c_path = match {
+    let c_path = {
         use std::os::unix::ffi::OsStrExt;
         CString::new(path.as_os_str().as_bytes())
-    } {
+    };
+    let c_path = match c_path {
         Ok(p) => p,
         Err(_) => return false,
     };

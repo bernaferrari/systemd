@@ -218,7 +218,7 @@ pub fn clear_finalizers() {
 /// Return the [`FinalizeReport`] from the most recent [`main_finalize`] call,
 /// or `None` if finalisation has not yet occurred.
 pub fn last_finalize_report() -> Option<FinalizeReport> {
-    LAST_FINALIZE.lock().ok()?.clone()
+    *LAST_FINALIZE.lock().ok()?
 }
 
 /// Reset all global state.  Intended for use between tests.

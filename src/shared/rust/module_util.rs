@@ -358,6 +358,7 @@ pub fn resolve_module_outcome(
 /// - `-ENODEV` → Notice
 /// - `-ENOENT` → Warning
 /// - Others    → Error
+///
 /// Returns a severity level as a string for caller-side log routing.
 pub fn module_error_severity(errno: i32) -> &'static str {
     match errno {

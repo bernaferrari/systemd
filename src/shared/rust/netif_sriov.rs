@@ -118,6 +118,10 @@ impl MacAddress {
     }
 
     /// Parse a MAC address from a colon-separated hex string (e.g. "aa:bb:cc:dd:ee:ff").
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> SriovResult<Self> {
         let parts: Vec<&str> = s.split(':').collect();
         if parts.len() != 6 {
@@ -129,6 +133,14 @@ impl MacAddress {
                 .map_err(|_| SriovError::InvalidMacAddress(s.to_owned()))?;
         }
         Ok(Self(bytes))
+    }
+}
+
+impl std::str::FromStr for MacAddress {
+    type Err = SriovError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        MacAddress::from_str(s)
     }
 }
 
@@ -167,6 +179,10 @@ impl VlanProto {
     pub const ETH_P_8021AD: u16 = 0x88A8;
 
     /// Parse a VLAN protocol from its string representation.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> SriovResult<Self> {
         match s {
             "" | "802.1Q" => Ok(Self::Eth8021Q),
@@ -181,6 +197,14 @@ impl VlanProto {
             Self::Eth8021Q => Self::ETH_P_8021Q,
             Self::Eth8021Ad => Self::ETH_P_8021AD,
         }
+    }
+}
+
+impl std::str::FromStr for VlanProto {
+    type Err = SriovError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        VlanProto::from_str(s)
     }
 }
 
@@ -200,6 +224,10 @@ impl SriovLinkState {
     pub const INVALID: i32 = -22; // -EINVAL
 
     /// Parse a link state from its string representation.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> SriovResult<Self> {
         match s {
             "" => Err(SriovError::InvalidBoolean(String::new())),
@@ -208,6 +236,14 @@ impl SriovLinkState {
             "0" | "false" | "no" | "off" => Ok(Self::Disable),
             _ => Err(SriovError::InvalidBoolean(s.to_owned())),
         }
+    }
+}
+
+impl std::str::FromStr for SriovLinkState {
+    type Err = SriovError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        SriovLinkState::from_str(s)
     }
 }
 
@@ -418,7 +454,7 @@ impl SriovVf {
 
     /// Set the VF index. Returns error if >= VF_MAX_INDEX.
     pub fn set_vf(&mut self, value: u32) -> SriovResult<()> {
-        if value >= VF_MAX_INDEX + 1 {
+        if value > VF_MAX_INDEX {
             return Err(SriovError::OutOfRange {
                 what: "VirtualFunction",
                 value,
@@ -1040,6 +1076,10 @@ mod tests {
         let mac = MacAddress::from_str("aa:bb:cc:dd:ee:ff").unwrap();
         assert_eq!(mac.0, [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]);
         assert!(!mac.is_null());
+        assert!(matches!(
+            "aa:bb:cc:dd:ee:ff".parse::<MacAddress>(),
+            Ok(MacAddress([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]))
+        ));
     }
 
     #[test]
@@ -1066,6 +1106,10 @@ mod tests {
             VlanProto::Eth8021Ad
         );
         assert!(VlanProto::from_str("invalid").is_err());
+        assert!(matches!(
+            "802.1Q".parse::<VlanProto>(),
+            Ok(VlanProto::Eth8021Q)
+        ));
     }
 
     #[test]
@@ -1099,6 +1143,10 @@ mod tests {
             SriovLinkState::Disable
         );
         assert!(SriovLinkState::from_str("").is_err());
+        assert!(matches!(
+            "auto".parse::<SriovLinkState>(),
+            Ok(SriovLinkState::Auto)
+        ));
     }
 
     // ── OptionalBool tests ─────────────────────────────────────────────

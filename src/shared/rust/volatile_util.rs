@@ -131,6 +131,10 @@ impl VolatileMode {
     /// assert_eq!(VolatileMode::from_str("0"), Ok(VolatileMode::No));
     /// assert!(VolatileMode::from_str("bogus").is_err());
     /// ```
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Result<VolatileMode, VolatileError> {
         // First pass: exact string-table lookup (matches the C volatile_mode_table).
         match s {

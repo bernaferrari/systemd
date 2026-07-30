@@ -190,6 +190,10 @@ impl InstallChangeType {
     }
 
     /// Parse from string (mirrors `install_change_type_from_string`).
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "symlink" => Some(InstallChangeType::Symlink),
@@ -201,6 +205,14 @@ impl InstallChangeType {
             "auxiliary unit failed" => Some(InstallChangeType::AuxiliaryFailed),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for InstallChangeType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        InstallChangeType::from_str(s).ok_or(())
     }
 }
 
@@ -251,6 +263,10 @@ impl PresetMode {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "full" => Some(PresetMode::Full),
@@ -258,6 +274,14 @@ impl PresetMode {
             "disable-only" => Some(PresetMode::DisableOnly),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for PresetMode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        PresetMode::from_str(s).ok_or(())
     }
 }
 
@@ -322,6 +346,10 @@ impl UnitFileState {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "retain the C-parity inherent API alongside FromStr"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "enabled" => Some(UnitFileState::Enabled),
@@ -339,6 +367,14 @@ impl UnitFileState {
             "bad" => Some(UnitFileState::Bad),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for UnitFileState {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        UnitFileState::from_str(s).ok_or(())
     }
 }
 
@@ -855,6 +891,8 @@ mod tests {
             assert_eq!(InstallChangeType::from_str(ct.to_str()), Some(ct));
         }
         assert_eq!(InstallChangeType::from_str("nope"), None);
+        assert_eq!("symlink".parse(), Ok(InstallChangeType::Symlink));
+        assert_eq!("nope".parse::<InstallChangeType>(), Err(()));
     }
 
     // ── PresetMode round-trip ──────────────────────────────────────────
@@ -869,6 +907,8 @@ mod tests {
             assert_eq!(PresetMode::from_str(m.to_str()), Some(m));
         }
         assert_eq!(PresetMode::from_str("nope"), None);
+        assert_eq!("full".parse(), Ok(PresetMode::Full));
+        assert_eq!("nope".parse::<PresetMode>(), Err(()));
     }
 
     // ── UnitFileState round-trip ───────────────────────────────────────
@@ -894,6 +934,8 @@ mod tests {
             assert_eq!(UnitFileState::from_str(s.to_str()), Some(s));
         }
         assert_eq!(UnitFileState::from_str("nope"), None);
+        assert_eq!("enabled".parse(), Ok(UnitFileState::Enabled));
+        assert_eq!("nope".parse::<UnitFileState>(), Err(()));
     }
 
     // ── PresetAction past tense ────────────────────────────────────────

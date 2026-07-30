@@ -834,7 +834,7 @@ fn parse_condition_fraction(parameter: &str) -> Result<ConditionFraction, i32> {
     let second = extract_first_word(remaining, None, 0).map_err(|errno| errno.to_neg_errno())?;
     let (tag, percent) = match second {
         None => (None, first),
-        Some((second, trailing)) if trailing.is_empty() => (Some(first), second),
+        Some((second, "")) => (Some(first), second),
         Some(_) => return Err(-(libc::EINVAL as i32)),
     };
 
@@ -1200,11 +1200,7 @@ pub fn condition_test_list(conditions: &mut [Condition], env: &[String]) -> io::
 
         if c.trigger {
             // Any passing trigger condition is enough.
-            if triggered.unwrap_or(false) {
-                // already have a passing trigger
-            } else {
-                triggered = Some(r);
-            }
+            triggered = Some(triggered.unwrap_or(false) || r);
         } else {
             // Non-trigger: all must pass.
             if !r {
