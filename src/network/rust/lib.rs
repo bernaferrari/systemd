@@ -121,6 +121,10 @@ pub mod netdev {
     pub mod l2tp_tunnel;
     pub mod macsec;
     pub mod macvlan;
+    #[expect(
+        clippy::module_inception,
+        reason = "preserves the upstream netdev/ source-tree and module-path mapping"
+    )]
     pub mod netdev;
     pub mod netdev_util;
     pub mod nlmon;
@@ -158,6 +162,10 @@ pub mod tc {
     pub mod sfb;
     pub mod sfq;
     pub mod tbf;
+    #[expect(
+        clippy::module_inception,
+        reason = "preserves the upstream tc/ source-tree and module-path mapping"
+    )]
     pub mod tc;
     pub mod tc_util;
     pub mod tclass;
@@ -165,6 +173,10 @@ pub mod tc {
 }
 
 pub mod wait_online {
+    #[expect(
+        clippy::module_inception,
+        reason = "preserves the upstream wait-online/ source-tree and module-path mapping"
+    )]
     pub mod wait_online;
     pub mod wait_online_link;
     pub mod wait_online_manager;

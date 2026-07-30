@@ -6,9 +6,6 @@
 // FFI boundary functions use unsafe extern "C" with proper SAFETY comments.
 // Internal logic uses safe Rust with Result<T, Errno> error handling.
 
-use std::ffi::CStr;
-use std::os::raw::c_void;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Errno(pub i32);
 
