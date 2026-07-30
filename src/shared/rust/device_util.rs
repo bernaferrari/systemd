@@ -6,12 +6,12 @@
 //
 // Provides safe wrappers for resolving device names, checking device types,
 // inspecting subsystems, querying seats, and validating device properties.
-// All syscalls (stat, ioctl) are confined to minimal unsafe blocks.
+//
+// This module is a safe behavioral shadow. It does not expose the C ABI or
+// replace sd-device's database-backed lookup machinery.
 
-use crate::ffi::*;
-use std::ffi::CString;
 use std::io;
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
 
@@ -20,11 +20,12 @@ use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
 /// Default seat name used when no ID_SEAT property is set.
 pub const DEFAULT_SEAT: &str = "seat0";
 
-/// Path returned when a device number is zero (inaccessible).
-pub const INACCESSIBLE_DEVICE_PATH: &str = "/dev/inaccessible";
+/// Paths returned for zero-valued inaccessible device numbers.
+pub const INACCESSIBLE_BLOCK_DEVICE_PATH: &str = "/run/systemd/inaccessible/blk";
+pub const INACCESSIBLE_CHAR_DEVICE_PATH: &str = "/run/systemd/inaccessible/chr";
 
-/// Device sysfs base path.
-pub const SYSFS_DEV_PATH: &str = "/dev";
+/// Device-node directory scanned by the safe fallback resolver.
+pub const DEVICE_NODE_DIRECTORY: &str = "/dev";
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
@@ -141,51 +142,34 @@ impl std::fmt::Display for DeviceAction {
     }
 }
 
-// ── Stat helpers ──────────────────────────────────────────────────────────
-
-/// Perform a `stat(2)` call on the given path.
-///
-/// The unsafe block is minimal: it only wraps the libc `stat` syscall.
-fn stat_path(path: &Path) -> io::Result<libc::stat> {
-    let c_path = CString::new(path.as_os_str().as_bytes())
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "path contains NUL byte"))?;
-
-    let mut stat_buf = std::mem::MaybeUninit::<libc::stat>::uninit();
-
-    // SAFETY: c_path is a valid NUL-terminated string, stat_buf is a valid pointer.
-    let ret = unsafe { libc::stat(c_path.as_ptr(), stat_buf.as_mut_ptr()) };
-
-    if ret < 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    // SAFETY: stat succeeded, so stat_buf is now initialized.
-    Ok(unsafe { stat_buf.assume_init() })
-}
-
 // ── Device name resolution ────────────────────────────────────────────────
 
 /// Resolve a device path from a device number by scanning `/dev`.
 ///
-/// If `devnum` is zero, returns the inaccessible device path.
+/// If `devnum` is zero, returns the same mode-specific inaccessible path as
+/// `device_path_make_inaccessible()` in the C implementation.
 pub fn devname_from_devnum(mode: DeviceMode, devnum: u64) -> io::Result<String> {
     if devnum == 0 {
-        return Ok(INACCESSIBLE_DEVICE_PATH.to_string());
+        let path = match mode {
+            DeviceMode::Block => INACCESSIBLE_BLOCK_DEVICE_PATH,
+            DeviceMode::Char => INACCESSIBLE_CHAR_DEVICE_PATH,
+        };
+        return Ok(path.to_string());
     }
 
-    let dev_path = Path::new(SYSFS_DEV_PATH);
+    let dev_path = Path::new(DEVICE_NODE_DIRECTORY);
 
     for entry in std::fs::read_dir(dev_path)? {
         let entry = entry?;
         let path = entry.path();
 
-        let stat_buf = match stat_path(&path) {
-            Ok(s) => s,
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
             Err(_) => continue,
         };
 
-        let ifmt = (stat_buf.st_mode as u32) & libc::S_IFMT as u32;
-        if ifmt == mode.to_mode_bits() && stat_buf.st_rdev as u64 == devnum {
+        let ifmt = metadata.mode() & libc::S_IFMT as u32;
+        if ifmt == mode.to_mode_bits() && metadata.rdev() == devnum {
             return Ok(path.to_string_lossy().to_string());
         }
     }
@@ -210,57 +194,53 @@ pub fn devname_from_stat_rdev(st: &libc::stat) -> io::Result<String> {
 
 /// Check if the given path points to a block device.
 pub fn is_block_device<P: AsRef<Path>>(path: P) -> io::Result<bool> {
-    let st = stat_path(path.as_ref())?;
-    Ok((st.st_mode & libc::S_IFMT) == libc::S_IFBLK)
+    let metadata = std::fs::metadata(path)?;
+    Ok((metadata.mode() & libc::S_IFMT as u32) == libc::S_IFBLK as u32)
 }
 
 /// Check if the given path points to a character device.
 pub fn is_char_device<P: AsRef<Path>>(path: P) -> io::Result<bool> {
-    let st = stat_path(path.as_ref())?;
-    Ok((st.st_mode & libc::S_IFMT) == libc::S_IFCHR)
+    let metadata = std::fs::metadata(path)?;
+    Ok((metadata.mode() & libc::S_IFMT as u32) == libc::S_IFCHR as u32)
 }
 
 /// Check if a path refers to any device (block or character).
 pub fn is_device<P: AsRef<Path>>(path: P) -> io::Result<bool> {
-    let st = stat_path(path.as_ref())?;
-    let ifmt = st.st_mode & libc::S_IFMT;
-    Ok(ifmt == libc::S_IFBLK || ifmt == libc::S_IFCHR)
+    let metadata = std::fs::metadata(path)?;
+    let ifmt = metadata.mode() & libc::S_IFMT as u32;
+    Ok(ifmt == libc::S_IFBLK as u32 || ifmt == libc::S_IFCHR as u32)
 }
 
 // ── Subsystem checks ─────────────────────────────────────────────────────
 
 /// Check if a device (given its sysfs path) belongs to a specific subsystem.
 ///
-/// Reads the `subsystem` and `bus` symlinks under the device's sysfs directory.
+/// Reads the `subsystem` symlink under the device's sysfs directory. The C
+/// helper queries only the sd-device subsystem; a `bus` symlink is not an
+/// alternate subsystem source.
 pub fn device_in_subsystem(device_path: &Path, subsystem: &str) -> io::Result<bool> {
-    if !device_path.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("{}: device path does not exist", device_path.display()),
-        ));
-    }
-    for link_name in ["subsystem", "bus"] {
-        let link_path = device_path.join(link_name);
-        if let Ok(target) = std::fs::read_link(&link_path) {
-            if let Some(name) = target.file_name() {
-                if name == subsystem {
-                    return Ok(true);
-                }
-            }
-        }
-    }
-
-    Ok(false)
+    device_in_subsystems(device_path, &[subsystem])
 }
 
 /// Check if a device's subsystem is one of the given candidates.
 pub fn device_in_subsystems(device_path: &Path, subsystems: &[&str]) -> io::Result<bool> {
-    for subsystem in subsystems {
-        if device_in_subsystem(device_path, subsystem)? {
-            return Ok(true);
+    std::fs::metadata(device_path)?;
+
+    let target = match std::fs::read_link(device_path.join("subsystem")) {
+        Ok(target) => target,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(subsystems.is_empty());
         }
-    }
-    Ok(false)
+        Err(error) => return Err(error),
+    };
+
+    let Some(actual) = target.file_name() else {
+        return Ok(subsystems.is_empty());
+    };
+
+    Ok(subsystems
+        .iter()
+        .any(|candidate| actual == std::ffi::OsStr::new(candidate)))
 }
 
 // ── Device seat ───────────────────────────────────────────────────────────
@@ -272,15 +252,14 @@ pub fn device_in_subsystems(device_path: &Path, subsystems: &[&str]) -> io::Resu
 pub fn device_get_seat(device_path: &Path) -> io::Result<String> {
     let uevent_path = device_path.join("uevent");
 
-    if let Ok(contents) = std::fs::read_to_string(&uevent_path) {
-        for line in contents.lines() {
-            if let Some(value) = line.strip_prefix("ID_SEAT=") {
-                if value.is_empty() {
-                    return Ok(DEFAULT_SEAT.to_string());
-                }
-                return Ok(value.to_string());
+    match std::fs::read_to_string(&uevent_path) {
+        Ok(contents) => {
+            if let Some(seat) = parse_seat_from_uevent(&contents) {
+                return Ok(seat);
             }
         }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
     }
 
     Ok(DEFAULT_SEAT.to_string())
@@ -309,10 +288,6 @@ pub fn parse_seat_from_uevent(uevent_content: &str) -> Option<String> {
 /// etc.), udevd-managed properties (DEVLINKS, TAGS, etc.), and properties
 /// with the `SYNTH_ARG_` prefix.
 pub fn device_property_can_set(property: &str) -> bool {
-    if property.is_empty() {
-        return false;
-    }
-
     // Properties set by kernel / udevd that cannot be changed.
     const READONLY_PROPS: &[&str] = &[
         // Basic properties from netlink events
@@ -379,7 +354,7 @@ pub fn sysname_starts_with<'a>(sysname: &'a str, prefixes: &[&str]) -> Option<(u
 /// Check if a device type string matches the expected devtype.
 ///
 /// If `devtype` is `None`, returns `true` only when the actual devtype is also absent.
-/// If `devtype` is `Some("")`, returns `true` when the actual devtype is absent or empty.
+/// An expected empty string matches only an actual empty string.
 pub fn device_is_devtype(actual_devtype: Option<&str>, expected_devtype: Option<&str>) -> bool {
     match (actual_devtype, expected_devtype) {
         (None, None) => true,
@@ -512,6 +487,7 @@ mod tests {
         assert!(!device_property_can_set("SEQNUM"));
         assert!(!device_property_can_set("SYNTH_UUID"));
         assert!(!device_property_can_set("DEVPATH"));
+        assert!(!device_property_can_set("DEVPATH_OLD"));
         assert!(!device_property_can_set("SUBSYSTEM"));
         assert!(!device_property_can_set("DEVTYPE"));
         assert!(!device_property_can_set("DRIVER"));
@@ -566,7 +542,9 @@ mod tests {
 
     #[test]
     fn test_device_property_can_set_empty() {
-        assert!(!device_property_can_set(""));
+        // The C predicate rejects a null pointer, but an empty non-null string
+        // is not one of its reserved property names.
+        assert!(device_property_can_set(""));
     }
 
     #[test]
@@ -668,18 +646,29 @@ mod tests {
     }
 
     #[test]
-    fn test_devname_from_devnum_zero() {
+    fn test_devname_from_devnum_zero_is_mode_specific() {
         assert_eq!(
             devname_from_devnum(DeviceMode::Block, 0).unwrap(),
-            INACCESSIBLE_DEVICE_PATH
+            INACCESSIBLE_BLOCK_DEVICE_PATH
+        );
+        assert_eq!(
+            devname_from_devnum(DeviceMode::Char, 0).unwrap(),
+            INACCESSIBLE_CHAR_DEVICE_PATH
         );
     }
 
     #[test]
     fn test_constants() {
         assert_eq!(DEFAULT_SEAT, "seat0");
-        assert_eq!(INACCESSIBLE_DEVICE_PATH, "/dev/inaccessible");
-        assert_eq!(SYSFS_DEV_PATH, "/dev");
+        assert_eq!(
+            INACCESSIBLE_BLOCK_DEVICE_PATH,
+            "/run/systemd/inaccessible/blk"
+        );
+        assert_eq!(
+            INACCESSIBLE_CHAR_DEVICE_PATH,
+            "/run/systemd/inaccessible/chr"
+        );
+        assert_eq!(DEVICE_NODE_DIRECTORY, "/dev");
     }
 
     #[test]
@@ -704,6 +693,43 @@ mod tests {
             device_get_seat(Path::new("/nonexistent/device")).unwrap(),
             DEFAULT_SEAT
         );
+    }
+
+    #[test]
+    fn test_device_get_seat_propagates_non_enoent_read_errors() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("uevent"), [0xff]).unwrap();
+
+        assert_eq!(
+            device_get_seat(directory.path()).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
+
+    #[test]
+    fn test_device_in_subsystems_matches_c_missing_semantics() {
+        let directory = tempfile::tempdir().unwrap();
+
+        assert!(device_in_subsystems(directory.path(), &[]).unwrap());
+        assert!(!device_in_subsystems(directory.path(), &["block"]).unwrap());
+    }
+
+    #[test]
+    fn test_device_in_subsystem_does_not_treat_bus_as_subsystem() {
+        let directory = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink("/sys/bus/pci", directory.path().join("bus")).unwrap();
+
+        assert!(!device_in_subsystem(directory.path(), "pci").unwrap());
+    }
+
+    #[test]
+    fn test_device_in_subsystems_matches_subsystem_symlink_basename() {
+        let directory = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink("/sys/class/block", directory.path().join("subsystem")).unwrap();
+
+        assert!(device_in_subsystem(directory.path(), "block").unwrap());
+        assert!(device_in_subsystems(directory.path(), &["net", "block"]).unwrap());
+        assert!(!device_in_subsystems(directory.path(), &[]).unwrap());
     }
 
     #[test]
