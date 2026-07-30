@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/cgroup-util.h, io-util.h, audit-util.h, errno-list.h,
-//            alloc-util.h, string-util.h, socket-util.h, process-util.h, fileio.h
+// PORT-SYNC: scope=basic.basic-validators; authority=src/basic/cgroup-util.h,src/basic/io-util.h,src/basic/audit-util.h,src/basic/errno-list.h,src/basic/alloc-util.h,src/basic/string-util.h,src/basic/socket-util.h,src/basic/process-util.h,src/basic/pidref.h,src/basic/pidref.c,src/basic/fileio.h
 //
 // Small inline validation functions from various headers.
 

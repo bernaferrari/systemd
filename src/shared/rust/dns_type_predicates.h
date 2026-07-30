@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* PORT-SYNC: scope=shared.dns-type-predicates; authority=src/shared/dns-type.c,src/shared/dns-type.h */
+
 /* Rust FFI declarations for shadow testing dns-type.c predicates */
 
 bool rs_dns_type_is_pseudo(uint16_t type);

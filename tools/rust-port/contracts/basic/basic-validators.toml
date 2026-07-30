@@ -1,0 +1,254 @@
+schema = 1
+module = "basic_validators"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = ["empty_or_dash_to_null"]
+
+[authority]
+c_headers = [
+    "src/basic/cgroup-util.h",
+    "src/basic/io-util.h",
+    "src/basic/audit-util.h",
+    "src/basic/errno-list.h",
+    "src/basic/alloc-util.h",
+    "src/basic/macro.h",
+    "src/basic/string-util.h",
+    "src/basic/socket-util.h",
+    "src/basic/process-util.h",
+    "src/basic/pidref.h",
+    "src/basic/fileio.h",
+]
+c_sources = ["src/basic/pidref.c"]
+rust_headers = ["src/basic/rust/basic_validators.h"]
+rust_sources = ["src/basic/rust/basic_validators.rs"]
+
+[[surface]]
+id = "cgroup-weight-validation"
+c_symbols = ["CGROUP_WEIGHT_IS_OK"]
+rust_symbols = ["rs_CGROUP_WEIGHT_IS_OK"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["cgroup-weight-validation"]
+
+[[surface]]
+id = "bfq-weight-scaling"
+c_symbols = ["BFQ_WEIGHT"]
+rust_symbols = ["rs_BFQ_WEIGHT"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["bfq-weight-scaling"]
+
+[[surface]]
+id = "file-size-validation"
+c_symbols = ["FILE_SIZE_VALID", "FILE_SIZE_VALID_OR_INFINITY"]
+rust_symbols = ["rs_FILE_SIZE_VALID", "rs_FILE_SIZE_VALID_OR_INFINITY"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "kernel"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["file-size-validation"]
+
+[[surface]]
+id = "scalar-validator-predicates"
+c_symbols = [
+    "audit_session_is_valid",
+    "errno_is_valid",
+    "VSOCK_CID_IS_REGULAR",
+    "SIGINFO_CODE_IS_DEAD",
+    "pid_is_valid",
+    "pid_is_automatic",
+]
+rust_symbols = [
+    "rs_audit_session_is_valid",
+    "rs_errno_is_valid",
+    "rs_VSOCK_CID_IS_REGULAR",
+    "rs_SIGINFO_CODE_IS_DEAD",
+    "rs_pid_is_valid",
+    "rs_pid_is_automatic",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "environment"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["scalar-validator-predicates"]
+
+[[surface]]
+id = "pidref-state-predicates"
+c_symbols = ["pidref_is_set", "pidref_is_automatic", "pidref_is_set_or_automatic", "pidref_is_remote"]
+rust_symbols = ["rs_pidref_is_set", "rs_pidref_is_automatic", "rs_pidref_is_set_or_automatic", "rs_pidref_is_remote"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "environment"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["pidref-state-predicates"]
+
+[[surface]]
+id = "allocation-overflow-predicate"
+c_symbols = ["size_multiply_overflow"]
+rust_symbols = ["rs_size_multiply_overflow"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["allocation-overflow-predicate"]
+
+[[surface]]
+id = "allocation-roundup"
+c_symbols = ["GREEDY_ALLOC_ROUND_UP"]
+rust_symbols = ["rs_GREEDY_ALLOC_ROUND_UP"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["allocation-roundup"]
+
+[[surface]]
+id = "file-offset-size-boundary"
+c_symbols = ["file_offset_beyond_memory_size"]
+rust_symbols = ["rs_file_offset_beyond_memory_size"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "environment"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["file-offset-size-boundary"]
+
+[[surface]]
+id = "string-fallback-rendering"
+c_symbols = ["strnull", "strna"]
+rust_symbols = ["rs_strnull", "rs_strna"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["strnull", "strna"]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["string-fallback-rendering"]
+
+[[surface]]
+id = "boolean-string-rendering"
+c_symbols = ["true_false", "plus_minus", "one_zero", "enable_disable", "enabled_disabled"]
+rust_symbols = ["rs_true_false", "rs_plus_minus", "rs_one_zero", "rs_enable_disable", "rs_enabled_disabled"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["true_false", "plus_minus", "one_zero", "enable_disable", "enabled_disabled"]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["boolean-string-rendering"]
+
+[[surface]]
+id = "empty-string-normalization"
+c_symbols = ["empty_to_na", "empty_to_dash"]
+rust_symbols = ["rs_empty_to_na", "rs_empty_to_dash"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["empty_to_na", "empty_to_dash"]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["empty-string-normalization"]
+
+[[surface]]
+id = "empty-or-dash-predicate"
+c_symbols = ["empty_or_dash"]
+rust_symbols = ["rs_empty_or_dash"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-basic-validators-rust.c"
+meson_target = "test-basic-validators-rust"
+labels = ["empty-or-dash-predicate"]

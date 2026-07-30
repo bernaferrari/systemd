@@ -1,0 +1,103 @@
+schema = 1
+module = "capability_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "capability_get",
+    "cap_last_cap",
+    "have_effective_cap",
+    "have_inheritable_cap",
+    "capability_gain_cap_setpcap",
+    "capability_bounding_set_drop",
+    "capability_bounding_set_drop_usermode",
+    "capability_ambient_set_apply",
+    "drop_privileges",
+    "drop_capability",
+    "keep_capability",
+    "all_capabilities",
+    "cap_test_all",
+    "capability_quintet_mangle",
+    "capability_quintet_enforce",
+    "capability_get_ambient",
+    "pidref_get_capability",
+]
+
+[authority]
+c_headers = ["src/basic/capability-util.h"]
+c_sources = ["src/basic/capability-util.c"]
+rust_headers = ["src/basic/rust/capability_util.h"]
+rust_sources = ["src/basic/rust/capability_util.rs"]
+
+[[surface]]
+id = "capability-is-set"
+c_symbols = ["capability_is_set"]
+rust_symbols = ["rs_capability_is_set"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-capability-util-rust.c"
+meson_target = "test-capability-util-rust"
+labels = ["capability-is-set"]
+
+[[surface]]
+id = "capability-quintet-is-set"
+c_symbols = ["capability_quintet_is_set"]
+rust_symbols = ["rs_capability_quintet_is_set"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "capability-quintet-null-fail-closed"
+deviation_rationale = "For a valid borrowed CapabilityQuintet, Rust evaluates the same five uint64_t fields as the C inline helper. Rust returns false for a malformed NULL pointer rather than depending on C's invalid dereference precondition."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[surface.static_fixture]
+file = "tests-extra/test-capability-util-rust.c"
+meson_target = "test-capability-util-rust"
+labels = ["capability-quintet-is-set"]
+
+[[surface]]
+id = "capability-quintet-is-fully-set"
+c_symbols = ["capability_quintet_is_fully_set"]
+rust_symbols = ["rs_capability_quintet_is_fully_set"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "capability-quintet-null-fail-closed"
+deviation_rationale = "For a valid borrowed CapabilityQuintet, Rust evaluates the same five uint64_t fields as the C inline helper. Rust returns false for a malformed NULL pointer rather than depending on C's invalid dereference precondition."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[surface.static_fixture]
+file = "tests-extra/test-capability-util-rust.c"
+meson_target = "test-capability-util-rust"
+labels = ["capability-quintet-is-fully-set"]
+
+[[surface]]
+id = "capability-quintet-equal"
+c_symbols = ["capability_quintet_equal"]
+rust_symbols = ["rs_capability_quintet_equal"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "capability-quintet-null-equality-policy"
+deviation_rationale = "For valid borrowed CapabilityQuintet inputs, Rust compares the same five uint64_t fields as the C inline helper. Rust defines two NULL pointers as equal and one NULL pointer as unequal, rather than depending on C's invalid dereference precondition."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[surface.static_fixture]
+file = "tests-extra/test-capability-util-rust.c"
+meson_target = "test-capability-util-rust"
+labels = ["capability-quintet-equal"]

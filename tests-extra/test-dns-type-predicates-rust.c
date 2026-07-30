@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* RUST-CONTRACT: dns-type-predicates */
+/* RUST-CONTRACT: dns-type-address-family */
+/* RUST-CONTRACT: tlsa-name-rendering */
 
 #include <stdint.h>
 

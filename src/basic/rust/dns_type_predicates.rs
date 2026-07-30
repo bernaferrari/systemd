@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/dns-type.c
+// PORT-SYNC: scope=shared.dns-type-predicates; authority=src/shared/dns-type.c,src/shared/dns-type.h
 
 use crate::ffi::Errno;
 use libc::{c_char, c_int};

@@ -14,6 +14,8 @@ purpose = "Describe C-to-Rust ownership, reviewed scopes, and observable behavio
 paths = [
     "tools/rust-port/map.toml",
     "tools/rust-port/contracts/basic/bitmap.toml",
+    "tools/rust-port/contracts/basic/basic-validators.toml",
+    "tools/rust-port/contracts/basic/capability-util.toml",
     "tools/rust-port/contracts/basic/dns-domain-validators.toml",
     "tools/rust-port/contracts/basic/extract-word.toml",
     "tools/rust-port/contracts/basic/mempool.toml",
@@ -53,6 +55,7 @@ paths = [
     "tools/rust-port/contracts/basic/sort-util.toml",
     "tools/rust-port/contracts/basic/path-util.toml",
     "tools/rust-port/contracts/basic/parse-util.toml",
+    "tools/rust-port/contracts/basic/percent-util.toml",
     "tools/rust-port/contracts/basic/stat-util.toml",
     "tools/rust-port/contracts/basic/string-table.toml",
     "tools/rust-port/contracts/basic/strxcpyx.toml",
@@ -62,6 +65,7 @@ paths = [
     "tools/rust-port/contracts/basic/unit-def.toml",
     "tools/rust-port/contracts/basic/utf8.toml",
     "tools/rust-port/contracts/shared/dns-label.toml",
+    "tools/rust-port/contracts/shared/dns-type-predicates.toml",
     "tools/rust-port/check-behavior-contract.py",
     "tools/rust-port/test-behavior-contract.py",
 ]

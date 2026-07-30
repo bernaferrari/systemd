@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/capability-util.h (capability_is_set, quintet helpers)
+// PORT-SYNC: scope=basic.capability-util; authority=src/basic/capability-util.c,src/basic/capability-util.h
 //
 // Pure capability utility functions — no I/O, no syscalls.
 

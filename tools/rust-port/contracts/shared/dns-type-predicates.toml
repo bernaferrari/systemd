@@ -1,0 +1,68 @@
+schema = 1
+module = "dns_type_predicates"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "forbid"
+excluded_c_symbols = ["dns_type_from_string", "dns_type_to_string", "dns_class_to_string", "dns_class_from_string"]
+
+[authority]
+c_headers = ["src/shared/dns-type.h"]
+c_sources = ["src/shared/dns-type.c"]
+rust_headers = ["src/shared/rust/dns_type_predicates.h"]
+rust_sources = ["src/basic/rust/dns_type_predicates.rs"]
+
+[[surface]]
+id = "dns-type-predicates"
+c_symbols = ["dns_type_is_pseudo", "dns_class_is_pseudo", "dns_type_is_valid_query", "dns_type_is_zone_transfer", "dns_type_is_valid_rr", "dns_class_is_valid_rr", "dns_type_may_redirect", "dns_type_may_wildcard", "dns_type_apex_only", "dns_type_is_dnssec", "dns_type_is_obsolete", "dns_type_needs_authentication"]
+rust_symbols = ["rs_dns_type_is_pseudo", "rs_dns_class_is_pseudo", "rs_dns_type_is_valid_query", "rs_dns_type_is_zone_transfer", "rs_dns_type_is_valid_rr", "rs_dns_class_is_valid_rr", "rs_dns_type_may_redirect", "rs_dns_type_may_wildcard", "rs_dns_type_apex_only", "rs_dns_type_is_dnssec", "rs_dns_type_is_obsolete", "rs_dns_type_needs_authentication"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-type-predicates-rust.c"
+meson_target = "test-dns-type-predicates-rust"
+labels = ["dns-type-predicates"]
+
+[[surface]]
+id = "dns-type-address-family"
+c_symbols = ["dns_type_to_af"]
+rust_symbols = ["rs_dns_type_to_af"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-type-predicates-rust.c"
+meson_target = "test-dns-type-predicates-rust"
+labels = ["dns-type-address-family"]
+
+[[surface]]
+id = "tlsa-name-rendering"
+c_symbols = ["tlsa_cert_usage_to_string", "tlsa_selector_to_string", "tlsa_matching_type_to_string"]
+rust_symbols = ["rs_tlsa_cert_usage_to_string", "rs_tlsa_selector_to_string", "rs_tlsa_matching_type_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+symbols = ["tlsa_cert_usage_to_string", "tlsa_selector_to_string", "tlsa_matching_type_to_string"]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "n/a"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-dns-type-predicates-rust.c"
+meson_target = "test-dns-type-predicates-rust"
+labels = ["tlsa-name-rendering"]

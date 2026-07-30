@@ -980,14 +980,50 @@ last_reviewed_rust_blobs = { "src/basic/rust/af_list.rs" = "173febd7888a35acddae
 notes = "Reviewed static address-family ABI slice 2026-07-28; no build/tests/VM. Six facades preserve borrowed strings, NULL/-EINVAL handling, gperf ASCII case folding, and AF_LOCAL/AF_FILE/AF_ROUTE parsing aliases. The hard-coded Linux table is anchored to all generator inputs but remains a target-generated-table P2: only the Linux C-vs-Rust fixture can execute that comparison. C remains the production authority; runtime parity is unclaimed."
 
 [basic_validators]
-c_file = "src/basic/cgroup-util.h"
-rust_file = "src/basic/rust/basic_validators.rs"
-header_file = "src/basic/rust/basic_validators.h"
+c_paths = [
+    "src/basic/cgroup-util.h",
+    "src/basic/io-util.h",
+    "src/basic/audit-util.h",
+    "src/basic/errno-list.h",
+    "src/basic/alloc-util.h",
+    "src/basic/macro.h",
+    "src/basic/string-util.h",
+    "src/basic/socket-util.h",
+    "src/basic/process-util.h",
+    "src/basic/pidref.h",
+    "src/basic/pidref.c",
+    "src/basic/fileio.h",
+]
+rust_paths = [
+    "src/basic/rust/basic_validators.rs",
+    "src/basic/rust/basic_validators.h",
+]
+scope = "basic.basic-validators"
+rust_scope_paths = ["src/basic/rust/basic_validators.rs"]
+rust_interface_paths = ["src/basic/rust/basic_validators.h"]
+contract_file = "tools/rust-port/contracts/basic/basic-validators.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/cgroup-util.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "direct", path = "src/basic/io-util.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "direct", path = "src/basic/audit-util.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "direct", path = "src/basic/errno-list.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "direct", path = "src/basic/alloc-util.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "transitive", path = "src/basic/macro.h", via = ["src/basic/alloc-util.h"], rationale = "GREEDY_ALLOC_ROUND_UP delegates its power-of-two overflow behavior to ALIGN_POWER2." },
+    { kind = "direct", path = "src/basic/string-util.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "direct", path = "src/basic/socket-util.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "direct", path = "src/basic/process-util.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "direct", path = "src/basic/pidref.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "direct", path = "src/basic/pidref.c", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+    { kind = "direct", path = "src/basic/fileio.h", rust_paths = ["src/basic/rust/basic_validators.rs", "src/basic/rust/basic_validators.h"] },
+]
+test_file = "tests-extra/test-basic-validators-rust.c"
 status = "in-progress"
 tier = 3
 symbols = 27
-sync_status = "needs_review"
-notes = "This heterogeneous leaf facade consolidates 27 current inline helpers from cgroup/io/audit/errno/socket/process/pidref/alloc/fileio/string authorities behind one self-contained Rust-owned header. Scalar logic is safe; PidRef field order/types are mechanically pinned to pid_t,int,u64, pointer readers have explicit contracts, and target-width overflow is fail-closed. Exact Rust-linked comparison coverage is static-only; no build/link/runtime claim."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/cgroup-util.h" = "f53a1c9390dcba8147cb0c751e1ac9ceae0c2269", "src/basic/io-util.h" = "0b3d7fff8d47489a60b98bd8d5ad060da37c858f", "src/basic/audit-util.h" = "ff9ce72e0b761208f866c748cca5ab5fb71f07ba", "src/basic/errno-list.h" = "2064afa0f4acf04da23751ba64a720e932afa772", "src/basic/alloc-util.h" = "8505205ce3cac33fddb80114357cce8c77044f5e", "src/basic/macro.h" = "cb0719f15f220706d192c3f18c7930b3f785a622", "src/basic/string-util.h" = "74d6ca16826ab8b709b284fb4cd4c86c94988f99", "src/basic/socket-util.h" = "81e5bf1d4b5c95a57f3da57b3d9d6015a9a74a7b", "src/basic/process-util.h" = "007397704ec42531b6e08a474f11d4e3dee29228", "src/basic/pidref.h" = "a4c138c4bf9ed3a478ebb60dc3c02af1c3258b8b", "src/basic/pidref.c" = "649a207c1ec45e16069205e6866c5fa6b46b7ee4", "src/basic/fileio.h" = "4910b28f9cee953d04f711e494099397267bba67" }
+last_reviewed_rust_blobs = { "src/basic/rust/basic_validators.rs" = "1fe4d3542bd02f4fbe331fb5363179a23f979bd6", "src/basic/rust/basic_validators.h" = "43815921977a1b0fc6de578f71647741170d32c6" }
+notes = "Reviewed static basic-validator ABI slice 2026-07-30. Twenty-seven scalar, PidRef, and borrowed-string facades preserve the named C header rules; PidRef's external automatic predicate is anchored to pidref.c and allocation rounding retains macro.h's overflow rule. The registered C/R shadow fixture differentially covers every claimed facade, but was not executed in this review; runtime parity remains unclaimed and C remains production authority."
 
 [bitmap]
 c_paths = ["src/shared/bitmap.c", "src/shared/bitmap.h", "src/basic/iterator.h"]
@@ -1012,14 +1048,23 @@ notes = "Reviewed static bitmap ABI slice 2026-07-29; no build/tests/VM. Eleven 
 
 [capability_util]
 c_paths = ["src/basic/capability-util.c", "src/basic/capability-util.h"]
-rust_file = "src/basic/rust/capability_util.rs"
-header_file = "src/basic/rust/capability_util.h"
+rust_paths = ["src/basic/rust/capability_util.rs", "src/basic/rust/capability_util.h"]
+scope = "basic.capability-util"
+rust_scope_paths = ["src/basic/rust/capability_util.rs"]
+rust_interface_paths = ["src/basic/rust/capability_util.h"]
+contract_file = "tools/rust-port/contracts/basic/capability-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/capability-util.c", rust_paths = ["src/basic/rust/capability_util.rs", "src/basic/rust/capability_util.h"] },
+    { kind = "direct", path = "src/basic/capability-util.h", rust_paths = ["src/basic/rust/capability_util.rs", "src/basic/rust/capability_util.h"] },
+]
 test_file = "tests-extra/test-capability-util-rust.c"
 status = "in-progress"
 tier = 1
 symbols = 4
-sync_status = "needs_review"
-notes = "Static ABI audit 2026-07-27; no build/tests/VM. The four inline helpers are exact header-backed extern-C facades over repr(C) CapabilityQuintet, retaining the C-owned complete five-uint64_t layout instead of a prefix assumption. The registered C comparison test now consumes the canonical Rust ABI header; runtime differential remains required."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/capability-util.c" = "18942d4c3616d79f264e9a8cdf91bd6f9a3b1ed1", "src/basic/capability-util.h" = "4ef8dd283004bd0fcbb8dd0dc7506de6a0256ea3" }
+last_reviewed_rust_blobs = { "src/basic/rust/capability_util.rs" = "e3140d78dbafcbef4a4b7723104330124cffaa8b", "src/basic/rust/capability_util.h" = "d8f8ff1fb702c54e2a07a3d8ec8c211e8b0ed97d" }
+notes = "Reviewed static header-inline capability ABI slice 2026-07-30; no build/tests/VM. Four facades preserve the C-owned complete five-uint64_t CapabilityQuintet layout and the three inline predicates/equality semantics for valid caller-provided storage. The Rust boundary deliberately returns false for malformed NULL unary pointers and defines two-NULL equality, whereas C callers must provide valid pointers; the fixture tests this explicit fail-closed policy separately. Syscall, procfs, privilege, ambient, bounding, and PID capability operations remain C-only exclusions. C remains production authority; runtime/kernel differential parity is unclaimed."
 
 [credential_validators]
 c_paths = ["src/shared/creds-util.c", "src/shared/creds-util.h", "src/basic/path-util.c", "src/basic/path-util.h", "src/basic/fd-util.c", "src/basic/fd-util.h"]
@@ -1098,15 +1143,24 @@ last_reviewed_rust_blobs = { "src/basic/rust/dns_label.rs" = "443f3a3a186ed63d28
 notes = "Reviewed static DNS label/name ABI slice 2026-07-29; the C/R Meson shadow passed in the Ubuntu Lima guest. Thirty facades preserve C label escaping, DNS name traversal and comparison, wire/address conversion, transforms, DNS-SD composition, libc ownership, and success-only output publication. Reverse IPv4 octets delegate to the reviewed safe_atou8 parser; invalid required outer pointers fail closed by explicit policy. C remains production authority; broader runtime parity remains P2."
 
 [dns_type_predicates]
-c_file = "src/shared/dns-type.c"
-rust_file = "src/basic/rust/dns_type_predicates.rs"
-header_file = "src/shared/dns-type.h"
+c_paths = ["src/shared/dns-type.c", "src/shared/dns-type.h"]
+rust_paths = ["src/basic/rust/dns_type_predicates.rs", "src/shared/rust/dns_type_predicates.h"]
+scope = "shared.dns-type-predicates"
+rust_scope_paths = ["src/basic/rust/dns_type_predicates.rs"]
+rust_interface_paths = ["src/shared/rust/dns_type_predicates.h"]
+contract_file = "tools/rust-port/contracts/shared/dns-type-predicates.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/dns-type.c", rust_paths = ["src/basic/rust/dns_type_predicates.rs", "src/shared/rust/dns_type_predicates.h"] },
+    { kind = "direct", path = "src/shared/dns-type.h", rust_paths = ["src/basic/rust/dns_type_predicates.rs", "src/shared/rust/dns_type_predicates.h"] },
+]
 test_file = "tests-extra/test-dns-type-predicates-rust.c"
 status = "in-progress"
 tier = 1
 symbols = 16
-sync_status = "needs_review"
-notes = "Static audit 2026-07-27; no build/tests/VM. Sixteen exact extern-C exports cover every scalar predicate, dns_type_to_af(), and the three TLSA string lookups in current src/shared/dns-type.c. The FFI uses uint16_t/uint8_t, C bool/int, target libc address-family values, -EINVAL on unsupported address types, and borrowed static NUL-terminated strings. Exact source/header signatures plus future exhaustive C-versus-Rust Meson/CI comparisons are pinned; runtime parity is unclaimed."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/dns-type.c" = "0cf5926f81e66cc84ce59bcce1a787808cbd4fb2", "src/shared/dns-type.h" = "c0cb7679badf176bf51c235825d0afe9aa72bf12" }
+last_reviewed_rust_blobs = { "src/basic/rust/dns_type_predicates.rs" = "1a5c89d128710eea55beb429d023076d6752a486", "src/shared/rust/dns_type_predicates.h" = "52f28558fc64b9f3276a3a77306277602b28a86f" }
+notes = "Reviewed static DNS type predicate ABI slice 2026-07-30; no local Meson runtime evidence. Sixteen C facades preserve exhaustive uint16_t predicate/class and address-family behavior plus exhaustive uint8_t TLSA string rendering, C bool/int ABI, target libc address-family values, -EINVAL on unsupported address types, and borrowed static NUL-terminated strings. dns_type_from/to_string and dns_class_from/to_string remain out of scope. C remains production authority; runtime parity remains P2."
 
 [env_util]
 c_paths = [

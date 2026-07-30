@@ -1,5 +1,17 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C header inline functions vs Rust */
+/* RUST-CONTRACT: cgroup-weight-validation */
+/* RUST-CONTRACT: bfq-weight-scaling */
+/* RUST-CONTRACT: file-size-validation */
+/* RUST-CONTRACT: scalar-validator-predicates */
+/* RUST-CONTRACT: pidref-state-predicates */
+/* RUST-CONTRACT: allocation-overflow-predicate */
+/* RUST-CONTRACT: allocation-roundup */
+/* RUST-CONTRACT: file-offset-size-boundary */
+/* RUST-CONTRACT: string-fallback-rendering */
+/* RUST-CONTRACT: boolean-string-rendering */
+/* RUST-CONTRACT: empty-string-normalization */
+/* RUST-CONTRACT: empty-or-dash-predicate */
 
 #include <assert.h>
 #include <errno.h>

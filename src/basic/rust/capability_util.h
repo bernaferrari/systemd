@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.capability-util; authority=src/basic/capability-util.c,src/basic/capability-util.h */
 #pragma once
 
 /* Keep the public capability mask and CapabilityQuintet layout owned by the
