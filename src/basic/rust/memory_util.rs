@@ -368,7 +368,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn memcpy_safe_copies_prefix() {
         let mut dst = [0u8; 4];
         memcpy_safe(&mut dst, &[9, 8, 7, 6], 3).unwrap();

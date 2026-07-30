@@ -1032,7 +1032,7 @@ mod tests {
         let e2 = e1;
         assert_eq!(e1, e2);
 
-        let e3 = e1.clone();
+        let e3 = e1;
         assert_eq!(e1, e3);
     }
 

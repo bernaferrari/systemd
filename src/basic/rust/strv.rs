@@ -2333,9 +2333,8 @@ mod tests {
 
     fn make_strv(strings: &[&str]) -> *mut *mut c_char {
         // SAFETY: Allocate array with malloc so C can free it
-        let ptr = unsafe {
-            malloc((strings.len() + 1) * std::mem::size_of::<*mut c_char>()) as *mut *mut c_char
-        };
+        let ptr =
+            malloc((strings.len() + 1) * std::mem::size_of::<*mut c_char>()) as *mut *mut c_char;
         if ptr.is_null() {
             return std::ptr::null_mut();
         }

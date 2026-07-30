@@ -4,6 +4,11 @@
 //
 // Tests for the time utility shadow subset.
 
+#![expect(
+    clippy::module_inception,
+    reason = "The dedicated C-mirror test module deliberately lives in time_util/tests.rs."
+)]
+
 #[cfg(test)]
 mod tests {
     use crate::time_util::arithmetic::{
@@ -386,8 +391,7 @@ mod tests {
 
     #[test]
     fn test_timestamp_style_to_string_pretty() {
-        // SAFETY: returns either null or a pointer to a static NUL-terminated entry in TIMESTAMP_STYLE_NAMES.
-        let result = unsafe { rs_timestamp_style_to_string(0) };
+        let result = rs_timestamp_style_to_string(0);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
         let s = unsafe { CStr::from_ptr(result) };
@@ -396,8 +400,7 @@ mod tests {
 
     #[test]
     fn test_timestamp_style_to_string_us() {
-        // SAFETY: returns either null or a pointer to a static NUL-terminated entry in TIMESTAMP_STYLE_NAMES.
-        let result = unsafe { rs_timestamp_style_to_string(1) };
+        let result = rs_timestamp_style_to_string(1);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
         let s = unsafe { CStr::from_ptr(result) };
@@ -406,8 +409,7 @@ mod tests {
 
     #[test]
     fn test_timestamp_style_to_string_utc() {
-        // SAFETY: returns either null or a pointer to a static NUL-terminated entry in TIMESTAMP_STYLE_NAMES.
-        let result = unsafe { rs_timestamp_style_to_string(2) };
+        let result = rs_timestamp_style_to_string(2);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
         let s = unsafe { CStr::from_ptr(result) };
@@ -416,8 +418,7 @@ mod tests {
 
     #[test]
     fn test_timestamp_style_to_string_us_utc() {
-        // SAFETY: returns either null or a pointer to a static NUL-terminated entry in TIMESTAMP_STYLE_NAMES.
-        let result = unsafe { rs_timestamp_style_to_string(3) };
+        let result = rs_timestamp_style_to_string(3);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
         let s = unsafe { CStr::from_ptr(result) };
@@ -426,8 +427,7 @@ mod tests {
 
     #[test]
     fn test_timestamp_style_to_string_unix() {
-        // SAFETY: returns either null or a pointer to a static NUL-terminated entry in TIMESTAMP_STYLE_NAMES.
-        let result = unsafe { rs_timestamp_style_to_string(4) };
+        let result = rs_timestamp_style_to_string(4);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
         let s = unsafe { CStr::from_ptr(result) };
@@ -436,15 +436,13 @@ mod tests {
 
     #[test]
     fn test_timestamp_style_to_string_invalid() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timestamp_style_to_string(99) };
+        let result = rs_timestamp_style_to_string(99);
         assert!(result.is_null());
     }
 
     #[test]
     fn test_timestamp_style_to_string_negative() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timestamp_style_to_string(-1) };
+        let result = rs_timestamp_style_to_string(-1);
         assert!(result.is_null());
     }
 
@@ -756,29 +754,25 @@ mod tests {
 
     #[test]
     fn test_timestamp_is_set_zero() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timestamp_is_set(0) };
+        let result = rs_timestamp_is_set(0);
         assert!(!result);
     }
 
     #[test]
     fn test_timestamp_is_set_infinity() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timestamp_is_set(USEC_INFINITY) };
+        let result = rs_timestamp_is_set(USEC_INFINITY);
         assert!(!result);
     }
 
     #[test]
     fn test_timestamp_is_set_valid() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timestamp_is_set(12345) };
+        let result = rs_timestamp_is_set(12345);
         assert!(result);
     }
 
     #[test]
     fn test_timestamp_is_set_one() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timestamp_is_set(1) };
+        let result = rs_timestamp_is_set(1);
         assert!(result);
     }
 
@@ -883,29 +877,25 @@ mod tests {
 
     #[test]
     fn test_usec_add_normal() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_add(1000, 2000) };
+        let result = rs_usec_add(1000, 2000);
         assert_eq!(result, 3000);
     }
 
     #[test]
     fn test_usec_add_zero() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_add(0, 0) };
+        let result = rs_usec_add(0, 0);
         assert_eq!(result, 0);
     }
 
     #[test]
     fn test_usec_add_overflow() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_add(USEC_INFINITY, 1) };
+        let result = rs_usec_add(USEC_INFINITY, 1);
         assert_eq!(result, USEC_INFINITY);
     }
 
     #[test]
     fn test_usec_add_near_max() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_add(u64::MAX - 1, 1) };
+        let result = rs_usec_add(u64::MAX - 1, 1);
         assert_eq!(result, USEC_INFINITY);
     }
 
@@ -913,36 +903,31 @@ mod tests {
 
     #[test]
     fn test_usec_sub_unsigned_normal() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_unsigned(5000, 2000) };
+        let result = rs_usec_sub_unsigned(5000, 2000);
         assert_eq!(result, 3000);
     }
 
     #[test]
     fn test_usec_sub_unsigned_zero() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_unsigned(0, 0) };
+        let result = rs_usec_sub_unsigned(0, 0);
         assert_eq!(result, 0);
     }
 
     #[test]
     fn test_usec_sub_unsigned_infinity() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_unsigned(USEC_INFINITY, 1000) };
+        let result = rs_usec_sub_unsigned(USEC_INFINITY, 1000);
         assert_eq!(result, USEC_INFINITY);
     }
 
     #[test]
     fn test_usec_sub_unsigned_underflow() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_unsigned(1000, 5000) };
+        let result = rs_usec_sub_unsigned(1000, 5000);
         assert_eq!(result, 0);
     }
 
     #[test]
     fn test_usec_sub_unsigned_equal() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_unsigned(5000, 5000) };
+        let result = rs_usec_sub_unsigned(5000, 5000);
         assert_eq!(result, 0);
     }
 
@@ -950,36 +935,31 @@ mod tests {
 
     #[test]
     fn test_usec_sub_signed_positive_delta() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_signed(5000, 2000) };
+        let result = rs_usec_sub_signed(5000, 2000);
         assert_eq!(result, 3000);
     }
 
     #[test]
     fn test_usec_sub_signed_negative_delta() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_signed(5000, -2000) };
+        let result = rs_usec_sub_signed(5000, -2000);
         assert_eq!(result, 7000);
     }
 
     #[test]
     fn test_usec_sub_signed_zero_delta() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_signed(5000, 0) };
+        let result = rs_usec_sub_signed(5000, 0);
         assert_eq!(result, 5000);
     }
 
     #[test]
     fn test_usec_sub_signed_int64_min() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_signed(0, i64::MIN) };
+        let result = rs_usec_sub_signed(0, i64::MIN);
         assert_eq!(result, (i64::MAX as u64) + 1);
     }
 
     #[test]
     fn test_usec_sub_signed_negative_underflow() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_usec_sub_signed(1000, -5000) };
+        let result = rs_usec_sub_signed(1000, -5000);
         assert_eq!(result, 6000);
     }
 

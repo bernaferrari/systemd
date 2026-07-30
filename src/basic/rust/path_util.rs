@@ -2035,7 +2035,7 @@ mod tests {
         assert!(!is_device_path_bytes(b"dev/foo"));
 
         let mut overlong = b"/dev/".to_vec();
-        overlong.extend(std::iter::repeat(b'x').take(libc::NAME_MAX as usize + 1));
+        overlong.extend(std::iter::repeat_n(b'x', NAME_MAX + 1));
         assert!(!is_device_path_bytes(&overlong));
     }
 

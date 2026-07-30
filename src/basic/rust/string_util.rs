@@ -1010,8 +1010,7 @@ mod tests {
     }
 
     fn c_mut(s: &str) -> *mut c_char {
-        let v = CString::new(s).unwrap().into_raw();
-        v
+        CString::new(s).unwrap().into_raw()
     }
 
     fn drop_c(p: *mut c_char) {
@@ -1039,23 +1038,17 @@ mod tests {
 
     #[test]
     fn test_ascii_tolower() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
-            assert_eq!(rs_ascii_tolower(b'A' as c_char), b'a' as c_char);
-            assert_eq!(rs_ascii_tolower(b'Z' as c_char), b'z' as c_char);
-            assert_eq!(rs_ascii_tolower(b'a' as c_char), b'a' as c_char);
-            assert_eq!(rs_ascii_tolower(b'0' as c_char), b'0' as c_char);
-        }
+        assert_eq!(rs_ascii_tolower(b'A' as c_char), b'a' as c_char);
+        assert_eq!(rs_ascii_tolower(b'Z' as c_char), b'z' as c_char);
+        assert_eq!(rs_ascii_tolower(b'a' as c_char), b'a' as c_char);
+        assert_eq!(rs_ascii_tolower(b'0' as c_char), b'0' as c_char);
     }
 
     #[test]
     fn test_ascii_toupper() {
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
-            assert_eq!(rs_ascii_toupper(b'a' as c_char), b'A' as c_char);
-            assert_eq!(rs_ascii_toupper(b'z' as c_char), b'Z' as c_char);
-            assert_eq!(rs_ascii_toupper(b'A' as c_char), b'A' as c_char);
-        }
+        assert_eq!(rs_ascii_toupper(b'a' as c_char), b'A' as c_char);
+        assert_eq!(rs_ascii_toupper(b'z' as c_char), b'Z' as c_char);
+        assert_eq!(rs_ascii_toupper(b'A' as c_char), b'A' as c_char);
     }
 
     #[test]

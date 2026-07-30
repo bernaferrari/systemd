@@ -385,6 +385,10 @@ pub fn extract_first_word<'a>(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::items_after_test_module,
+    reason = "the C ABI byte-oriented parser follows the UTF-8 facade and shares its helpers"
+)]
 mod tests {
     use super::*;
 

@@ -746,7 +746,7 @@ mod tests {
     fn memdup_returns_empty_for_unset_sources() {
         let src = IoVec::default();
         let mut out = IoVec {
-            iov_base: 1usize as *mut c_void,
+            iov_base: ptr::dangling_mut(),
             iov_len: 1,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.

@@ -1537,6 +1537,38 @@ pub unsafe fn rs_unit_name_mangle(name: *const c_char, flags: i32, ret: *mut *mu
     unsafe { rs_unit_name_mangle_with_suffix(name, ptr::null(), flags, c".service".as_ptr(), ret) }
 }
 
+// ── unit_type_may_alias / unit_type_may_template ────────────────────────
+// From src/shared/unit-file.h
+
+const MAY_ALIAS: &[i32] = &[
+    UNIT_SERVICE,
+    UNIT_SOCKET,
+    UNIT_TARGET,
+    UNIT_DEVICE,
+    UNIT_TIMER,
+    UNIT_PATH,
+];
+
+/// Check if unit type t may alias with other unit types.
+/// Returns true if aliasing is allowed, false otherwise.
+pub(crate) fn unit_type_may_alias_raw(t: i32) -> bool {
+    MAY_ALIAS.contains(&t)
+}
+
+const MAY_TEMPLATE: &[i32] = &[
+    UNIT_SERVICE,
+    UNIT_SOCKET,
+    UNIT_TARGET,
+    UNIT_TIMER,
+    UNIT_PATH,
+];
+
+/// Check if unit type t may be templated.
+/// Returns true if templating is allowed, false otherwise.
+pub(crate) fn unit_type_may_template_raw(t: i32) -> bool {
+    MAY_TEMPLATE.contains(&t)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1557,15 +1589,6 @@ mod tests {
         }
     }
 
-    fn from_raw(ptr: *const c_char) -> String {
-        // SAFETY: `ptr` is expected to point to a valid NUL-terminated string allocated via `CString::into_raw`.
-        unsafe {
-            let s = CStr::from_ptr(ptr).to_str().unwrap().to_string();
-            reclaim_cstring(ptr);
-            s
-        }
-    }
-
     fn from_raw_mut(ptr: *mut c_char) -> String {
         // SAFETY: the unit-name API returned a live NUL-terminated string from
         // this crate's C-compatible allocator.
@@ -1573,7 +1596,7 @@ mod tests {
             let s = CStr::from_ptr(ptr).to_str().unwrap().to_string();
             // SAFETY: `ptr` is the unique C-allocator allocation returned by
             // the unit-name API and is released exactly once here.
-            unsafe { free(ptr.cast::<c_void>()) };
+            free(ptr.cast::<c_void>());
             s
         }
     }
@@ -2179,38 +2202,4 @@ mod tests {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
-}
-
-// ── unit_type_may_alias / unit_type_may_template ────────────────────────
-// From src/shared/unit-file.h
-
-const MAY_ALIAS: &[i32] = &[
-    UNIT_SERVICE,
-    UNIT_SOCKET,
-    UNIT_TARGET,
-    UNIT_DEVICE,
-    UNIT_TIMER,
-    UNIT_PATH,
-];
-
-/// Check if unit type t may alias with other unit types.
-/// Returns true if aliasing is allowed, false otherwise.
-pub(crate) fn unit_type_may_alias_raw(t: i32) -> bool {
-    MAY_ALIAS.contains(&t)
-}
-
-/// Check if unit type t may alias with other unit types.
-/// Returns true if aliasing is allowed, false otherwise.
-const MAY_TEMPLATE: &[i32] = &[
-    UNIT_SERVICE,
-    UNIT_SOCKET,
-    UNIT_TARGET,
-    UNIT_TIMER,
-    UNIT_PATH,
-];
-
-/// Check if unit type t may be templated.
-/// Returns true if templating is allowed, false otherwise.
-pub(crate) fn unit_type_may_template_raw(t: i32) -> bool {
-    MAY_TEMPLATE.contains(&t)
 }
