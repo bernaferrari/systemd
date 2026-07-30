@@ -113,7 +113,7 @@ impl LocalAddress {
     }
 
     pub fn prefsrc_is_set(&self) -> bool {
-        self.prefsrc.as_ref().map_or(false, |p| !p.is_null())
+        self.prefsrc.as_ref().is_some_and(|p| !p.is_null())
     }
 }
 

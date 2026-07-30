@@ -337,79 +337,57 @@ pub fn nss_passwd_to_user_record(
             if sp
                 .sp_pwdp
                 .as_deref()
-                .map_or(false, looks_like_hashed_password) =>
+                .is_some_and(looks_like_hashed_password) =>
         {
             sp.sp_pwdp.iter().cloned().collect()
         }
         _ => Vec::new(),
     };
 
-    let locked = if spwd.map_or(false, |sp| sp.sp_expire.is_some()) {
-        Some(spwd.unwrap().sp_expire.map_or(false, |e| e <= 1))
-    } else {
-        None
-    };
+    let locked = spwd
+        .and_then(|sp| sp.sp_expire)
+        .map(|expires| expires <= 1);
 
     // notAfterUSec
-    let not_after_usec = spwd.map_or(UINT64_MAX, |sp| {
-        if sp.sp_expire.is_some() && sp.sp_expire.unwrap() > 1 {
-            days_to_usec(sp.sp_expire.unwrap())
-        } else {
-            UINT64_MAX
-        }
-    });
+    let not_after_usec = spwd
+        .and_then(|sp| sp.sp_expire)
+        .filter(|expires| *expires > 1)
+        .map_or(UINT64_MAX, days_to_usec);
 
     // passwordChangeNow: sp_lstchg == 0
-    let password_change_now = if spwd.map_or(false, |sp| sp.sp_lstchg.is_some()) {
-        Some(spwd.unwrap().sp_lstchg.map_or(false, |d| d == 0))
-    } else {
-        None
-    };
+    let password_change_now = spwd
+        .and_then(|sp| sp.sp_lstchg)
+        .map(|last_change| last_change == 0);
 
     // lastPasswordChangeUSec
-    let last_password_change_usec = spwd.map_or(UINT64_MAX, |sp| {
-        if sp.sp_lstchg.is_some() && sp.sp_lstchg.unwrap() > 0 {
-            days_to_usec(sp.sp_lstchg.unwrap())
-        } else {
-            UINT64_MAX
-        }
-    });
+    let last_password_change_usec = spwd
+        .and_then(|sp| sp.sp_lstchg)
+        .filter(|last_change| *last_change > 0)
+        .map_or(UINT64_MAX, days_to_usec);
 
     // passwordChangeMinUSec
-    let password_change_min_usec = spwd.map_or(UINT64_MAX, |sp| {
-        if sp.sp_min.is_some() && sp.sp_min.unwrap() > 0 {
-            days_to_usec(sp.sp_min.unwrap())
-        } else {
-            UINT64_MAX
-        }
-    });
+    let password_change_min_usec = spwd
+        .and_then(|sp| sp.sp_min)
+        .filter(|minimum| *minimum > 0)
+        .map_or(UINT64_MAX, days_to_usec);
 
     // passwordChangeMaxUSec
-    let password_change_max_usec = spwd.map_or(UINT64_MAX, |sp| {
-        if sp.sp_max.is_some() && sp.sp_max.unwrap() > 0 {
-            days_to_usec(sp.sp_max.unwrap())
-        } else {
-            UINT64_MAX
-        }
-    });
+    let password_change_max_usec = spwd
+        .and_then(|sp| sp.sp_max)
+        .filter(|maximum| *maximum > 0)
+        .map_or(UINT64_MAX, days_to_usec);
 
     // passwordChangeWarnUSec
-    let password_change_warn_usec = spwd.map_or(UINT64_MAX, |sp| {
-        if sp.sp_warn.is_some() && sp.sp_warn.unwrap() > 0 {
-            days_to_usec(sp.sp_warn.unwrap())
-        } else {
-            UINT64_MAX
-        }
-    });
+    let password_change_warn_usec = spwd
+        .and_then(|sp| sp.sp_warn)
+        .filter(|warning| *warning > 0)
+        .map_or(UINT64_MAX, days_to_usec);
 
     // passwordChangeInactiveUSec
-    let password_change_inactive_usec = spwd.map_or(UINT64_MAX, |sp| {
-        if sp.sp_inact.is_some() && sp.sp_inact.unwrap() > 0 {
-            days_to_usec(sp.sp_inact.unwrap())
-        } else {
-            UINT64_MAX
-        }
-    });
+    let password_change_inactive_usec = spwd
+        .and_then(|sp| sp.sp_inact)
+        .filter(|inactive| *inactive > 0)
+        .map_or(UINT64_MAX, days_to_usec);
 
     // Record mask
     let mut mask = NssRecordMask::REGULAR;
@@ -466,7 +444,7 @@ pub fn nss_group_to_group_record(
         hashed_password = if sg
             .sg_passwd
             .as_deref()
-            .map_or(false, looks_like_hashed_password)
+            .is_some_and(looks_like_hashed_password)
         {
             sg.sg_passwd.iter().cloned().collect()
         } else {

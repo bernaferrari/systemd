@@ -212,7 +212,7 @@ pub fn open_file_to_string(of: &OpenFile) -> String {
     let mut s = escape_colons(&of.path);
 
     let filename = path_extract_filename(&of.path);
-    let has_fdname = filename.map_or(true, |f| f != of.fdname);
+    let has_fdname = filename.is_none_or(|f| f != of.fdname);
 
     // Build option string.
     let opts: Vec<&str> = FLAG_NAMES

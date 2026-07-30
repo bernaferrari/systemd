@@ -1103,14 +1103,14 @@ fn next_matching_value(
         let stop = node.stop;
 
         if start >= current {
-            if best.map_or(true, |v| start < v) {
+            if best.is_none_or(|v| start < v) {
                 best = Some(start);
             }
         } else if node.repeat > 0 {
             let delta = current - start;
             let step = ((delta + node.repeat - 1) / node.repeat) * node.repeat;
             let candidate = start + step;
-            if (stop < 0 || candidate <= stop) && best.map_or(true, |v| candidate < v) {
+            if (stop < 0 || candidate <= stop) && best.is_none_or(|v| candidate < v) {
                 best = Some(candidate);
             }
         }

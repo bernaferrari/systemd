@@ -835,14 +835,14 @@ pub fn socket_address_parse_netlink(s: &str) -> Result<SocketAddress> {
 ///
 /// Parses `s` as a socket address and compares it to `a`.
 pub fn socket_address_equal_str(a: &SocketAddress, s: &str) -> bool {
-    socket_address_parse(s).map_or(false, |b| a == &b)
+    socket_address_parse(s).is_ok_and(|b| a == &b)
 }
 
 /// Check if a netlink socket address matches the given string representation.
 ///
 /// Parses `s` as a netlink address and compares it to `a`.
 pub fn socket_address_equal_netlink_str(a: &SocketAddress, s: &str) -> bool {
-    socket_address_parse_netlink(s).map_or(false, |b| a == &b)
+    socket_address_parse_netlink(s).is_ok_and(|b| a == &b)
 }
 
 // ── Netlink socket helpers (minimal unsafe) ──────────────────────────

@@ -501,8 +501,8 @@ pub fn fd_chown_recursive<Fd: AsRawFd>(fd: &Fd, opts: &ChownOptions) -> io::Resu
     }
 
     // Shortcut — same logic as in `path_chown_recursive`.
-    let uid_ok = opts.uid.map_or(true, |u| stat_buf.st_uid == u);
-    let gid_ok = opts.gid.map_or(true, |g| stat_buf.st_gid == g);
+    let uid_ok = opts.uid.is_none_or(|u| stat_buf.st_uid == u);
+    let gid_ok = opts.gid.is_none_or(|g| stat_buf.st_gid == g);
     let mode_ok = (stat_buf.st_mode as u32 & !opts.mode_mask & 0o7777) == 0;
     if uid_ok && gid_ok && mode_ok {
         return Ok(false);

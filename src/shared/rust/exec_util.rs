@@ -253,7 +253,7 @@ pub fn is_world_writable(path: &Path) -> bool {
 
 /// Check if path is null or empty
 pub fn null_or_empty_path(path: Option<&str>) -> bool {
-    path.map_or(true, |p| p.is_empty())
+    path.is_none_or(|p| p.is_empty())
 }
 
 /// Check if path contains a slash

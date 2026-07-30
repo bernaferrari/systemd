@@ -505,7 +505,7 @@ pub fn pager_close(mut session: PagerSession) -> Result<(), PagerError> {
 
 /// Check whether a pager session is currently active.
 pub fn pager_have(session: &Option<PagerSession>) -> bool {
-    session.as_ref().map_or(false, PagerSession::is_active)
+    session.as_ref().is_some_and(PagerSession::is_active)
 }
 
 /// Show a man page by forking the `man` command.
