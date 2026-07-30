@@ -13,6 +13,7 @@ use std::{ffi::CStr, fmt::Write as FmtWrite};
 
 use systemd_basic_rs::{
     capability_util::CAP_LIMIT,
+    escape::{ShellEscapeFlags, shell_maybe_quote as basic_shell_maybe_quote},
     mountpoint_util::{MountPropagationFlag, mount_propagation_flag_to_string},
 };
 
@@ -420,26 +421,26 @@ pub fn format_double_property(
 
 /// Format a string array property.
 ///
-/// Values are shell-quoted and space-separated on a single line.
+/// Values are shell-quoted and space-separated on a single line. As in C,
+/// the `expected_value` parameter is not applied to array values.
 pub fn format_string_array_property(
     name: &str,
-    expected_value: Option<&str>,
+    _expected_value: Option<&str>,
     flags: BusPrintPropertyFlags,
     values: &[String],
 ) -> Option<String> {
-    // Filter by expected value (match against joined output)
+    // `bus_print_property()` receives `expected_value` for every type, but
+    // the current C `as` branch intentionally does not compare it. Preserve
+    // that behavior instead of treating the rendered array as a scalar.
     if !flags.contains(BusPrintPropertyFlags::SHOW_EMPTY) && values.is_empty() {
         return None;
     }
 
-    let quoted: Vec<String> = values.iter().map(|s| shell_maybe_quote(s)).collect();
+    let quoted: Vec<String> = values
+        .iter()
+        .map(|s| basic_shell_maybe_quote(s, ShellEscapeFlags::empty()))
+        .collect();
     let joined = quoted.join(" ");
-
-    if let Some(expected) = expected_value {
-        if expected != joined {
-            return None;
-        }
-    }
 
     let mut out = String::new();
     if !flags.contains(BusPrintPropertyFlags::ONLY_VALUE) {
@@ -452,7 +453,7 @@ pub fn format_string_array_property(
 /// Format a byte array property as hex.
 pub fn format_byte_array_property(
     name: &str,
-    expected_value: Option<&str>,
+    _expected_value: Option<&str>,
     flags: BusPrintPropertyFlags,
     bytes: &[u8],
 ) -> Option<String> {
@@ -461,12 +462,6 @@ pub fn format_byte_array_property(
     }
 
     let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
-
-    if let Some(expected) = expected_value {
-        if expected != hex {
-            return None;
-        }
-    }
 
     let mut out = String::new();
     if !flags.contains(BusPrintPropertyFlags::ONLY_VALUE) {
@@ -479,7 +474,7 @@ pub fn format_byte_array_property(
 /// Format a uint32 array property as 8-digit hex values.
 pub fn format_uint32_array_property(
     name: &str,
-    expected_value: Option<&str>,
+    _expected_value: Option<&str>,
     flags: BusPrintPropertyFlags,
     values: &[u32],
 ) -> Option<String> {
@@ -488,12 +483,6 @@ pub fn format_uint32_array_property(
     }
 
     let hex: String = values.iter().map(|v| format!("{:08x}", v)).collect();
-
-    if let Some(expected) = expected_value {
-        if expected != hex {
-            return None;
-        }
-    }
 
     let mut out = String::new();
     if !flags.contains(BusPrintPropertyFlags::ONLY_VALUE) {
@@ -760,22 +749,10 @@ pub fn parse_boolean(s: &str) -> Option<bool> {
     }
 }
 
-/// Shell-quote a string if it contains special characters.
-///
-/// Wraps in single quotes and escapes embedded single quotes per shell convention.
+/// Shell-quote a string with the exact current C flags used by the array
+/// printer (shell_maybe_quote(value, 0)).
 pub fn shell_maybe_quote(s: &str) -> String {
-    if s.is_empty() {
-        return "''".into();
-    }
-    let needs_quoting = s
-        .chars()
-        .any(|c| !c.is_ascii_alphanumeric() && c != '_' && c != '-' && c != '.' && c != '/');
-    if !needs_quoting {
-        return s.into();
-    }
-    // Use single-quote quoting: replace ' with '\''
-    let escaped = s.replace('\'', "'\\''");
-    format!("'{}'", escaped)
+    basic_shell_maybe_quote(s, ShellEscapeFlags::empty())
 }
 
 /// Format namespace restriction flags.
@@ -1165,7 +1142,7 @@ mod tests {
         let values = vec!["foo".into(), "bar baz".into()];
         let result =
             format_string_array_property("Wants", None, BusPrintPropertyFlags::empty(), &values);
-        assert_eq!(result, Some("Wants=foo 'bar baz'".into()));
+        assert_eq!(result, Some("Wants=foo \"bar baz\"".into()));
     }
 
     #[test]
@@ -1200,6 +1177,37 @@ mod tests {
             &values,
         );
         assert_eq!(result, Some("BindPaths=12345678abcdef00".into()));
+    }
+
+    #[test]
+    fn test_array_expected_value_is_ignored_like_c() {
+        assert_eq!(
+            format_string_array_property(
+                "Wants",
+                Some("does-not-match"),
+                BusPrintPropertyFlags::empty(),
+                &["foo".into()],
+            ),
+            Some("Wants=foo".into())
+        );
+        assert_eq!(
+            format_byte_array_property(
+                "CalloutMask",
+                Some("does-not-match"),
+                BusPrintPropertyFlags::empty(),
+                &[0xde],
+            ),
+            Some("CalloutMask=de".into())
+        );
+        assert_eq!(
+            format_uint32_array_property(
+                "BindPaths",
+                Some("does-not-match"),
+                BusPrintPropertyFlags::empty(),
+                &[0x1234],
+            ),
+            Some("BindPaths=00001234".into())
+        );
     }
 
     #[test]
@@ -1269,9 +1277,9 @@ mod tests {
 
     #[test]
     fn test_shell_maybe_quote_needs_quoting() {
-        assert_eq!(shell_maybe_quote("hello world"), "'hello world'");
-        assert_eq!(shell_maybe_quote(""), "''");
-        assert_eq!(shell_maybe_quote("it's"), "'it'\\''s'");
+        assert_eq!(shell_maybe_quote("hello world"), "\"hello world\"");
+        assert_eq!(shell_maybe_quote(""), "");
+        assert_eq!(shell_maybe_quote("it's"), "\"it's\"");
     }
 
     #[test]
