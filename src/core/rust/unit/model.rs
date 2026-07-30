@@ -231,9 +231,10 @@ impl RateLimit {
             return Ok(());
         }
 
-        if self.begin_usec.map_or(true, |begin| {
-            now_usec.saturating_sub(begin) > self.interval_usec
-        }) {
+        if self
+            .begin_usec
+            .is_none_or(|begin| now_usec.saturating_sub(begin) > self.interval_usec)
+        {
             self.begin_usec = Some(now_usec);
             self.num = 1;
             return Ok(());

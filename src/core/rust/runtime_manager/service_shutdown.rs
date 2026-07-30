@@ -260,10 +260,10 @@ impl RuntimeManager {
         if let Some(pid) = control_pid {
             targets.insert(pid);
         }
-        if kill_mode != KillMode::None {
-            if let Some(pid) = main_pid {
-                targets.insert(pid);
-            }
+        if kill_mode != KillMode::None
+            && let Some(pid) = main_pid
+        {
+            targets.insert(pid);
         }
         if cgroup_wide {
             match self.read_unit_cgroup_pids(name) {
@@ -296,9 +296,10 @@ impl RuntimeManager {
 
     pub(super) fn maybe_complete_service_kill_phase(&mut self, name: &str, state: ServiceState) {
         if state == ServiceState::StopPost {
-            let pids_gone = self.units.get(name).map_or(true, |unit| {
-                unit.main_pid.is_none() && unit.control_pid.is_none()
-            });
+            let pids_gone = self
+                .units
+                .get(name)
+                .is_none_or(|unit| unit.main_pid.is_none() && unit.control_pid.is_none());
             if pids_gone {
                 self.enter_final_signal(name, ServiceResult::Success);
             }
@@ -310,9 +311,10 @@ impl RuntimeManager {
             return;
         }
 
-        let pids_gone = self.units.get(name).map_or(true, |unit| {
-            unit.main_pid.is_none() && unit.control_pid.is_none()
-        });
+        let pids_gone = self
+            .units
+            .get(name)
+            .is_none_or(|unit| unit.main_pid.is_none() && unit.control_pid.is_none());
         if pids_gone {
             self.advance_signal_state(name, state, ServiceResult::Success);
         }
@@ -549,9 +551,10 @@ impl RuntimeManager {
             }
         }
 
-        let pids_gone = self.units.get(name).map_or(true, |unit| {
-            unit.main_pid.is_none() && unit.control_pid.is_none()
-        });
+        let pids_gone = self
+            .units
+            .get(name)
+            .is_none_or(|unit| unit.main_pid.is_none() && unit.control_pid.is_none());
         match self.services.get(name).map(|service| service.state) {
             Some(ServiceState::Running) => self.enter_running(name),
             Some(

@@ -168,15 +168,13 @@ fn kernel_release() -> Option<String> {
 }
 
 fn unit_suffix(id: &str) -> &str {
-    id.rsplit_once('.')
-        .map(|(left, right)| &id[left.len()..=left.len() + right.len()])
-        .unwrap_or("")
+    id.rsplit_once('.').map_or("", |(left, right)| {
+        &id[left.len()..=left.len() + right.len()]
+    })
 }
 
 fn prefix_and_suffix(id: &str) -> (&str, &str) {
-    id.rsplit_once('.')
-        .map(|(prefix, suffix)| (prefix, suffix))
-        .unwrap_or((id, ""))
+    id.rsplit_once('.').unwrap_or((id, ""))
 }
 
 fn unit_name_to_prefix_and_instance(id: &str) -> String {

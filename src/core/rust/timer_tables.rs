@@ -3,6 +3,8 @@
 // PORT-SYNC: src/core/timer.c
 //
 
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimerTableError {
     InvalidValue,
@@ -31,8 +33,12 @@ impl TimerBase {
             Self::Calendar => "OnCalendar",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self> {
+impl FromStr for TimerBase {
+    type Err = TimerTableError;
+
+    fn from_str(value: &str) -> Result<Self> {
         match value {
             "OnActiveSec" => Ok(Self::Active),
             "OnBootSec" => Ok(Self::Boot),
@@ -43,7 +49,9 @@ impl TimerBase {
             _ => Err(TimerTableError::InvalidValue),
         }
     }
+}
 
+impl TimerBase {
     pub fn to_usec_string(self) -> String {
         match self.as_str().strip_suffix("Sec") {
             Some(prefix) => format!("{prefix}USec"),
@@ -67,8 +75,12 @@ impl TimerResult {
             Self::StartLimitHit => "start-limit-hit",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self> {
+impl FromStr for TimerResult {
+    type Err = TimerTableError;
+
+    fn from_str(value: &str) -> Result<Self> {
         match value {
             "success" => Ok(Self::Success),
             "resources" => Ok(Self::Resources),

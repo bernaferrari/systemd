@@ -3,6 +3,8 @@
 // PORT-SYNC: src/core/show-status.c
 //
 
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShowStatusError {
     InvalidValue,
@@ -29,8 +31,12 @@ impl ShowStatus {
             Self::Yes => "yes",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self> {
+impl FromStr for ShowStatus {
+    type Err = ShowStatusError;
+
+    fn from_str(value: &str) -> Result<Self> {
         if is_boolean_false(value) {
             return Ok(Self::No);
         }
@@ -64,8 +70,12 @@ impl StatusUnitFormat {
             Self::Combined => "combined",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self> {
+impl FromStr for StatusUnitFormat {
+    type Err = ShowStatusError;
+
+    fn from_str(value: &str) -> Result<Self> {
         match value {
             "name" => Ok(Self::Name),
             "description" => Ok(Self::Description),

@@ -2,6 +2,8 @@
 //
 // PORT-SYNC: src/core/path.c, src/core/path.h
 
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathType {
     Exists,
@@ -57,8 +59,12 @@ impl PathType {
             _ => None,
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, ParsePathTypeError> {
+impl FromStr for PathType {
+    type Err = ParsePathTypeError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "PathExists" => Ok(Self::Exists),
             "PathExistsGlob" => Ok(Self::ExistsGlob),
@@ -101,8 +107,12 @@ impl PathResult {
             _ => None,
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, ParsePathResultError> {
+impl FromStr for PathResult {
+    type Err = ParsePathResultError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "success" => Ok(Self::Success),
             "resources" => Ok(Self::FailureResources),

@@ -6,8 +6,9 @@ use crate::ffi::Errno;
 
 pub const SOURCE_PATH: &str = "src/core/dbus-automount.c";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LoadState {
+    #[default]
     Stub,
     Loaded,
 }
@@ -85,12 +86,6 @@ pub struct AutomountUnit {
     pub transient: bool,
     pub load_state: LoadState,
     pub automount: Automount,
-}
-
-impl Default for LoadState {
-    fn default() -> Self {
-        Self::Stub
-    }
 }
 
 fn is_absolute_path(path: &str) -> bool {

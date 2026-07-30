@@ -56,9 +56,7 @@ const TAINT_SHORT_GID_RANGE: &str = "short-gid-range";
 
 fn path_in_set(candidate: LinkTargetState<'_>, allowed: &[&str]) -> bool {
     match candidate {
-        LinkTargetState::Canonical(path) => {
-            allowed.iter().any(|allowed_path| path == *allowed_path)
-        }
+        LinkTargetState::Canonical(path) => allowed.contains(&path),
         LinkTargetState::Missing => false,
     }
 }

@@ -256,12 +256,12 @@ impl SocketActivationManager {
             .unwrap_or(unit_name)
             .to_string();
 
-        if let Some(existing) = self.sockets.get(unit_name) {
-            if existing.fd_name != requested_fd_name {
-                return Err(format!(
-                    "{unit_name}: cannot change FileDescriptorName= while listeners are active"
-                ));
-            }
+        if let Some(existing) = self.sockets.get(unit_name)
+            && existing.fd_name != requested_fd_name
+        {
+            return Err(format!(
+                "{unit_name}: cannot change FileDescriptorName= while listeners are active"
+            ));
         }
 
         // Bind first, then mutate. `new_listeners` owns all work until this operation commits.
@@ -311,7 +311,7 @@ impl SocketActivationManager {
         listen_fds: usize,
         child_pid: u32,
     ) -> Vec<(String, String)> {
-        Self::build_env_for_fd_names(std::iter::repeat(unit_name).take(listen_fds), child_pid)
+        Self::build_env_for_fd_names(std::iter::repeat_n(unit_name, listen_fds), child_pid)
     }
 
     pub fn build_env_for_fd_names<'a, I>(fd_names: I, child_pid: u32) -> Vec<(String, String)>

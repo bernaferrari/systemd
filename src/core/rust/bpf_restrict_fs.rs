@@ -60,23 +60,12 @@ pub struct CgroupFilesystemPolicy {
     pub allowed_magic: BTreeSet<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RestrictFsState {
     pub supported: Option<bool>,
     pub attached: bool,
     pub cgroup_hash_fd: Option<i32>,
     pub tracked_cgroups: BTreeSet<u64>,
-}
-
-impl Default for RestrictFsState {
-    fn default() -> Self {
-        Self {
-            supported: None,
-            attached: false,
-            cgroup_hash_fd: None,
-            tracked_cgroups: BTreeSet::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

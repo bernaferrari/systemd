@@ -8,6 +8,8 @@
 //! [`crate::runtime_manager::RuntimeManager`] owner, but it shares that
 //! manager's canonical objective vocabulary.
 
+use std::str::FromStr;
+
 use crate::ffi::Errno;
 pub use crate::manager_tables::ManagerObjective;
 
@@ -57,8 +59,12 @@ impl EmergencyAction {
             Self::HaltImmediate => "halt-immediate",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, Errno> {
+impl FromStr for EmergencyAction {
+    type Err = Errno;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "none" => Ok(Self::None),
             "exit" => Ok(Self::Exit),
@@ -79,7 +85,9 @@ impl EmergencyAction {
             _ => Err(Errno::EINVAL),
         }
     }
+}
 
+impl EmergencyAction {
     pub const fn is_shutdown_sensitive(self) -> bool {
         matches!(
             self,

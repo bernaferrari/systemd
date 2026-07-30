@@ -12,7 +12,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::manager_tables::{ManagerObjective, ManagerState};
 use systemd_shared_rs::unit_file::UnitFile;
@@ -461,24 +461,23 @@ fn default_unit_paths() -> Vec<PathBuf> {
 fn unit_candidate_names(name: &str) -> Vec<String> {
     let mut candidates = vec![name.to_string()];
 
-    if let Some((stem, suffix)) = name.rsplit_once('.') {
-        if let Some((prefix, instance)) = stem.split_once('@') {
-            if !instance.is_empty() {
-                candidates.push(format!("{prefix}@.{suffix}"));
-            }
-        }
+    if let Some((stem, suffix)) = name.rsplit_once('.')
+        && let Some((prefix, instance)) = stem.split_once('@')
+        && !instance.is_empty()
+    {
+        candidates.push(format!("{prefix}@.{suffix}"));
     }
 
     candidates
 }
 
-fn parse_fragment(path: &PathBuf) -> Result<(), UnitLoadError> {
+fn parse_fragment(path: &Path) -> Result<(), UnitLoadError> {
     let file = File::open(path)?;
     let _ = UnitFile::parse_reader_strict_systemd(file)?;
     Ok(())
 }
 
-fn canonical_unit_name(path: &PathBuf) -> Option<String> {
+fn canonical_unit_name(path: &Path) -> Option<String> {
     path.file_name()
         .and_then(|name| name.to_str())
         .map(|name| name.to_string())

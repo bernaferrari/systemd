@@ -334,10 +334,10 @@ impl RuntimeManager {
 
         for planned in &applied.jobs {
             let unit = self.units.get(&planned.unit).ok_or(Errno::ENOENT)?;
-            if !staged.contains_key(&planned.unit) {
-                if let Some(existing) = self.installed_job_for_unit(&planned.unit).cloned() {
-                    staged.insert(planned.unit.clone(), existing);
-                }
+            if !staged.contains_key(&planned.unit)
+                && let Some(existing) = self.installed_job_for_unit(&planned.unit).cloned()
+            {
+                staged.insert(planned.unit.clone(), existing);
             }
 
             let kind = super::transaction_job_type_to_canonical(planned.job_type);
@@ -402,17 +402,17 @@ impl RuntimeManager {
                 return;
             }
 
-            if let Some(transaction_kind) = super::canonical_job_type_to_transaction(kind) {
-                if !self.execute_socket_job(&unit_name, transaction_kind) {
-                    match transaction_kind {
-                        TxJobType::Start | TxJobType::Reload => {
-                            self.publish_nonservice_state(&unit_name, ActiveState::Active)
-                        }
-                        TxJobType::Stop => {
-                            self.publish_nonservice_state(&unit_name, ActiveState::Inactive)
-                        }
-                        _ => {}
+            if let Some(transaction_kind) = super::canonical_job_type_to_transaction(kind)
+                && !self.execute_socket_job(&unit_name, transaction_kind)
+            {
+                match transaction_kind {
+                    TxJobType::Start | TxJobType::Reload => {
+                        self.publish_nonservice_state(&unit_name, ActiveState::Active)
                     }
+                    TxJobType::Stop => {
+                        self.publish_nonservice_state(&unit_name, ActiveState::Inactive)
+                    }
+                    _ => {}
                 }
             }
 

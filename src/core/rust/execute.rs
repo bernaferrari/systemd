@@ -43,19 +43,14 @@ pub enum PrivatePids {
     Yes,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExecDirectoryType {
+    #[default]
     Runtime,
     State,
     Cache,
     Logs,
     Configuration,
-}
-
-impl Default for ExecDirectoryType {
-    fn default() -> Self {
-        Self::Runtime
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

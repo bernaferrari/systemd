@@ -2,6 +2,8 @@
 //
 // PORT-SYNC: src/core/automount.c, src/core/automount.h
 //
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutomountResult {
     Success,
@@ -45,8 +47,12 @@ impl AutomountResult {
             _ => None,
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, ParseAutomountResultError> {
+impl FromStr for AutomountResult {
+    type Err = ParseAutomountResultError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "success" => Ok(Self::Success),
             "resources" => Ok(Self::FailureResources),

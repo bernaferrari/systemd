@@ -2,6 +2,8 @@
 //
 // PORT-SYNC: src/core/service.c, src/core/service.h
 //
+use std::str::FromStr;
+
 use crate::ffi::Errno;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,7 +42,12 @@ macro_rules! service_enum {
                 }
             }
 
-            pub fn from_str(value: &str) -> Result<Self, ParseServiceTableError> {
+        }
+
+        impl FromStr for $name {
+            type Err = ParseServiceTableError;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
                 match value {
                     $($text => Ok(Self::$variant),)+
                     _ => Err($err),
@@ -158,8 +165,12 @@ impl ServiceRefreshOnReload {
             Self::Credentials => "credentials",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, ParseServiceTableError> {
+impl FromStr for ServiceRefreshOnReload {
+    type Err = ParseServiceTableError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "extensions" => Ok(Self::Extensions),
             "credentials" => Ok(Self::Credentials),

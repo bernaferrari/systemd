@@ -94,10 +94,11 @@ impl DynamicUserManager {
         name: &str,
     ) -> Result<u32, DynamicUserError> {
         for path in suggested_paths {
-            if let Some(uid) = self.path_owners.get(path).copied() {
-                if uid_is_dynamic(uid) && !self.used_ids.contains(&uid) {
-                    return Ok(uid);
-                }
+            if let Some(uid) = self.path_owners.get(path).copied()
+                && uid_is_dynamic(uid)
+                && !self.used_ids.contains(&uid)
+            {
+                return Ok(uid);
             }
         }
 

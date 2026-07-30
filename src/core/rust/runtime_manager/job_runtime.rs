@@ -19,9 +19,9 @@ use crate::unit::DependencyKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DependencyFailureAtom {
-    StartFailure,
-    StopFailure,
-    InactiveStartFailure,
+    Start,
+    Stop,
+    InactiveStart,
 }
 
 impl RuntimeManager {
@@ -159,9 +159,9 @@ impl RuntimeManager {
             let failure_atom = if result != CanonicalJobResult::Done {
                 match job.kind {
                     CanonicalJobType::Start | CanonicalJobType::VerifyActive => {
-                        Some(DependencyFailureAtom::StartFailure)
+                        Some(DependencyFailureAtom::Start)
                     }
-                    CanonicalJobType::Stop => Some(DependencyFailureAtom::StopFailure),
+                    CanonicalJobType::Stop => Some(DependencyFailureAtom::Stop),
                     _ => None,
                 }
             } else if matches!(job.kind, CanonicalJobType::Start | CanonicalJobType::Reload)
@@ -170,7 +170,7 @@ impl RuntimeManager {
                     .get(&job.unit)
                     .is_some_and(|unit| unit.active_state.is_active_or_reloading())
             {
-                Some(DependencyFailureAtom::InactiveStartFailure)
+                Some(DependencyFailureAtom::InactiveStart)
             } else {
                 None
             };
@@ -184,10 +184,10 @@ impl RuntimeManager {
             } else {
                 CanonicalJobState::Failed
             });
-            if let Some(unit) = self.units.get_mut(&job.unit) {
-                if unit.current_job_id == Some(id) {
-                    unit.current_job_id = None;
-                }
+            if let Some(unit) = self.units.get_mut(&job.unit)
+                && unit.current_job_id == Some(id)
+            {
+                unit.current_job_id = None;
             }
             self.submit_bound_unit_for_recheck(&job.unit);
 
@@ -225,7 +225,7 @@ impl RuntimeManager {
                 }
 
                 let propagates = match atom {
-                    DependencyFailureAtom::StartFailure => [
+                    DependencyFailureAtom::Start => [
                         DependencyKind::Requires,
                         DependencyKind::Requisite,
                         DependencyKind::BindsTo,
@@ -236,11 +236,11 @@ impl RuntimeManager {
                             .get(&kind)
                             .is_some_and(|dependencies| dependencies.contains(prerequisite))
                     }),
-                    DependencyFailureAtom::StopFailure => unit
+                    DependencyFailureAtom::Stop => unit
                         .dependencies
                         .get(&DependencyKind::Conflicts)
                         .is_some_and(|dependencies| dependencies.contains(prerequisite)),
-                    DependencyFailureAtom::InactiveStartFailure => unit
+                    DependencyFailureAtom::InactiveStart => unit
                         .dependencies
                         .get(&DependencyKind::Requisite)
                         .is_some_and(|dependencies| dependencies.contains(prerequisite)),

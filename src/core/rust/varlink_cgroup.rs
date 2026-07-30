@@ -322,10 +322,10 @@ pub fn unit_cgroup_context_build_json(
 ) -> Result<Option<JsonValue>, VarlinkCgroupError> {
     let mut object = BTreeMap::new();
 
-    if let Some(slice) = &context.slice {
-        if !slice.is_empty() {
-            object.insert("Slice".into(), JsonValue::string(slice));
-        }
+    if let Some(slice) = &context.slice
+        && !slice.is_empty()
+    {
+        object.insert("Slice".into(), JsonValue::string(slice));
     }
     if let Some(value) = context.cpu_weight {
         object.insert("CPUWeight".into(), JsonValue::number(value));
@@ -376,10 +376,10 @@ pub fn unit_cgroup_context_build_json(
     if context.io_accounting {
         object.insert("IOAccounting".into(), JsonValue::Bool(true));
     }
-    if let Some(tasks_max) = &context.tasks_max {
-        if let Some(value) = tasks_max_build_json(tasks_max)? {
-            object.insert("TasksMax".into(), value);
-        }
+    if let Some(tasks_max) = &context.tasks_max
+        && let Some(value) = tasks_max_build_json(tasks_max)?
+    {
+        object.insert("TasksMax".into(), value);
     }
     if let Some(value) = device_allow_build_json(&context.device_allow)? {
         object.insert("DeviceAllow".into(), value);

@@ -15,16 +15,11 @@ pub enum FuzzError {
 
 pub type Result<T> = std::result::Result<T, FuzzError>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PrivateTmp {
+    #[default]
     Connected,
     Disconnected,
-}
-
-impl Default for PrivateTmp {
-    fn default() -> Self {
-        Self::Connected
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +95,10 @@ pub struct CGroupContext;
 pub struct FdSet;
 
 pub trait ExecuteCodec {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the C serialization boundary carries its fixed invocation state explicitly"
+    )]
     fn deserialize_invocation(
         &mut self,
         input: &[u8],

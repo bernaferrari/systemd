@@ -2,6 +2,8 @@
 //
 // PORT-SYNC: src/core/crash-handler.c, src/core/crash-handler.h
 //
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CrashAction {
     Freeze,
@@ -42,8 +44,12 @@ impl CrashAction {
             Self::Poweroff => "poweroff",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, ParseCrashActionError> {
+impl FromStr for CrashAction {
+    type Err = ParseCrashActionError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "freeze" => Ok(Self::Freeze),
             "reboot" => Ok(Self::Reboot),

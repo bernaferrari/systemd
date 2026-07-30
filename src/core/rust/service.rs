@@ -522,13 +522,13 @@ pub fn service_extend_timeout(service: &mut Service, now_monotonic: u64, extend_
     let extended = now_monotonic.saturating_add(extend_timeout_usec);
     if service
         .timer_event_deadline
-        .map_or(true, |current| current < extended)
+        .is_none_or(|current| current < extended)
     {
         service.timer_event_deadline = Some(extended);
     }
     if service
         .watchdog_event_deadline
-        .map_or(true, |current| current < extended)
+        .is_none_or(|current| current < extended)
     {
         service.watchdog_event_deadline = Some(extended);
     }

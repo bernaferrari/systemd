@@ -3,6 +3,8 @@
 // PORT-SYNC: src/core/swap.c, src/core/swap.h
 //
 
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwapTableError {
     InvalidValue,
@@ -25,15 +27,21 @@ impl SwapExecCommand {
             Self::Deactivate => Self::TABLE[1],
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self> {
+impl FromStr for SwapExecCommand {
+    type Err = SwapTableError;
+
+    fn from_str(value: &str) -> Result<Self> {
         match value {
             "ExecActivate" => Ok(Self::Activate),
             "ExecDeactivate" => Ok(Self::Deactivate),
             _ => Err(SwapTableError::InvalidValue),
         }
     }
+}
 
+impl SwapExecCommand {
     pub fn from_raw(value: usize) -> Result<Self> {
         match value {
             0 => Ok(Self::Activate),
@@ -76,8 +84,12 @@ impl SwapResult {
             Self::StartLimitHit => Self::TABLE[6],
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self> {
+impl FromStr for SwapResult {
+    type Err = SwapTableError;
+
+    fn from_str(value: &str) -> Result<Self> {
         match value {
             "success" => Ok(Self::Success),
             "resources" => Ok(Self::Resources),
@@ -89,7 +101,9 @@ impl SwapResult {
             _ => Err(SwapTableError::InvalidValue),
         }
     }
+}
 
+impl SwapResult {
     pub fn from_raw(value: usize) -> Result<Self> {
         match value {
             0 => Ok(Self::Success),

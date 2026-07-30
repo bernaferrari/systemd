@@ -2,7 +2,7 @@
 //
 // PORT-SYNC: src/core/kill.c, src/core/kill.h
 //
-use std::fmt;
+use std::{fmt, str::FromStr};
 
 pub const SIGTERM: i32 = 15;
 pub const SIGKILL: i32 = 9;
@@ -40,8 +40,12 @@ impl KillMode {
             Self::None => "none",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, KillError> {
+impl FromStr for KillMode {
+    type Err = KillError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "control-group" => Ok(Self::ControlGroup),
             "process" => Ok(Self::Process),
@@ -78,8 +82,12 @@ impl KillWhom {
             Self::CgroupFail => "cgroup-fail",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, KillError> {
+impl FromStr for KillWhom {
+    type Err = KillError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "main" => Ok(Self::Main),
             "control" => Ok(Self::Control),

@@ -3,7 +3,7 @@
 // PORT-SYNC: src/core/dbus-cgroup.c
 
 use crate::ffi::Errno;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 pub type Result<T> = std::result::Result<T, CGroupError>;
 pub type CGroupMask = u64;

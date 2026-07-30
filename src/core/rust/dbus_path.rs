@@ -2,6 +2,8 @@
 //
 // PORT-SYNC: src/core/dbus-path.c
 //
+use std::str::FromStr;
+
 use crate::ffi::Errno;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,8 +25,12 @@ impl PathType {
             Self::Modified => "PathModified",
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, Errno> {
+impl FromStr for PathType {
+    type Err = Errno;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "PathExists" => Ok(Self::Exists),
             "PathExistsGlob" => Ok(Self::ExistsGlob),

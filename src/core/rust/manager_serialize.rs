@@ -117,9 +117,8 @@ pub fn manager_serialize_uid_refs_internal(
 
     Ok(refs
         .iter()
-        .filter_map(|(uid, flags)| {
-            (flags & DESTROY_IPC_FLAG != 0).then(|| format!("{field_name}={uid}"))
-        })
+        .filter(|(_, flags)| *flags & DESTROY_IPC_FLAG != 0)
+        .map(|(uid, _)| format!("{field_name}={uid}"))
         .collect())
 }
 

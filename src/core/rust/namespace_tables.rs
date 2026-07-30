@@ -2,6 +2,8 @@
 //
 // PORT-SYNC: src/core/namespace.c, src/core/namespace.h
 //
+use std::str::FromStr;
+
 use crate::ffi::Errno;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,7 +42,12 @@ macro_rules! namespace_enum {
                 }
             }
 
-            pub fn from_str(value: &str) -> Result<Self, ParseNamespaceTableError> {
+        }
+
+        impl FromStr for $name {
+            type Err = ParseNamespaceTableError;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
                 match value {
                     $($text => Ok(Self::$variant),)+
                     _ => Err(ParseNamespaceTableError),

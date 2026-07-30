@@ -40,10 +40,10 @@ impl RuntimeManager {
     #[cfg(target_os = "linux")]
     fn sync_bound_stop_retry_timer(&self) {
         let deadline = self.bound_stop_retry_deadlines.values().min().copied();
-        if let Some(timer) = &self.bound_stop_retry_timer {
-            if let Err(error) = timer.arm_absolute_usec(deadline) {
-                eprintln!("systemd: cannot arm CLOCK_BOOTTIME BindsTo= retry timer: {error}");
-            }
+        if let Some(timer) = &self.bound_stop_retry_timer
+            && let Err(error) = timer.arm_absolute_usec(deadline)
+        {
+            eprintln!("systemd: cannot arm CLOCK_BOOTTIME BindsTo= retry timer: {error}");
         }
     }
 
@@ -142,7 +142,7 @@ impl RuntimeManager {
             .flatten()
             .any(|provider| {
                 let provider = self.canonical_unit_name(provider);
-                self.units.get(&provider).map_or(true, |provider| {
+                self.units.get(&provider).is_none_or(|provider| {
                     provider.current_job_id.is_none()
                         && provider.active_state.is_inactive_or_failed()
                 })

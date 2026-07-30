@@ -150,30 +150,32 @@ pub fn unit_conditions_build_json(
             map.insert("type".into(), JsonValue::string(&condition.kind));
             map.insert("trigger".into(), JsonValue::Bool(condition.trigger));
             map.insert("negate".into(), JsonValue::Bool(condition.negate));
-            if let Some(parameter) = &condition.parameter {
-                if !parameter.is_empty() {
-                    map.insert("parameter".into(), JsonValue::string(parameter));
-                }
+            if let Some(parameter) = &condition.parameter
+                && !parameter.is_empty()
+            {
+                map.insert("parameter".into(), JsonValue::string(parameter));
             }
             JsonValue::Object(map)
         })
         .collect::<Vec<_>>();
 
-    Ok((!values.is_empty()).then(|| JsonValue::Array(values)))
+    Ok((!values.is_empty()).then_some(JsonValue::Array(values)))
 }
 
 pub fn can_clean_build_json(
     entries: &BTreeSet<String>,
 ) -> Result<Option<JsonValue>, VarlinkUnitError> {
-    Ok((!entries.is_empty())
-        .then(|| JsonValue::Array(entries.iter().cloned().map(JsonValue::string).collect())))
+    Ok((!entries.is_empty()).then_some(JsonValue::Array(
+        entries.iter().cloned().map(JsonValue::string).collect(),
+    )))
 }
 
 pub fn markers_build_json(
     entries: &BTreeSet<String>,
 ) -> Result<Option<JsonValue>, VarlinkUnitError> {
-    Ok((!entries.is_empty())
-        .then(|| JsonValue::Array(entries.iter().cloned().map(JsonValue::string).collect())))
+    Ok((!entries.is_empty()).then_some(JsonValue::Array(
+        entries.iter().cloned().map(JsonValue::string).collect(),
+    )))
 }
 
 pub fn activation_details_build_json(
@@ -189,7 +191,7 @@ pub fn activation_details_build_json(
         })
         .collect::<Vec<_>>();
 
-    Ok((!values.is_empty()).then(|| JsonValue::Array(values)))
+    Ok((!values.is_empty()).then_some(JsonValue::Array(values)))
 }
 
 pub fn unit_context_build_json(context: &UnitContext) -> Result<JsonValue, VarlinkUnitError> {
@@ -214,10 +216,10 @@ pub fn unit_context_build_json(context: &UnitContext) -> Result<JsonValue, Varli
             ),
         );
     }
-    if let Some(description) = &context.description {
-        if !description.is_empty() {
-            object.insert("Description".into(), JsonValue::string(description));
-        }
+    if let Some(description) = &context.description
+        && !description.is_empty()
+    {
+        object.insert("Description".into(), JsonValue::string(description));
     }
     if !context.documentation.is_empty() {
         object.insert(

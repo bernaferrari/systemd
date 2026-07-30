@@ -21,7 +21,7 @@ pub enum ConfidentialVirtualization {
     Mode(&'static str),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ManagerRecord {
     pub log_target: Option<String>,
     pub log_level: Option<String>,
@@ -36,26 +36,6 @@ pub struct ManagerRecord {
     pub change_signal_count: u64,
     pub reloading_signal_state: Option<bool>,
     pub finished_signals: Vec<(u64, u64, u64, u64, u64, u64)>,
-}
-
-impl Default for ManagerRecord {
-    fn default() -> Self {
-        Self {
-            log_target: None,
-            log_level: None,
-            environment: Vec::new(),
-            subscribed: false,
-            show_status: false,
-            runtime_watchdog_usec: 0,
-            pretimeout_watchdog_usec: 0,
-            pretimeout_watchdog_governor: None,
-            reboot_watchdog_usec: 0,
-            kexec_watchdog_usec: 0,
-            change_signal_count: 0,
-            reloading_signal_state: None,
-            finished_signals: Vec::new(),
-        }
-    }
 }
 
 pub fn property_get_virtualization(value: Virtualization) -> Option<&'static str> {
@@ -694,10 +674,10 @@ pub fn manager_dispatch(
         | ManagerRequest::Halt
         | ManagerRequest::Kexec => Err(Errno::EOPNOTSUPP),
         ManagerRequest::SoftReboot { root } => {
-            if let Some(path) = root.as_deref() {
-                if !path.starts_with('/') {
-                    return Err(Errno::EINVAL);
-                }
+            if let Some(path) = root.as_deref()
+                && !path.starts_with('/')
+            {
+                return Err(Errno::EINVAL);
             }
 
             Err(Errno::EOPNOTSUPP)

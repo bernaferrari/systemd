@@ -3,8 +3,6 @@
 // PORT-SYNC: src/core/smack-setup.c
 //
 
-use crate::ffi::Errno;
-
 pub const SOURCE_PATH: &str = "src/core/smack-setup.c";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +116,7 @@ pub fn mac_smack_setup(input: SmackSetupInput) -> Result<SmackSetupOutcome, Smac
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ffi::Errno;
 
     fn ok_input() -> SmackSetupInput {
         SmackSetupInput {

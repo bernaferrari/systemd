@@ -188,13 +188,11 @@ pub fn get_our_contexts(
     unit: Option<&Unit>,
     state: &SelinuxState,
 ) -> Result<ContextSet, AccessError> {
-    if let Some(unit) = unit {
-        if let Some(context) = unit.access_selinux_context.as_ref() {
-            return Ok(ContextSet {
-                acon: context.clone(),
-                tclass: "service",
-            });
-        }
+    if let Some(context) = unit.and_then(|unit| unit.access_selinux_context.as_ref()) {
+        return Ok(ContextSet {
+            acon: context.clone(),
+            tclass: "service",
+        });
     }
 
     let context = state.current_context.clone().ok_or_else(|| {

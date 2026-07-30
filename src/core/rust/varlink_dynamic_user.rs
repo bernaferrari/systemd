@@ -177,10 +177,10 @@ pub fn get_user_records(
             return Ok(vec![build_user_record(name, found_uid)?]);
         }
 
-        if let Some(name) = parameters.user_name.as_deref() {
-            if realized_dynamic_users(manager).any(|(candidate, _)| candidate == name) {
-                return Err(DynamicUserError::ConflictingRecordFound);
-            }
+        if let Some(name) = parameters.user_name.as_deref()
+            && realized_dynamic_users(manager).any(|(candidate, _)| candidate == name)
+        {
+            return Err(DynamicUserError::ConflictingRecordFound);
         }
 
         return Ok(Vec::new());

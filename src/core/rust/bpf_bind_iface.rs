@@ -65,7 +65,7 @@ pub struct BpfBindSerialized {
 }
 
 /// Represents the BPF object used for bind-interface operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BpfBindObject {
     pub loaded: bool,
     pub interface_index: i32,
@@ -73,17 +73,11 @@ pub struct BpfBindObject {
 
 impl BpfBindObject {
     pub fn new() -> Self {
-        Self {
-            loaded: false,
-            interface_index: 0,
-        }
+        Self::default()
     }
 
     pub fn open() -> Result<Self, BpfBindError> {
-        Ok(Self {
-            loaded: false,
-            interface_index: 0,
-        })
+        Ok(Self::default())
     }
 
     pub fn load(&mut self, ifindex: i32) -> Result<(), BpfBindError> {

@@ -12,6 +12,9 @@ use crate::ffi::Errno;
 
 pub const SOURCE_PATH: &str = "src/core/dbus-unit.c";
 pub type Result<T> = std::result::Result<T, Errno>;
+/// D-Bus representation of a unit condition, matching the tuple signature in
+/// `src/core/dbus-unit.c`.
+pub type ConditionProperty = (String, bool, bool, String, i32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ExecDirectoryType {
@@ -135,9 +138,7 @@ pub fn property_get_job(unit: &UnitRecord) -> Result<Option<(u32, String, String
         .map(|job| (job.id, job.kind.clone(), job.path.clone())))
 }
 
-pub fn property_get_conditions(
-    unit: &UnitRecord,
-) -> Result<Vec<(String, bool, bool, String, i32)>> {
+pub fn property_get_conditions(unit: &UnitRecord) -> Result<Vec<ConditionProperty>> {
     Ok(unit
         .conditions
         .iter()
@@ -809,7 +810,7 @@ pub fn send_changed_signal(bus: *mut c_void, userdata: *mut c_void) -> Result<i3
     Ok(0)
 }
 pub fn bus_unit_send_change_signal(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn bus_unit_send_pending_change_signal(u: *mut c_void, including_new: bool) {
     let _ = (u, including_new);
@@ -823,7 +824,7 @@ pub fn send_removed_signal(bus: *mut c_void, userdata: *mut c_void) -> Result<i3
     Ok(0)
 }
 pub fn bus_unit_send_removed_signal(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn bus_unit_queue_job_one(
     message: *mut c_void,
@@ -933,7 +934,7 @@ pub fn bus_unit_track_handler(t: *mut c_void, userdata: *mut c_void) -> Result<i
     Ok(0)
 }
 pub fn bus_unit_allocate_bus_track(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn bus_unit_track_add_name(u: *mut c_void, name: *const c_char) -> Result<i32> {

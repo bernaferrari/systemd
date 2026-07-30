@@ -40,7 +40,7 @@ impl JsonValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WorkingDirectory {
     pub path: Option<String>,
     pub use_home: bool,
@@ -159,16 +159,6 @@ pub struct ExecContext {
     pub import_credentials: Vec<CredentialImport>,
     pub set_credentials: Vec<CredentialSet>,
     pub runtime_directory: ExecDirectory,
-}
-
-impl Default for WorkingDirectory {
-    fn default() -> Self {
-        Self {
-            path: None,
-            use_home: false,
-            missing_ok: false,
-        }
-    }
 }
 
 fn encode_base64(bytes: &[u8]) -> String {

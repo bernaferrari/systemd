@@ -29,14 +29,14 @@ pub fn activation_details_serialize(details: &ActivationDetails) -> String {
 pub fn activation_details_deserialize(text: &str) -> ActivationDetails {
     let mut details = ActivationDetails::default();
     for line in text.lines() {
-        if let Some(rest) = line.strip_prefix("env:") {
-            if let Some((k, v)) = rest.split_once('=') {
-                details.env.insert(k.into(), v.into());
-            }
-        } else if let Some(rest) = line.strip_prefix("pair:") {
-            if let Some((k, v)) = rest.split_once('=') {
-                details.pairs.push((k.into(), v.into()));
-            }
+        if let Some(rest) = line.strip_prefix("env:")
+            && let Some((k, v)) = rest.split_once('=')
+        {
+            details.env.insert(k.into(), v.into());
+        } else if let Some(rest) = line.strip_prefix("pair:")
+            && let Some((k, v)) = rest.split_once('=')
+        {
+            details.pairs.push((k.into(), v.into()));
         }
     }
     details

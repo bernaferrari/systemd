@@ -3,6 +3,8 @@
 // PORT-SYNC: src/core/scope.c, src/core/scope.h
 //
 
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeResult {
     Success,
@@ -28,8 +30,12 @@ impl ScopeResult {
             Self::FailureOomKill => "oom-kill",
         }
     }
+}
 
-    pub fn from_str(name: &str) -> Result<Self, ScopeResultError> {
+impl FromStr for ScopeResult {
+    type Err = ScopeResultError;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
         match name {
             "success" => Ok(Self::Success),
             "resources" => Ok(Self::FailureResources),
@@ -38,7 +44,9 @@ impl ScopeResult {
             other => Err(ScopeResultError::InvalidName(other.to_string())),
         }
     }
+}
 
+impl ScopeResult {
     pub fn from_index(index: i32) -> Result<Self, ScopeResultError> {
         match index {
             0 => Ok(Self::Success),

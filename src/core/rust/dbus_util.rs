@@ -235,10 +235,8 @@ pub fn bus_read_mount_options(
             .by_partition
             .insert(partition.clone(), mount_options.clone());
 
-        if !mount_options.is_empty() {
-            if let Some(_) = separator {
-                format_parts.push(format!("{partition}:{}", shell_escape_colon(mount_options)));
-            }
+        if !mount_options.is_empty() && separator.is_some() {
+            format_parts.push(format!("{partition}:{}", shell_escape_colon(mount_options)));
         }
     }
 

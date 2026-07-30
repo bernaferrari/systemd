@@ -2,6 +2,8 @@
 //
 // PORT-SYNC: src/core/mount.c, src/core/mount.h
 
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MountExecCommand {
     Mount,
@@ -52,8 +54,12 @@ impl MountExecCommand {
             _ => None,
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, ParseMountExecCommandError> {
+impl FromStr for MountExecCommand {
+    type Err = ParseMountExecCommandError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "ExecMount" => Ok(Self::Mount),
             "ExecUnmount" => Ok(Self::Unmount),
@@ -103,8 +109,12 @@ impl MountResult {
             _ => None,
         }
     }
+}
 
-    pub fn from_str(value: &str) -> Result<Self, ParseMountResultError> {
+impl FromStr for MountResult {
+    type Err = ParseMountResultError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "success" => Ok(Self::Success),
             "resources" => Ok(Self::FailureResources),
