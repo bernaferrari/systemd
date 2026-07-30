@@ -1118,6 +1118,10 @@ mod tests {
     #[test]
     fn cycle_without_drop_candidate_fails() {
         let mut cycle_units = units();
+        // An already-active Start job is redundant and is dropped before C's
+        // ordering pass. Keep both members non-redundant so this is truly an
+        // unbreakable ordering cycle of jobs that matter to the anchor.
+        cycle_units[1].state = UnitState::Inactive;
         cycle_units[0].before.push("b.service".into());
         cycle_units[1].before.push("a.service".into());
         let mut transaction = Transaction::new(cycle_units, false, 1).unwrap();
@@ -1160,13 +1164,23 @@ mod tests {
     }
 
     #[test]
-    fn successful_activation_returns_final_jobs() {
+    fn successful_activation_drops_redundant_active_dependency() {
         let mut transaction = Transaction::new(units(), false, 1).unwrap();
         transaction
             .add_job_and_dependencies(JobType::Start, "a.service", None, false, false, false)
             .unwrap();
         let applied = transaction.activate(JobMode::Replace).unwrap();
-        assert_eq!(applied.jobs.len(), 2);
+        assert_eq!(
+            applied.jobs,
+            vec![Job {
+                id: applied.anchor_job,
+                unit: "a.service".into(),
+                job_type: JobType::Start,
+                matters_to_anchor: true,
+                irreversible: false,
+                ignore_order: false,
+            }]
+        );
         assert!(transaction.jobs.is_empty());
     }
 

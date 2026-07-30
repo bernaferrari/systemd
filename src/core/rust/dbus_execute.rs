@@ -325,15 +325,15 @@ mod tests {
     #[test]
     fn syscall_and_address_family_properties_keep_list_polarity() {
         let ctx = sample_context();
-        assert_eq!(property_get_syscall_filter(&ctx).0, true);
-        assert_eq!(property_get_syscall_log(&ctx).0, false);
+        assert!(property_get_syscall_filter(&ctx).0);
+        assert!(!property_get_syscall_log(&ctx).0);
         assert_eq!(property_get_address_families(&ctx).1.len(), 2);
     }
 
     #[test]
     fn lsm_context_properties_are_marshaled_as_pairs() {
         let ctx = sample_context();
-        assert_eq!(property_get_selinux_context(&ctx).0, true);
+        assert!(property_get_selinux_context(&ctx).0);
         assert_eq!(property_get_apparmor_profile(&ctx).1, "systemd");
         assert_eq!(property_get_smack_process_label(&ctx).1, "System");
     }

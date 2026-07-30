@@ -163,7 +163,7 @@ impl CgroupDirectory {
             // Ordinary files do not have cgroupfs's command-on-write
             // semantics, so truncate the fixture on every synthetic control
             // write just as the former `fs::write()` test path did.
-            return self.create_test_file(name, content);
+            self.create_test_file(name, content)
         }
 
         #[cfg(not(test))]

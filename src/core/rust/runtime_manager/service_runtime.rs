@@ -1966,13 +1966,13 @@ impl RuntimeManager {
         ) {
             return Err(Errno::EINVAL);
         }
-        if let Some(watchdog_sec) = info.service.watchdog_sec {
-            if watchdog_sec > 0 {
-                self.service_watchdog_deadlines.insert(
-                    name.to_string(),
-                    Instant::now() + Duration::from_secs(watchdog_sec),
-                );
-            }
+        if let Some(watchdog_sec) = info.service.watchdog_sec
+            && watchdog_sec > 0
+        {
+            self.service_watchdog_deadlines.insert(
+                name.to_string(),
+                Instant::now() + Duration::from_secs(watchdog_sec),
+            );
         }
         Ok(())
     }

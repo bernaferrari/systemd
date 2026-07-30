@@ -660,8 +660,10 @@ mod tests {
         fs::write(&path, "[Unit]\nDescription=Demo\n").unwrap();
         let canonical = path.canonicalize().unwrap();
 
-        let mut manager = Manager::default();
-        manager.unit_path = vec![root.clone()];
+        let mut manager = Manager {
+            unit_path: vec![root.clone()],
+            ..Default::default()
+        };
         manager.add_unit(unit(1, "demo.service"));
 
         let loaded = unit_find_fragment(&mut manager, "demo.service").unwrap();
@@ -677,8 +679,10 @@ mod tests {
         fs::write(&template, "[Unit]\nDescription=Template\n").unwrap();
         let canonical = template.canonicalize().unwrap();
 
-        let mut manager = Manager::default();
-        manager.unit_path = vec![root.clone()];
+        let mut manager = Manager {
+            unit_path: vec![root.clone()],
+            ..Default::default()
+        };
         manager.add_unit(unit(1, "demo@prod.service"));
 
         let loaded = unit_find_fragment(&mut manager, "demo@prod.service").unwrap();
@@ -699,8 +703,10 @@ mod tests {
         symlink(&canonical, &alias).unwrap();
         let canonical_path = canonical.canonicalize().unwrap();
 
-        let mut manager = Manager::default();
-        manager.unit_path = vec![root];
+        let mut manager = Manager {
+            unit_path: vec![root],
+            ..Default::default()
+        };
         manager.add_unit(unit(1, "alias.service"));
 
         let loaded = unit_find_fragment(&mut manager, "alias.service").unwrap();
@@ -718,8 +724,10 @@ mod tests {
     fn unit_find_fragment_marks_not_found_when_missing() {
         let root = unique_temp_dir("core-model-fragment-missing");
 
-        let mut manager = Manager::default();
-        manager.unit_path = vec![root];
+        let mut manager = Manager {
+            unit_path: vec![root],
+            ..Default::default()
+        };
         manager.add_unit(unit(1, "missing.service"));
 
         let error = unit_find_fragment(&mut manager, "missing.service").unwrap_err();
@@ -736,8 +744,10 @@ mod tests {
         let invalid = root.join("broken.service");
         fs::write(&invalid, "[Unit\nDescription=Broken\n").unwrap();
 
-        let mut manager = Manager::default();
-        manager.unit_path = vec![root];
+        let mut manager = Manager {
+            unit_path: vec![root],
+            ..Default::default()
+        };
         manager.add_unit(unit(1, "broken.service"));
 
         let err = unit_find_fragment(&mut manager, "broken.service").unwrap_err();

@@ -144,13 +144,13 @@ impl std::fmt::Display for PrepareHandoffError {
 impl std::error::Error for PrepareHandoffError {}
 
 pub(crate) struct RejectedLiveHandoff {
-    runtime: RuntimeManager,
+    runtime: Box<RuntimeManager>,
     error: PrepareHandoffError,
 }
 
 impl RejectedLiveHandoff {
     pub(crate) fn into_parts(self) -> (RuntimeManager, PrepareHandoffError) {
-        (self.runtime, self.error)
+        (*self.runtime, self.error)
     }
 }
 
@@ -217,7 +217,10 @@ impl PreparedLiveHandoff {
 }
 
 fn reject(runtime: RuntimeManager, error: PrepareHandoffError) -> RejectedLiveHandoff {
-    RejectedLiveHandoff { runtime, error }
+    RejectedLiveHandoff {
+        runtime: Box::new(runtime),
+        error,
+    }
 }
 
 fn validate_preflight(runtime: &RuntimeManager) -> Result<(), PrepareHandoffError> {
@@ -359,7 +362,7 @@ fn validate_preflight(runtime: &RuntimeManager) -> Result<(), PrepareHandoffErro
         || unit_cgroups.iter().any(|(unit, cgroup)| {
             unit_cgroup_paths
                 .get(unit)
-                .map_or(true, |path| cgroup.path() != path)
+                .is_none_or(|path| cgroup.path() != path)
         })
     {
         return Err(PrepareHandoffError::InconsistentCgroupIndex);
@@ -537,7 +540,6 @@ mod tests {
     use crate::service::Service;
     use crate::unit::ActiveState;
     use std::sync::Weak;
-
     #[test]
     fn successful_preparation_can_only_roll_back_the_exact_manager() {
         let mut runtime = RuntimeManager::new();
@@ -672,10 +674,7 @@ mod tests {
             |_, descriptor| {
                 duplicated += 1;
                 if duplicated == 2 {
-                    Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "injected descriptor duplication failure",
-                    ))
+                    Err(io::Error::other("injected descriptor duplication failure"))
                 } else {
                     descriptor.try_clone_to_owned()
                 }

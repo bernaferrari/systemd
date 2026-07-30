@@ -688,23 +688,25 @@ mod tests {
 
     #[test]
     fn bind_paths_filter_read_only_variant_by_name() {
-        let mut ctx = ExecContext::default();
-        ctx.bind_mounts = vec![
-            BindMount {
-                source: "/a".into(),
-                destination: "/b".into(),
-                read_only: false,
-                ignore_enoent: false,
-                recursive: true,
-            },
-            BindMount {
-                source: "/c".into(),
-                destination: "/d".into(),
-                read_only: true,
-                ignore_enoent: true,
-                recursive: false,
-            },
-        ];
+        let ctx = ExecContext {
+            bind_mounts: vec![
+                BindMount {
+                    source: "/a".into(),
+                    destination: "/b".into(),
+                    read_only: false,
+                    ignore_enoent: false,
+                    recursive: true,
+                },
+                BindMount {
+                    source: "/c".into(),
+                    destination: "/d".into(),
+                    read_only: true,
+                    ignore_enoent: true,
+                    recursive: false,
+                },
+            ],
+            ..Default::default()
+        };
 
         let JsonValue::Array(rw) = bind_paths_build_json("BindPaths", &ctx).unwrap().unwrap()
         else {
@@ -750,9 +752,11 @@ mod tests {
 
     #[test]
     fn cpu_affinity_embeds_bytes_and_numa_flag() {
-        let mut ctx = ExecContext::default();
-        ctx.cpu_affinity = vec![1, 2];
-        ctx.cpu_affinity_from_numa = true;
+        let ctx = ExecContext {
+            cpu_affinity: vec![1, 2],
+            cpu_affinity_from_numa: true,
+            ..Default::default()
+        };
 
         let JsonValue::Object(object) = cpu_affinity_build_json(&ctx).unwrap().unwrap() else {
             panic!()
@@ -799,9 +803,11 @@ mod tests {
 
     #[test]
     fn log_filter_patterns_keep_allow_and_deny_markers() {
-        let mut ctx = ExecContext::default();
-        ctx.allowed_log_patterns = vec!["foo*".into()];
-        ctx.denied_log_patterns = vec!["bar*".into()];
+        let ctx = ExecContext {
+            allowed_log_patterns: vec!["foo*".into()],
+            denied_log_patterns: vec!["bar*".into()],
+            ..Default::default()
+        };
 
         let JsonValue::Array(entries) = log_filter_patterns_build_json(&ctx).unwrap().unwrap()
         else {
@@ -812,24 +818,26 @@ mod tests {
 
     #[test]
     fn unit_exec_context_aggregates_non_empty_sections() {
-        let mut ctx = ExecContext::default();
-        ctx.exec_search_path = vec!["/usr/bin".into()];
-        ctx.working_directory = WorkingDirectory {
-            path: Some("/work".into()),
-            use_home: false,
-            missing_ok: false,
-        };
-        ctx.environment_files = vec!["/etc/default/demo".into()];
-        ctx.runtime_directory = ExecDirectory {
-            items: vec![ExecDirectoryItem {
-                path: "/run/demo".into(),
-                symlinks: vec![],
-            }],
-            mode: 0o755,
-            quota_accounting: true,
-            quota_enforce: false,
-            quota_absolute: 10,
-            quota_scale: 20,
+        let ctx = ExecContext {
+            exec_search_path: vec!["/usr/bin".into()],
+            working_directory: WorkingDirectory {
+                path: Some("/work".into()),
+                use_home: false,
+                missing_ok: false,
+            },
+            environment_files: vec!["/etc/default/demo".into()],
+            runtime_directory: ExecDirectory {
+                items: vec![ExecDirectoryItem {
+                    path: "/run/demo".into(),
+                    symlinks: vec![],
+                }],
+                mode: 0o755,
+                quota_accounting: true,
+                quota_enforce: false,
+                quota_absolute: 10,
+                quota_scale: 20,
+            },
+            ..Default::default()
         };
 
         let JsonValue::Object(object) = unit_exec_context_build_json(&ctx).unwrap() else {

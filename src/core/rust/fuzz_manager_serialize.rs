@@ -123,12 +123,7 @@ mod tests {
         }
 
         fn maybe_fail(&mut self, step: &'static str) -> Result<(), String> {
-            if self
-                .failures
-                .front()
-                .is_some_and(|failure| failure.step == step)
-            {
-                let failure = self.failures.pop_front().expect("queued failure");
+            if let Some(failure) = self.failures.pop_front_if(|failure| failure.step == step) {
                 return Err(failure.detail.to_string());
             }
 
@@ -172,21 +167,14 @@ mod tests {
         }
 
         fn manager_serialize(&mut self, with_fds: bool) -> Result<(), String> {
-            self.calls.push(if with_fds {
+            let step = if with_fds {
                 "manager_serialize_true"
             } else {
                 "manager_serialize_false"
-            });
+            };
+            self.calls.push(step);
 
-            if self.failures.front().is_some_and(|failure| {
-                failure.step
-                    == if with_fds {
-                        "manager_serialize_true"
-                    } else {
-                        "manager_serialize_false"
-                    }
-            }) {
-                let failure = self.failures.pop_front().expect("queued failure");
+            if let Some(failure) = self.failures.pop_front_if(|failure| failure.step == step) {
                 return Err(failure.detail.to_string());
             }
 

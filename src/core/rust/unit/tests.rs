@@ -1,3 +1,8 @@
+#![expect(
+    clippy::module_inception,
+    reason = "the C-aligned `unit` facade deliberately keeps its tests in unit/tests.rs"
+)]
+
 mod tests {
     use crate::unit::{
         ActiveState, CollectMode, DependencyKind, FUNCTION_INVENTORY, FreezerState, ManagerRecord,

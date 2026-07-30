@@ -247,8 +247,10 @@ mod tests {
 
     #[test]
     fn coldplug_applies_deserialized_state() {
-        let mut target = Target::default();
-        target.deserialized_state = TargetState::Active;
+        let mut target = Target {
+            deserialized_state: TargetState::Active,
+            ..Default::default()
+        };
         let change = target.coldplug().unwrap().unwrap();
         assert_eq!(change.old_state, TargetState::Dead);
         assert_eq!(change.new_state, TargetState::Active);
