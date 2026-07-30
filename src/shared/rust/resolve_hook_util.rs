@@ -17,6 +17,10 @@ pub const SOURCE_PATHS: &[&str] = &[
     "src/resolve/resolved-hook.c",
 ];
 
+// src/shared/dns-question.h: DNS_QUESTION_ITEMS_MAX. The C dispatch helper
+// enforces this before allocating or inspecting individual array elements.
+pub const DNS_QUESTION_ITEMS_MAX: usize = 128;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolveRecordParameters {
     pub question: Option<DnsQuestion>,
@@ -37,6 +41,8 @@ impl ResolveRecordParameters {
                 JsonValueKind::Object,
                 value,
             ))?;
+
+        reject_unknown_fields(object, &["question"])?;
 
         let question_value = object
             .get("question")
@@ -178,6 +184,7 @@ pub const RESOLVE_RECORD_PARAMETERS_DISPATCH_TABLE: [JsonDispatchField; 1] = [Js
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolveHookUtilError {
     MissingMandatoryField(&'static str),
+    UnknownField(String),
     UnexpectedType {
         field: Option<&'static str>,
         expected: JsonValueKind,
@@ -207,7 +214,12 @@ impl ResolveHookUtilError {
 
     pub fn errno_value(&self) -> i32 {
         match self {
-            Self::MissingMandatoryField(_) => Errno::EINVAL.to_neg_errno(),
+            // sd_json_dispatch_full() returns -ENXIO for an absent mandatory
+            // dispatch-table entry.
+            Self::MissingMandatoryField(_) => Errno::ENXIO.to_neg_errno(),
+            // With flags=0, sd_json_dispatch_full() returns -EADDRNOTAVAIL
+            // for an unexpected object field.
+            Self::UnknownField(_) => Errno::EADDRNOTAVAIL.to_neg_errno(),
             Self::UnexpectedType { .. } => Errno::EINVAL.to_neg_errno(),
             Self::IntegerOutOfRange { .. } => Errno::ERANGE.to_neg_errno(),
             Self::InvalidDnsName(_) => Errno::EBADMSG.to_neg_errno(),
@@ -223,6 +235,7 @@ impl fmt::Display for ResolveHookUtilError {
             Self::MissingMandatoryField(field) => {
                 write!(f, "missing mandatory field '{field}'")
             }
+            Self::UnknownField(field) => write!(f, "unknown field '{field}'"),
             Self::UnexpectedType {
                 field,
                 expected,
@@ -249,6 +262,20 @@ impl fmt::Display for ResolveHookUtilError {
 
 impl std::error::Error for ResolveHookUtilError {}
 
+fn reject_unknown_fields(
+    object: &BTreeMap<String, JsonValue>,
+    known_fields: &[&str],
+) -> Result<(), ResolveHookUtilError> {
+    if let Some(field) = object
+        .keys()
+        .find(|field| !known_fields.contains(&field.as_str()))
+    {
+        return Err(ResolveHookUtilError::UnknownField(field.clone()));
+    }
+
+    Ok(())
+}
+
 fn parse_question_entries(
     value: &JsonValue,
 ) -> Result<Vec<DnsQuestionJsonEntry>, ResolveHookUtilError> {
@@ -259,6 +286,12 @@ fn parse_question_entries(
             JsonValueKind::Array,
             value,
         ))?;
+
+    if entries.len() > DNS_QUESTION_ITEMS_MAX {
+        return Err(ResolveHookUtilError::InvalidQuestion(
+            Errno::E2BIG.to_neg_errno(),
+        ));
+    }
 
     entries
         .iter()
@@ -274,6 +307,8 @@ fn parse_question_entry(value: &JsonValue) -> Result<DnsQuestionJsonEntry, Resol
             JsonValueKind::Object,
             value,
         ))?;
+
+    reject_unknown_fields(object, &["key"])?;
 
     let key_value = object
         .get("key")
@@ -292,6 +327,8 @@ fn parse_resource_key(value: &JsonValue) -> Result<DnsResourceKey, ResolveHookUt
             JsonValueKind::Object,
             value,
         ))?;
+
+    reject_unknown_fields(object, &["class", "type", "name"])?;
 
     let dns_class = object
         .get("class")
@@ -425,8 +462,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_ignores_unknown_top_level_fields() {
-        let parsed = ResolveRecordParameters::parse(&object([
+    fn parse_rejects_unknown_top_level_fields() {
+        let err = ResolveRecordParameters::parse(&object([
             (
                 "question",
                 JsonValue::Array(vec![object([(
@@ -436,9 +473,35 @@ mod tests {
             ),
             ("ignored", JsonValue::Bool(true)),
         ]))
-        .unwrap();
+        .unwrap_err();
 
-        assert_eq!(parsed.question().unwrap().first_name(), Some("example.com"));
+        assert_eq!(
+            err,
+            ResolveHookUtilError::UnknownField("ignored".to_string())
+        );
+        assert_eq!(err.errno_value(), Errno::EADDRNOTAVAIL.to_neg_errno());
+    }
+
+    #[test]
+    fn parse_rejects_unknown_nested_fields() {
+        let err = ResolveRecordParameters::parse(&object([(
+            "question",
+            JsonValue::Array(vec![object([(
+                "key",
+                object([
+                    ("type", 1u16.into()),
+                    ("name", "example.com".into()),
+                    ("ignored", JsonValue::Bool(true)),
+                ]),
+            )])]),
+        )]))
+        .unwrap_err();
+
+        assert_eq!(
+            err,
+            ResolveHookUtilError::UnknownField("ignored".to_string())
+        );
+        assert_eq!(err.errno_value(), Errno::EADDRNOTAVAIL.to_neg_errno());
     }
 
     #[test]
@@ -462,10 +525,43 @@ mod tests {
     }
 
     #[test]
+    fn parse_rejects_questions_above_c_limit_before_parsing_entries() {
+        let err = ResolveRecordParameters::parse(&object([(
+            "question",
+            JsonValue::Array(vec![JsonValue::Null; DNS_QUESTION_ITEMS_MAX + 1]),
+        )]))
+        .unwrap_err();
+
+        assert_eq!(
+            err,
+            ResolveHookUtilError::InvalidQuestion(Errno::E2BIG.to_neg_errno())
+        );
+        assert_eq!(err.errno_value(), Errno::E2BIG.to_neg_errno());
+    }
+
+    #[test]
+    fn parse_checks_entries_at_c_question_limit() {
+        let err = ResolveRecordParameters::parse(&object([(
+            "question",
+            JsonValue::Array(vec![JsonValue::Null; DNS_QUESTION_ITEMS_MAX]),
+        )]))
+        .unwrap_err();
+
+        assert_eq!(
+            err,
+            ResolveHookUtilError::UnexpectedType {
+                field: Some("question"),
+                expected: JsonValueKind::Object,
+                actual: JsonValueKind::Null,
+            }
+        );
+    }
+
+    #[test]
     fn parse_rejects_missing_question() {
         let err = ResolveRecordParameters::parse(&object([])).unwrap_err();
         assert_eq!(err, ResolveHookUtilError::MissingMandatoryField("question"));
-        assert_eq!(err.errno_value(), Errno::EINVAL.to_neg_errno());
+        assert_eq!(err.errno_value(), Errno::ENXIO.to_neg_errno());
     }
 
     #[test]
@@ -522,6 +618,7 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(err, ResolveHookUtilError::MissingMandatoryField("key"));
+        assert_eq!(err.errno_value(), Errno::ENXIO.to_neg_errno());
     }
 
     #[test]

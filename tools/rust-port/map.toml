@@ -1814,7 +1814,7 @@ status = "in-progress"
 tier = 3
 symbols = 3
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: generator setup/filesystem behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 bounded static parity review: Rust mirrors generator-setup.c's all-three-path requirement, RET_GATHER-style continued mkdir attempts, mkdir_p_label path-safety rejection, requested 0755 directory mode (subject to umask), concurrent-directory acceptance, empty-only trim, and recursive flush including temporary_dir. Standalone source tests cover path safety, gather, modes, trim, and flush. C remains production authority. P2: SELinux/SMACK labeling, exact rm_rf mount/subvolume/physical semantics, C ABI, Meson, and PID1 integration require Linux evidence."
 
 [job_tables]
 c_file = "src/core/job.c"
@@ -2513,6 +2513,7 @@ status = "in-progress"
 tier = 3
 symbols = 2
 sync_status = "needs_review"
+notes = "2026-07-30 bounded static parity review: Rust models the direct resolve-hook-util cleanup/table plus the required sd_varlink_dispatch(sd_json_dispatch_full flags=0) and dns_json_dispatch_question boundaries: mandatory question/key fields, strict unknown-field rejection, current 128-item preflight limit, and nested key parsing. Missing mandatory fields now map to -ENXIO and strict unknown fields to -EADDRNOTAVAIL, as sd_json_dispatch_full returns. C remains production authority. P2: safe Option cleanup is idempotent rather than C's ownership-pointer lifecycle; duplicate JSON fields, full sd_json behavior, DNS byte/IDNA behavior, Varlink C ABI, and daemon integration are unclaimed."
 
 [tmpfile_util_label]
 c_paths = ["src/shared/tmpfile-util.c", "src/shared/tmpfile-util.h"]
@@ -2522,7 +2523,7 @@ status = "in-progress"
 tier = 3
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored SELinux-aware temporary-file creation to current shared tmpfile-util source/header; behavioral completion remains unclaimed."
+notes = "2026-07-30 bounded static parity review: Rust models shared tmpfile-util.c/.h's prepare-create-clear ordering, temporary name construction, SELinux prepare-at resolution for absent/empty/relative targets, current-directory and directory-fd handling, path_simplify-style generated-name normalization, and Linux PATH_MAX/component bounds. C remains production authority. P2: Rust's SELinux layer is a no-op policy model rather than libselinux label lookup/process-global fscreate state; the System backend is UTF-8-bound, uses /proc/self/fd rather than fd_get_path(), returns File/PathBuf rather than C FILE**/char**, and has no C/Meson runtime evidence."
 
 [journalctl]
 c_file = "src/journal/journalctl.c"

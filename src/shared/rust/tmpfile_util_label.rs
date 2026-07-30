@@ -8,10 +8,14 @@
 // They are split out to optimize linking: callers that need SELinux
 // can link against these, others don't need -lselinux.
 //
-// Faithfully mirrors the C implementation:
-//   fopen_temporary_at_label()  →  fopen_temporary_at_label()
-//   fopen_temporary_label()     →  fopen_temporary_label()
+// Mirrors the C implementation's sequencing and temporary-name construction:
+//   fopen_temporary_at_label()  →  SELinux preparation → fopen_temporary_at()
+//   fopen_temporary_label()     →  fopen_temporary_at_label(AT_FDCWD, ...)
 // with proper RAII cleanup of the SELinux context via PrepareGuard.
+//
+// The Rust SELinux module is still a policy model rather than a libselinux
+// runtime implementation. The C implementation remains the production
+// authority for actual label lookup and process-global fscreate state.
 
 use crate::ffi::*;
 use std::error::Error;
@@ -27,6 +31,7 @@ use std::path::{Path, PathBuf};
 use crate::label_util::FileMode;
 use crate::selinux_util::{
     AT_FDCWD, ContextError, mac_selinux_create_file_clear, mac_selinux_create_file_prepare,
+    mac_selinux_use,
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -39,6 +44,9 @@ const RANDOM_SUFFIX_LEN: usize = 16;
 
 /// Maximum filename length in bytes on Linux.
 const NAME_MAX_BYTES: usize = 255;
+
+/// Maximum path length including the trailing NUL on Linux.
+const PATH_MAX_BYTES: usize = libc::PATH_MAX as usize;
 
 /// openat(2) flags: CLOEXEC, no TTY assignment, read-write, create, exclusive.
 const OPEN_FLAGS: i32 =
@@ -152,7 +160,10 @@ pub trait TempFileLabelBackend {
     fn clear_file(&self);
 }
 
-/// The system SELinux backend using real libselinux calls.
+/// The system SELinux backend using the Rust SELinux policy layer.
+///
+/// The underlying Rust layer currently models the API but does not yet perform
+/// libselinux label lookup or mutate the process-global fscreate context.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SystemTempFileLabelBackend;
 
@@ -163,9 +174,12 @@ impl TempFileLabelBackend for SystemTempFileLabelBackend {
         target: Option<&Path>,
         mode: FileMode,
     ) -> Result<(), TempFileLabelError> {
-        let Some(target) = target else {
+        // The C prepare-at helper returns before resolving the path when
+        // SELinux is unavailable. Preserve that behavior for stale/closed
+        // directory descriptors.
+        if !mac_selinux_use() {
             return Ok(());
-        };
+        }
 
         let resolved = resolve_target_path(dir_fd, target)?;
         let target_str = resolved
@@ -357,21 +371,94 @@ fn tempfn_random(path: &Path) -> Result<PathBuf, TempFileLabelError> {
         None => PathBuf::from(mangled_name),
     };
 
+    let temp_path = simplify_generated_path(&temp_path);
+    validate_generated_path(&temp_path)?;
     Ok(temp_path)
 }
 
 /// Resolve a potentially relative target path against a directory fd.
 ///
-/// If `target` is absolute or `dir_fd` is `AT_FDCWD`, returns the target
-/// as-is. Otherwise, resolves via `/proc/self/fd/{dir_fd}`.
-fn resolve_target_path(dir_fd: RawFd, target: &Path) -> Result<PathBuf, TempFileLabelError> {
-    if target.is_absolute() || dir_fd == AT_FDCWD {
+/// Absolute targets are returned as-is. Relative, empty, and absent targets
+/// are resolved against the directory descriptor, matching
+/// `mac_selinux_create_file_prepare_at()`.
+fn resolve_target_path(
+    dir_fd: RawFd,
+    target: Option<&Path>,
+) -> Result<PathBuf, TempFileLabelError> {
+    if let Some(target) = target.filter(|path| path.is_absolute()) {
         return Ok(target.to_path_buf());
     }
 
-    let proc_fd_path = PathBuf::from(format!("/proc/self/fd/{dir_fd}"));
-    let directory = std::fs::read_link(proc_fd_path)?;
-    Ok(directory.join(target))
+    let directory = if dir_fd == AT_FDCWD {
+        std::env::current_dir()?
+    } else {
+        let proc_fd_path = PathBuf::from(format!("/proc/self/fd/{dir_fd}"));
+        std::fs::read_link(proc_fd_path)?
+    };
+
+    match target.filter(|path| !path.as_os_str().is_empty()) {
+        Some(target) => Ok(directory.join(target)),
+        None => Ok(directory),
+    }
+}
+
+/// Remove redundant separators and `.` components from a generated path.
+///
+/// This is the subset of C `path_simplify()` used by `tempfn_build()`. It
+/// deliberately preserves inner and relative `..` components, while removing
+/// leading `..` components from absolute paths.
+fn simplify_generated_path(path: &Path) -> PathBuf {
+    let bytes = path.as_os_str().as_bytes();
+    let absolute = bytes.first() == Some(&b'/');
+    let mut components: Vec<&[u8]> = Vec::new();
+
+    for component in bytes.split(|byte| *byte == b'/') {
+        if component.is_empty() || component == b"." {
+            continue;
+        }
+        if absolute && components.is_empty() && component == b".." {
+            continue;
+        }
+        components.push(component);
+    }
+
+    let mut simplified = Vec::with_capacity(bytes.len());
+    if absolute {
+        simplified.push(b'/');
+    }
+
+    for component in components {
+        if !simplified.is_empty() && simplified.last() != Some(&b'/') {
+            simplified.push(b'/');
+        }
+        simplified.extend_from_slice(component);
+    }
+
+    if simplified.is_empty() {
+        simplified.push(b'.');
+    }
+
+    PathBuf::from(std::ffi::OsString::from_vec(simplified))
+}
+
+/// Apply the Linux path validity bounds checked by C `path_is_valid()`.
+fn validate_generated_path(path: &Path) -> Result<(), TempFileLabelError> {
+    let bytes = path.as_os_str().as_bytes();
+    if bytes.len() >= PATH_MAX_BYTES {
+        return Err(TempFileLabelError::InvalidArgument(
+            "generated temporary path exceeds PATH_MAX",
+        ));
+    }
+    if bytes
+        .split(|byte| *byte == b'/')
+        .any(|component| component.len() > NAME_MAX_BYTES)
+    {
+        return Err(TempFileLabelError::InvalidArgument(
+            "generated temporary path contains an overlong component",
+        ));
+    }
+
+    Ok(())
 }
 
 /// Validate that a directory file descriptor is valid or `AT_FDCWD`.
@@ -394,15 +481,6 @@ fn validate_requested_path(path: &Path) -> Result<(), TempFileLabelError> {
     if path.as_os_str().is_empty() {
         return Err(TempFileLabelError::InvalidArgument(
             "path must not be empty",
-        ));
-    }
-
-    // A trailing '/' means the path is directory-only (e.g. "/tmp/") even
-    // though Rust's Path::file_name() normalises the slash away.
-    let bytes = path.as_os_str().as_bytes();
-    if bytes.last() == Some(&b'/') {
-        return Err(TempFileLabelError::InvalidArgument(
-            "path must include a final filename component",
         ));
     }
 
@@ -497,6 +575,11 @@ mod tests {
     }
 
     #[test]
+    fn test_constants_path_max() {
+        assert_eq!(PATH_MAX_BYTES, libc::PATH_MAX as usize);
+    }
+
+    #[test]
     fn test_constants_temp_mode() {
         assert_eq!(TEMP_MODE, 0o600);
     }
@@ -536,9 +619,9 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_requested_path_directory_only() {
-        let err = validate_requested_path(Path::new("/tmp/")).unwrap_err();
-        assert!(matches!(err, TempFileLabelError::InvalidArgument(_)));
+    fn test_validate_requested_path_accepts_trailing_slash_like_c() {
+        assert!(validate_requested_path(Path::new("name/")).is_ok());
+        assert!(validate_requested_path(Path::new("/tmp/name/")).is_ok());
     }
 
     // ── Path helpers ──────────────────────────────────────────────────
@@ -558,8 +641,42 @@ mod tests {
     #[test]
     fn test_resolve_target_path_absolute() {
         let path = Path::new("/tmp/absolute-target");
-        assert_eq!(resolve_target_path(AT_FDCWD, path).unwrap(), path);
-        assert_eq!(resolve_target_path(42, path).unwrap(), path);
+        assert_eq!(resolve_target_path(AT_FDCWD, Some(path)).unwrap(), path);
+        assert_eq!(resolve_target_path(42, Some(path)).unwrap(), path);
+    }
+
+    #[test]
+    fn test_resolve_target_path_relative_to_current_directory() {
+        let current = std::env::current_dir().unwrap();
+        assert_eq!(
+            resolve_target_path(AT_FDCWD, Some(Path::new("target"))).unwrap(),
+            current.join("target")
+        );
+        assert_eq!(resolve_target_path(AT_FDCWD, None).unwrap(), current);
+        assert_eq!(
+            resolve_target_path(AT_FDCWD, Some(Path::new(""))).unwrap(),
+            current
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_resolve_target_path_relative_to_directory_fd() {
+        let dir = tempdir().unwrap();
+        let dir_file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY)
+            .open(dir.path())
+            .unwrap();
+
+        assert_eq!(
+            resolve_target_path(dir_file.as_raw_fd(), Some(Path::new("target"))).unwrap(),
+            dir.path().join("target")
+        );
+        assert_eq!(
+            resolve_target_path(dir_file.as_raw_fd(), None).unwrap(),
+            dir.path()
+        );
     }
 
     // ── tempfn_random ─────────────────────────────────────────────────
@@ -594,9 +711,44 @@ mod tests {
     }
 
     #[test]
-    fn test_tempfn_random_rejects_directory_only_path() {
-        let err = tempfn_random(Path::new("/tmp/")).unwrap_err();
-        assert!(matches!(err, TempFileLabelError::InvalidArgument(_)));
+    fn test_tempfn_random_accepts_and_normalizes_trailing_slash_like_c() {
+        let relative = tempfn_random(Path::new("foo/")).unwrap();
+        assert!(relative.as_os_str().as_bytes().starts_with(b".#foo"));
+
+        let absolute = tempfn_random(Path::new("/tmp/foo/")).unwrap();
+        assert!(absolute.as_os_str().as_bytes().starts_with(b"/tmp/.#foo"));
+    }
+
+    #[test]
+    fn test_tempfn_random_simplifies_dot_and_redundant_slashes_like_c() {
+        let from_dot = tempfn_random(Path::new("./foo")).unwrap();
+        assert!(from_dot.as_os_str().as_bytes().starts_with(b".#foo"));
+
+        let from_redundant = tempfn_random(Path::new("//tmp//foo")).unwrap();
+        assert!(
+            from_redundant
+                .as_os_str()
+                .as_bytes()
+                .starts_with(b"/tmp/.#foo")
+        );
+    }
+
+    #[test]
+    fn test_simplify_generated_path_preserves_inner_parent_components() {
+        assert_eq!(
+            simplify_generated_path(Path::new("foo/../.#bar")),
+            Path::new("foo/../.#bar")
+        );
+        assert_eq!(
+            simplify_generated_path(Path::new("/../.#bar")),
+            Path::new("/.#bar")
+        );
+    }
+
+    #[test]
+    fn test_validate_generated_path_enforces_path_max() {
+        let too_long = PathBuf::from(std::ffi::OsString::from_vec(vec![b'x'; PATH_MAX_BYTES]));
+        assert!(validate_generated_path(&too_long).is_err());
     }
 
     #[test]

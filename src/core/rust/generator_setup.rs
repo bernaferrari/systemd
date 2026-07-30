@@ -3,8 +3,15 @@
 // PORT-SYNC: src/core/generator-setup.c
 
 use std::convert::Infallible;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::fs::{self, DirBuilder};
+#[cfg(unix)]
+use std::os::unix::fs::DirBuilderExt;
+use std::path::{Component, Path, PathBuf};
+
+/// The mode passed by C's `lookup_paths_mkdir_generator()` to `mkdir_p_label()`.
+///
+/// As with `mkdir(2)`, the process umask may remove permissions from this mode.
+const GENERATOR_DIRECTORY_MODE: u32 = 0o755;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LookupPaths {
@@ -26,6 +33,7 @@ pub struct LookupPaths {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LookupPathsError {
     MissingGeneratorDirectories,
+    UnsafeGeneratorDirectory { path: PathBuf },
     CreateDirectory { path: PathBuf, message: String },
 }
 
@@ -44,6 +52,48 @@ impl LookupPaths {
     }
 }
 
+/// Safely mirror the path acceptance rules used by C's `mkdir_p_label()`.
+///
+/// `mkdir_p_label()` rejects a path containing a `..` component before it
+/// creates parents. Keeping that rejection here prevents a generator path
+/// supplied by a higher-level model from escaping its intended directory.
+fn generator_path_is_safe(path: &Path) -> bool {
+    !path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+}
+
+/// Create a generator directory and any missing parents with C's requested
+/// mode. `std::fs::create_dir_all()` uses the platform default mode instead,
+/// which can create group- or world-writable directories under a permissive
+/// umask.
+fn mkdir_generator_path(path: &Path) -> std::io::Result<()> {
+    let mut current = PathBuf::new();
+
+    for component in path.components() {
+        current.push(component.as_os_str());
+
+        if current.as_os_str().is_empty() || current.is_dir() {
+            continue;
+        }
+
+        let mut builder = DirBuilder::new();
+        #[cfg(unix)]
+        builder.mode(GENERATOR_DIRECTORY_MODE);
+        match builder.create(&current) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && current.is_dir() => {
+                // Match C's `mkdir_p_label()`: a directory created by a
+                // concurrent caller between the existence check and mkdir is
+                // accepted.
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    Ok(())
+}
+
 pub fn lookup_paths_mkdir_generator(
     paths: &LookupPaths,
 ) -> Result<GeneratorPathReport, LookupPathsError> {
@@ -55,7 +105,16 @@ pub fn lookup_paths_mkdir_generator(
     let mut first_error = None;
 
     for path in triplet {
-        match fs::create_dir_all(path) {
+        if !generator_path_is_safe(path) {
+            if first_error.is_none() {
+                first_error = Some(LookupPathsError::UnsafeGeneratorDirectory {
+                    path: path.to_path_buf(),
+                });
+            }
+            continue;
+        }
+
+        match mkdir_generator_path(path) {
             Ok(()) => touched_paths.push(path.to_path_buf()),
             Err(error) => {
                 if first_error.is_none() {
@@ -174,6 +233,24 @@ mod tests {
                 .expect("generator_late")
                 .is_dir()
         );
+        #[cfg(unix)]
+        for path in paths
+            .generator_triplet()
+            .expect("all generator directories")
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mode = fs::metadata(path)
+                .expect("directory metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(
+                mode & 0o022,
+                0,
+                "C requests 0755, which never grants group or other write access"
+            );
+        }
         let _ = fs::remove_dir_all(root);
     }
 
@@ -199,6 +276,31 @@ mod tests {
                 .expect("generator_late")
                 .is_dir()
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn mkdir_rejects_parent_traversal_and_continues_gathering() {
+        let root = temp_root("mkdir-parent-traversal");
+        let mut paths = sample_paths(&root);
+        let traversal = root.join("outside").join("..").join("escaped");
+        paths.generator_early = Some(traversal.clone());
+
+        let error = lookup_paths_mkdir_generator(&paths).expect_err("must reject traversal");
+
+        assert_eq!(
+            error,
+            LookupPathsError::UnsafeGeneratorDirectory { path: traversal }
+        );
+        assert!(paths.generator.as_ref().expect("generator").is_dir());
+        assert!(
+            paths
+                .generator_late
+                .as_ref()
+                .expect("generator_late")
+                .is_dir()
+        );
+        assert!(!root.join("escaped").exists());
         let _ = fs::remove_dir_all(root);
     }
 
