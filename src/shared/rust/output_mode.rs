@@ -13,6 +13,7 @@ use systemd_basic_rs::shared_facades::lookups::{
     output_mode_to_json_format_flags as basic_output_mode_to_json_format_flags,
 };
 
+#[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OutputMode {
     Short,
@@ -132,10 +133,11 @@ bitflags::bitflags! {
         const UTC            = 1 << 6;
         const NO_HOSTNAME    = 1 << 7;
         const TRUNCATE_NEWLINE = 1 << 8;
-        const KERNEL_THREADS = 1 << 9;
-        const CGROUP_XATTRS  = 1 << 10;
-        const CGROUP_ID      = 1 << 11;
-        const HIDE_EXTRA     = 1 << 12;
+        const SKIP_UNPRINTABLE = 1 << 9;
+        const KERNEL_THREADS = 1 << 10;
+        const CGROUP_XATTRS  = 1 << 11;
+        const CGROUP_ID      = 1 << 12;
+        const HIDE_EXTRA     = 1 << 13;
     }
 }
 
@@ -254,5 +256,27 @@ mod tests {
         assert!(flags.contains(OutputFlags::SHOW_ALL));
         assert!(flags.contains(OutputFlags::COLOR));
         assert!(!flags.contains(OutputFlags::FULL_WIDTH));
+    }
+
+    #[test]
+    fn output_mode_and_flag_values_match_c_header() {
+        for (expected, mode) in OutputMode::ALL.into_iter().enumerate() {
+            assert_eq!(mode as i32, expected as i32, "{mode:?}");
+        }
+
+        assert_eq!(OutputFlags::SHOW_ALL.bits(), 1 << 0);
+        assert_eq!(OutputFlags::FULL_WIDTH.bits(), 1 << 1);
+        assert_eq!(OutputFlags::COLOR.bits(), 1 << 2);
+        assert_eq!(OutputFlags::WARN_CUTOFF.bits(), 1 << 3);
+        assert_eq!(OutputFlags::CATALOG.bits(), 1 << 4);
+        assert_eq!(OutputFlags::BEGIN_NEWLINE.bits(), 1 << 5);
+        assert_eq!(OutputFlags::UTC.bits(), 1 << 6);
+        assert_eq!(OutputFlags::NO_HOSTNAME.bits(), 1 << 7);
+        assert_eq!(OutputFlags::TRUNCATE_NEWLINE.bits(), 1 << 8);
+        assert_eq!(OutputFlags::SKIP_UNPRINTABLE.bits(), 1 << 9);
+        assert_eq!(OutputFlags::KERNEL_THREADS.bits(), 1 << 10);
+        assert_eq!(OutputFlags::CGROUP_XATTRS.bits(), 1 << 11);
+        assert_eq!(OutputFlags::CGROUP_ID.bits(), 1 << 12);
+        assert_eq!(OutputFlags::HIDE_EXTRA.bits(), 1 << 13);
     }
 }
