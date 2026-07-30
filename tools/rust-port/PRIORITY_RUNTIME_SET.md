@@ -30,7 +30,7 @@ rebuilds deps). CI keeps a separate `meson compile` then
 | D-Bus error accessors | `test-bus-error-rust` | Public struct layout, NULL predicates, and opaque C-string name matching |
 | Namespace scalar helpers | `test-namespace-mountpoint-rust` | Namespace-bit masking, Linux clone-flag values, and native uid_t overflow boundaries |
 | Namespace flag conversions | `test-nsflags-rust` | Native-width flags, C whitespace/backslash parsing, ordered names, and C-owned string/strv release |
-| EDID parsing | `test-edid-rust` | Packed 20-byte layout, unaligned inputs, byte order, failure publication, and partial panel output |
+| EDID parsing | — | Retained as a Rust-only fundamental model; the detached C-ABI facade and `test-edid-rust` fixture were retired, so C remains the production authority and no Linux differential fixture is claimed. |
 | Runtime scope conversion | `test-runtime-scope-rust` | Borrowed static table strings, opaque C-string parsing, invalid enums, and socket mode defaults |
 | Counted memory primitives | `test-memory-util-rust` | Raw C pointer preconditions, zero-length exceptions, borrowed search results, and fundamental uniform-byte semantics |
 | Hostname conversion | `test-hostname-util-rust` | Raw-byte grammar, in-place cleanup, synthetic names, and C-allocated user@host splits |

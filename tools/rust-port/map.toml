@@ -938,7 +938,7 @@ tier = 1
 symbols = 2
 sync_status = "needs_review"
 last_reviewed_upstream_blobs = { "src/fundamental/edid.c" = "980a3989b71155dc2fef55efa71548801ed8633a", "src/fundamental/edid.h" = "6c5930f4c6ac3d2b7e75847248ee72b3db67cae5" }
-last_reviewed_rust_blobs = { "src/fundamental/rust/edid.rs" = "ea23422508b3e368bd5ad9d4475ea8960ad084db" }
+last_reviewed_rust_blobs = { "src/fundamental/rust/edid.rs" = "c6dfeb396de02fea70853bb5f621f1931b8495e1" }
 notes = "The retained fundamental Rust model covers EDID blob parsing and panel-ID derivation with the C-compatible packed header layout. The detached Basic C-ABI facade and its differential fixture were retired; C remains production authority and runtime parity is unclaimed."
 
 [af_list]
@@ -1737,8 +1737,8 @@ notes = "Reviewed static XML tokenizer ABI slice 2026-07-29; no build/tests/VM. 
 #
 
 [audit_fd]
-c_file = "src/core/audit-fd.c"
-rust_file = "src/core/rust/audit_fd.rs"
+c_paths = ["src/core/audit-fd.c", "src/core/audit-fd.h"]
+rust_paths = ["src/core/rust/audit_fd.rs"]
 header_file = "src/core/audit-fd.h"
 status = "in-progress"
 tier = 1

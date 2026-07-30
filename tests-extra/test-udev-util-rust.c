@@ -12,6 +12,22 @@
 
 /* -- udev_replace_whitespace ----------------------------------------------- */
 
+static void assert_replace_whitespace_equal(const char *input, size_t len, const char *expected) {
+        char c_buf[256], rust_buf[256];
+        size_t c_result, rust_result;
+
+        assert_se(len < sizeof(c_buf));
+        memset(c_buf, 0xa5, sizeof(c_buf));
+        memset(rust_buf, 0xa5, sizeof(rust_buf));
+
+        c_result = udev_replace_whitespace(input, c_buf, len);
+        rust_result = rs_udev_replace_whitespace(input, rust_buf, len);
+
+        assert_se(c_result == rust_result);
+        assert_se(memcmp(c_buf, rust_buf, c_result + 1) == 0);
+        assert_se(streq(c_buf, expected));
+}
+
 static void test_udev_replace_whitespace(void) {
         char buf[256];
         size_t r;
@@ -75,9 +91,34 @@ static void test_udev_replace_whitespace(void) {
         assert_se(r == rs_udev_replace_whitespace("\vhello", buf, 6));
         assert_se(r == 6);
         assert_se(streq(buf, "_hello"));
+
+        /* The ABI must terminate even when no input bytes may be read. */
+        assert_replace_whitespace_equal("ignored", 0, "");
+
+        /* ATA fields can be fixed-width and omit a NUL terminator. */
+        {
+                const char field[] = { ' ', 'a', ' ', 'b' };
+
+                assert_replace_whitespace_equal(field, sizeof(field), "a_b");
+        }
 }
 
 /* -- udev_replace_chars --------------------------------------------------- */
+
+static void assert_replace_chars_equal(const char *input, const char *allow, const char *expected, size_t expected_replaced) {
+        char c_buf[256], rust_buf[256];
+        size_t c_result, rust_result;
+
+        strcpy(c_buf, input);
+        strcpy(rust_buf, input);
+        c_result = udev_replace_chars(c_buf, allow);
+        rust_result = rs_udev_replace_chars(rust_buf, allow);
+
+        assert_se(c_result == rust_result);
+        assert_se(c_result == expected_replaced);
+        assert_se(streq(c_buf, rust_buf));
+        assert_se(streq(c_buf, expected));
+}
 
 static void test_udev_replace_chars(void) {
         char buf[256];
@@ -166,6 +207,15 @@ static void test_udev_replace_chars(void) {
         }
         assert_se(r == 1);
         assert_se(streq(buf, "a b"));
+
+        /* A bare trailing backslash is replaced, while every \\x prefix is
+         * preserved, even if it has no following hex digits. */
+        assert_replace_chars_equal("trailing\\", NULL, "trailing_", 1);
+        assert_replace_chars_equal("trailing\\x", NULL, "trailing\\x", 0);
+
+        /* C isspace() covers form feed too. It is normalized when a literal
+         * space is allowed, but it still counts as a replacement. */
+        assert_replace_chars_equal("a\fb", " ", "a b", 1);
 
         /* Empty string */
         strcpy(buf, "");

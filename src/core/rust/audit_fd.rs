@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/core/audit-fd.c
+// PORT-SYNC: src/core/audit-fd.c, src/core/audit-fd.h
 //
 
 use crate::ffi::Errno;
 
-pub const SOURCE_PATH: &str = "src/core/audit-fd.c";
+pub const SOURCE_PATHS: &[&str] = &["src/core/audit-fd.c", "src/core/audit-fd.h"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AuditFd {
@@ -35,7 +35,12 @@ impl AuditFd {
         self.initialized
     }
 
-    pub fn get_core_audit_fd<F>(&mut self, have_audit_write: bool, opener: F) -> Result<i32, Errno>
+    /// Return the cached audit descriptor or its exact negative errno.
+    ///
+    /// This mirrors `get_core_audit_fd()`'s C ABI: a negative result is not
+    /// collapsed into a Rust error enum because `open_audit_fd_or_warn()` may
+    /// return any Linux errno.
+    pub fn get_core_audit_fd<F>(&mut self, have_audit_write: bool, opener: F) -> i32
     where
         F: FnOnce() -> i32,
     {
@@ -49,16 +54,7 @@ impl AuditFd {
             self.initialized = true;
         }
 
-        if self.raw_fd >= 0 {
-            Ok(self.raw_fd)
-        } else {
-            Err(match -self.raw_fd {
-                1 => Errno::EPERM,
-                9 => Errno::EBADF,
-                104 => Errno::ECONNRESET,
-                _ => Errno::EIO,
-            })
-        }
+        self.raw_fd
     }
 
     pub fn close_core_audit_fd<F>(&mut self, closer: F)
@@ -83,10 +79,18 @@ mod tests {
     }
 
     #[test]
+    fn source_paths_cover_the_c_implementation_and_abi() {
+        assert_eq!(
+            SOURCE_PATHS,
+            &["src/core/audit-fd.c", "src/core/audit-fd.h"]
+        );
+    }
+
+    #[test]
     fn opens_fd_once_when_capability_is_present() {
         let mut state = AuditFd::new();
-        let first = state.get_core_audit_fd(true, || 17).unwrap();
-        let second = state.get_core_audit_fd(true, || 99).unwrap();
+        let first = state.get_core_audit_fd(true, || 17);
+        let second = state.get_core_audit_fd(true, || 99);
 
         assert_eq!(first, 17);
         assert_eq!(second, 17);
@@ -98,24 +102,24 @@ mod tests {
         let mut state = AuditFd::new();
         let result = state.get_core_audit_fd(false, || unreachable!());
 
-        assert_eq!(result, Err(Errno::EPERM));
+        assert_eq!(result, Errno::EPERM.to_neg_errno());
         assert_eq!(state.raw_fd(), Errno::EPERM.to_neg_errno());
     }
 
     #[test]
-    fn opener_error_is_returned_as_errno() {
+    fn opener_error_is_returned_verbatim() {
         let mut state = AuditFd::new();
         let result = state.get_core_audit_fd(true, || Errno::EBADF.to_neg_errno());
 
-        assert_eq!(result, Err(Errno::EBADF));
+        assert_eq!(result, Errno::EBADF.to_neg_errno());
     }
 
     #[test]
-    fn unknown_negative_error_falls_back_to_eio() {
+    fn arbitrary_negative_errno_is_preserved() {
         let mut state = AuditFd::new();
         let result = state.get_core_audit_fd(true, || -777);
 
-        assert_eq!(result, Err(Errno::EIO));
+        assert_eq!(result, -777);
     }
 
     #[test]
@@ -146,7 +150,10 @@ mod tests {
         let mut state = AuditFd::new();
         state.close_core_audit_fd(|_| {});
 
-        assert_eq!(state.get_core_audit_fd(true, || 55), Err(Errno::ECONNRESET));
+        assert_eq!(
+            state.get_core_audit_fd(true, || 55),
+            Errno::ECONNRESET.to_neg_errno()
+        );
     }
 
     #[test]
@@ -155,6 +162,16 @@ mod tests {
         let _ = state.get_core_audit_fd(true, || Errno::EPERM.to_neg_errno());
 
         assert_eq!(state.raw_fd(), Errno::EPERM.to_neg_errno());
-        assert_eq!(state.get_core_audit_fd(true, || 77), Err(Errno::EPERM));
+        assert_eq!(
+            state.get_core_audit_fd(true, || 77),
+            Errno::EPERM.to_neg_errno()
+        );
+    }
+
+    #[test]
+    fn minimum_i32_error_is_preserved_without_negation_overflow() {
+        let mut state = AuditFd::new();
+
+        assert_eq!(state.get_core_audit_fd(true, || i32::MIN), i32::MIN);
     }
 }
