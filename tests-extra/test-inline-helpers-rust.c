@@ -189,6 +189,7 @@ TEST(ratelimit_configured) {
         assert_se(!rs_ratelimit_configured(NULL));
 }
 
+/* RUST-CONTRACT: gpt-verity-predicates */
 /* ── partition_designator_is_verity_* ─────────────────────────────────── */
 
 TEST(partition_designator_is_verity_hash) {

@@ -346,11 +346,20 @@ pub fn shorten_overlong(s: &str) -> Result<ShortenOverlongResult, ShortenOverlon
         return Ok(ShortenOverlongResult::Unchanged(s.to_owned()));
     }
 
-    let head = s.split('.').next().unwrap_or_default();
-    let candidate = if head.len() > LINUX_HOST_NAME_MAX {
-        &head[..LINUX_HOST_NAME_MAX]
-    } else {
-        head
+    /* `strshorten()` in the C authority limits bytes, not Unicode scalar
+     * values. Work from the byte prefix so a valid Rust string cannot panic
+     * when C's byte limit lands in the middle of a non-ASCII code point.
+     * A successful candidate is necessarily ASCII (hostname_is_valid() below),
+     * so converting it back to `str` does not change the success domain. */
+    let head = s
+        .as_bytes()
+        .split(|byte| *byte == b'.')
+        .next()
+        .unwrap_or_default();
+    let candidate_bytes = &head[..head.len().min(LINUX_HOST_NAME_MAX)];
+    let candidate = match std::str::from_utf8(candidate_bytes) {
+        Ok(candidate) => candidate,
+        Err(_) => return Err(ShortenOverlongError::InvalidHostname),
     };
 
     if !hostname_is_valid(candidate) {
@@ -616,6 +625,33 @@ mod tests {
             Ok(ShortenOverlongResult::Unchanged(
                 "name1.example.com".to_owned()
             ))
+        );
+    }
+
+    #[test]
+    fn test_shorten_overlong_invalid_utf8_boundary_is_an_error_not_a_panic() {
+        let input = format!("{}é", "a".repeat(LINUX_HOST_NAME_MAX - 1));
+        assert_eq!(
+            shorten_overlong(&input),
+            Err(ShortenOverlongError::InvalidHostname)
+        );
+    }
+
+    #[test]
+    fn test_shorten_overlong_keeps_a_complete_64_byte_ascii_prefix() {
+        let expected = "a".repeat(LINUX_HOST_NAME_MAX);
+        let input = format!("{expected}é");
+        assert_eq!(
+            shorten_overlong(&input),
+            Ok(ShortenOverlongResult::Shortened(expected))
+        );
+    }
+
+    #[test]
+    fn test_shorten_overlong_discards_invalid_suffix_after_first_label() {
+        assert_eq!(
+            shorten_overlong("valid.exampleé"),
+            Ok(ShortenOverlongResult::Shortened("valid".to_owned()))
         );
     }
 

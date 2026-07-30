@@ -63,6 +63,9 @@ static void test_sched_policy_is_valid(void) {
         assert_se(sched_policy_is_valid(SCHED_IDLE) == rs_sched_policy_is_valid(SCHED_IDLE));
         assert_se(sched_policy_is_valid(SCHED_IDLE) == true);
 
+        assert_se(sched_policy_is_valid(SCHED_EXT) == rs_sched_policy_is_valid(SCHED_EXT));
+        assert_se(sched_policy_is_valid(SCHED_EXT) == true);
+
         assert_se(sched_policy_is_valid(4) == rs_sched_policy_is_valid(4));
         assert_se(sched_policy_is_valid(4) == false);
 
@@ -175,6 +178,9 @@ static void test_valid_gecos(void) {
 
         assert_se(valid_gecos("line1\nline2") == rs_valid_gecos("line1\nline2"));
         assert_se(valid_gecos("line1\nline2") == false);
+
+        assert_se(valid_gecos("bad\xc3\x28") == rs_valid_gecos("bad\xc3\x28"));
+        assert_se(valid_gecos("bad\xc3\x28") == false);
 }
 
 /* -- log_namespace_name_valid --------------------------------------------- */
@@ -197,6 +203,9 @@ static void test_log_namespace_name_valid(void) {
 
         assert_se(log_namespace_name_valid("log\x01ctrl") == rs_log_namespace_name_valid("log\x01ctrl"));
         assert_se(log_namespace_name_valid("log\x01ctrl") == false);
+
+        assert_se(log_namespace_name_valid("log\xc3\x28") == rs_log_namespace_name_valid("log\xc3\x28"));
+        assert_se(log_namespace_name_valid("log\xc3\x28") == false);
 }
 
 /* -- address_label_valid -------------------------------------------------- */
@@ -248,6 +257,9 @@ static void test_valid_home(void) {
 
         assert_se(valid_home("/path/with/./dot") == rs_valid_home("/path/with/./dot"));
         assert_se(valid_home("/path/with/./dot") == false);
+
+        assert_se(valid_home("/path/with\xc3\x28") == rs_valid_home("/path/with\xc3\x28"));
+        assert_se(valid_home("/path/with\xc3\x28") == false);
 
         assert_se(valid_home("/trailing/") == rs_valid_home("/trailing/"));
         assert_se(valid_home("/trailing/") == true);

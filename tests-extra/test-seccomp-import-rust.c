@@ -1,5 +1,10 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /* Shadow test: C vs Rust for seccomp, import-util, and reboot_parameter_is_valid */
+/* RUST-CONTRACT: import-url-last-component */
+/* RUST-CONTRACT: import-url-change-suffix */
+/* RUST-CONTRACT: tar-strip-suffixes */
+/* RUST-CONTRACT: raw-strip-suffixes */
+/* RUST-CONTRACT: reboot-parameter-is-valid */
 
 #include <assert.h>
 #include <stdint.h>

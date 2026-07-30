@@ -18,6 +18,7 @@ static GptPartitionType gpt_from(int d) {
         };
 }
 
+/* RUST-CONTRACT: gpt-type-predicates */
 static void test_gpt_partition_type_knows_read_only(void) {
         int d;
         for (d = 0; d < _PARTITION_DESIGNATOR_MAX; d++) {

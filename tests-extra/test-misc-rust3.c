@@ -7,6 +7,7 @@
 #include "rust/gpt_util.h"
 #include "rust/mount_setup.h"
 
+/* RUST-CONTRACT: gpt-header-signature */
 /* ── gpt_header_has_signature ────────────────────────────────────────── */
 
 static void test_gpt_header_has_signature_valid(void) {

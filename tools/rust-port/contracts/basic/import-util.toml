@@ -1,0 +1,157 @@
+schema = 1
+module = "import_util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "import_url_change_last_component",
+    "import_url_append_component",
+    "import_type_to_string",
+    "import_type_from_string",
+    "import_verify_to_string",
+    "import_verify_from_string",
+    "import_assign_pool_quota_and_warn",
+    "import_set_nocow_and_log",
+    "raw_reboot",
+    "update_reboot_parameter_and_warn",
+    "read_reboot_parameter",
+    "reboot_with_parameter",
+    "shall_restore_state",
+    "kexec_loaded",
+    "kexec",
+    "kexec_maybe_decompress_kernel",
+    "create_shutdown_run_nologin_or_warn",
+]
+
+[authority]
+c_headers = ["src/shared/import-util.h", "src/shared/reboot-util.h"]
+c_sources = ["src/shared/import-util.c", "src/shared/reboot-util.c"]
+rust_headers = ["src/basic/rust/import_util.h"]
+rust_sources = ["src/basic/rust/import_util.rs"]
+
+[[surface]]
+id = "import-url-last-component"
+c_symbols = ["import_url_last_component"]
+rust_symbols = ["rs_import_url_last_component"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "import-url-last-component-null-input-fail-closed"
+deviation_rationale = "Valid C strings, optional ret behavior, errno values, and libc-owned success output match C. A malformed NULL url returns -EINVAL instead of following C's invalid-pointer behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-seccomp-import-rust.c"
+meson_target = "test-seccomp-import-rust"
+labels = ["import-url-last-component"]
+
+[[surface]]
+id = "import-url-change-suffix"
+c_symbols = ["import_url_change_suffix"]
+rust_symbols = ["rs_import_url_change_suffix"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "import-url-change-suffix-required-pointers-fail-closed"
+deviation_rationale = "Valid C strings, NULL suffix handling, URL truncation, and libc-owned success output match C. Malformed NULL url or ret pointers return -EINVAL instead of entering C's required-pointer assertions."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-seccomp-import-rust.c"
+meson_target = "test-seccomp-import-rust"
+labels = ["import-url-change-suffix"]
+
+[[surface]]
+id = "tar-strip-suffixes"
+c_symbols = ["tar_strip_suffixes"]
+rust_symbols = ["rs_tar_strip_suffixes"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "tar-strip-suffixes-required-pointers-fail-closed"
+deviation_rationale = "Valid C strings retain C's ordered suffix matching, -EINVAL empty-result rule, and libc-owned output. Malformed NULL name or ret pointers return -EINVAL instead of entering C's required-pointer assertions or invalid-pointer behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-seccomp-import-rust.c"
+meson_target = "test-seccomp-import-rust"
+labels = ["tar-strip-suffixes"]
+
+[[surface]]
+id = "raw-strip-suffixes"
+c_symbols = ["raw_strip_suffixes"]
+rust_symbols = ["rs_raw_strip_suffixes"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "raw-strip-suffixes-required-pointers-fail-closed"
+deviation_rationale = "Valid C strings retain C's ordered, repeated suffix stripping and libc-owned output, including an empty string result. Malformed NULL name or ret pointers return -EINVAL instead of entering C's required-pointer assertions or invalid-pointer behavior."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[[surface.output]]
+arg = "ret"
+ownership = "owned-libc"
+release = "free"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-seccomp-import-rust.c"
+meson_target = "test-seccomp-import-rust"
+labels = ["raw-strip-suffixes"]
+
+[[surface]]
+id = "reboot-parameter-is-valid"
+c_symbols = ["reboot_parameter_is_valid"]
+rust_symbols = ["rs_reboot_parameter_is_valid"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+deviation_id = "reboot-parameter-null-input-fail-closed"
+deviation_rationale = "Valid C strings retain C's 1..127 ASCII byte policy and target NAME_MAX limit. A malformed NULL parameter returns false instead of entering C's required-pointer assertion."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[surface.static_fixture]
+file = "tests-extra/test-seccomp-import-rust.c"
+meson_target = "test-seccomp-import-rust"
+labels = ["reboot-parameter-is-valid"]

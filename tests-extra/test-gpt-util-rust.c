@@ -13,6 +13,7 @@
 /* Rust FFI */
 #include "rust/gpt_util.h"
 
+/* RUST-CONTRACT: gpt-designator-helpers */
 /* ── partition_designator_is_versioned ───────────────────────────────── */
 
 static void test_partition_designator_is_versioned(void) {
@@ -162,6 +163,7 @@ static void test_partition_verity_helpers(void) {
         assert_se(cv == _PARTITION_DESIGNATOR_INVALID);
 }
 
+/* RUST-CONTRACT: gpt-mountpoint */
 /* ── partition_mountpoint ────────────────────────────────────────────── */
 
 static void test_partition_mountpoint(void) {
@@ -211,6 +213,7 @@ static void test_partition_mountpoint(void) {
 
 /* ── parse_vlanid ────────────────────────────────────────────────────── */
 
+/* RUST-CONTRACT: vlan-id-parse */
 static void test_parse_vlanid(void) {
         uint16_t cv, rv;
         int cr, rr;
@@ -256,10 +259,19 @@ static void test_parse_vlanid(void) {
         rr = rs_parse_vlanid("  42", &rv);
         assert_se(cr == rr);
         assert_se(cv == 42);
+
+        FOREACH_STRING(p, "077", "0x10", "0b10", "0o10", "+1", "-0", "09", "1 ") {
+                cv = rv = UINT16_MAX;
+                cr = parse_vlanid(p, &cv);
+                rr = rs_parse_vlanid(p, &rv);
+                assert_se(cr == rr);
+                assert_se(cv == rv);
+        }
 }
 
 /* ── gpt_partition_label_valid ────────────────────────────────────────── */
 
+/* RUST-CONTRACT: gpt-label */
 static void test_gpt_partition_label_valid(void) {
         int cv, rv;
 
@@ -293,6 +305,13 @@ static void test_gpt_partition_label_valid(void) {
         rv = rs_gpt_partition_label_valid("äöüéèêàâîôûäöüéèêàâî");
         assert_se(cv == rv);
         assert_se(cv > 0); /* true */
+
+        /* utf8_to_utf16() drops a fully decoded UTF-8 surrogate sequence. */
+        static const char surrogate[] = { (char) 0xed, (char) 0xa0, (char) 0x80, 0 };
+        cv = gpt_partition_label_valid(surrogate);
+        rv = rs_gpt_partition_label_valid(surrogate);
+        assert_se(cv == rv);
+        assert_se(cv > 0);
 }
 
 int main(int argc, char **argv) {

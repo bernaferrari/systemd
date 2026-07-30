@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/gpt.c (designator helpers, GPT header and label policy)
-//            src/shared/vlan-util.c (parse_vlanid)
+// PORT-SYNC: scope=basic.gpt-abi; authority=src/shared/gpt.c,src/shared/gpt.h,src/shared/vlan-util.c,src/shared/vlan-util.h
 //
 // This is the small basic-crate ABI surface used by the C shadow tests.  It is
 // deliberately independent of shared/rust/gpt, which owns the generated GPT

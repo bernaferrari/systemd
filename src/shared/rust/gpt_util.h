@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+/* PORT-SYNC: scope=basic.gpt-abi; authority=src/shared/gpt.c,src/shared/gpt.h,src/shared/vlan-util.c,src/shared/vlan-util.h */
 #pragma once
 
 /*

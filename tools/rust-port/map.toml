@@ -1269,18 +1269,34 @@ status = "in-progress"
 tier = 2
 symbols = 20
 sync_status = "needs_review"
-notes = "Pure GPT model/table parity is generated and drift-checked from src/systemd/sd-gpt.h plus src/shared/gpt.c. gpt_probe, target-native/secondary aliases, C ABI, and production consumer integration remain in systemd-eu62.18."
+notes = "Pure GPT model/table parity is generated and drift-checked from src/systemd/sd-gpt.h plus src/shared/gpt.c. The distinct basic GPT ABI facade is tracked by gpt_basic_abi; gpt_probe, target-native/secondary aliases, and production consumer integration remain in systemd-eu62.18."
 
 [gpt_basic_abi]
-c_paths = ["src/shared/gpt.c", "src/shared/gpt.h", "src/shared/vlan-util.c", "src/shared/vlan-util.h"]
-rust_file = "src/basic/rust/gpt_util.rs"
+c_paths = ["src/shared/gpt.c", "src/shared/gpt.h", "src/shared/vlan-util.c", "src/shared/vlan-util.h", "src/basic/utf8.c", "src/basic/utf8.h", "src/basic/parse-util.c", "src/basic/parse-util.h"]
+rust_paths = ["src/basic/rust/gpt_util.rs", "src/basic/rust/gpt_util.h", "src/shared/rust/gpt_util.h"]
+scope = "basic.gpt-abi"
+rust_scope_paths = ["src/basic/rust/gpt_util.rs"]
+rust_interface_paths = ["src/basic/rust/gpt_util.h", "src/shared/rust/gpt_util.h"]
+contract_file = "tools/rust-port/contracts/basic/gpt-abi.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/gpt.c", rust_paths = ["src/basic/rust/gpt_util.rs", "src/basic/rust/gpt_util.h", "src/shared/rust/gpt_util.h"] },
+    { kind = "direct", path = "src/shared/gpt.h", rust_paths = ["src/basic/rust/gpt_util.rs", "src/basic/rust/gpt_util.h", "src/shared/rust/gpt_util.h"] },
+    { kind = "direct", path = "src/shared/vlan-util.c", rust_paths = ["src/basic/rust/gpt_util.rs", "src/basic/rust/gpt_util.h", "src/shared/rust/gpt_util.h"] },
+    { kind = "direct", path = "src/shared/vlan-util.h", rust_paths = ["src/basic/rust/gpt_util.rs", "src/basic/rust/gpt_util.h", "src/shared/rust/gpt_util.h"] },
+    { kind = "transitive", path = "src/basic/utf8.c", via = ["src/shared/gpt.c"], rationale = "gpt_partition_label_valid delegates its permissive UTF-8-to-UTF-16 length policy to utf8_to_utf16()." },
+    { kind = "transitive", path = "src/basic/utf8.h", via = ["src/shared/gpt.c"], rationale = "gpt_partition_label_valid consumes the UTF-16 conversion and length declarations." },
+    { kind = "transitive", path = "src/basic/parse-util.c", via = ["src/shared/vlan-util.c"], rationale = "parse_vlanid delegates base-zero unsigned parsing to safe_atou16()." },
+    { kind = "transitive", path = "src/basic/parse-util.h", via = ["src/shared/vlan-util.c"], rationale = "parse_vlanid consumes the safe_atou16() declaration." },
+]
 header_file = "src/basic/rust/gpt_util.h"
-test_file = "tests-extra/test-gpt-util-rust.c; tests-extra/test-misc-rust3.c; tests-extra/test-inline-helpers-rust.c"
+test_file = "tests-extra/test-gpt-util-rust.c; tests-extra/test-misc-rust3.c; tests-extra/test-inline-helpers-rust.c; tests-extra/test-gpt-unit-install-rust.c"
 status = "in-progress"
 tier = 1
-symbols = 13
-sync_status = "needs_review"
-notes = "ABI restoration reviewed 2026-07-29. The basic crate owns 13 explicit rs_* C adapters over an allocation-free safe core for designator, mountpoint, GPT header, label, and VLAN parsing policy. The C/R Meson shadows test-gpt-util-rust, test-gpt-unit-install-rust, test-misc-rust3, and test-inline-helpers-rust passed in the Ubuntu Lima guest. tools/rust-port/check-gpt-basic-abi.py mechanically verifies every dedicated header declaration has exactly one unsafe(no_mangle) extern C export, matching the C type inventory, and that source/test Meson membership remains intact. Canonical gpt_probe/table/consumer integration remains systemd-eu62.18."
+symbols = 17
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/gpt.c" = "d6f264fbe980ba8f8bb9ea9498ad683e808d0c86", "src/shared/gpt.h" = "922bc82c150a9a6015cfbe9e0d533e857306c4ff", "src/shared/vlan-util.c" = "cf931dfae7efa60487a1b90dcd27070bc354d50d", "src/shared/vlan-util.h" = "f2dbe827697b96baffd8bcc7f35539593c8e1530", "src/basic/utf8.c" = "0fccc4711cb9eb8e3817eff421e41b2f2f951be3", "src/basic/utf8.h" = "fde72a0d5422c9800125484ac619decf7ac93ffb", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
+last_reviewed_rust_blobs = { "src/basic/rust/gpt_util.rs" = "c15bd6cb43dfd7bed13b5fe6d2245b9c338cd6e9", "src/basic/rust/gpt_util.h" = "21a702a1d21ba996dcfec7f91a52dcae47f01eaa", "src/shared/rust/gpt_util.h" = "4b0fae2c2ddd8082c8f12113dd30bbe6a7b2e057" }
+notes = "Reviewed static GPT/basic ABI slice 2026-07-30; seventeen explicit rs_* adapters preserve the valid-input C ABI for designator/mountpoint helpers, GPT header checks, VLAN parsing, and partition predicates. The label adapter is allocation-free, so C's otherwise possible -ENOMEM result remains an explicit contract deviation. Direct GPT/VLAN authority and the UTF-8/parse helper closure are pinned; all four Rust-linked C shadow fixtures are registered but were not executed in this review. Canonical gpt_probe/table/consumer integration remains systemd-eu62.18; C remains production authority and runtime parity is unclaimed."
 
 [id128_util]
 c_paths = [
@@ -1337,14 +1353,34 @@ last_reviewed_rust_blobs = { "src/basic/rust/image_policy_util.rs" = "6a21cb5922
 notes = "Reviewed static image-policy ABI slice 2026-07-29; no build/tests/VM. Seventeen facades preserve scalar/C-string flag behavior, C-layout flexible-array policy ownership, strict byte grammar, formatting, composition, lookup, equivalence, and filesystem-type selection. The native Vec model remains Rust-only behind explicit C-layout conversion; C remains production authority and runtime parity remains P2."
 
 [import_util]
-c_file = "src/shared/import-util.c, src/shared/reboot-util.c"
-rust_file = "src/basic/rust/import_util.rs"
-header_file = "src/basic/rust/import_util.h"
+c_paths = [
+    "src/shared/import-util.c",
+    "src/shared/import-util.h",
+    "src/shared/reboot-util.c",
+    "src/shared/reboot-util.h",
+]
+rust_paths = [
+    "src/basic/rust/import_util.rs",
+    "src/basic/rust/import_util.h",
+]
+scope = "shared.import-util"
+rust_scope_paths = ["src/basic/rust/import_util.rs"]
+rust_interface_paths = ["src/basic/rust/import_util.h"]
+contract_file = "tools/rust-port/contracts/basic/import-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/shared/import-util.c", rust_paths = ["src/basic/rust/import_util.rs", "src/basic/rust/import_util.h"] },
+    { kind = "direct", path = "src/shared/import-util.h", rust_paths = ["src/basic/rust/import_util.rs", "src/basic/rust/import_util.h"] },
+    { kind = "direct", path = "src/shared/reboot-util.c", rust_paths = ["src/basic/rust/import_util.rs", "src/basic/rust/import_util.h"] },
+    { kind = "direct", path = "src/shared/reboot-util.h", rust_paths = ["src/basic/rust/import_util.rs", "src/basic/rust/import_util.h"] },
+]
+test_file = "tests-extra/test-seccomp-import-rust.c"
 status = "in-progress"
 tier = 2
 symbols = 5
-sync_status = "needs_review"
-notes = "Static audit 2026-07-27; no build/tests/VM. The five registered C ABI exports (URL last-component/change-suffix, tar/raw suffix stripping, reboot parameter validation) are byte-oriented unsafe extern-C facades over safe range cores. Successful string results are fresh libc malloc allocations for C free(3); malformed/non-UTF-8 bytes remain opaque. Current C sources, canonical header, registered shadow test, and reviewed CI are pinned by check-basic-rust-ffi-abi.py. Other import-util APIs are not claimed by this slice; runtime differential/link validation remains pending."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/shared/import-util.c" = "8bc90003b2c5e164b3a347da13fc1645fe41f4a2", "src/shared/import-util.h" = "3ab6c50587f5ffa9d06cc92685ece3424032bfcb", "src/shared/reboot-util.c" = "758b7a2600b06c322c0e72b201ed32369d61cae9", "src/shared/reboot-util.h" = "8dd927907942afa90f36d2e59bd5f8735f89c843" }
+last_reviewed_rust_blobs = { "src/basic/rust/import_util.rs" = "37db454975c24a76f397d4515b472ced606e0379", "src/basic/rust/import_util.h" = "e42962696455132b0a5f54c15ec8f50661fa6aba" }
+notes = "Reviewed static import/reboot ABI slice 2026-07-30; no build/tests/VM. Five facades preserve opaque C-string byte grammar, URL component/suffix edits, ordered repeated suffix stripping, NAME_MAX ASCII validation, libc allocation ownership, and success-only output publication. Malformed required pointers fail closed rather than entering C assertion/undefined behavior; contracts record those deviations. Other import/reboot APIs are excluded. C remains production authority; runtime differential/link validation remains P2."
 
 [mempool]
 c_paths = ["src/basic/mempool.c", "src/basic/mempool.h", "src/basic/memory-util.c", "src/basic/memory-util.h", "src/fundamental/memory-util.h"]

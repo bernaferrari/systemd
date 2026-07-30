@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/shared/import-util.c (import_url_*, tar_strip_suffixes,
-// raw_strip_suffixes); src/shared/reboot-util.c (reboot_parameter_is_valid)
+// PORT-SYNC: scope=shared.import-util; authority=src/shared/import-util.c,src/shared/import-util.h,src/shared/reboot-util.c,src/shared/reboot-util.h
+// Facades: import_url_*, tar_strip_suffixes, raw_strip_suffixes, and
+// reboot_parameter_is_valid.
 //
 // Keep the algorithms below in byte slices: the C authority operates on
 // NUL-terminated bytes, not UTF-8 strings. The five C entry points are the
@@ -129,7 +130,8 @@ fn raw_strip_suffixes_end(name: &[u8]) -> usize {
 }
 
 fn reboot_parameter_is_valid_bytes(parameter: &[u8]) -> bool {
-    parameter.len() <= libc::NAME_MAX as usize && parameter.iter().all(u8::is_ascii)
+    parameter.len() <= libc::NAME_MAX as usize
+        && parameter.iter().all(|byte| (1..=0x7f).contains(byte))
 }
 
 /// Allocate an exact byte slice plus its NUL terminator using libc malloc.
@@ -378,6 +380,7 @@ mod tests {
         let url = b"x://host/\xff.raw";
         assert_eq!(import_url_last_component_range(url), Ok(9..14));
         assert_eq!(raw_strip_suffixes_end(b"\xff.raw"), 1);
+        assert!(!reboot_parameter_is_valid_bytes(b"\0"));
         assert!(reboot_parameter_is_valid_bytes(b"\x7f"));
         assert!(!reboot_parameter_is_valid_bytes(b"\x80"));
     }

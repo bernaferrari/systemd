@@ -1,0 +1,185 @@
+schema = 1
+module = "gpt_basic_abi"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "gpt_probe",
+    "gpt_partition_type_uuid_to_string",
+    "gpt_partition_type_uuid_to_string_harder",
+    "gpt_partition_type_from_string",
+    "gpt_partition_type_override_architecture",
+    "gpt_partition_type_uuid_to_arch",
+    "gpt_partition_type_from_uuid",
+    "gpt_partition_type_mountpoint_nulstr",
+    "parse_vid_range",
+    "config_parse_default_port_vlanid",
+    "config_parse_vlanid",
+]
+
+[authority]
+c_headers = ["src/shared/gpt.h", "src/shared/vlan-util.h"]
+c_sources = ["src/shared/gpt.c", "src/shared/vlan-util.c"]
+rust_headers = ["src/basic/rust/gpt_util.h", "src/shared/rust/gpt_util.h"]
+rust_sources = ["src/basic/rust/gpt_util.rs"]
+
+[[surface]]
+id = "gpt-header-signature"
+c_symbols = ["gpt_header_has_signature"]
+rust_symbols = ["rs_gpt_header_has_signature"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "ptr-len-opaque"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-misc-rust3.c"
+meson_target = "test-misc-rust3"
+labels = ["gpt-header-signature"]
+
+[[surface]]
+id = "gpt-designator-helpers"
+c_symbols = [
+    "partition_designator_is_versioned",
+    "partition_verity_hash_of",
+    "partition_verity_sig_of",
+    "partition_verity_hash_to_data",
+    "partition_verity_sig_to_data",
+    "partition_verity_to_data",
+]
+rust_symbols = [
+    "rs_partition_designator_is_versioned",
+    "rs_partition_verity_hash_of",
+    "rs_partition_verity_sig_of",
+    "rs_partition_verity_hash_to_data",
+    "rs_partition_verity_sig_to_data",
+    "rs_partition_verity_to_data",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "none"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-gpt-util-rust.c"
+meson_target = "test-gpt-util-rust"
+labels = ["gpt-designator-helpers"]
+
+[[surface]]
+id = "gpt-mountpoint"
+c_symbols = ["partition_mountpoint_to_string"]
+rust_symbols = ["rs_partition_mountpoint_to_string"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "nullable"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "return"
+ownership = "borrowed"
+publication_success = "return"
+publication_error = "return"
+optional = true
+
+[surface.static_fixture]
+file = "tests-extra/test-gpt-util-rust.c"
+meson_target = "test-gpt-util-rust"
+labels = ["gpt-mountpoint"]
+
+[[surface]]
+id = "vlan-id-parse"
+c_symbols = ["parse_vlanid"]
+rust_symbols = ["rs_parse_vlanid"]
+coverage = "exact"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[[surface.output]]
+arg = "ret"
+ownership = "caller-storage"
+publication_success = "write"
+publication_error = "unchanged"
+optional = false
+
+[surface.static_fixture]
+file = "tests-extra/test-gpt-util-rust.c"
+meson_target = "test-gpt-util-rust"
+labels = ["vlan-id-parse"]
+
+[[surface]]
+id = "gpt-label"
+c_symbols = ["gpt_partition_label_valid"]
+rust_symbols = ["rs_gpt_partition_label_valid"]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "gpt-label-allocation-fail-closed"
+deviation_rationale = "For valid borrowed C strings, Rust preserves C's permissive UTF-8-to-UTF-16 length policy without allocation. C may return -ENOMEM while allocating its temporary UTF-16 buffer; the allocation-free Rust facade instead returns the computed boolean."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[surface.static_fixture]
+file = "tests-extra/test-gpt-util-rust.c"
+meson_target = "test-gpt-util-rust"
+labels = ["gpt-label"]
+
+[[surface]]
+id = "gpt-verity-predicates"
+c_symbols = [
+    "partition_designator_is_verity_hash",
+    "partition_designator_is_verity_sig",
+    "partition_designator_is_verity",
+]
+rust_symbols = [
+    "rs_partition_designator_is_verity_hash",
+    "rs_partition_designator_is_verity_sig",
+    "rs_partition_designator_is_verity",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-inline-helpers-rust.c"
+meson_target = "test-inline-helpers-rust"
+labels = ["gpt-verity-predicates"]
+
+[[surface]]
+id = "gpt-type-predicates"
+c_symbols = [
+    "gpt_partition_type_knows_read_only",
+    "gpt_partition_type_knows_growfs",
+    "gpt_partition_type_knows_no_auto",
+    "gpt_partition_type_has_filesystem",
+]
+rust_symbols = [
+    "rs_gpt_partition_type_knows_read_only",
+    "rs_gpt_partition_type_knows_growfs",
+    "rs_gpt_partition_type_knows_no_auto",
+    "rs_gpt_partition_type_has_filesystem",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "boolean"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-gpt-unit-install-rust.c"
+meson_target = "test-gpt-unit-install-rust"
+labels = ["gpt-type-predicates"]
