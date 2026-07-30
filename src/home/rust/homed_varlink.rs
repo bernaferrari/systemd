@@ -19,29 +19,29 @@ pub fn client_is_trusted(peer_uid: u32, home: &Home) -> bool {
 }
 
 pub fn home_user_match_lookup_parameters(parameters: &LookupParameters, home: &Home) -> bool {
-    if let Some(ref user_name) = parameters.user_name {
-        if &home.user_name != user_name {
-            return false;
-        }
+    if let Some(ref user_name) = parameters.user_name
+        && &home.user_name != user_name
+    {
+        return false;
     }
-    if let Some(uid) = parameters.uid {
-        if home.uid != uid {
-            return false;
-        }
+    if let Some(uid) = parameters.uid
+        && home.uid != uid
+    {
+        return false;
     }
     true
 }
 
 pub fn home_group_match_lookup_parameters(parameters: &LookupParameters, home: &Home) -> bool {
-    if let Some(ref group_name) = parameters.group_name {
-        if &home.user_name != group_name {
-            return false;
-        }
+    if let Some(ref group_name) = parameters.group_name
+        && &home.user_name != group_name
+    {
+        return false;
     }
-    if let Some(gid) = parameters.gid {
-        if home.uid != gid {
-            return false;
-        }
+    if let Some(gid) = parameters.gid
+        && home.uid != gid
+    {
+        return false;
     }
     true
 }

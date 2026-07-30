@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_parse_argv_debug() {
-        let (flags, debug) = parse_argv(&["debug"]);
+        let (_flags, debug) = parse_argv(&["debug"]);
         assert!(debug);
     }
 

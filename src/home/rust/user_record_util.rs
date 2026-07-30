@@ -4,11 +4,10 @@
 
 // Port of user-record-util.c/h - User record synthesis and utility functions
 
-use std::collections::HashMap;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::home_util::{suitable_realm, suitable_user_name, supported_fstype};
+use crate::home_util::{suitable_realm, suitable_user_name};
 use crate::homed_conf::UserStorage;
 
 pub const USER_DISK_SIZE_DEFAULT_PERCENT: u32 = 83;
@@ -140,10 +139,10 @@ pub fn user_record_synthesize(
     if !suitable_user_name(user_name) {
         return Err(UserRecordError::InvalidName(user_name.to_string()));
     }
-    if let Some(r) = realm {
-        if !suitable_realm(r).map_err(|e| UserRecordError::InvalidRealm(e.to_string()))? {
-            return Err(UserRecordError::InvalidRealm(r.to_string()));
-        }
+    if let Some(r) = realm
+        && !suitable_realm(r).map_err(|e| UserRecordError::InvalidRealm(e.to_string()))?
+    {
+        return Err(UserRecordError::InvalidRealm(r.to_string()));
     }
 
     let home_dir = format!("/home/{}", user_name);

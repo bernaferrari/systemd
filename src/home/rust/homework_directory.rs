@@ -48,10 +48,11 @@ pub fn home_setup_directory(record: &UserRecord) -> Result<HomeSetup, DirectoryE
     let image_path = record
         .image_path_str()
         .ok_or(DirectoryError::MissingImagePath)?;
-    let mut setup = HomeSetup::default();
-    setup.undo_mount = true;
-    setup.mount_point = Some(image_path.into());
-    Ok(setup)
+    Ok(HomeSetup {
+        undo_mount: true,
+        mount_point: Some(image_path.into()),
+        ..Default::default()
+    })
 }
 
 pub fn home_activate_directory(

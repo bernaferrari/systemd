@@ -5,9 +5,8 @@
 // Port of homed-home.c/h - Home object lifecycle management
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::homed_conf::UserStorage;
 use crate::homed_home_bus::{Home, HomeState};
 use crate::homed_operation::{Operation, OperationType};
 
@@ -49,20 +48,11 @@ impl std::fmt::Display for HomeError {
 
 impl std::error::Error for HomeError {}
 
+#[derive(Default)]
 pub struct HomeSetup {
     pub undo_mount: bool,
     pub root_fd: Option<i32>,
     pub mount_point: Option<PathBuf>,
-}
-
-impl Default for HomeSetup {
-    fn default() -> Self {
-        Self {
-            undo_mount: false,
-            root_fd: None,
-            mount_point: None,
-        }
-    }
 }
 
 impl Home {
@@ -74,7 +64,7 @@ impl Home {
         Ok(Operation::new(OperationType::Activate))
     }
 
-    pub fn finish_work(&mut self, op: Operation, ret: i32) -> Result<(), HomeError> {
+    pub fn finish_work(&mut self, _op: Operation, ret: i32) -> Result<(), HomeError> {
         if ret >= 0 {
             self.state = HomeState::Active;
         } else {

@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::homed_home_bus::{Home, HomeState, bus_home_path};
+use crate::homed_home_bus::{Home, bus_home_path};
 
 #[derive(Debug, Clone)]
 pub struct AutoLoginEntry {

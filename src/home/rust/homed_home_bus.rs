@@ -4,10 +4,6 @@
 
 // Port of homed-home-bus.c/h - D-Bus interface for Home objects
 
-use std::collections::HashMap;
-
-use crate::homed_operation::OperationType;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HomeState {
     Absent,
@@ -30,6 +26,10 @@ impl HomeState {
         }
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "this C-parity parser deliberately reports an unrecognized state as Option rather than a FromStr error"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "absent" => Some(HomeState::Absent),

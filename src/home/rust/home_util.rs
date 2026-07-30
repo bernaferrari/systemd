@@ -78,12 +78,11 @@ pub fn split_user_name_realm(value: &str) -> Result<(String, Option<String>), Ho
     if !suitable_user_name(&user) {
         return Err(HomeUtilError::InvalidUserName(user));
     }
-    if let Some(ref realm_value) = realm {
-        if !suitable_realm(realm_value)
+    if let Some(ref realm_value) = realm
+        && !suitable_realm(realm_value)
             .map_err(|_| HomeUtilError::InvalidRealm(realm_value.clone()))?
-        {
-            return Err(HomeUtilError::InvalidRealm(realm_value.clone()));
-        }
+    {
+        return Err(HomeUtilError::InvalidRealm(realm_value.clone()));
     }
 
     Ok((user, realm))

@@ -9,7 +9,7 @@ use std::io;
 use crate::home_util::suitable_user_name;
 use crate::homed_conf::UserStorage;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HomectlOptions {
     pub identity: Option<String>,
     pub real_name: Option<String>,
@@ -31,33 +31,6 @@ pub struct HomectlOptions {
     pub json: bool,
     pub no_pager: bool,
     pub lines: Option<usize>,
-}
-
-impl Default for HomectlOptions {
-    fn default() -> Self {
-        Self {
-            identity: None,
-            real_name: None,
-            realm: None,
-            home_dir: None,
-            shell: None,
-            uid: None,
-            gid: None,
-            storage: None,
-            image_path: None,
-            fs_type: None,
-            disk_size: None,
-            password: None,
-            pkcs11_token_uri: None,
-            fido2_device: None,
-            recovery_key: false,
-            enforce_password_policy: false,
-            kill_processes: false,
-            json: false,
-            no_pager: false,
-            lines: None,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -106,13 +79,13 @@ pub fn parse_identity(identity: &str) -> Result<(String, Option<String>), Homect
 }
 
 pub fn validate_options(opts: &HomectlOptions) -> Result<(), HomectlError> {
-    if let Some(ref identity) = opts.identity {
-        if !suitable_user_name(identity) {
-            return Err(HomectlError::InvalidArgument(format!(
-                "Invalid user name: {}",
-                identity
-            )));
-        }
+    if let Some(ref identity) = opts.identity
+        && !suitable_user_name(identity)
+    {
+        return Err(HomectlError::InvalidArgument(format!(
+            "Invalid user name: {}",
+            identity
+        )));
     }
     Ok(())
 }

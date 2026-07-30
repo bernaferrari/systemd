@@ -76,10 +76,11 @@ pub fn home_setup_cifs(record: &UserRecord, flags: HomeSetupFlags) -> Result<Hom
             .as_deref()
             .ok_or(CifsError::MissingService)?,
     )?;
-    let mut setup = HomeSetup::default();
-    setup.undo_mount = !matches!(flags, HomeSetupFlags::AlreadyActivated);
-    setup.mount_point = Some(format!("//{}/{}", parsed.host, parsed.service).into());
-    Ok(setup)
+    Ok(HomeSetup {
+        undo_mount: !matches!(flags, HomeSetupFlags::AlreadyActivated),
+        mount_point: Some(format!("//{}/{}", parsed.host, parsed.service).into()),
+        ..Default::default()
+    })
 }
 
 pub fn home_activate_cifs(

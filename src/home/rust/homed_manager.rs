@@ -4,12 +4,11 @@
 
 // Port of homed-manager.c/h - Manager object for systemd-homed
 
-use std::collections::HashMap;
 use std::io;
 
 use crate::home_util::{split_user_name_realm, suitable_user_name};
 use crate::homed_conf::ManagerConfig;
-use crate::homed_home_bus::{Home, HomeState};
+use crate::homed_home_bus::Home;
 use crate::homed_manager_bus::ManagerBus;
 
 pub const HOME_UID_MIN: u32 = 60000;

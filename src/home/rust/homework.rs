@@ -5,9 +5,8 @@
 // Port of homework.c - Worker process for home directory operations
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::homed_conf::UserStorage;
 use crate::user_record_util::UserRecord;
 
 pub const BAD_PASSWORD_DELAY_USEC: u64 = 3_000_000;

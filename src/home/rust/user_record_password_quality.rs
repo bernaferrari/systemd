@@ -47,10 +47,10 @@ pub fn check_password_quality(
         return Err(PasswordQualityError::TooSimple);
     }
 
-    if let Some(old_password) = old_password {
-        if password == old_password {
-            return Err(PasswordQualityError::ReusedPassword);
-        }
+    if let Some(old_password) = old_password
+        && password == old_password
+    {
+        return Err(PasswordQualityError::ReusedPassword);
     }
 
     Ok(())

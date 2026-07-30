@@ -31,10 +31,10 @@ impl std::error::Error for MountError {}
 
 pub fn mount_options_for_fstype(fstype: &str) -> Option<String> {
     let env_key = format!("SYSTEMD_HOME_MOUNT_OPTIONS_{}", fstype.to_ascii_uppercase());
-    if let Ok(value) = env::var(&env_key) {
-        if !value.is_empty() {
-            return Some(value);
-        }
+    if let Ok(value) = env::var(&env_key)
+        && !value.is_empty()
+    {
+        return Some(value);
     }
 
     match fstype {
@@ -67,10 +67,10 @@ pub fn home_mount_node(
     } else {
         "nodiscard".into()
     });
-    if let Some(extra) = extra_mount_options {
-        if !extra.is_empty() {
-            options.push(extra.to_string());
-        }
+    if let Some(extra) = extra_mount_options
+        && !extra.is_empty()
+    {
+        options.push(extra.to_string());
     }
 
     Ok(options.join(","))

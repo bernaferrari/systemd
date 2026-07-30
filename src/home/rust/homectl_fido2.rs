@@ -121,10 +121,10 @@ pub fn identity_add_fido2_parameters(
         return Err(Fido2Error::MissingUserName);
     }
 
-    if let Some(alg) = &options.cred_alg {
-        if !matches!(alg.as_str(), "es256" | "rs256" | "eddsa") {
-            return Err(Fido2Error::UnsupportedAlgorithm(alg.clone()));
-        }
+    if let Some(alg) = &options.cred_alg
+        && !matches!(alg.as_str(), "es256" | "rs256" | "eddsa")
+    {
+        return Err(Fido2Error::UnsupportedAlgorithm(alg.clone()));
     }
 
     let credential = format!(

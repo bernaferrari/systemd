@@ -61,9 +61,10 @@ pub fn home_setup_fscrypt(
     volume_key: &[u8],
 ) -> Result<HomeSetup, FscryptError> {
     let _ = fscrypt_upload_volume_key(record, volume_key)?;
-    let mut setup = HomeSetup::default();
-    setup.undo_mount = true;
-    Ok(setup)
+    Ok(HomeSetup {
+        undo_mount: true,
+        ..Default::default()
+    })
 }
 
 pub fn home_flush_keyring_fscrypt(record: &UserRecord) -> Result<bool, FscryptError> {
