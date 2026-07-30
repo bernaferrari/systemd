@@ -3,8 +3,6 @@
 //
 // Binary entry point for systemd-creds
 
-use systemd_creds_rs as lib;
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn print_help() {

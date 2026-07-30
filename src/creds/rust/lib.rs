@@ -6,6 +6,8 @@
 // Display and process credentials.
 // Supports encryption, decryption, listing, and transcoding.
 
+use std::str::FromStr;
+
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Maximum freshness for timestamps (30 seconds).
@@ -23,18 +25,22 @@ pub enum TranscodeMode {
     UnHex,
 }
 
-impl TranscodeMode {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for TranscodeMode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "off" => Some(TranscodeMode::Off),
-            "base64" => Some(TranscodeMode::Base64),
-            "unbase64" => Some(TranscodeMode::UnBase64),
-            "hex" => Some(TranscodeMode::Hex),
-            "unhex" => Some(TranscodeMode::UnHex),
-            _ => None,
+            "off" => Ok(TranscodeMode::Off),
+            "base64" => Ok(TranscodeMode::Base64),
+            "unbase64" => Ok(TranscodeMode::UnBase64),
+            "hex" => Ok(TranscodeMode::Hex),
+            "unhex" => Ok(TranscodeMode::UnHex),
+            _ => Err(()),
         }
     }
+}
 
+impl TranscodeMode {
     pub fn as_str(&self) -> &'static str {
         match self {
             TranscodeMode::Off => "off",
@@ -44,6 +50,11 @@ impl TranscodeMode {
             TranscodeMode::UnHex => "unhex",
         }
     }
+}
+
+/// C-shaped lookup matching `transcode_mode_from_string()`.
+pub fn transcode_mode_from_string(s: &str) -> Option<TranscodeMode> {
+    s.parse().ok()
 }
 
 /// Credential key type selection.
@@ -62,23 +73,30 @@ pub enum CredKeyType {
     Tpm2Absent,
 }
 
-impl CredKeyType {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for CredKeyType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "auto" => Some(CredKeyType::Auto),
-            "auto-initrd" => Some(CredKeyType::AutoInitrd),
-            "host" => Some(CredKeyType::Host),
-            "tpm2" => Some(CredKeyType::Tpm2),
-            "tpm2-with-public-key" => Some(CredKeyType::Tpm2WithPublicKey),
-            "host+tpm2" => Some(CredKeyType::HostTpm2),
-            "tpm2+host" => Some(CredKeyType::Tpm2Host),
-            "host+tpm2-with-public-key" => Some(CredKeyType::HostTpm2WithPublicKey),
-            "tpm2-with-public-key+host" => Some(CredKeyType::Tpm2WithPublicKeyHost),
-            "null" => Some(CredKeyType::Null),
-            "tpm2-absent" => Some(CredKeyType::Tpm2Absent),
-            _ => None,
+            "auto" => Ok(CredKeyType::Auto),
+            "auto-initrd" => Ok(CredKeyType::AutoInitrd),
+            "host" => Ok(CredKeyType::Host),
+            "tpm2" => Ok(CredKeyType::Tpm2),
+            "tpm2-with-public-key" => Ok(CredKeyType::Tpm2WithPublicKey),
+            "host+tpm2" => Ok(CredKeyType::HostTpm2),
+            "tpm2+host" => Ok(CredKeyType::Tpm2Host),
+            "host+tpm2-with-public-key" => Ok(CredKeyType::HostTpm2WithPublicKey),
+            "tpm2-with-public-key+host" => Ok(CredKeyType::Tpm2WithPublicKeyHost),
+            "null" => Ok(CredKeyType::Null),
+            "tpm2-absent" => Ok(CredKeyType::Tpm2Absent),
+            _ => Err(()),
         }
     }
+}
+
+/// C-shaped lookup matching `cred_key_type_from_string()`.
+pub fn cred_key_type_from_string(s: &str) -> Option<CredKeyType> {
+    s.parse().ok()
 }
 
 /// Credential scope.
@@ -88,14 +106,21 @@ pub enum CredentialScope {
     User,
 }
 
-impl CredentialScope {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for CredentialScope {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "system" => Some(CredentialScope::System),
-            "user" => Some(CredentialScope::User),
-            _ => None,
+            "system" => Ok(CredentialScope::System),
+            "user" => Ok(CredentialScope::User),
+            _ => Err(()),
         }
     }
+}
+
+/// C-shaped lookup matching `credential_scope_from_string()`.
+pub fn credential_scope_from_string(s: &str) -> Option<CredentialScope> {
+    s.parse().ok()
 }
 
 /// Verb (subcommand) for the creds tool.
@@ -109,18 +134,25 @@ pub enum CredsVerb {
     Help,
 }
 
-impl CredsVerb {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for CredsVerb {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "list" => Some(CredsVerb::List),
-            "cat" => Some(CredsVerb::Cat),
-            "encrypt" => Some(CredsVerb::Encrypt),
-            "decrypt" => Some(CredsVerb::Decrypt),
-            "setup" => Some(CredsVerb::Setup),
-            "help" => Some(CredsVerb::Help),
-            _ => None,
+            "list" => Ok(CredsVerb::List),
+            "cat" => Ok(CredsVerb::Cat),
+            "encrypt" => Ok(CredsVerb::Encrypt),
+            "decrypt" => Ok(CredsVerb::Decrypt),
+            "setup" => Ok(CredsVerb::Setup),
+            "help" => Ok(CredsVerb::Help),
+            _ => Err(()),
         }
     }
+}
+
+/// Option-returning facade for the command verb lookup.
+pub fn creds_verb_from_string(s: &str) -> Option<CredsVerb> {
+    s.parse().ok()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -265,7 +297,7 @@ pub fn parse_creds_args(args: &[&str]) -> Result<CredsArgs, i32> {
                 if args[i] == "false" || args[i] == "0" {
                     result.transcode = TranscodeMode::Off;
                 } else {
-                    result.transcode = TranscodeMode::from_str(args[i]).ok_or(-libc::EINVAL)?;
+                    result.transcode = transcode_mode_from_string(args[i]).ok_or(-libc::EINVAL)?;
                 }
             }
             "--with-key" => {
@@ -279,7 +311,8 @@ pub fn parse_creds_args(args: &[&str]) -> Result<CredsArgs, i32> {
                 if args[i].is_empty() {
                     result.with_key = None;
                 } else {
-                    result.with_key = Some(CredKeyType::from_str(args[i]).ok_or(-libc::EINVAL)?);
+                    result.with_key =
+                        Some(cred_key_type_from_string(args[i]).ok_or(-libc::EINVAL)?);
                 }
             }
             "-H" => result.with_key = Some(CredKeyType::Host),
@@ -323,7 +356,7 @@ pub fn parse_creds_args(args: &[&str]) -> Result<CredsArgs, i32> {
             s if s.starts_with('-') => return Err(-libc::EINVAL),
             other => {
                 if result.verb.is_none() {
-                    result.verb = CredsVerb::from_str(other);
+                    result.verb = creds_verb_from_string(other);
                     if result.verb.is_none() {
                         return Err(-libc::EINVAL);
                     }
@@ -350,10 +383,9 @@ pub fn credential_name_valid(name: &str) -> bool {
         return false;
     }
     let mut chars = name.chars();
-    let first = match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => c,
-        _ => return false,
-    };
+    if !matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_') {
+        return false;
+    }
     for ch in chars {
         if !ch.is_ascii_alphanumeric() && ch != '_' && ch != '-' && ch != '.' {
             return false;
@@ -454,28 +486,36 @@ mod tests {
             TranscodeMode::Hex,
             TranscodeMode::UnHex,
         ] {
-            assert_eq!(TranscodeMode::from_str(mode.as_str()), Some(mode));
+            assert_eq!(mode.as_str().parse(), Ok(mode));
+            assert_eq!(transcode_mode_from_string(mode.as_str()), Some(mode));
         }
+        assert_eq!("invalid".parse::<TranscodeMode>(), Err(()));
     }
 
     #[test]
     fn test_cred_key_type_from_str() {
-        assert_eq!(CredKeyType::from_str("auto"), Some(CredKeyType::Auto));
-        assert_eq!(CredKeyType::from_str("host"), Some(CredKeyType::Host));
-        assert_eq!(CredKeyType::from_str("null"), Some(CredKeyType::Null));
-        assert_eq!(CredKeyType::from_str("invalid"), None);
+        assert_eq!("auto".parse(), Ok(CredKeyType::Auto));
+        assert_eq!("host".parse(), Ok(CredKeyType::Host));
+        assert_eq!("null".parse(), Ok(CredKeyType::Null));
+        assert_eq!(
+            cred_key_type_from_string("tpm2-absent"),
+            Some(CredKeyType::Tpm2Absent)
+        );
+        assert_eq!("invalid".parse::<CredKeyType>(), Err(()));
     }
 
     #[test]
     fn test_credential_scope_from_str() {
-        assert_eq!(
-            CredentialScope::from_str("system"),
-            Some(CredentialScope::System)
-        );
-        assert_eq!(
-            CredentialScope::from_str("user"),
-            Some(CredentialScope::User)
-        );
+        assert_eq!("system".parse(), Ok(CredentialScope::System));
+        assert_eq!("user".parse(), Ok(CredentialScope::User));
+        assert_eq!(credential_scope_from_string("invalid"), None);
+    }
+
+    #[test]
+    fn test_creds_verb_from_str() {
+        assert_eq!("encrypt".parse(), Ok(CredsVerb::Encrypt));
+        assert_eq!(creds_verb_from_string("setup"), Some(CredsVerb::Setup));
+        assert_eq!("invalid".parse::<CredsVerb>(), Err(()));
     }
 
     #[test]
