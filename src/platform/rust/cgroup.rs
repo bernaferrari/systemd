@@ -272,6 +272,16 @@ fn apply_access(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
     Ok(())
 }
 
+fn set_access_recursive_at(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
+    chown_path(path, uid, gid)?;
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            set_access_recursive_at(&entry?.path(), uid, gid)?;
+        }
+    }
+    Ok(())
+}
+
 fn trim_inner(path: &Path) -> io::Result<()> {
     let Ok(entries) = fs::read_dir(path) else {
         return Ok(());
@@ -398,20 +408,18 @@ pub fn cg_set_access(path: &str, uid: u32, gid: u32) -> io::Result<()> {
     Ok(())
 }
 
-/// Recursively set ownership/mode for all files and directories below a cgroup path.
+/// Recursively set ownership, without changing modes, below a cgroup path.
+///
+/// Unlike [`cg_set_access`], this follows C's recursive delegation helper:
+/// every descendant has its ownership updated while its kernel-provided mode
+/// remains intact.
 pub fn cg_set_access_recursive(path: &str, uid: u32, gid: u32) -> io::Result<()> {
-    fn recurse(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
-        apply_access(path, uid, gid)?;
-        if path.is_dir() {
-            for entry in fs::read_dir(path)? {
-                recurse(&entry?.path(), uid, gid)?;
-            }
-        }
-        Ok(())
+    if uid == UID_INVALID && gid == GID_INVALID {
+        return Ok(());
     }
 
     let root = cg_get_path(path, None)?;
-    recurse(&root, uid, gid)
+    set_access_recursive_at(&root, uid, gid)
 }
 
 /// Heuristic check whether a cgroup appears delegated to a non-root owner.
@@ -769,5 +777,43 @@ mod tests {
                 assert!(root.join("parent").exists());
             })
         };
+    }
+
+    #[test]
+    fn test_cg_set_access_recursive_preserves_existing_modes() {
+        let root = TempRoot::new();
+        let delegated = root.path().join("delegated");
+        let child = delegated.join("child");
+        let control = child.join("memory.max");
+        fs::create_dir_all(&child).unwrap();
+        fs::write(&control, "max\n").unwrap();
+
+        let entries = [
+            (delegated.as_path(), 0o710),
+            (child.as_path(), 0o750),
+            (control.as_path(), 0o640),
+        ];
+        for (entry, mode) in entries {
+            let mut permissions = fs::metadata(entry).unwrap().permissions();
+            permissions.set_mode(mode);
+            fs::set_permissions(entry, permissions).unwrap();
+        }
+
+        let metadata = fs::metadata(&delegated).unwrap();
+        set_access_recursive_at(&delegated, metadata.uid(), metadata.gid()).unwrap();
+
+        for (entry, expected_mode) in entries {
+            assert_eq!(
+                fs::metadata(entry).unwrap().permissions().mode() & 0o777,
+                expected_mode
+            );
+        }
+    }
+
+    #[test]
+    fn test_cg_set_access_recursive_invalid_ids_short_circuit_path_resolution() {
+        assert!(
+            cg_set_access_recursive("../must-not-be-resolved", UID_INVALID, GID_INVALID).is_ok()
+        );
     }
 }
