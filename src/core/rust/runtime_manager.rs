@@ -37,9 +37,6 @@ use crate::unit::{
 };
 use systemd_platform_rs::spawn::{self, ChildState, ProcessTracker};
 
-#[cfg(test)]
-use crate::unit::PidRef;
-
 pub type Result<T> = std::result::Result<T, Errno>;
 
 /*
@@ -938,9 +935,9 @@ impl RuntimeManager {
     #[cfg(test)]
     pub fn inject_test_main_pid(&mut self, unit_name: &str, pid: u32) {
         if let Some(unit) = self.units.get_mut(unit_name) {
-            unit.main_pid = Some(PidRef(pid));
+            unit.main_pid = Some(crate::unit::PidRef(pid));
             unit.control_pid = None;
-            unit.watched_pids.insert(PidRef(pid));
+            unit.watched_pids.insert(crate::unit::PidRef(pid));
             self.track_pid(unit_name, pid, TrackedPidRole::Main);
         }
     }
