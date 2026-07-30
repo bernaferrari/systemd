@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_ENOMEM: i32 = -(libc::ENOMEM as i32);
+pub const NEG_ENOMEM: i32 = -libc::ENOMEM;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Device {
@@ -81,10 +81,10 @@ fn device_match_value(
     }
 
     for (key, patterns) in nomatches {
-        if let Some(value) = lookup(key) {
-            if matches_patterns(patterns, &value) {
-                return false;
-            }
+        if let Some(value) = lookup(key)
+            && matches_patterns(patterns, &value)
+        {
+            return false;
         }
     }
 

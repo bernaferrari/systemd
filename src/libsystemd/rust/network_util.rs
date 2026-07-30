@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -290,14 +290,15 @@ pub fn network_is_online(snapshot: &NetworkSnapshot) -> bool {
     }
 
     if snapshot.online_state.is_none() {
-        return match (snapshot.carrier_state, snapshot.address_state) {
-            (None, _) | (_, None) => true,
-            (
-                Some(LinkCarrierState::DegradedCarrier | LinkCarrierState::Carrier),
-                Some(LinkAddressState::Routable | LinkAddressState::Degraded),
-            ) => true,
-            _ => false,
-        };
+        return matches!(
+            (snapshot.carrier_state, snapshot.address_state),
+            (None, _)
+                | (_, None)
+                | (
+                    Some(LinkCarrierState::DegradedCarrier | LinkCarrierState::Carrier),
+                    Some(LinkAddressState::Routable | LinkAddressState::Degraded),
+                )
+        );
     }
 
     false

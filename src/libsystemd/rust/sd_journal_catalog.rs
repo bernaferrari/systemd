@@ -10,8 +10,8 @@ use crate::id128_util::SdId128;
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-pub const NEG_ENOMEM: i32 = -(libc::ENOMEM as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_ENOMEM: i32 = -libc::ENOMEM;
 pub const CATALOG_SIGNATURE: [u8; 8] = *b"RHHHKSLP";
 pub const CATALOG_FILE_DIRS: [&str; 2] = [
     "/usr/local/lib/systemd/catalog/",

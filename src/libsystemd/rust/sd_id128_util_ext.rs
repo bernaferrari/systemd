@@ -11,10 +11,12 @@ use crate::id128_util::{SdId128, id128_from_string_nonzero, id128_is_valid};
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const NEG_ENOMEDIUM: i32 = -123;
 pub const NEG_ENOPKG: i32 = -65;
 pub const NEG_EUCLEAN: i32 = -117;
+
+const NEG_ENXIO: i32 = -libc::ENXIO;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Id128Flags(u32);
@@ -98,7 +100,7 @@ fn parse_id128_text(text: &str, flags: Id128Flags) -> Result<SdId128> {
     }
 
     let id = id128_from_string_nonzero(trimmed).or_else(|errno| {
-        if errno == -(libc::ENXIO as i32) && !flags.contains(Id128Flags::REFUSE_NULL) {
+        if errno == NEG_ENXIO && !flags.contains(Id128Flags::REFUSE_NULL) {
             Ok(SdId128([0; 16]))
         } else if errno == NEG_EINVAL {
             Err(NEG_EUCLEAN)

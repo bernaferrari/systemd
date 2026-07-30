@@ -3,7 +3,7 @@
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -103,10 +103,9 @@ fn parse_arg_family(key: &str) -> Result<BusMatchNodeType> {
         if let Some(index) = key
             .strip_prefix("arg")
             .and_then(|rest| rest.strip_suffix(suffix))
+            && let Ok(value) = parse_arg_index(index)
         {
-            if let Ok(value) = parse_arg_index(index) {
-                return BusMatchNodeType::from_raw(base + value);
-            }
+            return BusMatchNodeType::from_raw(base + value);
         }
     }
 
