@@ -62,27 +62,7 @@ fn path_in_set(candidate: LinkTargetState<'_>, allowed: &[&str]) -> bool {
 }
 
 fn kernel_release_older_than(release: &str, baseline: &str) -> bool {
-    fn parse_side(input: &str) -> Vec<u32> {
-        input
-            .split(|c: char| !c.is_ascii_digit())
-            .filter(|part| !part.is_empty())
-            .map(|part| part.parse::<u32>().unwrap_or(0))
-            .collect()
-    }
-
-    let lhs = parse_side(release);
-    let rhs = parse_side(baseline);
-    let max_len = lhs.len().max(rhs.len());
-
-    for index in 0..max_len {
-        let l = lhs.get(index).copied().unwrap_or(0);
-        let r = rhs.get(index).copied().unwrap_or(0);
-        if l != r {
-            return l < r;
-        }
-    }
-
-    false
+    systemd_basic_rs::strverscmp::strverscmp_improved(release, baseline).is_lt()
 }
 
 pub fn taint_strv(env: &TaintEnvironment<'_>) -> Result<Vec<&'static str>, Errno> {
@@ -187,6 +167,18 @@ mod tests {
             ..TaintEnvironment::default()
         };
         assert!(taint_strv(&env).unwrap().contains(&TAINT_OLD_KERNEL));
+    }
+
+    #[test]
+    fn kernel_release_comparison_keeps_c_prerelease_ordering() {
+        for release in ["6.8~rc1", "6.8-rc1"] {
+            assert!(kernel_release_older_than(release, "6.8"), "{release}");
+        }
+    }
+
+    #[test]
+    fn kernel_release_comparison_does_not_truncate_large_components() {
+        assert!(kernel_release_older_than("6.42949672960", "6.42949672961"));
     }
 
     #[test]
