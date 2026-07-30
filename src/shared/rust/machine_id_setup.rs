@@ -699,15 +699,17 @@ fn open_etc_machine_id(root: &Path) -> MachineIdResult<(PathBuf, bool)> {
     let machine_id_path = etc_dir.join("machine-id");
 
     if machine_id_path.exists() {
-        // File exists — try writable, then read-only.
-        // Check writability by attempting to open in append mode.
+        // File exists — try writable, then read-only. As in C, any failure
+        // opening it read-write (including EROFS) may still leave it readable.
         match fs::OpenOptions::new().write(true).open(&machine_id_path) {
             Ok(_file) => {
                 drop(_file);
                 Ok((machine_id_path, true))
             }
-            Err(e) if e.kind() == io::ErrorKind::PermissionDenied => Ok((machine_id_path, false)),
-            Err(e) => Err(MachineIdError::Io(e)),
+            Err(_) => {
+                let _read_file = fs::File::open(&machine_id_path)?;
+                Ok((machine_id_path, false))
+            }
         }
     } else {
         // Create /etc/ if missing.
@@ -734,10 +736,9 @@ fn open_etc_machine_id(root: &Path) -> MachineIdResult<(PathBuf, bool)> {
 
 /// Main machine-id setup routine.
 ///
-/// Mirrors the C `machine_id_setup()` function.  When `machine_id` is null and
-/// `flags` does not include `MACHINE_ID_SETUP_FORCE_FIRMWARE`, an existing ID
-/// on disk is reused; otherwise a new one is acquired from the best available
-/// source.
+/// Mirrors the C `machine_id_setup()` function. When `machine_id` is null (or
+/// firmware acquisition is requested), an existing valid ID on disk is reused
+/// before trying a new source.
 ///
 /// If the persistent file is writable the ID is written there directly.
 /// Otherwise a transient file is written to `/run/machine-id` and bind-mounted
@@ -765,8 +766,10 @@ pub fn machine_id_setup(
     if effective_id.is_nil() || force_firmware {
         // Try reading existing file.
         if let Some(existing) = id128_read_file(&etc_path)? {
-            effective_id = existing;
-            write_run = false; // existing persistent ID — no transient needed
+            // C jumps directly to `finish` here. In particular, this must not
+            // overwrite a valid persistent ID with "uninitialized" when the
+            // caller also requested a transient machine ID.
+            return Ok(existing);
         } else {
             // Acquire a new one.
             let (id, source) = acquire_machine_id(root, force_firmware, credential_value)?;
@@ -1178,6 +1181,30 @@ mod tests {
             machine_id_setup(&root, SdId128::nil(), MachineIdSetupFlags::empty(), None).unwrap();
 
         assert_eq!(result, known_id);
+        assert!(!root.join("run/machine-id").exists());
+    }
+
+    #[test]
+    fn test_machine_id_setup_reuses_existing_before_force_transient() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+        let etc_dir = root.join("etc");
+        fs::create_dir_all(&etc_dir).unwrap();
+
+        let known_id = SdId128::from_bytes([0x3cu8; 16]);
+        let etc_path = etc_dir.join("machine-id");
+        id128_write_file(&etc_path, known_id).unwrap();
+
+        let result = machine_id_setup(
+            &root,
+            SdId128::nil(),
+            MachineIdSetupFlags::MACHINE_ID_SETUP_FORCE_TRANSIENT,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(result, known_id);
+        assert_eq!(id128_read_file(&etc_path).unwrap(), Some(known_id));
         assert!(!root.join("run/machine-id").exists());
     }
 

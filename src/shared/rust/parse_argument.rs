@@ -322,7 +322,7 @@ fn path_simplify(path: &str) -> String {
         }
     }
 
-    let result = if is_absolute {
+    if is_absolute {
         if components.is_empty() {
             "/".to_owned()
         } else {
@@ -332,9 +332,7 @@ fn path_simplify(path: &str) -> String {
         ".".to_owned()
     } else {
         components.join("/")
-    };
-
-    result
+    }
 }
 
 /// Check whether a string looks like an ANSI SGR color code.

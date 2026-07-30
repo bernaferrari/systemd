@@ -205,7 +205,7 @@ pub fn strv_find_closest(list: &[String], input: &str) -> Option<String> {
         }
     }
 
-    best.map(|s| s.clone())
+    best.cloned()
 }
 
 // ── Menu display ──────────────────────────────────────────────────────────
@@ -506,7 +506,7 @@ pub fn chrome_hide(state: &mut ChromeState, output: &mut dyn io::Write) -> io::R
     )?;
 
     // Reset scrolling area (DECSTBM)
-    write!(output, "\x1B[r\n")?;
+    writeln!(output, "\x1B[r")?;
 
     // Place cursor back in the safe zone
     assert!(n >= 9, "chrome rows must be >= 9");

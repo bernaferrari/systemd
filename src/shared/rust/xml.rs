@@ -108,8 +108,8 @@ impl<'a> XmlTokenizer<'a> {
     }
 }
 
-pub fn inc_lines(mut line: Option<&mut u32>, s: &str, n: usize) {
-    let Some(line) = line.as_deref_mut() else {
+pub fn inc_lines(line: Option<&mut u32>, s: &str, n: usize) {
+    let Some(line) = line else {
         return;
     };
 

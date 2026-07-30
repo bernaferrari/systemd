@@ -230,12 +230,7 @@ pub fn parse_socket_bind_item(s: &str) -> Result<SocketBindItem, ParseError> {
     let mut last_result: Result<(), ParseError> = Ok(());
     let mut tokens = s.split(':').peekable();
 
-    loop {
-        let token = match tokens.next() {
-            Some(t) => t,
-            None => break,
-        };
-
+    for token in tokens.by_ref() {
         if token.is_empty() {
             return Err(ParseError::InvalidArgument);
         }
@@ -260,9 +255,7 @@ pub fn parse_socket_bind_item(s: &str) -> Result<SocketBindItem, ParseError> {
         }
     }
 
-    if let Err(e) = last_result {
-        return Err(e);
-    }
+    last_result?;
 
     // Unconsumed input remains → invalid
     if tokens.peek().is_some() {

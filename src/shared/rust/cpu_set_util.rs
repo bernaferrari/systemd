@@ -271,7 +271,7 @@ impl CpuSet {
     /// Example: `CpuSet` containing {0, 5, 10} → `"0 5 10"`
     #[expect(
         clippy::inherent_to_string_shadow_display,
-        reason = "the established API exposes individual CPUs while Display intentionally renders ranges"
+        reason = "the C-parity API keeps a named individual-CPU formatter alongside trait formatting"
     )]
     pub fn to_string(&self) -> String {
         self.cpus
@@ -376,7 +376,7 @@ impl CpuSet {
         }
 
         let max_cpu = *self.cpus.last().unwrap();
-        let size = (max_cpu as usize).div_ceil(8);
+        let size = max_cpu as usize / 8 + 1;
         let mut buf = vec![0u8; size];
 
         for &cpu in &self.cpus {
@@ -410,7 +410,7 @@ impl CpuSet {
 
 impl fmt::Display for CpuSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.to_range_string())
+        f.write_str(&self.to_string())
     }
 }
 
@@ -937,6 +937,18 @@ mod tests {
     }
 
     #[test]
+    fn test_to_dbus_allocates_each_cpu_byte_boundary() {
+        for cpu in [0, 7, 8, 15, 16] {
+            let mut set = CpuSet::new();
+            set.add(cpu).unwrap();
+
+            let bytes = set.to_dbus();
+            assert_eq!(bytes.len(), cpu as usize / 8 + 1);
+            assert_eq!(CpuSet::from_dbus(&bytes), set);
+        }
+    }
+
+    #[test]
     fn test_from_dbus_empty() {
         let set = CpuSet::from_dbus(&[]);
         assert!(set.is_empty());
@@ -971,7 +983,7 @@ mod tests {
         let mut set = CpuSet::new();
         set.add_range(0, 2).unwrap();
         set.add(5).unwrap();
-        assert_eq!(format!("{}", set), "0-2 5");
+        assert_eq!(format!("{}", set), "0 1 2 5");
     }
 
     // ── Clone ─────────────────────────────────────────────────────────

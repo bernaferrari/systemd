@@ -19,6 +19,10 @@ pub const NAME_MAX_LEN: usize = 255;
 /// Sentinel value indicating a field is unset / infinite.
 pub const UINT64_MAX: u64 = u64::MAX;
 
+/// Largest shadow day-count that can be converted to microseconds without
+/// colliding with the `UINT64_MAX` sentinel.
+const SHADOW_DAY_LIMIT: i64 = ((UINT64_MAX - 1) / USEC_PER_DAY) as i64;
+
 /// Sentinel value indicating a signed field is unset.
 pub const SENTINEL_UNSET_I64: i64 = -1;
 
@@ -344,17 +348,21 @@ pub fn nss_passwd_to_user_record(
         _ => Vec::new(),
     };
 
-    let locked = spwd.and_then(|sp| sp.sp_expire).map(|expires| expires <= 1);
+    let locked = spwd
+        .and_then(|sp| sp.sp_expire)
+        .filter(|expires| *expires >= 0)
+        .map(|expires| expires <= 1);
 
     // notAfterUSec
     let not_after_usec = spwd
         .and_then(|sp| sp.sp_expire)
-        .filter(|expires| *expires > 1)
+        .filter(|expires| *expires > 1 && *expires < SHADOW_DAY_LIMIT)
         .map_or(UINT64_MAX, days_to_usec);
 
     // passwordChangeNow: sp_lstchg == 0
     let password_change_now = spwd
         .and_then(|sp| sp.sp_lstchg)
+        .filter(|last_change| *last_change >= 0)
         .map(|last_change| last_change == 0);
 
     // lastPasswordChangeUSec
@@ -876,6 +884,38 @@ mod tests {
         let rec = nss_passwd_to_user_record(&pwd, Some(&spwd)).unwrap();
         assert_eq!(rec.locked, Some(false)); // expire 30 > 1 → not locked
         assert_eq!(rec.not_after_usec, days_to_usec(30));
+    }
+
+    #[test]
+    fn test_passwd_to_user_record_shadow_negative_and_limit_fields_are_unset() {
+        let pwd = NssPasswdEntry {
+            pw_name: "edge".into(),
+            pw_uid: 1004,
+            pw_gid: 1004,
+            pw_gecos: None,
+            pw_dir: None,
+            pw_shell: None,
+        };
+        let mut spwd = NssSpwdEntry {
+            sp_namp: "edge".into(),
+            sp_pwdp: None,
+            sp_lstchg: Some(-2),
+            sp_min: None,
+            sp_max: None,
+            sp_warn: None,
+            sp_inact: None,
+            sp_expire: Some(-2),
+        };
+
+        let record = nss_passwd_to_user_record(&pwd, Some(&spwd)).unwrap();
+        assert_eq!(record.locked, None);
+        assert_eq!(record.password_change_now, None);
+        assert_eq!(record.not_after_usec, UINT64_MAX);
+
+        spwd.sp_expire = Some(SHADOW_DAY_LIMIT);
+        let record = nss_passwd_to_user_record(&pwd, Some(&spwd)).unwrap();
+        assert_eq!(record.locked, Some(false));
+        assert_eq!(record.not_after_usec, UINT64_MAX);
     }
 
     #[test]

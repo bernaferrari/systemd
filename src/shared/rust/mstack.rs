@@ -732,15 +732,13 @@ impl Drop for MStack {
 /// Returns `Some(parameter)` if the prefix matches, `None` otherwise.
 /// Mirrors the C `validate_prefix_name()` function.
 pub fn validate_prefix(name: &str, prefix: &str) -> Option<String> {
-    name.strip_prefix(prefix)
-        .map(|s| {
-            if s.is_empty() {
-                None
-            } else {
-                Some(s.to_string())
-            }
-        })
-        .flatten()
+    name.strip_prefix(prefix).and_then(|s| {
+        if s.is_empty() {
+            None
+        } else {
+            Some(s.to_string())
+        }
+    })
 }
 
 /// Strip image suffixes from a filename to get the base name.
@@ -771,10 +769,7 @@ fn unescape_path(encoded: &str) -> String {
 
 /// Check if a path is empty or "/".
 fn is_empty_or_root(p: Option<&str>) -> bool {
-    match p {
-        None | Some("") | Some("/") => true,
-        _ => false,
-    }
+    matches!(p, None | Some("") | Some("/"))
 }
 
 /// Compare two optional paths for sorting.
@@ -1272,8 +1267,8 @@ mod tests {
         assert_eq!(s.mounts.len(), 1);
         assert_eq!(s.mounts[0].mount_type, MStackMountType::Robind);
         assert_eq!(s.mounts[0].where_path.as_deref(), Some("/"));
-        assert!(s.has_tmpfs_root == false);
-        assert!(s.has_overlayfs == false);
+        assert!(!s.has_tmpfs_root);
+        assert!(!s.has_overlayfs);
         assert!(s.root_mount().is_some());
     }
 

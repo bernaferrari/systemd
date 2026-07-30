@@ -316,10 +316,9 @@ pub fn option_parse<'a>(
 
     let display_name = optname_owned
         .as_deref()
-        .or(option.long_code.map(|lc| {
-            // best-effort display
-            lc
-        }))
+        // Use the long spelling when a short-option cluster has no owned
+        // display name; it is only a best-effort diagnostic.
+        .or(option.long_code)
         .unwrap_or("?");
 
     // ── Validate argument presence ────────────────────────────────────
@@ -369,7 +368,7 @@ pub fn option_parse<'a>(
 fn process_short<'a>(
     options: &'a [OptionSpec<'a>],
     state: &mut OptionParser,
-    argv: &mut Vec<String>,
+    argv: &[String],
     optname_out: &mut Option<String>,
     optval_out: &mut Option<String>,
 ) -> Result<&'a OptionSpec<'a>, OptionParseError> {

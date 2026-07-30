@@ -44,6 +44,13 @@ const ROOT_SUPPORTED_FSTYPES: &[&str] = &["ext2", "ext3", "ext4", "btrfs", "vfat
 /// Minimum btrfs sector size in bytes.
 const BTRFS_MIN_SECTOR_SIZE: u64 = 4096;
 
+/// Command-line arguments passed to an mkfs implementation.
+type MkfsArgs = Vec<OsString>;
+/// Environment entries passed only to the mkfs child process.
+type MkfsEnvironment = Vec<(OsString, OsString)>;
+/// Arguments and environment constructed for a read-write filesystem mkfs.
+type MkfsInvocation = (MkfsArgs, MkfsEnvironment);
+
 // ── Error types ───────────────────────────────────────────────────────────
 
 /// Errors returned by mkfs utilities.
@@ -170,9 +177,7 @@ fn mangle_linux_fs_label(s: &str, max_len: usize) -> MkfsResult<String> {
     }
 
     let mut end = 0usize;
-    let mut iter = s.char_indices().peekable();
-
-    while let Some((start, ch)) = iter.next() {
+    for (start, ch) in s.char_indices() {
         let ch_len = ch.len_utf8();
         if end + ch_len > max_len {
             break;
@@ -490,7 +495,7 @@ fn build_rw_mkfs_args(
     sector_size: u64,
     compression: Option<&str>,
     compression_level: Option<&str>,
-) -> MkfsResult<(Vec<OsString>, Vec<(OsString, OsString)>)> {
+) -> MkfsResult<MkfsInvocation> {
     let vol_id = uuid.to_uuid_string();
     let mut env = vec![];
 
@@ -540,7 +545,7 @@ fn build_rw_mkfs_args(
 
             // Sector size environment variable for mke2fs
             if sector_size > 0 {
-                env.push((os("MKE2FS_DEVICE_SECTSIZE"), os(&sector_size.to_string())));
+                env.push((os("MKE2FS_DEVICE_SECTSIZE"), os(sector_size.to_string())));
             }
 
             // E2FSPROGS_FAKE_TIME from SOURCE_DATE_EPOCH
@@ -575,7 +580,7 @@ fn build_rw_mkfs_args(
                 } else {
                     let mut c = comp.to_owned();
                     if let Some(level) = compression_level {
-                        c.push_str(":");
+                        c.push(':');
                         c.push_str(level);
                     }
                     a.push(os("--compress"));
@@ -586,7 +591,7 @@ fn build_rw_mkfs_args(
             // btrfs expects sector size of at least 4k
             if sector_size > 0 {
                 let effective = std::cmp::max(sector_size, BTRFS_MIN_SECTOR_SIZE);
-                a.push(os(&format!("--sectorsize={effective}")));
+                a.push(os(format!("--sectorsize={effective}")));
             }
 
             a.push(os(node));
@@ -623,7 +628,7 @@ fn build_rw_mkfs_args(
 
             if sector_size > 0 {
                 a.push(os("-w"));
-                a.push(os(&sector_size.to_string()));
+                a.push(os(sector_size.to_string()));
             }
 
             a.push(os(node));
@@ -654,7 +659,7 @@ fn build_rw_mkfs_args(
 
             if sector_size > 0 {
                 a.push(os("-s"));
-                a.push(os(&format!("size={sector_size}")));
+                a.push(os(format!("size={sector_size}")));
             }
 
             if flags.contains(MakeFileSystemFlags::QUIET) {
@@ -687,7 +692,7 @@ fn build_rw_mkfs_args(
 
             if sector_size > 0 {
                 a.push(os("-S"));
-                a.push(os(&sector_size.to_string()));
+                a.push(os(sector_size.to_string()));
             }
 
             a.push(os(node));

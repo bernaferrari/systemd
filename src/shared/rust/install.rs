@@ -601,14 +601,12 @@ pub fn parse_preset_line(line: &str) -> Option<PresetRule> {
             action: PresetAction::Disable,
             instances: Vec::new(),
         })
-    } else if let Some(rest) = line.strip_prefix("ignore ") {
-        Some(PresetRule {
+    } else {
+        line.strip_prefix("ignore ").map(|rest| PresetRule {
             pattern: rest.trim().to_string(),
             action: PresetAction::Ignore,
             instances: Vec::new(),
         })
-    } else {
-        None
     }
 }
 

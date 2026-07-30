@@ -613,7 +613,7 @@ pub fn get_default_hostname() -> Result<String, HostnameError> {
     };
 
     let mut hostname = raw;
-    if let Err(_) = hostname_substitute_wildcards(&mut hostname) {
+    if hostname_substitute_wildcards(&mut hostname).is_err() {
         return Ok(FALLBACK_HOSTNAME.to_string());
     }
 

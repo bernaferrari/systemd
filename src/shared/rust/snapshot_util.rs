@@ -178,13 +178,8 @@ fn split_prefix_filename(path: &Path) -> Result<(Option<PathBuf>, OsString), i32
         return Err(-libc::EINVAL);
     }
 
-    let directory = directory.and_then(|dir| {
-        if dir.as_os_str().is_empty() || dir.as_os_str() == OsStr::new(".") {
-            None
-        } else {
-            Some(dir)
-        }
-    });
+    let directory =
+        directory.filter(|dir| !dir.as_os_str().is_empty() && dir.as_os_str() != OsStr::new("."));
 
     Ok((directory, OsString::from_vec(file_name.to_vec())))
 }
@@ -393,8 +388,10 @@ mod tests {
 
     #[test]
     fn create_ephemeral_snapshot_uses_global_lock_for_system_scope() {
-        let mut backend = MockBackend::default();
-        backend.mount_point_result = Ok(true);
+        let mut backend = MockBackend {
+            mount_point_result: Ok(true),
+            ..Default::default()
+        };
         let mut global_lock = MockLock;
         let mut local_lock = MockLock;
 

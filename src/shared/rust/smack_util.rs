@@ -641,7 +641,7 @@ pub fn mac_to_smack_label(mac: &[u8]) -> Result<String, SmackError> {
 }
 
 pub fn smack_label_to_mac(s: &str) -> Result<[u8; 6], SmackError> {
-    let parts: Vec<&str> = s.split(|c| c == ':' || c == '-').collect();
+    let parts: Vec<&str> = s.split([':', '-']).collect();
     if parts.len() != 6 {
         return Err(SmackError::InvalidLabel);
     }

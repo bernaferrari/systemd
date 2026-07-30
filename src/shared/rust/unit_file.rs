@@ -68,7 +68,7 @@ pub fn classify_unit_name(name: &str) -> Result<UnitNameKind, UnitFileError> {
 
     match stem.split_once('@') {
         None => Ok(UnitNameKind::Plain),
-        Some((prefix, instance)) if prefix.is_empty() => Err(UnitFileError::InvalidUnitName),
+        Some(("", _)) => Err(UnitFileError::InvalidUnitName),
         Some((_, "")) => Ok(UnitNameKind::Template),
         Some((_, instance)) if instance.contains('@') => Err(UnitFileError::InvalidUnitName),
         Some((_, _)) => Ok(UnitNameKind::Instance),

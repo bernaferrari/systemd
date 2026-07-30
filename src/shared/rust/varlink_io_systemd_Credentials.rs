@@ -131,8 +131,8 @@ impl EncryptInput {
     }
 
     pub fn effective_scope(&self) -> Scope {
-        if self.scope.is_some() {
-            self.scope.unwrap()
+        if let Some(scope) = self.scope {
+            scope
         } else if self.uid.is_some() {
             Scope::User
         } else {

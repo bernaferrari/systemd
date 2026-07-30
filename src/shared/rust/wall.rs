@@ -76,6 +76,8 @@ pub trait WallTerminalWriter {
     ) -> Result<(), WallError>;
 }
 
+type TtyMatcher<'a> = dyn FnMut(&str, bool) -> bool + 'a;
+
 pub fn format_wall_message(
     message: &str,
     username: &str,
@@ -98,7 +100,7 @@ pub fn wall<E, U, L, W>(
     utmp_backend: &U,
     logind_backend: &L,
     writer: &mut W,
-    mut match_tty: Option<&mut dyn FnMut(&str, bool) -> bool>,
+    mut match_tty: Option<&mut TtyMatcher<'_>>,
 ) -> Result<(), WallError>
 where
     E: WallEnvironment,
@@ -150,7 +152,7 @@ fn broadcast_to_backend<B, W>(
     backend: &B,
     writer: &mut W,
     message: &str,
-    mut match_tty: Option<&mut dyn FnMut(&str, bool) -> bool>,
+    mut match_tty: Option<&mut TtyMatcher<'_>>,
 ) -> Result<(), WallError>
 where
     B: WallBackend,

@@ -100,7 +100,7 @@ pub fn serialize_item_format<W: Write>(
         use std::fmt::Write;
         value
             .write_fmt(args)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "formatting failed"))?;
+            .map_err(|_| io::Error::other("formatting failed"))?;
     }
 
     if key.len() + 1 + value.len() + 1 > LONG_LINE_MAX {
@@ -494,7 +494,6 @@ mod tests {
         assert_eq!(String::from_utf8(buf).unwrap(), "key=hello\\x20world\n");
     }
 
-    #[test]
     // fn serialize_item_format() {
     // let mut buf = Vec::new();
     // serialize_item_format(&mut buf, "num", format_args!("{}", 42)).unwrap();
@@ -627,31 +626,26 @@ mod tests {
         assert_eq!(fds.len(), 1);
     }
 
-    #[test]
     // fn serialize_item_hexmem() {
     // let mut buf = Vec::new();
     // serialize_item_hexmem(&mut buf, "data", &[0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
     // assert_eq!(String::from_utf8(buf).unwrap(), "data=deadbeef\n");
     // }
-    #[test]
     // fn serialize_item_hexmem_empty_skips() {
     // let mut buf = Vec::new();
     // let written = serialize_item_hexmem(&mut buf, "data", &[]).unwrap();
     // assert!(!written);
     // }
-    #[test]
     // fn serialize_item_base64mem() {
     // let mut buf = Vec::new();
     // serialize_item_base64mem(&mut buf, "data", b"Hello").unwrap();
     // assert_eq!(String::from_utf8(buf).unwrap(), "data=SGVsbG8=\n");
     // }
-    #[test]
     // fn serialize_item_base64mem_empty_skips() {
     // let mut buf = Vec::new();
     // let written = serialize_item_base64mem(&mut buf, "data", &[]).unwrap();
     // assert!(!written);
     // }
-    #[test]
     // fn serialize_string_set() {
     // let mut buf = Vec::new();
     // let written = serialize_string_set(&mut buf, "item", &["a", "b"]).unwrap();
@@ -659,7 +653,6 @@ mod tests {
     // let output = String::from_utf8(buf).unwrap();
     // assert_eq!(output, "item=a\nitem=b\n");
     // }
-    #[test]
     // fn serialize_string_set_empty_skips() {
     // let mut buf = Vec::new();
     // let written = serialize_string_set(&mut buf, "item", &[]).unwrap();
