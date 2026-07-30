@@ -141,7 +141,7 @@ impl LabelError {
             Some(libc::EBADF) => Self::BadFd,
             Some(libc::EINVAL) => Self::InvalidArgument,
             Some(libc::EBUSY) => Self::Busy,
-            Some(libc::ENOTSUP) | Some(libc::EOPNOTSUPP) | Some(libc::ENOSYS) => Self::NotSupported,
+            Some(libc::ENOTSUP) | Some(libc::ENOSYS) => Self::NotSupported,
             Some(libc::EEXIST) => Self::IoError("file already exists".into()),
             Some(libc::ENOSPC) => Self::IoError("no space left on device".into()),
             Some(libc::ENOTDIR) => Self::InvalidArgument,

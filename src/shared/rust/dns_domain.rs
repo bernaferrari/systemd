@@ -964,8 +964,8 @@ fn punycode_decode(input: &str) -> DnsResult<String> {
 fn idna_encode_label(label: &str) -> DnsResult<String> {
     if label.is_ascii() {
         let lower = label.to_ascii_lowercase();
-        if lower.starts_with("xn--") {
-            punycode_decode(&lower[4..])?;
+        if let Some(encoded) = lower.strip_prefix("xn--") {
+            punycode_decode(encoded)?;
         }
         return Ok(lower);
     }

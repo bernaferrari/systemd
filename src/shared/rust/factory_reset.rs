@@ -223,28 +223,19 @@ fn read_factory_reset_request_variable(probe: &dyn Probe) -> Result<String, Fact
 }
 
 fn parse_os_release(probe: &dyn Probe) -> Result<OsRelease, FactoryResetError> {
-    let mut last_not_found = true;
-
     for path in OS_RELEASE_PATHS {
         match probe.read_to_string(path) {
             Ok(content) => return parse_os_release_content(&content),
             Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
             Err(error) => {
-                last_not_found = false;
                 return Err(FactoryResetError::Io(error.to_string()));
             }
         }
     }
 
-    if last_not_found {
-        Err(FactoryResetError::InvalidOsRelease(
-            "no os-release file found".into(),
-        ))
-    } else {
-        Err(FactoryResetError::InvalidOsRelease(
-            "unable to parse os-release".into(),
-        ))
-    }
+    Err(FactoryResetError::InvalidOsRelease(
+        "no os-release file found".into(),
+    ))
 }
 
 fn parse_os_release_content(content: &str) -> Result<OsRelease, FactoryResetError> {

@@ -392,8 +392,7 @@ pub fn loop_device_open_from_path(
         created: false,
         backing_devno: info.map(|i| {
             let dev = i.lo_device as libc::dev_t;
-            // SAFETY: major/minor only decode the dev_t value.
-            unsafe { (libc::major(dev) as u32, libc::minor(dev) as u32) }
+            (libc::major(dev) as u32, libc::minor(dev) as u32)
         }),
         backing_inode: info.map(|i| i.lo_inode),
         diskseq,

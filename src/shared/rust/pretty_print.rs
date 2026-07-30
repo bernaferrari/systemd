@@ -33,15 +33,11 @@ pub fn draw_cylon(width: u32, pos: u32) -> String {
     let mut out = String::with_capacity(CYLON_BUFFER_EXTRA + width as usize + 1);
 
     for i in 0..width {
-        if i == pos {
-            out.push('*');
-        } else if pos > 0 && i == pos - 1 {
-            out.push('*');
-        } else if pos < width && i == pos + 1 {
-            out.push('*');
-        } else if pos == width && i == width - 1 {
-            out.push('*');
-        } else if pos == width + 1 && i == width - 1 {
+        if i == pos
+            || (pos > 0 && i == pos - 1)
+            || (pos < width && i == pos + 1)
+            || ((pos == width || pos == width + 1) && i == width - 1)
+        {
             out.push('*');
         } else {
             out.push('━');
@@ -323,11 +319,7 @@ pub fn guess_type(name: &str) -> GuessTypeResult {
             run_prefix_only = true;
             extension = ".relabel".to_string();
         }
-        n if matches!(
-            n,
-            "systemd/system-preset" | "systemd/user-preset" | "systemd/initrd-preset"
-        ) =>
-        {
+        "systemd/system-preset" | "systemd/user-preset" | "systemd/initrd-preset" => {
             is_collection = true;
             extension = ".preset".to_string();
         }

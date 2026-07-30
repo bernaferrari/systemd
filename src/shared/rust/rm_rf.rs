@@ -754,7 +754,7 @@ fn rm_rf_children_impl(
     let mut todos: Vec<TodoEntry> = Vec::new();
 
     let mut pending_fd = Some(fd);
-    let mut current_dir = std::ptr::null_mut();
+    let mut current_dir: *mut libc::DIR;
     let mut current_dirname: Option<CString> = None;
     let mut current_old_mode = old_mode;
     let mut descending = true;

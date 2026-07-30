@@ -123,7 +123,7 @@ fn skip_protocol_and_hostname(url: &str) -> Option<usize> {
 
     // Scan for the first path / query / fragment delimiter.
     let remaining = &url[after_slashes..];
-    let delimiter = remaining.find(|c| c == '/' || c == '?' || c == '#');
+    let delimiter = remaining.find(['/', '?', '#']);
     let host_end = match delimiter {
         Some(p) => after_slashes + p,
         None => url.len(),
@@ -148,7 +148,7 @@ pub fn import_url_last_component(url: &str) -> Option<&str> {
     let path = &url[path_start..];
 
     // Strip Query and Fragment.
-    let path_end = path.find(|c| c == '?' || c == '#').unwrap_or(path.len());
+    let path_end = path.find(['?', '#']).unwrap_or(path.len());
     let trimmed = path[..path_end].trim_end_matches('/');
 
     if trimmed.is_empty() {
@@ -184,7 +184,7 @@ pub fn import_url_change_suffix(url: &str, n_drop: usize, suffix: Option<&str>) 
     let path = &url[path_start..];
 
     // Strip Query and Fragment, then trailing slashes.
-    let path_end = path.find(|c| c == '?' || c == '#').unwrap_or(path.len());
+    let path_end = path.find(['?', '#']).unwrap_or(path.len());
     let trimmed = path[..path_end].trim_end_matches('/');
     let bytes = trimmed.as_bytes();
 

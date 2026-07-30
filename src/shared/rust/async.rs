@@ -367,11 +367,7 @@ pub fn asynchronous_rm_rf(path: &Path, _flags: RemoveFlags) -> AsyncResult<()> {
 #[inline]
 fn child_exit(code: i32) -> ! {
     // SAFETY: _exit is async-signal-safe and never returns.
-    unsafe {
-        libc::_exit(code);
-    }
-    // SAFETY: _exit never returns, so this is unreachable.
-    unsafe { std::hint::unreachable_unchecked() }
+    unsafe { libc::_exit(code) }
 }
 
 /// Check whether the current process is a subreaper (PID 1 or has

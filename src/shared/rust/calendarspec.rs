@@ -618,8 +618,8 @@ fn prepend_component<'a>(
     };
     *chain = Some(Box::new(node));
 
-    if input.starts_with(',') {
-        prepend_component(&input[1..], usec, nesting + 1, chain)
+    if let Some(rest) = input.strip_prefix(',') {
+        prepend_component(rest, usec, nesting + 1, chain)
     } else {
         Ok(input)
     }
@@ -630,7 +630,7 @@ fn parse_chain<'a>(
     usec: bool,
     chain: &mut Option<Box<CalendarComponent>>,
 ) -> Result<&'a str, CalendarError> {
-    if input.starts_with('*') {
+    if let Some(rest) = input.strip_prefix('*') {
         if usec {
             const_chain(0, chain);
             if let Some(head) = chain.as_deref_mut() {
@@ -639,7 +639,7 @@ fn parse_chain<'a>(
         } else {
             *chain = None;
         }
-        return Ok(&input[1..]);
+        return Ok(rest);
     }
 
     prepend_component(input, usec, 0, chain)

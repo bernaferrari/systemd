@@ -117,7 +117,7 @@ impl fmt::Display for BarrierState {
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 fn errno_is_transient(err: i32) -> bool {
-    matches!(err, libc::EINTR | libc::EAGAIN | libc::EWOULDBLOCK)
+    matches!(err, libc::EINTR | libc::EAGAIN)
 }
 
 fn safe_close(fd: i32) -> i32 {

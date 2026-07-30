@@ -374,8 +374,7 @@ pub fn parse_resource_limit(field: &str, eq: &str) -> Option<ResourceLimitValue>
     if eq == INFINITY_KEYWORD {
         return Some(ResourceLimitValue::Infinity);
     }
-    if eq.ends_with('%') {
-        let pct_str = &eq[..eq.len() - 1];
+    if let Some(pct_str) = eq.strip_suffix('%') {
         if let Ok(pct) = pct_str.parse::<i32>() {
             return Some(ResourceLimitValue::Percentage(pct));
         }

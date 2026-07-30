@@ -275,7 +275,6 @@ pub fn service_parse_argv(
                 if !allow_introspect {
                     return Err(ServiceParseError::InvalidOption);
                 }
-                i += 1; // skip the value arg we consumed
                 return Ok(ServiceAction::BusIntrospect(path));
             }
             Ok((Token::BusIntrospect(path), ConsumedNext::No)) => {

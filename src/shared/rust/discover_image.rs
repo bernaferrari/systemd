@@ -521,9 +521,8 @@ pub fn classify_image_by_filename(
     }
 
     // .v versioned directories — these need special pick logic
-    if filename.ends_with(".v") {
+    if let Some(without_v) = filename.strip_suffix(".v") {
         // Strip the .v suffix for basename extraction
-        let without_v = &filename[..filename.len() - 2];
         let (name, _suffix) =
             extract_image_basename(without_v, class.class_suffix(), &[".raw", ".mstack", ""])?;
         if image_name_is_valid(&name) {

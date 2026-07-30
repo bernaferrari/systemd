@@ -489,8 +489,7 @@ pub fn boot_filename_extract_tries(fname: &str) -> TriesInfo {
     let rest = &after_plus[digits_end..];
 
     // Parse optional tries_done after '-'
-    let (tries_done, remaining) = if rest.starts_with('-') {
-        let after_dash = &rest[1..];
+    let (tries_done, remaining) = if let Some(after_dash) = rest.strip_prefix('-') {
         let done_digits_end = after_dash
             .find(|c: char| !c.is_ascii_digit())
             .unwrap_or(after_dash.len());
@@ -630,8 +629,8 @@ pub fn boot_entry_load_type1(
     entry.tries_left = tries_info.tries_left;
     entry.tries_done = tries_info.tries_done;
 
-    for _line_num in 0..lines.len() {
-        let config = match parse_config_line(lines[_line_num]) {
+    for line in lines {
+        let config = match parse_config_line(line) {
             Some(c) => c,
             None => continue,
         };

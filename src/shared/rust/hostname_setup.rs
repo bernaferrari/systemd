@@ -769,7 +769,6 @@ fn in_initrd() -> bool {
 pub fn hostname_setup(really: bool) -> Result<(), HostnameError> {
     let mut hostname: Option<String> = None;
     let mut source = HostnameSource::Default;
-    let mut enoent = false;
 
     // 1. Kernel command line.
     if let Ok(Some(hn)) = proc_cmdline_get_hostname() {
@@ -784,9 +783,7 @@ pub fn hostname_setup(really: bool) -> Result<(), HostnameError> {
                 hostname = Some(hn);
                 source = HostnameSource::Static;
             }
-            Err(HostnameError::NotFound) => {
-                enoent = true;
-            }
+            Err(HostnameError::NotFound) => {}
             Err(_) => {
                 // Warning logged by caller; ignore.
             }

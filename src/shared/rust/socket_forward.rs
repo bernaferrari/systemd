@@ -106,7 +106,7 @@ impl From<io::Error> for SocketForwardError {
 ///
 /// Transient errors mean the operation should be retried later.
 pub fn is_transient_errno(errno: i32) -> bool {
-    matches!(errno, libc::EAGAIN | libc::EWOULDBLOCK | libc::EINTR)
+    matches!(errno, libc::EAGAIN | libc::EINTR)
 }
 
 /// Check if an errno indicates peer disconnection.

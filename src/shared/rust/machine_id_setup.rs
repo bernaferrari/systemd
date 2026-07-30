@@ -769,9 +769,9 @@ pub fn machine_id_setup(
             write_run = false; // existing persistent ID — no transient needed
         } else {
             // Acquire a new one.
-            let (id, _source) = acquire_machine_id(root, force_firmware, credential_value)?;
+            let (id, source) = acquire_machine_id(root, force_firmware, credential_value)?;
             effective_id = id;
-            write_run = _source != MachineIdSource::RunMachineId;
+            write_run = source != MachineIdSource::RunMachineId;
         }
     }
 
@@ -788,12 +788,13 @@ pub fn machine_id_setup(
         fs::write(&etc_path, UNINITIALIZED_STR)?;
     }
 
-    // Write the actual ID to /run/machine-id.
-    let run_dir = root.join("run");
-    fs::create_dir_all(&run_dir)?;
-    let run_path = run_dir.join("machine-id");
-
-    id128_write_file(&run_path, effective_id)?;
+    if write_run {
+        // Write the actual ID to /run/machine-id. If acquisition reused that
+        // file, leave its existing inode untouched just like the C path.
+        let run_dir = root.join("run");
+        fs::create_dir_all(&run_dir)?;
+        id128_write_file(&run_dir.join("machine-id"), effective_id)?;
+    }
 
     // In the C implementation a bind-mount is performed here:
     //   mount(run_path, etc_path, NULL, MS_BIND, NULL)
@@ -1158,6 +1159,26 @@ mod tests {
         let result = machine_id_setup(&root, SdId128::nil(), MachineIdSetupFlags::empty(), None);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), known_id);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_machine_id_setup_reuses_read_only_existing_without_transient_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+        let etc_dir = root.join("etc");
+        fs::create_dir_all(&etc_dir).unwrap();
+
+        let known_id = SdId128::from_bytes([0x5au8; 16]);
+        let etc_path = etc_dir.join("machine-id");
+        id128_write_file(&etc_path, known_id).unwrap();
+        fs::set_permissions(&etc_path, fs::Permissions::from_mode(0o444)).unwrap();
+
+        let result =
+            machine_id_setup(&root, SdId128::nil(), MachineIdSetupFlags::empty(), None).unwrap();
+
+        assert_eq!(result, known_id);
+        assert!(!root.join("run/machine-id").exists());
     }
 
     #[cfg(target_os = "linux")]

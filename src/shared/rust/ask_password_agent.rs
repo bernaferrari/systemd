@@ -229,7 +229,7 @@ fn map_errno(errno: i32) -> AskPasswordError {
         libc::ETIME => AskPasswordError::Timeout,
         libc::ENOENT => AskPasswordError::NoEnt,
         ENOKEY => AskPasswordError::NoKey,
-        libc::ENOTSUP | libc::EOPNOTSUPP | libc::ENOSYS => AskPasswordError::NotSupported,
+        libc::ENOTSUP | libc::ENOSYS => AskPasswordError::NotSupported,
         libc::EINTR => AskPasswordError::Interrupted,
         libc::ECANCELED => AskPasswordError::Canceled,
         libc::ECONNRESET => AskPasswordError::ConnReset,

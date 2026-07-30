@@ -683,8 +683,8 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
     let mut prev = vec![0usize; b_len + 1];
     let mut curr = vec![0usize; b_len + 1];
 
-    for j in 0..=b_len {
-        prev[j] = j;
+    for (j, slot) in prev.iter_mut().enumerate() {
+        *slot = j;
     }
 
     let a_chars: Vec<char> = a.chars().collect();

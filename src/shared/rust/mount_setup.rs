@@ -593,7 +593,7 @@ fn mount_one(mp: &MountPoint, in_container: bool) -> Result<bool> {
     }
 
     // Compute final mount options
-    let extra = mp.options_fn.map(|f| f(mp.fstype)).flatten();
+    let extra = mp.options_fn.and_then(|f| f(mp.fstype));
     let combined = combine_options(mp.options, extra);
 
     // Perform the mount
