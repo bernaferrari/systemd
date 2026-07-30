@@ -9,7 +9,11 @@
 // This is the pure-state-machine core. The actual D-Bus interaction
 // (signal matching, bus process/wait loops, Ref/Unref calls) is left to
 // the caller; this module tracks which units are pending, feeds property
-// updates into the readiness logic, and reports completion.
+// updates into the readiness logic, and reports completion. In particular,
+// a disconnected bus is a transport failure rather than a unit failure:
+// callers must check `is_disconnected()` in addition to `state()`, just as
+// C's `bus_wait_for_units_run()` reports bus processing errors separately
+// from `BusWaitForUnitsState`.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -71,8 +75,6 @@ impl WaitForUnitsFlags {
 /// Errors produced while adding or tracking units.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitWaitError {
-    /// The unit name is invalid (e.g. empty).
-    InvalidUnit(String),
     /// No target flag was specified.
     InvalidFlags,
     /// The GetAll method call for this unit returned a D-Bus error.
@@ -86,7 +88,6 @@ pub enum UnitWaitError {
 impl fmt::Display for UnitWaitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UnitWaitError::InvalidUnit(u) => write!(f, "Invalid unit name: {u}"),
             UnitWaitError::InvalidFlags => write!(f, "No target wait flag specified"),
             UnitWaitError::GetAllFailed { bus_path, message } => {
                 write!(f, "GetAll() failed for {bus_path}: {message}")
@@ -231,11 +232,13 @@ impl WaitForItem {
 /// 3. In the D-Bus event loop, feed updates via
 ///    [`handle_properties_changed`], [`handle_get_all_reply`], or
 ///    [`handle_get_all_error`].
-/// 4. Poll [`state`] after each round; when it is no longer
-///    [`Running`], waiting is done.
+/// 4. Poll [`state`] and [`is_disconnected`] after each round. Waiting
+///    completed normally when the state is no longer [`Running`]; a
+///    disconnected bus is a separate transport failure.
 ///
 /// [`Running`]: BusWaitForUnitsState::Running
 /// [`state`]: BusWaitForUnits::state
+/// [`is_disconnected`]: BusWaitForUnits::is_disconnected
 #[derive(Debug, Clone)]
 pub struct BusWaitForUnits {
     items: HashMap<String, WaitForItem>,
@@ -279,11 +282,11 @@ impl BusWaitForUnits {
         name: &str,
         flags: WaitForUnitsFlags,
     ) -> Result<Option<String>, UnitWaitError> {
-        if name.is_empty() {
-            return Err(UnitWaitError::InvalidUnit(name.to_owned()));
-        }
         if !flags.intersects(WaitForUnitsFlags::TARGET_MASK) {
             return Err(UnitWaitError::InvalidFlags);
+        }
+        if self.disconnected {
+            return Err(UnitWaitError::Disconnected);
         }
 
         let bus_path = unit_dbus_path_from_name(name);
@@ -325,11 +328,11 @@ impl BusWaitForUnits {
     /// Process a `GetAll` method error for a tracked unit.
     ///
     /// Marks the overall wait as failed and removes the item.
-    pub fn handle_get_all_error(&mut self, bus_path: &str, error_message: &str) {
-        if self.items.remove(bus_path).is_some() {
+    pub fn handle_get_all_error(&mut self, bus_path: &str, _error_message: &str) {
+        if let Some(item) = self.items.remove(bus_path) {
             self.has_failed = true;
             self.completed.push(CompletedUnit {
-                bus_path: bus_path.to_owned(),
+                bus_path: item.bus_path,
                 good: false,
             });
         }
@@ -338,16 +341,15 @@ impl BusWaitForUnits {
 
     /// Mark the D-Bus connection as terminated.
     ///
-    /// All pending items are immediately removed with `good = false`,
-    /// and the state transitions to [`Failure`].
-    ///
-    /// [`Failure`]: BusWaitForUnitsState::Failure
+    /// All pending items are immediately removed with `good = false`.
+    /// This does not set `has_failed` or recompute `state`: the C callback
+    /// tears down the bus and reports transport failure from its processing
+    /// loop, separately from unit-state failure.
     pub fn set_disconnected(&mut self) {
         if self.disconnected {
             return;
         }
         self.disconnected = true;
-        self.has_failed = true;
         for path in self.items.keys() {
             self.completed.push(CompletedUnit {
                 bus_path: path.clone(),
@@ -355,7 +357,6 @@ impl BusWaitForUnits {
             });
         }
         self.items.clear();
-        self.refresh_state();
     }
 
     // ── Querying ────────────────────────────────────────────────────
@@ -394,16 +395,11 @@ impl BusWaitForUnits {
         std::mem::take(&mut self.completed)
     }
 
-    /// Remove all tracked items, invoking completion with `good = false`.
+    /// Mirror C's internal `bus_wait_for_units_clear()`: tear down the bus
+    /// side and remove all tracked items with `good = false`, without
+    /// changing the unit-result state.
     pub fn clear(&mut self) {
-        for path in self.items.keys() {
-            self.completed.push(CompletedUnit {
-                bus_path: path.clone(),
-                good: false,
-            });
-        }
-        self.items.clear();
-        self.refresh_state();
+        self.set_disconnected();
     }
 
     // ── Internal ────────────────────────────────────────────────────
@@ -424,11 +420,12 @@ impl BusWaitForUnits {
         }
 
         if ready {
-            self.items.remove(bus_path);
-            self.completed.push(CompletedUnit {
-                bus_path: bus_path.to_owned(),
-                good: true,
-            });
+            if let Some(item) = self.items.remove(bus_path) {
+                self.completed.push(CompletedUnit {
+                    bus_path: item.bus_path,
+                    good: true,
+                });
+            }
             self.refresh_state();
         }
     }
@@ -573,10 +570,13 @@ mod tests {
     }
 
     #[test]
-    fn test_add_unit_empty_name_rejected() {
+    fn test_add_unit_empty_name_matches_c_path_conversion() {
         let mut w = BusWaitForUnits::new();
-        let err = w.add_unit("", WaitForUnitsFlags::FOR_INACTIVE).unwrap_err();
-        assert!(matches!(err, UnitWaitError::InvalidUnit(_)));
+        let path = w
+            .add_unit("", WaitForUnitsFlags::FOR_INACTIVE)
+            .unwrap()
+            .unwrap();
+        assert_eq!(path, "/org/freedesktop/systemd1/unit/_");
     }
 
     #[test]
@@ -595,6 +595,16 @@ mod tests {
             .add_unit("a.service", WaitForUnitsFlags::empty())
             .unwrap_err();
         assert_eq!(err, UnitWaitError::InvalidFlags);
+    }
+
+    #[test]
+    fn test_add_unit_after_disconnect_reports_transport_failure() {
+        let mut w = BusWaitForUnits::new();
+        w.set_disconnected();
+        let err = w
+            .add_unit("a.service", WaitForUnitsFlags::FOR_INACTIVE)
+            .unwrap_err();
+        assert_eq!(err, UnitWaitError::Disconnected);
     }
 
     #[test]
@@ -1049,10 +1059,12 @@ mod tests {
         w.set_disconnected();
 
         assert!(w.is_disconnected());
-        assert!(w.has_failed());
+        assert!(!w.has_failed());
         assert_eq!(w.pending_count(), 0);
         assert!(w.is_ready());
-        assert_eq!(w.state(), BusWaitForUnitsState::Failure);
+        // C leaves the state untouched: bus processing reports the
+        // transport error separately.
+        assert_eq!(w.state(), BusWaitForUnitsState::Running);
 
         let completed = w.drain_completed();
         assert_eq!(completed.len(), 2);
@@ -1062,9 +1074,12 @@ mod tests {
     #[test]
     fn test_set_disconnected_idempotent() {
         let mut w = BusWaitForUnits::new();
+        w.add_unit("a.service", WaitForUnitsFlags::FOR_INACTIVE)
+            .unwrap();
         w.set_disconnected();
-        w.set_disconnected(); // should not panic or double-count
-        assert_eq!(w.drain_completed().len(), 0); // already drained by first call... actually no
+        w.set_disconnected();
+        assert_eq!(w.drain_completed().len(), 1);
+        assert!(w.drain_completed().is_empty());
     }
 
     #[test]
@@ -1072,8 +1087,8 @@ mod tests {
         let mut w = BusWaitForUnits::new();
         w.set_disconnected();
         assert!(w.is_disconnected());
-        // State stays Success because no items to fail
-        assert_eq!(w.state(), BusWaitForUnitsState::Failure); // C sets has_failed = true
+        assert!(!w.has_failed());
+        assert_eq!(w.state(), BusWaitForUnitsState::Success);
     }
 
     // ── clear ─────────────────────────────────────────────────────
@@ -1090,6 +1105,9 @@ mod tests {
 
         assert_eq!(w.pending_count(), 0);
         assert!(w.is_ready());
+        assert!(w.is_disconnected());
+        assert!(!w.has_failed());
+        assert_eq!(w.state(), BusWaitForUnitsState::Running);
 
         let completed = w.drain_completed();
         assert_eq!(completed.len(), 2);
@@ -1103,11 +1121,6 @@ mod tests {
         assert!(!UnitWaitError::InvalidFlags.to_string().is_empty());
         assert!(!UnitWaitError::Disconnected.to_string().is_empty());
         assert!(!UnitWaitError::OutOfMemory.to_string().is_empty());
-        assert!(
-            !UnitWaitError::InvalidUnit("x".into())
-                .to_string()
-                .is_empty()
-        );
         assert!(
             !UnitWaitError::GetAllFailed {
                 bus_path: "/p".into(),
