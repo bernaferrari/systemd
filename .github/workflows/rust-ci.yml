@@ -562,6 +562,8 @@ jobs:
         run: python3 tools/rust-port/sync-metadata-gate.py --repo-root .
       - name: Validate reviewed C-to-Rust behavior contracts
         run: python3 tools/rust-port/check-behavior-contract.py --repo-root .
+      - name: Keep the Rust Varlink state model aligned with its private C authority
+        run: python3 tools/rust-port/check-varlink-state-parity.py --repo-root .
       - name: Reject sticky claims without anchors or anchored source drift
         run: python3 tools/rust-port/stale-check.py --repo-root . --strict --require-existing-paths
       - name: Report C authorities and Rust twins changed by this update

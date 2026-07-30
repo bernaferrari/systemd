@@ -79,6 +79,7 @@ id = "sync-and-provenance"
 purpose = "Detect upstream/Rust drift and enforce map, anchor, and source-ownership hygiene."
 paths = [
     "tools/rust-port/diff-report.py",
+    "tools/rust-port/check-varlink-state-parity.py",
     "tools/rust-port/stale-check.py",
     "tools/rust-port/sync-metadata-gate.py",
     "tools/rust-port/test-stale-check.py",

@@ -2014,7 +2014,7 @@ status = "in-progress"
 tier = 3
 symbols = 4
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: sd-bus kernel transport behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 bounded static parity review: bus-kernel.c/.h are the current C authority, with bus-internal.h supplying the fixed 32-entry owner and fundamental/memory-util.h supplying PAGE_ALIGN/ALIGN_TO overflow and power-of-two rules; current upstream has the same two cleanup functions and private cache layout. Rust now mirrors the three header constants and repr(C) memfd_cache field layout, rejects null non-empty mappings, non-power-of-two/overflowing alignment, and over-capacity caches, and prevalidates fallible shadow cleanup so errors cannot leave partially mutated observational state. C remains production authority. P2: Rust deliberately performs no close(2), munmap(2), locking, sd_bus ownership/lifetime handling, C export, or Meson/runtime integration; its mutable cleanup state is a non-ABI test model, and no kernel-transport or runtime/ABI completion is claimed."
 
 [bus_match_types]
 c_file = "src/libsystemd/sd-bus/bus-match.c"
@@ -2030,12 +2030,12 @@ notes = "2026-07-30 static source review: node-type string conversion was checke
 c_file = "src/libsystemd/sd-bus/bus-signature.c"
 rust_file = "src/libsystemd/rust/bus_signature.rs"
 header_file = "src/libsystemd/sd-bus/bus-signature.h"
-test_file = "src/test/test-bus-signature.c"
+test_file = "src/libsystemd/sd-bus/test-bus-signature.c"
 status = "in-progress"
 tier = 3
 symbols = 6
 sync_status = "needs_review"
-notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-bus-signature.c); re-anchor to current upstream files before claiming completion."
+notes = "2026-07-30 bounded static parity review: bus-signature.c/.h and sd-bus/test-bus-signature.c are the current C authority. Rust matches C's 13 basic-type codes plus variant, top-level/array-only dict-entry admission, non-empty structs, two-field basic-key dict entries, 32-level array/struct nesting limits, -EINVAL parser failures, and the 255-byte whole-signature limit. tests-extra/test-bus-signature-rust.c is not registered by tests-extra/meson.build and references a nonexistent rust/bus_signature.h plus absent rs_* exports, so it supplies no executable parity evidence. C remains production authority. P2: Rust's &str API has no nullable or non-UTF-8 C-string boundary, has different embedded-NUL observability, does not preserve C's size_t* assertion contract, and has no C ABI export, Meson integration, or C/R runtime differential test."
 
 [device_action]
 c_paths = ["src/libsystemd/sd-device/device-private.c", "src/libsystemd/sd-device/device-private.h", "src/systemd/sd-device.h"]
@@ -2085,6 +2085,16 @@ status = "in-progress"
 tier = 3
 symbols = 4
 sync_status = "needs_review"
+notes = "2026-07-30 static source review: Rust now mirrors all four C helpers as a conservative shadow: NETLINK_SOCK_DIAG open intent; single AF_UNIX lookup and dump request headers/payloads; and validation/decoding of the fixed unix_diag_msg reply header. Request/reply fields are manually encoded/decoded in Linux native byte order from the current UAPI layouts, without repr(C) or C-ABI claims. The inode conversion deliberately truncates to the UAPI u32 field, matching C assignment; wrong message type returns -EINVAL and a short reply returns -EBADMSG. C remains production authority; netlink socket/message allocation, sequence/ACK/dump transport, attribute parsing, kernel-dependent behavior, and runtime/ABI integration remain P2."
+
+[netlink_types_sdnl]
+c_file = "src/libsystemd/sd-netlink/netlink-types-sdnl.c"
+rust_file = "src/libsystemd/rust/sd_netlink_types_sdnl.rs"
+status = "in-progress"
+tier = 3
+symbols = 3
+sync_status = "needs_review"
+notes = "2026-07-30 static source review: Rust models the SOCK_DIAG_BY_FAMILY request/reply policy selection and all current netlink-types-sdnl.c UNIX_DIAG policies: NAME string index 0, VFS binary index 1 (8 bytes), and RQLEN binary index 4 (8 bytes). The current Linux UAPI defines unix_diag_req as 24 bytes and unix_diag_msg as 16 bytes (four u8 fields and three u32 fields); the reply policy uses the correct 16-byte fixed-header size. C says the NAME bytes are not NUL-terminated, so Rust's policy metadata makes no string-decoding claim. C remains production authority; future UAPI attributes, sd-netlink policy-object behavior, C ABI, and runtime attribute parsing/integration remain P2."
 
 [network_util]
 c_file = "src/libsystemd/sd-network/network-util.c"
