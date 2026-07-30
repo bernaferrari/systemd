@@ -237,6 +237,41 @@ TEST(cunescape_one_unicode_U) {
         assert_se(c_val == rs_val && c_val == 0x1F600);
 }
 
+TEST(cunescape_unicode_validity_boundaries) {
+        char32_t c_val = 0, rs_val = 0;
+        bool c_eight = false, rs_eight = false;
+        char *c_str = NULL, *rs_str = NULL;
+
+        /* \u deliberately permits Unicode noncharacters: unlike \U, it
+         * rejects only UTF-16 surrogates because it must produce UTF-8. */
+        int cr = cunescape_one("uFFFE", SIZE_MAX, &c_val, &c_eight, false);
+        int rr = rs_cunescape_one("uFFFE", SIZE_MAX, &rs_val, &rs_eight, false);
+        assert_se(cr == rr && cr == 5);
+        assert_se(c_val == rs_val && c_val == 0xFFFE);
+        assert_se(c_eight == rs_eight && !rs_eight);
+
+        cr = cunescape_one("uD800", SIZE_MAX, &c_val, &c_eight, false);
+        rr = rs_cunescape_one("uD800", SIZE_MAX, &rs_val, &rs_eight, false);
+        assert_se(cr == rr && cr == -EINVAL);
+
+        /* \U uses unichar_is_valid(), which also rejects noncharacters. */
+        cr = cunescape_one("U0000FDD0", SIZE_MAX, &c_val, &c_eight, false);
+        rr = rs_cunescape_one("U0000FDD0", SIZE_MAX, &rs_val, &rs_eight, false);
+        assert_se(cr == rr && cr == -EINVAL);
+
+        cr = cunescape_one("U0010FFFF", SIZE_MAX, &c_val, &c_eight, false);
+        rr = rs_cunescape_one("U0010FFFF", SIZE_MAX, &rs_val, &rs_eight, false);
+        assert_se(cr == rr && cr == -EINVAL);
+
+        cr = cunescape("\\uFFFE", 0, &c_str);
+        rr = rs_cunescape("\\uFFFE", 0, &rs_str);
+        assert_se(cr == rr && cr == 3);
+        assert_se(memcmp(c_str, rs_str, 3) == 0);
+        assert_se(memcmp(c_str, "\xef\xbf\xbe", 3) == 0);
+        free(c_str);
+        free(rs_str);
+}
+
 TEST(cunescape_one_octal) {
         char32_t c_val, rs_val;
         bool eight;

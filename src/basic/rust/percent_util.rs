@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/basic/percent-util.c, src/basic/percent-util.h
+// PORT-SYNC: scope=basic.percent-util; authority=src/basic/percent-util.c,src/basic/percent-util.h
 //
 // Percentage, permille, and permyriad parsing and scaling functions.
 //

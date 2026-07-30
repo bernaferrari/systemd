@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+/* PORT-SYNC: scope=basic.percent-util; authority=src/basic/percent-util.c,src/basic/percent-util.h */
+
 /*
  * Rust FFI declarations for shadow testing.
  * These mirror the C functions in percent-util.h with rs_ prefix.

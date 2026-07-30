@@ -65,6 +65,9 @@ fn run(arguments: &[String]) -> i32 {
                 result.exit_status
             }
             Err(error) => {
+                for warning in error.warnings() {
+                    eprintln!("systemd-analyze: {warning}");
+                }
                 eprintln!("systemd-analyze: {}", error.message());
                 EXIT_FAILURE
             }

@@ -374,14 +374,24 @@ last_reviewed_rust_blobs = { "src/basic/rust/socket_util.rs" = "2c05dac70df37b3b
 notes = "Reviewed static socket ABI slice 2026-07-29; no build/tests/VM. Nineteen C facades preserve byte-oriented name predicates, VSOCK numeric and named-CID parsing, C sockaddr union and SocketAddress layout, AF-specific lengths, Unix path ownership, strict verification, and success-only output publication. The reviewed safe byte-address constructor now lets Rust notification senders retain C's exact filesystem and abstract AF_UNIX address semantics instead of duplicating raw sockaddr assembly. Invalid outer pointers and impossible asserted layouts fail closed by explicit policy. C remains production authority; runtime parity remains P2."
 
 [percent-util]
-c_file = "src/basic/percent-util.c"
-rust_file = "src/basic/rust/percent_util.rs"
-header_file = "src/basic/percent-util.h"
+c_paths = ["src/basic/percent-util.c", "src/basic/percent-util.h"]
+rust_paths = ["src/basic/rust/percent_util.rs", "src/basic/rust/percent_util.h"]
+scope = "basic.percent-util"
+rust_scope_paths = ["src/basic/rust/percent_util.rs"]
+rust_interface_paths = ["src/basic/rust/percent_util.h"]
+contract_file = "tools/rust-port/contracts/basic/percent-util.toml"
+c_provenance_edges = [
+    { kind = "direct", path = "src/basic/percent-util.c", rust_paths = ["src/basic/rust/percent_util.rs", "src/basic/rust/percent_util.h"] },
+    { kind = "direct", path = "src/basic/percent-util.h", rust_paths = ["src/basic/rust/percent_util.rs", "src/basic/rust/percent_util.h"] },
+]
+test_file = "tests-extra/test-percent-util-rust.c"
 status = "in-progress"
 tier = 2
 symbols = 12
-sync_status = "needs_review"
-notes = "Six parser exports plus six UINT32_SCALE_FROM/TO exact C ABI facades. Parser suffix/range logic is safe byte-oriented Rust; the safe_atoi boundary deliberately delegates target base-zero/locale/overflow grammar to libc strtol after systemd's 0b/0o mangle, avoiding a second drifting C parser. NULL and invalid bytes fail closed, and target-libc-sensitive prefixes are compared without hard-coded results. Scaling preserves clamping, u64 intermediates and rounding. Exact Rust-linked Meson/CI/static coverage exists; runtime is unclaimed."
+sync_status = "partial"
+last_reviewed_upstream_blobs = { "src/basic/percent-util.c" = "c205b10b09c019a25e45016d41eebb1cfd2f0c67", "src/basic/percent-util.h" = "60b0d4a9ef50aa7eac0d9d58ef9c3e99481a6390" }
+last_reviewed_rust_blobs = { "src/basic/rust/percent_util.rs" = "ed800f222b0f6b3c48eafa26c202845c9bc473e2", "src/basic/rust/percent_util.h" = "7d3386bdeb69faf137f5f6a9208ad7e423b29b45" }
+notes = "Behavior/ABI reviewed 2026-07-30. Six parser exports plus six UINT32_SCALE_FROM/TO exact C ABI facades. Parser suffix/range logic is safe byte-oriented Rust; the safe_atoi boundary deliberately delegates target base-zero/locale/overflow grammar to libc strtol after systemd's 0b/0o mangle, avoiding a second drifting C parser. NULL and invalid bytes fail closed, and target-libc-sensitive prefixes are compared without hard-coded results. Scaling preserves clamping, u64 intermediates, and rounding; the Rust-linked fixture exhaustively compares every valid percent/permille/permyriad input (101 + 1001 + 10001 values), C/R round trips, each reachable rounding boundary's neighbors, and saturation at integer extremes. Exact Meson/CI/static coverage exists; runtime is unclaimed."
 
 [siphash24]
 c_paths = ["src/basic/siphash24.c", "src/basic/siphash24.h"]

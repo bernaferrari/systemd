@@ -6,6 +6,8 @@
 /* Rust FFI */
 #include "rust/percent_util.h"
 
+/* RUST-CONTRACT: percent-parsers */
+
 /* ── parse_percent ───────────────────────────────────────────────────────── */
 
 TEST(parse_percent_normal) {

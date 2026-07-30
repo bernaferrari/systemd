@@ -33,7 +33,10 @@ pub struct CompareVersionsResult {
 pub enum CompareVersionsError {
     TooFewArguments,
     TooManyArguments,
-    UnknownOperator(String),
+    UnknownOperator {
+        operator: String,
+        warnings: Vec<String>,
+    },
 }
 
 impl CompareVersionsError {
@@ -42,7 +45,16 @@ impl CompareVersionsError {
         match self {
             Self::TooFewArguments => "Too few arguments.".to_string(),
             Self::TooManyArguments => "Too many arguments.".to_string(),
-            Self::UnknownOperator(operator) => format!("Unknown operator \"{operator}\"."),
+            Self::UnknownOperator { operator, .. } => format!("Unknown operator \"{operator}\"."),
+        }
+    }
+
+    /// Warnings that C emits before the command reaches this error.
+    #[must_use]
+    pub fn warnings(&self) -> &[String] {
+        match self {
+            Self::UnknownOperator { warnings, .. } => warnings,
+            Self::TooFewArguments | Self::TooManyArguments => &[],
         }
     }
 }
@@ -85,13 +97,13 @@ fn comparison_operator(ordering: Ordering) -> &'static str {
     }
 }
 
-fn parse_operator(value: &str) -> Result<CompareOperator, CompareVersionsError> {
+fn parse_operator(value: &str) -> Result<CompareOperator, String> {
     let Some((operator, remainder)) = parse_compare_operator(value, COMPARE_ALLOW_TEXTUAL) else {
-        return Err(CompareVersionsError::UnknownOperator(value.to_string()));
+        return Err(value.to_string());
     };
 
     if !remainder.is_empty() {
-        return Err(CompareVersionsError::UnknownOperator(remainder.to_string()));
+        return Err(remainder.to_string());
     }
 
     Ok(operator)
@@ -137,7 +149,10 @@ pub fn compare_versions(
         });
     }
 
-    let operator = parse_operator(&arguments[1])?;
+    let operator = match parse_operator(&arguments[1]) {
+        Ok(operator) => operator,
+        Err(operator) => return Err(CompareVersionsError::UnknownOperator { operator, warnings }),
+    };
     let matches = test_order(ordering_value(ordering), operator)
         .expect("compare-versions only accepts order comparison operators");
     Ok(CompareVersionsResult {
@@ -204,7 +219,23 @@ mod tests {
         );
         assert_eq!(
             compare_versions(&arguments(&["1", "wat", "2"])),
-            Err(CompareVersionsError::UnknownOperator("wat".to_string()))
+            Err(CompareVersionsError::UnknownOperator {
+                operator: "wat".to_string(),
+                warnings: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn invalid_operator_retains_warnings_c_emits_first() {
+        let error = compare_versions(&arguments(&["1/2", "<=suffix", "3 space"])).unwrap_err();
+        assert_eq!(error.message(), "Unknown operator \"suffix\".");
+        assert_eq!(
+            error.warnings(),
+            [
+                "Version string 1 contains disallowed characters, they will be treated as separators: 1/2",
+                "Version string 2 contains disallowed characters, they will be treated as separators: 3 space",
+            ]
         );
     }
 

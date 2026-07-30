@@ -1,0 +1,79 @@
+schema = 1
+module = "percent-util"
+semantic_coverage = "partial"
+source_structure = "independent"
+deviation_policy = "explicit-only"
+excluded_c_symbols = [
+    "parse_parts_value_whole",
+    "parse_parts_value_with_tenths_place",
+    "parse_parts_value_with_hundredths_place",
+]
+
+[authority]
+c_headers = ["src/basic/percent-util.h"]
+c_sources = ["src/basic/percent-util.c"]
+rust_headers = ["src/basic/rust/percent_util.h"]
+rust_sources = ["src/basic/rust/percent_util.rs"]
+
+[[surface]]
+id = "percent-parsers"
+c_symbols = [
+    "parse_percent_unbounded",
+    "parse_percent",
+    "parse_permille_unbounded",
+    "parse_permille",
+    "parse_permyriad_unbounded",
+    "parse_permyriad",
+]
+rust_symbols = [
+    "rs_parse_percent_unbounded",
+    "rs_parse_percent",
+    "rs_parse_permille_unbounded",
+    "rs_parse_permille",
+    "rs_parse_permyriad_unbounded",
+    "rs_parse_permyriad",
+]
+coverage = "deviation"
+abi = "c-exact"
+bytes = "borrowed-cstr-opaque"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+deviation_id = "percent-null-fail-closed"
+deviation_rationale = "Rust rejects a NULL parser input with -EINVAL rather than evaluating C's assertion precondition. Valid byte-oriented inputs preserve C suffix dispatch, target-libc base-zero parsing, overflow precedence, and bounded ranges."
+deviation_approval = "Reviewed static Rust-port boundary policy 2026-07-30."
+
+[surface.static_fixture]
+file = "tests-extra/test-percent-util-rust.c"
+meson_target = "test-percent-util-rust"
+labels = ["percent-parsers"]
+
+[[surface]]
+id = "percent-scale"
+c_symbols = [
+    "UINT32_SCALE_FROM_PERCENT",
+    "UINT32_SCALE_FROM_PERMILLE",
+    "UINT32_SCALE_FROM_PERMYRIAD",
+    "UINT32_SCALE_TO_PERCENT",
+    "UINT32_SCALE_TO_PERMILLE",
+    "UINT32_SCALE_TO_PERMYRIAD",
+]
+rust_symbols = [
+    "rs_UINT32_SCALE_FROM_PERCENT",
+    "rs_UINT32_SCALE_FROM_PERMILLE",
+    "rs_UINT32_SCALE_FROM_PERMYRIAD",
+    "rs_UINT32_SCALE_TO_PERCENT",
+    "rs_UINT32_SCALE_TO_PERMILLE",
+    "rs_UINT32_SCALE_TO_PERMYRIAD",
+]
+coverage = "exact"
+abi = "c-exact"
+bytes = "scalar"
+errors = "negative-errno"
+runtime = "none"
+verification = "static-only"
+
+[surface.static_fixture]
+file = "tests-extra/test-percent-scale-rust.c"
+meson_target = "test-percent-scale-rust"
+labels = ["percent-scale"]
