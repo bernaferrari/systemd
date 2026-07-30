@@ -347,9 +347,9 @@ status = "in-progress"
 tier = 1
 symbols = 67
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/stat-util.c" = "72307fa7217822d3f930744bb3454d7bdf47f13a", "src/basic/stat-util.h" = "aa1c21ed90a91e0c03c2c4de833b29c5c4d67efa", "src/basic/siphash24.c" = "b73ede34c8bc43c04697adb23f84db94473ab43a", "src/basic/siphash24.h" = "6da73fedaa41c21ed516779b978019ab6f9fcd33", "src/basic/chattr-util.c" = "26779305cbbbedf132ed0eeaa701487addb8f7a7", "src/basic/chattr-util.h" = "543843db2c2a4e3f3b9c689f2ba86882ca221bd5", "src/basic/chase.c" = "23a523798eb2b9a1310fff5252491d49bb01f8d5", "src/basic/chase.h" = "3d7e9f3f6b5f78bd887f5fd98ac5342000e205b1", "src/basic/dirent-util.h" = "44e751ba41438c7eccbccf0519534e1fcac24df9", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5", "src/basic/filesystem-sets.py" = "be08664aef65a08b2bb972d7853a27987492f7b6", "src/basic/filesystems.c" = "5a41252e096d218a0d2ab798d0907ae995c1186c", "src/basic/filesystems.h" = "eed3982afd5eb5d501bea2b22d1475e8b0a25627", "src/basic/fs-util.c" = "76c55e30b6a86d04a28f1042f1c68e867d6b80d4", "src/basic/fs-util.h" = "bc33f2f8e95d51311d07d4950ffded5586a554db", "src/basic/mountpoint-util.c" = "4db4d8162fd14c92f99216cc8795e264f7b1d649", "src/basic/mountpoint-util.h" = "7f29ffe177848b64d22b00f2677166672829501e", "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/include/uapi/linux/magic.h" = "4f2da935a76ccae6e1c3310b2fae5379186548b8", "src/basic/time-util.c" = "44c53067411741027580f465c9873e673db03028", "src/shared/btrfs-util.c" = "780c1be349675afc7f681824dbe1c31d146753c1", "src/shared/btrfs-util.h" = "be5e0b59d31e8221c11a3b142ce716c6cbff7130" }
+last_reviewed_upstream_blobs = { "src/basic/stat-util.c" = "72307fa7217822d3f930744bb3454d7bdf47f13a", "src/basic/stat-util.h" = "aa1c21ed90a91e0c03c2c4de833b29c5c4d67efa", "src/basic/siphash24.c" = "b73ede34c8bc43c04697adb23f84db94473ab43a", "src/basic/siphash24.h" = "6da73fedaa41c21ed516779b978019ab6f9fcd33", "src/basic/chattr-util.c" = "26779305cbbbedf132ed0eeaa701487addb8f7a7", "src/basic/chattr-util.h" = "543843db2c2a4e3f3b9c689f2ba86882ca221bd5", "src/basic/chase.c" = "23a523798eb2b9a1310fff5252491d49bb01f8d5", "src/basic/chase.h" = "3d7e9f3f6b5f78bd887f5fd98ac5342000e205b1", "src/basic/dirent-util.h" = "44e751ba41438c7eccbccf0519534e1fcac24df9", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5", "src/basic/filesystem-sets.py" = "be08664aef65a08b2bb972d7853a27987492f7b6", "src/basic/filesystems.c" = "5a41252e096d218a0d2ab798d0907ae995c1186c", "src/basic/filesystems.h" = "eed3982afd5eb5d501bea2b22d1475e8b0a25627", "src/basic/fs-util.c" = "76c55e30b6a86d04a28f1042f1c68e867d6b80d4", "src/basic/fs-util.h" = "bc33f2f8e95d51311d07d4950ffded5586a554db", "src/basic/mountpoint-util.c" = "f84fb04a6746029b20569d2584f9b4e3e6b71364", "src/basic/mountpoint-util.h" = "563685e7153e16cd65d794c78464f1fe69c7c1b3", "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/include/uapi/linux/magic.h" = "4f2da935a76ccae6e1c3310b2fae5379186548b8", "src/basic/time-util.c" = "44c53067411741027580f465c9873e673db03028", "src/shared/btrfs-util.c" = "780c1be349675afc7f681824dbe1c31d146753c1", "src/shared/btrfs-util.h" = "be5e0b59d31e8221c11a3b142ce716c6cbff7130" }
 last_reviewed_rust_blobs = { "src/basic/rust/stat_util.rs" = "5d917fdbff58ca2b101d2ac8f5e833baccb6f297", "src/basic/rust/stat_util.h" = "0d78cbfeebfd4fa278277fe8a59832fd4afb9d04", "src/basic/rust/stat_util/descriptor.rs" = "5a1005288f8f04d244ef60fa24eafafe221eada6", "src/basic/rust/stat_util/filesystem.rs" = "ae2967dfd6e0ed6141011f2fc5f83e5b9ba347bd", "src/basic/rust/stat_util/hash.rs" = "b8120cc84ee304ec701f82af7cadb2e708225563", "src/basic/rust/stat_util/inode.rs" = "61723d212320f5320d732116f8054ec580929318", "src/basic/rust/stat_util/inode_same.rs" = "cfe3225c251ad0307fa095f900ddd21ad1abcdb7", "src/basic/rust/stat_util/moderate.rs" = "a2f0eb66f98484316e5a0f10e8176661d13647a5", "src/basic/rust/stat_util/verification.rs" = "82c658f9152f571734916a1d2a827cc4ed3bae93", "src/basic/rust/stat_util/xstatx.rs" = "d48f75ef546162e300a408f0c20eaacf7664227a" }
-notes = "Reviewed behavior slice 2026-07-29; the Rust static library and the C/R `test-stat-util-rust` fixture passed on Ubuntu 24.04 aarch64. Scope basic.stat-util owns the decomposed stat_util facade while c_paths retains the transitive behavior dependencies used or independently mirrored by its leaves, so filesystem-set, mountpoint, chase/fd/path, SipHash, chattr, and btrfs changes invalidate stale anchors. c_provenance_edges records the ten direct leaf authorities and fourteen reasoned transitive closure paths. Nineteen machine-checked surfaces cover all 67 public stat-util function APIs (including header inlines and inode_type string-table lookup) with exact ABI, symbol-specific output metadata, and static fixture markers. inode_hash_ops and inode_unmodified_hash_ops remain excluded; rs_inode_type_can_chattr and rs_btrfs_might_be_subvol stay outside the 67-symbol contract slice. Broader runtime/kernel differential execution remains unclaimed."
+notes = "Reviewed behavior slice 2026-07-30; the Rust static library and the C/R `test-stat-util-rust` fixture passed on Ubuntu 24.04 aarch64. Scope basic.stat-util owns the decomposed stat_util facade while c_paths retains the transitive behavior dependencies used or independently mirrored by its leaves, so filesystem-set, mountpoint, chase/fd/path, SipHash, chattr, and btrfs changes invalidate stale anchors. The new C-only fstype_is_fuse() classifier is used by switch-root's departing-filesystem sync path; inode_same.rs neither calls nor mirrors it, so the 67-symbol stat-util contract and its fixture need no behavioral change. c_provenance_edges records the ten direct leaf authorities and fourteen reasoned transitive closure paths. Nineteen machine-checked surfaces cover all 67 public stat-util function APIs (including header inlines and inode_type string-table lookup) with exact ABI, symbol-specific output metadata, and static fixture markers. inode_hash_ops and inode_unmodified_hash_ops remain excluded; rs_inode_type_can_chattr and rs_btrfs_might_be_subvol stay outside the 67-symbol contract slice. Broader runtime/kernel differential execution remains unclaimed."
 
 [socket-util]
 c_paths = ["src/basic/socket-util.c", "src/basic/socket-util.h", "src/basic/parse-util.c", "src/basic/parse-util.h"]
@@ -757,9 +757,9 @@ status = "in-progress"
 tier = 1
 symbols = 8
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/iovec-wrapper.c" = "da217170c573c8b83f4259b83004ad40245ab69f", "src/basic/iovec-wrapper.h" = "7f9863aaf98596aec3f24334c9cf40a1e2c3d95a", "src/basic/iovec-util.c" = "0be326a18364e75ed4e1e919a360b1f0cb9c8a5b", "src/basic/iovec-util.h" = "ab6178d653a884d0848ec928bb8c2911c4ed805c", "src/basic/alloc-util.c" = "04c4a506729d4cda5cb32cc75180667ce3eaecae", "src/basic/alloc-util.h" = "8505205ce3cac33fddb80114357cce8c77044f5e" }
+last_reviewed_upstream_blobs = { "src/basic/iovec-wrapper.c" = "da217170c573c8b83f4259b83004ad40245ab69f", "src/basic/iovec-wrapper.h" = "7f9863aaf98596aec3f24334c9cf40a1e2c3d95a", "src/basic/iovec-util.c" = "0be326a18364e75ed4e1e919a360b1f0cb9c8a5b", "src/basic/iovec-util.h" = "ab6178d653a884d0848ec928bb8c2911c4ed805c", "src/basic/alloc-util.c" = "70ecf33ecda068b264ac047faee0b5880a4f097e", "src/basic/alloc-util.h" = "8505205ce3cac33fddb80114357cce8c77044f5e" }
 last_reviewed_rust_blobs = { "src/basic/rust/iovec_wrapper.rs" = "58d8334f470d508d7f35502adfe9e0719f3b8c6a", "src/basic/rust/iovec_wrapper.h" = "82df85ea21c4d805b23a223467990aed3df989b8" }
-notes = "Reviewed static iovec-wrapper ABI slice 2026-07-29; no build/tests/VM. Eight facades preserve repr(C) wrapper cleanup, borrowed put, provenance-correct rebase, and size/query behavior. The stale rs_iovw_new declaration was removed because no C authority exists. C remains production authority; runtime parity remains P2."
+notes = "Reviewed static iovec-wrapper ABI slice 2026-07-30; no build/tests/VM. Eight facades preserve repr(C) wrapper cleanup, borrowed put, provenance-correct rebase, and size/query behavior. The stale rs_iovw_new declaration was removed because no C authority exists. The alloc-util malloc_sizeof_safe() fortify compiler barrier is C-only: this facade never uses usable-size allocation, so it requires no Rust behavior change. C remains production authority; runtime parity remains P2."
 
 [alloc-util]
 c_file = "src/basic/alloc-util.c"
@@ -1462,9 +1462,9 @@ status = "in-progress"
 tier = 3
 symbols = 4
 sync_status = "partial"
-last_reviewed_upstream_blobs = { "src/basic/mountpoint-util.c" = "4db4d8162fd14c92f99216cc8795e264f7b1d649", "src/basic/mountpoint-util.h" = "7f29ffe177848b64d22b00f2677166672829501e" }
+last_reviewed_upstream_blobs = { "src/basic/mountpoint-util.c" = "f84fb04a6746029b20569d2584f9b4e3e6b71364", "src/basic/mountpoint-util.h" = "563685e7153e16cd65d794c78464f1fe69c7c1b3" }
 last_reviewed_rust_blobs = { "src/basic/rust/mountpoint_util.rs" = "0807923d1f8b01ed87bbdb276db07535a8d13703", "src/basic/rust/mountpoint_util.h" = "e0fc049eaec754fac5b78e22eab490ab7257fbcc" }
-notes = "Reviewed static mountpoint ABI slice 2026-07-28; no build/tests/VM. Four facades preserve propagation-mask handling, static borrowed names, raw C-string parsing with success-only output publication, exact unsigned-long/int widths, and fatal negative-errno classification. Handle acquisition and mount I/O remain excluded. C remains production authority; runtime parity is unclaimed."
+notes = "Reviewed static mountpoint ABI slice 2026-07-30; no build/tests/VM. Four facades preserve propagation-mask handling, static borrowed names, raw C-string parsing with success-only output publication, exact unsigned-long/int widths, and fatal negative-errno classification. Upstream added the C-only fstype_is_fuse() classifier for switch-root's departing-filesystem sync policy; it is outside these four exported facades and does not affect their ABI or behavior. Handle acquisition and mount I/O remain excluded. C remains production authority; runtime parity is unclaimed."
 
 [netdev_str_tables]
 c_file = "src/shared/bond-util.c"
@@ -1843,6 +1843,29 @@ status = "in-progress"
 tier = 1
 symbols = 6
 sync_status = "needs_review"
+
+[core_dbus_policy]
+c_file = "src/core/dbus.c"
+rust_file = "src/core/rust/dbus.rs"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+last_reviewed_upstream_blobs = { "src/core/dbus.c" = "83a4e8912e091216955aab60125d248d1e30f9f0" }
+last_reviewed_rust_blobs = { "src/core/rust/dbus.rs" = "ff43c029e432576c746d1254fac6518dfb826b51" }
+notes = "Source-local disconnected policy model only. It retains the narrow API-bus-ready holdback for a queued reload message, but has no sd-bus transport, asynchronous GetId reply, subscription serialization/coldplug, or PID1/sd-event dispatch lifecycle. Production C remains authoritative."
+
+[core_manager_policy]
+c_paths = ["src/core/manager.c", "src/core/manager.h"]
+rust_file = "src/core/rust/manager.rs"
+header_file = "src/core/manager.h"
+status = "in-progress"
+tier = 1
+symbols = 0
+sync_status = "needs_review"
+last_reviewed_upstream_blobs = { "src/core/manager.c" = "e82ba36fd50e0960a0ba68a6e6c19bef6b16e104", "src/core/manager.h" = "453ae74668ee4353e0490ef70eb8ef81b826e922" }
+last_reviewed_rust_blobs = { "src/core/rust/manager.rs" = "c3aa659eb273b20885f782de9707c546738ec606" }
+notes = "Disconnected scalar helpers and source-inventory stubs only. manager_dispatch_dbus_queue() is intentionally a no-op because the Rust shadow has no live Manager, API-bus ownership, D-Bus/Varlink queues, reexec subscription state, or sd-event loop; it must not be treated as implementing api_bus_ready dispatch ordering."
 
 [mount_tables]
 c_file = "src/core/mount.c"
@@ -2622,12 +2645,14 @@ notes = "Hardened partial Linux runtime: the RNDADDENTROPY request has one docum
 
 [update_utmp_runtime]
 c_file = "src/update-utmp/update-utmp.c"
-rust_file = "src/update-utmp/rust/main.rs"
+rust_paths = ["src/update-utmp/rust/main.rs", "src/update-utmp/rust/lib.rs"]
 status = "in-progress"
 tier = 1
 symbols = 0
 sync_status = "needs_review"
-notes = "Fail-closed executable boundary only. Help and version work, but record updates refuse before utmp/wtmp side effects because audit events, system-manager timestamps, clock conversion, and canonical utmp_put_* semantics are not implemented."
+last_reviewed_upstream_blobs = { "src/update-utmp/update-utmp.c" = "ac66a9c332f0382ce1ef757578371880fe1d5a6a" }
+last_reviewed_rust_blobs = { "src/update-utmp/rust/main.rs" = "e0c79b1c1b2829af73a31636d173e22c1a47020f", "src/update-utmp/rust/lib.rs" = "14c3cf031d318593e0cdc14c22d6b1d2f45f106b" }
+notes = "Fail-closed executable boundary only. Help and version work, but record updates refuse before utmp/wtmp side effects because audit events, system-manager timestamps, clock conversion, and canonical utmp_put_* semantics are not implemented. The library records the 15-byte-safe audit comm (`update-utmp`) from current C, but does not emit audit events."
 
 [volatile_root_runtime]
 c_file = "src/volatile-root/volatile-root.c"

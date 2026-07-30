@@ -11,6 +11,7 @@ excluded_c_symbols = [
     "file_handle_dup",
     "is_mount_point_at",
     "path_is_mount_point_full",
+    "fstype_is_fuse",
     "mount_nofollow",
     "mount_option_supported",
 ]

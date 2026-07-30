@@ -3,12 +3,12 @@
 //
 // PORT-SYNC: src/update-utmp/update-utmp.c
 //
-// UTMP and audit record update tool.
+// Partial data model for the systemd-update-utmp tool.
 //
-// Implements the systemd-update-utmp tool which writes utmp/wtmp records
-// and sends audit messages on system reboot and shutdown events. Uses
-// D-Bus to query the system manager for the userspace timestamp to
-// compensate for incorrectly set clocks during early boot.
+// The production Rust executable is deliberately fail-closed: it does not
+// write utmp/wtmp records or send audit messages until it owns the canonical
+// audit, D-Bus, clock-conversion, and record-update lifecycle. The values
+// below are retained only as a source-level model of that C interface.
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -19,6 +19,13 @@ pub const CLOCK_REALTIME: i32 = 0;
 
 /// Default umask for the tool.
 pub const DEFAULT_UMASK: u32 = 0o022;
+
+/// Kernel-compatible audit comm used for boot and shutdown events.
+///
+/// libaudit rejects comm values longer than the kernel's 15-byte limit. The
+/// C authority therefore uses `update-utmp`, rather than
+/// `systemd-update-utmp`, when it eventually emits those events.
+pub const AUDIT_COMM: &str = "update-utmp";
 
 /// Invalid file descriptor sentinel.
 pub const INVALID_FD: i32 = -1;
@@ -235,6 +242,8 @@ mod tests {
     #[test]
     fn test_constants() {
         assert_eq!(DEFAULT_UMASK, 0o022);
+        assert_eq!(AUDIT_COMM, "update-utmp");
+        assert!(AUDIT_COMM.len() <= 15);
         assert_eq!(INVALID_FD, -1);
         assert_eq!(USERSPACE_TIMESTAMP_MONOTONIC, "UserspaceTimestampMonotonic");
     }

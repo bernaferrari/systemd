@@ -464,6 +464,9 @@ pub fn manager_dispatch_run_queue(source: *mut c_void, userdata: *mut c_void) ->
     Ok(0)
 }
 pub fn manager_dispatch_dbus_queue(m: *mut c_void) -> u32 {
+    // PORT-GAP: This is an opaque source-inventory stub, not a dispatch
+    // implementation. In particular, it has no live API-bus ownership and
+    // cannot enforce manager.c's api_bus_ready queue ordering after reexec.
     let _ = m;
     0
 }

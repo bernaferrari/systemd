@@ -144,6 +144,10 @@ impl SdDevice {
         self.inner.lock().unwrap().diskseq.ok_or(ENOENT)
     }
     pub fn parent(&self) -> Option<SdDevice> {
+        // PORT-GAP: This is an sd-device state-model accessor, not the
+        // libudev `udev_device_get_parent()` API. It has neither a parent
+        // lookup operation nor a C errno channel, so it cannot represent
+        // libudev-device.c's cached failure errno semantics.
         self.inner.lock().unwrap().parent.clone()
     }
 

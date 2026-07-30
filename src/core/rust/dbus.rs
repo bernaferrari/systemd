@@ -5,7 +5,10 @@
 //! Compiled-but-disconnected D-Bus policy model.
 //!
 //! This value model is not a second live manager; a production transport must
-//! enqueue commands for [`crate::runtime_manager::RuntimeManager`].
+//! enqueue commands for [`crate::runtime_manager::RuntimeManager`]. Its
+//! `api_bus_ready` state only preserves the narrow queue-ordering invariant
+//! from the C manager; it does not implement the asynchronous `GetId`,
+//! subscription coldplug, or sd-event lifecycle that establishes that state.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -65,6 +68,10 @@ pub struct JobRecord {
 pub struct Manager {
     pub pending_reload_message: Option<String>,
     pub api_bus_connected: bool,
+    /// Set only after the current API bus has completed setup. While an API
+    /// bus is connected but not ready, reload messages must remain queued so
+    /// subscribers restored across reexec cannot miss them.
+    pub api_bus_ready: bool,
     pub system_bus_connected: bool,
     pub dbus_socket_active: bool,
     pub dbus_service_active: bool,
@@ -87,6 +94,16 @@ impl Manager {
 }
 
 pub fn bus_send_pending_reload_message(manager: &mut Manager) -> Result<Option<String>, DbusError> {
+    // C performs this guard in manager_dispatch_dbus_queue(). This small
+    // model has no event queue, so keep the pending reload message here until
+    // API setup finishes instead of falsely claiming it was dispatched.
+    if manager.api_bus_connected && !manager.api_bus_ready {
+        manager
+            .event_log
+            .push("postponed queued reload message until api bus is ready".into());
+        return Ok(None);
+    }
+
     let message = manager.pending_reload_message.take();
     if message.is_some() {
         manager.event_log.push("sent queued reload message".into());
@@ -98,6 +115,7 @@ pub fn signal_disconnected(manager: &mut Manager, bus_name: &str) -> Result<(), 
     match bus_name {
         "api" => {
             manager.api_bus_connected = false;
+            manager.api_bus_ready = false;
             manager.event_log.push("api disconnected".into());
             Ok(())
         }
@@ -231,6 +249,7 @@ pub fn bus_setup_api_vtables(manager: &mut Manager) -> Result<(), DbusError> {
         "org.freedesktop.systemd1.Manager".into(),
         "org.freedesktop.systemd1.Unit".into(),
     ]);
+    manager.api_bus_ready = true;
     Ok(())
 }
 
@@ -312,6 +331,36 @@ mod tests {
             Some("reload".into())
         );
         assert_eq!(bus_send_pending_reload_message(&mut manager).unwrap(), None);
+    }
+
+    #[test]
+    fn reload_message_waits_for_connected_api_bus_setup() {
+        let mut manager = Manager {
+            pending_reload_message: Some("reload".into()),
+            api_bus_connected: true,
+            ..Manager::default()
+        };
+
+        assert_eq!(bus_send_pending_reload_message(&mut manager).unwrap(), None);
+        assert_eq!(manager.pending_reload_message.as_deref(), Some("reload"));
+
+        bus_setup_api_vtables(&mut manager).unwrap();
+        assert_eq!(
+            bus_send_pending_reload_message(&mut manager).unwrap(),
+            Some("reload".into())
+        );
+    }
+
+    #[test]
+    fn api_disconnect_clears_readiness() {
+        let mut manager = Manager {
+            api_bus_connected: true,
+            api_bus_ready: true,
+            ..Manager::default()
+        };
+
+        signal_disconnected(&mut manager, "api").unwrap();
+        assert!(!manager.api_bus_ready);
     }
 
     #[test]
