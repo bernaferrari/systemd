@@ -415,7 +415,7 @@ jobs:
         run: ./test/test-rust-fuzz-smoke.sh
 
   rust-pid1-syscall-smoke:
-    name: Rust PID1 syscall smoke
+    name: Rust PID1 --test signal-mask trace smoke
     runs-on: ubuntu-24.04
     steps:
       - name: Repository checkout
@@ -428,7 +428,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Install syscall tracing dependencies
         run: sudo apt-get update && sudo apt-get install -y strace
-      - name: Run Linux PID1 syscall trace smoke
+      - name: Run Linux PID1 --test signal-mask trace smoke
         run: ./test/test-rust-pid1-syscall-smoke.sh
 
   host-systemd-journal-behavior-smoke:

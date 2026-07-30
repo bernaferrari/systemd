@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# This is intentionally a narrow Rust PID 1 `--test` signal-startup smoke.
+# It is not evidence that the normal boot path or manager event loop is ready.
 set -euo pipefail
 
 if [[ ! -f Cargo.toml ]]; then
@@ -55,6 +57,7 @@ trap cleanup EXIT
 
 trace_dir="$tmpdir/trace"
 mkdir -p "$trace_dir"
+pid1_log="$tmpdir/pid1.log"
 
 cargo_target_dir="$tmpdir/cargo-target"
 run env CARGO_TARGET_DIR="$cargo_target_dir" \
@@ -65,8 +68,15 @@ if [[ ! -x "$systemd_bin" ]]; then
     exit 1
 fi
 
+pid1_wrapper=(
+    /bin/sh
+    -ec
+    'test "$$" -eq 1; exec "$1" --test'
+    rust-pid1-wrapper
+    "$systemd_bin"
+)
+
 trace_cmd=(
-    "${namespace[@]}"
     strace
     -ff
     -qq
@@ -74,18 +84,23 @@ trace_cmd=(
     "$trace_dir/strace"
     -e
     trace=%process,%file,%memory,%signal,%desc,%network,%ipc,mount,umount2
-    "$systemd_bin"
-    --test
+    # Keep strace outside the new PID namespace. If it ran inside, strace
+    # itself would become PID 1 and the Rust binary would only be its child.
+    # As the tracing parent, strace follows unshare's descendant and records
+    # the actual systemd binary after it becomes PID 1.
+    "${namespace[@]}"
+    "${pid1_wrapper[@]}"
 )
 
 echo "+ timeout --signal=KILL 10s ${trace_cmd[*]}"
 set +e
-timeout --signal=KILL 10s "${trace_cmd[@]}"
+timeout --signal=KILL 10s "${trace_cmd[@]}" >"$pid1_log" 2>&1
 rc=$?
 set -e
+cat "$pid1_log"
 
 case "$rc" in
-    0|124|137)
+    0)
         ;;
     *)
         echo "FAIL: syscall tracing command exited with unexpected status $rc." >&2
@@ -93,13 +108,28 @@ case "$rc" in
         ;;
 esac
 
-python3 - "$trace_dir" <<'PY'
+for marker in \
+    "systemd: running as PID 1, starting early boot sequence" \
+    "systemd: PID 1 test mode complete; skipping manager startup and event loop"; do
+    if ! grep -Fq "$marker" "$pid1_log"; then
+        echo "FAIL: the Rust PID 1 test-mode log is missing: $marker" >&2
+        exit 1
+    fi
+done
+
+python3 - "$trace_dir" "$systemd_bin" <<'PY'
 import pathlib
 import re
 import sys
 
 trace_dir = pathlib.Path(sys.argv[1])
+systemd_bin = sys.argv[2]
 syscall_re = re.compile(r"^\s*(?:\d+\s+)?([A-Za-z_][A-Za-z0-9_]*)\(")
+pid1_re = re.compile(r"\bgetpid\(\)\s+=\s+1(?:\s|$)")
+successful_call_re = {
+    "rt_sigaction": re.compile(r"^\s*(?:\d+\s+)?rt_sigaction\(.*\)\s+=\s+0(?:\s|$)"),
+    "rt_sigprocmask": re.compile(r"^\s*(?:\d+\s+)?rt_sigprocmask\(.*\)\s+=\s+0(?:\s|$)"),
+}
 
 forbidden = {
     "bpf",
@@ -139,28 +169,66 @@ def classify(name: str) -> str:
         return "file"
     return "other"
 
-syscalls = set()
+target_traces = []
 for path in sorted(trace_dir.glob("strace*")):
     text = path.read_text(encoding="utf-8", errors="replace")
-    for line in text.splitlines():
-        match = syscall_re.match(line)
-        if match:
-            syscalls.add(match.group(1))
+    if f'execve("{systemd_bin}",' in text:
+        target_traces.append((path, text))
 
-if not syscalls:
-    print("FAIL: no syscalls were captured by strace.", file=sys.stderr)
+if len(target_traces) != 1:
+    paths = ", ".join(str(path) for path, _ in target_traces) or "none"
+    print(
+        "FAIL: unable to identify exactly one trace for the Rust systemd binary "
+        f"(found: {paths}).",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
-required = {"execve", "openat", "mmap", "rt_sigprocmask"}
+target_path, target_text = target_traces[0]
+syscalls = {
+    match.group(1)
+    for line in target_text.splitlines()
+    if (match := syscall_re.match(line))
+}
+
+if not syscalls:
+    print("FAIL: no syscalls were captured for the Rust systemd binary.", file=sys.stderr)
+    sys.exit(1)
+
+if not pid1_re.search(target_text):
+    print(
+        "FAIL: the traced Rust systemd binary did not observe itself as PID 1.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+required = {"execve", "getpid"}
 if not required.issubset(syscalls):
     missing = sorted(required - syscalls)
-    print(f"FAIL: syscall trace is missing expected baseline calls: {', '.join(missing)}", file=sys.stderr)
+    print(
+        "FAIL: Rust PID 1 trace is missing expected test-mode startup calls: "
+        f"{', '.join(missing)}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+missing_successful_calls = [
+    name
+    for name, pattern in successful_call_re.items()
+    if not any(pattern.match(line) for line in target_text.splitlines())
+]
+if missing_successful_calls:
+    print(
+        "FAIL: Rust PID 1 test-mode signal setup lacks successful calls: "
+        f"{', '.join(sorted(missing_successful_calls))}",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 violations = sorted(syscalls & forbidden)
 if violations:
     print(
-        "FAIL: unexpected high-risk syscalls observed in PID1 baseline trace: "
+        "FAIL: unexpected high-risk syscalls observed in the Rust PID 1 trace: "
         + ", ".join(violations),
         file=sys.stderr,
     )
@@ -171,5 +239,8 @@ for name in sorted(syscalls):
     classes.setdefault(classify(name), []).append(name)
 
 summary = ", ".join(f"{klass}:{len(names)}" for klass, names in sorted(classes.items()))
-print(f"Observed {len(syscalls)} unique syscalls across classes -> {summary}")
+print(
+    f"Observed {len(syscalls)} unique syscalls for Rust PID 1 "
+    f"({target_path.name}) across classes -> {summary}"
+)
 PY
