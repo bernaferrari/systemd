@@ -42,9 +42,11 @@ fn insert_test_service(mgr: &mut RuntimeManager, name: &str, state: ServiceState
         crate::service::service_state_translation(state, ServiceType::Simple).into();
     mgr.units.insert(name.to_string(), unit);
 
-    let mut service = Service::default();
-    service.service_type = ServiceType::Simple;
-    service.state = state;
+    let service = Service {
+        service_type: ServiceType::Simple,
+        state,
+        ..Default::default()
+    };
     mgr.services.insert(name.to_string(), service);
 }
 
@@ -485,60 +487,62 @@ fn test_service_timeout_action_matches_all_c_timer_phase_and_policy_cases() {
 fn test_parse_exec_context_directives_shared_and_apply_to_unit() {
     let _test_lock = test_env_lock();
 
-    let mut ctx = ExecContextConfig::default();
-    ctx.user = Some("alice".to_string());
-    ctx.group = Some("staff".to_string());
-    ctx.dynamic_user = Some(true);
-    ctx.supplementary_groups = vec!["wheel".to_string(), "docker".to_string()];
-    ctx.pam_name = Some("login".to_string());
-    ctx.working_directory = Some("/srv".to_string());
-    ctx.private_tmp = Some(true);
-    ctx.private_devices = Some(false);
-    ctx.private_network = Some(true);
-    ctx.private_ipc = Some(true);
-    ctx.private_users = Some(true);
-    ctx.private_mounts = Some(false);
-    ctx.protect_system = Some("strict".to_string());
-    ctx.protect_home = Some("read-only".to_string());
-    ctx.protect_hostname = Some(true);
-    ctx.protect_clock = Some(true);
-    ctx.protect_kernel_tunables = Some(true);
-    ctx.protect_kernel_modules = Some(false);
-    ctx.protect_kernel_logs = Some(true);
-    ctx.protect_control_groups = Some(true);
-    ctx.environment = vec!["FOO=bar".to_string(), "BAR=baz".to_string()];
-    ctx.pass_environment = vec!["FOO".to_string(), "BAR".to_string()];
-    ctx.unset_environment = vec!["BAZ=1".to_string()];
-    ctx.standard_input = Some("null".to_string());
-    ctx.standard_output = Some("journal".to_string());
-    ctx.standard_error = Some("inherit".to_string());
-    ctx.tty_path = Some("/dev/console".to_string());
-    ctx.tty_reset = Some(true);
-    ctx.tty_vhangup = Some(false);
-    ctx.tty_vt_disallocate = Some(true);
-    ctx.syslog_identifier = Some("demo".to_string());
-    ctx.syslog_facility = Some("daemon".to_string());
-    ctx.syslog_level = Some("info".to_string());
-    ctx.nice = Some(7);
-    ctx.cpu_scheduling_policy = Some("rr".to_string());
-    ctx.cpu_affinity = vec!["0-3".to_string()];
-    ctx.umask = Some("0022".to_string());
-    ctx.oom_score_adjust = Some(-100);
-    ctx.runtime_directory = vec!["demo".to_string(), "run".to_string()];
-    ctx.state_directory = vec!["state".to_string()];
-    ctx.cache_directory = vec!["cache".to_string()];
-    ctx.logs_directory = vec!["logs".to_string()];
-    ctx.configuration_directory = vec!["config".to_string()];
-    ctx.directory_mode = Some(0o750);
-    ctx.runtime_directory_mode = Some(0o700);
-    ctx.state_directory_mode = Some(0o710);
-    ctx.cache_directory_mode = Some(0o720);
-    ctx.logs_directory_mode = Some(0o730);
-    ctx.configuration_directory_mode = Some(0o740);
-    ctx.runtime_directory_preserve = Some("restart".to_string());
-    ctx.read_write_paths = vec!["/var/lib/demo".to_string()];
-    ctx.read_only_paths = vec!["/usr".to_string()];
-    ctx.inaccessible_paths = vec!["/secret".to_string()];
+    let ctx = ExecContextConfig {
+        user: Some("alice".to_string()),
+        group: Some("staff".to_string()),
+        dynamic_user: Some(true),
+        supplementary_groups: vec!["wheel".to_string(), "docker".to_string()],
+        pam_name: Some("login".to_string()),
+        working_directory: Some("/srv".to_string()),
+        private_tmp: Some(true),
+        private_devices: Some(false),
+        private_network: Some(true),
+        private_ipc: Some(true),
+        private_users: Some(true),
+        private_mounts: Some(false),
+        protect_system: Some("strict".to_string()),
+        protect_home: Some("read-only".to_string()),
+        protect_hostname: Some(true),
+        protect_clock: Some(true),
+        protect_kernel_tunables: Some(true),
+        protect_kernel_modules: Some(false),
+        protect_kernel_logs: Some(true),
+        protect_control_groups: Some(true),
+        environment: vec!["FOO=bar".to_string(), "BAR=baz".to_string()],
+        pass_environment: vec!["FOO".to_string(), "BAR".to_string()],
+        unset_environment: vec!["BAZ=1".to_string()],
+        standard_input: Some("null".to_string()),
+        standard_output: Some("journal".to_string()),
+        standard_error: Some("inherit".to_string()),
+        tty_path: Some("/dev/console".to_string()),
+        tty_reset: Some(true),
+        tty_vhangup: Some(false),
+        tty_vt_disallocate: Some(true),
+        syslog_identifier: Some("demo".to_string()),
+        syslog_facility: Some("daemon".to_string()),
+        syslog_level: Some("info".to_string()),
+        nice: Some(7),
+        cpu_scheduling_policy: Some("rr".to_string()),
+        cpu_affinity: vec!["0-3".to_string()],
+        umask: Some("0022".to_string()),
+        oom_score_adjust: Some(-100),
+        runtime_directory: vec!["demo".to_string(), "run".to_string()],
+        state_directory: vec!["state".to_string()],
+        cache_directory: vec!["cache".to_string()],
+        logs_directory: vec!["logs".to_string()],
+        configuration_directory: vec!["config".to_string()],
+        directory_mode: Some(0o750),
+        runtime_directory_mode: Some(0o700),
+        state_directory_mode: Some(0o710),
+        cache_directory_mode: Some(0o720),
+        logs_directory_mode: Some(0o730),
+        configuration_directory_mode: Some(0o740),
+        runtime_directory_preserve: Some("restart".to_string()),
+        read_write_paths: vec!["/var/lib/demo".to_string()],
+        read_only_paths: vec!["/usr".to_string()],
+        inaccessible_paths: vec!["/secret".to_string()],
+        ..Default::default()
+    };
 
     let mut unit = Unit::new(
         new_test_runtime_manager().manager_record.clone(),
@@ -1139,10 +1143,10 @@ fn test_apply_cgroup_config_overrides_unit_context() {
     apply_cgroup_config(&mut unit, &cfg);
 
     let applied = unit.cgroup_context.as_ref().unwrap();
-    assert_eq!(applied.io_accounting, false);
-    assert_eq!(applied.memory_accounting, true);
-    assert_eq!(applied.tasks_accounting, true);
-    assert_eq!(applied.ip_accounting, false);
+    assert!(!applied.io_accounting);
+    assert!(applied.memory_accounting);
+    assert!(applied.tasks_accounting);
+    assert!(!applied.ip_accounting);
     assert_eq!(applied.tasks_max, 1234);
 }
 
@@ -3704,40 +3708,45 @@ fn test_delegate_owns_distinct_payload_and_control_capabilities() {
     assert!(unit_path.join("payload").is_dir());
     assert!(unit_path.join(".control").is_dir());
 
-    let start = mgr
-        .unit_cgroup_spawn_fds("delegate.service", ServiceExecCommand::Start)
+    {
+        let start = mgr
+            .unit_cgroup_spawn_fds("delegate.service", ServiceExecCommand::Start)
+            .unwrap();
+        let start_target = fs::read_link(format!(
+            "/proc/self/fd/{}",
+            start.target_directory.as_raw_fd()
+        ))
         .unwrap();
-    let start_target = fs::read_link(format!(
-        "/proc/self/fd/{}",
-        start.target_directory.as_raw_fd()
-    ))
-    .unwrap();
-    assert_eq!(start_target, unit_path.join("payload"));
-    assert!(start.recursive_target_access);
-    drop(start);
+        assert_eq!(start_target, unit_path.join("payload"));
+        assert!(start.recursive_target_access);
+    }
 
-    let post = mgr
-        .unit_cgroup_spawn_fds("delegate.service", ServiceExecCommand::StartPost)
+    {
+        let post = mgr
+            .unit_cgroup_spawn_fds("delegate.service", ServiceExecCommand::StartPost)
+            .unwrap();
+        let post_target = fs::read_link(format!(
+            "/proc/self/fd/{}",
+            post.target_directory.as_raw_fd()
+        ))
         .unwrap();
-    let post_target = fs::read_link(format!(
-        "/proc/self/fd/{}",
-        post.target_directory.as_raw_fd()
-    ))
-    .unwrap();
-    assert_eq!(post_target, unit_path.join(".control"));
-    assert!(post.delegated);
-    assert!(post.recursive_target_access);
+        assert_eq!(post_target, unit_path.join(".control"));
+        assert!(post.delegated);
+        assert!(post.recursive_target_access);
+    }
 
-    let condition = mgr
-        .unit_cgroup_spawn_fds("delegate.service", ServiceExecCommand::Condition)
+    {
+        let condition = mgr
+            .unit_cgroup_spawn_fds("delegate.service", ServiceExecCommand::Condition)
+            .unwrap();
+        let condition_target = fs::read_link(format!(
+            "/proc/self/fd/{}",
+            condition.target_directory.as_raw_fd()
+        ))
         .unwrap();
-    let condition_target = fs::read_link(format!(
-        "/proc/self/fd/{}",
-        condition.target_directory.as_raw_fd()
-    ))
-    .unwrap();
-    assert_eq!(condition_target, unit_path.join(".control"));
-    assert!(condition.recursive_target_access);
+        assert_eq!(condition_target, unit_path.join(".control"));
+        assert!(condition.recursive_target_access);
+    }
 
     let nested = unit_path.join("payload").join("nested");
     fs::create_dir(&nested).unwrap();
@@ -3747,8 +3756,6 @@ fn test_delegate_owns_distinct_payload_and_control_capabilities() {
         vec![4242]
     );
 
-    drop(condition);
-    drop(post);
     mgr.prune_unit_cgroup("delegate.service");
     assert!(!unit_path.exists());
     assert!(!mgr.unit_cgroups.contains_key("delegate.service"));
@@ -3792,19 +3799,20 @@ fn test_delegate_without_subgroup_keeps_initial_commands_in_unit_leaf() {
         assert!(!target.recursive_target_access);
     }
 
-    let post = mgr
-        .unit_cgroup_spawn_fds("delegate-leaf.service", ServiceExecCommand::StartPost)
-        .unwrap();
-    assert_eq!(
-        fs::read_link(format!(
-            "/proc/self/fd/{}",
-            post.target_directory.as_raw_fd()
-        ))
-        .unwrap(),
-        unit_path.join(".control")
-    );
-    assert!(post.recursive_target_access);
-    drop(post);
+    {
+        let post = mgr
+            .unit_cgroup_spawn_fds("delegate-leaf.service", ServiceExecCommand::StartPost)
+            .unwrap();
+        assert_eq!(
+            fs::read_link(format!(
+                "/proc/self/fd/{}",
+                post.target_directory.as_raw_fd()
+            ))
+            .unwrap(),
+            unit_path.join(".control")
+        );
+        assert!(post.recursive_target_access);
+    }
 
     mgr.prepare_delegated_cgroup_start("delegate-leaf.service");
     assert_eq!(
