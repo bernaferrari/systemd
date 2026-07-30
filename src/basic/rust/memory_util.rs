@@ -33,7 +33,11 @@ impl std::error::Error for MemoryError {}
 
 static PAGE_SIZE: OnceLock<usize> = OnceLock::new();
 
-pub fn page_size() -> Result<usize, MemoryError> {
+fn cached_page_size() -> Result<usize, MemoryError> {
+    if let Some(page_size) = PAGE_SIZE.get() {
+        return Ok(*page_size);
+    }
+
     // SAFETY: `_SC_PAGESIZE` is the exact C authority query and has no
     // caller-provided memory contract.
     let queried = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
@@ -41,7 +45,14 @@ pub fn page_size() -> Result<usize, MemoryError> {
         return Err(MemoryError::SystemPageSizeUnavailable);
     }
 
-    Ok(*PAGE_SIZE.get_or_init(|| queried as usize))
+    let _ = PAGE_SIZE.set(queried as usize);
+    Ok(*PAGE_SIZE
+        .get()
+        .expect("a successful page-size query initializes the cache"))
+}
+
+pub fn page_size() -> Result<usize, MemoryError> {
+    cached_page_size()
 }
 
 // ── Basic operations ──────────────────────────────────────────────────────
@@ -136,11 +147,7 @@ pub fn memeqbyte(byte: u8, data: &[u8]) -> bool {
 /// query has no caller-provided pointer contract.
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_page_size() -> usize {
-    // SAFETY: `_SC_PAGESIZE` is the exact argument used by the C authority and
-    // does not involve caller-owned memory.
-    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-    assert!(page_size > 0, "sysconf(_SC_PAGESIZE) failed");
-    page_size as usize
+    cached_page_size().expect("sysconf(_SC_PAGESIZE) failed")
 }
 
 /// Copy `n` bytes with the exact null-for-zero-length exception of
