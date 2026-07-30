@@ -677,7 +677,7 @@ def export_signatures(root: Path) -> dict[str, Signature]:
             names = sorted(set(inventory.RS_SYMBOL_RE.findall(body)))
             if macro == "ffi_forward":
                 signature = re.match(
-                    r'\s*"(rs_[A-Za-z0-9_]+)"\s*,\s*'
+                    r'\s*(?:safe\s+)?"(rs_[A-Za-z0-9_]+)"\s*,\s*'
                     r"[A-Za-z_][A-Za-z0-9_]*\s*,\s*"
                     r"\((.*?)\)\s*->\s*([^,]+)\s*,",
                     body,

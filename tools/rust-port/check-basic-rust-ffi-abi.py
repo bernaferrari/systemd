@@ -840,7 +840,7 @@ def in_addr_util_boundary_is_reviewed() -> bool:
     test = "\n".join(tests)
     declared = set(re.findall(r"\b(rs_[A-Za-z0-9_]+)\s*\(", header))
     forwarded = set(
-        re.findall(r'ffi_forward!\(\s*"(rs_[A-Za-z0-9_]+)"', source)
+        re.findall(r'ffi_forward!\(\s*(?:safe\s+)?"(rs_[A-Za-z0-9_]+)"', source)
     )
     called = set(
         re.findall(r"\b(rs_[A-Za-z0-9_]+)\s*\(", "\n".join(c_function_bodies(test)))

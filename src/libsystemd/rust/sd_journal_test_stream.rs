@@ -69,7 +69,11 @@ impl StreamEntry {
     /// Create a new stream entry for index `i`.
     /// Mirrors the entry creation loop in the C `run_test()`.
     pub fn new(i: u32) -> Self {
-        let magic = if i % 5 == 0 { MAGIC_QUUX } else { MAGIC_WALDO };
+        let magic = if i.is_multiple_of(5) {
+            MAGIC_QUUX
+        } else {
+            MAGIC_WALDO
+        };
         Self {
             number: i,
             number_field: format!("NUMBER={}", i),
@@ -89,9 +93,9 @@ impl StreamEntry {
     /// We store the "primary" target here (two), but the entry also
     /// conceptually exists in one.
     pub fn target(i: u32) -> u8 {
-        if i % 10 == 0 {
+        if i.is_multiple_of(10) {
             2
-        } else if i % 3 == 0 {
+        } else if i.is_multiple_of(3) {
             1
         } else {
             0
@@ -104,17 +108,17 @@ impl StreamEntry {
     /// Actually in C: non-multiple-of-10 go to one; multiple-of-3 (not 10)
     /// go to BOTH one and two; multiple-of-10 go to three only.
     pub fn goes_to_one(&self) -> bool {
-        self.number % 10 != 0
+        !self.number.is_multiple_of(10)
     }
 
     /// Whether this entry goes to journal "two" (multiples of 3 that aren't multiples of 10).
     pub fn goes_to_two(&self) -> bool {
-        self.number % 10 != 0 && self.number % 3 == 0
+        !self.number.is_multiple_of(10) && self.number.is_multiple_of(3)
     }
 
     /// Whether this entry goes to journal "three" (multiples of 10).
     pub fn goes_to_three(&self) -> bool {
-        self.number % 10 == 0
+        self.number.is_multiple_of(10)
     }
 }
 
@@ -182,9 +186,9 @@ pub fn verify_skip_one() -> bool {
 /// Verifies quux entries increment by 5.
 pub fn verify_skip_five() -> bool {
     let entries = build_all_entries();
-    let quux = filter_quux(&entries);
+    let matching_entries = filter_quux(&entries);
     let mut i: u32 = 0;
-    for entry in &quux {
+    for entry in &matching_entries {
         if entry.number != i {
             return false;
         }
@@ -197,20 +201,12 @@ pub fn verify_skip_five() -> bool {
 
 /// Parse a NUMBER= field value.
 pub fn parse_number_field(data: &str) -> Option<u32> {
-    if data.starts_with("NUMBER=") {
-        data[7..].parse().ok()
-    } else {
-        None
-    }
+    data.strip_prefix("NUMBER=")?.parse().ok()
 }
 
 /// Parse a MAGIC= field value.
 pub fn parse_magic_field(data: &str) -> Option<&str> {
-    if data.starts_with("MAGIC=") {
-        Some(&data[6..])
-    } else {
-        None
-    }
+    data.strip_prefix("MAGIC=")
 }
 
 // ── Match expressions ─────────────────────────────────────────────────────
@@ -618,7 +614,7 @@ mod tests {
         // one gets everything except multiples of 10
         assert_eq!(one.len(), 180);
         // two gets multiples of 3 that aren't multiples of 10
-        assert!(two.len() > 0);
+        assert!(!two.is_empty());
     }
 
     #[test]

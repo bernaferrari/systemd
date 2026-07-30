@@ -136,10 +136,10 @@ pub fn listen_fds_from_env(
             .parse::<u64>()
             .map_err(|_| DaemonCheckError::Parse("LISTEN_PIDFDID"))?;
 
-        if let Some(actual) = own_pidfdid {
-            if expected != actual {
-                return Ok(Vec::new());
-            }
+        if let Some(actual) = own_pidfdid
+            && expected != actual
+        {
+            return Ok(Vec::new());
         }
     }
 
@@ -363,9 +363,7 @@ pub fn is_fifo(fd: RawFd, path: Option<&Path>) -> Result<bool> {
     match path {
         Some(path) => match stat_path(path) {
             Ok(path_stat) => Ok(same_inode(&fd_stat, &path_stat)),
-            Err(DaemonCheckError::Io(errno)) if matches!(errno, libc::ENOENT | libc::ENOTDIR) => {
-                Ok(false)
-            }
+            Err(DaemonCheckError::Io(libc::ENOENT | libc::ENOTDIR)) => Ok(false),
             Err(err) => Err(err),
         },
         None => Ok(true),
@@ -392,9 +390,7 @@ pub fn is_special(fd: RawFd, path: Option<&Path>) -> Result<bool> {
                 _ => false,
             })
         }
-        Err(DaemonCheckError::Io(errno)) if matches!(errno, libc::ENOENT | libc::ENOTDIR) => {
-            Ok(false)
-        }
+        Err(DaemonCheckError::Io(libc::ENOENT | libc::ENOTDIR)) => Ok(false),
         Err(err) => Err(err),
     }
 }
@@ -408,10 +404,10 @@ pub fn sd_is_socket(
     if fd < 0 {
         return Err(DaemonCheckError::BadFd);
     }
-    if let Some(family) = family {
-        if family < 0 {
-            return Err(DaemonCheckError::InvalidInput("family"));
-        }
+    if let Some(family) = family
+        && family < 0
+    {
+        return Err(DaemonCheckError::InvalidInput("family"));
     }
 
     if !is_socket_internal(fd, sock_type, listening)? {
@@ -448,10 +444,10 @@ pub fn sd_is_socket_inet(
     if fd < 0 {
         return Err(DaemonCheckError::BadFd);
     }
-    if let Some(family) = family {
-        if !matches!(family, 0 | libc::AF_INET | libc::AF_INET6) {
-            return Err(DaemonCheckError::InvalidInput("family"));
-        }
+    if let Some(family) = family
+        && !matches!(family, 0 | libc::AF_INET | libc::AF_INET6)
+    {
+        return Err(DaemonCheckError::InvalidInput("family"));
     }
     if !is_socket_internal(fd, sock_type, listening)? {
         return Ok(false);
@@ -462,10 +458,11 @@ pub fn sd_is_socket_inet(
     if actual_family != libc::AF_INET && actual_family != libc::AF_INET6 {
         return Ok(false);
     }
-    if let Some(family) = family {
-        if family != 0 && family != actual_family {
-            return Ok(false);
-        }
+    if let Some(family) = family
+        && family != 0
+        && family != actual_family
+    {
+        return Ok(false);
     }
 
     if let Some(port) = port.filter(|port| *port > 0) {
@@ -603,7 +600,7 @@ pub fn sd_is_socket_unix(
     let actual_path_len = actual_len - path_offset;
     let actual_path =
         // SAFETY: the pointer and length originate from validated storage and produce a temporary slice within bounds.
-        unsafe { std::slice::from_raw_parts(addr.sun_path.as_ptr() as *const u8, actual_path_len) };
+        unsafe { std::slice::from_raw_parts(addr.sun_path.as_ptr().cast::<u8>(), actual_path_len) };
 
     Ok(unix_socket_path_matches(actual_path, path))
 }
@@ -969,7 +966,7 @@ fn unix_socket_path_matches(actual_path: &[u8], expected_path: &[u8]) -> bool {
         return actual_path == expected_path;
     }
 
-    actual_path.len() >= expected_path.len() + 1
+    actual_path.len() > expected_path.len()
         && actual_path.starts_with(expected_path)
         && actual_path[expected_path.len()] == 0
 }

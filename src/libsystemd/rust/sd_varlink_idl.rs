@@ -12,16 +12,16 @@ use std::fmt::Write;
 
 use libc;
 
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-const NEG_EBADMSG: i32 = -(libc::EBADMSG as i32);
-const NEG_ENOMEM: i32 = -(libc::ENOMEM as i32);
+const NEG_EINVAL: i32 = -libc::EINVAL;
+const NEG_EBADMSG: i32 = -libc::EBADMSG;
+const NEG_ENOMEM: i32 = -libc::ENOMEM;
 const NEG_ENOANO: i32 = -55; // ENOANO = 55 (Linux)
-const NEG_EBUSY: i32 = -(libc::EBUSY as i32);
+const NEG_EBUSY: i32 = -libc::EBUSY;
 const NEG_EUCLEAN: i32 = -117; // EUCLEAN = 117 (Linux)
 const NEG_ENOTUNIQ: i32 = -76; // ENOTUNIQ = 76 (Linux)
-const NEG_ENETUNREACH: i32 = -(libc::ENETUNREACH as i32);
+const NEG_ENETUNREACH: i32 = -libc::ENETUNREACH;
 const NEG_EBADE: i32 = -52; // EBADE = 52 (Linux)
-const NEG_EOPNOTSUPP: i32 = -(libc::EOPNOTSUPP as i32);
+const NEG_EOPNOTSUPP: i32 = -libc::EOPNOTSUPP;
 
 const DEPTH_MAX: u32 = 64;
 
@@ -165,12 +165,7 @@ fn format_comment(
     };
 
     let indent_width = indent.chars().count();
-    let max_width = if indent_width < cols {
-        cols - indent_width
-    } else {
-        0
-    }
-    .max(10);
+    let max_width = cols.saturating_sub(indent_width).max(10);
 
     // Split on newlines and re-break lines
     for line in text.split('\n') {
@@ -293,7 +288,7 @@ fn format_enum_values(
         write!(f, "()")?;
     } else {
         writeln!(f)?;
-        write!(f, "{}{}", indent, ")")?;
+        write!(f, "{indent})")?;
     }
 
     Ok(())
@@ -487,7 +482,7 @@ fn format_symbol(
                 colors.reset
             )?;
             format_all_fields(f, symbol, SD_VARLINK_INPUT, None, colors, cols)?;
-            write!(f, "{} -> {}{}", colors.marks, colors.reset, "")?;
+            write!(f, "{} -> {}", colors.marks, colors.reset)?;
             r = format_all_fields(f, symbol, SD_VARLINK_OUTPUT, None, colors, cols);
         }
         SD_VARLINK_ERROR => {
@@ -952,8 +947,8 @@ fn parse_comment(ps: &mut ParseState) -> Result<Option<String>, i32> {
     }
 
     // Strip leading space if present
-    if comment_text.starts_with(' ') {
-        Ok(Some(comment_text[1..].to_string()))
+    if let Some(comment_text) = comment_text.strip_prefix(' ') {
+        Ok(Some(comment_text.to_string()))
     } else {
         Ok(Some(comment_text))
     }
@@ -1285,7 +1280,6 @@ pub fn rs_sd_varlink_idl_parse(text: &str) -> Result<VarlinkInterface, i32> {
                 let t = match token {
                     Some(t) => t,
                     None => {
-                        state = TopLevelState::Done;
                         break;
                     }
                 };
@@ -1420,13 +1414,14 @@ fn resolve_types(interface: &mut VarlinkInterface) -> Result<(), i32> {
     // Resolve named type references in all symbols
     for symbol in &mut interface.symbols {
         for field in &mut symbol.fields {
-            if field.field_type == SD_VARLINK_NAMED_TYPE && field.symbol.is_none() {
-                if let Some(ref named_type) = field.named_type {
-                    if let Some((_, sym)) = type_symbols.iter().find(|(n, _)| n == named_type) {
-                        field.symbol = Some(Box::new(sym.clone()));
-                    } else {
-                        return Err(NEG_ENETUNREACH);
-                    }
+            if field.field_type == SD_VARLINK_NAMED_TYPE
+                && field.symbol.is_none()
+                && let Some(ref named_type) = field.named_type
+            {
+                if let Some((_, sym)) = type_symbols.iter().find(|(n, _)| n == named_type) {
+                    field.symbol = Some(Box::new(sym.clone()));
+                } else {
+                    return Err(NEG_ENETUNREACH);
                 }
             }
         }
@@ -1522,7 +1517,7 @@ fn varlink_idl_symbol_consistent(
 }
 
 fn varlink_idl_field_consistent(
-    interface: &VarlinkInterface,
+    _interface: &VarlinkInterface,
     symbol: &VarlinkSymbol,
     field: &VarlinkField,
 ) -> Result<(), i32> {
@@ -1622,22 +1617,10 @@ mod tests {
 
     #[test]
     fn test_qualified_symbol_name_validation() {
-        assert_eq!(
-            varlink_idl_qualified_symbol_name_is_valid("io.systemd.Foo").unwrap(),
-            true
-        );
-        assert_eq!(
-            varlink_idl_qualified_symbol_name_is_valid("org.varlink.service.GetInfo").unwrap(),
-            true
-        );
-        assert_eq!(
-            varlink_idl_qualified_symbol_name_is_valid("Foo").unwrap(),
-            false
-        );
-        assert_eq!(
-            varlink_idl_qualified_symbol_name_is_valid("").unwrap(),
-            false
-        );
+        assert!(varlink_idl_qualified_symbol_name_is_valid("io.systemd.Foo").unwrap());
+        assert!(varlink_idl_qualified_symbol_name_is_valid("org.varlink.service.GetInfo").unwrap());
+        assert!(!varlink_idl_qualified_symbol_name_is_valid("Foo").unwrap());
+        assert!(!varlink_idl_qualified_symbol_name_is_valid("").unwrap());
     }
 
     #[test]
