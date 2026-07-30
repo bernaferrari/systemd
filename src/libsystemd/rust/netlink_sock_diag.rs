@@ -5,7 +5,7 @@
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const NETLINK_SOCK_DIAG_FAMILY: i32 = 4;
 pub const SOCK_DIAG_BY_FAMILY: u16 = 20;
 pub const NLM_F_REQUEST: u16 = 0x0001;

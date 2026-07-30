@@ -7,7 +7,7 @@ use crate::id128_util::SdId128;
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const SD_ID128_STRING_MAX: usize = 33;
 pub const SD_ID128_UUID_STRING_MAX: usize = 37;
 

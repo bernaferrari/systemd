@@ -35,7 +35,7 @@ pub struct State {
 }
 
 pub fn is_valid_secpar(secpar: u32) -> bool {
-    secpar % 16 == 0 && (16..=16384).contains(&secpar)
+    secpar.is_multiple_of(16) && (16..=16384).contains(&secpar)
 }
 
 pub fn mskinbytes(secpar: u32) -> Result<usize> {

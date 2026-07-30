@@ -109,7 +109,7 @@ impl DeviceMonitor {
                 device.subsystem.as_deref() == Some(subsystem.as_str())
                     && devtype
                         .as_deref()
-                        .map_or(true, |d| device.devtype.as_deref() == Some(d))
+                        .is_none_or(|d| device.devtype.as_deref() == Some(d))
             })
         {
             return false;

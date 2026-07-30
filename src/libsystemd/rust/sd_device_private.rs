@@ -277,13 +277,12 @@ impl Device {
         }
         if let (Some(major), Some(minor)) =
             (self.properties.get("MAJOR"), self.properties.get("MINOR"))
+            && let (Ok(major), Ok(minor)) = (major.parse::<u64>(), minor.parse::<u64>())
         {
-            if let (Ok(major), Ok(minor)) = (major.parse::<u64>(), minor.parse::<u64>()) {
-                self.devnum = Some(DeviceNumbers {
-                    mode: self.devnum.map(|d| d.mode).unwrap_or_default(),
-                    devnum: mkdev(major, minor),
-                });
-            }
+            self.devnum = Some(DeviceNumbers {
+                mode: self.devnum.map(|d| d.mode).unwrap_or_default(),
+                devnum: mkdev(major, minor),
+            });
         }
     }
 }

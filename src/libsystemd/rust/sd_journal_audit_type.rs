@@ -3,7 +3,7 @@
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 
 pub const AUDIT_GET: i32 = 1000;
 pub const AUDIT_SET: i32 = 1001;

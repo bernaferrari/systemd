@@ -5,7 +5,7 @@
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
 pub const SD_BUS_MAXIMUM_SIGNATURE_LENGTH: usize = 255;
 
 const BASIC_TYPES: &[u8] = b"ybnqiuxtdsogh";
