@@ -531,7 +531,10 @@ pub fn dhcp_option_parse_string(option: &[u8]) -> Result<Option<String>, Errno> 
     }
 
     let string = std::str::from_utf8(bytes).map_err(|_| EINVAL)?;
-    if !string.chars().all(|ch| !ch.is_control()) {
+    if bytes
+        .iter()
+        .any(|byte| matches!(byte, 1..=31 | 127 | b'\\' | b'\'' | b'"'))
+    {
         return Err(EINVAL);
     }
 
@@ -628,7 +631,8 @@ fn parse_options(
             }
             _ => {
                 if let Some(callback) = cb.as_deref_mut() {
-                    callback(DhcpOptionCode(code), option)?;
+                    // The C callback is invoked for side effects and its status is ignored.
+                    let _ = callback(DhcpOptionCode(code), option);
                 }
             }
         }
@@ -943,6 +947,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_ignores_callback_status_and_continues() {
+        let opts = [42, 1, 1, 43, 1, 2, 53, 1, 5];
+        let mut seen = Vec::new();
+        let mut cb = |code: DhcpOptionCode, _data: &[u8]| {
+            seen.push(code.0);
+            Err(EINVAL)
+        };
+
+        let result = dhcp_option_parse(
+            &message(&opts, &[], &[]),
+            DHCP_MESSAGE_SIZE + opts.len(),
+            Some(&mut cb),
+        )
+        .unwrap();
+
+        assert_eq!(result.message_type_enum(), Some(DhcpMessageType::Ack));
+        assert_eq!(seen, vec![42, 43]);
+    }
+
+    #[test]
     fn parse_rejects_truncated_option_length() {
         let opts = [42, 2, 1, 2, 44];
         assert_eq!(
@@ -1013,13 +1037,45 @@ mod tests {
     }
 
     #[test]
-    fn parse_string_allows_single_trailing_nul() {
+    fn parse_string_matches_c_nul_handling() {
         assert_eq!(
             dhcp_option_parse_string(b"host\0").unwrap().as_deref(),
             Some("host")
         );
         assert_eq!(dhcp_option_parse_string(b"").unwrap(), None);
+        assert_eq!(
+            dhcp_option_parse_string(b"\0").unwrap().as_deref(),
+            Some("")
+        );
         assert_eq!(dhcp_option_parse_string(b"ho\0st").unwrap_err(), EINVAL);
+        assert_eq!(dhcp_option_parse_string(b"host\0\0").unwrap_err(), EINVAL);
+    }
+
+    #[test]
+    fn parse_string_matches_c_safety_flags() {
+        for option in [
+            b"\n".as_slice(),
+            b"\x1f",
+            b"\x7f",
+            b"back\\slash",
+            b"single'quote",
+            b"double\"quote",
+        ] {
+            assert_eq!(dhcp_option_parse_string(option).unwrap_err(), EINVAL);
+        }
+
+        for option in [
+            b"*?[".as_slice(),
+            "\u{0080}\u{009f}".as_bytes(),
+            "\u{202e}".as_bytes(),
+        ] {
+            assert_eq!(
+                dhcp_option_parse_string(option).unwrap().as_deref(),
+                std::str::from_utf8(option).ok()
+            );
+        }
+
+        assert_eq!(dhcp_option_parse_string(&[0xc2]).unwrap_err(), EINVAL);
     }
 
     #[test]
