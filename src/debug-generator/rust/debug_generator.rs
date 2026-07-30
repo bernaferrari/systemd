@@ -49,20 +49,8 @@ pub fn parse_breakpoints(s: &str, in_initrd: bool) -> u32 {
         acc | match p {
             "pre-udev" => PRE_UDEV,
             "pre-basic" => PRE_BASIC,
-            "pre-mount" => {
-                if in_initrd {
-                    PRE_SYSROOT_MOUNT
-                } else {
-                    0
-                }
-            }
-            "pre-switch-root" => {
-                if in_initrd {
-                    PRE_SWITCH_ROOT
-                } else {
-                    0
-                }
-            }
+            "pre-mount" if in_initrd => PRE_SYSROOT_MOUNT,
+            "pre-switch-root" if in_initrd => PRE_SWITCH_ROOT,
             _ => 0,
         }
     })

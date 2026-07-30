@@ -141,10 +141,7 @@ pub fn parse_config_line(line: &str) -> Option<String> {
 
 /// Parse a full config file content into module names.
 pub fn parse_config_content(content: &str) -> Vec<String> {
-    content
-        .lines()
-        .filter_map(|line| parse_config_line(line))
-        .collect()
+    content.lines().filter_map(parse_config_line).collect()
 }
 
 // ── Kernel command line parsing ───────────────────────────────────────────
@@ -156,12 +153,12 @@ pub fn parse_proc_cmdline_modules(
     value: Option<&str>,
     module_set: &mut ModuleSet,
 ) -> Result<()> {
-    if key == "modules_load" {
-        if let Some(v) = value {
-            for module in v.split(',') {
-                let normalized = normalize_module_name(module.trim());
-                module_set.append(&normalized)?;
-            }
+    if key == "modules_load"
+        && let Some(v) = value
+    {
+        for module in v.split(',') {
+            let normalized = normalize_module_name(module.trim());
+            module_set.append(&normalized)?;
         }
     }
     Ok(())
@@ -182,6 +179,69 @@ pub fn determine_num_worker_threads(
     let base = online_cpus.clamp(1, max_threads);
     let actual = base.clamp(1, n_modules);
     actual.saturating_sub(1)
+}
+
+impl ModuleSet {
+    pub fn to_sorted_vec(&self) -> Vec<&str> {
+        let mut v: Vec<&str> = self.modules.iter().map(|s| s.as_str()).collect();
+        v.sort();
+        v
+    }
+}
+
+pub fn read_proc_cmdline() -> Option<String> {
+    std::fs::read_to_string("/proc/cmdline").ok()
+}
+
+pub fn load_modules_from_conf_dirs(set: &mut ModuleSet) -> Result<()> {
+    for dir in CONF_FILE_DIRS {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let mut conf_files: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .map(|ext| ext == "conf")
+                    .unwrap_or(false)
+            })
+            .collect();
+        conf_files.sort_by_key(|e| e.file_name());
+
+        for entry in conf_files {
+            let content = match std::fs::read_to_string(entry.path()) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for name in parse_config_content(&content) {
+                let normalized = normalize_module_name(&name);
+                if is_module_name_valid(&normalized) {
+                    let _ = set.append(&normalized);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn load_module_best_effort(module: &str) -> Result<()> {
+    let status = std::process::Command::new("/sbin/modprobe")
+        .arg(module)
+        .status()
+        .map_err(|_| Errno(2))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Errno(status.code().unwrap_or(1)))
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn load_module_best_effort(_module: &str) -> Result<()> {
+    Ok(())
 }
 
 #[cfg(test)]
@@ -276,67 +336,4 @@ mod tests {
         set.insert("btrfs".into());
         assert_eq!(set.to_sorted_vec(), vec!["btrfs", "ext4", "zfs"]);
     }
-}
-
-impl ModuleSet {
-    pub fn to_sorted_vec(&self) -> Vec<&str> {
-        let mut v: Vec<&str> = self.modules.iter().map(|s| s.as_str()).collect();
-        v.sort();
-        v
-    }
-}
-
-pub fn read_proc_cmdline() -> Option<String> {
-    std::fs::read_to_string("/proc/cmdline").ok()
-}
-
-pub fn load_modules_from_conf_dirs(set: &mut ModuleSet) -> Result<()> {
-    for dir in CONF_FILE_DIRS {
-        let entries = match std::fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let mut conf_files: Vec<_> = entries
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .map(|ext| ext == "conf")
-                    .unwrap_or(false)
-            })
-            .collect();
-        conf_files.sort_by_key(|e| e.file_name());
-
-        for entry in conf_files {
-            let content = match std::fs::read_to_string(entry.path()) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            for name in parse_config_content(&content) {
-                let normalized = normalize_module_name(&name);
-                if is_module_name_valid(&normalized) {
-                    let _ = set.append(&normalized);
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-pub fn load_module_best_effort(module: &str) -> Result<()> {
-    let status = std::process::Command::new("/sbin/modprobe")
-        .arg(module)
-        .status()
-        .map_err(|_| Errno(2))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Errno(status.code().unwrap_or(1)))
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-pub fn load_module_best_effort(_module: &str) -> Result<()> {
-    Ok(())
 }

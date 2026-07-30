@@ -59,17 +59,12 @@ pub fn to_uuid_string(id: &Id128) -> String {
 
 // ── Pretty-print modes ────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PrettyPrintMode {
+    #[default]
     Id128,
     Uuid,
     Pretty,
-}
-
-impl Default for PrettyPrintMode {
-    fn default() -> Self {
-        Self::Id128
-    }
 }
 
 pub fn format_id(id: &Id128, mode: PrettyPrintMode) -> String {

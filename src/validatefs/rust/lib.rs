@@ -231,10 +231,10 @@ impl ValidatefsArgs {
 
     /// Validate that the target path starts with root (if root is set).
     pub fn validate_target_under_root(&self) -> Result<(), i32> {
-        if let Some(ref root) = self.root {
-            if !self.target.starts_with(root.as_str()) {
-                return Err(-libc::EINVAL);
-            }
+        if let Some(root) = &self.root
+            && !self.target.starts_with(root)
+        {
+            return Err(-libc::EINVAL);
         }
         Ok(())
     }

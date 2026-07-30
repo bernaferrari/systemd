@@ -186,21 +186,11 @@ pub struct PcrValue {
 }
 
 /// Accumulator for PCR extend operations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MeasureState {
     pub pcr_values: Vec<PcrValue>,
     pub phases: Vec<String>,
     pub current: bool,
-}
-
-impl Default for MeasureState {
-    fn default() -> Self {
-        Self {
-            pcr_values: Vec::new(),
-            phases: Vec::new(),
-            current: false,
-        }
-    }
 }
 
 impl MeasureState {

@@ -11,8 +11,8 @@ fn main() {
     let mut inline_lines: Vec<String> = Vec::new();
 
     for arg in &args {
-        if arg.starts_with("--prefix=") {
-            prefixes.push(arg[9..].to_string());
+        if let Some(prefix) = arg.strip_prefix("--prefix=") {
+            prefixes.push(prefix.to_string());
         } else if !arg.starts_with('-') {
             inline_lines.push(arg.clone());
         }

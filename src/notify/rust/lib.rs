@@ -161,41 +161,49 @@ pub fn format_fdstore() -> &'static str {
     "FDSTORE=1"
 }
 
-/// Build a complete notification message from individual components.
-pub fn build_message(
-    ready: bool,
-    reloading: bool,
-    stopping: bool,
-    status: Option<&str>,
-    mainpid: Option<u32>,
-    fdstore: bool,
-    fdname: Option<&str>,
-    monotonic_usec: Option<u64>,
-) -> String {
+/// Inputs for [`build_message`].
+///
+/// These correspond to the notification fields assembled by `src/notify/notify.c`.
+/// Keeping them together prevents callers from accidentally swapping one of the
+/// boolean flags or optional values in the message construction API.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NotifyMessageFields<'a> {
+    pub ready: bool,
+    pub reloading: bool,
+    pub stopping: bool,
+    pub status: Option<&'a str>,
+    pub mainpid: Option<u32>,
+    pub fdstore: bool,
+    pub fdname: Option<&'a str>,
+    pub monotonic_usec: Option<u64>,
+}
+
+/// Build a complete notification message from typed fields.
+pub fn build_message(fields: NotifyMessageFields<'_>) -> String {
     let mut lines = Vec::new();
-    if ready {
-        lines.push(format_ready().to_string());
-    }
-    if reloading {
-        if let Some(usec) = monotonic_usec {
+    if fields.reloading {
+        if let Some(usec) = fields.monotonic_usec {
             lines.push(format_reloading(usec));
         } else {
             lines.push("RELOADING=1".to_string());
         }
     }
-    if stopping {
+    if fields.ready {
+        lines.push(format_ready().to_string());
+    }
+    if fields.stopping {
         lines.push(format_stopping().to_string());
     }
-    if let Some(s) = status {
+    if let Some(s) = fields.status {
         lines.push(format_status(s));
     }
-    if let Some(pid) = mainpid {
+    if let Some(pid) = fields.mainpid {
         lines.push(format_mainpid(pid));
     }
-    if fdstore {
+    if fields.fdstore {
         lines.push(format_fdstore().to_string());
     }
-    if let Some(name) = fdname {
+    if let Some(name) = fields.fdname {
         lines.push(format!("FDNAME={}", name));
     }
     lines.join("\n")
@@ -298,19 +306,20 @@ mod tests {
 
     #[test]
     fn build_full_message() {
-        let msg = build_message(
-            true,
-            false,
-            false,
-            Some("ready"),
-            Some(99),
-            false,
-            None,
-            None,
+        let msg = build_message(NotifyMessageFields {
+            ready: true,
+            reloading: true,
+            stopping: false,
+            status: Some("ready"),
+            mainpid: Some(99),
+            fdstore: true,
+            fdname: Some("state"),
+            monotonic_usec: Some(123),
+        });
+        assert_eq!(
+            msg,
+            "RELOADING=1\nMONOTONIC_USEC=123\nREADY=1\nSTATUS=ready\nMAINPID=99\nFDSTORE=1\nFDNAME=state"
         );
-        assert!(msg.contains("READY=1"));
-        assert!(msg.contains("STATUS=ready"));
-        assert!(msg.contains("MAINPID=99"));
     }
 
     #[test]

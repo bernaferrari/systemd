@@ -38,18 +38,11 @@ impl Default for BatteryCheckArgs {
 ///
 /// Accepts `-h`/`--help` and `--version`; no positional arguments are allowed.
 pub fn parse_battery_check_args(args: &[&str]) -> Result<BatteryCheckArgs, i32> {
-    let mut result = BatteryCheckArgs::default();
-
-    for arg in args {
-        match *arg {
-            "--help" | "-h" => return Err(0),
-            "--version" => return Err(0),
-            s if s.starts_with('-') => return Err(-libc::EINVAL),
-            _ => return Err(-libc::EINVAL),
-        }
+    match args.first().copied() {
+        None => Ok(BatteryCheckArgs::default()),
+        Some("--help" | "-h" | "--version") => Err(0),
+        Some(_) => Err(-libc::EINVAL),
     }
-
-    Ok(result)
 }
 
 // ── Plymouth message ──────────────────────────────────────────────────────

@@ -224,10 +224,8 @@ fn machine_spec_valid_for_bridge(machine: &str) -> bool {
         None => (None, Some(machine)),
     };
 
-    user.map_or(true, valid_relaxed_user_name)
-        && host.map_or(true, |host| {
-            hostname_is_valid(host, ValidHostnameFlags::DOT_HOST)
-        })
+    user.is_none_or(valid_relaxed_user_name)
+        && host.is_none_or(|host| hostname_is_valid(host, ValidHostnameFlags::DOT_HOST))
 }
 
 fn set_machine(config: &mut BridgeConfig, machine: &str) -> Result<(), BridgeError> {

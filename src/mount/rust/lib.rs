@@ -26,8 +26,9 @@ impl std::error::Error for Errno {}
 // ── Action enum ───────────────────────────────────────────────────────────
 
 /// Top-level action for systemd-mount / systemd-umount.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MountAction {
+    #[default]
     Default,
     Mount,
     Automount,
@@ -35,25 +36,14 @@ pub enum MountAction {
     List,
 }
 
-impl Default for MountAction {
-    fn default() -> Self {
-        Self::Default
-    }
-}
-
 // ── Runtime scope ─────────────────────────────────────────────────────────
 
 /// Whether to operate on system or user units.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RuntimeScope {
+    #[default]
     System,
     User,
-}
-
-impl Default for RuntimeScope {
-    fn default() -> Self {
-        Self::System
-    }
 }
 
 // ── Mount point ───────────────────────────────────────────────────────────
@@ -200,17 +190,12 @@ pub fn fstype_is_blockdev_backed(fstype: &str) -> bool {
 // ── D-Bus transport ───────────────────────────────────────────────────────
 
 /// Bus transport mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BusTransport {
+    #[default]
     Local,
     Remote,
     Machine,
-}
-
-impl Default for BusTransport {
-    fn default() -> Self {
-        Self::Local
-    }
 }
 
 #[cfg(test)]

@@ -23,6 +23,12 @@ pub mod pull_oci;
 pub mod pull_raw;
 pub mod pull_tar;
 pub mod qcow2_util;
-pub mod test_oci_util;
-pub mod test_qcow2;
-pub mod test_tar;
+
+// C test mirrors belong to the Rust test build; exposing them in the
+// production API both leaks test-only metadata and lets their helpers drift.
+#[cfg(test)]
+mod test_oci_util;
+#[cfg(test)]
+mod test_qcow2;
+#[cfg(test)]
+mod test_tar;

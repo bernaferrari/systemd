@@ -142,8 +142,8 @@ pub fn parse_line(buffer: &str) -> Result<SysctlOption, SysctlError> {
         return Err(SysctlError::InvalidLine(buffer.to_string()));
     }
 
-    let (working, ignore_failure) = if buffer.starts_with('-') {
-        (&buffer[1..], true)
+    let (working, ignore_failure) = if let Some(stripped) = buffer.strip_prefix('-') {
+        (stripped, true)
     } else {
         (buffer, false)
     };

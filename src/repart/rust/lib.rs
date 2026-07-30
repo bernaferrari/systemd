@@ -84,10 +84,10 @@ impl Default for RepartConfig {
 impl RepartConfig {
     pub fn validate(&self) -> Result<()> {
         validate_sector_size(self.sector_size)?;
-        if let Some(size) = self.size {
-            if size < HARD_MIN_SIZE {
-                return Err(Error::SizeTooSmall(size));
-            }
+        if let Some(size) = self.size
+            && size < HARD_MIN_SIZE
+        {
+            return Err(Error::SizeTooSmall(size));
         }
         Ok(())
     }
@@ -102,15 +102,13 @@ pub fn round_up_size(value: u64, alignment: u64) -> u64 {
 }
 
 pub fn round_down_size(value: u64, alignment: u64) -> u64 {
-    if alignment == 0 {
-        value
-    } else {
-        value / alignment * alignment
-    }
+    value
+        .checked_div(alignment)
+        .map_or(value, |quotient| quotient * alignment)
 }
 
 pub fn validate_sector_size(sector_size: u64) -> Result<()> {
-    if sector_size == 0 || sector_size % 512 != 0 {
+    if sector_size == 0 || !sector_size.is_multiple_of(512) {
         Err(Error::InvalidSectorSize(sector_size))
     } else {
         Ok(())

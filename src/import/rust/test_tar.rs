@@ -39,6 +39,10 @@ mod tests {
 
     #[test]
     fn tar_test_source_stays_in_sync() {
+        let port = metadata().unwrap();
+        assert_eq!(port.source_path, SOURCE_PATH);
+        assert_eq!(port.source_lines, source_lines().unwrap());
+        assert_eq!(port.extracted_functions, EXTRACTED_FUNCTIONS);
         verify_port_sync().unwrap();
     }
 }

@@ -104,16 +104,10 @@ pub fn parse_timestamp_nsec(content: &str) -> Option<Timespec> {
 // ── Argument parsing ──────────────────────────────────────────────────────
 
 /// Parsed arguments for the update-done tool.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct UpdateDoneArgs {
     /// Root directory for path resolution (None = current root)
     pub root: Option<String>,
-}
-
-impl Default for UpdateDoneArgs {
-    fn default() -> Self {
-        Self { root: None }
-    }
 }
 
 impl UpdateDoneArgs {

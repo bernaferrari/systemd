@@ -75,23 +75,12 @@ pub enum MachineIdAction {
 
 // ── Setup arguments ───────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MachineIdSetupArgs {
     pub root: Option<String>,
     pub image: Option<String>,
     pub commit: bool,
     pub print: bool,
-}
-
-impl Default for MachineIdSetupArgs {
-    fn default() -> Self {
-        Self {
-            root: None,
-            image: None,
-            commit: false,
-            print: false,
-        }
-    }
 }
 
 impl MachineIdSetupArgs {

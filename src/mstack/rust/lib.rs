@@ -28,17 +28,12 @@ impl std::error::Error for Errno {}
 // ── Action enum ───────────────────────────────────────────────────────────
 
 /// Top-level action for the mstack tool.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MstackAction {
+    #[default]
     Inspect,
     Mount,
     Umount,
-}
-
-impl Default for MstackAction {
-    fn default() -> Self {
-        Self::Inspect
-    }
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────
