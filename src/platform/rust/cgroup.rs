@@ -208,9 +208,8 @@ fn parse_cgroup_controllers(content: &str) -> CGroupMask {
     mask & CGROUP_V2_MASK
 }
 
-fn cg_enable_actions(supported: CGroupMask, mask: CGroupMask) -> (Vec<String>, CGroupMask) {
+fn cg_enable_actions(supported: CGroupMask, mask: CGroupMask) -> Vec<(CGroupMask, bool, String)> {
     let mut actions = Vec::new();
-    let mut result_mask = 0;
 
     for controller in CGROUP_CONTROLLERS {
         let bit = controller.mask();
@@ -220,14 +219,22 @@ fn cg_enable_actions(supported: CGroupMask, mask: CGroupMask) -> (Vec<String>, C
 
         let enabled = mask & bit != 0;
         let prefix = if enabled { '+' } else { '-' };
-        actions.push(format!("{prefix}{}", controller.as_str()));
-
-        if enabled {
-            result_mask |= bit;
-        }
+        actions.push((bit, enabled, format!("{prefix}{}\n", controller.as_str())));
     }
 
-    (actions, result_mask)
+    actions
+}
+
+fn cg_enable_result_after_action(
+    result_mask: CGroupMask,
+    bit: CGroupMask,
+    enabled: bool,
+    write_errno: Option<i32>,
+) -> CGroupMask {
+    match (enabled, write_errno) {
+        (true, None) | (false, Some(libc::EBUSY)) => result_mask | bit,
+        _ => result_mask,
+    }
 }
 
 fn chown_path(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
@@ -368,21 +375,32 @@ pub fn cg_mask_supported() -> io::Result<CGroupMask> {
 
 /// Enable the requested controllers in `cgroup.subtree_control`.
 ///
-/// Returns the mask of controllers that were selected for enabling.
+/// Returns the controller mask known to remain enabled after the attempted
+/// per-controller changes.
 pub fn cg_enable(supported: CGroupMask, mask: CGroupMask, path: &str) -> io::Result<CGroupMask> {
     if supported == 0 {
         return Ok(0);
     }
 
-    let (actions, result_mask) = cg_enable_actions(supported, mask);
+    let actions = cg_enable_actions(supported, mask);
     if actions.is_empty() {
         return Ok(0);
     }
 
     let file = cg_get_path(path, Some("cgroup.subtree_control"))?;
-    let mut payload = actions.join("\n");
-    payload.push('\n');
-    fs::write(file, payload)?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(file)?;
+    let mut result_mask = 0;
+
+    for (bit, enabled, action) in actions {
+        let write_errno = file
+            .write_all(action.as_bytes())
+            .err()
+            .and_then(|error| error.raw_os_error());
+        result_mask = cg_enable_result_after_action(result_mask, bit, enabled, write_errno);
+    }
 
     Ok(result_mask)
 }
@@ -705,6 +723,7 @@ mod tests {
             with_temp_cgroup_root(|root| {
                 fs::create_dir_all(root.join("demo")).unwrap();
                 fs::write(root.join("demo/cgroup.controllers"), "cpu memory rdma\n").unwrap();
+                fs::write(root.join("demo/cgroup.subtree_control"), "stale\n").unwrap();
 
                 let supported = cg_mask_supported_subtree("demo").unwrap();
                 let result = cg_enable(supported, CgroupController::Cpu.mask(), "demo").unwrap();
@@ -715,6 +734,25 @@ mod tests {
                 assert_eq!(contents, "+cpu\n-memory\n-rdma\n");
             })
         };
+    }
+
+    #[test]
+    fn test_cg_enable_result_tracks_per_controller_outcomes() {
+        let cpu = CgroupController::Cpu.mask();
+
+        assert_eq!(cg_enable_result_after_action(0, cpu, true, None), cpu);
+        assert_eq!(
+            cg_enable_result_after_action(0, cpu, true, Some(libc::EBUSY)),
+            0
+        );
+        assert_eq!(
+            cg_enable_result_after_action(0, cpu, false, Some(libc::EBUSY)),
+            cpu
+        );
+        assert_eq!(
+            cg_enable_result_after_action(0, cpu, false, Some(libc::EINVAL)),
+            0
+        );
     }
 
     #[test]
