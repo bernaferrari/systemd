@@ -252,7 +252,7 @@ pub struct ImageDataDirectory {
 }
 
 /// PE optional header — parsed with awareness of PE32 vs PE32+ differences.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PeOptionalHeader {
     /// Magic number: PE32_MAGIC or PE32PLUS_MAGIC
     pub magic: u16,
@@ -314,43 +314,6 @@ pub struct PeOptionalHeader {
     pub number_of_rva_and_sizes: u32,
     /// Data directory entries
     pub data_directory: Vec<ImageDataDirectory>,
-}
-
-impl Default for PeOptionalHeader {
-    fn default() -> Self {
-        Self {
-            magic: 0,
-            major_linker_version: 0,
-            minor_linker_version: 0,
-            size_of_code: 0,
-            size_of_initialized_data: 0,
-            size_of_uninitialized_data: 0,
-            address_of_entry_point: 0,
-            base_of_code: 0,
-            image_base: 0,
-            section_alignment: 0,
-            file_alignment: 0,
-            major_operating_system_version: 0,
-            minor_operating_system_version: 0,
-            major_image_version: 0,
-            minor_image_version: 0,
-            major_subsystem_version: 0,
-            minor_subsystem_version: 0,
-            win32_version_value: 0,
-            size_of_image: 0,
-            size_of_headers: 0,
-            checksum: 0,
-            subsystem: 0,
-            dll_characteristics: 0,
-            size_of_stack_reserve: 0,
-            size_of_stack_commit: 0,
-            size_of_heap_reserve: 0,
-            size_of_heap_commit: 0,
-            loader_flags: 0,
-            number_of_rva_and_sizes: 0,
-            data_directory: Vec::new(),
-        }
-    }
 }
 
 /// Complete PE header: signature + COFF file header + optional header
@@ -439,7 +402,7 @@ impl PeHeader {
 }
 
 /// PE section header
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ImageSectionHeader {
     /// Section name (up to 8 bytes, NUL-padded)
     pub name: [u8; SECTION_NAME_SIZE],
@@ -461,23 +424,6 @@ pub struct ImageSectionHeader {
     pub number_of_linenumbers: u16,
     /// Section characteristics flags
     pub characteristics: u32,
-}
-
-impl Default for ImageSectionHeader {
-    fn default() -> Self {
-        Self {
-            name: [0u8; SECTION_NAME_SIZE],
-            virtual_size: 0,
-            virtual_address: 0,
-            size_of_raw_data: 0,
-            pointer_to_raw_data: 0,
-            pointer_to_relocations: 0,
-            pointer_to_linenumbers: 0,
-            number_of_relocations: 0,
-            number_of_linenumbers: 0,
-            characteristics: 0,
-        }
-    }
 }
 
 impl ImageSectionHeader {

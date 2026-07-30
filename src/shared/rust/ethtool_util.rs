@@ -573,19 +573,10 @@ pub fn netdev_feature_by_name(name: &str) -> Option<usize> {
         .map(|e| e.index)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct U32Opt {
     pub value: u32,
     pub set: bool,
-}
-
-impl Default for U32Opt {
-    fn default() -> Self {
-        Self {
-            value: 0,
-            set: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

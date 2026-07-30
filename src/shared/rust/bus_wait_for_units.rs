@@ -19,20 +19,15 @@ use systemd_basic_rs::bus_label::bus_label_escape_bytes;
 // ── State ──────────────────────────────────────────────────────────────────
 
 /// Overall state of the unit-waiting operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum BusWaitForUnitsState {
     /// Nothing to wait for anymore and nothing failed.
+    #[default]
     Success,
     /// Nothing to wait for, but at least one unit failed.
     Failure,
     /// Still waiting for one or more units.
     Running,
-}
-
-impl Default for BusWaitForUnitsState {
-    fn default() -> Self {
-        Self::Success
-    }
 }
 
 impl BusWaitForUnitsState {

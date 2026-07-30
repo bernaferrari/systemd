@@ -151,9 +151,10 @@ impl fmt::Display for MacAddress {
 // ── Enums ─────────────────────────────────────────────────────────────────
 
 /// VLAN protocol encapsulation types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum VlanProto {
     /// Standard 802.1Q (0x8100).
+    #[default]
     Eth8021Q,
     /// Provider bridging 802.1ad (0x88A8).
     Eth8021Ad,
@@ -180,12 +181,6 @@ impl VlanProto {
             Self::Eth8021Q => Self::ETH_P_8021Q,
             Self::Eth8021Ad => Self::ETH_P_8021AD,
         }
-    }
-}
-
-impl Default for VlanProto {
-    fn default() -> Self {
-        Self::Eth8021Q
     }
 }
 

@@ -395,19 +395,10 @@ pub fn prompt_loop(
 // ── Chrome display ────────────────────────────────────────────────────────
 
 /// Terminal chrome state — tracks whether chrome bars are currently visible.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ChromeState {
     visible: bool,
     saved_rows: u32,
-}
-
-impl Default for ChromeState {
-    fn default() -> Self {
-        Self {
-            visible: false,
-            saved_rows: 0,
-        }
-    }
 }
 
 impl ChromeState {

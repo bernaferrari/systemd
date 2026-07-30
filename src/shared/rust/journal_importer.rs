@@ -147,9 +147,10 @@ pub fn valid_monotonic(t: u64) -> bool {
 // ── Importer state ────────────────────────────────────────────────────────
 
 /// Internal state machine for the journal importer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ImporterState {
     /// Waiting to read, or reading a text line.
+    #[default]
     Line = 0,
     /// Reading binary data size header (8-byte LE u64).
     DataStart = 1,
@@ -159,12 +160,6 @@ pub enum ImporterState {
     DataFinish = 3,
     /// Stream has been fully consumed.
     Eof = 4,
-}
-
-impl Default for ImporterState {
-    fn default() -> Self {
-        Self::Line
-    }
 }
 
 // ── Process result ────────────────────────────────────────────────────────

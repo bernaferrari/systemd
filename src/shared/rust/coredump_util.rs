@@ -209,7 +209,7 @@ impl std::error::Error for ParseAuxvError {}
 // ── Auxv parsed result ───────────────────────────────────────────────────
 
 /// Parsed fields from the ELF auxiliary vector.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AuxvInfo {
     /// `AT_SECURE`: whether the process is in secure-execution mode.
     pub at_secure: bool,
@@ -221,18 +221,6 @@ pub struct AuxvInfo {
     pub gid: u32,
     /// `AT_EGID`: effective group ID.
     pub egid: u32,
-}
-
-impl Default for AuxvInfo {
-    fn default() -> Self {
-        Self {
-            at_secure: false,
-            uid: 0,
-            euid: 0,
-            gid: 0,
-            egid: 0,
-        }
-    }
 }
 
 // ── set_dumpable ─────────────────────────────────────────────────────────

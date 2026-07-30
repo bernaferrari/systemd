@@ -66,10 +66,10 @@ impl Default for LoopInfo64 {
             lo_encrypt_type: 0,
             lo_encrypt_key_size: 0,
             lo_flags: 0,
-            lo_file_name: [0u8; 64],
-            lo_crypt_name: [0u8; 64],
-            lo_encrypt_key: [0u8; 32],
-            lo_init: [0u64; 2],
+            lo_file_name: [0; 64],
+            lo_crypt_name: [0; 64],
+            lo_encrypt_key: [0; 32],
+            lo_init: [0; 2],
         }
     }
 }
@@ -78,7 +78,7 @@ impl Default for LoopInfo64 {
 ///
 /// Used for the LOOP_CONFIGURE ioctl.
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub(super) struct LoopConfig {
     pub(super) fd: u32,
     pub(super) block_size: u32,
@@ -123,17 +123,6 @@ const _: [(); 84] = [(); std::mem::offset_of!(BlkpgPartition, volname)];
 const _: [(); 144 + std::mem::align_of::<i64>()] = [(); std::mem::size_of::<BlkpgPartition>()];
 const _: [(); 8 + std::mem::size_of::<usize>()] = [(); std::mem::offset_of!(BlkpgIoctlArg, data)];
 const _: [(); 8 + 2 * std::mem::size_of::<usize>()] = [(); std::mem::size_of::<BlkpgIoctlArg>()];
-
-impl Default for LoopConfig {
-    fn default() -> Self {
-        Self {
-            fd: 0,
-            block_size: 0,
-            info: LoopInfo64::default(),
-            __reserved: [0u64; 8],
-        }
-    }
-}
 
 // ── Safe ioctl wrappers ────────────────────────────────────────────────────
 
@@ -506,24 +495,18 @@ pub(super) fn is_regular_file(stat: &libc::stat) -> bool {
 
 /// Extract (major, minor) from a stat's st_rdev.
 pub(super) fn dev_from_stat(stat: &libc::stat) -> (u32, u32) {
-    // SAFETY: major/minor only decode the dev_t value.
-    unsafe {
-        (
-            libc::major(stat.st_rdev) as u32,
-            libc::minor(stat.st_rdev) as u32,
-        )
-    }
+    (
+        libc::major(stat.st_rdev) as u32,
+        libc::minor(stat.st_rdev) as u32,
+    )
 }
 
 /// Extract (major, minor) from a stat's st_dev.
 pub(super) fn dev_from_st_dev(stat: &libc::stat) -> (u32, u32) {
-    // SAFETY: major/minor only decode the dev_t value.
-    unsafe {
-        (
-            libc::major(stat.st_dev) as u32,
-            libc::minor(stat.st_dev) as u32,
-        )
-    }
+    (
+        libc::major(stat.st_dev) as u32,
+        libc::minor(stat.st_dev) as u32,
+    )
 }
 
 /// Mangle loop flags based on SYSTEMD_LOOP_DIRECT_IO environment variable.

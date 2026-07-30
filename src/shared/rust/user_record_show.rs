@@ -18,8 +18,9 @@ const ANSI_HIGHLIGHT_RED: &str = "\x1b[1;31m";
 const UID_INVALID: u32 = u32::MAX;
 const GID_INVALID: u32 = u32::MAX;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum LoginStatus {
+    #[default]
     Yes,
     Locked,
     NotValidYet,
@@ -29,7 +30,7 @@ pub enum LoginStatus {
     Error(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum PasswordStatus {
     Yes,
     ChangeNow,
@@ -43,6 +44,7 @@ pub enum PasswordStatus {
     EmptySet,
     Locked,
     Error(String),
+    #[default]
     Unknown,
 }
 
@@ -192,18 +194,6 @@ pub struct UserRecord {
     pub effective_self_modifiable_blobs: Option<Vec<String>>,
     pub self_modifiable_privileged: Option<Vec<String>>,
     pub effective_self_modifiable_privileged: Option<Vec<String>>,
-}
-
-impl Default for LoginStatus {
-    fn default() -> Self {
-        Self::Yes
-    }
-}
-
-impl Default for PasswordStatus {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 pub const SOURCE_PATH: &str = "src/shared/user-record-show.c";

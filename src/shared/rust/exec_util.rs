@@ -17,25 +17,13 @@ use std::time::{Duration, Instant};
 pub const EXIT_SKIP_REMAINING: i32 = 77;
 
 /// Flags for directory execution
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ExecDirFlags {
     pub parallel: bool,
     pub ignore_errors: bool,
     pub set_systemd_exec_pid: bool,
     pub skip_remaining: bool,
     pub warn_world_writable: bool,
-}
-
-impl Default for ExecDirFlags {
-    fn default() -> Self {
-        Self {
-            parallel: false,
-            ignore_errors: false,
-            set_systemd_exec_pid: false,
-            skip_remaining: false,
-            warn_world_writable: false,
-        }
-    }
 }
 
 impl ExecDirFlags {
@@ -296,25 +284,13 @@ pub fn executable_is_executable(path: &Path) -> bool {
 }
 
 /// Flags for command execution
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ExecCommandFlags {
     pub ignore_failure: bool,
     pub fully_privileged: bool,
     pub no_setuid: bool,
     pub no_env_expand: bool,
     pub via_shell: bool,
-}
-
-impl Default for ExecCommandFlags {
-    fn default() -> Self {
-        Self {
-            ignore_failure: false,
-            fully_privileged: false,
-            no_setuid: false,
-            no_env_expand: false,
-            via_shell: false,
-        }
-    }
 }
 
 /// Parse a single command flag from a string

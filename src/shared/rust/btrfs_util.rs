@@ -82,7 +82,7 @@ pub fn btrfs_get_block_device_fd(fd: BorrowedFd<'_>) -> io::Result<Option<libc::
 // ── Data structures ───────────────────────────────────────────────────────
 
 /// Information about a btrfs subvolume.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BtrfsSubvolInfo {
     pub subvol_id: u64,
     /// Creation time in microseconds.
@@ -94,19 +94,6 @@ pub struct BtrfsSubvolInfo {
     /// 128-bit UUID of the parent subvolume.
     pub parent_uuid: [u8; 16],
     pub read_only: bool,
-}
-
-impl Default for BtrfsSubvolInfo {
-    fn default() -> Self {
-        Self {
-            subvol_id: 0,
-            otime: 0,
-            ctime: 0,
-            uuid: [0; 16],
-            parent_uuid: [0; 16],
-            read_only: false,
-        }
-    }
 }
 
 /// Quota usage information for a btrfs qgroup.
