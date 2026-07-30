@@ -35,11 +35,14 @@ fi
 
 if unshare --user --map-root-user --pid --fork true >/dev/null 2>&1; then
     namespace=(unshare --user --map-root-user --pid --fork)
+    tracer=(strace)
 elif command -v sudo >/dev/null 2>&1 && sudo -n unshare --pid --fork true >/dev/null 2>&1; then
     # GitHub-hosted runners disable unprivileged user namespaces, but their
-    # passwordless root execution can still create a PID namespace. Both
-    # forms run the traced program as PID 1 in its own namespace.
-    namespace=(sudo -n unshare --pid --fork)
+    # passwordless root execution can still create a PID namespace. Trace
+    # from the elevated parent: tracing sudo itself would disable its setuid
+    # elevation before it can create the namespace.
+    namespace=(unshare --pid --fork)
+    tracer=(sudo -n strace)
 else
     skip_or_fail_ci "no usable PID namespace path is available for the PID1 syscall trace smoke check."
 fi
@@ -77,7 +80,7 @@ pid1_wrapper=(
 )
 
 trace_cmd=(
-    strace
+    "${tracer[@]}"
     -ff
     -qq
     -o
