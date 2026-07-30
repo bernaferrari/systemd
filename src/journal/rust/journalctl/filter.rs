@@ -7,7 +7,6 @@ use crate::journalctl_filter::{
 };
 use nix::libc;
 use std::collections::BTreeSet;
-use std::ffi::{CStr, CString};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use systemd_shared_rs::exec_util::is_executable;
@@ -316,20 +315,17 @@ fn kernel_device_parent_terms_from_syspath(mut syspath: PathBuf) -> Vec<String> 
         if let (Ok(target), Some(sysname)) = (
             std::fs::read_link(&subsystem_link),
             syspath.file_name().and_then(|s| s.to_str()),
-        ) {
-            if let Some(subsystem) = target.file_name().and_then(|s| s.to_str()) {
-                terms.push(format!("_KERNEL_DEVICE=+{subsystem}:{sysname}"));
+        ) && let Some(subsystem) = target.file_name().and_then(|s| s.to_str())
+        {
+            terms.push(format!("_KERNEL_DEVICE=+{subsystem}:{sysname}"));
 
-                if let Ok(raw_devnum) = std::fs::read_to_string(syspath.join("dev")) {
-                    if let Some((major, minor)) = raw_devnum.trim().split_once(':') {
-                        if major.chars().all(|c| c.is_ascii_digit())
-                            && minor.chars().all(|c| c.is_ascii_digit())
-                        {
-                            let prefix = if subsystem == "block" { 'b' } else { 'c' };
-                            terms.push(format!("_KERNEL_DEVICE={prefix}{major}:{minor}"));
-                        }
-                    }
-                }
+            if let Ok(raw_devnum) = std::fs::read_to_string(syspath.join("dev"))
+                && let Some((major, minor)) = raw_devnum.trim().split_once(':')
+                && major.chars().all(|c| c.is_ascii_digit())
+                && minor.chars().all(|c| c.is_ascii_digit())
+            {
+                let prefix = if subsystem == "block" { 'b' } else { 'c' };
+                terms.push(format!("_KERNEL_DEVICE={prefix}{major}:{minor}"));
             }
         }
 

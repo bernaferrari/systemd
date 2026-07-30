@@ -230,6 +230,10 @@ impl Default for JournalctlArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+// PORT-RATIONALE: parse_argv() returns this public C-shaped result directly to
+// callers. Boxing its successful payload would add allocation and change the
+// established parser API without making the owned argument state safer.
+#[allow(clippy::large_enum_variant)]
 pub enum ParseArgvResult {
     Parsed(JournalctlArgs),
     HelpRequested,

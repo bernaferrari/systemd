@@ -41,6 +41,10 @@ pub struct DispatchPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+// PORT-RATIONALE: this public C-shaped control-flow result is matched directly
+// by callers and tests; boxing DispatchPlan would create allocation and API
+// churn without reducing the plan's owned data.
+#[allow(clippy::large_enum_variant)]
 pub enum RunOutcome {
     HelpRequested,
     VersionRequested,

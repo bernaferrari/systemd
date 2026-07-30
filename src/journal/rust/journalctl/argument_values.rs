@@ -327,12 +327,7 @@ fn resolved_parse_timestamp_fn() -> Option<ParseTimestampFn> {
 
     *PARSE_TIMESTAMP_FN.get_or_init(|| {
         // SAFETY: symbol name is a valid NUL-terminated C string.
-        let sym = unsafe {
-            libc::dlsym(
-                libc::RTLD_DEFAULT,
-                b"parse_timestamp\0".as_ptr() as *const libc::c_char,
-            )
-        };
+        let sym = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"parse_timestamp".as_ptr()) };
         if sym.is_null() {
             None
         } else {
@@ -464,10 +459,10 @@ fn parse_tm_exact(input: &str, format: &str, seed_today: bool) -> Option<libc::t
     let mut tm = unsafe { std::mem::zeroed::<libc::tm>() };
     if seed_today {
         let now = now_realtime_usec();
-        let mut sec = (now / 1_000_000) as libc::time_t;
+        let sec = (now / 1_000_000) as libc::time_t;
         // SAFETY: pointers are valid and non-null.
         unsafe {
-            if libc::localtime_r(&mut sec, &mut tm).is_null() {
+            if libc::localtime_r(&sec, &mut tm).is_null() {
                 return None;
             }
         }
@@ -572,9 +567,9 @@ fn parse_timestamp_fallback(value: &str) -> Option<u64> {
             // SAFETY: all-zero is a valid initial state for libc::tm before
             // localtime_r populates its integer fields.
             let mut tm = unsafe { std::mem::zeroed::<libc::tm>() };
-            let mut local_sec = now_sec;
+            let local_sec = now_sec;
             // SAFETY: pointers are valid and non-null.
-            let ok = unsafe { libc::localtime_r(&mut local_sec, &mut tm) };
+            let ok = unsafe { libc::localtime_r(&local_sec, &mut tm) };
             if ok.is_null() {
                 return None;
             }

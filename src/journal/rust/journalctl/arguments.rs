@@ -53,14 +53,14 @@ fn apply_boot_value(
         return Ok(false);
     }
 
-    if let Some(next) = candidate_next {
-        if let Ok(descriptor) = parse_id_descriptor(next) {
-            args.boot = if next == "all" { 0 } else { 1 };
-            args.boot_filter = args.boot > 0;
-            args.boot_id = descriptor.id;
-            args.boot_offset = descriptor.offset;
-            return Ok(true);
-        }
+    if let Some(next) = candidate_next
+        && let Ok(descriptor) = parse_id_descriptor(next)
+    {
+        args.boot = if next == "all" { 0 } else { 1 };
+        args.boot_filter = args.boot > 0;
+        args.boot_id = descriptor.id;
+        args.boot_offset = descriptor.offset;
+        return Ok(true);
     }
 
     Ok(false)
@@ -874,10 +874,10 @@ pub fn parse_argv(args: &[&str]) -> Result<ParseArgvResult, ParseArgvError> {
         return Err(ParseArgvError::Invalid("conflicting source options"));
     }
 
-    if let (Some(since), Some(until)) = (since_usec, until_usec) {
-        if since > until {
-            return Err(ParseArgvError::Invalid("--since= must be before --until="));
-        }
+    if let (Some(since), Some(until)) = (since_usec, until_usec)
+        && since > until
+    {
+        return Err(ParseArgvError::Invalid("--since= must be before --until="));
     }
 
     if count_true(&[
