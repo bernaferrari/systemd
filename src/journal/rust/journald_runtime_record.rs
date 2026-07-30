@@ -22,15 +22,15 @@ impl RateLimitConfig {
     pub(super) fn from_env() -> Self {
         let mut cfg = Self::default();
 
-        if let Ok(raw) = std::env::var(RATE_LIMIT_INTERVAL_ENV) {
-            if let Ok(parsed) = raw.parse::<u64>() {
-                cfg.interval_usec = parsed;
-            }
+        if let Ok(raw) = std::env::var(RATE_LIMIT_INTERVAL_ENV)
+            && let Ok(parsed) = raw.parse::<u64>()
+        {
+            cfg.interval_usec = parsed;
         }
-        if let Ok(raw) = std::env::var(RATE_LIMIT_BURST_ENV) {
-            if let Ok(parsed) = raw.parse::<u32>() {
-                cfg.burst = parsed;
-            }
+        if let Ok(raw) = std::env::var(RATE_LIMIT_BURST_ENV)
+            && let Ok(parsed) = raw.parse::<u32>()
+        {
+            cfg.burst = parsed;
         }
 
         if (cfg.interval_usec == 0) != (cfg.burst == 0) {
@@ -178,6 +178,10 @@ pub(super) struct IngressRecord {
     pub(super) message: String,
     pub(super) priority: Option<u32>,
     pub(super) facility: Option<u8>,
+    #[expect(
+        dead_code,
+        reason = "the runtime currently uses the canonical PRIORITY value for filtering and rate limiting; preserve normalized severity as an ingress datum until every downstream journal field consumer is ported"
+    )]
     pub(super) severity: Option<u8>,
     pub(super) syslog_identifier: Option<String>,
     pub(super) syslog_pid: Option<String>,
@@ -224,6 +228,7 @@ impl PeerRateLimiter {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn check(
         &mut self,
         key: &str,
@@ -417,7 +422,9 @@ pub(super) fn burst_modulate(burst: u32, available: u64) -> u32 {
 
 pub(super) fn available_bytes_for_rate_limit(path: &Path) -> u64 {
     match nix::sys::statvfs::statvfs(path) {
-        Ok(stats) => (stats.blocks_available() as u64).saturating_mul(stats.fragment_size() as u64),
+        Ok(stats) => stats
+            .blocks_available()
+            .saturating_mul(stats.fragment_size()),
         Err(_) => 0,
     }
 }
@@ -472,12 +479,12 @@ pub(super) fn parse_syslog_identifier_and_pid(
     let message = trimmed[message_start..].to_string();
     let mut identifier = token[..token.len() - 1].to_string();
     let mut pid = None;
-    if identifier.ends_with(']') {
-        if let Some(open) = identifier.rfind('[') {
-            let pid_candidate = &identifier[open + 1..identifier.len() - 1];
-            pid = parse_syslog_pid_like_c(pid_candidate);
-            identifier.truncate(open);
-        }
+    if identifier.ends_with(']')
+        && let Some(open) = identifier.rfind('[')
+    {
+        let pid_candidate = &identifier[open + 1..identifier.len() - 1];
+        pid = parse_syslog_pid_like_c(pid_candidate);
+        identifier.truncate(open);
     }
 
     if identifier.len() > SYSLOG_IDENTIFIER_MAX {
@@ -491,12 +498,11 @@ pub(super) fn parse_syslog_identifier_and_pid(
 #[cfg(any(test, target_os = "linux"))]
 pub(super) fn strip_audit_value_quotes(value: &str) -> String {
     let trimmed = value.trim();
-    if (trimmed.starts_with('"') && trimmed.ends_with('"'))
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+    if ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
+        && trimmed.len() >= 2
     {
-        if trimmed.len() >= 2 {
-            return trimmed[1..trimmed.len() - 1].to_string();
-        }
+        return trimmed[1..trimmed.len() - 1].to_string();
     }
     trimmed.to_string()
 }
@@ -789,10 +795,10 @@ fn classify_native_message(
         match entry.name.as_slice() {
             b"MESSAGE" => message = String::from_utf8_lossy(&entry.payload).into_owned(),
             b"PRIORITY" => {
-                if let [digit] = entry.payload.as_slice() {
-                    if digit.is_ascii_digit() {
-                        priority = Some((digit - b'0') as u32);
-                    }
+                if let [digit] = entry.payload.as_slice()
+                    && digit.is_ascii_digit()
+                {
+                    priority = Some((digit - b'0') as u32);
                 }
             }
             b"SYSLOG_FACILITY" => {
@@ -810,13 +816,11 @@ fn classify_native_message(
                     identifier = Some(String::from_utf8_lossy(&entry.payload).into_owned());
                 }
             }
-            b"OBJECT_PID" => {
-                if creds.is_some_and(|cred| cred.uid == 0) {
-                    object_pid = std::str::from_utf8(&entry.payload)
-                        .ok()
-                        .and_then(|value| value.parse::<i32>().ok())
-                        .filter(|pid| *pid > 0);
-                }
+            b"OBJECT_PID" if creds.is_some_and(|cred| cred.uid == 0) => {
+                object_pid = std::str::from_utf8(&entry.payload)
+                    .ok()
+                    .and_then(|value| value.parse::<i32>().ok())
+                    .filter(|pid| *pid > 0);
             }
             _ => {}
         }

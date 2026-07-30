@@ -37,6 +37,23 @@ pub(super) struct ClientContextCache {
     pub(super) entries: BTreeMap<i32, ClientContext>,
 }
 
+#[derive(Debug)]
+pub(super) struct ClientContextRoots {
+    proc: PathBuf,
+    run_systemd: PathBuf,
+    run_user: PathBuf,
+}
+
+impl ClientContextRoots {
+    pub(super) fn current() -> Self {
+        Self {
+            proc: proc_root(),
+            run_systemd: run_systemd_root(),
+            run_user: run_user_root(),
+        }
+    }
+}
+
 impl ClientContextCache {
     pub(super) fn get_or_refresh(
         &mut self,
@@ -44,9 +61,7 @@ impl ClientContextCache {
         creds: Option<PeerCredentials>,
         label_override: Option<&str>,
         unit_id_hint: Option<&str>,
-        proc_root: &Path,
-        run_systemd_root: &Path,
-        run_user_root: &Path,
+        roots: &ClientContextRoots,
     ) -> ClientContext {
         let now = now_micros_u64();
         let refresh = match self.entries.get(&pid) {
@@ -76,16 +91,8 @@ impl ClientContextCache {
         }
 
         let existing = self.entries.get(&pid).cloned();
-        let context = collect_client_context(
-            pid,
-            creds,
-            label_override,
-            unit_id_hint,
-            existing,
-            proc_root,
-            run_systemd_root,
-            run_user_root,
-        );
+        let context =
+            collect_client_context(pid, creds, label_override, unit_id_hint, existing, roots);
         self.entries.insert(pid, context.clone());
         self.prune(now);
         context
@@ -123,9 +130,7 @@ fn collect_client_context(
     label_override: Option<&str>,
     unit_id_hint: Option<&str>,
     existing: Option<ClientContext>,
-    proc_root: &Path,
-    run_systemd_root: &Path,
-    run_user_root: &Path,
+    roots: &ClientContextRoots,
 ) -> ClientContext {
     let mut context = existing.unwrap_or_default();
     context.pid = pid;
@@ -133,35 +138,35 @@ fn collect_client_context(
     overlay_creds(&mut context, creds);
 
     if context.uid.is_none() {
-        context.uid = read_status_ids(proc_root, pid).map(|(uid, _)| uid);
+        context.uid = read_status_ids(&roots.proc, pid).map(|(uid, _)| uid);
     }
     if context.gid.is_none() {
-        context.gid = read_status_ids(proc_root, pid).map(|(_, gid)| gid);
+        context.gid = read_status_ids(&roots.proc, pid).map(|(_, gid)| gid);
     }
-    if let Some(comm) = read_pid_comm(proc_root, pid) {
+    if let Some(comm) = read_pid_comm(&roots.proc, pid) {
         context.comm = Some(comm);
     }
-    if let Some(exe) = read_pid_exe(proc_root, pid) {
+    if let Some(exe) = read_pid_exe(&roots.proc, pid) {
         context.exe = Some(exe);
     }
-    if let Some(cmdline) = read_pid_cmdline(proc_root, pid) {
+    if let Some(cmdline) = read_pid_cmdline(&roots.proc, pid) {
         context.cmdline = Some(cmdline);
     }
-    if let Some(cap_effective) = read_pid_cap_effective(proc_root, pid) {
+    if let Some(cap_effective) = read_pid_cap_effective(&roots.proc, pid) {
         context.cap_effective = Some(cap_effective);
     }
     if let Some(label) = label_override {
         context.label = Some(label.to_string());
-    } else if let Some(label) = read_pid_label(proc_root, pid) {
+    } else if let Some(label) = read_pid_label(&roots.proc, pid) {
         context.label = Some(label);
     }
-    if let Some(audit_session) = read_pid_audit_session(proc_root, pid) {
+    if let Some(audit_session) = read_pid_audit_session(&roots.proc, pid) {
         context.audit_session = Some(audit_session);
     }
-    if let Some(audit_loginuid) = read_pid_audit_loginuid(proc_root, pid) {
+    if let Some(audit_loginuid) = read_pid_audit_loginuid(&roots.proc, pid) {
         context.audit_loginuid = Some(audit_loginuid);
     }
-    if let Some(cgroup) = read_pid_cgroup_path(proc_root, pid) {
+    if let Some(cgroup) = read_pid_cgroup_path(&roots.proc, pid) {
         if let Some((allowed_patterns, denied_patterns)) = read_cgroup_log_filter_patterns(&cgroup)
         {
             context.log_filter_allowed_patterns = Arc::new(allowed_patterns);
@@ -172,8 +177,8 @@ fn collect_client_context(
         context.unit = unit_id_hint.map(str::to_string);
     }
     if let Some(invocation_id) = read_invocation_id(
-        run_systemd_root,
-        run_user_root,
+        &roots.run_systemd,
+        &roots.run_user,
         context.owner_uid,
         context.unit.as_deref(),
         context.user_unit.as_deref(),
@@ -181,11 +186,11 @@ fn collect_client_context(
         context.invocation_id = Some(invocation_id);
     }
     if let Some(unit) = context.unit.as_deref() {
-        if let Some(log_level_max) = read_unit_log_level_max(run_systemd_root, unit) {
+        if let Some(log_level_max) = read_unit_log_level_max(&roots.run_systemd, unit) {
             context.log_level_max = Some(log_level_max);
         }
         if let Some((extra_fields, extra_fields_mtime_nsec)) = read_unit_extra_fields(
-            run_systemd_root,
+            &roots.run_systemd,
             unit,
             &context.extra_fields,
             context.extra_fields_mtime_nsec,
@@ -193,10 +198,10 @@ fn collect_client_context(
             context.extra_fields = extra_fields;
             context.extra_fields_mtime_nsec = extra_fields_mtime_nsec;
         }
-        if let Some(interval_usec) = read_unit_rate_limit_interval_usec(run_systemd_root, unit) {
+        if let Some(interval_usec) = read_unit_rate_limit_interval_usec(&roots.run_systemd, unit) {
             context.log_ratelimit_interval_usec = Some(interval_usec);
         }
-        if let Some(burst) = read_unit_rate_limit_burst(run_systemd_root, unit) {
+        if let Some(burst) = read_unit_rate_limit_burst(&roots.run_systemd, unit) {
             context.log_ratelimit_burst = Some(burst);
         }
     }
@@ -538,9 +543,7 @@ pub(super) fn read_unit_extra_fields(
         }
 
         let field = &data[field_start..field_end];
-        let Some(eq) = field.iter().position(|byte| *byte == b'=') else {
-            return None;
-        };
+        let eq = field.iter().position(|byte| *byte == b'=')?;
         if !journal_field_valid(&field[..eq], false) {
             return None;
         }
@@ -687,11 +690,6 @@ pub(super) fn read_pid_cgroup_path(proc_root: &Path, pid: i32) -> Option<String>
         let cgroup = parts.next()?.trim();
         (!cgroup.is_empty()).then(|| cgroup.to_string())
     })
-}
-
-pub(super) fn parse_cgroup_unit_name(cgroup_path: &str) -> Option<String> {
-    let parsed = parse_cgroup_context(cgroup_path, None);
-    parsed.unit.or(parsed.user_unit)
 }
 
 pub(super) fn apply_cgroup_context(

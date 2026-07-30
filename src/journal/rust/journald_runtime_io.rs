@@ -192,10 +192,10 @@ impl StdoutStreamConnection {
                 StdoutLineBreak::LineMax,
             ));
         }
-        if let Some(line_break) = force_flush {
-            if !self.buffer.is_empty() {
-                return Some((self.buffer.drain(..).collect::<Vec<_>>(), line_break));
-            }
+        if let Some(line_break) = force_flush
+            && !self.buffer.is_empty()
+        {
+            return Some((self.buffer.drain(..).collect::<Vec<_>>(), line_break));
         }
 
         None
@@ -314,9 +314,9 @@ impl AuditNetlinkReceiver {
     pub(super) fn recv_message(&mut self) -> io::Result<Option<(u16, Vec<u8>)>> {
         use nix::sys::socket::{ControlMessageOwned, MsgFlags, NetlinkAddr, recvmsg};
 
-        let mut iov = [io::IoSliceMut::new(&mut self.buffer)];
-        let mut cmsg_space = nix::cmsg_space!(libc::ucred);
         let (bytes, sender_pid, addr_pid) = {
+            let mut iov = [io::IoSliceMut::new(&mut self.buffer)];
+            let mut cmsg_space = nix::cmsg_space!(libc::ucred);
             let msg = recvmsg::<NetlinkAddr>(
                 self.fd.as_raw_fd(),
                 &mut iov,
@@ -353,7 +353,6 @@ impl AuditNetlinkReceiver {
             let addr_pid = msg.address.as_ref().map(|addr| addr.pid());
             (msg.bytes, sender_pid, addr_pid)
         };
-        drop(iov);
 
         if !is_valid_kernel_audit_sender(sender_pid, addr_pid) {
             return Ok(None);
@@ -395,7 +394,7 @@ pub(super) fn socket_identity_from_fd(fd: libc::c_int) -> io::Result<(u64, u64)>
     }
     // SAFETY: the successful fstat above initialized the full stat value.
     let stat = unsafe { stat.assume_init() };
-    Ok((stat.st_dev as u64, stat.st_ino as u64))
+    Ok((stat.st_dev, stat.st_ino))
 }
 
 pub(super) fn safe_close_fd(fd: libc::c_int) {
@@ -547,9 +546,9 @@ pub(super) fn recv_stdout_stream_message(
     use nix::sys::socket::{ControlMessageOwned, MsgFlags, UnixAddr, recvmsg};
 
     let mut buf = [0_u8; 8192];
-    let mut iov = [io::IoSliceMut::new(&mut buf)];
-    let mut cmsg_space = nix::cmsg_space!(libc::ucred);
     let (bytes, creds) = {
+        let mut iov = [io::IoSliceMut::new(&mut buf)];
+        let mut cmsg_space = nix::cmsg_space!(libc::ucred);
         let msg = recvmsg::<UnixAddr>(
             stream.as_raw_fd(),
             &mut iov,
@@ -589,7 +588,6 @@ pub(super) fn recv_stdout_stream_message(
         }
         (msg.bytes, creds)
     };
-    drop(iov);
 
     Ok(Some(StdoutStreamRead::Data {
         payload: buf[..bytes].to_vec(),

@@ -20,11 +20,10 @@ impl JournalRuntime {
         self.flush_to_persistent(true)?;
 
         let state = self.storage_state();
-        if let Some(active) = state.active_root() {
-            if active != self.root() {
-                let _ =
-                    self.vacuum_root(active, limits.max_use, limits.n_max_files, limits.max_use)?;
-            }
+        if let Some(active) = state.active_root()
+            && active != self.root()
+        {
+            let _ = self.vacuum_root(active, limits.max_use, limits.n_max_files, limits.max_use)?;
         }
 
         Ok(())
@@ -57,16 +56,16 @@ impl JournalRuntime {
                 break;
             }
 
-            if let Some(reader) = dev_kmsg.as_mut() {
-                if self.drain_dev_kmsg(reader, &mut kmsg_sequence).is_err() {
-                    dev_kmsg = None;
-                }
+            if let Some(reader) = dev_kmsg.as_mut()
+                && self.drain_dev_kmsg(reader, &mut kmsg_sequence).is_err()
+            {
+                dev_kmsg = None;
             }
             #[cfg(target_os = "linux")]
-            if let Some(receiver) = audit_netlink.as_mut() {
-                if self.drain_audit_netlink(receiver).is_err() {
-                    audit_netlink = None;
-                }
+            if let Some(receiver) = audit_netlink.as_mut()
+                && self.drain_audit_netlink(receiver).is_err()
+            {
+                audit_netlink = None;
             }
 
             let mut handled_datagram = false;
@@ -636,10 +635,10 @@ impl JournalRuntime {
             };
             match key {
                 "PRIORITY" => {
-                    if let Ok(priority) = value.parse::<u32>() {
-                        if priority <= 999 {
-                            stream.priority = priority;
-                        }
+                    if let Ok(priority) = value.parse::<u32>()
+                        && priority <= 999
+                    {
+                        stream.priority = priority;
                     }
                 }
                 "LEVEL_PREFIX" => {
@@ -755,10 +754,10 @@ impl JournalRuntime {
         if !self.context_keeps_log(context.as_ref(), &record) {
             return Ok(());
         }
-        if let Some(limiter) = limiter {
-            if !self.apply_context_rate_limit(limiter, context.as_ref(), priority % 8)? {
-                return Ok(());
-            }
+        if let Some(limiter) = limiter
+            && !self.apply_context_rate_limit(limiter, context.as_ref(), priority % 8)?
+        {
+            return Ok(());
         }
 
         self.append_classified_ingress_with_context(

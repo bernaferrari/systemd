@@ -75,15 +75,15 @@ impl StorageVacuumLimits {
     pub(super) fn from_env() -> Self {
         let mut limits = Self::default();
 
-        if let Ok(raw) = std::env::var(SYSTEM_MAX_USE_ENV) {
-            if let Ok(parsed) = parse_size(&raw) {
-                limits.max_use = parsed;
-            }
+        if let Ok(raw) = std::env::var(SYSTEM_MAX_USE_ENV)
+            && let Ok(parsed) = parse_size(&raw)
+        {
+            limits.max_use = parsed;
         }
-        if let Ok(raw) = std::env::var(SYSTEM_MAX_FILES_ENV) {
-            if let Ok(parsed) = raw.trim().parse::<u64>() {
-                limits.n_max_files = parsed;
-            }
+        if let Ok(raw) = std::env::var(SYSTEM_MAX_FILES_ENV)
+            && let Ok(parsed) = raw.trim().parse::<u64>()
+        {
+            limits.n_max_files = parsed;
         }
 
         limits
@@ -182,7 +182,7 @@ impl JournalRuntime {
             }
         }
 
-        files.sort_by(|a, b| self.rotation_index(a).cmp(&self.rotation_index(b)));
+        files.sort_by_key(|path| self.rotation_index(path));
         Ok(files)
     }
 
@@ -829,7 +829,7 @@ pub(super) fn hex_encode(bytes: &[u8]) -> String {
 
 fn hex_decode(text: &str) -> Result<Vec<u8>, JournaldError> {
     let text = text.trim();
-    if text.len() % 2 != 0 {
+    if !text.len().is_multiple_of(2) {
         return Err(JournaldError::InvalidArgument(format!(
             "invalid hex payload length: {text}"
         )));

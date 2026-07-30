@@ -205,10 +205,6 @@ impl JournalRuntime {
         }
     }
 
-    pub fn default() -> Self {
-        Self::new(DEFAULT_RUNTIME_ROOT)
-    }
-
     pub fn default_with_namespace(namespace: Option<String>) -> Self {
         let root = match namespace.as_deref() {
             Some(namespace) => PathBuf::from(format!("{DEFAULT_RUNTIME_ROOT}.{namespace}")),
@@ -250,15 +246,8 @@ impl JournalRuntime {
         }
 
         let mut cache = self.client_contexts.lock().ok()?;
-        Some(cache.get_or_refresh(
-            creds.pid,
-            Some(creds),
-            label_override,
-            unit_id_hint,
-            proc_root().as_path(),
-            run_systemd_root().as_path(),
-            run_user_root().as_path(),
-        ))
+        let roots = ClientContextRoots::current();
+        Some(cache.get_or_refresh(creds.pid, Some(creds), label_override, unit_id_hint, &roots))
     }
 
     fn object_client_context(&self, pid: i32) -> Option<ClientContext> {
@@ -267,15 +256,8 @@ impl JournalRuntime {
         }
 
         let mut cache = self.client_contexts.lock().ok()?;
-        Some(cache.get_or_refresh(
-            pid,
-            None,
-            None,
-            None,
-            proc_root().as_path(),
-            run_systemd_root().as_path(),
-            run_user_root().as_path(),
-        ))
+        let roots = ClientContextRoots::current();
+        Some(cache.get_or_refresh(pid, None, None, None, &roots))
     }
 
     pub fn socket_path(&self) -> PathBuf {
@@ -497,6 +479,10 @@ impl JournalRuntime {
     /// A native datagram shares authenticated peer metadata and the acquired
     /// context across its records, while filtering and rate limiting remain
     /// entry-local just as they are in C's `manager_process_entry()` loop.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the entry-local socket policy inputs intentionally stay explicit and this helper is directly exercised by parity tests"
+    )]
     fn append_socket_ingress_record(
         &self,
         payload: &[u8],
@@ -737,6 +723,12 @@ impl JournalRuntime {
     }
 }
 
+impl Default for JournalRuntime {
+    fn default() -> Self {
+        Self::new(DEFAULT_RUNTIME_ROOT)
+    }
+}
+
 pub fn parse_args<I, S>(args: I) -> Result<Mode, JournaldError>
 where
     I: IntoIterator<Item = S>,
@@ -783,12 +775,12 @@ where
             }
         };
 
-        if let Some(next) = next {
-            if action.replace(next).is_some() {
-                return Err(JournaldError::InvalidArgument(
-                    "only one journald action can be selected at a time".to_string(),
-                ));
-            }
+        if let Some(next) = next
+            && action.replace(next).is_some()
+        {
+            return Err(JournaldError::InvalidArgument(
+                "only one journald action can be selected at a time".to_string(),
+            ));
         }
     }
 
