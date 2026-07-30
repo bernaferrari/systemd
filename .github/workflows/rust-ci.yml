@@ -5,6 +5,10 @@
 name: Rust CI
 
 on:
+  # Keep a deterministic escape hatch for validating the exact final commit
+  # after a transient GitHub-hosted runner or package-mirror failure. This does
+  # not retry or mask failures: every requested run still executes all gates.
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -637,8 +641,13 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install nightly Rust toolchain with Miri
+        # Miri is nightly-only. Provision its exact prerequisites in the
+        # workflow so the smoke script cannot turn an unavailable toolchain
+        # into a successful skipped job.
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri, rust-src
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
       - name: Run Miri smoke checks

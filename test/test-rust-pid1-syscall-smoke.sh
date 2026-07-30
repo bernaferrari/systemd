@@ -7,24 +7,32 @@ if [[ ! -f Cargo.toml ]]; then
     exit 1
 fi
 
-if [[ "$(uname -s)" != "Linux" ]]; then
-    echo "SKIP: Linux-only syscall trace smoke check."
+skip_or_fail_ci() {
+    local message="$1"
+
+    if [[ -n "${CI:-}" ]]; then
+        echo "FAIL: $message" >&2
+        exit 1
+    fi
+
+    echo "SKIP: $message"
     exit 0
+}
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+    skip_or_fail_ci "Linux is required for the PID1 syscall trace smoke check."
 fi
 
 if ! command -v strace >/dev/null 2>&1; then
-    echo "SKIP: strace is not available."
-    exit 0
+    skip_or_fail_ci "strace is not available for the PID1 syscall trace smoke check."
 fi
 
 if ! command -v unshare >/dev/null 2>&1; then
-    echo "SKIP: unshare is not available."
-    exit 0
+    skip_or_fail_ci "unshare is not available for the PID1 syscall trace smoke check."
 fi
 
 if ! unshare --user --map-root-user --pid --fork true >/dev/null 2>&1; then
-    echo "SKIP: unprivileged user namespace support is unavailable."
-    exit 0
+    skip_or_fail_ci "unprivileged user namespace support is unavailable for the PID1 syscall trace smoke check."
 fi
 
 run() {
