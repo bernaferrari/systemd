@@ -13,9 +13,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub type Result<T> = std::result::Result<T, i32>;
 
-pub const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-pub const NEG_ENOBUFS: i32 = -(libc::ENOBUFS as i32);
-pub const NEG_EREMOTE: i32 = -(libc::EREMOTE as i32);
+pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_ENOBUFS: i32 = -libc::ENOBUFS;
+pub const NEG_EREMOTE: i32 = -libc::EREMOTE;
+const NEG_EAGAIN: i32 = -libc::EAGAIN;
+const NEG_ECONNREFUSED: i32 = -libc::ECONNREFUSED;
+const NEG_EMSGSIZE: i32 = -libc::EMSGSIZE;
+const NEG_ENOENT: i32 = -libc::ENOENT;
+const NEG_ENOTDIR: i32 = -libc::ENOTDIR;
 pub const LONG_LINE_MAX: usize = 48 * 1024;
 pub const LINE_MAX: usize = 2048;
 pub const SNDBUF_SIZE: usize = 8 * 1024 * 1024;
@@ -74,10 +79,12 @@ pub fn journal_print(priority: i32, message: &str) -> Result<Vec<JournalField>> 
 
 pub fn journal_send(fields: &[JournalField], identifier: Option<&str>) -> Result<Vec<u8>> {
     let mut owned = fields.to_vec();
-    if identifier.is_some() && !owned.iter().any(|f| f.name == "SYSLOG_IDENTIFIER") {
+    if let Some(identifier) =
+        identifier.filter(|_| !owned.iter().any(|f| f.name == "SYSLOG_IDENTIFIER"))
+    {
         owned.push(JournalField {
             name: "SYSLOG_IDENTIFIER".into(),
-            value: identifier.unwrap().as_bytes().to_vec(),
+            value: identifier.as_bytes().to_vec(),
         });
     }
     encode_fields(&owned)
@@ -150,13 +157,13 @@ pub fn sd_journal_stream_fd_with_namespace(
     level_prefix: i32,
 ) -> Result<RawFd> {
     let mut name_space = name_space;
-    if let Some(ns) = name_space {
-        if let Ok(env_ns) = env::var("LOG_NAMESPACE") {
-            if ns != env_ns {
-                return Err(NEG_EREMOTE);
-            }
-            name_space = None;
+    if let Some(ns) = name_space
+        && let Ok(env_ns) = env::var("LOG_NAMESPACE")
+    {
+        if ns != env_ns {
+            return Err(NEG_EREMOTE);
         }
+        name_space = None;
     }
 
     let path = journal_stream_path(name_space, env::var("LOG_NAMESPACE").ok().as_deref())?;
@@ -209,8 +216,7 @@ fn sd_journal_sendv_to_path(fields: &[JournalField], path: &str) -> Result<i32> 
     let payload = journal_send(fields, identifier.as_deref())?;
     match journal_send_internal(path, &payload) {
         Ok(()) => Ok(0),
-        Err(errno) if matches!(errno, x if x == -libc::ENOENT || x == -libc::ECONNREFUSED || x == -libc::ENOTDIR) =>
-        {
+        Err(NEG_ENOENT | NEG_ECONNREFUSED | NEG_ENOTDIR) => {
             let _ = std::io::stderr().write_all(&payload);
             Ok(0)
         }
@@ -225,9 +231,7 @@ fn journal_send_internal(path: &str, payload: &[u8]) -> Result<()> {
 
     match send_journal_payload(path, payload) {
         Ok(()) => Ok(()),
-        Err(errno) if matches!(errno, x if x == -libc::EMSGSIZE || x == -libc::ENOBUFS || x == -libc::EAGAIN) => {
-            send_payload_via_fd(path, payload)
-        }
+        Err(NEG_EMSGSIZE | NEG_ENOBUFS | NEG_EAGAIN) => send_payload_via_fd(path, payload),
         Err(errno) => Err(errno),
     }
 }

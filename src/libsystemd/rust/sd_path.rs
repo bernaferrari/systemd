@@ -72,11 +72,11 @@ impl PathContext {
             | SdPath::SearchShared
             | SdPath::SearchConfiguration
             | SdPath::SystemSearchConfiguration
-            | SdPath::SearchBinariesDefault => {
-                let mut values = self.lookup_strv(ty, suffix)?;
-                let result = values.drain(..).next().ok_or(PathError::NoSuchPath);
-                result
-            }
+            | SdPath::SearchBinariesDefault => self
+                .lookup_strv(ty, suffix)?
+                .into_iter()
+                .next()
+                .ok_or(PathError::NoSuchPath),
             _ => {
                 let base = self.base_path(ty)?;
                 Ok(apply_suffix(&base, suffix))
@@ -129,21 +129,21 @@ impl PathContext {
             SdPath::SystemConfiguration => Ok("/etc".into()),
             SdPath::SystemRuntime => Ok("/run".into()),
             SdPath::SystemStatePrivate => Ok("/var/lib".into()),
-            SdPath::UserBinaries => self.from_home_dir(None, ".local/bin"),
-            SdPath::UserShared => self.from_home_dir(Some("XDG_DATA_HOME"), ".local/share"),
-            SdPath::UserConfiguration => self.from_home_dir(Some("XDG_CONFIG_HOME"), ".config"),
-            SdPath::UserRuntime => self.from_environment(Some("XDG_RUNTIME_DIR"), None),
-            SdPath::UserStateCache => self.from_home_dir(Some("XDG_CACHE_HOME"), ".cache"),
-            SdPath::UserStatePrivate => self.from_home_dir(Some("XDG_STATE_HOME"), ".local/state"),
+            SdPath::UserBinaries => self.home_path(None, ".local/bin"),
+            SdPath::UserShared => self.home_path(Some("XDG_DATA_HOME"), ".local/share"),
+            SdPath::UserConfiguration => self.home_path(Some("XDG_CONFIG_HOME"), ".config"),
+            SdPath::UserRuntime => self.environment_path(Some("XDG_RUNTIME_DIR"), None),
+            SdPath::UserStateCache => self.home_path(Some("XDG_CACHE_HOME"), ".cache"),
+            SdPath::UserStatePrivate => self.home_path(Some("XDG_STATE_HOME"), ".local/state"),
             SdPath::User => self.home_string(),
-            SdPath::UserDocuments => self.from_xdg_user_dir("XDG_DOCUMENTS_DIR", None),
-            SdPath::UserMusic => self.from_xdg_user_dir("XDG_MUSIC_DIR", None),
-            SdPath::UserPictures => self.from_xdg_user_dir("XDG_PICTURES_DIR", None),
-            SdPath::UserVideos => self.from_xdg_user_dir("XDG_VIDEOS_DIR", None),
-            SdPath::UserDownload => self.from_xdg_user_dir("XDG_DOWNLOAD_DIR", None),
-            SdPath::UserPublic => self.from_xdg_user_dir("XDG_PUBLICSHARE_DIR", None),
-            SdPath::UserTemplates => self.from_xdg_user_dir("XDG_TEMPLATES_DIR", None),
-            SdPath::UserDesktop => self.from_xdg_user_dir("XDG_DESKTOP_DIR", Some("Desktop")),
+            SdPath::UserDocuments => self.xdg_user_dir_path("XDG_DOCUMENTS_DIR", None),
+            SdPath::UserMusic => self.xdg_user_dir_path("XDG_MUSIC_DIR", None),
+            SdPath::UserPictures => self.xdg_user_dir_path("XDG_PICTURES_DIR", None),
+            SdPath::UserVideos => self.xdg_user_dir_path("XDG_VIDEOS_DIR", None),
+            SdPath::UserDownload => self.xdg_user_dir_path("XDG_DOWNLOAD_DIR", None),
+            SdPath::UserPublic => self.xdg_user_dir_path("XDG_PUBLICSHARE_DIR", None),
+            SdPath::UserTemplates => self.xdg_user_dir_path("XDG_TEMPLATES_DIR", None),
+            SdPath::UserDesktop => self.xdg_user_dir_path("XDG_DESKTOP_DIR", Some("Desktop")),
             SdPath::SystemdUtil => Ok("/usr/lib/systemd".into()),
             SdPath::SearchBinaries
             | SdPath::SearchShared
@@ -153,20 +153,20 @@ impl PathContext {
         }
     }
 
-    fn from_environment(&self, env_name: Option<&str>, fallback: Option<&str>) -> Result<String> {
-        if let Some(name) = env_name {
-            if let Some(value) = self.env.get(name).filter(|value| is_absolute(value)) {
-                return Ok(value.clone());
-            }
+    fn environment_path(&self, env_name: Option<&str>, fallback: Option<&str>) -> Result<String> {
+        if let Some(name) = env_name
+            && let Some(value) = self.env.get(name).filter(|value| is_absolute(value))
+        {
+            return Ok(value.clone());
         }
         fallback.map(ToOwned::to_owned).ok_or(PathError::NoSuchPath)
     }
 
-    fn from_home_dir(&self, env_name: Option<&str>, suffix: &str) -> Result<String> {
-        if let Some(name) = env_name {
-            if let Some(value) = self.env.get(name).filter(|value| is_absolute(value)) {
-                return Ok(value.clone());
-            }
+    fn home_path(&self, env_name: Option<&str>, suffix: &str) -> Result<String> {
+        if let Some(name) = env_name
+            && let Some(value) = self.env.get(name).filter(|value| is_absolute(value))
+        {
+            return Ok(value.clone());
         }
         Ok(join_and_simplify(
             self.home_dir.as_ref().ok_or(PathError::MissingHome)?,
@@ -174,7 +174,7 @@ impl PathContext {
         ))
     }
 
-    fn from_xdg_user_dir(&self, field: &str, desktop_fallback: Option<&str>) -> Result<String> {
+    fn xdg_user_dir_path(&self, field: &str, desktop_fallback: Option<&str>) -> Result<String> {
         if let Some(value) = self.xdg_user_dirs.get(field) {
             if value == "$HOME" {
                 return self.home_string();
@@ -230,11 +230,7 @@ impl PathContext {
             return Ok(values);
         }
 
-        if values.is_empty() {
-            values.extend(defaults.iter().map(|value| (*value).to_string()));
-        } else {
-            values.extend(defaults.iter().map(|value| (*value).to_string()));
-        }
+        values.extend(defaults.iter().map(|value| (*value).to_string()));
 
         if let Some(home) = self.home_candidate(env_home, home_suffix) {
             values.insert(0, home);
@@ -251,10 +247,10 @@ impl PathContext {
     }
 
     fn home_candidate(&self, env_home: Option<&str>, home_suffix: Option<&str>) -> Option<String> {
-        if let Some(name) = env_home {
-            if let Some(value) = self.env.get(name).filter(|value| is_absolute(value)) {
-                return Some(value.clone());
-            }
+        if let Some(name) = env_home
+            && let Some(value) = self.env.get(name).filter(|value| is_absolute(value))
+        {
+            return Some(value.clone());
         }
 
         home_suffix.and_then(|suffix| {

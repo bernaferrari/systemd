@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 
 use crate::sd_journal_file::Header;
 
-const NEG_EINVAL: i32 = -(libc::EINVAL as i32);
-const NEG_EIO: i32 = -(libc::EIO as i32);
+const NEG_EINVAL: i32 = -libc::EINVAL;
+const NEG_EIO: i32 = -libc::EIO;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VacuumInfo {
@@ -67,8 +67,7 @@ fn header_n_entries_offset() -> usize {
 }
 
 fn journal_file_empty(path: &Path) -> Result<bool, i32> {
-    let meta =
-        fs::metadata(path).map_err(|e| -(e.raw_os_error().unwrap_or(libc::ENOENT) as i32))?;
+    let meta = fs::metadata(path).map_err(|e| -e.raw_os_error().unwrap_or(libc::ENOENT))?;
     let min_header = std::mem::size_of::<Header>() as u64;
     if meta.len() < min_header {
         return Ok(true);
@@ -95,14 +94,15 @@ fn patch_realtime(meta: &fs::Metadata, parsed_realtime: u64) -> u64 {
     }
 
     let mut realtime = parsed_realtime;
-    for candidate in [
+    for ts in [
         to_usec(meta.ctime(), meta.ctime_nsec()),
         to_usec(meta.atime(), meta.atime_nsec()),
         to_usec(meta.mtime(), meta.mtime_nsec()),
-    ] {
-        if let Some(ts) = candidate {
-            realtime = realtime.min(ts);
-        }
+    ]
+    .into_iter()
+    .flatten()
+    {
+        realtime = realtime.min(ts);
     }
 
     realtime
@@ -194,12 +194,10 @@ pub fn journal_directory_vacuum(
         0
     };
 
-    for entry in
-        fs::read_dir(directory).map_err(|e| -(e.raw_os_error().unwrap_or(libc::ENOENT) as i32))?
+    for entry in fs::read_dir(directory)
+        .map_err(|e| -e.raw_os_error().unwrap_or(libc::ENOENT))?
+        .flatten()
     {
-        let Ok(entry) = entry else {
-            continue;
-        };
         let path = entry.path();
         let Ok(meta) = entry.metadata() else {
             continue;
@@ -217,7 +215,7 @@ pub fn journal_directory_vacuum(
                         report.deleted.push(name);
                     }
                     Err(err) if err.raw_os_error() == Some(libc::ENOENT) => {}
-                    Err(err) => return Err(-(err.raw_os_error().unwrap_or(libc::EIO) as i32)),
+                    Err(err) => return Err(-err.raw_os_error().unwrap_or(libc::EIO)),
                 },
                 Ok(false) => {
                     info.realtime = patch_realtime(&meta, info.realtime);
@@ -254,7 +252,7 @@ pub fn journal_directory_vacuum(
                 archived_usage = archived_usage.saturating_sub(info.usage);
             }
             Err(err) if err.raw_os_error() == Some(libc::ENOENT) => {}
-            Err(err) => return Err(-(err.raw_os_error().unwrap_or(libc::EIO) as i32)),
+            Err(err) => return Err(-err.raw_os_error().unwrap_or(libc::EIO)),
         }
     }
 
