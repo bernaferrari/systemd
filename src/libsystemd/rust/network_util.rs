@@ -7,6 +7,7 @@ use std::str::FromStr;
 pub type Result<T> = std::result::Result<T, i32>;
 
 pub const NEG_EINVAL: i32 = -libc::EINVAL;
+pub const NEG_ENODATA: i32 = -libc::ENODATA;
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -278,7 +279,7 @@ pub fn network_link_get_operational_state(
         .per_link_operational_state
         .get(&ifindex)
         .copied()
-        .ok_or(NEG_EINVAL)
+        .ok_or(NEG_ENODATA)
 }
 
 pub fn network_is_online(snapshot: &NetworkSnapshot) -> bool {
@@ -397,6 +398,22 @@ mod tests {
         assert_eq!(
             network_link_get_operational_state(&snapshot, 2).unwrap(),
             LinkOperationalState::Carrier
+        );
+    }
+
+    #[test]
+    fn reports_missing_operational_state_as_no_data() {
+        assert_eq!(
+            network_link_get_operational_state(&NetworkSnapshot::default(), 2),
+            Err(NEG_ENODATA)
+        );
+    }
+
+    #[test]
+    fn rejects_nonpositive_link_indexes() {
+        assert_eq!(
+            network_link_get_operational_state(&NetworkSnapshot::default(), 0),
+            Err(NEG_EINVAL)
         );
     }
 }

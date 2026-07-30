@@ -648,7 +648,7 @@
     "src/libsystemd/rust/sd_daemon_checks.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 88
+      "unsafe_sites": 94
     },
     "src/libsystemd/rust/sd_device_util.rs": {
       "missing_safety": 0,

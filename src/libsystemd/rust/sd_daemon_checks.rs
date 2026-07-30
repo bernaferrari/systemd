@@ -27,33 +27,6 @@ pub struct PassedFd {
     pub name: String,
 }
 
-#[cfg(target_os = "linux")]
-#[repr(C)]
-struct MqAttr {
-    mq_flags: libc::c_long,
-    mq_maxmsg: libc::c_long,
-    mq_msgsize: libc::c_long,
-    mq_curmsgs: libc::c_long,
-}
-
-#[cfg(target_os = "linux")]
-type MqdT = libc::c_int;
-
-#[cfg(target_os = "linux")]
-// SAFETY: these declarations mirror Linux librt's mqueue ABI and use the local
-// repr(C) mq_attr layout; all call sites validate names, descriptors, and slots.
-unsafe extern "C" {
-    fn mq_getattr(mqdes: MqdT, attr: *mut MqAttr) -> libc::c_int;
-    fn mq_open(
-        name: *const libc::c_char,
-        oflag: libc::c_int,
-        mode: libc::c_uint,
-        attr: *const MqAttr,
-    ) -> MqdT;
-    fn mq_close(mqdes: MqdT) -> libc::c_int;
-    fn mq_unlink(name: *const libc::c_char) -> libc::c_int;
-}
-
 pub const SD_LISTEN_FDS_START: RawFd = 3;
 const LISTEN_ENV_VARS: [&str; 4] = [
     "LISTEN_PID",
@@ -63,6 +36,46 @@ const LISTEN_ENV_VARS: [&str; 4] = [
 ];
 const WATCHDOG_ENV_VARS: [&str; 2] = ["WATCHDOG_USEC", "WATCHDOG_PID"];
 const NOTIFY_ENV_VAR: &str = "NOTIFY_SOCKET";
+
+/// Parse a PID with the same grammar and validity checks as C `parse_pid()`.
+fn parse_pid(value: &str, variable: &'static str) -> Result<libc::pid_t> {
+    let value = CString::new(value).map_err(|_| DaemonCheckError::Parse(variable))?;
+    let mut parsed = 0;
+    // SAFETY: `value` is a live NUL-terminated C string and `parsed` is writable.
+    let r = unsafe { systemd_basic_rs::parse_util::rs_safe_atolu(value.as_ptr(), &mut parsed) };
+    if r < 0 {
+        return Err(DaemonCheckError::Parse(variable));
+    }
+    let pid = libc::pid_t::try_from(parsed).map_err(|_| DaemonCheckError::Parse(variable))?;
+    if pid <= 0 {
+        return Err(DaemonCheckError::Parse(variable));
+    }
+    Ok(pid)
+}
+
+/// Parse an i32 with C `safe_atoi()`'s base-zero grammar.
+fn parse_i32(value: &str, variable: &'static str) -> Result<i32> {
+    let value = CString::new(value).map_err(|_| DaemonCheckError::Parse(variable))?;
+    let mut parsed = 0;
+    // SAFETY: `value` is a live NUL-terminated C string and `parsed` is writable.
+    let r = unsafe { systemd_basic_rs::parse_util::rs_safe_atoi(value.as_ptr(), &mut parsed) };
+    if r < 0 {
+        return Err(DaemonCheckError::Parse(variable));
+    }
+    Ok(parsed)
+}
+
+/// Parse a u64 with C `safe_atou64()`'s base-zero grammar.
+fn parse_u64(value: &str, variable: &'static str) -> Result<u64> {
+    let value = CString::new(value).map_err(|_| DaemonCheckError::Parse(variable))?;
+    let mut parsed = 0;
+    // SAFETY: `value` is a live NUL-terminated C string and `parsed` is writable.
+    let r = unsafe { systemd_basic_rs::parse_util::rs_safe_atou64(value.as_ptr(), &mut parsed) };
+    if r < 0 {
+        return Err(DaemonCheckError::Parse(variable));
+    }
+    Ok(parsed)
+}
 
 fn collect_listen_env() -> BTreeMap<String, String> {
     LISTEN_ENV_VARS
@@ -121,9 +134,7 @@ pub fn listen_fds_from_env(
     own_pidfdid: Option<u64>,
 ) -> Result<Vec<RawFd>> {
     let listen_pid = match env.get("LISTEN_PID") {
-        Some(value) => value
-            .parse::<libc::pid_t>()
-            .map_err(|_| DaemonCheckError::Parse("LISTEN_PID"))?,
+        Some(value) => parse_pid(value, "LISTEN_PID")?,
         None => return Ok(Vec::new()),
     };
 
@@ -132,9 +143,7 @@ pub fn listen_fds_from_env(
     }
 
     if let Some(expected) = env.get("LISTEN_PIDFDID") {
-        let expected = expected
-            .parse::<u64>()
-            .map_err(|_| DaemonCheckError::Parse("LISTEN_PIDFDID"))?;
+        let expected = parse_u64(expected, "LISTEN_PIDFDID")?;
 
         if let Some(actual) = own_pidfdid
             && expected != actual
@@ -144,9 +153,7 @@ pub fn listen_fds_from_env(
     }
 
     let n_fds = match env.get("LISTEN_FDS") {
-        Some(value) => value
-            .parse::<i32>()
-            .map_err(|_| DaemonCheckError::Parse("LISTEN_FDS"))?,
+        Some(value) => parse_i32(value, "LISTEN_FDS")?,
         None => return Ok(Vec::new()),
     };
 
@@ -199,6 +206,13 @@ pub fn listen_fds_with_names_from_env(
     own_pidfdid: Option<u64>,
 ) -> Result<Vec<PassedFd>> {
     let fds = listen_fds_from_env(env, current_pid, own_pidfdid)?;
+    if fds.is_empty() {
+        // The C implementation returns early when sd_listen_fds() yields no
+        // descriptors, without requiring a stray LISTEN_FDNAMES value to be
+        // well-formed or empty.
+        return Ok(Vec::new());
+    }
+
     let names = env
         .get("LISTEN_FDNAMES")
         .map(|value| value.split(':').map(ToOwned::to_owned).collect::<Vec<_>>())
@@ -253,9 +267,7 @@ pub fn watchdog_enabled_from_env(
     current_pid: libc::pid_t,
 ) -> Result<Option<u64>> {
     let usec = match env.get("WATCHDOG_USEC") {
-        Some(value) => value
-            .parse::<u64>()
-            .map_err(|_| DaemonCheckError::Parse("WATCHDOG_USEC"))?,
+        Some(value) => parse_u64(value, "WATCHDOG_USEC")?,
         None => return Ok(None),
     };
 
@@ -264,9 +276,7 @@ pub fn watchdog_enabled_from_env(
     }
 
     if let Some(pid) = env.get("WATCHDOG_PID") {
-        let pid = pid
-            .parse::<libc::pid_t>()
-            .map_err(|_| DaemonCheckError::Parse("WATCHDOG_PID"))?;
+        let pid = parse_pid(pid, "WATCHDOG_PID")?;
         if pid != current_pid {
             return Ok(None);
         }
@@ -482,25 +492,34 @@ pub fn is_socket_inet(
     sd_is_socket_inet(fd, family, sock_type, listening, port)
 }
 
-pub fn sd_is_socket_sockaddr(
+/// Check whether `fd` is an internet socket matching `addr`.
+///
+/// # Safety
+///
+/// `addr` must be null or point to a live socket-address object readable for
+/// `addr_len` bytes for the duration of this call. When non-null, it must be
+/// properly aligned for its declared address family.
+pub unsafe fn sd_is_socket_sockaddr(
     fd: RawFd,
     sock_type: Option<i32>,
-    addr: Option<&libc::sockaddr>,
+    addr: *const libc::sockaddr,
     addr_len: usize,
     listening: Option<bool>,
 ) -> Result<bool> {
     if fd < 0 {
         return Err(DaemonCheckError::BadFd);
     }
-    if addr.is_none() {
+    if addr.is_null() {
         return Err(DaemonCheckError::InvalidInput("addr"));
     }
     if addr_len < size_of::<libc::sa_family_t>() {
         return Err(DaemonCheckError::InvalidInput("addr_len"));
     }
 
-    let addr = addr.unwrap();
-    match addr.sa_family as i32 {
+    // SAFETY: upheld by this function's caller: `addr` designates at least a
+    // `sa_family_t`, and `read_unaligned` does not impose stronger alignment.
+    let addr_family = unsafe { std::ptr::read_unaligned(addr.cast::<libc::sa_family_t>()) } as i32;
+    match addr_family {
         libc::AF_INET | libc::AF_INET6 => {}
         _ => return Err(DaemonCheckError::InvalidInput("family")),
     }
@@ -514,11 +533,11 @@ pub fn sd_is_socket_sockaddr(
         return Err(DaemonCheckError::InvalidInput("sockaddr"));
     }
 
-    if sockaddr_family(&storage) != addr.sa_family as i32 {
+    if sockaddr_family(&storage) != addr_family {
         return Ok(false);
     }
 
-    match addr.sa_family as i32 {
+    match addr_family {
         libc::AF_INET => {
             if addr_len < size_of::<libc::sockaddr_in>()
                 || actual_len < size_of::<libc::sockaddr_in>() as libc::socklen_t
@@ -526,7 +545,7 @@ pub fn sd_is_socket_sockaddr(
                 return Err(DaemonCheckError::InvalidInput("addr_len"));
             }
             // SAFETY: arguments satisfy the libc `sockaddr_in` contract and any passed pointers remain valid for the call.
-            let expected = unsafe { &*(addr as *const _ as *const libc::sockaddr_in) };
+            let expected = unsafe { &*(addr as *const libc::sockaddr_in) };
             // SAFETY: arguments satisfy the libc `sockaddr_in` contract and any passed pointers remain valid for the call.
             let actual = unsafe { &*(&storage as *const _ as *const libc::sockaddr_in) };
             if expected.sin_port != 0 && actual.sin_port != expected.sin_port {
@@ -541,7 +560,7 @@ pub fn sd_is_socket_sockaddr(
                 return Err(DaemonCheckError::InvalidInput("addr_len"));
             }
             // SAFETY: arguments satisfy the libc `sockaddr_in6` contract and any passed pointers remain valid for the call.
-            let expected = unsafe { &*(addr as *const _ as *const libc::sockaddr_in6) };
+            let expected = unsafe { &*(addr as *const libc::sockaddr_in6) };
             // SAFETY: arguments satisfy the libc `sockaddr_in6` contract and any passed pointers remain valid for the call.
             let actual = unsafe { &*(&storage as *const _ as *const libc::sockaddr_in6) };
 
@@ -561,14 +580,18 @@ pub fn sd_is_socket_sockaddr(
     }
 }
 
-pub fn is_socket_sockaddr(
+/// # Safety
+///
+/// This has the same raw-address requirements as `sd_is_socket_sockaddr()`.
+pub unsafe fn is_socket_sockaddr(
     fd: RawFd,
     sock_type: Option<i32>,
-    addr: Option<&libc::sockaddr>,
+    addr: *const libc::sockaddr,
     addr_len: usize,
     listening: Option<bool>,
 ) -> Result<bool> {
-    sd_is_socket_sockaddr(fd, sock_type, addr, addr_len, listening)
+    // SAFETY: this wrapper preserves the raw address contract documented above.
+    unsafe { sd_is_socket_sockaddr(fd, sock_type, addr, addr_len, listening) }
 }
 
 pub fn sd_is_socket_unix(
@@ -617,10 +640,11 @@ pub fn is_socket_unix(
 #[cfg(target_os = "linux")]
 pub fn sd_is_mq(fd: RawFd, path: Option<&Path>) -> Result<bool> {
     let fd = validate_fd(fd)?;
-    // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-    let mut attr = unsafe { zeroed::<MqAttr>() };
-    // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-    let r = unsafe { mq_getattr(fd as MqdT, &mut attr) };
+    // SAFETY: `libc::mq_attr` and `mq_getattr` come from the target libc ABI;
+    // `fd` was validated and `attr` is writable for the duration of the call.
+    let mut attr = unsafe { zeroed::<libc::mq_attr>() };
+    // SAFETY: `fd` was validated and `attr` is a live writable target-libc value.
+    let r = unsafe { libc::mq_getattr(fd, &mut attr) };
     if r < 0 {
         let errno = last_errno();
         if errno == libc::EBADF {
@@ -656,20 +680,26 @@ pub fn is_mq(fd: RawFd, path: Option<&Path>) -> Result<bool> {
 }
 
 fn is_socket_internal(fd: RawFd, sock_type: Option<i32>, listening: Option<bool>) -> Result<bool> {
+    if fd < 0 {
+        return Err(DaemonCheckError::BadFd);
+    }
+    if let Some(sock_type) = sock_type
+        && sock_type < 0
+    {
+        return Err(DaemonCheckError::InvalidInput("type"));
+    }
+
     let fd_stat = fstat(fd)?;
     if (fd_stat.st_mode & libc::S_IFMT) != libc::S_IFSOCK {
         return Ok(false);
     }
 
-    if let Some(sock_type) = sock_type {
-        if sock_type < 0 {
-            return Err(DaemonCheckError::InvalidInput("type"));
-        }
-        if sock_type != 0 {
-            let actual = getsockopt_int(fd, libc::SO_TYPE)?;
-            if actual != sock_type {
-                return Ok(false);
-            }
+    if let Some(sock_type) = sock_type
+        && sock_type != 0
+    {
+        let actual = getsockopt_int(fd, libc::SO_TYPE)?;
+        if actual != sock_type {
+            return Ok(false);
         }
     }
 
@@ -1088,6 +1118,31 @@ mod tests {
     }
 
     #[test]
+    fn activation_environment_uses_systemd_numeric_grammars() {
+        let env = BTreeMap::from([
+            ("LISTEN_PID".into(), " 010".into()),
+            ("LISTEN_PIDFDID".into(), "0x2a".into()),
+            ("LISTEN_FDS".into(), "0b10".into()),
+        ]);
+        assert_eq!(listen_fds_from_env(&env, 8, Some(42)).unwrap(), vec![3, 4]);
+
+        let invalid_pid = BTreeMap::from([
+            ("LISTEN_PID".into(), "0".into()),
+            ("LISTEN_FDS".into(), "1".into()),
+        ]);
+        assert!(matches!(
+            listen_fds_from_env(&invalid_pid, 8, None),
+            Err(DaemonCheckError::Parse("LISTEN_PID"))
+        ));
+
+        let watchdog = BTreeMap::from([
+            ("WATCHDOG_USEC".into(), "0x10".into()),
+            ("WATCHDOG_PID".into(), "010".into()),
+        ]);
+        assert_eq!(watchdog_enabled_from_env(&watchdog, 8).unwrap(), Some(16));
+    }
+
+    #[test]
     fn listen_fds_with_names_defaults_to_unknown() {
         let env = BTreeMap::from([
             ("LISTEN_PID".into(), "5".into()),
@@ -1096,6 +1151,16 @@ mod tests {
         let named = listen_fds_with_names_from_env(&env, 5, None).unwrap();
         assert_eq!(named[0].name, "unknown");
         assert_eq!(named[1].fd, 4);
+    }
+
+    #[test]
+    fn listen_fds_with_names_ignores_stray_names_without_descriptors() {
+        let env = BTreeMap::from([("LISTEN_FDNAMES".into(), "stale".into())]);
+        assert!(
+            listen_fds_with_names_from_env(&env, 5, None)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1393,17 +1458,18 @@ mod tests {
             sin_zero: [0; 8],
         };
 
-        assert!(
+        // SAFETY: `addr` remains live and is a correctly sized/aligned IPv4
+        // socket address for the duration of this synchronous call.
+        assert!(unsafe {
             sd_is_socket_sockaddr(
                 listener.as_raw_fd(),
                 Some(libc::SOCK_STREAM),
-                // SAFETY: arguments satisfy the libc `sockaddr` contract and any passed pointers remain valid for the call.
-                Some(unsafe { &*(&addr as *const _ as *const libc::sockaddr) }),
+                &addr as *const _ as *const libc::sockaddr,
                 std::mem::size_of::<libc::sockaddr_in>(),
                 Some(true),
             )
             .unwrap()
-        );
+        });
     }
 
     #[cfg(target_os = "linux")]
@@ -1482,17 +1548,18 @@ mod tests {
             sin_zero: [0; 8],
         };
 
-        assert!(
+        // SAFETY: `addr` remains live and is a correctly sized/aligned IPv4
+        // socket address for the duration of this synchronous call.
+        assert!(unsafe {
             sd_is_socket_sockaddr(
                 listener.as_raw_fd(),
                 Some(libc::SOCK_STREAM),
-                // SAFETY: arguments satisfy the libc `sockaddr` contract and any passed pointers remain valid for the call.
-                Some(unsafe { &*(&addr as *const _ as *const libc::sockaddr) }),
+                &addr as *const _ as *const libc::sockaddr,
                 std::mem::size_of::<libc::sockaddr_in>(),
                 Some(true),
             )
             .unwrap()
-        );
+        });
     }
 
     #[cfg(target_os = "linux")]
@@ -1510,6 +1577,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn socket_check_rejects_negative_type_before_classifying_fd() {
+        let path = unique_path("socket-type-validation");
+        fs::write(&path, b"data").unwrap();
+        let file = File::open(&path).unwrap();
+        assert!(matches!(
+            sd_is_socket(file.as_raw_fd(), None, Some(-1), None),
+            Err(DaemonCheckError::InvalidInput("type"))
+        ));
+        let _ = fs::remove_file(path);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn mq_check_matches_path_and_descriptor() {
@@ -1523,11 +1602,11 @@ mod tests {
         let c_name = CString::new(name.clone()).unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
         let fd = unsafe {
-            mq_open(
+            libc::mq_open(
                 c_name.as_ptr(),
                 libc::O_CREAT | libc::O_RDWR | libc::O_CLOEXEC,
                 0o600,
-                std::ptr::null::<MqAttr>(),
+                std::ptr::null::<libc::mq_attr>(),
             )
         };
         assert_ne!(fd, -1);
@@ -1536,8 +1615,8 @@ mod tests {
         assert!(result);
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
         unsafe {
-            mq_close(fd);
-            mq_unlink(c_name.as_ptr());
+            libc::mq_close(fd);
+            libc::mq_unlink(c_name.as_ptr());
         }
     }
 
@@ -1554,11 +1633,11 @@ mod tests {
         let c_name = CString::new(name.clone()).unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
         let fd = unsafe {
-            mq_open(
+            libc::mq_open(
                 c_name.as_ptr(),
                 libc::O_CREAT | libc::O_RDWR | libc::O_CLOEXEC,
                 0o600,
-                std::ptr::null::<MqAttr>(),
+                std::ptr::null::<libc::mq_attr>(),
             )
         };
         assert_ne!(fd, -1);
@@ -1571,8 +1650,8 @@ mod tests {
 
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
         unsafe {
-            mq_close(fd);
-            mq_unlink(c_name.as_ptr());
+            libc::mq_close(fd);
+            libc::mq_unlink(c_name.as_ptr());
         }
     }
 

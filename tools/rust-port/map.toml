@@ -1971,14 +1971,20 @@ sync_status = "needs_review"
 #
 
 [bus_address_escape]
-c_paths = ["src/libsystemd/sd-bus/bus-internal.c", "src/libsystemd/sd-bus/bus-internal.h"]
+c_paths = [
+    "src/libsystemd/sd-bus/bus-internal.c",
+    "src/libsystemd/sd-bus/bus-internal.h",
+    "src/basic/alloc-util.h",
+    "src/basic/hexdecoct.c",
+    "src/fundamental/string-util.h",
+]
 rust_file = "src/libsystemd/rust/bus_address_escape.rs"
 header_file = "src/libsystemd/sd-bus/bus-internal.h"
 status = "in-progress"
 tier = 3
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored percent escaping to current bus-internal source/private declaration; behavioral completion remains unclaimed."
+notes = "2026-07-30 static source review: bus-internal.c/bus-internal.h remain the private C authority; alloc-util.h, hexdecoct.c, and fundamental string-util.h provide the reviewed allocation, lowercase-hex, and ASCII predicates. The Rust helper uses CStr for C-string byte/NUL boundaries, lowercase percent hex, and distinct capacity-overflow/allocation-failure results. Its unit coverage includes raw non-UTF-8 bytes, empty input, safe punctuation, escaping, and CStr's interior-NUL rejection. C remains production authority; no Rust ABI/export or runtime-path parity is claimed."
 
 [bus_common_errors]
 c_file = "src/libsystemd/sd-bus/bus-common-errors.c"
@@ -2083,11 +2089,12 @@ sync_status = "needs_review"
 [network_util]
 c_file = "src/libsystemd/sd-network/network-util.c"
 rust_file = "src/libsystemd/rust/network_util.rs"
-header_file = "src/systemd/sd-network.h"
+header_file = "src/libsystemd/sd-network/network-util.h"
 status = "in-progress"
 tier = 3
 symbols = 3
 sync_status = "needs_review"
+notes = "2026-07-30 static source review: enum discriminants, string tables, range parsing, and online fallback were checked against network-util.c/network-util.h; the missing-state fixture now returns -ENODATA rather than -EINVAL. C remains production authority; filesystem-backed sd-network error propagation, C ABI, and runtime integration parity are unclaimed."
 
 [sd_daemon_checks]
 c_file = "src/libsystemd/sd-daemon/sd-daemon.c"
@@ -2097,6 +2104,7 @@ status = "in-progress"
 tier = 3
 symbols = 3
 sync_status = "needs_review"
+notes = "2026-07-30 static source review: the shadow uses target-libc mq_attr/mqueue declarations (rather than an undersized handwritten ABI layout), systemd safe_ato* grammar with valid-PID checks, and explicit raw socket-address safety requirements. The public sd-daemon C ABI and production notification lifecycle remain C-authoritative; notify protocol, credentials, FD passing, barriers, vsock fallback, pidfd identity, and C/R runtime validation remain P2."
 
 [sd_id128_strings]
 c_file = "src/libsystemd/sd-id128/sd-id128.c"
