@@ -45,16 +45,25 @@ pub enum RebootOnError {
     Auto,
 }
 
-impl RebootOnError {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for RebootOnError {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "no" => Some(RebootOnError::No),
-            "yes" => Some(RebootOnError::Yes),
-            "auto" => Some(RebootOnError::Auto),
-            _ => None,
+            "no" => Ok(Self::No),
+            "yes" => Ok(Self::Yes),
+            "auto" => Ok(Self::Auto),
+            _ => Err(()),
         }
     }
+}
 
+/// Parse the `reboot-on-error` setting, preserving the C-style optional lookup API.
+pub fn reboot_on_error_from_string(s: &str) -> Option<RebootOnError> {
+    s.parse().ok()
+}
+
+impl RebootOnError {
     pub fn to_str(self) -> &'static str {
         match self {
             RebootOnError::No => "no",
@@ -287,10 +296,12 @@ mod tests {
 
     #[test]
     fn test_reboot_on_error_from_str() {
-        assert_eq!(RebootOnError::from_str("no"), Some(RebootOnError::No));
-        assert_eq!(RebootOnError::from_str("yes"), Some(RebootOnError::Yes));
-        assert_eq!(RebootOnError::from_str("auto"), Some(RebootOnError::Auto));
-        assert_eq!(RebootOnError::from_str("maybe"), None);
+        assert_eq!("no".parse(), Ok(RebootOnError::No));
+        assert_eq!("yes".parse(), Ok(RebootOnError::Yes));
+        assert_eq!("auto".parse(), Ok(RebootOnError::Auto));
+        assert_eq!("maybe".parse::<RebootOnError>(), Err(()));
+        assert_eq!(reboot_on_error_from_string("yes"), Some(RebootOnError::Yes));
+        assert_eq!(reboot_on_error_from_string("maybe"), None);
     }
 
     #[test]

@@ -25,16 +25,6 @@ pub enum EchoMode {
 }
 
 impl EchoMode {
-    /// Parse echo mode from string.
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "off" | "no" => Some(EchoMode::Off),
-            "on" | "yes" => Some(EchoMode::On),
-            "masked" | "" => Some(EchoMode::Masked),
-            _ => None,
-        }
-    }
-
     /// Convert to string representation.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -45,9 +35,60 @@ impl EchoMode {
     }
 }
 
-/// Password ask flags (mirrors the C ASK_PASSWORD_* flags).
+/// Error returned when an echo mode is neither a named mode nor a boolean alias.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParseEchoModeError;
+
+impl std::fmt::Display for ParseEchoModeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("invalid echo mode")
+    }
+}
+
+impl std::error::Error for ParseEchoModeError {}
+
+impl std::str::FromStr for EchoMode {
+    type Err = ParseEchoModeError;
+
+    /// Mirrors C's `echo_mode_from_string()`: `masked` is table-matched
+    /// case-sensitively, while boolean spellings follow `parse_boolean()`.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "masked" {
+            return Ok(Self::Masked);
+        }
+
+        if matches!(s, "1" | "yes" | "y" | "true" | "t" | "on")
+            || s.eq_ignore_ascii_case("yes")
+            || s.eq_ignore_ascii_case("y")
+            || s.eq_ignore_ascii_case("true")
+            || s.eq_ignore_ascii_case("t")
+            || s.eq_ignore_ascii_case("on")
+        {
+            return Ok(Self::On);
+        }
+
+        if matches!(s, "0" | "no" | "n" | "false" | "f" | "off")
+            || s.eq_ignore_ascii_case("no")
+            || s.eq_ignore_ascii_case("n")
+            || s.eq_ignore_ascii_case("false")
+            || s.eq_ignore_ascii_case("f")
+            || s.eq_ignore_ascii_case("off")
+        {
+            return Ok(Self::Off);
+        }
+
+        Err(ParseEchoModeError)
+    }
+}
+
+/// C-aligned lookup facade for callers that prefer an optional result.
+pub fn echo_mode_from_string(s: &str) -> Option<EchoMode> {
+    s.parse().ok()
+}
+
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    /// Password ask flags (mirrors the C `ASK_PASSWORD_*` flags).
     pub struct AskPasswordFlags: u32 {
         const ACCEPT_CACHED = 1 << 0;
         const PUSH_CACHE    = 1 << 1;
@@ -161,7 +202,14 @@ pub fn parse_ask_password_args(args: &[&str]) -> Result<AskPasswordArgs, i32> {
             }
             s if s.starts_with("--echo=") => {
                 let val = parse_option_value(s).unwrap_or("");
-                match EchoMode::from_str(val) {
+                // C treats an explicitly empty optional argument as the masked
+                // default before it calls its string-table lookup.
+                let mode = if val.is_empty() {
+                    Some(EchoMode::Masked)
+                } else {
+                    echo_mode_from_string(val)
+                };
+                match mode {
                     Some(EchoMode::On) => {
                         result.flags |= AskPasswordFlags::ECHO;
                         result.flags &= !AskPasswordFlags::SILENT;
@@ -170,9 +218,10 @@ pub fn parse_ask_password_args(args: &[&str]) -> Result<AskPasswordArgs, i32> {
                         result.flags |= AskPasswordFlags::SILENT;
                         result.flags &= !AskPasswordFlags::ECHO;
                     }
-                    Some(EchoMode::Masked) | None => {
+                    Some(EchoMode::Masked) => {
                         result.flags &= !(AskPasswordFlags::ECHO | AskPasswordFlags::SILENT);
                     }
+                    None => return Err(-libc::EINVAL),
                 }
             }
             "--emoji" => {
@@ -307,11 +356,23 @@ mod tests {
 
     #[test]
     fn test_echo_mode_from_str() {
-        assert_eq!(EchoMode::from_str("off"), Some(EchoMode::Off));
-        assert_eq!(EchoMode::from_str("on"), Some(EchoMode::On));
-        assert_eq!(EchoMode::from_str("masked"), Some(EchoMode::Masked));
-        assert_eq!(EchoMode::from_str(""), Some(EchoMode::Masked));
-        assert_eq!(EchoMode::from_str("bogus"), None);
+        use std::str::FromStr;
+
+        assert_eq!(EchoMode::from_str("off"), Ok(EchoMode::Off));
+        assert_eq!(EchoMode::from_str("on"), Ok(EchoMode::On));
+        assert_eq!(EchoMode::from_str("masked"), Ok(EchoMode::Masked));
+        assert_eq!(EchoMode::from_str("YES"), Ok(EchoMode::On));
+        assert_eq!(EchoMode::from_str("0"), Ok(EchoMode::Off));
+        assert!(EchoMode::from_str("").is_err());
+        assert!(EchoMode::from_str("MASKED").is_err());
+        assert!(EchoMode::from_str("bogus").is_err());
+    }
+
+    #[test]
+    fn test_echo_mode_lookup_facade() {
+        assert_eq!(echo_mode_from_string("no"), Some(EchoMode::Off));
+        assert_eq!(echo_mode_from_string("masked"), Some(EchoMode::Masked));
+        assert_eq!(echo_mode_from_string("bogus"), None);
     }
 
     #[test]
@@ -365,6 +426,24 @@ mod tests {
     fn test_parse_echo_off() {
         let args = parse_ask_password_args(&["--echo=no"]).unwrap();
         assert!(args.flags.contains(AskPasswordFlags::SILENT));
+    }
+
+    #[test]
+    fn test_parse_echo_boolean_aliases_and_invalid_value() {
+        let args = parse_ask_password_args(&["--echo=TRUE"]).unwrap();
+        assert!(args.flags.contains(AskPasswordFlags::ECHO));
+
+        let args = parse_ask_password_args(&["--echo="]).unwrap();
+        assert!(
+            !args
+                .flags
+                .intersects(AskPasswordFlags::ECHO | AskPasswordFlags::SILENT)
+        );
+
+        assert_eq!(
+            parse_ask_password_args(&["--echo=invalid"]),
+            Err(-libc::EINVAL)
+        );
     }
 
     #[test]

@@ -45,20 +45,6 @@ impl PrintMode {
     /// Default print mode.
     pub const DEFAULT: Self = Self::Path;
 
-    /// Parse a print mode from its string representation.
-    pub fn from_str(s: &str) -> Result<Self, i32> {
-        match s {
-            "path" => Ok(Self::Path),
-            "filename" => Ok(Self::Filename),
-            "version" => Ok(Self::Version),
-            "type" => Ok(Self::Type),
-            "architecture" | "arch" => Ok(Self::Architecture),
-            "tries" => Ok(Self::Tries),
-            "all" => Ok(Self::All),
-            _ => Err(-libc::EINVAL),
-        }
-    }
-
     /// Convert to the string representation used in the print_table lookup.
     pub fn to_str(self) -> &'static str {
         match self {
@@ -73,9 +59,31 @@ impl PrintMode {
     }
 }
 
-/// Bitflags controlling pick behavior.
+impl std::str::FromStr for PrintMode {
+    type Err = i32;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "path" => Ok(Self::Path),
+            "filename" => Ok(Self::Filename),
+            "version" => Ok(Self::Version),
+            "type" => Ok(Self::Type),
+            "architecture" | "arch" => Ok(Self::Architecture),
+            "tries" => Ok(Self::Tries),
+            "all" => Ok(Self::All),
+            _ => Err(-libc::EINVAL),
+        }
+    }
+}
+
+/// C-shaped compatibility facade for `print_from_string()`.
+pub fn print_mode_from_string(s: &str) -> Result<PrintMode, i32> {
+    s.parse()
+}
+
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    /// Bitflags controlling pick behavior.
     pub struct PickFlags: u64 {
         /// Automatically resolve architecture filter
         const ARCHITECTURE = 1 << 0;
@@ -411,18 +419,20 @@ mod tests {
 
     #[test]
     fn test_print_mode_from_str() {
-        assert_eq!(PrintMode::from_str("path"), Ok(PrintMode::Path));
-        assert_eq!(PrintMode::from_str("filename"), Ok(PrintMode::Filename));
-        assert_eq!(PrintMode::from_str("version"), Ok(PrintMode::Version));
-        assert_eq!(PrintMode::from_str("type"), Ok(PrintMode::Type));
+        assert_eq!(print_mode_from_string("path"), Ok(PrintMode::Path));
+        assert_eq!(print_mode_from_string("filename"), Ok(PrintMode::Filename));
+        assert_eq!(print_mode_from_string("version"), Ok(PrintMode::Version));
+        assert_eq!(print_mode_from_string("type"), Ok(PrintMode::Type));
         assert_eq!(
-            PrintMode::from_str("architecture"),
+            print_mode_from_string("architecture"),
             Ok(PrintMode::Architecture)
         );
-        assert_eq!(PrintMode::from_str("arch"), Ok(PrintMode::Architecture));
-        assert_eq!(PrintMode::from_str("tries"), Ok(PrintMode::Tries));
-        assert_eq!(PrintMode::from_str("all"), Ok(PrintMode::All));
-        assert!(PrintMode::from_str("invalid").is_err());
+        assert_eq!(print_mode_from_string("arch"), Ok(PrintMode::Architecture));
+        assert_eq!(print_mode_from_string("tries"), Ok(PrintMode::Tries));
+        assert_eq!(print_mode_from_string("all"), Ok(PrintMode::All));
+        assert_eq!(print_mode_from_string("invalid"), Err(-libc::EINVAL));
+        assert_eq!("path".parse(), Ok(PrintMode::Path));
+        assert_eq!("invalid".parse::<PrintMode>(), Err(-libc::EINVAL));
     }
 
     #[test]

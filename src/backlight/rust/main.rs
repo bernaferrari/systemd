@@ -3,7 +3,9 @@
 //
 // Binary entry point for systemd-backlight
 
-use systemd_backlight_rs::{BacklightVerb, DeviceSpec, VALID_SUBSYSTEMS};
+use systemd_backlight_rs::{
+    BacklightVerb, DeviceSpec, VALID_SUBSYSTEMS, backlight_verb_from_string,
+};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PERSIST_DIR: &str = "/var/lib/systemd/backlight";
@@ -77,7 +79,7 @@ fn main() {
         std::process::exit(1);
     }
 
-    let verb = match BacklightVerb::from_str(refs[0]) {
+    let verb = match backlight_verb_from_string(refs[0]) {
         Some(v) => v,
         None => {
             eprintln!("Unknown verb '{}'. Use 'save' or 'load'.", refs[0]);

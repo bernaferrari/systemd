@@ -34,16 +34,19 @@ pub enum UtmpVerb {
     Shutdown,
 }
 
-impl UtmpVerb {
-    /// Parse a verb from its string representation.
-    pub fn from_str(s: &str) -> Result<Self, i32> {
+impl std::str::FromStr for UtmpVerb {
+    type Err = i32;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "reboot" => Ok(Self::Reboot),
             "shutdown" => Ok(Self::Shutdown),
             _ => Err(-libc::EINVAL),
         }
     }
+}
 
+impl UtmpVerb {
     /// Convert to the string representation.
     pub fn to_str(self) -> &'static str {
         match self {
@@ -51,6 +54,11 @@ impl UtmpVerb {
             Self::Shutdown => "shutdown",
         }
     }
+}
+
+/// Parse the C command's case-sensitive verb names.
+pub fn utmp_verb_from_string(s: &str) -> Result<UtmpVerb, i32> {
+    s.parse()
 }
 
 // ── Verb definition ───────────────────────────────────────────────────────
@@ -131,7 +139,7 @@ impl UpdateUtmpArgs {
         if args.len() != 2 {
             return Err(-libc::EINVAL);
         }
-        let verb = UtmpVerb::from_str(args[1])?;
+        let verb = utmp_verb_from_string(args[1])?;
         Ok(Self { verb })
     }
 }
@@ -155,9 +163,10 @@ mod tests {
 
     #[test]
     fn test_verb_from_str() {
-        assert_eq!(UtmpVerb::from_str("reboot"), Ok(UtmpVerb::Reboot));
-        assert_eq!(UtmpVerb::from_str("shutdown"), Ok(UtmpVerb::Shutdown));
-        assert!(UtmpVerb::from_str("unknown").is_err());
+        assert_eq!("reboot".parse(), Ok(UtmpVerb::Reboot));
+        assert_eq!("shutdown".parse(), Ok(UtmpVerb::Shutdown));
+        assert_eq!(utmp_verb_from_string("reboot"), Ok(UtmpVerb::Reboot));
+        assert_eq!("unknown".parse::<UtmpVerb>(), Err(-libc::EINVAL));
     }
 
     #[test]

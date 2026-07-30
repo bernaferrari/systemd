@@ -29,16 +29,19 @@ pub enum UserSessionsVerb {
     Stop,
 }
 
-impl UserSessionsVerb {
-    /// Parse a verb from its string representation.
-    pub fn from_str(s: &str) -> Result<Self, i32> {
+impl std::str::FromStr for UserSessionsVerb {
+    type Err = i32;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "start" => Ok(Self::Start),
             "stop" => Ok(Self::Stop),
             _ => Err(-libc::EINVAL),
         }
     }
+}
 
+impl UserSessionsVerb {
     /// Convert to the string representation.
     pub fn to_str(self) -> &'static str {
         match self {
@@ -46,6 +49,11 @@ impl UserSessionsVerb {
             Self::Stop => "stop",
         }
     }
+}
+
+/// Parse the C command's case-sensitive verb names.
+pub fn user_sessions_verb_from_string(s: &str) -> Result<UserSessionsVerb, i32> {
+    s.parse()
 }
 
 // ── Argument parsing ──────────────────────────────────────────────────────
@@ -64,7 +72,7 @@ impl UserSessionsArgs {
         if args.len() != 2 {
             return Err(-libc::EINVAL);
         }
-        let verb = UserSessionsVerb::from_str(args[1])?;
+        let verb = user_sessions_verb_from_string(args[1])?;
         Ok(Self { verb })
     }
 }
@@ -113,16 +121,14 @@ mod tests {
 
     #[test]
     fn test_verb_from_str() {
+        assert_eq!("start".parse(), Ok(UserSessionsVerb::Start));
+        assert_eq!("stop".parse(), Ok(UserSessionsVerb::Stop));
         assert_eq!(
-            UserSessionsVerb::from_str("start"),
+            user_sessions_verb_from_string("start"),
             Ok(UserSessionsVerb::Start)
         );
-        assert_eq!(
-            UserSessionsVerb::from_str("stop"),
-            Ok(UserSessionsVerb::Stop)
-        );
-        assert!(UserSessionsVerb::from_str("invalid").is_err());
-        assert!(UserSessionsVerb::from_str("").is_err());
+        assert_eq!("invalid".parse::<UserSessionsVerb>(), Err(-libc::EINVAL));
+        assert_eq!("".parse::<UserSessionsVerb>(), Err(-libc::EINVAL));
     }
 
     #[test]

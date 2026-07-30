@@ -10,30 +10,16 @@
 pub type Result<T> = std::result::Result<T, i32>;
 
 /// Key source type (how the private key is accessed).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum KeySourceType {
+    #[default]
     File,
     Provider,
     Engine,
 }
 
-impl Default for KeySourceType {
-    fn default() -> Self {
-        KeySourceType::File
-    }
-}
-
 impl KeySourceType {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "file" => Some(KeySourceType::File),
-            "provider" => Some(KeySourceType::Provider),
-            "engine" => Some(KeySourceType::Engine),
-            _ => None,
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             KeySourceType::File => "file",
             KeySourceType::Provider => "provider",
@@ -42,34 +28,56 @@ impl KeySourceType {
     }
 }
 
+impl std::str::FromStr for KeySourceType {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "file" => Ok(Self::File),
+            "provider" => Ok(Self::Provider),
+            "engine" => Ok(Self::Engine),
+            _ => Err(()),
+        }
+    }
+}
+
+/// C-shaped compatibility facade for a table lookup that has no errno return.
+pub fn key_source_type_from_string(s: &str) -> Option<KeySourceType> {
+    s.parse().ok()
+}
+
 /// Certificate source type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum CertificateSourceType {
+    #[default]
     File,
     Provider,
 }
 
-impl Default for CertificateSourceType {
-    fn default() -> Self {
-        CertificateSourceType::File
-    }
-}
-
 impl CertificateSourceType {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "file" => Some(CertificateSourceType::File),
-            "provider" => Some(CertificateSourceType::Provider),
-            _ => None,
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             CertificateSourceType::File => "file",
             CertificateSourceType::Provider => "provider",
         }
     }
+}
+
+impl std::str::FromStr for CertificateSourceType {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "file" => Ok(Self::File),
+            "provider" => Ok(Self::Provider),
+            _ => Err(()),
+        }
+    }
+}
+
+/// C-shaped compatibility facade for a table lookup that has no errno return.
+pub fn certificate_source_type_from_string(s: &str) -> Option<CertificateSourceType> {
+    s.parse().ok()
 }
 
 /// Verb (subcommand) for the keyutil tool.
@@ -82,18 +90,24 @@ pub enum KeyUtilVerb {
     Help,
 }
 
-impl KeyUtilVerb {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for KeyUtilVerb {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "validate" => Some(KeyUtilVerb::Validate),
-            "extract-public" => Some(KeyUtilVerb::ExtractPublic),
-            "public" => Some(KeyUtilVerb::ExtractPublic),
-            "extract-certificate" => Some(KeyUtilVerb::ExtractCertificate),
-            "pkcs7" => Some(KeyUtilVerb::Pkcs7),
-            "help" => Some(KeyUtilVerb::Help),
-            _ => None,
+            "validate" => Ok(Self::Validate),
+            "extract-public" | "public" => Ok(Self::ExtractPublic),
+            "extract-certificate" => Ok(Self::ExtractCertificate),
+            "pkcs7" => Ok(Self::Pkcs7),
+            "help" => Ok(Self::Help),
+            _ => Err(()),
         }
     }
+}
+
+/// C-shaped compatibility facade for verb dispatch's optional lookup.
+pub fn keyutil_verb_from_string(s: &str) -> Option<KeyUtilVerb> {
+    s.parse().ok()
 }
 
 /// Parsed command-line arguments for `systemd-keyutil`.
@@ -179,21 +193,25 @@ impl KeyUtilArgs {
 
 /// Parse a key source string (e.g., "provider:myprovider" or "engine:pkcs11").
 pub fn parse_key_source(s: &str) -> Result<(KeySourceType, &str)> {
-    if let Some(rest) = s.strip_prefix("provider:") {
-        Ok((KeySourceType::Provider, rest))
+    if s == "file" {
+        Ok((KeySourceType::File, ""))
     } else if let Some(rest) = s.strip_prefix("engine:") {
         Ok((KeySourceType::Engine, rest))
+    } else if let Some(rest) = s.strip_prefix("provider:") {
+        Ok((KeySourceType::Provider, rest))
     } else {
-        Ok((KeySourceType::File, s))
+        Err(-libc::EINVAL)
     }
 }
 
 /// Parse a certificate source string.
 pub fn parse_certificate_source(s: &str) -> Result<(CertificateSourceType, &str)> {
-    if let Some(rest) = s.strip_prefix("provider:") {
+    if s == "file" {
+        Ok((CertificateSourceType::File, ""))
+    } else if let Some(rest) = s.strip_prefix("provider:") {
         Ok((CertificateSourceType::Provider, rest))
     } else {
-        Ok((CertificateSourceType::File, s))
+        Err(-libc::EINVAL)
     }
 }
 
@@ -352,9 +370,9 @@ mod tests {
 
     #[test]
     fn test_parse_key_source_file() {
-        let (ty, rest) = parse_key_source("/path/to/key.pem").unwrap();
+        let (ty, rest) = parse_key_source("file").unwrap();
         assert_eq!(ty, KeySourceType::File);
-        assert_eq!(rest, "/path/to/key.pem");
+        assert_eq!(rest, "");
     }
 
     #[test]
@@ -373,9 +391,9 @@ mod tests {
 
     #[test]
     fn test_parse_certificate_source_file() {
-        let (ty, rest) = parse_certificate_source("/path/to/cert.pem").unwrap();
+        let (ty, rest) = parse_certificate_source("file").unwrap();
         assert_eq!(ty, CertificateSourceType::File);
-        assert_eq!(rest, "/path/to/cert.pem");
+        assert_eq!(rest, "");
     }
 
     #[test]
@@ -408,37 +426,52 @@ mod tests {
             KeySourceType::Provider,
             KeySourceType::Engine,
         ] {
-            assert_eq!(KeySourceType::from_str(st.as_str()), Some(st));
+            assert_eq!(st.as_str().parse(), Ok(st));
+            assert_eq!(key_source_type_from_string(st.as_str()), Some(st));
         }
+        assert_eq!(key_source_type_from_string("invalid"), None);
     }
 
     #[test]
     fn test_certificate_source_type_roundtrip() {
         for st in [CertificateSourceType::File, CertificateSourceType::Provider] {
-            assert_eq!(CertificateSourceType::from_str(st.as_str()), Some(st));
+            assert_eq!(st.as_str().parse(), Ok(st));
+            assert_eq!(certificate_source_type_from_string(st.as_str()), Some(st));
         }
+        assert_eq!(certificate_source_type_from_string("invalid"), None);
     }
 
     #[test]
     fn test_verb_from_str() {
         assert_eq!(
-            KeyUtilVerb::from_str("validate"),
+            keyutil_verb_from_string("validate"),
             Some(KeyUtilVerb::Validate)
         );
         assert_eq!(
-            KeyUtilVerb::from_str("extract-public"),
+            keyutil_verb_from_string("extract-public"),
             Some(KeyUtilVerb::ExtractPublic)
         );
         assert_eq!(
-            KeyUtilVerb::from_str("public"),
+            keyutil_verb_from_string("public"),
             Some(KeyUtilVerb::ExtractPublic)
         );
         assert_eq!(
-            KeyUtilVerb::from_str("extract-certificate"),
+            keyutil_verb_from_string("extract-certificate"),
             Some(KeyUtilVerb::ExtractCertificate)
         );
-        assert_eq!(KeyUtilVerb::from_str("pkcs7"), Some(KeyUtilVerb::Pkcs7));
-        assert_eq!(KeyUtilVerb::from_str("invalid"), None);
+        assert_eq!(keyutil_verb_from_string("pkcs7"), Some(KeyUtilVerb::Pkcs7));
+        assert_eq!(keyutil_verb_from_string("invalid"), None);
+        assert_eq!("validate".parse(), Ok(KeyUtilVerb::Validate));
+        assert!("invalid".parse::<KeyUtilVerb>().is_err());
+    }
+
+    #[test]
+    fn test_source_argument_parser_rejects_non_source_values() {
+        assert_eq!(parse_key_source("/path/to/key.pem"), Err(-libc::EINVAL));
+        assert_eq!(
+            parse_certificate_source("engine:pkcs11"),
+            Err(-libc::EINVAL)
+        );
     }
 
     #[test]

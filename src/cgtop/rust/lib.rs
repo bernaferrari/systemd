@@ -24,17 +24,6 @@ pub enum Order {
 }
 
 impl Order {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "path" => Some(Order::Path),
-            "tasks" => Some(Order::Tasks),
-            "cpu" => Some(Order::Cpu),
-            "memory" => Some(Order::Memory),
-            "io" => Some(Order::Io),
-            _ => None,
-        }
-    }
-
     pub fn as_str(&self) -> &'static str {
         match self {
             Order::Path => "path",
@@ -46,6 +35,26 @@ impl Order {
     }
 }
 
+impl std::str::FromStr for Order {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "path" => Ok(Order::Path),
+            "tasks" => Ok(Order::Tasks),
+            "cpu" => Ok(Order::Cpu),
+            "memory" => Ok(Order::Memory),
+            "io" => Ok(Order::Io),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Parse C's case-sensitive cgtop order table.
+pub fn order_from_string(s: &str) -> Option<Order> {
+    s.parse().ok()
+}
+
 /// CPU display type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CpuType {
@@ -54,20 +63,29 @@ pub enum CpuType {
 }
 
 impl CpuType {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "percentage" => Some(CpuType::Percentage),
-            "time" => Some(CpuType::Time),
-            _ => None,
-        }
-    }
-
     pub fn as_str(&self) -> &'static str {
         match self {
             CpuType::Percentage => "percentage",
             CpuType::Time => "time",
         }
     }
+}
+
+impl std::str::FromStr for CpuType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "percentage" => Ok(CpuType::Percentage),
+            "time" => Ok(CpuType::Time),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Parse C's case-sensitive cgtop CPU display table.
+pub fn cpu_type_from_string(s: &str) -> Option<CpuType> {
+    s.parse().ok()
 }
 
 /// Process counting mode.
@@ -190,12 +208,12 @@ pub fn parse_cgtop_args(args: &[&str]) -> Result<CgtopArgs, i32> {
                 if i >= args.len() {
                     return Err(-libc::EINVAL);
                 }
-                result.order = Order::from_str(args[i]).ok_or(-libc::EINVAL)?;
+                result.order = order_from_string(args[i]).ok_or(-libc::EINVAL)?;
             }
             "--cpu" => {
                 i += 1;
                 if i < args.len() && !args[i].starts_with('-') {
-                    result.cpu_type = CpuType::from_str(args[i]).ok_or(-libc::EINVAL)?;
+                    result.cpu_type = cpu_type_from_string(args[i]).ok_or(-libc::EINVAL)?;
                 } else {
                     result.cpu_type = CpuType::Time;
                     continue;
@@ -346,9 +364,9 @@ mod tests {
 
     #[test]
     fn test_order_from_str() {
-        assert_eq!(Order::from_str("path"), Some(Order::Path));
-        assert_eq!(Order::from_str("cpu"), Some(Order::Cpu));
-        assert_eq!(Order::from_str("invalid"), None);
+        assert_eq!("path".parse(), Ok(Order::Path));
+        assert_eq!("cpu".parse(), Ok(Order::Cpu));
+        assert_eq!(order_from_string("invalid"), None);
     }
 
     #[test]
@@ -359,8 +377,9 @@ mod tests {
 
     #[test]
     fn test_cpu_type_from_str() {
-        assert_eq!(CpuType::from_str("percentage"), Some(CpuType::Percentage));
-        assert_eq!(CpuType::from_str("time"), Some(CpuType::Time));
+        assert_eq!("percentage".parse(), Ok(CpuType::Percentage));
+        assert_eq!("time".parse(), Ok(CpuType::Time));
+        assert_eq!(cpu_type_from_string("invalid"), None);
     }
 
     #[test]

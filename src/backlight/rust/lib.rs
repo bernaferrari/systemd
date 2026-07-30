@@ -31,15 +31,21 @@ pub enum BacklightVerb {
     Load,
 }
 
-impl BacklightVerb {
-    /// Parse verb from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for BacklightVerb {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "save" => Some(BacklightVerb::Save),
-            "load" => Some(BacklightVerb::Load),
-            _ => None,
+            "save" => Ok(Self::Save),
+            "load" => Ok(Self::Load),
+            _ => Err(()),
         }
     }
+}
+
+/// Parse a backlight command verb, preserving the C-style optional lookup API.
+pub fn backlight_verb_from_string(s: &str) -> Option<BacklightVerb> {
+    s.parse().ok()
 }
 
 /// Backlight device type classification.
@@ -55,17 +61,25 @@ pub enum BacklightType {
     Leds,
 }
 
-impl BacklightType {
-    /// Parse backlight type from the sysfs "type" attribute.
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for BacklightType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "firmware" => Some(BacklightType::Firmware),
-            "platform" => Some(BacklightType::Platform),
-            "raw" => Some(BacklightType::Raw),
-            _ => None,
+            "firmware" => Ok(Self::Firmware),
+            "platform" => Ok(Self::Platform),
+            "raw" => Ok(Self::Raw),
+            _ => Err(()),
         }
     }
+}
 
+/// Parse a sysfs backlight type, preserving the C-style optional lookup API.
+pub fn backlight_type_from_string(s: &str) -> Option<BacklightType> {
+    s.parse().ok()
+}
+
+impl BacklightType {
     /// Check if this type is firmware or platform (preferred over raw).
     pub fn is_preferred(&self) -> bool {
         matches!(self, BacklightType::Firmware | BacklightType::Platform)
@@ -237,23 +251,27 @@ mod tests {
 
     #[test]
     fn test_verb_from_str() {
-        assert_eq!(BacklightVerb::from_str("save"), Some(BacklightVerb::Save));
-        assert_eq!(BacklightVerb::from_str("load"), Some(BacklightVerb::Load));
-        assert_eq!(BacklightVerb::from_str("other"), None);
+        assert_eq!("save".parse(), Ok(BacklightVerb::Save));
+        assert_eq!("load".parse(), Ok(BacklightVerb::Load));
+        assert_eq!("other".parse::<BacklightVerb>(), Err(()));
+        assert_eq!(
+            backlight_verb_from_string("save"),
+            Some(BacklightVerb::Save)
+        );
+        assert_eq!(backlight_verb_from_string("other"), None);
     }
 
     #[test]
     fn test_backlight_type_from_str() {
+        assert_eq!("firmware".parse(), Ok(BacklightType::Firmware));
+        assert_eq!("platform".parse(), Ok(BacklightType::Platform));
+        assert_eq!("raw".parse(), Ok(BacklightType::Raw));
+        assert_eq!("other".parse::<BacklightType>(), Err(()));
         assert_eq!(
-            BacklightType::from_str("firmware"),
+            backlight_type_from_string("firmware"),
             Some(BacklightType::Firmware)
         );
-        assert_eq!(
-            BacklightType::from_str("platform"),
-            Some(BacklightType::Platform)
-        );
-        assert_eq!(BacklightType::from_str("raw"), Some(BacklightType::Raw));
-        assert_eq!(BacklightType::from_str("other"), None);
+        assert_eq!(backlight_type_from_string("other"), None);
     }
 
     #[test]

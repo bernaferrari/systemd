@@ -3,8 +3,6 @@
 //
 // Binary entry point for systemd-keyutil
 
-use systemd_keyutil_rs::keyutil as lib;
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn print_help() {

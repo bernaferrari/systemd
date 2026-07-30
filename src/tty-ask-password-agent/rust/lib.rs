@@ -31,11 +31,12 @@ pub const DEFAULT_UMASK: u32 = 0o022;
 // ── Enums ─────────────────────────────────────────────────────────────────
 
 /// Action modes for the password agent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PasswordAction {
     /// List pending password requests
     List,
     /// Process a single password query
+    #[default]
     Query,
     /// Continuously watch for password requests
     Watch,
@@ -43,24 +44,7 @@ pub enum PasswordAction {
     Wall,
 }
 
-impl Default for PasswordAction {
-    fn default() -> Self {
-        Self::Query
-    }
-}
-
 impl PasswordAction {
-    /// Parse an action from its string representation.
-    pub fn from_str(s: &str) -> Result<Self, i32> {
-        match s {
-            "list" => Ok(Self::List),
-            "query" => Ok(Self::Query),
-            "watch" => Ok(Self::Watch),
-            "wall" => Ok(Self::Wall),
-            _ => Err(-libc::EINVAL),
-        }
-    }
-
     /// Whether this action requires continuous watching.
     pub fn is_continuous(self) -> bool {
         matches!(self, Self::Watch | Self::Wall)
@@ -68,6 +52,25 @@ impl PasswordAction {
 
     pub fn is_interactive(self) -> bool {
         matches!(self, Self::Query | Self::Watch)
+    }
+}
+
+/// Parse a C command-line action verb, preserving the C-facing `-EINVAL` error.
+pub fn password_action_from_string(s: &str) -> Result<PasswordAction, i32> {
+    s.parse()
+}
+
+impl std::str::FromStr for PasswordAction {
+    type Err = i32;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "list" => Ok(Self::List),
+            "query" => Ok(Self::Query),
+            "watch" => Ok(Self::Watch),
+            "wall" => Ok(Self::Wall),
+            _ => Err(-libc::EINVAL),
+        }
     }
 }
 
@@ -212,7 +215,7 @@ pub fn format_list_output(message: &str, pid: u32) -> String {
 // ── Argument parsing ──────────────────────────────────────────────────────
 
 /// Parsed arguments for the tty-ask-password-agent tool.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TtyAskPasswordAgentArgs {
     /// Action to perform
     pub action: PasswordAction,
@@ -224,25 +227,12 @@ pub struct TtyAskPasswordAgentArgs {
     pub device: Option<String>,
 }
 
-impl Default for TtyAskPasswordAgentArgs {
-    fn default() -> Self {
-        Self {
-            action: PasswordAction::default(),
-            plymouth: false,
-            console: false,
-            device: None,
-        }
-    }
-}
-
 impl TtyAskPasswordAgentArgs {
     /// Validate the argument combination.
     pub fn validate(&self) -> Result<(), i32> {
         // Plymouth and console only valid with query/watch
-        if self.plymouth || self.console {
-            if !self.action.is_interactive() {
-                return Err(-libc::EINVAL);
-            }
+        if (self.plymouth || self.console) && !self.action.is_interactive() {
+            return Err(-libc::EINVAL);
         }
 
         // Plymouth and console conflict with each other
@@ -288,11 +278,15 @@ mod tests {
 
     #[test]
     fn test_password_action_from_str() {
-        assert_eq!(PasswordAction::from_str("list"), Ok(PasswordAction::List));
-        assert_eq!(PasswordAction::from_str("query"), Ok(PasswordAction::Query));
-        assert_eq!(PasswordAction::from_str("watch"), Ok(PasswordAction::Watch));
-        assert_eq!(PasswordAction::from_str("wall"), Ok(PasswordAction::Wall));
-        assert!(PasswordAction::from_str("invalid").is_err());
+        assert_eq!("list".parse(), Ok(PasswordAction::List));
+        assert_eq!("query".parse(), Ok(PasswordAction::Query));
+        assert_eq!("watch".parse(), Ok(PasswordAction::Watch));
+        assert_eq!("wall".parse(), Ok(PasswordAction::Wall));
+        assert_eq!("invalid".parse::<PasswordAction>(), Err(-libc::EINVAL));
+        assert_eq!(
+            password_action_from_string("query"),
+            Ok(PasswordAction::Query)
+        );
     }
 
     #[test]

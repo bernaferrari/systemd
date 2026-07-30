@@ -53,19 +53,6 @@ impl MutableMode {
         MutableMode::EphemeralImport,
     ];
 
-    /// Parse from string.
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "no" => Some(MutableMode::No),
-            "yes" => Some(MutableMode::Yes),
-            "auto" => Some(MutableMode::Auto),
-            "import" => Some(MutableMode::Import),
-            "ephemeral" => Some(MutableMode::Ephemeral),
-            "ephemeral-import" => Some(MutableMode::EphemeralImport),
-            _ => None,
-        }
-    }
-
     /// Convert to string.
     pub fn to_str(self) -> &'static str {
         match self {
@@ -77,6 +64,27 @@ impl MutableMode {
             MutableMode::EphemeralImport => "ephemeral-import",
         }
     }
+}
+
+impl std::str::FromStr for MutableMode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "no" => Ok(MutableMode::No),
+            "yes" => Ok(MutableMode::Yes),
+            "auto" => Ok(MutableMode::Auto),
+            "import" => Ok(MutableMode::Import),
+            "ephemeral" => Ok(MutableMode::Ephemeral),
+            "ephemeral-import" => Ok(MutableMode::EphemeralImport),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Parse C's case-sensitive mutable-mode table.
+pub fn mutable_mode_from_string(s: &str) -> Option<MutableMode> {
+    s.parse().ok()
 }
 
 /// Image class: sysext or confext.
@@ -283,19 +291,13 @@ mod tests {
 
     #[test]
     fn test_mutable_mode_from_str() {
-        assert_eq!(MutableMode::from_str("no"), Some(MutableMode::No));
-        assert_eq!(MutableMode::from_str("yes"), Some(MutableMode::Yes));
-        assert_eq!(MutableMode::from_str("auto"), Some(MutableMode::Auto));
-        assert_eq!(MutableMode::from_str("import"), Some(MutableMode::Import));
-        assert_eq!(
-            MutableMode::from_str("ephemeral"),
-            Some(MutableMode::Ephemeral)
-        );
-        assert_eq!(
-            MutableMode::from_str("ephemeral-import"),
-            Some(MutableMode::EphemeralImport)
-        );
-        assert_eq!(MutableMode::from_str("invalid"), None);
+        assert_eq!("no".parse(), Ok(MutableMode::No));
+        assert_eq!("yes".parse(), Ok(MutableMode::Yes));
+        assert_eq!("auto".parse(), Ok(MutableMode::Auto));
+        assert_eq!("import".parse(), Ok(MutableMode::Import));
+        assert_eq!("ephemeral".parse(), Ok(MutableMode::Ephemeral));
+        assert_eq!("ephemeral-import".parse(), Ok(MutableMode::EphemeralImport));
+        assert_eq!(mutable_mode_from_string("invalid"), None);
     }
 
     #[test]
@@ -311,7 +313,8 @@ mod tests {
     #[test]
     fn test_mutable_mode_roundtrip() {
         for mode in MutableMode::ALL {
-            assert_eq!(MutableMode::from_str(mode.to_str()), Some(mode));
+            assert_eq!(mode.to_str().parse(), Ok(mode));
+            assert_eq!(mutable_mode_from_string(mode.to_str()), Some(mode));
         }
     }
 
