@@ -54,9 +54,9 @@ const SYS_FCHMODAT2: libc::c_long = 452;
 /// chown operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChownOptions {
-    /// UID to set. `None` means "don't change".
+    /// UID to set. `None` or [`UID_INVALID`] means "don't change".
     pub uid: Option<u32>,
-    /// GID to set. `None` means "don't change".
+    /// GID to set. `None` or [`GID_INVALID`] means "don't change".
     pub gid: Option<u32>,
     /// Only permission bits set in this mask are applied to the mode.
     pub mode_mask: u32,
@@ -76,7 +76,7 @@ impl ChownOptions {
     /// Options that change only the UID.
     pub fn new_uid(uid: u32) -> Self {
         Self {
-            uid: Some(uid),
+            uid: uid_is_valid(uid).then_some(uid),
             ..Self::default()
         }
     }
@@ -84,7 +84,7 @@ impl ChownOptions {
     /// Options that change only the GID.
     pub fn new_gid(gid: u32) -> Self {
         Self {
-            gid: Some(gid),
+            gid: gid_is_valid(gid).then_some(gid),
             ..Self::default()
         }
     }
@@ -92,8 +92,8 @@ impl ChownOptions {
     /// Options that change both UID and GID.
     pub fn new_uid_gid(uid: u32, gid: u32) -> Self {
         Self {
-            uid: Some(uid),
-            gid: Some(gid),
+            uid: uid_is_valid(uid).then_some(uid),
+            gid: gid_is_valid(gid).then_some(gid),
             ..Self::default()
         }
     }
@@ -104,10 +104,23 @@ impl ChownOptions {
         self
     }
 
-    /// True when no uid/gid change is requested *and* the mask covers all
+    fn effective_uid(&self) -> Option<u32> {
+        self.uid.filter(|uid| uid_is_valid(*uid))
+    }
+
+    fn effective_gid(&self) -> Option<u32> {
+        self.gid.filter(|gid| gid_is_valid(*gid))
+    }
+
+    /// True when no uid/gid change is requested *and* the mask contains all
     /// permission bits — equivalent to the C `nothing to do` early-return.
+    ///
+    /// Bits outside `07777` are deliberately ignored here: C uses
+    /// `FLAGS_SET(mask, 07777)`, not equality with `07777`.
     pub fn is_noop(&self) -> bool {
-        self.uid.is_none() && self.gid.is_none() && self.mode_mask == MODE_MASK_FULL
+        self.effective_uid().is_none()
+            && self.effective_gid().is_none()
+            && self.mode_mask & MODE_MASK_FULL == MODE_MASK_FULL
     }
 }
 
@@ -125,6 +138,39 @@ pub const fn gid_is_valid(gid: u32) -> bool {
     gid != GID_INVALID
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct InodeStatus {
+    mode: u32,
+    uid: u32,
+    gid: u32,
+}
+
+impl InodeStatus {
+    fn from_metadata(meta: &Metadata) -> Self {
+        Self {
+            mode: meta.mode(),
+            uid: meta.uid(),
+            gid: meta.gid(),
+        }
+    }
+
+    fn from_stat(st: &libc::stat) -> Self {
+        Self {
+            mode: st.st_mode as u32,
+            uid: st.st_uid,
+            gid: st.st_gid,
+        }
+    }
+
+    fn is_dir(self) -> bool {
+        self.mode & libc::S_IFMT == libc::S_IFDIR
+    }
+
+    fn is_symlink(self) -> bool {
+        self.mode & libc::S_IFMT == libc::S_IFLNK
+    }
+}
+
 /// True if the metadata indicates a change is needed under the given options.
 ///
 /// Mirrors the C shortcut check:
@@ -133,19 +179,19 @@ pub const fn gid_is_valid(gid: u32) -> bool {
 /// (!gid_is_valid(gid) || st.st_gid == gid) &&
 /// ((st.st_mode & ~mask & 07777) == 0)
 /// ```
-fn needs_change(meta: &Metadata, opts: &ChownOptions) -> bool {
-    if let Some(uid) = opts.uid {
-        if meta.uid() != uid {
+fn needs_change(status: InodeStatus, opts: &ChownOptions) -> bool {
+    if let Some(uid) = opts.effective_uid() {
+        if status.uid != uid {
             return true;
         }
     }
-    if let Some(gid) = opts.gid {
-        if meta.gid() != gid {
+    if let Some(gid) = opts.effective_gid() {
+        if status.gid != gid {
             return true;
         }
     }
     // Any permission bits set outside the mask?
-    (meta.mode() as u32 & !opts.mode_mask & 0o7777) != 0
+    (status.mode & !opts.mode_mask & 0o7777) != 0
 }
 
 fn proc_fd_path(fd: RawFd) -> CString {
@@ -276,14 +322,16 @@ fn chmod_fd(fd: RawFd, mode: libc::mode_t) -> io::Result<()> {
     Ok(())
 }
 
-fn chown_one_fd(fd: RawFd, meta: &Metadata, opts: &ChownOptions) -> io::Result<()> {
-    let is_symlink = meta.file_type().is_symlink();
+fn chown_one_fd(fd: RawFd, status: InodeStatus, opts: &ChownOptions) -> io::Result<()> {
+    let is_symlink = status.is_symlink();
     remove_acl_xattrs(fd)?;
 
-    let old_mode = meta.mode() as u32 & 0o7777;
+    let old_mode = status.mode & 0o7777;
     let new_mode = old_mode & opts.mode_mask;
-    let do_chown = opts.uid.is_some_and(|uid| uid != meta.uid())
-        || opts.gid.is_some_and(|gid| gid != meta.gid());
+    let uid = opts.effective_uid();
+    let gid = opts.effective_gid();
+    let do_chown =
+        uid.is_some_and(|uid| uid != status.uid) || gid.is_some_and(|gid| gid != status.gid);
     let do_chmod = !is_symlink && (old_mode != new_mode || do_chown);
 
     // Tighten permissions before changing ownership, then restore the desired
@@ -297,11 +345,18 @@ fn chown_one_fd(fd: RawFd, meta: &Metadata, opts: &ChownOptions) -> io::Result<(
     }
 
     if do_chown {
-        let uid = opts.uid.unwrap_or(UID_INVALID);
-        let gid = opts.gid.unwrap_or(GID_INVALID);
         // SAFETY: `fd` names the pinned inode, the empty pathname is
         // NUL-terminated, and AT_EMPTY_PATH explicitly requests fd operation.
-        if unsafe { libc::fchownat(fd, c"".as_ptr(), uid, gid, libc::AT_EMPTY_PATH) } < 0 {
+        if unsafe {
+            libc::fchownat(
+                fd,
+                c"".as_ptr(),
+                uid.unwrap_or(UID_INVALID),
+                gid.unwrap_or(GID_INVALID),
+                libc::AT_EMPTY_PATH,
+            )
+        } < 0
+        {
             return Err(io::Error::last_os_error());
         }
     }
@@ -401,7 +456,7 @@ impl Drop for DirStream {
 /// then the directory itself, matching `chown_recursive_internal()`.
 fn chown_recursive_dir(
     dir_file: fs::File,
-    dir_meta: &Metadata,
+    dir_status: InodeStatus,
     opts: &ChownOptions,
 ) -> io::Result<bool> {
     let mut stream = DirStream::from_file(dir_file)?;
@@ -417,21 +472,22 @@ fn chown_recursive_dir(
             libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW,
         )?;
         let child_meta = child.metadata()?;
+        let child_status = InodeStatus::from_metadata(&child_meta);
 
-        if child_meta.is_dir() {
+        if child_status.is_dir() {
             let subdir = openat_file(
                 child.as_raw_fd(),
                 c".",
                 libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOATIME,
             )?;
-            chown_recursive_dir(subdir, &child_meta, opts)?;
+            chown_recursive_dir(subdir, child_status, opts)?;
         } else {
-            chown_one_fd(child.as_raw_fd(), &child_meta, opts)?;
+            chown_one_fd(child.as_raw_fd(), child_status, opts)?;
         }
     }
 
     // Chown the directory itself last.
-    chown_one_fd(stream.fd(), dir_meta, opts)?;
+    chown_one_fd(stream.fd(), dir_status, opts)?;
 
     // C's chown_one() reports success as a change even when fchmod_and_chown()
     // finds the inode already correct; mirror that observable return value.
@@ -462,14 +518,14 @@ pub fn path_chown_recursive(
         return Ok(false);
     }
 
-    let meta = file.metadata()?;
+    let status = InodeStatus::from_metadata(&file.metadata()?);
 
     // Shortcut — mirrors the C early-return.
-    if !needs_change(&meta, opts) {
+    if !needs_change(status, opts) {
         return Ok(false);
     }
 
-    chown_recursive_dir(file, &meta, opts)
+    chown_recursive_dir(file, status, opts)
 }
 
 /// Recursively change ownership and permissions of a directory tree by fd.
@@ -489,11 +545,9 @@ pub fn fd_chown_recursive<Fd: AsRawFd>(fd: &Fd, opts: &ChownOptions) -> io::Resu
     // SAFETY: successful fstat(2) initialized the complete output struct.
     let stat_buf = unsafe { stat_buf.assume_init() };
 
-    if (stat_buf.st_mode & libc::S_IFMT) != libc::S_IFDIR {
-        return Err(io::Error::new(
-            io::ErrorKind::NotADirectory,
-            "fd does not refer to a directory",
-        ));
+    let status = InodeStatus::from_stat(&stat_buf);
+    if !status.is_dir() {
+        return Err(io::Error::from_raw_os_error(libc::ENOTDIR));
     }
 
     if opts.is_noop() {
@@ -501,18 +555,15 @@ pub fn fd_chown_recursive<Fd: AsRawFd>(fd: &Fd, opts: &ChownOptions) -> io::Resu
     }
 
     // Shortcut — same logic as in `path_chown_recursive`.
-    let uid_ok = opts.uid.is_none_or(|u| stat_buf.st_uid == u);
-    let gid_ok = opts.gid.is_none_or(|g| stat_buf.st_gid == g);
-    let mode_ok = (stat_buf.st_mode as u32 & !opts.mode_mask & 0o7777) == 0;
-    if uid_ok && gid_ok && mode_ok {
+    if !needs_change(status, opts) {
         return Ok(false);
     }
 
     // fdopendir takes ownership, so duplicate the caller's descriptor exactly
-    // as the C implementation does.
+    // as the C implementation does. Keep using the original fstat snapshot:
+    // C passes that same snapshot into the recursive walk after duplication.
     let duplicate = duplicate_fd(raw)?;
-    let meta = duplicate.metadata()?;
-    chown_recursive_dir(duplicate, &meta, opts)
+    chown_recursive_dir(duplicate, status, opts)
 }
 
 // ── Convenience wrappers ──────────────────────────────────────────────────
@@ -574,6 +625,27 @@ mod tests {
     }
 
     #[test]
+    fn test_invalid_id_sentinels_mean_no_change() {
+        assert_eq!(ChownOptions::new_uid(UID_INVALID).uid, None);
+        assert_eq!(ChownOptions::new_gid(GID_INVALID).gid, None);
+
+        let o = ChownOptions::new_uid_gid(UID_INVALID, GID_INVALID);
+        assert_eq!(o.uid, None);
+        assert_eq!(o.gid, None);
+        assert!(o.is_noop());
+
+        // Public fields cannot bypass the C sentinel semantics.
+        assert!(
+            ChownOptions {
+                uid: Some(UID_INVALID),
+                gid: Some(GID_INVALID),
+                mode_mask: MODE_MASK_FULL,
+            }
+            .is_noop()
+        );
+    }
+
+    #[test]
     fn test_with_mode_mask() {
         let o = ChownOptions::new_uid(0).with_mode_mask(0o0755);
         assert_eq!(o.uid, Some(0));
@@ -623,6 +695,12 @@ mod tests {
         assert!(!o.is_noop());
     }
 
+    #[test]
+    fn test_is_noop_ignores_bits_outside_permission_mask() {
+        let o = ChownOptions::default().with_mode_mask(libc::S_IFDIR | MODE_MASK_FULL);
+        assert!(o.is_noop());
+    }
+
     // ── needs_change logic ─────────────────────────────────────────────
 
     /// Helper: create a temp file and return (path, metadata).
@@ -642,21 +720,27 @@ mod tests {
             gid: Some(m.gid()),
             mode_mask: MODE_MASK_FULL,
         };
-        assert!(!needs_change(&m, &opts));
+        assert!(!needs_change(InodeStatus::from_metadata(&m), &opts));
     }
 
     #[test]
     fn test_needs_change_uid_mismatch() {
         let (_d, _p, m) = tmp_file();
         let other = if m.uid() == 0 { 1 } else { 0 };
-        assert!(needs_change(&m, &ChownOptions::new_uid(other)));
+        assert!(needs_change(
+            InodeStatus::from_metadata(&m),
+            &ChownOptions::new_uid(other)
+        ));
     }
 
     #[test]
     fn test_needs_change_gid_mismatch() {
         let (_d, _p, m) = tmp_file();
         let other = if m.gid() == 0 { 1 } else { 0 };
-        assert!(needs_change(&m, &ChownOptions::new_gid(other)));
+        assert!(needs_change(
+            InodeStatus::from_metadata(&m),
+            &ChownOptions::new_gid(other)
+        ));
     }
 
     #[test]
@@ -673,7 +757,22 @@ mod tests {
             gid: Some(m.gid()),
             mode_mask: 0o0775,
         };
-        assert!(needs_change(&m, &opts));
+        assert!(needs_change(InodeStatus::from_metadata(&m), &opts));
+    }
+
+    #[test]
+    fn test_needs_change_ignores_invalid_id_sentinels() {
+        let status = InodeStatus {
+            mode: libc::S_IFDIR | 0o0755,
+            uid: 1000,
+            gid: 1000,
+        };
+        let opts = ChownOptions {
+            uid: Some(UID_INVALID),
+            gid: Some(GID_INVALID),
+            mode_mask: MODE_MASK_FULL,
+        };
+        assert!(!needs_change(status, &opts));
     }
 
     // ── Path-based operations ──────────────────────────────────────────
@@ -743,7 +842,9 @@ mod tests {
         let file = fs::File::open(&p).unwrap();
         let r = fd_chown_recursive(&file, &ChownOptions::new_uid(0));
         assert!(r.is_err());
-        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::NotADirectory);
+        let err = r.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotADirectory);
+        assert_eq!(err.raw_os_error(), Some(libc::ENOTDIR));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// PORT-SYNC: src/core/clock-warp.c
+// PORT-SYNC: src/core/clock-warp.c, src/core/clock-warp.h
 //
 pub const EPOCH_CLOCK_FILE: &str = "/usr/lib/clock-epoch";
 pub const TIMESYNCD_CLOCK_FILE: &str = "/var/lib/systemd/timesync/clock";
@@ -55,6 +55,13 @@ pub trait ClockWarpEnvironment {
     fn log(&mut self, level: LogLevel, message: String);
 }
 
+fn errno_for_log(errno: i32) -> u32 {
+    /* C's logging path consumes a negative errno without arithmetic. Keep the
+     * model total even if a test implementation supplies i32::MIN, for which
+     * `-errno` would panic in debug Rust builds. */
+    errno.unsigned_abs()
+}
+
 pub fn clock_reset_timewarp(env: &mut impl ClockWarpEnvironment) -> Result<(), i32> {
     env.set_timewarp_timezone(0, 0)
 }
@@ -72,7 +79,7 @@ pub fn clock_apply_epoch(
                 LogLevel::Warning,
                 format!(
                     "Could not stat {TIMESYNCD_CLOCK_FILE}, ignoring: errno {}",
-                    -errno
+                    errno_for_log(errno)
                 ),
             );
             0
@@ -87,7 +94,7 @@ pub fn clock_apply_epoch(
                 LogLevel::Warning,
                 format!(
                     "Could not stat {EPOCH_CLOCK_FILE}, ignoring: errno {}",
-                    -errno
+                    errno_for_log(errno)
                 ),
             );
             0
@@ -129,7 +136,7 @@ pub fn clock_apply_epoch(
                 LogLevel::Error,
                 format!(
                     "Current system time is before epoch, but cannot correct: errno {}",
-                    -errno
+                    errno_for_log(errno)
                 ),
             );
         } else {
@@ -138,7 +145,7 @@ pub fn clock_apply_epoch(
                 format!(
                     "Current system time is further ahead than {} usec after epoch, but cannot correct: errno {}",
                     config.clock_valid_range_usec_max,
-                    -errno
+                    errno_for_log(errno)
                 ),
             );
         }
@@ -350,6 +357,38 @@ mod tests {
     }
 
     #[test]
+    fn exact_valid_range_boundary_does_not_rewind() {
+        let mut env = MockClockEnv {
+            now_usec: 12 * USEC_PER_SEC,
+            ..MockClockEnv::default()
+        };
+
+        assert_eq!(
+            clock_apply_epoch(&mut env, config(), true),
+            ClockApplyEpochOutcome::NoAdjustment
+        );
+        assert!(env.set_values.is_empty());
+    }
+
+    #[test]
+    fn saturated_valid_range_does_not_wrap_and_rewind() {
+        let mut env = MockClockEnv {
+            now_usec: u64::MAX,
+            ..MockClockEnv::default()
+        };
+        let config = ClockWarpConfig {
+            time_epoch_usec: u64::MAX - 1,
+            clock_valid_range_usec_max: 2,
+        };
+
+        assert_eq!(
+            clock_apply_epoch(&mut env, config, true),
+            ClockApplyEpochOutcome::NoAdjustment
+        );
+        assert!(env.set_values.is_empty());
+    }
+
+    #[test]
     fn stat_failures_other_than_enoent_are_logged() {
         let mut env = MockClockEnv {
             now_usec: 5 * USEC_PER_SEC,
@@ -362,6 +401,24 @@ mod tests {
             env.logs
                 .iter()
                 .any(|(level, _)| *level == LogLevel::Warning)
+        );
+    }
+
+    #[test]
+    fn minimum_i32_errno_is_logged_without_panicking() {
+        let mut env = MockClockEnv {
+            now_usec: 5 * USEC_PER_SEC,
+            ..MockClockEnv::default()
+        };
+        env.stat_results
+            .insert(TIMESYNCD_CLOCK_FILE.into(), Err(i32::MIN));
+
+        let _ = clock_apply_epoch(&mut env, config(), false);
+
+        assert!(
+            env.logs
+                .iter()
+                .any(|(_, message)| message.contains("2147483648"))
         );
     }
 

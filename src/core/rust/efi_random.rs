@@ -108,6 +108,19 @@ mod tests {
     }
 
     #[test]
+    fn other_open_failures_are_warning_only() {
+        let mut store = FakeStore {
+            open_result: Some(Err(Errno::EACCES)),
+            ..FakeStore::default()
+        };
+
+        let report = lock_down_efi_variables(&mut store).unwrap();
+        assert!(!report.opened);
+        assert_eq!(report.warnings, vec![LockDownWarning::Open(Errno::EACCES)]);
+        assert!(store.closed.is_empty());
+    }
+
+    #[test]
     fn chmod_and_chattr_failures_are_recorded() {
         let mut store = FakeStore {
             clear_result: Some(Err(Errno::EPERM)),

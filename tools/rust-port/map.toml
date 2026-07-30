@@ -1774,7 +1774,7 @@ status = "in-progress"
 tier = 2
 symbols = 3
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: clock-warp privilege/time behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 bounded static parity review: Rust's injected environment mirrors clock-warp.c's dummy time-warp reset, MAX3 epoch source selection, silent -ENOENT stat handling, warning-only other stat failures, strict out-of-range comparison, saturating usec_add behavior, and forward/backward adjustment decision. Logging keeps the Rust model total for an invalid i32::MIN injected errno without claiming C log formatting parity. Standalone model tests cover the bounded behavior. C remains production authority. P2: real stat(2)/clock_settime(2)/settimeofday(2), compile-time TIME_EPOCH and CLOCK_VALID_RANGE_USEC_MAX configuration, structured journal messages, C ABI, and PID1/Meson integration remain unverified."
 
 [efi_random]
 c_file = "src/core/efi-random.c"
@@ -1784,7 +1784,7 @@ status = "in-progress"
 tier = 3
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: EFI random-seed/kernel-interface behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 bounded static parity review: Rust's injected EFI-variable store mirrors efi-random.c's silent ENOENT open path, warning-only other open failures, chattr_fd value=0/mask=FS_IMMUTABLE_FL intent, continued chmod after chattr failure, and close-after-both-attempts control flow. Focused model coverage includes both open-failure classes. C remains production authority. P2: actual EFI path open flags, chattr ioctl, fchmod, logging, C ABI, Meson, and PID1 integration need Linux runtime evidence."
 
 [emergency_action]
 c_file = "src/core/emergency-action.c"
@@ -2270,7 +2270,7 @@ status = "in-progress"
 tier = 3
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: recursive ownership/filesystem error behavior has no complete current behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 bounded static parity review: Rust now mirrors chown-recursive.c's UID/GID invalid-sentinel meaning, FLAGS_SET(mask, 07777) no-op shortcut, ENOTDIR error, pre-dup fstat snapshot reuse, ownership/mode shortcut, depth-first child-before-directory order, and ACL-removal-before-fchmod/chown model. Focused source tests cover sentinel, mask, shortcut, and errno behavior. C remains production authority. P2: privileged ACL/xattr/chown behavior, O_PATH/procfs/fchmodat2 behavior, partial file-type bits in unusual masks, C ABI, and C/Meson runtime integration require Linux evidence."
 
 [condition]
 c_file = "src/shared/condition.c"
