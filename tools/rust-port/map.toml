@@ -2162,7 +2162,7 @@ status = "in-progress"
 tier = 2
 symbols = 6
 sync_status = "needs_review"
-notes = "2026-07-27 static source review: shared bitmap parsing/serialization behavior has no current exact behavior review, C ABI evidence, or path-blob anchors. Completion claim removed; runtime parity is unclaimed."
+notes = "2026-07-30 bounded source audit: shared Rust bitmap now preserves bitmap_set's status-only, idempotent mutation contract and bitmap_unset's void/no-op contract, including range behavior and ascending iteration. P2: BTreeSet is a safe behavioral model, not the C uint64_t-array ABI/allocation representation; C remains production authority and no FFI/runtime integration is claimed."
 
 [bootspec]
 c_file = "src/shared/bootspec.c"
