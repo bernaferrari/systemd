@@ -228,12 +228,12 @@ impl RuntimeState {
             .ok_or_else(|| zbus::fdo::Error::FileNotFound(format!("job {id} not found")))?;
 
         let job = self.jobs.remove(index);
-        if let Some(unit) = self.unit_mut(&job.unit_name) {
-            if unit.job_id == id {
-                unit.job_id = 0;
-                unit.job_type.clear();
-                unit.job_path.clear();
-            }
+        if let Some(unit) = self.unit_mut(&job.unit_name)
+            && unit.job_id == id
+        {
+            unit.job_id = 0;
+            unit.job_type.clear();
+            unit.job_path.clear();
         }
 
         Ok(())
@@ -587,9 +587,8 @@ impl ManagerState {
         }
 
         for name in units {
-            match state.set_enabled(name, enable)? {
-                Some(change) => changes.push(change),
-                None => {}
+            if let Some(change) = state.set_enabled(name, enable)? {
+                changes.push(change);
             }
         }
 
@@ -767,17 +766,11 @@ mod tests {
     use super::*;
     use std::future::Future;
     use std::pin::Pin;
-    use std::task::{Context, Poll, Wake, Waker};
-
-    struct NoopWake;
-
-    impl Wake for NoopWake {
-        fn wake(self: Arc<Self>) {}
-    }
+    use std::task::{Context, Poll, Waker};
 
     fn block_on<F: Future>(future: F) -> F::Output {
-        let waker = Waker::from(Arc::new(NoopWake));
-        let mut cx = Context::from_waker(&waker);
+        let waker = Waker::noop();
+        let mut cx = Context::from_waker(waker);
         let mut future = Box::pin(future);
 
         loop {

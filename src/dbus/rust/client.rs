@@ -284,19 +284,12 @@ mod tests {
     use super::*;
     use std::future::Future;
     use std::pin::pin;
-    use std::sync::Arc;
-    use std::task::{Context, Poll, Wake, Waker};
-
-    struct NoopWake;
-
-    impl Wake for NoopWake {
-        fn wake(self: Arc<Self>) {}
-    }
+    use std::task::{Context, Poll, Waker};
 
     fn assert_immediately_unsupported<T>(future: impl Future<Output = zbus::Result<T>>) {
         let mut future = pin!(future);
-        let waker = Waker::from(Arc::new(NoopWake));
-        let mut context = Context::from_waker(&waker);
+        let waker = Waker::noop();
+        let mut context = Context::from_waker(waker);
         let Poll::Ready(result) = future.as_mut().poll(&mut context) else {
             panic!("non-Linux system-manager stub unexpectedly suspended");
         };
