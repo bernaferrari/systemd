@@ -2182,7 +2182,7 @@ status = "in-progress"
 tier = 1
 symbols = 2
 sync_status = "needs_review"
-notes = "2026-07-27 history/source audit: bpf-dlopen was renamed to bpf-util (7d822ca8af). The current source/header own libbpf dynamic loading and error translation; behavioral completion remains unclaimed."
+notes = "2026-07-30 bounded source audit: src/shared/bpf-util.c:95-156 and src/basic/dlfcn-util.c:15-94 confirm the Rust shadow preserves libbpf soname order, final-failure caching, and first-missing required-symbol order (32 required; 4 optional names). It intentionally remains a safe loader-state/symbol-presence model: C retains typed function pointers, resolves optional fallbacks, installs libbpf logging, and translates libbpf_get_error(const void *); those runtime/ABI behaviors remain P2."
 
 [bus_polkit]
 c_file = "src/shared/bus-polkit.c"
@@ -2345,7 +2345,7 @@ status = "in-progress"
 tier = 3
 symbols = 6
 sync_status = "needs_review"
-notes = "2026-07-27 provenance audit re-anchored device property/subsystem helpers to current libsystemd sd-device source/header; behavioral completion remains unclaimed."
+notes = "2026-07-30 direct-source audit: safe shadow now matches mode-specific zero-devnum inaccessible paths, subsystem-only matching (including missing-subsystem/empty-list semantics), the reserved-property predicate including empty non-null strings, and default-seat/error handling; raw stat unsafe was removed. P2 remains: nonzero devname resolution scans /dev rather than using the sd-device database, device_open_from_devnum and complete device_make_log_fields are absent, seat lookup reads uevent rather than sd-device properties, and C ABI/error/logging/lifetime behavior still needs Linux Meson integration validation."
 
 [dhcp_identifier]
 c_paths = ["src/libsystemd-network/sd-dhcp-duid.c", "src/libsystemd-network/sd-dhcp-client-id.c", "src/libsystemd-network/dhcp-duid-internal.h", "src/libsystemd-network/dhcp-client-id-internal.h"]
@@ -2506,7 +2506,7 @@ status = "in-progress"
 tier = 3
 symbols = 5
 sync_status = "needs_review"
-notes = "Declared parity evidence is absent from this checkout (test_file=src/test/test-fstab.c); re-anchor to current upstream files before claiming completion."
+notes = "2026-07-30: audited direct fstab-util.c/h and test-fstab-util.c. Rust now models option escaping, final-match semantics, filtered re-escaping, initrd/extrinsic policy, fstab cmdline defaults/rd prefix, and device-node encoding. P2: simplified FstabEntry parser and entry-list helpers are not libmount-backed; command-line source lacks C secure_getenv/container PID1 behavior."
 
 [resolve_hook_util]
 c_file = "src/shared/resolve-hook-util.c"
