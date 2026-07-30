@@ -249,7 +249,7 @@ mod tests {
         results.record(SharedLib::Libacl, true);
         results.record(SharedLib::Libblkid, true);
         results.record(SharedLib::LibTpm2, false);
-        assert!(results.all_succeeded() == false);
+        assert!(!results.all_succeeded());
         assert_eq!(results.loaded.len(), 2);
         assert_eq!(results.failed.len(), 1);
     }

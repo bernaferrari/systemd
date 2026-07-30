@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn extracted_metadata_is_stable() {
-        assert!(SOURCE_LINE_COUNT > 0);
+        const { assert!(SOURCE_LINE_COUNT > 0) };
         assert!(SOURCE_PATH.ends_with(".c"));
     }
 }

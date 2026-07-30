@@ -146,30 +146,18 @@ mod tests {
 
     #[test]
     fn undef_can_queue() {
-        assert_eq!(
-            can_transition(EventState::Undef, EventState::Queued).unwrap(),
-            true
-        );
+        assert!(can_transition(EventState::Undef, EventState::Queued).unwrap());
     }
 
     #[test]
     fn queued_can_lock_and_run() {
-        assert_eq!(
-            can_transition(EventState::Queued, EventState::Locked).unwrap(),
-            true
-        );
-        assert_eq!(
-            can_transition(EventState::Queued, EventState::Running).unwrap(),
-            true
-        );
+        assert!(can_transition(EventState::Queued, EventState::Locked).unwrap());
+        assert!(can_transition(EventState::Queued, EventState::Running).unwrap());
     }
 
     #[test]
     fn processed_is_terminal_in_model() {
-        assert_eq!(
-            can_transition(EventState::Processed, EventState::Queued).unwrap(),
-            false
-        );
+        assert!(!can_transition(EventState::Processed, EventState::Queued).unwrap());
     }
 
     #[test]

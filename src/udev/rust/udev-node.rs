@@ -110,10 +110,7 @@ mod tests {
 
     #[test]
     fn symlink_creation_accepts_valid_inputs() {
-        assert_eq!(
-            should_create_symlink(Some("/dev/sda"), "/dev/disk/by-id/x").unwrap(),
-            true
-        );
+        assert!(should_create_symlink(Some("/dev/sda"), "/dev/disk/by-id/x").unwrap());
     }
 
     #[test]

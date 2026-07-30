@@ -89,7 +89,7 @@ mod tests {
     fn builtin_descriptor_matches_c_definition() {
         assert_eq!(BUILTIN.name, "tpm2_id");
         assert_eq!(BUILTIN.help, "Identify TPM2 chips");
-        assert!(BUILTIN.run_once);
+        const { assert!(BUILTIN.run_once) };
     }
 
     #[test]
