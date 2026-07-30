@@ -322,6 +322,10 @@ pub fn setup_input(
     let _ = (context, params, socket_fd, named_iofds);
     Ok(0)
 }
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors setup_output() in exec-invoke.c so each execution parameter remains directly traceable"
+)]
 pub fn setup_output(
     context: *const c_void,
     params: *const c_void,
@@ -428,6 +432,10 @@ pub fn exec_context_get_tty_for_pam(context: *const c_void, ret: *mut *mut c_cha
     }
     Ok(0)
 }
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors setup_pam() in exec-invoke.c so each PAM setup input remains directly traceable"
+)]
 pub fn setup_pam(
     context: *const c_void,
     cgroup_context: *const c_void,
@@ -453,34 +461,34 @@ pub fn setup_pam(
     Ok(0)
 }
 pub fn rename_process_from_path(path: *const c_char) {
-    let _ = (path);
+    let _ = path;
 }
 pub fn context_has_address_families(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn context_has_syscall_filters(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn context_has_syscall_logs(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn context_has_seccomp(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn context_has_no_new_privileges(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn seccomp_allows_drop_privileges(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn skip_seccomp_unavailable(msg: *const c_char) -> bool {
-    let _ = (msg);
+    let _ = msg;
     false
 }
 pub fn apply_syscall_filter(c: *const c_void, p: *const c_void) -> Result<i32> {
@@ -555,8 +563,12 @@ pub fn apply_protect_hostname(
     Ok(0)
 }
 pub fn do_idle_pipe_dance(idle_pipe: *mut i32) {
-    let _ = (idle_pipe);
+    let _ = idle_pipe;
 }
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors build_environment() in exec-invoke.c so each environment input remains directly traceable"
+)]
 pub fn build_environment(
     c: *const c_void,
     p: *const c_void,
@@ -626,6 +638,10 @@ pub fn setup_private_users_child(
     let _ = (unshare_ready_fd, uid_map, gid_map, allow_setgroups);
     Ok(0)
 }
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors setup_private_users() in exec-invoke.c so namespace ID mappings remain directly traceable"
+)]
 pub fn setup_private_users(
     nsresource_link: *mut c_void,
     private_users: i32,
@@ -816,6 +832,10 @@ pub fn pin_rootfs(
     }
     Ok(0)
 }
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors apply_mount_namespace() in exec-invoke.c so mount-namespace setup remains directly traceable"
+)]
 pub fn apply_mount_namespace(
     command_flags: i32,
     context: *const c_void,
@@ -930,11 +950,11 @@ pub fn connect_unix_harder(of: *const c_void, ofd: i32) -> Result<i32> {
     Ok(0)
 }
 pub fn get_open_file_fd(of: *const c_void) -> Result<i32> {
-    let _ = (of);
+    let _ = of;
     Ok(0)
 }
 pub fn collect_open_file_fds(p: *mut c_void) -> Result<i32> {
-    let _ = (p);
+    let _ = p;
     Ok(0)
 }
 pub fn log_command_line(
@@ -966,6 +986,10 @@ pub fn exec_namespace_is_delegated(
     let _ = (context, params, have_cap_sys_admin, namespace);
     false
 }
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors setup_delegated_namespaces() in exec-invoke.c so the two-phase namespace boundary remains directly traceable"
+)]
 pub fn setup_delegated_namespaces(
     context: *const c_void,
     params: *mut c_void,
@@ -1008,7 +1032,7 @@ pub fn setup_delegated_namespaces(
     Ok(0)
 }
 pub fn set_memory_thp(thp: i32) -> Result<i32> {
-    let _ = (thp);
+    let _ = thp;
     Ok(0)
 }
 pub fn exec_context_named_iofds(
@@ -1020,13 +1044,13 @@ pub fn exec_context_named_iofds(
     Ok(0)
 }
 pub fn exec_shared_runtime_close(shared: *mut c_void) {
-    let _ = (shared);
+    let _ = shared;
 }
 pub fn exec_runtime_close(rt: *mut c_void) {
-    let _ = (rt);
+    let _ = rt;
 }
 pub fn exec_params_close(p: *mut c_void) {
-    let _ = (p);
+    let _ = p;
 }
 pub fn exec_fd_mark_hot(
     c: *const c_void,

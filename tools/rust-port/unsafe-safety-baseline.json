@@ -1098,7 +1098,7 @@
     "src/udev/rust/udev-rule-engine.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 18
+      "unsafe_sites": 19
     },
     "src/udev/rust/uevent-netlink.rs": {
       "missing_safety": 0,

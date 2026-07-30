@@ -310,7 +310,7 @@ fn opaque_is_mut_null<T>(ptr: *mut T) -> bool {
 }
 
 pub fn unit_remove_from_cgroup_empty_queue(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn set_attribute_and_warn(
     u: *mut c_void,
@@ -367,26 +367,26 @@ pub fn unit_remove_xattr_graceful(u: *mut c_void, name: *const c_char) {
     let _ = (u, name);
 }
 pub fn cgroup_oomd_xattr_apply(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn cgroup_log_xattr_apply(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn cgroup_invocation_id_xattr_apply(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn cgroup_coredump_xattr_apply(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn cgroup_delegate_xattr_apply(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn cgroup_survive_xattr_apply(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn cgroup_xattr_apply(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn lookup_block_device(p: *const c_char, ret: *mut u64) -> Result<i32> {
     let _ = (p, ret);
@@ -396,15 +396,15 @@ pub fn lookup_block_device(p: *const c_char, ret: *mut u64) -> Result<i32> {
     Ok(0)
 }
 pub fn cgroup_context_has_cpu_weight(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn cgroup_context_has_allowed_cpus(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn cgroup_context_has_allowed_mems(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn cgroup_context_allowed_cpus(c: *const c_void, state: i32) -> *mut c_void {
@@ -432,7 +432,7 @@ pub fn cgroup_apply_cpuset(u: *mut c_void, cpus: *const c_void, name: *const c_c
     let _ = (u, cpus, name);
 }
 pub fn cgroup_context_has_io_config(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn set_bfq_weight(u: *mut c_void, dev: u64, io_weight: u64) -> Result<i32> {
@@ -449,29 +449,29 @@ pub fn cgroup_apply_io_device_limit(u: *mut c_void, dev_path: *const c_char, lim
     let _ = (u, dev_path, limits);
 }
 pub fn cgroup_context_has_memory_config(c: *const c_void) -> bool {
-    let _ = (c);
+    let _ = c;
     false
 }
 pub fn cgroup_apply_memory_limit(u: *mut c_void, file: *const c_char, v: u64) {
     let _ = (u, file, v);
 }
 pub fn cgroup_apply_firewall(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn unit_modify_nft_set(u: *mut c_void, add: bool) {
     let _ = (u, add);
 }
 pub fn cgroup_apply_socket_bind(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn cgroup_apply_restrict_network_interfaces(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn cgroup_apply_bind_network_interface(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn cgroup_apply_devices(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn set_io_weight(u: *mut c_void, weight: u64) {
@@ -487,43 +487,43 @@ pub fn cgroup_context_apply(
     let _ = (u, c, state, apply_mask, disable_mask);
 }
 pub fn unit_get_needs_bpf_firewall(u: *mut c_void) -> bool {
-    let _ = (u);
+    let _ = u;
     false
 }
 pub fn unit_get_needs_bpf_foreign_program(u: *mut c_void) -> bool {
-    let _ = (u);
+    let _ = u;
     false
 }
 pub fn unit_get_needs_socket_bind(u: *mut c_void) -> bool {
-    let _ = (u);
+    let _ = u;
     false
 }
 pub fn unit_get_needs_restrict_network_interfaces(u: *mut c_void) -> bool {
-    let _ = (u);
+    let _ = u;
     false
 }
 pub fn unit_get_needs_bind_network_interface(u: *mut c_void) -> bool {
-    let _ = (u);
+    let _ = u;
     false
 }
 pub fn unit_get_cgroup_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_get_bpf_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_get_subtree_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_get_disable_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_get_ancestor_disable_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_default_cgroup_path(u: *const c_void, ret: *mut *mut c_char) -> Result<i32> {
@@ -538,11 +538,11 @@ pub fn unit_set_cgroup_path(u: *mut c_void, path: *const c_char) -> Result<i32> 
     Ok(0)
 }
 pub fn unit_watch_cgroup(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn unit_watch_cgroup_memory(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn unit_update_cgroup(u: *mut c_void, state: i32) -> Result<i32> {
@@ -570,7 +570,7 @@ pub fn unit_has_mask_enables_realized(u: *mut c_void, mask: u32) -> bool {
     false
 }
 pub fn unit_remove_from_cgroup_realize_queue(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn unit_realize_cgroup_now_enable(u: *mut c_void, state: i32) -> Result<i32> {
     let _ = (u, state);
@@ -585,11 +585,11 @@ pub fn unit_realize_cgroup_now(u: *mut c_void, state: i32) -> Result<i32> {
     Ok(0)
 }
 pub fn unit_maybe_release_cgroup(u: *mut c_void) -> bool {
-    let _ = (u);
+    let _ = u;
     false
 }
 pub fn unit_prune_cgroup_via_bus(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn on_cgroup_empty_event(s: *mut c_void, userdata: *mut c_void) -> Result<i32> {
@@ -597,17 +597,17 @@ pub fn on_cgroup_empty_event(s: *mut c_void, userdata: *mut c_void) -> Result<i3
     Ok(0)
 }
 pub fn unit_add_to_cgroup_empty_queue(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn on_cgroup_oom_event(s: *mut c_void, userdata: *mut c_void) -> Result<i32> {
     let _ = (s, userdata);
     Ok(0)
 }
 pub fn unit_add_to_cgroup_oom_queue(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn unit_check_cgroup_events(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn on_cgroup_inotify_event(
@@ -620,7 +620,7 @@ pub fn on_cgroup_inotify_event(
     Ok(0)
 }
 pub fn cg_bpf_mask_supported(ret: *mut u32) -> Result<i32> {
-    let _ = (ret);
+    let _ = ret;
     if ret.is_null() {
         return Err(Errno::EINVAL);
     }
@@ -657,10 +657,10 @@ pub fn unit_reset_io_accounting(unit: *mut c_void, crt: *mut c_void) -> Result<i
     Ok(0)
 }
 pub fn cgroup_runtime_reset_memory_accounting_last(crt: *mut c_void) {
-    let _ = (crt);
+    let _ = crt;
 }
 pub fn cgroup_runtime_reset_ip_accounting(crt: *mut c_void) -> Result<i32> {
-    let _ = (crt);
+    let _ = crt;
     Ok(0)
 }
 pub fn unit_cgroup_freezer_kernel_state(u: *mut c_void, ret: *mut i32) -> Result<i32> {
@@ -690,7 +690,7 @@ pub fn cgroup_context_remove_bpf_foreign_program(c: *mut c_void, p: *mut c_void)
     let _ = (c, p);
 }
 pub fn cgroup_context_remove_socket_bind(head: *mut *mut c_void) {
-    let _ = (head);
+    let _ = head;
 }
 pub fn cgroup_context_dump(u: *mut c_void, f: *mut c_void, prefix: *const c_char) {
     let _ = (u, f, prefix);
@@ -722,31 +722,31 @@ pub fn cgroup_context_add_bpf_foreign_program(
     Ok(0)
 }
 pub fn unit_get_own_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_get_delegate_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_get_members_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_get_siblings_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_get_target_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_get_enable_mask(u: *mut c_void) -> u32 {
-    let _ = (u);
+    let _ = u;
     0
 }
 pub fn unit_invalidate_cgroup_members_masks(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn unit_get_cgroup_path_with_fallback(u: *const c_void, ret: *mut *mut c_char) -> Result<i32> {
     let _ = (u, ret);
@@ -768,28 +768,28 @@ pub fn unit_remove_subcgroup(u: *mut c_void, suffix_path: *const c_char) -> Resu
     Ok(0)
 }
 pub fn unit_add_to_cgroup_realize_queue(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn manager_dispatch_cgroup_realize_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn unit_add_family_to_cgroup_realize_queue(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn unit_realize_cgroup(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn unit_release_cgroup(u: *mut c_void, drop_cgroup_runtime: bool) {
     let _ = (u, drop_cgroup_runtime);
 }
 pub fn unit_cgroup_is_empty(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn unit_prune_cgroup(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn unit_search_main_pid(u: *mut c_void, ret: *mut c_void) -> Result<i32> {
     let _ = (u, ret);
@@ -799,15 +799,15 @@ pub fn unit_search_main_pid(u: *mut c_void, ret: *mut c_void) -> Result<i32> {
     Ok(0)
 }
 pub fn unit_check_oomd_kill(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn unit_check_oom(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn manager_setup_cgroup(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_shutdown_cgroup(m: *mut c_void, delete: bool) {
@@ -866,7 +866,7 @@ pub fn unit_get_io_accounting(
     Ok(0)
 }
 pub fn unit_reset_accounting(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn unit_invalidate_cgroup(u: *mut c_void, m: u32) -> bool {
@@ -874,17 +874,17 @@ pub fn unit_invalidate_cgroup(u: *mut c_void, m: u32) -> bool {
     false
 }
 pub fn unit_invalidate_cgroup_bpf_firewall(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn unit_cgroup_catchup(u: *mut c_void) {
-    let _ = (u);
+    let _ = u;
 }
 pub fn unit_cgroup_delegate(u: *mut c_void) -> bool {
-    let _ = (u);
+    let _ = u;
     false
 }
 pub fn manager_invalidate_startup_units(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn unit_cgroup_freezer_action(u: *mut c_void, action: i32) -> Result<i32> {
     let _ = (u, action);
@@ -898,7 +898,7 @@ pub fn cgroup_runtime_new() -> *mut c_void {
     std::ptr::null_mut::<c_void>()
 }
 pub fn cgroup_runtime_free(crt: *mut c_void) -> *mut c_void {
-    let _ = (crt);
+    let _ = crt;
     std::ptr::null_mut::<c_void>()
 }
 pub fn cgroup_runtime_serialize(u: *mut c_void, f: *mut c_void, fds: *mut c_void) -> Result<i32> {

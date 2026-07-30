@@ -15,9 +15,6 @@ use super::{
     ChildExitCleanMode, PreparedStdio, RuntimeManager, StdioFd, StdioSpec, StdioTargetMode,
     TrackedPidRole, child_state_considered_clean_with_mode, infer_service_type, specs_or_single,
 };
-
-#[cfg(test)]
-use super::Result;
 use crate::ffi::Errno;
 use crate::service::{
     ServiceState, ServiceType, service_record_reload_result, service_record_result,
@@ -1930,7 +1927,7 @@ impl RuntimeManager {
     /// Test-only state-machine injection. Production readiness must arrive
     /// from the authenticated sd_notify receiver, not from a unit name.
     #[cfg(test)]
-    pub fn notify_service_ready(&mut self, name: &str) -> Result<()> {
+    pub fn notify_service_ready(&mut self, name: &str) -> super::Result<()> {
         let name = self.canonical_unit_name(name);
         let info = self.unit_files.get(&name).cloned().ok_or(Errno::ENOENT)?;
         let service_type = self
@@ -1960,7 +1957,7 @@ impl RuntimeManager {
     /// Test-only state-machine injection. Production watchdog updates must be
     /// authenticated sd_notify datagrams.
     #[cfg(test)]
-    pub fn notify_service_watchdog(&mut self, name: &str) -> Result<()> {
+    pub fn notify_service_watchdog(&mut self, name: &str) -> super::Result<()> {
         let name = self.canonical_unit_name(name);
         let info = self.unit_files.get(&name).cloned().ok_or(Errno::ENOENT)?;
         if !matches!(
@@ -1983,7 +1980,7 @@ impl RuntimeManager {
     /// Test-only state-machine injection. Production D-Bus readiness must be
     /// driven by a manager-owned BusName owner-change subscription.
     #[cfg(test)]
-    pub fn notify_dbus_name_ready(&mut self, name: &str) -> Result<()> {
+    pub fn notify_dbus_name_ready(&mut self, name: &str) -> super::Result<()> {
         let name = self.canonical_unit_name(name);
         let info = self.unit_files.get(&name).cloned().ok_or(Errno::ENOENT)?;
         let service_type = self

@@ -284,10 +284,10 @@ fn opaque_is_mut_null<T>(ptr: *mut T) -> bool {
 }
 
 pub fn manager_watch_jobs_in_progress(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_print_jobs_in_progress(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn have_ask_password() -> Result<i32> {
     Ok(0)
@@ -302,84 +302,84 @@ pub fn manager_dispatch_ask_password_fd(
     Ok(0)
 }
 pub fn manager_close_ask_password(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_check_ask_password(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_watch_idle_pipe(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_close_idle_pipe(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_setup_time_change(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_read_timezone_stat(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_setup_timezone_change(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_enable_special_signals(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_setup_signals(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn sanitize_environment(l: *mut *mut libc::c_char) -> *mut *mut libc::c_char {
-    let _ = (l);
+    let _ = l;
     std::ptr::null_mut::<*mut libc::c_char>()
 }
 pub fn manager_setup_prefix(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_free_unit_name_maps(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_setup_run_queue(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_setup_sigchld_event_source(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_find_credentials_dirs(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_setup_notify(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_setup_user_lookup_fd(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_setup_handoff_timestamp_fd(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_setup_pidref_transport_fd(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_dispatch_cleanup_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn manager_dispatch_release_resources_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn unit_gc_mark_good(u: *mut c_void, gc_marker: u32) {
@@ -389,11 +389,11 @@ pub fn unit_gc_sweep(u: *mut c_void, gc_marker: u32) {
     let _ = (u, gc_marker);
 }
 pub fn manager_dispatch_gc_unit_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn manager_dispatch_gc_job_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn manager_ratelimit_requeue(s: *mut c_void, usec: u64, userdata: *mut c_void) -> Result<i32> {
@@ -401,39 +401,39 @@ pub fn manager_ratelimit_requeue(s: *mut c_void, usec: u64, userdata: *mut c_voi
     Ok(0)
 }
 pub fn manager_ratelimit_check_and_queue(u: *mut c_void) -> Result<i32> {
-    let _ = (u);
+    let _ = u;
     Ok(0)
 }
 pub fn manager_dispatch_stop_when_unneeded_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn manager_dispatch_start_when_upheld_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn manager_dispatch_stop_when_bound_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn manager_dispatch_stop_notify_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn manager_clear_jobs_and_units(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_enumerate_perpetual(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_enumerate(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_coldplug(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_catchup(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_distribute_fds(m: *mut c_void, fds: *mut c_void) {
     let _ = (m, fds);
@@ -443,20 +443,20 @@ pub fn manager_dbus_is_running(m: *mut c_void, deserialized: bool) -> bool {
     false
 }
 pub fn manager_setup_bus(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_preset_all(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_ready(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_make_runtime_dir(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_dispatch_target_deps_queue(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_dispatch_run_queue(source: *mut c_void, userdata: *mut c_void) -> Result<i32> {
@@ -464,7 +464,7 @@ pub fn manager_dispatch_run_queue(source: *mut c_void, userdata: *mut c_void) ->
     Ok(0)
 }
 pub fn manager_dispatch_dbus_queue(m: *mut c_void) -> u32 {
-    let _ = (m);
+    let _ = m;
     0
 }
 pub fn manager_process_barrier_fd(tags: *const *mut libc::c_char, fds: *mut c_void) -> bool {
@@ -512,7 +512,7 @@ pub fn manager_start_special(m: *mut c_void, name: *const libc::c_char, mode: i3
     let _ = (m, name, mode);
 }
 pub fn manager_handle_ctrl_alt_del(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_dispatch_signal_fd(
     source: *mut c_void,
@@ -558,26 +558,26 @@ pub fn manager_dispatch_jobs_in_progress(
     Ok(0)
 }
 pub fn log_taint_string(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_notify_finished(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_send_ready_on_basic_target(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_send_ready_on_idle(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_check_basic_target(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn generator_path_any(paths: *const *mut libc::c_char) -> bool {
-    let _ = (paths);
+    let _ = paths;
     false
 }
 pub fn manager_run_environment_generators(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn build_generator_environment(
@@ -599,19 +599,19 @@ pub fn manager_execute_generators(
     Ok(0)
 }
 pub fn manager_run_generators(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_journal_is_running(m: *mut c_void) -> bool {
-    let _ = (m);
+    let _ = m;
     false
 }
 pub fn manager_get_show_status(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn set_show_status_marker(b: bool) {
-    let _ = (b);
+    let _ = b;
 }
 pub fn manager_should_show_status(m: *mut c_void, status_type: i32) -> bool {
     let _ = (m, status_type);
@@ -637,13 +637,13 @@ pub fn manager_vacuum_uid_refs_internal(uid_refs: *mut c_void, clean_ipc: *const
     let _ = (uid_refs, clean_ipc);
 }
 pub fn manager_vacuum_uid_refs(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_vacuum_gid_refs(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_vacuum(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_dispatch_user_lookup_fd(
     source: *mut c_void,
@@ -673,11 +673,11 @@ pub fn manager_dispatch_pidref_transport_fd(
     Ok(0)
 }
 pub fn manager_default_environment(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_setup_memory_pressure_event_source(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_set_switching_root(m: *mut c_void, switching_root: bool) {
@@ -691,15 +691,15 @@ pub fn manager_new(scope: i32, test_run_flags: i32, ret: *mut *mut c_void) -> Re
     Ok(0)
 }
 pub fn manager_free(m: *mut c_void) -> *mut c_void {
-    let _ = (m);
+    let _ = m;
     std::ptr::null_mut::<c_void>()
 }
 pub fn manager_reloading_start(m: *mut c_void) -> *mut c_void {
-    let _ = (m);
+    let _ = m;
     std::ptr::null_mut::<c_void>()
 }
 pub fn manager_reloading_stopp(m: *mut *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_startup(
     m: *mut c_void,
@@ -711,6 +711,10 @@ pub fn manager_startup(
     let _ = (m, serialization, fds, named_listen_fds, root);
     Ok(0)
 }
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Mirrors the eight-parameter manager_add_job_full() C API from src/core/manager.h."
+)]
 pub fn manager_add_job_full(
     m: *mut c_void,
     type_: i32,
@@ -782,11 +786,11 @@ pub fn manager_get_unit(m: *mut c_void, name: *const libc::c_char) -> *mut c_voi
     std::ptr::null_mut::<c_void>()
 }
 pub fn manager_dispatch_load_queue(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_unit_cache_should_retry_load(u: *mut c_void) -> bool {
-    let _ = (u);
+    let _ = u;
     false
 }
 pub fn manager_load_unit_prepare(
@@ -835,10 +839,10 @@ pub fn manager_unwatch_pidref(m: *mut c_void, pidref: *mut c_void) {
     let _ = (m, pidref);
 }
 pub fn manager_trigger_run_queue(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_loop(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_load_unit_from_dbus_path(
@@ -891,22 +895,22 @@ pub fn manager_override_watchdog_pretimeout_governor(
     Ok(0)
 }
 pub fn manager_reload(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_reset_failed(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_unit_inactive_or_pending(m: *mut c_void, u: *mut c_void) -> Result<i32> {
     let _ = (m, u);
     Ok(0)
 }
 pub fn manager_check_finished(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_send_reloading(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_transient_environment_add(
@@ -938,11 +942,11 @@ pub fn manager_set_unit_defaults(m: *mut c_void, u: *mut c_void, mask: i32) {
     let _ = (m, u, mask);
 }
 pub fn manager_recheck_dbus(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn disable_printk_ratelimit() {}
 pub fn manager_recheck_journal(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_set_show_status(m: *mut c_void, s: i32) {
     let _ = (m, s);
@@ -951,14 +955,14 @@ pub fn manager_override_show_status(m: *mut c_void, s: i32, source: *const libc:
     let _ = (m, s, source);
 }
 pub fn manager_get_confirm_spawn(m: *mut c_void) -> bool {
-    let _ = (m);
+    let _ = m;
     false
 }
 pub fn manager_set_first_boot(m: *mut c_void, b: bool) {
     let _ = (m, b);
 }
 pub fn manager_disable_confirm_spawn(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 /// Mirrors the fixed C parameters; C varargs require a C-compatible wrapper.
 pub fn manager_status_printf(
@@ -982,7 +986,7 @@ pub fn manager_update_failed_units(m: *mut c_void, u: *mut c_void, state: i32) {
     let _ = (m, u, state);
 }
 pub fn manager_state(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_unref_uid(m: *mut c_void, uid: u32) {
@@ -1000,38 +1004,38 @@ pub fn manager_ref_gid(m: *mut c_void, gid: u32, clean_ipc: bool) -> Result<i32>
     Ok(0)
 }
 pub fn manager_ref_console(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_unref_console(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_override_log_level(m: *mut c_void, level: i32) {
     let _ = (m, level);
 }
 pub fn manager_restore_original_log_level(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_override_log_target(m: *mut c_void, target: i32) {
     let _ = (m, target);
 }
 pub fn manager_restore_original_log_target(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_timestamp_initrd_mangle(m: *mut c_void) {
-    let _ = (m);
+    let _ = m;
 }
 pub fn manager_allocate_idle_pipe(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn unit_defaults_init(d: *mut c_void) {
-    let _ = (d);
+    let _ = d;
 }
 pub fn unit_defaults_done(d: *mut c_void) {
-    let _ = (d);
+    let _ = d;
 }
 pub fn manager_get_executor_log_target(m: *mut c_void) -> Result<i32> {
-    let _ = (m);
+    let _ = m;
     Ok(0)
 }
 pub fn manager_log_caller(m: *mut c_void, caller: *mut c_void, method: *const libc::c_char) {

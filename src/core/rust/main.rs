@@ -626,19 +626,16 @@ fn run_event_loop(
         EpollFlags::EPOLLIN,
         DATA_SIGNAL,
         Box::new(move |events, _data| {
-            if events & (EpollFlags::EPOLLIN.bits() as u32) != 0 {
-                match signalfd_callback.read_signal()? {
-                    Some(info) => {
-                        signal_inbox_callback.borrow_mut().push_back(SignalRecord {
-                            signal: info.ssi_signo as i32,
-                            sender_pid: info.ssi_pid,
-                            sender_uid: info.ssi_uid,
-                            code: info.ssi_code,
-                            value: info.ssi_int,
-                        });
-                    }
-                    None => {}
-                }
+            if events & (EpollFlags::EPOLLIN.bits() as u32) != 0
+                && let Some(info) = signalfd_callback.read_signal()?
+            {
+                signal_inbox_callback.borrow_mut().push_back(SignalRecord {
+                    signal: info.ssi_signo as i32,
+                    sender_pid: info.ssi_pid,
+                    sender_uid: info.ssi_uid,
+                    code: info.ssi_code,
+                    value: info.ssi_int,
+                });
             }
             Ok(())
         }),
