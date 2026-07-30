@@ -91,6 +91,11 @@ pub const SIGINT: i32 = 2;
 pub const SIGPIPE: i32 = 13;
 pub const SIGTERM: i32 = 15;
 
+// `Bitmap` rejects entries greater than 0xffff in `bitmap_set()`. The native
+// set keeps that representable domain rather than turning failed C insertions
+// into successful arbitrary signed entries.
+const BITMAP_MAX_ENTRY: i32 = 0xffff;
+
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct ExitStatusClass: u8 {
@@ -509,19 +514,23 @@ impl ExitStatusSet {
     }
 
     pub fn insert_status(&mut self, status: i32) {
-        self.statuses.insert(status);
+        if is_valid_bitmap_entry(status) {
+            self.statuses.insert(status);
+        }
     }
 
     pub fn insert_signal(&mut self, signal: i32) {
-        self.signals.insert(signal);
+        if is_valid_bitmap_entry(signal) {
+            self.signals.insert(signal);
+        }
     }
 
     pub fn contains_status(&self, status: i32) -> bool {
-        self.statuses.contains(&status)
+        is_valid_bitmap_entry(status) && self.statuses.contains(&status)
     }
 
     pub fn contains_signal(&self, signal: i32) -> bool {
-        self.signals.contains(&signal)
+        is_valid_bitmap_entry(signal) && self.signals.contains(&signal)
     }
 
     pub fn free(&mut self) {
@@ -538,6 +547,10 @@ impl ExitStatusSet {
     }
 }
 
+const fn is_valid_bitmap_entry(value: i32) -> bool {
+    (0..=BITMAP_MAX_ENTRY).contains(&value)
+}
+
 pub fn exit_status_to_string(code: i32, class: ExitStatusClass) -> Option<&'static str> {
     if !(0..=255).contains(&code) {
         return None;
@@ -551,6 +564,84 @@ pub fn exit_status_class(code: i32) -> Option<&'static str> {
     ExitStatus::from_i32(code).map(ExitStatus::class_name)
 }
 
+/// Mirrors the successful-value language of C's `safe_atou8(value, …)`.
+///
+/// The C parser ultimately delegates digit parsing to `strtoul()`, so it skips
+/// the C-locale whitespace bytes, uses base-zero integer parsing (including C
+/// octal and hexadecimal, plus systemd's unsigned `0b`/`0o` prefixes), and
+/// accepts negative zero. This native API collapses C's errno distinctions
+/// into `None`, but must retain the accepted values.
+fn parse_exit_status_number(value: &str) -> Option<i32> {
+    // `safe_atou_full()` strips systemd's WHITESPACE before `mangle_base()`.
+    // `strtoul()` then separately skips the wider C-locale whitespace set.
+    let bytes = trim_systemd_whitespace(value.as_bytes());
+    let (parser_input, explicit_base) = match bytes {
+        // `mangle_base()` runs before `strtoul()`, so its systemd-specific
+        // prefixes are only recognized when they are the very first bytes.
+        [b'0', b'b' | b'B', rest @ ..] => (rest, Some(2)),
+        [b'0', b'o' | b'O', rest @ ..] => (rest, Some(8)),
+        _ => (bytes, None),
+    };
+    let (negative, unsigned) = split_optional_sign(trim_c_locale_whitespace(parser_input));
+    let (digits, base) = match explicit_base {
+        Some(base) => (unsigned, base),
+        None => match unsigned {
+            [b'0', b'x' | b'X', rest @ ..] => (rest, 16),
+            [b'0', ..] => (unsigned, 8),
+            _ => (unsigned, 10),
+        },
+    };
+
+    if digits.is_empty() {
+        return None;
+    }
+
+    let mut parsed = 0u16;
+    for &byte in digits {
+        let digit = match byte {
+            b'0'..=b'9' => byte - b'0',
+            b'a'..=b'f' => byte - b'a' + 10,
+            b'A'..=b'F' => byte - b'A' + 10,
+            _ => return None,
+        };
+        if digit >= base {
+            return None;
+        }
+
+        parsed = parsed.checked_mul(u16::from(base))?;
+        parsed = parsed.checked_add(u16::from(digit))?;
+        if parsed > u16::from(u8::MAX) {
+            return None;
+        }
+    }
+
+    (!negative || parsed == 0).then_some(i32::from(parsed))
+}
+
+fn trim_c_locale_whitespace(bytes: &[u8]) -> &[u8] {
+    let first_non_whitespace = bytes
+        .iter()
+        .position(|byte| !matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c))
+        .unwrap_or(bytes.len());
+    &bytes[first_non_whitespace..]
+}
+
+fn trim_systemd_whitespace(bytes: &[u8]) -> &[u8] {
+    let first_non_whitespace = bytes
+        .iter()
+        .position(|byte| !matches!(byte, b' ' | b'\t' | b'\n' | b'\r'))
+        .unwrap_or(bytes.len());
+    &bytes[first_non_whitespace..]
+}
+
+fn split_optional_sign(bytes: &[u8]) -> (bool, &[u8]) {
+    match bytes.first() {
+        Some(b'-') => (true, &bytes[1..]),
+        Some(b'+') => (false, &bytes[1..]),
+        _ => (false, bytes),
+    }
+}
+
 pub fn exit_status_from_string(value: &str) -> Result<i32, ExitStatusFromStringError> {
     if let Some(status) = ALL_EXIT_STATUSES
         .iter()
@@ -559,10 +650,7 @@ pub fn exit_status_from_string(value: &str) -> Result<i32, ExitStatusFromStringE
         return Ok(*status as i32);
     }
 
-    value
-        .parse::<u8>()
-        .map(i32::from)
-        .map_err(|_| ExitStatusFromStringError::Invalid)
+    parse_exit_status_number(value).ok_or(ExitStatusFromStringError::Invalid)
 }
 
 pub fn is_clean_exit(
@@ -754,6 +842,30 @@ mod tests {
     }
 
     #[test]
+    fn exit_status_from_string_keeps_safe_atou8_base_zero_semantics() {
+        assert_eq!(exit_status_from_string("  42"), Ok(42));
+        assert_eq!(exit_status_from_string("+010"), Ok(8));
+        assert_eq!(exit_status_from_string("0x10"), Ok(16));
+        assert_eq!(exit_status_from_string("0b1010"), Ok(10));
+        assert_eq!(exit_status_from_string("0O10"), Ok(8));
+        assert_eq!(exit_status_from_string("0b 10"), Ok(2));
+        assert_eq!(exit_status_from_string("0o\u{b}10"), Ok(8));
+        assert_eq!(exit_status_from_string("0b-0"), Ok(0));
+        assert_eq!(exit_status_from_string("-0"), Ok(0));
+
+        // The systemd-only 0b/0o recognition happens before strtoul(), and
+        // therefore does not apply after a sign. Trailing whitespace and an
+        // invalid base-zero octal digit are rejected by C too.
+        for invalid in ["+0b10", "-0o10", "\u{b}0b10", "08", "42 ", "0x", "-1"] {
+            assert_eq!(
+                exit_status_from_string(invalid),
+                Err(ExitStatusFromStringError::Invalid),
+                "{invalid}",
+            );
+        }
+    }
+
+    #[test]
     fn exit_status_set_free_and_empty_are_faithful() {
         let mut set = ExitStatusSet::new();
         assert!(exit_status_set_is_empty(None));
@@ -783,6 +895,22 @@ mod tests {
         assert!(!exit_status_set_test(&set, 0, 42));
         assert!(set.test(CLD_EXITED, 42));
         assert!(set.test(CLD_DUMPED, SIGTERM));
+    }
+
+    #[test]
+    fn exit_status_set_matches_c_bitmap_entry_bounds() {
+        let mut set = ExitStatusSet::new();
+        set.insert_status(BITMAP_MAX_ENTRY);
+        set.insert_signal(BITMAP_MAX_ENTRY);
+        set.insert_status(-1);
+        set.insert_signal(BITMAP_MAX_ENTRY + 1);
+
+        assert!(set.contains_status(BITMAP_MAX_ENTRY));
+        assert!(set.contains_signal(BITMAP_MAX_ENTRY));
+        assert!(!set.contains_status(-1));
+        assert!(!set.contains_signal(BITMAP_MAX_ENTRY + 1));
+        assert!(!set.test(CLD_EXITED, -1));
+        assert!(!set.test(CLD_KILLED, BITMAP_MAX_ENTRY + 1));
     }
 
     #[test]
