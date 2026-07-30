@@ -497,7 +497,7 @@ pub fn dhcp_option_parse(
             None,
             Some(&mut message_type),
             Some(&mut error_message),
-            cb.as_deref_mut(),
+            cb,
         )?;
     }
 
@@ -526,7 +526,7 @@ pub fn dhcp_option_parse_string(option: &[u8]) -> Result<Option<String>, Errno> 
         None => option,
     };
 
-    if bytes.iter().any(|b| *b == 0) {
+    if bytes.contains(&0) {
         return Err(EINVAL);
     }
 
@@ -640,7 +640,7 @@ fn parse_options(
 }
 
 fn option_append(
-    options: &mut Vec<u8>,
+    options: &mut [u8],
     size: usize,
     offset: &mut usize,
     code: DhcpOptionCode,
