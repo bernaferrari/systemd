@@ -13,17 +13,17 @@ Scope: `src`
 ## Snapshot Totals
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1283**
+- All `src` Rust files: **1277**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1168**
+- Unverified Rust behavior candidates: **1162**
 
 Excluding `src/test`:
 - C files: **1569**
-- Rust files: **1283**
+- Rust files: **1277**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1168**
+- Unverified Rust behavior candidates: **1162**
 
 ## Per-Subsystem Inventory
 
@@ -42,7 +42,7 @@ Excluding `src/test`:
 | `bpf` | 7 | 0 | 0 | 0 | 0 |
 | `busctl` | 3 | 0 | 0 | 0 | 0 |
 | `cgls` | 1 | 3 | 0 | 0 | 3 |
-| `cgtop` | 1 | 3 | 0 | 0 | 3 |
+| `cgtop` | 1 | 2 | 0 | 0 | 2 |
 | `clonesetup` | 4 | 0 | 0 | 0 | 0 |
 | `core` | 97 | 140 | 0 | 6 | 134 |
 | `coredump` | 11 | 0 | 0 | 0 | 0 |
@@ -116,7 +116,7 @@ Excluding `src/test`:
 | `report` | 12 | 3 | 0 | 0 | 3 |
 | `resolve` | 58 | 60 | 29 | 22 | 9 |
 | `rfkill` | 1 | 3 | 0 | 0 | 3 |
-| `run` | 2 | 3 | 0 | 0 | 3 |
+| `run` | 2 | 2 | 0 | 0 | 2 |
 | `run-generator` | 1 | 3 | 0 | 0 | 3 |
 | `sbsign` | 2 | 0 | 0 | 0 | 0 |
 | `shared` | 283 | 214 | 0 | 6 | 208 |
@@ -130,7 +130,7 @@ Excluding `src/test`:
 | `storagetm` | 1 | 3 | 0 | 0 | 3 |
 | `sulogin-shell` | 1 | 3 | 0 | 0 | 3 |
 | `sysctl` | 1 | 3 | 0 | 0 | 3 |
-| `sysext` | 1 | 3 | 0 | 0 | 3 |
+| `sysext` | 1 | 2 | 0 | 0 | 2 |
 | `sysinstall` | 1 | 0 | 0 | 0 | 0 |
 | `system-update-generator` | 1 | 3 | 0 | 0 | 3 |
 | `systemctl` | 36 | 1 | 0 | 0 | 1 |
@@ -144,11 +144,11 @@ Excluding `src/test`:
 | `tty-ask-password-agent` | 1 | 3 | 0 | 0 | 3 |
 | `udev` | 68 | 68 | 0 | 9 | 59 |
 | `update-done` | 1 | 3 | 0 | 0 | 3 |
-| `update-utmp` | 1 | 3 | 0 | 0 | 3 |
-| `user-sessions` | 1 | 3 | 0 | 0 | 3 |
+| `update-utmp` | 1 | 2 | 0 | 0 | 2 |
+| `user-sessions` | 1 | 2 | 0 | 0 | 2 |
 | `userdb` | 4 | 0 | 0 | 0 | 0 |
 | `validatefs` | 1 | 3 | 0 | 0 | 3 |
-| `varlinkctl` | 1 | 3 | 0 | 0 | 3 |
+| `varlinkctl` | 1 | 2 | 0 | 0 | 2 |
 | `vconsole` | 1 | 3 | 0 | 0 | 3 |
 | `veritysetup` | 2 | 0 | 0 | 0 | 0 |
 | `vmspawn` | 11 | 0 | 0 | 0 | 0 |
