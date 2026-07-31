@@ -2678,7 +2678,7 @@ notes = "Fail-closed executable boundary only. Help and version work, but record
 
 [volatile_root_runtime]
 c_file = "src/volatile-root/volatile-root.c"
-rust_paths = ["src/volatile-root/rust/main.rs", "src/volatile-root/rust/lib.rs"]
+rust_paths = ["src/volatile-root/rust/main.rs", "src/volatile-root/rust/lib.rs", "src/volatile-root/rust/orchestration.rs"]
 status = "in-progress"
 tier = 1
 symbols = 0

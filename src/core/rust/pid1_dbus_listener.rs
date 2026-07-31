@@ -462,6 +462,20 @@ mod imp {
             &mut self,
             server_id: [u8; 16],
         ) -> Result<PrivateBusConnectionId, PrivateBusAcceptError> {
+            self.accept_one_with(|| server_id)
+        }
+
+        /// Variant of [`Self::accept_one`] which obtains the per-connection
+        /// server id only after `accept()`, the connection-limit check, and
+        /// `SO_PEERCRED` succeeded.
+        ///
+        /// Keeping generation lazy lets an event-loop adapter use a
+        /// comparatively expensive random-id source without consuming ids for
+        /// spurious listener readiness.
+        pub fn accept_one_with(
+            &mut self,
+            server_id: impl FnOnce() -> [u8; 16],
+        ) -> Result<PrivateBusConnectionId, PrivateBusAcceptError> {
             let (stream, _) = self.listener.accept().map_err(PrivateBusAcceptError::Io)?;
             stream
                 .set_nonblocking(true)
@@ -480,7 +494,7 @@ mod imp {
                 credentials.uid(),
                 credentials.gid(),
             );
-            let auth = PrivateBusServerAuth::new(peer, self.manager_effective_uid, server_id)
+            let auth = PrivateBusServerAuth::new(peer, self.manager_effective_uid, server_id())
                 .map_err(PrivateBusAcceptError::Authentication)?;
 
             let id = PrivateBusConnectionId(self.next_connection_id);
