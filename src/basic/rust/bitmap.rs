@@ -5,6 +5,7 @@
 // Bitmap functions.
 
 use libc::c_void;
+use std::slice;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -22,6 +23,87 @@ pub struct CBitmap {
 pub struct CIterator {
     next_key: *const c_void,
     idx: u32,
+}
+
+impl CBitmap {
+    // C ABI adapters ensure that non-empty bitmaps carry a live aligned word
+    // allocation. The safe bitmap core works exclusively with this slice.
+    fn words(&self) -> &[u64] {
+        if self.n_bitmaps == 0 {
+            return &[];
+        }
+        // SAFETY: the C ABI adapter established the C Bitmap representation
+        // invariant for its non-empty word allocation.
+        unsafe { slice::from_raw_parts(self.bitmaps, self.n_bitmaps) }
+    }
+
+    fn words_mut(&mut self) -> &mut [u64] {
+        if self.n_bitmaps == 0 {
+            return &mut [];
+        }
+        // SAFETY: the C ABI adapter established exclusive access to the live
+        // C Bitmap word allocation.
+        unsafe { slice::from_raw_parts_mut(self.bitmaps, self.n_bitmaps) }
+    }
+
+    fn is_set(&self, n: u32) -> bool {
+        self.words()
+            .get(bitmap_offset(n))
+            .is_some_and(|word| word & bitmap_mask(n) != 0)
+    }
+
+    fn is_clear(&self) -> bool {
+        self.words().iter().all(|word| *word == 0)
+    }
+
+    fn equal(&self, other: &Self) -> bool {
+        equal_words(self.words(), other.words())
+    }
+
+    fn unset(&mut self, n: u32) {
+        if let Some(word) = self.words_mut().get_mut(bitmap_offset(n)) {
+            *word &= !bitmap_mask(n);
+        }
+    }
+
+    fn grow_to(&mut self, new_len: usize) -> bool {
+        debug_assert!(new_len > self.n_bitmaps);
+        let Some(bytes) = new_len.checked_mul(std::mem::size_of::<u64>()) else {
+            return false;
+        };
+        // SAFETY: the C ABI adapter guarantees the existing pointer is a
+        // libc allocation (or null when empty), so realloc retains ownership.
+        let words = unsafe { libc::realloc(self.bitmaps.cast::<c_void>(), bytes) }.cast::<u64>();
+        if words.is_null() {
+            return false;
+        }
+
+        let old_len = self.n_bitmaps;
+        // SAFETY: realloc returned a live allocation for exactly `new_len`
+        // words; only the newly allocated suffix is initialized here.
+        let initialized = unsafe { slice::from_raw_parts_mut(words, new_len) };
+        initialized[old_len..].fill(0);
+        self.bitmaps = words;
+        self.n_bitmaps = new_len;
+        true
+    }
+
+    fn set(&mut self, n: u32) -> bool {
+        let offset = bitmap_offset(n);
+        if offset >= self.n_bitmaps && !self.grow_to(offset + 1) {
+            return false;
+        }
+        self.words_mut()[offset] |= bitmap_mask(n);
+        true
+    }
+
+    fn clear(&mut self) {
+        // SAFETY: the C ABI adapter guarantees this pointer has libc
+        // allocation ownership or is null.
+        unsafe { libc::free(self.bitmaps.cast::<c_void>()) };
+        self.bitmaps = std::ptr::null_mut();
+        self.n_bitmaps = 0;
+    }
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────
@@ -115,35 +197,7 @@ impl Bitmap {
     }
 
     pub fn iterate(&self, iter: &mut BitmapIterator) -> Option<u32> {
-        if iter.idx == BITMAP_END {
-            return None;
-        }
-
-        let mut offset = iter.idx as usize / BITS_PER_WORD;
-        let mut rem = iter.idx as usize % BITS_PER_WORD;
-        let mut bitmask = 1u64 << rem;
-
-        while offset < self.bitmaps.len() {
-            let word = self.bitmaps[offset];
-            if word != 0 {
-                while bitmask != 0 {
-                    if word & bitmask != 0 {
-                        let n = (offset * BITS_PER_WORD + rem) as u32;
-                        iter.idx = n.saturating_add(1);
-                        return Some(n);
-                    }
-                    bitmask <<= 1;
-                    rem += 1;
-                }
-            }
-
-            offset += 1;
-            rem = 0;
-            bitmask = 1;
-        }
-
-        iter.idx = BITMAP_END;
-        None
+        iterate_words(&self.bitmaps, &mut iter.idx)
     }
 }
 
@@ -155,14 +209,43 @@ fn bitmap_mask(n: u32) -> u64 {
     1_u64 << (n as usize % BITS_PER_WORD)
 }
 
-/// Read a bitmap word from a valid C bitmap allocation.
-///
-/// # Safety
-/// `bitmap` must be a valid C `Bitmap`, and its `bitmaps` field must reference
-/// at least `n_bitmaps` aligned `u64` words when `n_bitmaps` is non-zero.
-unsafe fn bitmap_words(bitmap: *const CBitmap) -> *const u64 {
-    // SAFETY: guaranteed by this helper's documented C bitmap representation contract.
-    unsafe { (*bitmap).bitmaps.cast_const() }
+fn equal_words(left: &[u64], right: &[u64]) -> bool {
+    let common = left.len().min(right.len());
+    left[..common] == right[..common]
+        && left[common..]
+            .iter()
+            .chain(&right[common..])
+            .all(|word| *word == 0)
+}
+
+fn iterate_words(words: &[u64], idx: &mut u32) -> Option<u32> {
+    if *idx == BITMAP_END {
+        return None;
+    }
+
+    let mut offset = bitmap_offset(*idx);
+    let mut rem = *idx as usize % BITS_PER_WORD;
+    let mut bitmask = 1_u64 << rem;
+
+    while let Some(&word) = words.get(offset) {
+        if word != 0 {
+            while bitmask != 0 {
+                if word & bitmask != 0 {
+                    let value = (offset * BITS_PER_WORD + rem) as u32;
+                    *idx = value.wrapping_add(1);
+                    return Some(value);
+                }
+                bitmask <<= 1;
+                rem += 1;
+            }
+        }
+        offset += 1;
+        rem = 0;
+        bitmask = 1;
+    }
+
+    *idx = BITMAP_END;
+    None
 }
 
 /// Allocate a zeroed C-compatible bitmap object.
@@ -181,13 +264,8 @@ pub unsafe extern "C" fn rs_bitmap_isset(b: *const CBitmap, n: u32) -> bool {
     if b.is_null() {
         return false;
     }
-    let offset = bitmap_offset(n);
     // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    if offset >= unsafe { (*b).n_bitmaps } {
-        return false;
-    }
-    // SAFETY: the representation contract guarantees this indexed word is readable.
-    unsafe { *bitmap_words(b).add(offset) & bitmap_mask(n) != 0 }
+    unsafe { (&*b).is_set(n) }
 }
 
 /// Exact C ABI shadow of `bitmap_isclear()`.
@@ -201,9 +279,7 @@ pub unsafe extern "C" fn rs_bitmap_isclear(b: *const CBitmap) -> bool {
         return true;
     }
     // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    let n_bitmaps = unsafe { (*b).n_bitmaps };
-    // SAFETY: the representation contract guarantees each indexed word is readable.
-    (0..n_bitmaps).all(|index| unsafe { *bitmap_words(b).add(index) == 0 })
+    unsafe { (&*b).is_clear() }
 }
 
 /// Exact C ABI shadow of `bitmap_equal()`.
@@ -220,21 +296,7 @@ pub unsafe extern "C" fn rs_bitmap_equal(a: *const CBitmap, b: *const CBitmap) -
         return false;
     }
     // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    let (a_len, b_len) = unsafe { ((*a).n_bitmaps, (*b).n_bitmaps) };
-    let common = a_len.min(b_len);
-    for index in 0..common {
-        // SAFETY: the representation contract guarantees both indexed words are readable.
-        if unsafe { *bitmap_words(a).add(index) != *bitmap_words(b).add(index) } {
-            return false;
-        }
-    }
-    let (longer, longer_len) = if a_len > b_len {
-        (a, a_len)
-    } else {
-        (b, b_len)
-    };
-    // SAFETY: the representation contract guarantees each indexed word is readable.
-    (common..longer_len).all(|index| unsafe { *bitmap_words(longer).add(index) == 0 })
+    unsafe { (&*a).equal(&*b) }
 }
 
 /// Exact C ABI shadow of `bitmap_new()`.
@@ -261,11 +323,11 @@ pub unsafe extern "C" fn rs_bitmap_copy(b: *mut CBitmap) -> *mut CBitmap {
         return std::ptr::null_mut();
     }
     // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    let n_bitmaps = unsafe { (*b).n_bitmaps };
-    if n_bitmaps == 0 {
+    let source = unsafe { (&*b).words() };
+    if source.is_empty() {
         return copy;
     }
-    let Some(bytes) = n_bitmaps.checked_mul(std::mem::size_of::<u64>()) else {
+    let Some(bytes) = source.len().checked_mul(std::mem::size_of::<u64>()) else {
         // SAFETY: the local object has not escaped this function.
         unsafe { libc::free(copy.cast::<c_void>()) };
         return std::ptr::null_mut();
@@ -277,11 +339,12 @@ pub unsafe extern "C" fn rs_bitmap_copy(b: *mut CBitmap) -> *mut CBitmap {
         unsafe { libc::free(copy.cast::<c_void>()) };
         return std::ptr::null_mut();
     }
-    // SAFETY: both word arrays are valid for `n_bitmaps` words by their contracts.
+    // SAFETY: `words` names a fresh allocation for exactly `source.len()`
+    // words and the borrowed source slice is live by the C Bitmap contract.
     unsafe {
-        std::ptr::copy_nonoverlapping(bitmap_words(b), words, n_bitmaps);
+        slice::from_raw_parts_mut(words, source.len()).copy_from_slice(source);
         (*copy).bitmaps = words;
-        (*copy).n_bitmaps = n_bitmaps;
+        (*copy).n_bitmaps = source.len();
     }
     copy
 }
@@ -340,33 +403,12 @@ pub unsafe extern "C" fn rs_bitmap_set(b: *mut CBitmap, n: u32) -> i32 {
     if n > BITMAPS_MAX_ENTRY {
         return -libc::ERANGE;
     }
-    let offset = bitmap_offset(n);
     // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    let old_len = unsafe { (*b).n_bitmaps };
-    if offset >= old_len {
-        let Some(new_len) = offset.checked_add(1) else {
-            return -libc::ENOMEM;
-        };
-        let Some(bytes) = new_len.checked_mul(std::mem::size_of::<u64>()) else {
-            return -libc::ENOMEM;
-        };
-        // SAFETY: `bitmaps` is libc-owned by this FFI boundary's contract.
-        let words = unsafe { libc::realloc((*b).bitmaps.cast::<c_void>(), bytes) }.cast::<u64>();
-        if words.is_null() {
-            return -libc::ENOMEM;
-        }
-        // SAFETY: realloc preserved the old prefix and made the requested suffix live.
-        unsafe {
-            for index in old_len..new_len {
-                *words.add(index) = 0;
-            }
-            (*b).bitmaps = words;
-            (*b).n_bitmaps = new_len;
-        }
+    if unsafe { (&mut *b).set(n) } {
+        0
+    } else {
+        -libc::ENOMEM
     }
-    // SAFETY: the representation contract guarantees the selected word is writable.
-    unsafe { *(*b).bitmaps.add(offset) |= bitmap_mask(n) };
-    0
 }
 
 /// Exact C ABI shadow of `bitmap_unset()`.
@@ -378,13 +420,8 @@ pub unsafe extern "C" fn rs_bitmap_unset(b: *mut CBitmap, n: u32) {
     if b.is_null() {
         return;
     }
-    let offset = bitmap_offset(n);
     // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    if offset >= unsafe { (*b).n_bitmaps } {
-        return;
-    }
-    // SAFETY: the representation contract guarantees the selected word is writable.
-    unsafe { *(*b).bitmaps.add(offset) &= !bitmap_mask(n) };
+    unsafe { (&mut *b).unset(n) };
 }
 
 /// Exact C ABI shadow of `bitmap_clear()`.
@@ -398,11 +435,7 @@ pub unsafe extern "C" fn rs_bitmap_clear(b: *mut CBitmap) {
         return;
     }
     // SAFETY: required by this FFI boundary's libc ownership contract.
-    unsafe {
-        libc::free((*b).bitmaps.cast::<c_void>());
-        (*b).bitmaps = std::ptr::null_mut();
-        (*b).n_bitmaps = 0;
-    }
+    unsafe { (&mut *b).clear() };
 }
 
 /// Exact C ABI shadow of `bitmap_iterate()`.
@@ -419,42 +452,14 @@ pub unsafe extern "C" fn rs_bitmap_iterate(
     if i.is_null() || n.is_null() || b.is_null() {
         return false;
     }
-    // SAFETY: required by this FFI boundary's C Iterator contract.
-    if unsafe { (*i).idx } == BITMAP_END {
+    // SAFETY: required by this FFI boundary's bitmap, iterator, and output
+    // pointer contracts.
+    let (bitmap, iter, output) = unsafe { (&*b, &mut *i, &mut *n) };
+    let Some(value) = iterate_words(bitmap.words(), &mut iter.idx) else {
         return false;
-    }
-    // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    let n_bitmaps = unsafe { (*b).n_bitmaps };
-    // SAFETY: required by this FFI boundary's C Iterator contract.
-    let mut offset = bitmap_offset(unsafe { (*i).idx });
-    // SAFETY: required by this FFI boundary's C Iterator contract.
-    let mut rem = unsafe { (*i).idx as usize % BITS_PER_WORD };
-    let mut bitmask = 1_u64 << rem;
-    while offset < n_bitmaps {
-        // SAFETY: the representation contract guarantees this indexed word is readable.
-        if unsafe { *bitmap_words(b).add(offset) } != 0 {
-            while bitmask != 0 {
-                // SAFETY: the representation contract guarantees this indexed word is readable.
-                if unsafe { *bitmap_words(b).add(offset) & bitmask != 0 } {
-                    let value = (offset * BITS_PER_WORD + rem) as u32;
-                    // SAFETY: required by this FFI boundary's writable Iterator/output contract.
-                    unsafe {
-                        *n = value;
-                        (*i).idx = value.wrapping_add(1);
-                    }
-                    return true;
-                }
-                bitmask <<= 1;
-                rem += 1;
-            }
-        }
-        offset += 1;
-        rem = 0;
-        bitmask = 1;
-    }
-    // SAFETY: required by this FFI boundary's writable Iterator contract.
-    unsafe { (*i).idx = BITMAP_END };
-    false
+    };
+    *output = value;
+    true
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
