@@ -1,0 +1,410 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+
+//! Disconnected mapping from the checked private D-Bus wire format to PID 1 commands.
+//!
+//! This adapter supports only `LoadUnit`, `StartUnit`, `StopUnit`,
+//! `ReloadUnit`, and `RestartUnit` at the manager object path.
+//! It deliberately has no socket, reply, event-loop, or authorization policy:
+//! callers must supply the `SenderIdentity` derived from the connection's
+//! kernel credentials, and command dispatch still invokes its authorizer.
+//! In particular, the D-Bus `sender` header is never consulted as identity.
+//!
+//! `ReloadUnit` has an `ss` D-Bus signature, but the existing typed command
+//! intentionally has no job mode because its runtime operation always uses
+//! `replace`. Therefore this adapter accepts `ReloadUnit` only with the
+//! explicit `replace` mode instead of silently changing the request. The
+//! public manager's no-argument `ResetFailed` method also has no equivalent
+//! in the current named-unit command seam, so it is decoded and rejected with
+//! a typed error rather than being misrepresented as a named reset.
+
+use crate::pid1_dbus_wire::{MethodCall, WireError};
+use crate::pid1_manager_commands::{
+    Pid1CommandError, Pid1CommandReplyReceiver, Pid1CommandSender, Pid1ManagerCommand,
+    SenderIdentity,
+};
+use crate::transaction::JobMode;
+
+pub const PID1_MANAGER_PATH: &str = "/org/freedesktop/systemd1";
+pub const PID1_MANAGER_INTERFACE: &str = "org.freedesktop.systemd1.Manager";
+
+/// Typed validation and bounded-ingress failures for [`Pid1DbusCommandAdapter`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pid1DbusCommandAdapterError {
+    WrongPath {
+        actual: String,
+    },
+    WrongInterface {
+        actual: Option<String>,
+    },
+    UnsupportedMember {
+        member: String,
+    },
+    WrongSignature {
+        member: String,
+        expected: &'static str,
+        actual: String,
+    },
+    InvalidPayload {
+        member: String,
+        cause: WireError,
+    },
+    InvalidJobMode {
+        mode: String,
+    },
+    UnsupportedJobMode {
+        member: String,
+        mode: String,
+    },
+    Command(Pid1CommandError),
+}
+
+impl From<Pid1CommandError> for Pid1DbusCommandAdapterError {
+    fn from(error: Pid1CommandError) -> Self {
+        Self::Command(error)
+    }
+}
+
+/// Convert checked manager method calls and enqueue the resulting semantic command.
+///
+/// Constructing this adapter does not grant authority. It only retains the
+/// bounded [`Pid1CommandSender`] supplied by the PID 1 command owner.
+#[derive(Clone)]
+pub struct Pid1DbusCommandAdapter {
+    command_sender: Pid1CommandSender,
+}
+
+impl Pid1DbusCommandAdapter {
+    pub const fn new(command_sender: Pid1CommandSender) -> Self {
+        Self { command_sender }
+    }
+
+    /// Validate and translate one already-decoded D-Bus method call.
+    pub fn command_for(
+        call: &MethodCall,
+    ) -> Result<Pid1ManagerCommand, Pid1DbusCommandAdapterError> {
+        validate_endpoint(call)?;
+
+        match call.member.as_str() {
+            "LoadUnit" => Ok(Pid1ManagerCommand::LoadUnit {
+                name: decode_one_string(call)?,
+            }),
+            "StartUnit" => {
+                let (name, mode) = decode_unit_and_mode(call)?;
+                Ok(Pid1ManagerCommand::StartUnit { name, mode })
+            }
+            "StopUnit" => {
+                let (name, mode) = decode_unit_and_mode(call)?;
+                Ok(Pid1ManagerCommand::StopUnit { name, mode })
+            }
+            "ReloadUnit" => {
+                let (name, mode) = decode_unit_and_mode(call)?;
+                if mode != JobMode::Replace {
+                    return Err(Pid1DbusCommandAdapterError::UnsupportedJobMode {
+                        member: call.member.clone(),
+                        mode: job_mode_name(mode).to_string(),
+                    });
+                }
+                Ok(Pid1ManagerCommand::ReloadUnit { name })
+            }
+            "RestartUnit" => {
+                let (name, mode) = decode_unit_and_mode(call)?;
+                Ok(Pid1ManagerCommand::RestartUnit { name, mode })
+            }
+            "ResetFailed" => {
+                decode_no_args(call)?;
+                // `Pid1ManagerCommand::ResetFailed` requires a unit name;
+                // inventing an empty name would turn a valid all-units reset
+                // into a different operation.
+                Err(Pid1DbusCommandAdapterError::UnsupportedMember {
+                    member: call.member.clone(),
+                })
+            }
+            _ => Err(Pid1DbusCommandAdapterError::UnsupportedMember {
+                member: call.member.clone(),
+            }),
+        }
+    }
+
+    /// Enqueue a validated manager operation without inspecting or replacing
+    /// the caller's kernel-derived identity.
+    pub fn try_send(
+        &self,
+        sender: SenderIdentity,
+        call: &MethodCall,
+    ) -> Result<Pid1CommandReplyReceiver, Pid1DbusCommandAdapterError> {
+        let command = Self::command_for(call)?;
+        self.command_sender
+            .try_send(sender, command)
+            .map_err(Into::into)
+    }
+}
+
+fn validate_endpoint(call: &MethodCall) -> Result<(), Pid1DbusCommandAdapterError> {
+    if call.path != PID1_MANAGER_PATH {
+        return Err(Pid1DbusCommandAdapterError::WrongPath {
+            actual: call.path.clone(),
+        });
+    }
+    if call.interface.as_deref() != Some(PID1_MANAGER_INTERFACE) {
+        return Err(Pid1DbusCommandAdapterError::WrongInterface {
+            actual: call.interface.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn decode_one_string(call: &MethodCall) -> Result<String, Pid1DbusCommandAdapterError> {
+    require_signature(call, "s")?;
+    call.decode_one_string()
+        .map_err(|cause| Pid1DbusCommandAdapterError::InvalidPayload {
+            member: call.member.clone(),
+            cause,
+        })
+}
+
+fn decode_no_args(call: &MethodCall) -> Result<(), Pid1DbusCommandAdapterError> {
+    require_signature(call, "")?;
+    call.decode_no_args()
+        .map_err(|cause| Pid1DbusCommandAdapterError::InvalidPayload {
+            member: call.member.clone(),
+            cause,
+        })
+}
+
+fn decode_unit_and_mode(
+    call: &MethodCall,
+) -> Result<(String, JobMode), Pid1DbusCommandAdapterError> {
+    require_signature(call, "ss")?;
+    let (name, mode) =
+        call.decode_two_strings()
+            .map_err(|cause| Pid1DbusCommandAdapterError::InvalidPayload {
+                member: call.member.clone(),
+                cause,
+            })?;
+    let mode = parse_job_mode(&mode).ok_or(Pid1DbusCommandAdapterError::InvalidJobMode { mode })?;
+    Ok((name, mode))
+}
+
+fn require_signature(
+    call: &MethodCall,
+    expected: &'static str,
+) -> Result<(), Pid1DbusCommandAdapterError> {
+    if call.signature == expected {
+        return Ok(());
+    }
+    Err(Pid1DbusCommandAdapterError::WrongSignature {
+        member: call.member.clone(),
+        expected,
+        actual: call.signature.clone(),
+    })
+}
+
+fn parse_job_mode(mode: &str) -> Option<JobMode> {
+    Some(match mode {
+        "replace" => JobMode::Replace,
+        "replace-irreversibly" => JobMode::ReplaceIrreversibly,
+        "fail" => JobMode::Fail,
+        "isolate" => JobMode::Isolate,
+        "flush" => JobMode::Flush,
+        "ignore-dependencies" => JobMode::IgnoreDependencies,
+        "ignore-requirements" => JobMode::IgnoreRequirements,
+        "triggering" => JobMode::Triggering,
+        "restart-dependencies" => JobMode::RestartDependencies,
+        _ => return None,
+    })
+}
+
+fn job_mode_name(mode: JobMode) -> &'static str {
+    match mode {
+        JobMode::Replace => "replace",
+        JobMode::ReplaceIrreversibly => "replace-irreversibly",
+        JobMode::Fail => "fail",
+        JobMode::Lenient => "lenient",
+        JobMode::Isolate => "isolate",
+        JobMode::Flush => "flush",
+        JobMode::IgnoreDependencies => "ignore-dependencies",
+        JobMode::IgnoreRequirements => "ignore-requirements",
+        JobMode::Triggering => "triggering",
+        JobMode::RestartDependencies => "restart-dependencies",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+
+    use super::*;
+    use crate::pid1_dbus_wire::{Endian, decode_method_call};
+    use crate::pid1_manager_commands::{
+        AuthenticatedPeer, Pid1CommandAuthorizer, Pid1CommandError, pid1_manager_command_channel,
+    };
+    use crate::runtime_manager::RuntimeManager;
+
+    fn push_padding(bytes: &mut Vec<u8>, alignment: usize) {
+        let aligned = (bytes.len() + alignment - 1) & !(alignment - 1);
+        bytes.resize(aligned, 0);
+    }
+
+    fn push_text(endian: Endian, bytes: &mut Vec<u8>, value: &str, signature: bool) {
+        if signature {
+            bytes.push(u8::try_from(value.len()).unwrap());
+        } else {
+            push_padding(bytes, 4);
+            bytes.extend_from_slice(&match endian {
+                Endian::Little => u32::try_from(value.len()).unwrap().to_le_bytes(),
+                Endian::Big => u32::try_from(value.len()).unwrap().to_be_bytes(),
+            });
+        }
+        bytes.extend_from_slice(value.as_bytes());
+        bytes.push(0);
+    }
+
+    fn push_header(endian: Endian, fields: &mut Vec<u8>, code: u8, kind: u8, value: &str) {
+        push_padding(fields, 8);
+        fields.extend_from_slice(&[code, 1, kind, 0]);
+        push_text(endian, fields, value, kind == b'g');
+    }
+
+    fn call(member: &str, signature: &str, values: &[&str]) -> MethodCall {
+        let endian = Endian::Little;
+        let mut fields = Vec::new();
+        push_header(endian, &mut fields, 1, b'o', PID1_MANAGER_PATH);
+        push_header(endian, &mut fields, 2, b's', PID1_MANAGER_INTERFACE);
+        push_header(endian, &mut fields, 3, b's', member);
+        if !signature.is_empty() {
+            push_header(endian, &mut fields, 8, b'g', signature);
+        }
+        let mut body = Vec::new();
+        for value in values {
+            push_text(endian, &mut body, value, false);
+        }
+        let mut bytes = vec![b'l', 1, 0, 1];
+        bytes.extend_from_slice(&(u32::try_from(body.len()).unwrap()).to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&(u32::try_from(fields.len()).unwrap()).to_le_bytes());
+        bytes.extend_from_slice(&fields);
+        push_padding(&mut bytes, 8);
+        bytes.extend_from_slice(&body);
+        decode_method_call(&bytes).unwrap().unwrap().0
+    }
+
+    #[test]
+    fn maps_the_bounded_manager_method_subset() {
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&call("LoadUnit", "s", &["a.service"])),
+            Ok(Pid1ManagerCommand::LoadUnit {
+                name: "a.service".into()
+            })
+        );
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&call("StartUnit", "ss", &["a.service", "fail"])),
+            Ok(Pid1ManagerCommand::StartUnit {
+                name: "a.service".into(),
+                mode: JobMode::Fail
+            })
+        );
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&call("StopUnit", "ss", &["a.service", "flush"])),
+            Ok(Pid1ManagerCommand::StopUnit {
+                name: "a.service".into(),
+                mode: JobMode::Flush
+            })
+        );
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&call(
+                "ReloadUnit",
+                "ss",
+                &["a.service", "replace"]
+            )),
+            Ok(Pid1ManagerCommand::ReloadUnit {
+                name: "a.service".into()
+            })
+        );
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&call(
+                "RestartUnit",
+                "ss",
+                &["a.service", "restart-dependencies"]
+            )),
+            Ok(Pid1ManagerCommand::RestartUnit {
+                name: "a.service".into(),
+                mode: JobMode::RestartDependencies
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_wrong_endpoint_signature_member_and_mode() {
+        let mut wrong_path = call("LoadUnit", "s", &["a.service"]);
+        wrong_path.path = "/wrong".into();
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&wrong_path),
+            Err(Pid1DbusCommandAdapterError::WrongPath { .. })
+        ));
+        let mut wrong_interface = call("LoadUnit", "s", &["a.service"]);
+        wrong_interface.interface = None;
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&wrong_interface),
+            Err(Pid1DbusCommandAdapterError::WrongInterface { .. })
+        ));
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&call("LoadUnit", "ss", &["a", "replace"])),
+            Err(Pid1DbusCommandAdapterError::WrongSignature { .. })
+        ));
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&call("Nope", "", &[])),
+            Err(Pid1DbusCommandAdapterError::UnsupportedMember { .. })
+        ));
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&call("StartUnit", "ss", &["a", "nope"])),
+            Err(Pid1DbusCommandAdapterError::InvalidJobMode { .. })
+        ));
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&call("ReloadUnit", "ss", &["a", "fail"])),
+            Err(Pid1DbusCommandAdapterError::UnsupportedJobMode { .. })
+        ));
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&call("ResetFailed", "", &[])),
+            Err(Pid1DbusCommandAdapterError::UnsupportedMember { .. })
+        ));
+    }
+
+    #[derive(Default)]
+    struct CaptureAuthorizer {
+        sender: Option<SenderIdentity>,
+    }
+
+    impl Pid1CommandAuthorizer for CaptureAuthorizer {
+        fn authorize(
+            &mut self,
+            sender: SenderIdentity,
+            _: &Pid1ManagerCommand,
+        ) -> Result<(), Pid1CommandError> {
+            self.sender = Some(sender);
+            Err(Pid1CommandError::Unauthorized)
+        }
+    }
+
+    #[test]
+    fn sending_preserves_the_kernel_identity_not_the_wire_sender() {
+        let (command_sender, mut inbox) =
+            pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let adapter = Pid1DbusCommandAdapter::new(command_sender);
+        let identity = SenderIdentity::from_authenticated_peer(
+            AuthenticatedPeer::from_kernel_peer_credentials(42, 1000, 1001),
+        );
+        let mut wire_call = call("LoadUnit", "s", &["missing.service"]);
+        wire_call.sender = Some(":123.456".into());
+        let reply = adapter.try_send(identity, &wire_call).unwrap();
+        let mut authorizer = CaptureAuthorizer::default();
+        let mut runtime = RuntimeManager::new();
+        assert_eq!(
+            inbox
+                .dispatch_pending(&mut runtime, &mut authorizer, NonZeroUsize::new(1).unwrap())
+                .dispatched,
+            1
+        );
+        assert_eq!(authorizer.sender, Some(identity));
+        assert_eq!(reply.try_recv(), Ok(Err(Pid1CommandError::Unauthorized)));
+    }
+}
