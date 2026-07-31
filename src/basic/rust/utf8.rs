@@ -55,38 +55,55 @@ fn utf8_encoded_expected_len(c: u8) -> usize {
     0
 }
 
+/// Decode one UTF-8 sequence from a byte slice using the historic C grammar.
+///
+/// This deliberately supports the legacy five- and six-byte forms before the
+/// scalar-value validity check in the ABI adapter rejects them.
+fn decode_utf8_bytes(bytes: &[u8]) -> Result<(u32, usize), i32> {
+    let Some(&lead) = bytes.first() else {
+        return Err(Errno::EINVAL.to_neg_errno());
+    };
+    let len = utf8_encoded_expected_len(lead);
+    if len == 0 || bytes.len() < len {
+        return Err(Errno::EINVAL.to_neg_errno());
+    }
+    let mut value = match len {
+        1 => lead as u32,
+        2 => (lead & 0x1f) as u32,
+        3 => (lead & 0x0f) as u32,
+        4 => (lead & 0x07) as u32,
+        5 => (lead & 0x03) as u32,
+        6 => (lead & 0x01) as u32,
+        _ => unreachable!(),
+    };
+    for byte in &bytes[1..len] {
+        if byte & 0xc0 != 0x80 {
+            return Err(Errno::EINVAL.to_neg_errno());
+        }
+        value = (value << 6) | u32::from(byte & 0x3f);
+    }
+    Ok((value, len))
+}
+
 /// Decode one unicode char from UTF-8. Returns byte count or `-EINVAL`.
 ///
 /// # Safety
 /// `str` must point to a readable sequence at least as long as indicated by
 /// its leading byte, and `ret_unichar` must point to writable `u32` storage.
 unsafe fn utf8_encoded_to_unichar_inner(str: *const c_char, ret_unichar: *mut u32) -> i32 {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
+    // SAFETY: the caller guarantees the leading byte, complete sequence, and
+    // output slot are valid for this short raw-to-slice adaptation.
     unsafe {
-        let bytes = str as *const u8;
-        let len = utf8_encoded_expected_len(*bytes);
-
-        let unichar = match len {
-            1 => *bytes as u32,
-            2 => (*bytes as u32) & 0x1f,
-            3 => (*bytes as u32) & 0x0f,
-            4 => (*bytes as u32) & 0x07,
-            5 => (*bytes as u32) & 0x03,
-            6 => (*bytes as u32) & 0x01,
-            _ => return Errno::EINVAL.to_neg_errno(), // -EINVAL
-        };
-
-        let mut acc = unichar;
-        for i in 1..len {
-            if ((*bytes.add(i)) & 0xc0) != 0x80 {
-                return Errno::EINVAL.to_neg_errno();
-            }
-            acc <<= 6;
-            acc |= (*bytes.add(i) as u32) & 0x3f;
+        let len = utf8_encoded_expected_len(*str as u8);
+        if len == 0 {
+            return Errno::EINVAL.to_neg_errno();
         }
-
-        *ret_unichar = acc;
+        let available = std::slice::from_raw_parts(str.cast::<u8>(), len);
+        let (unichar, len) = match decode_utf8_bytes(available) {
+            Ok(decoded) => decoded,
+            Err(error) => return error,
+        };
+        *ret_unichar = unichar;
         len as i32
     }
 }
@@ -112,45 +129,48 @@ fn utf8_unichar_to_encoded_len(unichar: u32) -> usize {
     6
 }
 
+/// Encode one scalar using the C ABI's four-byte UTF-8 output limit.
+fn encode_unichar_bytes(g: u32) -> ([u8; 4], usize) {
+    let mut output = [0; 4];
+    let len = if g < 1 << 7 {
+        output[0] = g as u8;
+        1
+    } else if g < 1 << 11 {
+        output[..2].copy_from_slice(&[0xc0 | ((g >> 6) & 0x1f) as u8, 0x80 | (g & 0x3f) as u8]);
+        2
+    } else if g < 1 << 16 {
+        output[..3].copy_from_slice(&[
+            0xe0 | ((g >> 12) & 0x0f) as u8,
+            0x80 | ((g >> 6) & 0x3f) as u8,
+            0x80 | (g & 0x3f) as u8,
+        ]);
+        3
+    } else if g < 1 << 21 {
+        output.copy_from_slice(&[
+            0xf0 | ((g >> 18) & 0x07) as u8,
+            0x80 | ((g >> 12) & 0x3f) as u8,
+            0x80 | ((g >> 6) & 0x3f) as u8,
+            0x80 | (g & 0x3f) as u8,
+        ]);
+        4
+    } else {
+        0
+    };
+    (output, len)
+}
+
 /// Encode single UCS-4 character as UTF-8 into a u8 buffer.
 /// Returns byte count. Writes to out_utf8 if non-null. Does NOT NUL-terminate.
 ///
 /// # Safety
 /// When non-null, `out_utf8` must point to at least four writable bytes.
 unsafe fn utf8_encode_unichar_raw(out_utf8: *mut u8, g: u32) -> usize {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if g < (1 << 7) {
-            if !out_utf8.is_null() {
-                *out_utf8 = g as u8;
-            }
-            1
-        } else if g < (1 << 11) {
-            if !out_utf8.is_null() {
-                *out_utf8 = 0xc0 | ((g >> 6) & 0x1f) as u8;
-                *out_utf8.add(1) = 0x80 | (g & 0x3f) as u8;
-            }
-            2
-        } else if g < (1 << 16) {
-            if !out_utf8.is_null() {
-                *out_utf8 = 0xe0 | ((g >> 12) & 0x0f) as u8;
-                *out_utf8.add(1) = 0x80 | ((g >> 6) & 0x3f) as u8;
-                *out_utf8.add(2) = 0x80 | (g & 0x3f) as u8;
-            }
-            3
-        } else if g < (1 << 21) {
-            if !out_utf8.is_null() {
-                *out_utf8 = 0xf0 | ((g >> 18) & 0x07) as u8;
-                *out_utf8.add(1) = 0x80 | ((g >> 12) & 0x3f) as u8;
-                *out_utf8.add(2) = 0x80 | ((g >> 6) & 0x3f) as u8;
-                *out_utf8.add(3) = 0x80 | (g & 0x3f) as u8;
-            }
-            4
-        } else {
-            0
-        }
+    let (encoded, len) = encode_unichar_bytes(g);
+    if !out_utf8.is_null() && len > 0 {
+        // SAFETY: the helper contract provides four writable bytes.
+        unsafe { std::slice::from_raw_parts_mut(out_utf8, len).copy_from_slice(&encoded[..len]) };
     }
+    len
 }
 
 /// UTF-16 surrogate check.
@@ -175,24 +195,6 @@ pub(crate) fn utf16_surrogate_pair_to_unichar(lead: u16, trail: u16) -> u32 {
         .wrapping_add(0x10000)
 }
 
-/// Reallocate a C string to its exact occupied size, retaining the original
-/// allocation if shrinking fails, as C `str_realloc()` does.
-///
-/// # Safety
-/// `p` must be null or own a live allocation from the C allocator containing
-/// a NUL-terminated string of exactly `occupied_size` bytes including its
-/// terminator. The returned pointer assumes ownership of `p`.
-unsafe fn str_realloc(p: *mut c_char, occupied_size: usize) -> *mut c_char {
-    if p.is_null() {
-        return ptr::null_mut();
-    }
-
-    // SAFETY: ownership of p is transferred to realloc; on failure libc keeps
-    // the original allocation live, exactly matching C str_realloc().
-    let resized = unsafe { realloc(p.cast(), occupied_size) }.cast::<c_char>();
-    if resized.is_null() { p } else { resized }
-}
-
 fn calloc_bytes(nmemb: usize, size: usize) -> *mut c_void {
     let total = match nmemb.checked_mul(size) {
         Some(v) => v,
@@ -215,19 +217,6 @@ fn calloc_bytes(nmemb: usize, size: usize) -> *mut c_void {
 fn hexchar(x: i32) -> c_char {
     const LOWERCASE_HEXDIGITS: &[u8; 16] = b"0123456789abcdef";
     LOWERCASE_HEXDIGITS[(x as u32 & 0x0f) as usize] as c_char
-}
-
-/// Advance past one UTF-8 character (equivalent to utf8_next_char macro).
-///
-/// # Safety
-/// `p` must point to a readable byte. Its leading byte must describe a
-/// sequence contained in the same allocation, or be an invalid leading byte
-/// for which advancing by one remains within or one byte past the allocation.
-#[inline]
-unsafe fn utf8_next_char(p: *const c_char) -> *const c_char {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe { p.add(utf8_encoded_expected_len(*p as u8).max(1)) }
 }
 
 // ── FFI exports ──────────────────────────────────────────────────────────
@@ -514,7 +503,14 @@ pub unsafe extern "C" fn rs_utf8_escape_invalid(str: *const c_char) -> *mut c_ch
         *t = 0;
 
         let occupied_size = t.offset_from(p.cast::<u8>()) as usize + 1;
-        str_realloc(p as *mut c_char, occupied_size)
+        // Ownership transfers to realloc; on failure libc keeps `p` live,
+        // matching C's str_realloc() fallback-to-original behavior.
+        let resized = realloc(p, occupied_size).cast::<c_char>();
+        if resized.is_null() {
+            p.cast::<c_char>()
+        } else {
+            resized
+        }
     }
 }
 
@@ -725,7 +721,14 @@ pub unsafe extern "C" fn rs_utf8_escape_non_printable_full(
 
         *t = 0;
         let occupied_size = t.offset_from(p.cast::<u8>()) as usize + 1;
-        str_realloc(p as *mut c_char, occupied_size)
+        // Ownership transfers to realloc; on failure libc keeps `p` live,
+        // matching C's str_realloc() fallback-to-original behavior.
+        let resized = realloc(p, occupied_size).cast::<c_char>();
+        if resized.is_null() {
+            p.cast::<c_char>()
+        } else {
+            resized
+        }
     }
 }
 
@@ -1023,7 +1026,7 @@ pub unsafe extern "C" fn rs_utf8_console_width(str: *const c_char) -> usize {
                 return SIZE_MAX;
             }
             n += w as usize;
-            p = utf8_next_char(p);
+            p = p.add(utf8_encoded_expected_len(*p as u8).max(1));
         }
 
         n
