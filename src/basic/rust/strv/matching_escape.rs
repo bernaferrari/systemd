@@ -5,12 +5,12 @@
 // C ABI boundary for the strv helpers that delegate matching to libc or
 // replace C-owned strings with byte-escaped copies.
 
-use std::ffi::{CStr, c_void};
+use std::ffi::{c_void, CStr};
 
 use libc::c_char;
 
 use crate::escape::{malloc_c_string, try_strcpy_backslash_escaped};
-use crate::ffi::{SIZE_MAX, fnmatch, free};
+use crate::ffi::{fnmatch, free, SIZE_MAX};
 
 /// Run libc's platform fnmatch implementation for two already-validated C
 /// strings. systemd delegates syntax and flags to libc, so a hand-rolled

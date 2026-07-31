@@ -4,14 +4,14 @@
 //
 // NULL-terminated string array utility functions.
 
-use std::ffi::{CStr, c_void};
+use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 
 use libc::c_char;
 
 use crate::ffi::{
-    Errno, SIZE_MAX, calloc, free, malloc, memmove, reallocarray, strcasecmp, strcmp, strdup,
-    strndup,
+    calloc, free, malloc, memmove, reallocarray, strcasecmp, strcmp, strdup, strndup, Errno,
+    SIZE_MAX,
 };
 
 mod allocating_transforms;
@@ -54,6 +54,256 @@ unsafe fn strv_iter(l: *const *const c_char) -> StrvIter<'static> {
         ptr: l,
         index: 0,
         _marker: PhantomData,
+    }
+}
+
+/// A mutable, NULL-terminated C string vector viewed as a safe slice.
+///
+/// The terminator is deliberately excluded: all mutation methods preserve the
+/// original final NULL slot, while their slice operations cannot overwrite it.
+struct StrvMut<'a> {
+    entries: &'a mut [*mut c_char],
+}
+
+impl<'a> StrvMut<'a> {
+    /// # Safety
+    /// `l` must be non-null, writable through its NULL terminator, and every
+    /// entry before that terminator must be a live C string.
+    unsafe fn from_raw(l: *mut *mut c_char) -> Self {
+        let mut len = 0;
+        // SAFETY: the caller guarantees that l is readable through its terminator.
+        while !unsafe { (*l.add(len)).is_null() } {
+            len += 1;
+        }
+        // SAFETY: len was measured from l and excludes the final NULL slot.
+        Self {
+            entries: unsafe { std::slice::from_raw_parts_mut(l, len) },
+        }
+    }
+
+    fn reverse(&mut self) {
+        self.entries.reverse();
+    }
+
+    fn sort(&mut self) {
+        self.entries.sort_unstable_by(|a, b| {
+            // SAFETY: StrvMut only exposes entries validated by from_raw.
+            unsafe { CStr::from_ptr(*a) }
+                .to_bytes()
+                .cmp(unsafe { CStr::from_ptr(*b) }.to_bytes())
+        });
+    }
+
+    fn remove_all(&mut self, needle: &CStr) {
+        let mut kept = 0;
+        for index in 0..self.entries.len() {
+            let entry = self.entries[index];
+            // SAFETY: StrvMut only exposes live, NUL-terminated entries.
+            if unsafe { CStr::from_ptr(entry) } == needle {
+                // SAFETY: strv_remove owns every removed C-allocator entry.
+                unsafe { free(entry.cast()) };
+            } else {
+                self.entries[kept] = entry;
+                kept += 1;
+            }
+        }
+        self.entries[kept..].fill(std::ptr::null_mut());
+    }
+
+    fn dedup_keep_first(&mut self) {
+        let mut kept = 0;
+        for index in 0..self.entries.len() {
+            let entry = self.entries[index];
+            // SAFETY: StrvMut only exposes live, NUL-terminated entries.
+            let duplicate = self.entries[..kept]
+                .iter()
+                .any(|previous| unsafe { CStr::from_ptr(*previous) == CStr::from_ptr(entry) });
+            if duplicate {
+                // SAFETY: strv_uniq owns every removed C-allocator entry.
+                unsafe { free(entry.cast()) };
+            } else {
+                self.entries[kept] = entry;
+                kept += 1;
+            }
+        }
+        self.entries[kept..].fill(std::ptr::null_mut());
+    }
+
+    fn sort_uniq(&mut self) {
+        self.sort();
+        let mut kept = 1;
+        for index in 1..self.entries.len() {
+            let entry = self.entries[index];
+            // SAFETY: StrvMut only exposes live, NUL-terminated entries.
+            if unsafe { CStr::from_ptr(self.entries[kept - 1]) == CStr::from_ptr(entry) } {
+                // SAFETY: strv_sort_uniq owns duplicate C-allocator entries.
+                unsafe { free(entry.cast()) };
+            } else {
+                self.entries[kept] = entry;
+                kept += 1;
+            }
+        }
+        self.entries[kept..].fill(std::ptr::null_mut());
+    }
+}
+
+/// Fresh C-allocator string-vector storage with an always-present NULL slot.
+///
+/// This deliberately stores raw strings, rather than Rust `CString`s: every
+/// successful result is released by the C caller with `strv_free()`/`free()`.
+struct CStrvAllocation {
+    ptr: *mut *mut c_char,
+    slots: usize,
+    len: usize,
+}
+
+impl CStrvAllocation {
+    fn malloc(slots: usize) -> Option<Self> {
+        let bytes = slots.checked_mul(std::mem::size_of::<*mut c_char>())?;
+        let ptr = malloc(bytes).cast::<*mut c_char>();
+        if ptr.is_null() {
+            return None;
+        }
+        // SAFETY: `ptr` owns `slots` pointer-sized slots, including slot zero.
+        unsafe { *ptr = std::ptr::null_mut() };
+        Some(Self { ptr, slots, len: 0 })
+    }
+
+    fn push(&mut self, entry: *mut c_char) {
+        debug_assert!(self.len + 1 < self.slots);
+        // SAFETY: callers only push while the reserved terminator slot remains.
+        unsafe {
+            *self.ptr.add(self.len) = entry;
+            self.len += 1;
+            *self.ptr.add(self.len) = std::ptr::null_mut();
+        }
+    }
+
+    fn free_entries_and_storage(mut self) {
+        // SAFETY: the first `len` slots are distinct owned C allocations.
+        unsafe {
+            for index in 0..self.len {
+                free((*self.ptr.add(index)).cast());
+            }
+            free(self.ptr.cast());
+        }
+        self.ptr = std::ptr::null_mut();
+    }
+
+    fn into_raw(mut self) -> *mut *mut c_char {
+        let ptr = self.ptr;
+        self.ptr = std::ptr::null_mut();
+        ptr
+    }
+}
+
+impl Drop for CStrvAllocation {
+    fn drop(&mut self) {
+        if !self.ptr.is_null() {
+            // SAFETY: unconsumed storage is a fresh C allocation; no entry is
+            // owned by this destructor unless an explicit rollback consumed it.
+            unsafe { free(self.ptr.cast()) };
+        }
+    }
+}
+
+/// A caller-owned lvalue slot containing a C-allocator string vector.
+///
+/// Construction audits the raw FFI contract once; methods then preserve the
+/// vector's NULL sentinel and publish a realloc'ed pointer only on success.
+struct StrvSlot {
+    slot: *mut *mut *mut c_char,
+}
+
+impl StrvSlot {
+    /// # Safety
+    /// `slot` must be writable and `*slot` must be null or an owned,
+    /// NULL-terminated C string vector.
+    unsafe fn from_raw(slot: *mut *mut *mut c_char) -> Self {
+        Self { slot }
+    }
+
+    fn len(&self) -> usize {
+        // SAFETY: StrvSlot's construction contract makes `*slot` a valid vector.
+        unsafe { rs_strv_length(*self.slot) }
+    }
+
+    fn grow_for(&mut self, slots: usize) -> Option<*mut *mut c_char> {
+        // SAFETY: `*slot` is C-allocator storage or null, and the caller has
+        // checked the requested finite element count.
+        let grown = unsafe {
+            reallocarray(
+                (*self.slot).cast(),
+                crate::basic_validators::rs_GREEDY_ALLOC_ROUND_UP(slots),
+                std::mem::size_of::<*mut c_char>(),
+            )
+        }
+        .cast::<*mut c_char>();
+        if grown.is_null() {
+            None
+        } else {
+            // SAFETY: `slot` is writable by StrvSlot's construction contract.
+            unsafe { *self.slot = grown };
+            Some(grown)
+        }
+    }
+
+    fn append(&mut self, entries: &[*mut c_char]) -> Option<()> {
+        let len = self.len();
+        let end = len.checked_add(entries.len())?.checked_add(1)?;
+        let grown = self.grow_for(end)?;
+        // SAFETY: `grown` has all `end` slots and entries cannot overlap the
+        // destination vector under the C ownership contract.
+        unsafe {
+            std::ptr::copy_nonoverlapping(entries.as_ptr(), grown.add(len), entries.len());
+            *grown.add(end - 1) = std::ptr::null_mut();
+        }
+        Some(())
+    }
+
+    fn insert(&mut self, position: usize, value: *mut c_char) -> Option<()> {
+        let len = self.len();
+        let position = position.min(len);
+        let grown = self.grow_for(len.checked_add(2)?)?;
+        // SAFETY: the newly grown vector has `len + 2` slots and memmove
+        // permits the overlapping suffix shift.
+        unsafe {
+            if position < len {
+                memmove(
+                    grown.add(position + 1).cast(),
+                    grown.add(position).cast(),
+                    (len - position) * std::mem::size_of::<*mut c_char>(),
+                );
+            }
+            *grown.add(position) = value;
+            *grown.add(len + 1) = std::ptr::null_mut();
+        }
+        Some(())
+    }
+
+    fn append_strdup_n(&mut self, s: *const c_char, count: usize) -> Option<()> {
+        let len = self.len();
+        let end = len.checked_add(count)?.checked_add(1)?;
+        let grown = self.grow_for(end)?;
+        for index in 0..count {
+            // SAFETY: s is a live C string and each index is a reserved slot.
+            let duplicate = unsafe { strdup(s) };
+            if duplicate.is_null() {
+                // SAFETY: initialized suffix entries are owned strdup results.
+                unsafe {
+                    for rollback in 0..index {
+                        free((*grown.add(len + rollback)).cast());
+                    }
+                    *grown.add(len) = std::ptr::null_mut();
+                }
+                return None;
+            }
+            // SAFETY: this is one of `count` reserved slots.
+            unsafe { *grown.add(len + index) = duplicate };
+        }
+        // SAFETY: end's final slot is reserved for the terminator.
+        unsafe { *grown.add(end - 1) = std::ptr::null_mut() };
+        Some(())
     }
 }
 
@@ -443,39 +693,29 @@ pub unsafe extern "C" fn rs_strv_copy_n(l: *const *mut c_char, n: usize) -> *mut
     let total = unsafe { rs_strv_length(l) };
     let count = if n < total { n } else { total };
 
-    // SAFETY: malloc accepts the finite pointer-array size.
-    let result = malloc((count + 1) * std::mem::size_of::<*mut c_char>()).cast::<*mut c_char>();
-    if result.is_null() {
+    let Some(slots) = count.checked_add(1) else {
         return std::ptr::null_mut();
-    }
+    };
+    let Some(mut result) = CStrvAllocation::malloc(slots) else {
+        return std::ptr::null_mut();
+    };
 
-    let mut copied: usize = 0;
     if !l.is_null() {
         // SAFETY: the caller guarantees l is a NULL-terminated string vector.
         for entry in unsafe { strv_iter(l.cast()) } {
-            if copied >= count {
+            if result.len >= count {
                 break;
             }
             // SAFETY: entry is a live C string from the vector.
             let dup = unsafe { strdup(entry.as_ptr()) };
             if dup.is_null() {
-                // Free what we've allocated so far
-                for j in 0..copied {
-                    // SAFETY: entries below copied are owned strdup allocations.
-                    unsafe { free(*result.add(j) as *mut c_void) };
-                }
-                // SAFETY: result is the pointer array allocated above.
-                unsafe { free(result.cast()) };
+                result.free_entries_and_storage();
                 return std::ptr::null_mut();
             }
-            // SAFETY: copied < count keeps the write within result.
-            unsafe { *result.add(copied) = dup };
-            copied += 1;
+            result.push(dup);
         }
     }
-    // SAFETY: result reserves one terminator slot after count entries.
-    unsafe { *result.add(copied) = std::ptr::null_mut() };
-    result
+    result.into_raw()
 }
 
 // ── strv_remove ────────────────────────────────────────────────────────────
@@ -494,26 +734,11 @@ pub unsafe extern "C" fn rs_strv_remove(l: *mut *mut c_char, s: *const c_char) -
     if l.is_null() || s.is_null() {
         return std::ptr::null_mut();
     }
-    // Two-pointer: f reads, t writes
-    let mut f: usize = 0;
-    let mut t: usize = 0;
+    // SAFETY: the caller guarantees s is a live C string.
+    let needle = unsafe { CStr::from_ptr(s) };
     // SAFETY: the caller guarantees l is writable through its NULL terminator.
-    while !unsafe { *l.add(f) }.is_null() {
-        // SAFETY: f indexes the live vector and s is a live C string.
-        let entry = unsafe { *l.add(f) };
-        // SAFETY: entry and s are live C strings.
-        if unsafe { strcmp(entry, s) } == 0 {
-            // SAFETY: vector entries are owned allocations under strv_remove's contract.
-            unsafe { free(entry.cast()) };
-        } else {
-            // SAFETY: t <= f and both indices are within the vector.
-            unsafe { *l.add(t) = entry };
-            t += 1;
-        }
-        f += 1;
-    }
-    // SAFETY: t is within the original vector allocation.
-    unsafe { *l.add(t) = std::ptr::null_mut() };
+    let mut entries = unsafe { StrvMut::from_raw(l) };
+    entries.remove_all(needle);
     l
 }
 
@@ -533,13 +758,9 @@ pub unsafe extern "C" fn rs_strv_uniq(l: *mut *mut c_char) -> *mut *mut c_char {
     if l.is_null() {
         return std::ptr::null_mut();
     }
-    let mut i: usize = 0;
     // SAFETY: the caller guarantees l is writable through its NULL terminator.
-    while !unsafe { *l.add(i) }.is_null() {
-        // SAFETY: i indexes a live entry and i+1 points to the remaining suffix.
-        unsafe { rs_strv_remove(l.add(i + 1), *l.add(i)) };
-        i += 1;
-    }
+    let mut entries = unsafe { StrvMut::from_raw(l) };
+    entries.dedup_keep_first();
     l
 }
 
@@ -559,27 +780,11 @@ pub unsafe extern "C" fn rs_strv_sort(l: *mut *mut c_char) -> *mut *mut c_char {
     if l.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    let n = unsafe { rs_strv_length(l.cast()) };
-    if n > 0 {
-        // SAFETY: n was measured from l and excludes the terminator.
-        let slice = unsafe { std::slice::from_raw_parts_mut(l, n) };
-        // C uses qsort(), whose ordering is unstable and whose operation does
-        // not allocate. Rust's unstable slice sort has the same relevant
-        // properties and avoids introducing an OOM/panic path at this ABI.
-        slice.sort_unstable_by(|a, b| {
-            if a.is_null() && b.is_null() {
-                std::cmp::Ordering::Equal
-            } else if a.is_null() {
-                std::cmp::Ordering::Less
-            } else if b.is_null() {
-                std::cmp::Ordering::Greater
-            } else {
-                // SAFETY: non-null slice entries are live C strings.
-                unsafe { crate::ffi::strcmp(*a, *b) }.cmp(&0)
-            }
-        });
-    }
+    // SAFETY: the caller guarantees l is writable through its NULL terminator.
+    let mut entries = unsafe { StrvMut::from_raw(l) };
+    // C uses qsort(), whose ordering is unstable and whose operation does not
+    // allocate. The slice sort has the same relevant properties.
+    entries.sort();
     l
 }
 
@@ -599,20 +804,8 @@ pub unsafe extern "C" fn rs_strv_reverse(l: *mut *mut c_char) -> *mut *mut c_cha
     if l.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    let n = unsafe { rs_strv_length(l.cast()) };
-    if n <= 1 {
-        return l;
-    }
-    let half = n / 2;
-    for i in 0..half {
-        // SAFETY: both indices are below the measured vector length.
-        unsafe {
-            let tmp = *l.add(i);
-            *l.add(i) = *l.add(n - 1 - i);
-            *l.add(n - 1 - i) = tmp;
-        }
-    }
+    // SAFETY: the caller guarantees l is writable through its NULL terminator.
+    unsafe { StrvMut::from_raw(l) }.reverse();
     l
 }
 
@@ -1001,39 +1194,14 @@ unsafe fn streq_ptr(a: *const c_char, b: *const c_char) -> bool {
 /// C-string inputs must remain NUL-terminated and live for the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strv_sort_uniq(l: *mut *mut c_char) -> *mut *mut c_char {
-    // SAFETY: the caller guarantees non-null l points to the first vector entry.
-    if l.is_null() || unsafe { (*l).is_null() } {
+    if l.is_null() {
         return l;
     }
-
-    // Sort
-    // SAFETY: this function forwards the mutable vector contract.
-    unsafe { rs_strv_sort(l) };
-
-    let mut tail = l;
-    let mut prev: *const c_char = std::ptr::null();
-    let mut i = l;
-
-    // SAFETY: i advances within the caller's NULL-terminated vector.
-    while !unsafe { (*i).is_null() } {
-        // SAFETY: i points to a live vector entry.
-        let entry = unsafe { *i };
-        // SAFETY: entry and optional prev satisfy streq_ptr's contract.
-        if unsafe { streq_ptr(entry, prev) } {
-            // SAFETY: duplicate vector entries are owned allocations.
-            unsafe { free(entry.cast()) };
-        } else {
-            // SAFETY: tail never advances beyond i.
-            unsafe { *tail = entry };
-            prev = entry;
-            // SAFETY: tail remains within the vector allocation.
-            tail = unsafe { tail.add(1) };
-        }
-        // SAFETY: the loop condition proved i points before the terminator.
-        i = unsafe { i.add(1) };
+    // SAFETY: the caller guarantees l is writable through its NULL terminator.
+    let mut entries = unsafe { StrvMut::from_raw(l) };
+    if !entries.entries.is_empty() {
+        entries.sort_uniq();
     }
-    // SAFETY: tail remains within the vector allocation.
-    unsafe { *tail = std::ptr::null_mut() };
     l
 }
 
@@ -1063,45 +1231,21 @@ pub unsafe extern "C" fn rs_strv_push_pair(
         return 0;
     }
 
-    // SAFETY: the caller guarantees *l is NULL or a NULL-terminated vector.
-    let n = unsafe { rs_strv_length(*l as *const *mut c_char) };
-
-    if n > SIZE_MAX - 3 {
+    // SAFETY: the caller guarantees l is a writable C string-vector slot.
+    let mut slot = unsafe { StrvSlot::from_raw(l) };
+    if slot.len() > SIZE_MAX - 3 {
         return Errno::ENOMEM.to_neg_errno();
     }
-
-    let extra = (if !a.is_null() { 1 } else { 0 }) + (if !b.is_null() { 1 } else { 0 });
-    let new_len = crate::basic_validators::rs_GREEDY_ALLOC_ROUND_UP(n + extra + 1);
-    // SAFETY: l is writable, and reallocarray receives the current allocation
-    // with a finite rounded element count.
-    let c = unsafe {
-        reallocarray(
-            *l as *mut c_void,
-            new_len,
-            std::mem::size_of::<*mut c_char>(),
-        )
-    }
-    .cast::<*mut c_char>();
-    if c.is_null() {
+    let pair = [a, b];
+    let entries = match (a.is_null(), b.is_null()) {
+        (false, false) => &pair[..],
+        (false, true) => &pair[..1],
+        (true, false) => &pair[1..],
+        (true, true) => &[],
+    };
+    if slot.append(entries).is_none() {
         return Errno::ENOMEM.to_neg_errno();
     }
-
-    // SAFETY: l is writable by the caller contract.
-    unsafe { *l = c };
-    let mut idx = n;
-    if !a.is_null() {
-        // SAFETY: c reserves n+extra+1 entries.
-        unsafe { *c.add(idx) = a };
-        idx += 1;
-    }
-    if !b.is_null() {
-        // SAFETY: c reserves n+extra+1 entries.
-        unsafe { *c.add(idx) = b };
-        idx += 1;
-    }
-    // SAFETY: c reserves the final NULL terminator slot.
-    unsafe { *c.add(idx) = std::ptr::null_mut() };
-
     0
 }
 
@@ -1131,48 +1275,14 @@ pub unsafe extern "C" fn rs_strv_insert(
         return 0;
     }
 
-    // SAFETY: the caller guarantees *l is NULL or a NULL-terminated vector.
-    let n = unsafe { rs_strv_length(*l as *const *mut c_char) };
-    let pos = if position < n { position } else { n };
-
-    if n > SIZE_MAX - 2 {
+    // SAFETY: the caller guarantees l is a writable C string-vector slot.
+    let mut slot = unsafe { StrvSlot::from_raw(l) };
+    if slot.len() > SIZE_MAX - 2 {
         return Errno::ENOMEM.to_neg_errno();
     }
-    let m = n + 2;
-
-    // SAFETY: l is writable, and reallocarray receives the current allocation
-    // with a finite rounded element count.
-    let c = unsafe {
-        reallocarray(
-            *l as *mut c_void,
-            crate::basic_validators::rs_GREEDY_ALLOC_ROUND_UP(m),
-            std::mem::size_of::<*mut c_char>(),
-        )
-    }
-    .cast::<*mut c_char>();
-    if c.is_null() {
+    if slot.insert(position, value).is_none() {
         return Errno::ENOMEM.to_neg_errno();
     }
-
-    // SAFETY: l is writable by the caller contract.
-    unsafe { *l = c };
-    // Shift entries to make room (only if inserting before end)
-    if n > pos {
-        // SAFETY: both ranges are within c and memmove permits their overlap.
-        unsafe {
-            memmove(
-                c.add(pos + 1).cast(),
-                c.add(pos).cast(),
-                (n - pos) * std::mem::size_of::<*mut c_char>(),
-            )
-        };
-    }
-    // SAFETY: c reserves n+2 entries.
-    unsafe {
-        *c.add(pos) = value;
-        *c.add(n + 1) = std::ptr::null_mut();
-    }
-
     0
 }
 
@@ -1241,49 +1351,14 @@ pub unsafe extern "C" fn rs_strv_extend_n(
         return 0;
     }
 
-    // SAFETY: the caller guarantees *a is NULL or a NULL-terminated vector.
-    let k = unsafe { rs_strv_length(*a as *const *mut c_char) };
-    if k >= SIZE_MAX - n {
+    // SAFETY: the caller guarantees a is a writable C string-vector slot.
+    let mut slot = unsafe { StrvSlot::from_raw(a) };
+    if slot.len() >= SIZE_MAX - n {
         return Errno::ENOMEM.to_neg_errno();
     }
-
-    // SAFETY: a is writable, and reallocarray receives the current allocation
-    // with a finite rounded element count.
-    let nl = unsafe {
-        reallocarray(
-            *a as *mut c_void,
-            crate::basic_validators::rs_GREEDY_ALLOC_ROUND_UP(k + n + 1),
-            std::mem::size_of::<*mut c_char>(),
-        )
-    }
-    .cast::<*mut c_char>();
-    if nl.is_null() {
-        return Errno::ENOMEM.to_neg_errno();
-    }
-    // SAFETY: a is writable by the caller contract.
-    unsafe { *a = nl };
-
-    let mut i = k;
-    while i < k + n {
-        // SAFETY: s is a live C string and i is within the expanded vector.
-        unsafe { *nl.add(i) = strdup(s) };
-        // SAFETY: i is within the expanded vector.
-        if unsafe { (*nl.add(i)).is_null() } {
-            let mut j = k;
-            while j < i {
-                // SAFETY: entries in [k, i) are owned strdup allocations.
-                unsafe { free(*nl.add(j) as *mut c_void) };
-                j += 1;
-            }
-            // SAFETY: k is within the expanded vector.
-            unsafe { *nl.add(k) = std::ptr::null_mut() };
-            return Errno::ENOMEM.to_neg_errno();
-        }
-        i += 1;
-    }
-    // SAFETY: the expanded vector reserves a final terminator slot.
-    unsafe { *nl.add(i) = std::ptr::null_mut() };
-    0
+    slot.append_strdup_n(s, n)
+        .map(|()| 0)
+        .unwrap_or_else(|| Errno::ENOMEM.to_neg_errno())
 }
 
 // ── strv_consume_prepend ────────────────────────────────────────────────
