@@ -892,18 +892,50 @@ fn last_errno() -> i32 {
     crate::ffi::get_errno()
 }
 
+/// Create a netlink socket with systemd's descriptor lifecycle guarantees.
+fn netlink_socket_new(protocol: i32) -> Result<RawFd> {
+    // `sd-netlink` creates `SOCK_CLOEXEC` descriptors above the stdio range.
+    // Its SOCK_NONBLOCK flag is deliberately not copied here: the sole
+    // production caller, `loopback_setup::rtnl_call()`, synchronously receives
+    // an ACK and has no EAGAIN/poll retry path. Converting that protocol needs
+    // its own bounded I/O change rather than a descriptor-lifecycle tweak.
+    // SAFETY: the socket and fcntl calls take only scalar arguments. The
+    // descriptor returned by socket() is owned solely by this function until
+    // it is either returned or closed on every error path below. A failed
+    // F_DUPFD_CLOEXEC (including EINTR) preserves its errno after closing the
+    // original descriptor; a successful duplicate is the only descriptor
+    // returned and already carries FD_CLOEXEC.
+    // SAFETY: the descriptor is uniquely owned until return or close.
+    unsafe {
+        let fd = libc::socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, protocol);
+        if fd < 0 {
+            return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
+                last_errno(),
+            )));
+        }
+
+        if fd >= 3 {
+            return Ok(fd);
+        }
+
+        let replacement = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3);
+        if replacement < 0 {
+            let error = io::Error::from_raw_os_error(last_errno());
+            let _ = libc::close(fd);
+            return Err(SocketNetlinkError::Io(error));
+        }
+
+        let _ = libc::close(fd);
+        Ok(replacement)
+    }
+}
+
 /// Create a netlink socket with the given protocol.
 ///
-/// The returned file descriptor is bound to the specified address.
-/// Uses unsafe only for the socket() and bind() syscalls.
+/// The returned file descriptor is bound to the specified address, is
+/// close-on-exec, and is never one of the three standard I/O descriptors.
 pub fn netlink_open(protocol: i32, pid: u32, groups: u32) -> Result<RawFd> {
-    // SAFETY: socket has no pointer arguments; the supplied domain and type are valid netlink constants.
-    let fd = unsafe { libc::socket(AF_NETLINK, SOCK_RAW, protocol) };
-    if fd < 0 {
-        return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
-            last_errno(),
-        )));
-    }
+    let fd = netlink_socket_new(protocol)?;
 
     let addr = SockAddrNl::new(pid, groups);
     if let Err(e) = netlink_bind(fd, &addr) {
@@ -917,16 +949,10 @@ pub fn netlink_open(protocol: i32, pid: u32, groups: u32) -> Result<RawFd> {
     Ok(fd)
 }
 
-/// Create an unbound netlink socket with the given protocol.
+/// Create an unbound, close-on-exec netlink socket with the given protocol.
+/// The returned descriptor is always above the standard I/O range.
 pub fn netlink_socket(protocol: i32) -> Result<RawFd> {
-    // SAFETY: socket has no pointer arguments; the supplied domain and type are valid netlink constants.
-    let fd = unsafe { libc::socket(AF_NETLINK, SOCK_RAW, protocol) };
-    if fd < 0 {
-        return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
-            last_errno(),
-        )));
-    }
-    Ok(fd)
+    netlink_socket_new(protocol)
 }
 
 /// Bind a netlink socket to the given address.
@@ -1179,6 +1205,36 @@ mod tests {
         assert_eq!(SOCK_STREAM, 1);
         assert_eq!(SOCK_DGRAM, 2);
         assert_eq!(SOCK_RAW, 3);
+    }
+
+    #[cfg(target_os = "linux")]
+    fn assert_safe_netlink_fd(fd: RawFd) {
+        assert!(fd >= 3, "netlink descriptor must not replace stdio: {fd}");
+        // SAFETY: `fd` is live for the duration of this assertion and
+        // F_GETFD does not dereference userspace memory.
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        assert!(flags >= 0, "F_GETFD failed: {}", io::Error::last_os_error());
+        assert_ne!(
+            flags & libc::FD_CLOEXEC,
+            0,
+            "netlink descriptor leaked across exec"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_netlink_socket_has_cloexec_and_avoids_stdio() {
+        let fd = netlink_socket(NETLINK_ROUTE).unwrap();
+        assert_safe_netlink_fd(fd);
+        safe_close_fd(fd);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_netlink_open_has_cloexec_and_avoids_stdio() {
+        let fd = netlink_open(NETLINK_ROUTE, 0, 0).unwrap();
+        assert_safe_netlink_fd(fd);
+        safe_close_fd(fd);
     }
 
     #[test]

@@ -249,74 +249,55 @@ fn unit_type_to_string(t: i32) -> *const c_char {
 
 // ── Internal: unit_name_is_valid ─────────────────────────────────────────
 
+fn unit_name_bytes_are_valid(n: &[u8], flags: i32) -> bool {
+    if flags == 0 || n.is_empty() || n.len() >= UNIT_NAME_MAX {
+        return false;
+    }
+
+    let Some(dot) = n.iter().rposition(|&byte| byte == b'.') else {
+        return false;
+    };
+    if dot == 0 {
+        return false;
+    }
+    let suffix = &n[dot + 1..];
+    if !UNIT_TYPE_TABLE
+        .iter()
+        .any(|(name, _)| suffix == &name[..name.len() - 1])
+    {
+        return false;
+    }
+
+    let prefix = &n[..dot];
+    let at_pos = prefix.iter().position(|&byte| byte == b'@');
+    if prefix
+        .iter()
+        .any(|&byte| !char_in_set(byte, VALID_CHARS_WITH_AT))
+        || at_pos == Some(0)
+    {
+        return false;
+    }
+
+    ((flags & UNIT_NAME_PLAIN) != 0 && at_pos.is_none())
+        || ((flags & UNIT_NAME_INSTANCE) != 0
+            && at_pos.is_some_and(|position| position + 1 < prefix.len()))
+        || ((flags & UNIT_NAME_TEMPLATE) != 0
+            && at_pos.is_some_and(|position| position + 1 == prefix.len()))
+}
+
+/// Validate the unit-name forms accepted by `systemd.unit=` and
+/// `rd.systemd.unit=` in PID 1.
+pub fn unit_name_is_valid_plain_or_instance(name: &str) -> bool {
+    unit_name_bytes_are_valid(name.as_bytes(), UNIT_NAME_PLAIN | UNIT_NAME_INSTANCE)
+}
+
 // SAFETY: when non-null, `n` must point to a live NUL-terminated C string.
 unsafe fn unit_name_is_valid_internal(n: *const c_char, flags: i32) -> bool {
-    if flags == 0 {
+    if n.is_null() {
         return false;
     }
-    if isempty(n) {
-        return false;
-    }
-    // SAFETY: `n` was checked nonempty, and the caller guarantees a live
-    // NUL-terminated string.
-    let len = unsafe { strlen(n) };
-    if len >= UNIT_NAME_MAX {
-        return false;
-    }
-
-    // Find last '.' using strrchr
-    // SAFETY: `n` is a live NUL-terminated string.
-    let e = unsafe { strrchr(n, b'.' as i32) };
-    if e.is_null() || e == n {
-        return false;
-    }
-
-    // SAFETY: `e` points to a byte within `n`; advancing one byte remains
-    // within the NUL-terminated string, and the helper shares its lifetime.
-    if unsafe { unit_type_from_string(e.add(1)) } < 0 {
-        return false;
-    }
-
-    // Check characters before the last '.', find '@'
-    // SAFETY: `e` was returned by `strrchr` for `n`, so both pointers are in
-    // the same allocation and the prefix range is readable.
-    let prefix_len = unsafe { e.offset_from(n) } as usize;
-    // SAFETY: the validated prefix lies entirely within the live input.
-    let prefix = unsafe { std::slice::from_raw_parts(n as *const u8, prefix_len) };
-
-    let at_pos = prefix.iter().position(|&c| c == b'@');
-
-    for &c in prefix {
-        if !char_in_set(c, VALID_CHARS_WITH_AT) {
-            return false;
-        }
-    }
-
-    if at_pos == Some(0) {
-        return false;
-    }
-
-    if (flags & UNIT_NAME_PLAIN) != 0 && at_pos.is_none() {
-        return true;
-    }
-
-    if (flags & UNIT_NAME_INSTANCE) != 0 {
-        if let Some(pos) = at_pos {
-            if pos + 1 < prefix_len {
-                return true;
-            }
-        }
-    }
-
-    if (flags & UNIT_NAME_TEMPLATE) != 0 {
-        if let Some(pos) = at_pos {
-            if pos + 1 == prefix_len {
-                return true;
-            }
-        }
-    }
-
-    false
+    // SAFETY: the caller guarantees a live NUL-terminated string.
+    unit_name_bytes_are_valid(unsafe { CStr::from_ptr(n) }.to_bytes(), flags)
 }
 
 // ── FFI exports: validation ──────────────────────────────────────────────
@@ -1610,6 +1591,28 @@ mod tests {
         assert!(unsafe { rs_unit_name_is_valid(name, UNIT_NAME_PLAIN) });
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
+    }
+
+    #[test]
+    fn safe_plain_or_instance_validator_matches_pid1_cmdline_contract() {
+        for valid in [
+            "default.target",
+            "getty@tty1.service",
+            r"escaped\x2dname.service",
+        ] {
+            assert!(unit_name_is_valid_plain_or_instance(valid), "{valid}");
+        }
+        for invalid in [
+            "",
+            "nosuffix",
+            "@missing-prefix.service",
+            "template@.service",
+            "space name.target",
+            "unknown.kind",
+            "/path.target",
+        ] {
+            assert!(!unit_name_is_valid_plain_or_instance(invalid), "{invalid}");
+        }
     }
 
     #[test]

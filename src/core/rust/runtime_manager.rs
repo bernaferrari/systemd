@@ -426,6 +426,25 @@ pub struct RuntimeManager {
     service_manager: ServiceManager,
 }
 
+/// Select the implicit boot target with the same fallback ordering as
+/// `do_queue_default_job()` in `src/core/main.c`.
+pub fn default_target_name(
+    in_initrd: bool,
+    initrd_target_present: bool,
+    default_target_present: bool,
+    fallback_default_target: &str,
+) -> &str {
+    if in_initrd && initrd_target_present {
+        "initrd.target"
+    } else if default_target_present || in_initrd {
+        // In the initrd, a missing initrd.target falls back to default.target,
+        // never to the host's configured build-time fallback.
+        "default.target"
+    } else {
+        fallback_default_target
+    }
+}
+
 impl RuntimeManager {
     pub fn new() -> Self {
         Self::new_with_cgroup_root(PathBuf::from(CGROUP_V2_ROOT))
@@ -1375,16 +1394,22 @@ impl RuntimeManager {
         Ok(applied)
     }
 
-    pub fn start_default_target(&mut self) -> Result<()> {
+    pub fn start_default_target(
+        &mut self,
+        in_initrd: bool,
+        fallback_default_target: &str,
+    ) -> Result<String> {
         self.load_all_units()?;
 
-        let target = if self.units.contains_key("default.target") {
-            "default.target"
-        } else {
-            "multi-user.target"
-        };
+        let target = default_target_name(
+            in_initrd,
+            self.units.contains_key("initrd.target"),
+            self.units.contains_key("default.target"),
+            fallback_default_target,
+        );
 
-        self.start_named_target(target)
+        self.start_named_target(target)?;
+        Ok(target.to_string())
     }
 
     pub fn start_named_target(&mut self, target: &str) -> Result<()> {

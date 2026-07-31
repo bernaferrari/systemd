@@ -312,6 +312,7 @@ import sys
 out, manifest, target_dir, cargo = sys.argv[1:5]
 env = os.environ.copy()
 env["CARGO_TARGET_DIR"] = target_dir
+env["SYSTEMD_FALLBACK_DEFAULT_TARGET"] = sys.argv[5]
 subprocess.check_call(
     [
         cargo,
@@ -338,7 +339,8 @@ os.chmod(out, 0o755)
                            '@OUTPUT@',
                            meson.current_source_dir() / 'rust/Cargo.toml',
                            meson.current_build_dir() / 'rust-pid1-target',
-                           cargo.full_path()],
+                           cargo.full_path(),
+                           fallback_default_target],
                 build_by_default : true,
                 build_always_stale : true,
                 # This target is intentionally never installed. In particular,

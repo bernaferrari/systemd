@@ -157,7 +157,11 @@ pub static MOUNT_TABLE: &[MountPoint] = &[
         what: "devtmpfs",
         where_: "/dev",
         fstype: "devtmpfs",
-        options: "mode=0755",
+        // Keep the API filesystem's writable backing store bounded. Device
+        // nodes and symlinks do not consume this space, while a runaway
+        // regular-file writer must not be able to exhaust the root fs during
+        // early boot. This is TMPFS_LIMITS_DEV in mountpoint-util.h.
+        options: "mode=0755,size=4m",
         flags: MS_NOSUID | MS_STRICTATIME,
         mode: MountMode::from_bits_retain(MountMode::FATAL.bits() | MountMode::IN_CONTAINER.bits()),
         condition_fn: None,
@@ -169,7 +173,10 @@ pub static MOUNT_TABLE: &[MountPoint] = &[
         fstype: "securityfs",
         options: "",
         flags: MS_NOSUID | MS_NOEXEC | MS_NODEV,
-        mode: MountMode::from_bits_retain(MountMode::FATAL.bits() | MountMode::IN_CONTAINER.bits()),
+        // securityfs is useful for IMA policy loading but intentionally
+        // remains best-effort: upstream must also boot on kernels that omit
+        // CONFIG_SECURITYFS, and does not mount it in containers.
+        mode: MountMode::empty(),
         condition_fn: None,
         options_fn: None,
     },
@@ -198,7 +205,10 @@ pub static MOUNT_TABLE: &[MountPoint] = &[
         what: "tmpfs",
         where_: "/run",
         fstype: "tmpfs",
-        options: "mode=0755",
+        // TMPFS_LIMITS_RUN from mountpoint-util.h. Apart from reserving room
+        // for PID1 re-exec on memory-constrained hosts, the inode limit keeps
+        // /run metadata from consuming unbounded kernel memory.
+        options: "mode=0755,size=20%,nr_inodes=800k",
         flags: MS_NOSUID | MS_NODEV | MS_STRICTATIME,
         mode: MountMode::from_bits_retain(MountMode::FATAL.bits() | MountMode::IN_CONTAINER.bits()),
         condition_fn: None,
@@ -775,14 +785,24 @@ mod tests {
     }
 
     #[test]
-    fn test_mount_table_early_entries_are_fatal_or_container() {
-        for mp in MOUNT_TABLE.iter().take(N_EARLY_MOUNT) {
-            assert!(
-                mp.mode.contains(MountMode::FATAL) || mp.mode.contains(MountMode::IN_CONTAINER),
-                "Early mount '{}' should be FATAL or IN_CONTAINER",
-                mp.where_
-            );
+    fn test_mount_table_early_entry_modes_match_upstream() {
+        let proc = &MOUNT_TABLE[0];
+        assert_eq!(proc.where_, "/proc");
+        assert!(proc.mode.contains(MountMode::FATAL));
+        assert!(proc.mode.contains(MountMode::IN_CONTAINER));
+        assert!(proc.mode.contains(MountMode::FOLLOW_SYMLINK));
+
+        for mp in &MOUNT_TABLE[1..3] {
+            assert!(mp.mode.contains(MountMode::FATAL));
+            assert!(mp.mode.contains(MountMode::IN_CONTAINER));
+            assert!(!mp.mode.contains(MountMode::FOLLOW_SYMLINK));
         }
+
+        // mount-setup.c intentionally leaves securityfs best-effort and
+        // host-only so that CONFIG_SECURITYFS is not a PID1 boot dependency.
+        let securityfs = &MOUNT_TABLE[3];
+        assert_eq!(securityfs.where_, "/sys/kernel/security");
+        assert!(securityfs.mode.is_empty());
     }
 
     #[test]
@@ -828,6 +848,21 @@ mod tests {
             early.contains(&"/sys/kernel/security"),
             "Early mounts should include /sys/kernel/security"
         );
+    }
+
+    #[test]
+    fn test_mount_table_tmpfs_limits_match_upstream_constants() {
+        let dev = MOUNT_TABLE
+            .iter()
+            .find(|mp| mp.where_ == "/dev")
+            .expect("/dev entry");
+        assert_eq!(dev.options, "mode=0755,size=4m");
+
+        let run = MOUNT_TABLE
+            .iter()
+            .find(|mp| mp.where_ == "/run")
+            .expect("/run entry");
+        assert_eq!(run.options, "mode=0755,size=20%,nr_inodes=800k");
     }
 
     // ── combine_options ─────────────────────────────────────────────────

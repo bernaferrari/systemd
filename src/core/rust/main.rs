@@ -7,6 +7,9 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
+use systemd_basic_rs::extract_word::{
+    EXTRACT_RELAX, EXTRACT_RETAIN_ESCAPE, EXTRACT_UNQUOTE, extract_first_word,
+};
 use systemd_core_rs::pid1_exec_sources::ExecStatusSourceOwner;
 use systemd_core_rs::pid1_lifecycle::{
     OuterLoopExit, SignalAction, SignalRecord, SpecialTargetMode, decode_system_signal,
@@ -20,6 +23,8 @@ use systemd_core_rs::pid1_manager_runtime::{
 };
 use systemd_core_rs::pid1_socket_sources::SocketSourceOwner;
 use systemd_core_rs::runtime_manager::RuntimeManager;
+#[cfg(test)]
+use systemd_core_rs::runtime_manager::default_target_name;
 use systemd_core_rs::transaction::JobMode;
 use systemd_core_rs::unit::ActiveState;
 
@@ -29,6 +34,10 @@ const DATA_SIGNAL: u64 = 1;
 const DATA_TIMER: u64 = 2;
 const DATA_BOUND_STOP_RETRY_TIMER: u64 = 3;
 const CLI_ERROR_EXIT_STATUS: i32 = 1;
+const FALLBACK_DEFAULT_TARGET: &str = match option_env!("SYSTEMD_FALLBACK_DEFAULT_TARGET") {
+    Some(target) => target,
+    None => "graphical.target",
+};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 enum CliAction {
@@ -154,40 +163,15 @@ fn boot_log(message: &str) {
     eprintln!("systemd: {message}");
 }
 
-#[cfg(test)]
-fn pid1_default_target_name(default_target_present: bool) -> &'static str {
-    if default_target_present {
-        "default.target"
-    } else {
-        "multi-user.target"
+fn in_initrd() -> bool {
+    if let Some(value) = std::env::var_os("SYSTEMD_IN_INITRD")
+        && let Some(value) = value.to_str()
+        && let Some(value) = systemd_basic_rs::string_table::parse_boolean(value)
+    {
+        return value;
     }
-}
 
-fn pid1_default_target_started(
-    default_target_present: bool,
-    default_target_active: bool,
-    multi_user_target_active: bool,
-) -> bool {
-    if default_target_present {
-        default_target_active
-    } else {
-        multi_user_target_active
-    }
-}
-
-fn pid1_default_target_active(runtime: &RuntimeManager) -> bool {
-    let default_target_present = runtime.get_unit("default.target").is_some();
-    let default_target_active = runtime
-        .get_unit("default.target")
-        .is_some_and(|unit| unit.active_state == ActiveState::Active);
-    let multi_user_target_active = runtime
-        .get_unit("multi-user.target")
-        .is_some_and(|unit| unit.active_state == ActiveState::Active);
-    pid1_default_target_started(
-        default_target_present,
-        default_target_active,
-        multi_user_target_active,
-    )
+    std::path::Path::new("/etc/initrd-release").exists()
 }
 
 fn is_target_active(runtime: &RuntimeManager, target: &str) -> bool {
@@ -196,17 +180,35 @@ fn is_target_active(runtime: &RuntimeManager, target: &str) -> bool {
         .is_some_and(|unit| unit.active_state == ActiveState::Active)
 }
 
-fn kernel_cmdline_override_target() -> Option<String> {
-    let cmdline = std::fs::read_to_string("/proc/cmdline").ok()?;
-    for token in cmdline.split_whitespace() {
-        if let Some(value) = token.strip_prefix("systemd.unit=") {
-            let candidate = value.trim();
-            if !candidate.is_empty() {
-                return Some(candidate.to_string());
-            }
+fn kernel_cmdline_override_target_from(cmdline: &str, in_initrd: bool) -> Option<String> {
+    let mut remaining = cmdline;
+    let mut selected = None;
+    let flags = EXTRACT_UNQUOTE | EXTRACT_RELAX | EXTRACT_RETAIN_ESCAPE;
+
+    while let Ok(Some((word, rest))) = extract_first_word(remaining, None, flags) {
+        remaining = rest;
+        let key = if in_initrd {
+            "rd.systemd.unit="
+        } else {
+            "systemd.unit="
+        };
+        if let Some(value) = word.strip_prefix(key)
+            && !value.is_empty()
+            && systemd_basic_rs::unit_name::unit_name_is_valid_plain_or_instance(value)
+        {
+            // Like parse_proc_cmdline_item(), later occurrences override
+            // earlier valid ones. Invalid assignments are ignored and do not
+            // erase an earlier valid selection.
+            selected = Some(value.to_string());
         }
     }
-    None
+
+    selected
+}
+
+fn kernel_cmdline_override_target(in_initrd: bool) -> Option<String> {
+    let cmdline = std::fs::read_to_string("/proc/cmdline").ok()?;
+    kernel_cmdline_override_target_from(&cmdline, in_initrd)
 }
 
 fn configure_unit_search_paths() {
@@ -872,38 +874,43 @@ fn main() {
 
     if is_pid1 {
         boot_log("step 6/8: select boot target");
-        let cmdline_target = kernel_cmdline_override_target();
-        let selected = cmdline_target
-            .as_deref()
-            .unwrap_or("default.target")
-            .to_string();
+        let in_initrd = in_initrd();
+        let cmdline_target = kernel_cmdline_override_target(in_initrd);
         if cmdline_target.is_some() {
-            boot_log(&format!("using kernel override target: {selected}"));
+            boot_log(&format!(
+                "using kernel override target: {}",
+                cmdline_target.as_deref().expect("checked above")
+            ));
         }
 
         boot_log("step 7/8: start selected target");
-        let start_result = if cmdline_target.is_some() {
-            runtime.start_named_target(&selected)
+        let start_result = if let Some(selected) = cmdline_target {
+            runtime
+                .start_named_target(&selected)
+                .map(|()| selected.to_string())
         } else {
-            runtime.start_default_target()
+            runtime.start_default_target(in_initrd, FALLBACK_DEFAULT_TARGET)
         };
-        if let Err(e) = start_result {
-            boot_log(&format!("target startup failed for {selected}: {e:?}"));
-        }
 
-        let activated = if cmdline_target.is_some() {
-            wait_target_active(&mut runtime, &selected, Duration::from_secs(15))
-        } else {
-            let started = Instant::now();
-            while started.elapsed() < Duration::from_secs(15) {
-                if pid1_default_target_active(&runtime) {
-                    break;
-                }
-                let _ = runtime.reap_children();
-                std::thread::sleep(Duration::from_millis(50));
+        let selected = match start_result {
+            Ok(selected) => {
+                boot_log(&format!("selected boot target: {selected}"));
+                selected
             }
-            pid1_default_target_active(&runtime)
+            Err(e) => {
+                // do_queue_default_job() tries rescue.target when the selected
+                // or implicit default target cannot be loaded or queued.
+                boot_log(&format!(
+                    "target startup failed: {e:?}; falling back to rescue.target"
+                ));
+                if let Err(rescue_error) = runtime.start_named_target("rescue.target") {
+                    fail_closed("rescue target startup", rescue_error);
+                }
+                "rescue.target".to_string()
+            }
         };
+        let activated = !selected.is_empty()
+            && wait_target_active(&mut runtime, &selected, Duration::from_secs(15));
 
         if !activated {
             boot_log("default target activation timeout/failure; falling back to emergency.target");
@@ -917,18 +924,8 @@ fn main() {
                 );
             }
         }
-    } else if let Err(e) = runtime.start_default_target() {
+    } else if let Err(e) = runtime.start_default_target(false, FALLBACK_DEFAULT_TARGET) {
         eprintln!("systemd: target startup failed: {:?}", e);
-    }
-
-    if is_pid1
-        && !pid1_default_target_active(&runtime)
-        && !is_target_active(&runtime, "emergency.target")
-    {
-        fail_closed(
-            "boot target activation",
-            "neither default/multi-user target nor emergency.target is active",
-        );
     }
 
     boot_log("step 8/8: enter event loop");
@@ -1001,20 +998,64 @@ mod tests {
 
     #[test]
     fn pid1_default_target_prefers_default_target() {
-        assert_eq!(pid1_default_target_name(true), "default.target");
+        assert_eq!(
+            default_target_name(false, false, true, FALLBACK_DEFAULT_TARGET),
+            "default.target"
+        );
     }
 
     #[test]
-    fn pid1_default_target_falls_back_to_multi_user_target() {
-        assert_eq!(pid1_default_target_name(false), "multi-user.target");
+    fn pid1_default_target_uses_the_configured_host_fallback() {
+        assert_eq!(
+            default_target_name(false, false, false, FALLBACK_DEFAULT_TARGET),
+            FALLBACK_DEFAULT_TARGET
+        );
     }
 
     #[test]
-    fn pid1_default_target_requires_active_state() {
-        assert!(pid1_default_target_started(true, true, false));
-        assert!(!pid1_default_target_started(true, false, true));
-        assert!(pid1_default_target_started(false, false, true));
-        assert!(!pid1_default_target_started(false, true, false));
+    fn initrd_prefers_initrd_target_and_only_falls_back_to_default_target() {
+        assert_eq!(
+            default_target_name(true, true, true, FALLBACK_DEFAULT_TARGET),
+            "initrd.target"
+        );
+        assert_eq!(
+            default_target_name(true, false, true, FALLBACK_DEFAULT_TARGET),
+            "default.target"
+        );
+        assert_eq!(
+            default_target_name(true, false, false, FALLBACK_DEFAULT_TARGET),
+            "default.target"
+        );
+    }
+
+    #[test]
+    fn kernel_target_override_respects_initrd_prefix_and_last_assignment() {
+        let cmdline = "systemd.unit=host-a.target rd.systemd.unit=initrd-a.target \
+                       systemd.unit='host-final.target' rd.systemd.unit=initrd-final.target";
+        assert_eq!(
+            kernel_cmdline_override_target_from(cmdline, false).as_deref(),
+            Some("host-final.target")
+        );
+        assert_eq!(
+            kernel_cmdline_override_target_from(cmdline, true).as_deref(),
+            Some("initrd-final.target")
+        );
+    }
+
+    #[test]
+    fn invalid_kernel_target_does_not_erase_an_earlier_valid_assignment() {
+        assert_eq!(
+            kernel_cmdline_override_target_from(
+                "systemd.unit=rescue.target systemd.unit=not-a-unit",
+                false,
+            )
+            .as_deref(),
+            Some("rescue.target")
+        );
+        assert_eq!(
+            kernel_cmdline_override_target_from("rd.systemd.unit=@bad.target", true),
+            None
+        );
     }
 
     #[test]
