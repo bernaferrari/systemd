@@ -316,49 +316,14 @@ impl PrivateBusReplyQueue {
         reply_serial: u32,
         error: Pid1DbusProtocolError,
     ) -> Result<(), PrivateBusReplyQueueError> {
-        if self.terminal {
-            return Err(PrivateBusReplyQueueError::TerminalFailure);
-        }
-        if reply_serial == 0 {
-            self.terminal = true;
-            return Err(PrivateBusReplyQueueError::InvalidReplySerial);
-        }
-        if let Some(reserved_reply) = self.reserved_reply {
-            self.terminal = true;
-            return Err(PrivateBusReplyQueueError::ReplyReservationInProgress {
-                reply_serial: reserved_reply,
-            });
-        }
-        if self.reply_serial_is_reserved(reply_serial) {
-            self.terminal = true;
-            return Err(PrivateBusReplyQueueError::DuplicateReplySerial { reply_serial });
-        }
+        self.prepare_immediate_reply(reply_serial)?;
 
         let serial = self.next_outgoing_serial;
         let bytes = self
             .adapter
             .encode_protocol_error(endian, serial, reply_serial, error)
             .map_err(PrivateBusReplyQueueError::ReplyEncoding)?;
-        let available = self.outbound_capacity - self.outbound_bytes;
-        if bytes.len() > available {
-            self.terminal = true;
-            return Err(PrivateBusReplyQueueError::OutboundCapacityExceeded {
-                required: bytes.len(),
-                available,
-            });
-        }
-        if self.outbound.try_reserve(1).is_err() {
-            self.terminal = true;
-            return Err(PrivateBusReplyQueueError::OutboundAllocationFailed);
-        }
-        self.outbound_bytes += bytes.len();
-        self.outbound.push_back(OutboundFrame {
-            reply_serial,
-            bytes,
-            offset: 0,
-        });
-        self.take_outgoing_serial();
-        Ok(())
+        self.enqueue_immediate_frame(reply_serial, bytes)
     }
 
     /// Retain a completed transport-local reply without involving the manager.
@@ -379,6 +344,50 @@ impl PrivateBusReplyQueue {
         if no_reply_expected {
             return Ok(PrivateBusReplyTracking::NoReplyExpected);
         }
+        self.prepare_immediate_reply(reply_serial)?;
+
+        let serial = self.next_outgoing_serial;
+        let bytes = self
+            .adapter
+            .encode(endian, serial, reply_serial, Ok(reply))
+            .map_err(PrivateBusReplyQueueError::ReplyEncoding)?;
+        self.enqueue_immediate_frame(reply_serial, bytes)?;
+        Ok(PrivateBusReplyTracking::Queued)
+    }
+
+    /// Retain a checked connection-local string reply without treating it as
+    /// a manager result. This is used for standard peer methods such as
+    /// `GetMachineId`, whose successful response must not consume a manager
+    /// reply receiver or command-inbox capacity.
+    pub fn enqueue_local_text_reply(
+        &mut self,
+        endian: Endian,
+        reply_serial: u32,
+        no_reply_expected: bool,
+        value: &str,
+    ) -> Result<PrivateBusReplyTracking, PrivateBusReplyQueueError> {
+        if self.terminal {
+            return Err(PrivateBusReplyQueueError::TerminalFailure);
+        }
+        if no_reply_expected {
+            return Ok(PrivateBusReplyTracking::NoReplyExpected);
+        }
+        self.prepare_immediate_reply(reply_serial)?;
+        let bytes = self
+            .adapter
+            .encode_local_text_reply(endian, self.next_outgoing_serial, reply_serial, value)
+            .map_err(PrivateBusReplyQueueError::ReplyEncoding)?;
+        self.enqueue_immediate_frame(reply_serial, bytes)?;
+        Ok(PrivateBusReplyTracking::Queued)
+    }
+
+    fn prepare_immediate_reply(
+        &mut self,
+        reply_serial: u32,
+    ) -> Result<(), PrivateBusReplyQueueError> {
+        if self.terminal {
+            return Err(PrivateBusReplyQueueError::TerminalFailure);
+        }
         if reply_serial == 0 {
             self.terminal = true;
             return Err(PrivateBusReplyQueueError::InvalidReplySerial);
@@ -393,12 +402,14 @@ impl PrivateBusReplyQueue {
             self.terminal = true;
             return Err(PrivateBusReplyQueueError::DuplicateReplySerial { reply_serial });
         }
+        Ok(())
+    }
 
-        let serial = self.next_outgoing_serial;
-        let bytes = self
-            .adapter
-            .encode(endian, serial, reply_serial, Ok(reply))
-            .map_err(PrivateBusReplyQueueError::ReplyEncoding)?;
+    fn enqueue_immediate_frame(
+        &mut self,
+        reply_serial: u32,
+        bytes: Vec<u8>,
+    ) -> Result<(), PrivateBusReplyQueueError> {
         let available = self.outbound_capacity - self.outbound_bytes;
         if bytes.len() > available {
             self.terminal = true;
@@ -418,7 +429,7 @@ impl PrivateBusReplyQueue {
             offset: 0,
         });
         self.take_outgoing_serial();
-        Ok(PrivateBusReplyTracking::Queued)
+        Ok(())
     }
 
     /// Retain a reply receiver using correlation from one decoded call.

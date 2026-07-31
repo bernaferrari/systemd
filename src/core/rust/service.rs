@@ -194,6 +194,11 @@ pub struct Service {
     /// overwrites the activation's terminal result.
     pub reload_result: ServiceResult,
     pub exec_context: ExecContext,
+    /// The configured notification sender policy. This is intentionally kept
+    /// distinct from a runtime `NOTIFYACCESS=` override, as in service.c.
+    /// A future authenticated notify dispatcher must consult
+    /// [`service_get_notify_access`] rather than either field alone.
+    pub notify_access: NotifyAccess,
     pub notify_access_override: NotifyAccess,
     pub notify_state: NotifyState,
     pub watchdog_original_usec: u64,
@@ -261,6 +266,7 @@ impl Default for Service {
             exec_context: ExecContext {
                 keyring_mode: ExecKeyringMode::Inherit,
             },
+            notify_access: NotifyAccess::None,
             notify_access_override: NotifyAccess::Invalid,
             notify_state: NotifyState::Invalid,
             watchdog_original_usec: USEC_INFINITY,
@@ -274,7 +280,10 @@ impl Default for Service {
             timer_event_deadline: None,
             watchdog_event_deadline: None,
             watchdog_timestamp: None,
-            watchdog_usec: USEC_INFINITY,
+            // service_init() in C leaves the zeroed configured watchdog
+            // disabled. `watchdog_original_usec` is the separate runtime
+            // override baseline and intentionally uses USEC_INFINITY.
+            watchdog_usec: 0,
             watchdog_override_enable: false,
             watchdog_override_usec: USEC_INFINITY,
             main_exec_status: ExecStatus::default(),
@@ -422,13 +431,84 @@ pub fn service_init(service: &mut Service, manager: &Manager) {
     } else {
         ExecKeyringMode::Inherit
     };
+    service.notify_access = NotifyAccess::None;
     service.notify_access_override = NotifyAccess::Invalid;
     service.notify_state = NotifyState::Invalid;
+    service.watchdog_usec = 0;
     service.watchdog_original_usec = USEC_INFINITY;
     service.oom_policy = OomPolicy::Invalid;
     service.reload_begin_usec = USEC_INFINITY;
     service.reload_signal = libc::SIGHUP;
     service.fd_store_preserve_mode = ExecPreserveMode::Restart;
+}
+
+/// Return the sender policy currently in effect for a service.
+///
+/// `NOTIFYACCESS=` is a privileged runtime override in C and must supersede
+/// the parsed `NotifyAccess=` setting. Keeping that distinction in the model
+/// prevents a future receiver from accidentally making a temporary override
+/// permanent across service activation or reexecution.
+pub fn service_get_notify_access(service: &Service) -> NotifyAccess {
+    match service.notify_access_override {
+        NotifyAccess::Invalid => service.notify_access,
+        override_access => override_access,
+    }
+}
+
+/// Apply the load-time `NotifyAccess=` policy and C's automatic enablement.
+///
+/// `Type=notify`, a nonzero `WatchdogSec=`, and a positive
+/// `FileDescriptorStoreMax=` each require the notify socket. C changes an
+/// otherwise disabled policy to `main` for precisely those cases. This is a
+/// pure model operation: it does not expose `NOTIFY_SOCKET` or make any
+/// service startable until an authenticated manager dispatcher owns the full
+/// protocol.
+pub fn service_configure_notify_access(
+    service: &mut Service,
+    configured: Option<NotifyAccess>,
+    watchdog_sec: Option<u64>,
+    fd_store_max: Option<u64>,
+) {
+    service.notify_access = configured.unwrap_or(NotifyAccess::None);
+    if service.notify_access == NotifyAccess::None
+        && (matches!(
+            service.service_type,
+            ServiceType::Notify | ServiceType::NotifyReload
+        ) || watchdog_sec.is_some_and(|value| value > 0)
+            || fd_store_max.is_some_and(|value| value > 0))
+    {
+        service.notify_access = NotifyAccess::Main;
+    }
+}
+
+/// Check the PID portion of C's `service_notify_message_authorized()` policy.
+///
+/// The eventual transport must first authenticate this PID using kernel
+/// credentials and a stable pid reference. This helper deliberately accepts
+/// no notification content, uid, or file descriptors: authorization precedes
+/// every state, watchdog, and FD-store action. PID comparisons are the same
+/// fallback semantics as C's `pidref_equal()` when pidfd identity cannot be
+/// obtained.
+pub fn service_notify_sender_authorized(service: &Service, sender_pid: i32) -> bool {
+    if sender_pid <= 0 {
+        return false;
+    }
+
+    let is_main = service
+        .main_pid
+        .as_ref()
+        .is_some_and(|pidref| pidref.pid == sender_pid);
+    let is_control = service
+        .control_pid
+        .as_ref()
+        .is_some_and(|pidref| pidref.pid == sender_pid);
+
+    match service_get_notify_access(service) {
+        NotifyAccess::All => true,
+        NotifyAccess::Main => is_main,
+        NotifyAccess::Exec => is_main || is_control,
+        NotifyAccess::Invalid | NotifyAccess::None => false,
+    }
 }
 
 /// Preserve the first failure which caused this activation to unwind.
@@ -605,6 +685,7 @@ mod tests {
         );
         assert_eq!(service.socket_fd, Errno::EBADF.to_neg_errno());
         assert_eq!(service.exec_context.keyring_mode, ExecKeyringMode::Private);
+        assert_eq!(service.watchdog_usec, 0);
         assert!(service.guess_main_pid);
     }
 
@@ -748,5 +829,70 @@ mod tests {
         assert!(service.watchdog_override_enable);
         assert_eq!(service.watchdog_override_usec, 15);
         assert_eq!(service.watchdog_event_deadline, Some(115));
+    }
+
+    #[test]
+    fn notify_access_auto_enables_only_the_c_supported_configurations() {
+        let mut service = Service {
+            service_type: ServiceType::Notify,
+            ..Service::default()
+        };
+        service_configure_notify_access(&mut service, None, None, None);
+        assert_eq!(service.notify_access, NotifyAccess::Main);
+
+        let mut watchdog = Service::default();
+        service_configure_notify_access(&mut watchdog, None, Some(1), None);
+        assert_eq!(watchdog.notify_access, NotifyAccess::Main);
+
+        let mut fd_store = Service::default();
+        service_configure_notify_access(&mut fd_store, None, None, Some(1));
+        assert_eq!(fd_store.notify_access, NotifyAccess::Main);
+
+        let mut ordinary = Service::default();
+        service_configure_notify_access(&mut ordinary, None, Some(0), Some(0));
+        assert_eq!(ordinary.notify_access, NotifyAccess::None);
+
+        let mut explicit = Service {
+            service_type: ServiceType::Notify,
+            ..Service::default()
+        };
+        service_configure_notify_access(&mut explicit, Some(NotifyAccess::All), None, None);
+        assert_eq!(explicit.notify_access, NotifyAccess::All);
+    }
+
+    #[test]
+    fn notify_sender_authorization_uses_effective_policy_and_pid_roles() {
+        let mut service = Service {
+            notify_access: NotifyAccess::Main,
+            main_pid: Some(PidRef {
+                pid: 101,
+                start_time: None,
+                is_self: false,
+                is_child: Some(true),
+            }),
+            control_pid: Some(PidRef {
+                pid: 202,
+                start_time: None,
+                is_self: false,
+                is_child: Some(true),
+            }),
+            ..Service::default()
+        };
+
+        assert!(service_notify_sender_authorized(&service, 101));
+        assert!(!service_notify_sender_authorized(&service, 202));
+        assert!(!service_notify_sender_authorized(&service, 303));
+        assert!(!service_notify_sender_authorized(&service, 0));
+
+        service.notify_access = NotifyAccess::Exec;
+        assert!(service_notify_sender_authorized(&service, 101));
+        assert!(service_notify_sender_authorized(&service, 202));
+
+        service.notify_access_override = NotifyAccess::None;
+        assert_eq!(service_get_notify_access(&service), NotifyAccess::None);
+        assert!(!service_notify_sender_authorized(&service, 101));
+
+        service.notify_access_override = NotifyAccess::All;
+        assert!(service_notify_sender_authorized(&service, 303));
     }
 }

@@ -99,7 +99,7 @@ use unit_file::{
     apply_cgroup_config, apply_exec_context_config, apply_kill_config, parse_unit_file,
     unit_search_paths,
 };
-use unit_load::load_unit_file_with_dropins;
+use unit_load::{load_default_target_candidate, load_unit_file_with_dropins};
 
 const DYNAMIC_UID_MIN: u32 = 61184;
 const DYNAMIC_UID_MAX: u32 = 65519;
@@ -1352,6 +1352,12 @@ impl RuntimeManager {
             if let Some(watchdog) = info.service.watchdog_sec {
                 svc.watchdog_usec = watchdog.saturating_mul(1_000_000);
             }
+            crate::service::service_configure_notify_access(
+                &mut svc,
+                info.service.notify_access,
+                info.service.watchdog_sec,
+                info.service.file_descriptor_store_max,
+            );
             svc.state = ServiceState::Dead;
             self.services.insert(key.clone(), svc);
         }
@@ -1366,18 +1372,16 @@ impl RuntimeManager {
     }
 
     fn load_unit_recursive(&mut self, name: &str, loading: &mut BTreeSet<String>) -> Result<()> {
-        let key = self.canonical_unit_name(name);
-        if self.units.contains_key(&key) {
+        let loading_key = self.canonical_unit_name(name);
+        if !loading.insert(loading_key.clone()) {
             return Ok(());
         }
-        if !loading.insert(name.to_string()) {
-            return Ok(());
+        if !self.units.contains_key(&loading_key) {
+            self.load_unit(name).inspect_err(|_| {
+                loading.remove(&loading_key);
+            })?;
         }
-
-        self.load_unit(name)?;
-        let key = self.canonical_unit_name(name);
-
-        if let Some(unit) = self.units.get(&key).cloned() {
+        if let Some(unit) = self.units.get(&loading_key).cloned() {
             for dep_kind in &[
                 DependencyKind::Requires,
                 DependencyKind::Requisite,
@@ -1395,7 +1399,7 @@ impl RuntimeManager {
             }
         }
 
-        loading.remove(name);
+        loading.remove(&loading_key);
         Ok(())
     }
 
@@ -1621,17 +1625,13 @@ impl RuntimeManager {
         in_initrd: bool,
         fallback_default_target: &str,
     ) -> Result<String> {
-        self.load_all_units()?;
+        // Match C: load the primary candidate and apply only its ENOENT fallback.
+        let target = load_default_target_candidate(in_initrd, fallback_default_target, |name| {
+            self.load_unit(name)
+        })?;
 
-        let target = default_target_name(
-            in_initrd,
-            self.units.contains_key("initrd.target"),
-            self.units.contains_key("default.target"),
-            fallback_default_target,
-        );
-
-        self.start_boot_target(target)?;
-        Ok(target.to_string())
+        self.start_boot_target(&target)?;
+        Ok(target)
     }
 
     /// Queue the initial boot target with the same isolation policy as

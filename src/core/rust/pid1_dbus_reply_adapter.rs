@@ -42,6 +42,7 @@ const PID1_SHADOW_INTROSPECTION_XML: &str = concat!(
     "</interface>",
     "<interface name=\"org.freedesktop.DBus.Peer\">",
     "<method name=\"Ping\"/>",
+    "<method name=\"GetMachineId\"><arg type=\"s\" name=\"machine_uuid\" direction=\"out\"/></method>",
     "</interface>",
     "<interface name=\"org.freedesktop.systemd1.Manager\">",
     "<method name=\"GetUnit\"/><method name=\"GetUnitByPID\"/>",
@@ -194,6 +195,26 @@ impl Pid1DbusReplyAdapter {
     ) -> Result<Vec<u8>, Pid1DbusReplyAdapterError> {
         let (name, message) = protocol_error_details(error);
         let frame = encode_error_reply(endian, serial, reply_serial, name, message)?;
+        if frame.len() > self.capacity {
+            return Err(Pid1DbusReplyAdapterError::ReplyTooLarge {
+                frame_length: frame.len(),
+                capacity: self.capacity,
+            });
+        }
+        Ok(frame)
+    }
+
+    /// Encode the string reply used by standard connection-local D-Bus peer
+    /// methods. This intentionally bypasses manager-result typing: the
+    /// caller has not accepted manager work and must preserve that fact.
+    pub fn encode_local_text_reply(
+        self,
+        endian: Endian,
+        serial: u32,
+        reply_serial: u32,
+        value: &str,
+    ) -> Result<Vec<u8>, Pid1DbusReplyAdapterError> {
+        let frame = encode_text_reply(endian, serial, reply_serial, b's', value)?;
         if frame.len() > self.capacity {
             return Err(Pid1DbusReplyAdapterError::ReplyTooLarge {
                 frame_length: frame.len(),

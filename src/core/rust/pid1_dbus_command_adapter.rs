@@ -3,8 +3,8 @@
 //! Disconnected mapping from the checked private D-Bus wire format to PID 1 commands.
 // PORT-SYNC: src/core/dbus.c (the direct private-bus manager method dispatch).
 //!
-//! This adapter handles the standard connection-local `Peer.Ping`, supports
-//! `Introspectable.Introspect`, and only `GetUnit`, `GetUnitByPID`,
+//! This adapter handles the standard connection-local `Peer.Ping` and
+//! `Peer.GetMachineId`, supports `Introspectable.Introspect`, and only `GetUnit`, `GetUnitByPID`,
 //! `GetUnitByInvocationID`, `LoadUnit`, `StartUnit`, `StopUnit`,
 //! `ReloadUnit`, and `RestartUnit` at the manager object path.
 //! It deliberately has no socket, reply, event-loop, or authorization policy:
@@ -24,6 +24,8 @@ use crate::pid1_bus_source::{Pid1BusCommandSender, Pid1BusSendError};
 use crate::pid1_dbus_wire::{MethodCall, WireError};
 use crate::pid1_manager_commands::{Pid1CommandReplyReceiver, Pid1ManagerCommand, SenderIdentity};
 use crate::transaction::JobMode;
+use systemd_libsystemd_rs::sd_id128_api::sd_id128_get_machine;
+use systemd_libsystemd_rs::sd_id128_strings::sd_id128_to_string;
 
 pub const PID1_MANAGER_PATH: &str = "/org/freedesktop/systemd1";
 pub const PID1_MANAGER_INTERFACE: &str = "org.freedesktop.systemd1.Manager";
@@ -35,9 +37,13 @@ pub const DBUS_PEER_INTERFACE: &str = "org.freedesktop.DBus.Peer";
 /// sd-bus handles the standard peer interface before vtable dispatch. Keeping
 /// these replies distinct from [`Pid1ManagerCommand`] prevents protocol-local
 /// work from consuming manager-inbox capacity or borrowing `RuntimeManager`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pid1DbusLocalReply {
     Empty,
+    /// The canonical 32-digit machine ID returned by D-Bus' standard peer
+    /// interface. This stays connection-local and never consumes manager
+    /// command capacity.
+    MachineId(String),
 }
 
 /// The checked destination of one decoded private-bus call.
@@ -75,6 +81,10 @@ pub enum Pid1DbusCommandAdapterError {
         member: String,
         mode: String,
     },
+    /// Reading the local machine ID failed before any manager operation was
+    /// accepted. The transport turns this into its bounded local failure
+    /// reply, matching sd-bus' fallible built-in peer-method path.
+    MachineIdLookup(i32),
     Ingress(Pid1BusSendError),
 }
 
@@ -106,15 +116,19 @@ impl Pid1DbusCommandAdapter {
     /// C's sd-bus transport consumes `org.freedesktop.DBus.Peer` itself. The
     /// Rust transport does the same for the implemented `Ping` method, on any
     /// object path, and leaves manager methods on the existing authenticated,
-    /// wake-aware command path. `GetMachineId` remains unadvertised until its
-    /// fallible machine-ID lookup has a correlation-preserving local error
-    /// path.
+    /// wake-aware command path. `GetMachineId` uses the same checked,
+    /// connection-local reply path as `Ping`; a lookup failure is returned to
+    /// the transport before any manager work is accepted.
     pub fn request_for(call: &MethodCall) -> Result<Pid1DbusRequest, Pid1DbusCommandAdapterError> {
         if call.interface.as_deref() == Some(DBUS_PEER_INTERFACE) {
             return match call.member.as_str() {
                 "Ping" => {
                     decode_no_args(call)?;
                     Ok(Pid1DbusRequest::Local(Pid1DbusLocalReply::Empty))
+                }
+                "GetMachineId" => {
+                    decode_no_args(call)?;
+                    local_machine_id_reply(sd_id128_get_machine).map(Pid1DbusRequest::Local)
                 }
                 _ => Err(Pid1DbusCommandAdapterError::UnsupportedMember {
                     member: call.member.clone(),
@@ -223,6 +237,15 @@ impl Pid1DbusCommandAdapter {
             .try_send(sender, command)
             .map_err(Into::into)
     }
+}
+
+fn local_machine_id_reply(
+    lookup: impl FnOnce() -> Result<systemd_libsystemd_rs::id128_util::SdId128, i32>,
+) -> Result<Pid1DbusLocalReply, Pid1DbusCommandAdapterError> {
+    lookup()
+        .map(sd_id128_to_string)
+        .map(Pid1DbusLocalReply::MachineId)
+        .map_err(Pid1DbusCommandAdapterError::MachineIdLookup)
 }
 
 fn validate_path(call: &MethodCall) -> Result<(), Pid1DbusCommandAdapterError> {
@@ -539,10 +562,34 @@ mod tests {
         let mut get_machine_id = ping;
         get_machine_id.member = "GetMachineId".into();
         assert_eq!(
-            Pid1DbusCommandAdapter::request_for(&get_machine_id),
-            Err(Pid1DbusCommandAdapterError::UnsupportedMember {
-                member: "GetMachineId".into(),
-            })
+            local_machine_id_reply(|| {
+                Ok(systemd_libsystemd_rs::id128_util::SdId128([
+                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+                    0x0e, 0x0f, 0x10,
+                ]))
+            }),
+            Ok(Pid1DbusLocalReply::MachineId(
+                "0102030405060708090a0b0c0d0e0f10".into()
+            ))
+        );
+        assert_eq!(
+            local_machine_id_reply(|| Err(-libc::EIO)),
+            Err(Pid1DbusCommandAdapterError::MachineIdLookup(-libc::EIO))
+        );
+
+        // The externally visible request path uses the same fallible local
+        // helper. Do not assert the host's actual machine ID in this unit
+        // test; the formatter/lookup contract above is deterministic.
+        let request = Pid1DbusCommandAdapter::request_for(&get_machine_id);
+        assert!(
+            matches!(
+                &request,
+                Ok(Pid1DbusRequest::Local(Pid1DbusLocalReply::MachineId(value)))
+                    if value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+            ) || matches!(
+                &request,
+                Err(Pid1DbusCommandAdapterError::MachineIdLookup(_))
+            )
         );
     }
 

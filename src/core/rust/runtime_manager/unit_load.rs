@@ -12,15 +12,46 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::MetadataExt;
 
+use super::Result as RuntimeResult;
 use super::unit_file::{
     UnitConditionConfig, UnitConditionExpression, UnitFileInfo, parse_unit_content_into,
 };
 use super::unit_specifier::template_unit_name;
+use crate::ffi::Errno;
 use systemd_shared_rs::condition::{
     Condition as SharedCondition, ConditionType as SharedConditionType,
     condition_test_list as shared_condition_test_list,
 };
 use systemd_shared_rs::unit_file::UnitFileParseError;
+
+/// Load C's implicit boot-target candidate without enumerating the complete
+/// unit search path first. Only a missing primary target permits fallback;
+/// malformed or otherwise unloadable targets remain hard failures.
+pub(super) fn load_default_target_candidate(
+    in_initrd: bool,
+    fallback_default_target: &str,
+    mut load: impl FnMut(&str) -> RuntimeResult<()>,
+) -> RuntimeResult<String> {
+    let primary = if in_initrd {
+        "initrd.target"
+    } else {
+        "default.target"
+    };
+
+    match load(primary) {
+        Ok(()) => return Ok(primary.to_string()),
+        Err(Errno::ENOENT) => {}
+        Err(error) => return Err(error),
+    }
+
+    let fallback = if in_initrd {
+        "default.target"
+    } else {
+        fallback_default_target
+    };
+    load(fallback)?;
+    Ok(fallback.to_string())
+}
 
 pub(super) fn collect_dropin_directories(name: &str, search_paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut dirs = Vec::new();

@@ -3002,6 +3002,51 @@ fn test_boot_target_retries_replace_when_isolation_is_refused() {
     );
 }
 
+#[test]
+fn test_default_target_loading_is_lazy_and_uses_only_the_enoent_fallback() {
+    let _test_lock = test_env_lock();
+    let mut calls = Vec::new();
+    let selected = load_default_target_candidate(false, "graphical.target", |name| {
+        calls.push(name.to_string());
+        match name {
+            "default.target" => Err(Errno::ENOENT),
+            "graphical.target" => Ok(()),
+            _ => panic!("default-target selection loaded unrelated unit {name}"),
+        }
+    })
+    .unwrap();
+
+    assert_eq!(selected, "graphical.target");
+    assert_eq!(calls, ["default.target", "graphical.target"]);
+
+    calls.clear();
+    let error = load_default_target_candidate(false, "graphical.target", |name| {
+        calls.push(name.to_string());
+        Err(Errno::ENOEXEC)
+    })
+    .unwrap_err();
+    assert_eq!(error, Errno::ENOEXEC);
+    assert_eq!(calls, ["default.target"]);
+}
+
+#[test]
+fn test_initrd_default_target_fallback_never_uses_the_host_build_default() {
+    let _test_lock = test_env_lock();
+    let mut calls = Vec::new();
+    let selected = load_default_target_candidate(true, "graphical.target", |name| {
+        calls.push(name.to_string());
+        if name == "initrd.target" {
+            Err(Errno::ENOENT)
+        } else {
+            Ok(())
+        }
+    })
+    .unwrap();
+
+    assert_eq!(selected, "default.target");
+    assert_eq!(calls, ["initrd.target", "default.target"]);
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn test_idle_pipe_gate_keeps_all_endpoints_until_manager_acknowledges() {

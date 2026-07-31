@@ -354,13 +354,22 @@ mod imp {
 
             if let Pid1DbusRequest::Local(local_reply) = request {
                 let reply = match local_reply {
-                    Pid1DbusLocalReply::Empty => {
-                        crate::pid1_manager_commands::Pid1ManagerReply::Completed
+                    Pid1DbusLocalReply::Empty => self.replies.enqueue_local_reply(
+                        call.endian,
+                        call.serial,
+                        no_reply_expected,
+                        crate::pid1_manager_commands::Pid1ManagerReply::Completed,
+                    ),
+                    Pid1DbusLocalReply::MachineId(machine_id) => {
+                        self.replies.enqueue_local_text_reply(
+                            call.endian,
+                            call.serial,
+                            no_reply_expected,
+                            &machine_id,
+                        )
                     }
                 };
-                return self
-                    .replies
-                    .enqueue_local_reply(call.endian, call.serial, no_reply_expected, reply)
+                return reply
                     .map(|reply| PrivateBusWireDispatchOutcome::HandledLocally { reply })
                     .map_err(PrivateBusWireDispatchError::Reply)
                     .or_else(|error| self.dispatch_failure(error));
@@ -619,6 +628,7 @@ mod imp {
                     | crate::pid1_manager_commands::Pid1CommandError::Runtime(_),
                 ),
             ) => Pid1DbusProtocolError::Failed,
+            Pid1DbusCommandAdapterError::MachineIdLookup(_) => Pid1DbusProtocolError::Failed,
         }
     }
 

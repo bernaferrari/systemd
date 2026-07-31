@@ -100,6 +100,34 @@ fn peer_ping_call(serial: u32) -> Vec<u8> {
     output
 }
 
+fn peer_get_machine_id_call(serial: u32) -> Vec<u8> {
+    let mut fields = Vec::new();
+    push_header(&mut fields, 1, b'o', "/org/freedesktop/systemd1");
+    push_header(&mut fields, 2, b's', "org.freedesktop.DBus.Peer");
+    push_header(&mut fields, 3, b's', "GetMachineId");
+    let mut output = vec![b'l', 1, 0, 1, 0, 0, 0, 0];
+    output.extend_from_slice(&serial.to_le_bytes());
+    output.extend_from_slice(&u32::try_from(fields.len()).unwrap().to_le_bytes());
+    output.extend_from_slice(&fields);
+    push_padding(&mut output, 8);
+    output
+}
+
+fn little_endian_text_reply_body(frame: &[u8]) -> &[u8] {
+    assert_eq!(frame[0], b'l');
+    assert_eq!(frame[1], 2);
+    let header_length =
+        usize::try_from(u32::from_le_bytes(frame[12..16].try_into().unwrap())).unwrap();
+    let header_end = 16 + header_length;
+    let body_offset = (header_end + 7) & !7;
+    let length = usize::try_from(u32::from_le_bytes(
+        frame[body_offset..body_offset + 4].try_into().unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(frame[body_offset + 4 + length], 0);
+    &frame[body_offset + 4..body_offset + 4 + length]
+}
+
 fn external_token() -> Vec<u8> {
     geteuid()
         .as_raw()
@@ -175,6 +203,75 @@ fn peer_ping_replies_locally_without_consuming_manager_inbox_capacity() {
             .windows(4)
             .any(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()) == 29)
     );
+
+    assert!(
+        command_sender
+            .try_send(
+                sender_identity,
+                Pid1ManagerCommand::LoadUnit {
+                    name: "still-available.service".into(),
+                },
+            )
+            .is_ok()
+    );
+
+    owner.unregister(&mut event_loop).unwrap();
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn peer_get_machine_id_replies_locally_without_consuming_manager_inbox_capacity() {
+    let call = peer_get_machine_id_call(31);
+    let mut event_loop = EventLoop::new().unwrap();
+    let (path, mut owner) = owner(&mut event_loop, "peer-machine-id", 1);
+    let mut client = UnixStream::connect(&path).unwrap();
+    authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+    let wire_id = owner
+        .promote_authenticated_to_wire(wire_slot_config(call.len()))
+        .unwrap()
+        .unwrap();
+    let sender_identity = SenderIdentity::from_authenticated_peer(
+        owner.wire_slot(wire_id).unwrap().connection().peer(),
+    );
+    let (command_sender, _inbox) = pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+    let adapter = Pid1DbusCommandAdapter::new(command_sender.clone());
+
+    match owner.dispatch_wire_slot_once(wire_id, &adapter) {
+        Ok(PrivateBusWireDispatchOutcome::HandledLocally {
+            reply: PrivateBusReplyTracking::Queued,
+        }) => {
+            let frame = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap();
+            assert_eq!(frame[1], 2);
+            assert!(
+                frame
+                    .windows(b"org.freedesktop.systemd1".len())
+                    .any(|window| window == b"org.freedesktop.systemd1")
+            );
+            let machine_id = little_endian_text_reply_body(frame);
+            assert_eq!(machine_id.len(), 32);
+            assert!(machine_id.iter().all(|byte| byte.is_ascii_hexdigit()));
+        }
+        Ok(PrivateBusWireDispatchOutcome::RejectedWithError {
+            error: crate::pid1_dbus_reply_adapter::Pid1DbusProtocolError::Failed,
+        }) => {
+            // C's built-in Peer.GetMachineId is fallible as well. A missing
+            // or invalid host machine ID must receive a correlated local
+            // failure before any manager command is accepted.
+            assert!(
+                owner
+                    .wire_slot(wire_id)
+                    .unwrap()
+                    .replies()
+                    .current_frame()
+                    .is_some()
+            );
+        }
+        outcome => panic!("unexpected GetMachineId dispatch outcome: {outcome:?}"),
+    }
 
     assert!(
         command_sender
