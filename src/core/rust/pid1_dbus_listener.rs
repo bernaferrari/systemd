@@ -429,6 +429,15 @@ mod imp {
             self.connections.len()
         }
 
+        /// Maximum number of connections retained by this listener while they
+        /// are in the admission/authentication stages.
+        ///
+        /// A composite transport owner may impose a smaller effective limit
+        /// while authenticated streams are retained in later wire stages.
+        pub const fn connection_limit(&self) -> usize {
+            self.connection_limit
+        }
+
         pub fn connection(
             &self,
             id: PrivateBusConnectionId,
@@ -448,6 +457,16 @@ mod imp {
             id: PrivateBusConnectionId,
         ) -> Option<AdmittedPrivateBusConnection> {
             self.connections.remove(&id)
+        }
+
+        /// Close and forget every connection retained by the listener.
+        ///
+        /// The event-source owner uses this only during explicit teardown,
+        /// after unregistering individual authentication sources. Keeping the
+        /// table operation here prevents sibling modules from reaching into
+        /// private listener ownership.
+        pub fn clear_connections(&mut self) {
+            self.connections.clear();
         }
 
         /// Accept and admit at most one pending connection.

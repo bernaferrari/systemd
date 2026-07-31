@@ -70,6 +70,12 @@ mod imp {
         pub authenticated: usize,
         pub disconnected: usize,
         pub accept_budget_exhausted: bool,
+        /// The caller's retained-connection limit prevented another accept.
+        ///
+        /// This is distinct from `refused`: no descriptor was accepted and
+        /// immediately dropped, so the listener remains level-triggered for a
+        /// later turn after a wire slot is released.
+        pub connection_limit_reached: bool,
         pub authentication_budget_exhausted: bool,
     }
 
@@ -172,6 +178,12 @@ mod imp {
             self.authenticated.len()
         }
 
+        /// Total streams this owner retains across authentication and the
+        /// authenticated handoff queue.
+        pub fn retained_connection_count(&self) -> usize {
+            self.listener.connection_count()
+        }
+
         /// Return the next authenticated connection to a future wire owner.
         ///
         /// Its authentication source has already been removed from epoll, so
@@ -200,6 +212,31 @@ mod imp {
             event_loop: &mut EventLoop,
             accept_budget: NonZeroUsize,
             authentication_budget: NonZeroUsize,
+            server_id: impl FnMut() -> [u8; 16],
+        ) -> Result<PrivateBusDispatchOutcome, PrivateBusEventSourceError> {
+            self.dispatch_ready_with_connection_limit(
+                event_loop,
+                accept_budget,
+                authentication_budget,
+                self.listener.connection_limit(),
+                server_id,
+            )
+        }
+
+        /// Like [`Self::dispatch_ready`], but cap every connection retained by
+        /// this owner at `connection_limit`.
+        ///
+        /// The limit is checked before `accept()`. A composite transport owner
+        /// supplies the number of slots not occupied by later wire stages,
+        /// which preserves one cap across every ownership transfer without
+        /// accepting and dropping peers merely because a downstream slot is
+        /// full.
+        pub fn dispatch_ready_with_connection_limit(
+            &mut self,
+            event_loop: &mut EventLoop,
+            accept_budget: NonZeroUsize,
+            authentication_budget: NonZeroUsize,
+            connection_limit: usize,
             mut server_id: impl FnMut() -> [u8; 16],
         ) -> Result<PrivateBusDispatchOutcome, PrivateBusEventSourceError> {
             let mut outcome = PrivateBusDispatchOutcome::default();
@@ -210,6 +247,10 @@ mod imp {
 
             if listener_events.contains(EpollFlags::EPOLLIN) {
                 for attempt in 0..accept_budget.get() {
+                    if self.listener.connection_count() >= connection_limit {
+                        outcome.connection_limit_reached = true;
+                        break;
+                    }
                     match self.listener.accept_one_with(&mut server_id) {
                         Ok(id) => {
                             self.register_connection(event_loop, id)?;
@@ -290,6 +331,73 @@ mod imp {
             }
 
             Ok(outcome)
+        }
+
+        /// Remove every event source owned by this adapter and close all of
+        /// its retained streams.
+        ///
+        /// This explicit lifecycle step is required before a manager drops or
+        /// replaces the private transport. It removes callbacks even if an
+        /// epoll deletion reports an error, so queued readiness can never call
+        /// back into abandoned ownership state. Calling it again is harmless
+        /// after a successful teardown.
+        pub fn unregister(
+            &mut self,
+            event_loop: &mut EventLoop,
+        ) -> Result<(), PrivateBusEventSourceError> {
+            let registered_ids: Vec<_> = self.registered.keys().copied().collect();
+            let mut first_error = None;
+
+            for id in registered_ids {
+                let source_id = self.registered.get(&id).map(|entry| entry.source_id);
+                let removal = match (source_id, self.listener.connection(id)) {
+                    (Some(source_id), Some(connection)) => {
+                        event_loop.remove_source(connection.stream(), source_id)
+                    }
+                    _ => Err(Errno::ENOENT),
+                };
+                self.registered.remove(&id);
+                match self.pending_connections.try_borrow_mut() {
+                    Ok(mut pending) => pending.remove(id),
+                    Err(_) => {
+                        // Still release every descriptor and event source
+                        // below. The queue is callback-private state and will
+                        // be dropped with this owner, so retaining a stale id
+                        // there cannot revive a removed connection.
+                        first_error
+                            .get_or_insert(PrivateBusEventSourceError::EventLoop(Errno::EBUSY));
+                    }
+                }
+                self.listener.remove_connection(id);
+                if let Err(error) = removal {
+                    first_error.get_or_insert(PrivateBusEventSourceError::EventLoop(error));
+                }
+            }
+
+            while let Some(id) = self.authenticated.pop_front() {
+                self.listener.remove_connection(id);
+            }
+
+            // Registered streams and the handoff queue normally comprise the
+            // complete listener table. Clear any inconsistent residual entry
+            // defensively: it must not outlive the listener source.
+            self.listener.clear_connections();
+
+            self.listener_events.set(EpollFlags::empty());
+            match event_loop
+                .remove_source(self.listener.listener_fd(), PRIVATE_BUS_LISTENER_SOURCE_ID)
+            {
+                Ok(()) => {}
+                Err(Errno::ENOENT) => {}
+                Err(error) => {
+                    first_error.get_or_insert(PrivateBusEventSourceError::EventLoop(error));
+                }
+            }
+
+            match first_error {
+                Some(error) => Err(error),
+                None => Ok(()),
+            }
         }
 
         fn register_connection(
