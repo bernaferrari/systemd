@@ -725,21 +725,16 @@ unsafe fn c_image_policy_entries<'a>(policy: *const CImagePolicy) -> &'a [CParti
         return &[];
     }
 
-    // SAFETY: the caller guarantees that `policy` points to a complete C
-    // `ImagePolicy` allocation. Its flexible array starts immediately after
-    // the repr(C) prefix mirrored by `CImagePolicy`.
-    let n_policies = unsafe { (*policy).n_policies };
-    // SAFETY: the allocation contract above includes `n_policies` complete
-    // `PartitionPolicy` entries following the prefix.
-    let entries = unsafe {
-        policy
+    // SAFETY: the caller guarantees a complete C allocation including all
+    // flexible-array entries immediately after the repr(C) prefix.
+    unsafe {
+        let n_policies = (*policy).n_policies;
+        let entries = policy
             .cast::<u8>()
             .add(std::mem::size_of::<CImagePolicy>())
-            .cast::<CPartitionPolicy>()
-    };
-    // SAFETY: `entries` and `n_policies` describe the live flexible array by
-    // the function's input contract.
-    unsafe { std::slice::from_raw_parts(entries, n_policies) }
+            .cast::<CPartitionPolicy>();
+        std::slice::from_raw_parts(entries, n_policies)
+    }
 }
 
 /// # Safety
@@ -765,12 +760,16 @@ unsafe fn c_image_policy_default(policy: *const CImagePolicy) -> i32 {
 /// duration of this call. Non-null entries must use valid
 /// `PartitionDesignator` values, as required by the C API.
 unsafe fn c_image_policy_to_native(policy: *const CImagePolicy) -> Result<ImagePolicy, i32> {
-    // SAFETY: forwarded from this helper's C flexible-array policy contract.
-    let default_flags = unsafe { c_image_policy_default(policy) };
+    // SAFETY: forwarded from this helper's complete C flexible-array policy
+    // contract for both the prefix and entries.
+    let (default_flags, entries) = unsafe {
+        (
+            c_image_policy_default(policy),
+            c_image_policy_entries(policy),
+        )
+    };
     let mut policies = Vec::new();
-
-    // SAFETY: forwarded from this helper's C `ImagePolicy` contract.
-    for entry in unsafe { c_image_policy_entries(policy) } {
+    for entry in entries {
         let designator = PartitionDesignator::from_i32(entry.designator)
             .ok_or_else(|| Errno::EINVAL.to_neg_errno())?;
         policies.push(PartitionPolicy {
@@ -826,6 +825,19 @@ fn native_image_policy_to_c(policy: &ImagePolicy) -> Result<*mut CImagePolicy, i
         }
     }
     Ok(result)
+}
+
+/// Duplicate a Rust string into a C-allocator-owned NUL-terminated buffer.
+fn c_strdup(value: &str) -> Result<*mut libc::c_char, i32> {
+    let value = CString::new(value).map_err(|_| Errno::EINVAL.to_neg_errno())?;
+    // SAFETY: value is a live NUL-terminated string and strdup returns memory
+    // in the C allocator family required by these ABI exports.
+    let output = unsafe { crate::ffi::strdup(value.as_ptr()) };
+    if output.is_null() {
+        Err(Errno::ENOMEM.to_neg_errno())
+    } else {
+        Ok(output)
+    }
 }
 
 #[inline]
@@ -975,16 +987,10 @@ pub unsafe extern "C" fn rs_partition_policy_flags_to_string(
     } else {
         (rendered.bytes().filter(|byte| *byte == b'+').count() + 1) as i32
     };
-    let rendered = match CString::new(rendered) {
-        Ok(rendered) => rendered,
-        Err(_) => return Errno::EINVAL.to_neg_errno(),
+    let output = match c_strdup(&rendered) {
+        Ok(output) => output,
+        Err(error) => return error,
     };
-    // SAFETY: `rendered` is live and NUL-terminated; strdup returns memory in
-    // the C allocator family required by the public header.
-    let output = unsafe { crate::ffi::strdup(rendered.as_ptr()) };
-    if output.is_null() {
-        return Errno::ENOMEM.to_neg_errno();
-    }
     // SAFETY: `ret` is writable by this export's contract and publication
     // happens only after a complete C-allocator string was obtained.
     unsafe { ptr::write(ret, output) };
@@ -1081,9 +1087,7 @@ pub unsafe extern "C" fn rs_image_policy_equal(
     }
 
     // SAFETY: both pointers satisfy this export's flexible-array contract.
-    match (unsafe { c_image_policy_to_native(a) }, unsafe {
-        c_image_policy_to_native(b)
-    }) {
+    match unsafe { (c_image_policy_to_native(a), c_image_policy_to_native(b)) } {
         (Ok(a), Ok(b)) => a.image_policy_equal(&b),
         _ => false,
     }
@@ -1102,14 +1106,9 @@ pub unsafe extern "C" fn rs_image_policy_equivalent(
     b: *const CImagePolicy,
 ) -> i32 {
     // SAFETY: both pointers satisfy this export's flexible-array contract.
-    let a = match unsafe { c_image_policy_to_native(a) } {
-        Ok(policy) => policy,
-        Err(error) => return error,
-    };
-    // SAFETY: as above, for `b`.
-    let b = match unsafe { c_image_policy_to_native(b) } {
-        Ok(policy) => policy,
-        Err(error) => return error,
+    let (a, b) = match unsafe { (c_image_policy_to_native(a), c_image_policy_to_native(b)) } {
+        (Ok(a), Ok(b)) => (a, b),
+        (Err(error), _) | (_, Err(error)) => return error,
     };
     match a.image_policy_equivalent(&b) {
         Ok(equivalent) => i32::from(equivalent),
@@ -1219,16 +1218,10 @@ pub unsafe extern "C" fn rs_image_policy_to_string(
         Ok(rendered) => rendered,
         Err(error) => return error,
     };
-    let rendered = match CString::new(rendered) {
-        Ok(rendered) => rendered,
-        Err(_) => return Errno::EINVAL.to_neg_errno(),
+    let output = match c_strdup(&rendered) {
+        Ok(output) => output,
+        Err(error) => return error,
     };
-    // SAFETY: `rendered` is a live NUL-terminated C string. `strdup` provides
-    // the C-allocator ownership required by the public header.
-    let output = unsafe { crate::ffi::strdup(rendered.as_ptr()) };
-    if output.is_null() {
-        return Errno::ENOMEM.to_neg_errno();
-    }
     // SAFETY: `ret` is writable by this export's contract.
     unsafe { ptr::write(ret, output) };
     0
@@ -1250,14 +1243,9 @@ pub unsafe extern "C" fn rs_image_policy_intersect(
     ret: *mut *mut CImagePolicy,
 ) -> i32 {
     // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
-    let a = match unsafe { c_image_policy_to_native(a) } {
-        Ok(policy) => policy,
-        Err(error) => return error,
-    };
-    // SAFETY: as above, for `b`.
-    let b = match unsafe { c_image_policy_to_native(b) } {
-        Ok(policy) => policy,
-        Err(error) => return error,
+    let (a, b) = match unsafe { (c_image_policy_to_native(a), c_image_policy_to_native(b)) } {
+        (Ok(a), Ok(b)) => (a, b),
+        (Err(error), _) | (_, Err(error)) => return error,
     };
     let result = match a.image_policy_intersect(&b) {
         Ok(policy) => policy,
@@ -1289,14 +1277,9 @@ pub unsafe extern "C" fn rs_image_policy_union(
     ret: *mut *mut CImagePolicy,
 ) -> i32 {
     // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
-    let a = match unsafe { c_image_policy_to_native(a) } {
-        Ok(policy) => policy,
-        Err(error) => return error,
-    };
-    // SAFETY: as above, for `b`.
-    let b = match unsafe { c_image_policy_to_native(b) } {
-        Ok(policy) => policy,
-        Err(error) => return error,
+    let (a, b) = match unsafe { (c_image_policy_to_native(a), c_image_policy_to_native(b)) } {
+        (Ok(a), Ok(b)) => (a, b),
+        (Err(error), _) | (_, Err(error)) => return error,
     };
     let result = match a.image_policy_union(&b) {
         Ok(policy) => policy,
@@ -1355,13 +1338,14 @@ pub unsafe extern "C" fn rs_partition_policy_determine_fstype(
         fstype.bytes().filter(|byte| *byte == b'+').count() + 1
     };
     if count != 1 {
-        if !ret_encrypted.is_null() {
-            // SAFETY: the optional output was supplied as writable by this
-            // export's contract.
-            unsafe { ptr::write(ret_encrypted, false) };
+        // SAFETY: the required output and, when supplied, the optional output
+        // are writable by this export's contract.
+        unsafe {
+            if !ret_encrypted.is_null() {
+                ptr::write(ret_encrypted, false);
+            }
+            ptr::write(ret_fstype, ptr::null_mut());
         }
-        // SAFETY: the required output is writable by this export's contract.
-        unsafe { ptr::write(ret_fstype, ptr::null_mut()) };
         return 0;
     }
 
@@ -1371,23 +1355,18 @@ pub unsafe extern "C" fn rs_partition_policy_determine_fstype(
         && (policy_flags
             & (PARTITION_POLICY_VERITY | PARTITION_POLICY_SIGNED | PARTITION_POLICY_UNPROTECTED))
             == 0;
-    let fstype = match CString::new(fstype) {
-        Ok(fstype) => fstype,
-        Err(_) => return Errno::EINVAL.to_neg_errno(),
+    let output = match c_strdup(&fstype) {
+        Ok(output) => output,
+        Err(error) => return error,
     };
-    // SAFETY: `fstype` is a live NUL-terminated C string and `strdup` returns
-    // storage owned by the C allocator.
-    let output = unsafe { crate::ffi::strdup(fstype.as_ptr()) };
-    if output.is_null() {
-        return Errno::ENOMEM.to_neg_errno();
+    // SAFETY: the required output and, when supplied, the optional output
+    // are writable by this export's contract.
+    unsafe {
+        if !ret_encrypted.is_null() {
+            ptr::write(ret_encrypted, encrypted);
+        }
+        ptr::write(ret_fstype, output);
     }
-    if !ret_encrypted.is_null() {
-        // SAFETY: the optional output was supplied as writable by this
-        // export's contract.
-        unsafe { ptr::write(ret_encrypted, encrypted) };
-    }
-    // SAFETY: the required output is writable by this export's contract.
-    unsafe { ptr::write(ret_fstype, output) };
     1
 }
 
