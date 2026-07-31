@@ -713,7 +713,12 @@
     "src/platform/rust/spawn/linux.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 50
+      "unsafe_sites": 41
+    },
+    "src/platform/rust/spawn/linux_idle.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 9
     },
     "src/platform/rust/spawn/linux_cgroup.rs": {
       "missing_safety": 0,

@@ -13,17 +13,17 @@ Scope: `src`
 ## Snapshot Totals
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1279**
+- All `src` Rust files: **1281**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1164**
+- Unverified Rust behavior candidates: **1166**
 
 Excluding `src/test`:
 - C files: **1569**
-- Rust files: **1279**
+- Rust files: **1281**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1164**
+- Unverified Rust behavior candidates: **1166**
 
 ## Per-Subsystem Inventory
 
@@ -44,7 +44,7 @@ Excluding `src/test`:
 | `cgls` | 1 | 3 | 0 | 0 | 3 |
 | `cgtop` | 1 | 2 | 0 | 0 | 2 |
 | `clonesetup` | 4 | 0 | 0 | 0 | 0 |
-| `core` | 97 | 143 | 0 | 6 | 137 |
+| `core` | 97 | 144 | 0 | 6 | 138 |
 | `coredump` | 11 | 0 | 0 | 0 | 0 |
 | `creds` | 1 | 3 | 0 | 0 | 3 |
 | `cryptenroll` | 10 | 0 | 0 | 0 | 0 |
@@ -104,7 +104,7 @@ Excluding `src/test`:
 | `path` | 1 | 3 | 0 | 0 | 3 |
 | `pcrextend` | 1 | 0 | 0 | 0 | 0 |
 | `pcrlock` | 2 | 0 | 0 | 0 | 0 |
-| `platform` | 0 | 14 | 0 | 0 | 14 |
+| `platform` | 0 | 15 | 0 | 0 | 15 |
 | `portable` | 7 | 0 | 0 | 0 | 0 |
 | `pstore` | 1 | 3 | 0 | 0 | 3 |
 | `ptyfwd` | 1 | 3 | 0 | 0 | 3 |

@@ -55,8 +55,3 @@ growth_reason = "The current audited grammar and C allocation facades exceed the
 max_lines = 2100
 issue = "systemd-cpuw"
 reason = "Split pre-fork preparation, post-fork descriptor setup, and exec-status handling without widening the async-signal-safe child boundary."
-
-[files."src/core/rust/runtime_manager/service_runtime.rs"]
-max_lines = 2006
-issue = "systemd-dgn7.5"
-reason = "Separate service execution phases, readiness handling, and subprocess lifecycle state behind the runtime-manager boundary without weakening PID1 fail-closed behavior."

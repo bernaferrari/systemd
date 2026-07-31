@@ -30,6 +30,7 @@ use super::service_machine::{
     ServiceCommandSequence, ServiceOperationDeadline, ServiceOperationOwner, pid_role_for_command,
     start_post_after_fork,
 };
+use super::service_readiness::readiness_rejection;
 
 impl RuntimeManager {
     pub(super) fn clear_service_tracking(&mut self, name: &str) {
@@ -1378,39 +1379,7 @@ impl RuntimeManager {
         // and prevents a start failure from looking like Dead→Dead.
         self.set_service_state(unit_name, ServiceState::Condition);
 
-        // These types require manager-owned transports/gates. Linux Type=idle
-        // uses the real pipe gate below; the remaining unimplemented
-        // transports must reject starts rather than accepting a public
-        // name-only callback and falsely claiming readiness.
-        let readiness_rejection = match service_type {
-            ServiceType::Idle => {
-                #[cfg(target_os = "linux")]
-                {
-                    None
-                }
-                #[cfg(not(target_os = "linux"))]
-                {
-                    Some("Type=idle requires the Linux manager idle gate")
-                }
-            }
-            ServiceType::Notify | ServiceType::NotifyReload => Some(
-                "Type=notify requires an authenticated sd_notify transport, which is not implemented",
-            ),
-            ServiceType::Dbus
-                if info
-                    .service
-                    .bus_name
-                    .as_deref()
-                    .is_none_or(|name| name.trim().is_empty()) =>
-            {
-                Some("Type=dbus requires a non-empty BusName=")
-            }
-            ServiceType::Dbus => Some(
-                "Type=dbus requires authenticated BusName ownership tracking, which is not implemented",
-            ),
-            _ => None,
-        };
-        if let Some(reason) = readiness_rejection {
+        if let Some(reason) = readiness_rejection(service_type, &info) {
             eprintln!("systemd: refusing to start {unit_name}: {reason}");
             self.enter_dead(unit_name, ServiceResult::FailureProtocol, true);
             return;

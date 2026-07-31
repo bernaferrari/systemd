@@ -52,6 +52,7 @@ mod job_runtime;
 mod linux_cgroup;
 mod service_jobs;
 mod service_machine;
+mod service_readiness;
 mod service_runtime;
 mod service_shutdown;
 mod socket_runtime;

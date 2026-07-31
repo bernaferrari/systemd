@@ -494,6 +494,7 @@
         "src/core/rust/runtime_manager/linux_cgroup.rs",
         "src/core/rust/runtime_manager/service_jobs.rs",
         "src/core/rust/runtime_manager/service_machine.rs",
+        "src/core/rust/runtime_manager/service_readiness.rs",
         "src/core/rust/runtime_manager/service_runtime.rs",
         "src/core/rust/runtime_manager/service_shutdown.rs",
         "src/core/rust/runtime_manager/socket_runtime.rs",
