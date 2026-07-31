@@ -589,12 +589,97 @@ struct CSocketAddress {
 
 const AF_VSOCK: c_int = 40;
 
+enum CSockaddrRef<'a> {
+    Inet(&'a libc::sockaddr_in),
+    Inet6(&'a libc::sockaddr_in6),
+    Unix(&'a libc::sockaddr_un),
+    Link(&'a CSockaddrLl),
+    Vsock(&'a CSockaddrVm),
+    Other(c_int),
+}
+
 /// # Safety
-/// `sa` must point to a readable, aligned C `sockaddr` object.
-#[inline]
-unsafe fn socket_family(sa: *const c_void) -> c_int {
-    // SAFETY: all C-layout helpers require a valid, aligned sockaddr object.
-    unsafe { (*sa.cast::<libc::sockaddr>()).sa_family as c_int }
+///
+/// `sa` must point to a readable, aligned C `sockaddr` object whose family
+/// member selects the corresponding complete C union member.
+unsafe fn sockaddr_ref<'a>(sa: &'a libc::sockaddr) -> CSockaddrRef<'a> {
+    // SAFETY: the helper's contract guarantees a readable, aligned sockaddr
+    // and the matching complete union member for the selected family.
+    unsafe {
+        match sa.sa_family as c_int {
+            libc::AF_INET => CSockaddrRef::Inet(&*ptr::from_ref(sa).cast::<libc::sockaddr_in>()),
+            libc::AF_INET6 => CSockaddrRef::Inet6(&*ptr::from_ref(sa).cast::<libc::sockaddr_in6>()),
+            libc::AF_UNIX => CSockaddrRef::Unix(&*ptr::from_ref(sa).cast::<libc::sockaddr_un>()),
+            libc::AF_PACKET => CSockaddrRef::Link(&*ptr::from_ref(sa).cast::<CSockaddrLl>()),
+            AF_VSOCK => CSockaddrRef::Vsock(&*ptr::from_ref(sa).cast::<CSockaddrVm>()),
+            family => CSockaddrRef::Other(family),
+        }
+    }
+}
+
+fn sockaddr_port_from_ref(sa: CSockaddrRef<'_>) -> Result<u32, i32> {
+    match sa {
+        CSockaddrRef::Inet(sa) => Ok(u16::from_be(sa.sin_port).into()),
+        CSockaddrRef::Inet6(sa) => Ok(u16::from_be(sa.sin6_port).into()),
+        CSockaddrRef::Vsock(sa) => Ok(sa.svm_port),
+        _ => Err(-libc::EAFNOSUPPORT),
+    }
+}
+
+fn sockaddr_in_addr_ptr_from_ref(sa: CSockaddrRef<'_>) -> *const c_void {
+    match sa {
+        CSockaddrRef::Inet(sa) => ptr::from_ref(&sa.sin_addr).cast(),
+        CSockaddrRef::Inet6(sa) => ptr::from_ref(&sa.sin6_addr).cast(),
+        _ => ptr::null(),
+    }
+}
+
+fn sockaddr_equal_from_ref(a: CSockaddrRef<'_>, b: CSockaddrRef<'_>) -> bool {
+    match (a, b) {
+        (CSockaddrRef::Inet(a), CSockaddrRef::Inet(b)) => a.sin_addr.s_addr == b.sin_addr.s_addr,
+        (CSockaddrRef::Inet6(a), CSockaddrRef::Inet6(b)) => {
+            a.sin6_addr.s6_addr == b.sin6_addr.s6_addr
+        }
+        (CSockaddrRef::Vsock(a), CSockaddrRef::Vsock(b)) => a.svm_cid == b.svm_cid,
+        _ => false,
+    }
+}
+
+fn sockaddr_ll_len_from_ref(sa: CSockaddrRef<'_>) -> usize {
+    let CSockaddrRef::Link(sa) = sa else {
+        return 0;
+    };
+    let mac_len = match u16::from_be(sa.sll_hatype) {
+        ARPHRD_ETHER => 8,
+        ARPHRD_INFINIBAND => 20,
+        _ => 8,
+    };
+    offset_of!(CSockaddrLl, sll_addr) + mac_len
+}
+
+fn sockaddr_un_len_from_ref(sa: CSockaddrRef<'_>) -> usize {
+    let CSockaddrRef::Unix(sa) = sa else {
+        return 0;
+    };
+    let path = &sa.sun_path;
+    let start = usize::from(path[0] == 0);
+    let length = path[start..]
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(path.len() - start);
+    offset_of!(libc::sockaddr_un, sun_path) + start + length + usize::from(path[0] != 0)
+}
+
+fn sockaddr_len_from_ref(sa: CSockaddrRef<'_>) -> usize {
+    match sa {
+        CSockaddrRef::Inet(_) => size_of::<libc::sockaddr_in>(),
+        CSockaddrRef::Inet6(_) => size_of::<libc::sockaddr_in6>(),
+        CSockaddrRef::Unix(sa) => sockaddr_un_len_from_ref(CSockaddrRef::Unix(sa)),
+        CSockaddrRef::Link(sa) => sockaddr_ll_len_from_ref(CSockaddrRef::Link(sa)),
+        CSockaddrRef::Vsock(_) => size_of::<CSockaddrVm>(),
+        CSockaddrRef::Other(libc::AF_NETLINK) => size_of::<CSockaddrNl>(),
+        CSockaddrRef::Other(_) => 0,
+    }
 }
 
 /// # Safety
@@ -620,20 +705,9 @@ pub unsafe extern "C" fn rs_sockaddr_port(sa: *const c_void, ret_port: *mut u32)
     }
 
     // SAFETY: non-null `sa` meets this export's readable sockaddr contract.
-    let port = match unsafe { socket_family(sa) } {
-        libc::AF_INET => {
-            // SAFETY: the family tag selects the matching C union member.
-            unsafe { u16::from_be((*sa.cast::<libc::sockaddr_in>()).sin_port) as u32 }
-        }
-        libc::AF_INET6 => {
-            // SAFETY: the family tag selects the matching C union member.
-            unsafe { u16::from_be((*sa.cast::<libc::sockaddr_in6>()).sin6_port) as u32 }
-        }
-        AF_VSOCK => {
-            // SAFETY: the family tag selects the matching C union member.
-            unsafe { (*sa.cast::<CSockaddrVm>()).svm_port }
-        }
-        _ => return -libc::EAFNOSUPPORT,
+    let port = match sockaddr_port_from_ref(unsafe { sockaddr_ref(&*sa.cast()) }) {
+        Ok(port) => port,
+        Err(error) => return error,
     };
     // SAFETY: ensured non-null above and required writable by this export.
     unsafe { *ret_port = port };
@@ -650,17 +724,7 @@ pub unsafe extern "C" fn rs_sockaddr_in_addr(sa: *const c_void) -> *const c_void
         return ptr::null();
     }
     // SAFETY: non-null `sa` meets this export's readable sockaddr contract.
-    match unsafe { socket_family(sa) } {
-        libc::AF_INET => {
-            // SAFETY: the family tag selects `sockaddr_in` in the C union.
-            unsafe { ptr::addr_of!((*sa.cast::<libc::sockaddr_in>()).sin_addr).cast() }
-        }
-        libc::AF_INET6 => {
-            // SAFETY: the family tag selects `sockaddr_in6` in the C union.
-            unsafe { ptr::addr_of!((*sa.cast::<libc::sockaddr_in6>()).sin6_addr).cast() }
-        }
-        _ => ptr::null(),
-    }
+    sockaddr_in_addr_ptr_from_ref(unsafe { sockaddr_ref(&*sa.cast()) })
 }
 
 /// # Safety
@@ -719,32 +783,10 @@ pub unsafe extern "C" fn rs_sockaddr_equal(a: *const c_void, b: *const c_void) -
         return false;
     }
     // SAFETY: both non-null pointers meet this export's readable union contract.
-    let family = unsafe { socket_family(a) };
+    let a = unsafe { sockaddr_ref(&*a.cast()) };
     // SAFETY: `b` has the same readable union contract as `a`.
-    if family != unsafe { socket_family(b) } {
-        return false;
-    }
-    match family {
-        libc::AF_INET => {
-            // SAFETY: family selected matching C members in both unions.
-            unsafe {
-                (*a.cast::<libc::sockaddr_in>()).sin_addr.s_addr
-                    == (*b.cast::<libc::sockaddr_in>()).sin_addr.s_addr
-            }
-        }
-        libc::AF_INET6 => {
-            // SAFETY: family selected matching C members in both unions.
-            unsafe {
-                (*a.cast::<libc::sockaddr_in6>()).sin6_addr.s6_addr
-                    == (*b.cast::<libc::sockaddr_in6>()).sin6_addr.s6_addr
-            }
-        }
-        AF_VSOCK => {
-            // SAFETY: family selected matching C members in both unions.
-            unsafe { (*a.cast::<CSockaddrVm>()).svm_cid == (*b.cast::<CSockaddrVm>()).svm_cid }
-        }
-        _ => false,
-    }
+    let b = unsafe { sockaddr_ref(&*b.cast()) };
+    sockaddr_equal_from_ref(a, b)
 }
 
 /// # Safety
@@ -752,18 +794,11 @@ pub unsafe extern "C" fn rs_sockaddr_equal(a: *const c_void, b: *const c_void) -
 /// Invalid inputs return zero rather than C's assertion failure.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_sockaddr_ll_len(sa: *const c_void) -> usize {
-    // SAFETY: a non-null `sa` meets this export's readable sockaddr contract.
-    if sa.is_null() || unsafe { socket_family(sa) } != libc::AF_PACKET {
+    if sa.is_null() {
         return 0;
     }
-    // SAFETY: AF_PACKET selects the `sockaddr_ll` C union member.
-    let sa = unsafe { &*sa.cast::<CSockaddrLl>() };
-    let mac_len = match u16::from_be(sa.sll_hatype) {
-        ARPHRD_ETHER => 8,
-        ARPHRD_INFINIBAND => 20,
-        _ => 8,
-    };
-    offset_of!(CSockaddrLl, sll_addr) + mac_len
+    // SAFETY: non-null `sa` meets this export's readable sockaddr contract.
+    sockaddr_ll_len_from_ref(unsafe { sockaddr_ref(&*sa.cast()) })
 }
 
 /// # Safety
@@ -771,20 +806,11 @@ pub unsafe extern "C" fn rs_sockaddr_ll_len(sa: *const c_void) -> usize {
 /// Invalid inputs return zero rather than C's assertion failure.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_sockaddr_un_len(sa: *const c_void) -> usize {
-    // SAFETY: a non-null `sa` meets this export's readable sockaddr contract.
-    if sa.is_null() || unsafe { socket_family(sa) } != libc::AF_UNIX {
+    if sa.is_null() {
         return 0;
     }
-    // SAFETY: AF_UNIX selects the `sockaddr_un` C union member.
-    let sa = unsafe { &*sa.cast::<libc::sockaddr_un>() };
-    let path = &sa.sun_path;
-    let bytes = unsafe { std::slice::from_raw_parts(path.as_ptr().cast::<u8>(), path.len()) };
-    let start = usize::from(bytes[0] == 0);
-    let length = bytes[start..]
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(bytes.len() - start);
-    offset_of!(libc::sockaddr_un, sun_path) + start + length + usize::from(bytes[0] != 0)
+    // SAFETY: non-null `sa` meets this export's readable sockaddr contract.
+    sockaddr_un_len_from_ref(unsafe { sockaddr_ref(&*sa.cast()) })
 }
 
 /// # Safety
@@ -796,17 +822,7 @@ pub unsafe extern "C" fn rs_sockaddr_len(sa: *const c_void) -> usize {
         return 0;
     }
     // SAFETY: non-null `sa` meets this export's readable union contract.
-    match unsafe { socket_family(sa) } {
-        libc::AF_INET => size_of::<libc::sockaddr_in>(),
-        libc::AF_INET6 => size_of::<libc::sockaddr_in6>(),
-        // SAFETY: the family tag was read from the same valid union.
-        libc::AF_UNIX => unsafe { rs_sockaddr_un_len(sa) },
-        // SAFETY: the family tag was read from the same valid union.
-        libc::AF_PACKET => unsafe { rs_sockaddr_ll_len(sa) },
-        libc::AF_NETLINK => size_of::<CSockaddrNl>(),
-        AF_VSOCK => size_of::<CSockaddrVm>(),
-        _ => 0,
-    }
+    sockaddr_len_from_ref(unsafe { sockaddr_ref(&*sa.cast()) })
 }
 
 /// Construct an AF_UNIX socket address using systemd's `@name` convention for
