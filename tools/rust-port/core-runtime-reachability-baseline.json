@@ -443,6 +443,12 @@
         "src/core/rust/path_tables.rs"
       ]
     },
+    "pid1_api_bus_instance": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/pid1_api_bus_instance.rs"
+      ]
+    },
     "pid1_api_bus_name_owner": {
       "classification": "compiled-but-disconnected",
       "source_files": [

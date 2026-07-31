@@ -9,7 +9,7 @@
 //! Encoding that limitation in the wire header prevents a future adopter from
 //! mistaking today's preparation proof for a bootable state image.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::{CgroupFdKind, DescriptorRole, HandoffAssessment, HandoffPurpose};
 
@@ -127,6 +127,7 @@ pub enum HandoffImageError {
     InvalidUtf8,
     DuplicateDescriptorRole,
     DescriptorCountMismatch { declared: usize, actual: usize },
+    InventoryMismatch(&'static str),
     PurposeMismatch,
     IncompleteStateCoverage,
     RoundTripMismatch,
@@ -160,6 +161,12 @@ impl std::fmt::Display for HandoffImageError {
                 formatter,
                 "handoff image declares {declared} descriptors but contains {actual} roles"
             ),
+            Self::InventoryMismatch(reason) => {
+                write!(
+                    formatter,
+                    "handoff descriptor inventory is inconsistent: {reason}"
+                )
+            }
             Self::PurposeMismatch => {
                 formatter.write_str("handoff image purpose does not match the requested transition")
             }
@@ -350,8 +357,80 @@ impl HandoffPrecommitImage {
         if self.descriptor_roles.iter().collect::<BTreeSet<_>>().len() != actual {
             return Err(HandoffImageError::DuplicateDescriptorRole);
         }
+
+        let mut cgroup_roots = 0usize;
+        let mut socket_ports = BTreeMap::<&str, BTreeSet<u64>>::new();
+        let mut cgroup_kinds = BTreeMap::<&str, BTreeSet<u8>>::new();
+        let mut cgroup_inotify = false;
+        for role in &self.descriptor_roles {
+            match role {
+                DescriptorRoleManifest::SocketListener { unit, port_index } => {
+                    validate_unit_name(unit)?;
+                    socket_ports.entry(unit).or_default().insert(*port_index);
+                }
+                DescriptorRoleManifest::CgroupRoot => cgroup_roots += 1,
+                DescriptorRoleManifest::UnitCgroup { unit, kind } => {
+                    validate_unit_name(unit)?;
+                    cgroup_kinds.entry(unit).or_default().insert(*kind);
+                }
+                DescriptorRoleManifest::CgroupInotify => cgroup_inotify = true,
+                DescriptorRoleManifest::BoundStopRetryTimer => {}
+            }
+        }
+
+        if cgroup_roots != 1 {
+            return Err(HandoffImageError::InventoryMismatch(
+                "exactly one manager cgroup root is required",
+            ));
+        }
+        let socket_count = socket_ports.values().map(BTreeSet::len).sum::<usize>();
+        if socket_count != self.assessment.socket_listener_count {
+            return Err(HandoffImageError::InventoryMismatch(
+                "socket-listener roles do not match the assessed count",
+            ));
+        }
+        if socket_ports
+            .values()
+            .any(|ports| !ports.iter().copied().eq(0..ports.len() as u64))
+        {
+            return Err(HandoffImageError::InventoryMismatch(
+                "socket port indexes must be contiguous from zero",
+            ));
+        }
+        if cgroup_kinds.len() != self.assessment.unit_cgroup_count {
+            return Err(HandoffImageError::InventoryMismatch(
+                "unit-cgroup roles do not match the assessed unit count",
+            ));
+        }
+        if cgroup_kinds
+            .values()
+            .any(|kinds| kinds.iter().copied().ne(1..=4))
+        {
+            return Err(HandoffImageError::InventoryMismatch(
+                "each unit cgroup must carry all four descriptor kinds",
+            ));
+        }
+        if self.assessment.cgroup_watch_count > self.assessment.unit_cgroup_count {
+            return Err(HandoffImageError::InventoryMismatch(
+                "cgroup watches exceed represented unit cgroups",
+            ));
+        }
+        if self.assessment.cgroup_watch_count > 0 && !cgroup_inotify {
+            return Err(HandoffImageError::InventoryMismatch(
+                "cgroup watches require the manager inotify descriptor",
+            ));
+        }
         Ok(())
     }
+}
+
+fn validate_unit_name(unit: &str) -> Result<(), HandoffImageError> {
+    if unit.is_empty() || unit.contains('\0') {
+        return Err(HandoffImageError::InventoryMismatch(
+            "descriptor roles require a non-empty, NUL-free unit name",
+        ));
+    }
+    Ok(())
 }
 
 fn purpose_wire_code(purpose: HandoffPurpose) -> u8 {
@@ -546,5 +625,69 @@ mod tests {
                 actual: 1,
             })
         );
+    }
+
+    #[test]
+    fn inventory_rejects_category_count_and_socket_index_mismatches() {
+        let mut wrong_socket_count = fixture();
+        wrong_socket_count.assessment.socket_listener_count = 0;
+        assert!(matches!(
+            wrong_socket_count.encode(),
+            Err(HandoffImageError::InventoryMismatch(
+                "socket-listener roles do not match the assessed count"
+            ))
+        ));
+
+        let mut sparse_socket_indexes = fixture();
+        sparse_socket_indexes.descriptor_roles[0] = DescriptorRoleManifest::SocketListener {
+            unit: "api.socket".into(),
+            port_index: 1,
+        };
+        assert!(matches!(
+            sparse_socket_indexes.encode(),
+            Err(HandoffImageError::InventoryMismatch(
+                "socket port indexes must be contiguous from zero"
+            ))
+        ));
+    }
+
+    #[test]
+    fn inventory_rejects_incomplete_cgroup_descriptor_bundles() {
+        let image = HandoffPrecommitImage {
+            purpose: HandoffPurpose::Reexecute,
+            coverage: HandoffImageCoverage::DescriptorManifestOnly,
+            assessment: HandoffAssessment {
+                purpose: HandoffPurpose::Reexecute,
+                unit_count: 1,
+                job_count: 0,
+                socket_listener_count: 0,
+                unit_cgroup_count: 1,
+                cgroup_watch_count: 1,
+                descriptor_count: 6,
+            },
+            descriptor_roles: vec![
+                DescriptorRoleManifest::CgroupRoot,
+                DescriptorRoleManifest::UnitCgroup {
+                    unit: "worker.service".into(),
+                    kind: 1,
+                },
+                DescriptorRoleManifest::UnitCgroup {
+                    unit: "worker.service".into(),
+                    kind: 2,
+                },
+                DescriptorRoleManifest::UnitCgroup {
+                    unit: "worker.service".into(),
+                    kind: 3,
+                },
+                DescriptorRoleManifest::CgroupInotify,
+                DescriptorRoleManifest::BoundStopRetryTimer,
+            ],
+        };
+        assert!(matches!(
+            image.encode(),
+            Err(HandoffImageError::InventoryMismatch(
+                "each unit cgroup must carry all four descriptor kinds"
+            ))
+        ));
     }
 }

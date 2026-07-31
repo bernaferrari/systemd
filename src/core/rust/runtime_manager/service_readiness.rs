@@ -30,10 +30,10 @@ pub(super) fn readiness_rejection(
         // every sd_notify field has reached C parity. A bound source, exact
         // direct-child pidfd identity, and `NotifyAccess=main` are sufficient
         // for a normal Type=notify READY=/STOPPING= lifecycle. Cgroup-child
-        // routing, NotifyAccess=exec/all, watchdog configuration, FDSTORE,
-        // and Type=notify-reload remain fail closed until their contracts are
-        // complete. Watchdog pings use the same authenticated direct-main
-        // route and manager-owned deadline already used by the service FSM.
+        // routing, NotifyAccess=exec/all, FDSTORE, and Type=notify-reload
+        // remain fail closed until their contracts are complete. Watchdog
+        // pings use the same authenticated direct-main route and manager-owned
+        // deadline already used by the service FSM.
         ServiceType::Notify if !authenticated_notify_socket_configured => {
             Some("Type=notify requires a bound authenticated sd_notify socket")
         }
