@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use systemd_basic_rs::extract_word::{
     EXTRACT_RELAX, EXTRACT_RETAIN_ESCAPE, EXTRACT_UNQUOTE, extract_first_word,
 };
@@ -24,7 +24,6 @@ use systemd_core_rs::pid1_manager_runtime::{
 use systemd_core_rs::pid1_socket_sources::SocketSourceOwner;
 use systemd_core_rs::runtime_manager::RuntimeManager;
 use systemd_core_rs::transaction::JobMode;
-use systemd_core_rs::unit::ActiveState;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -172,12 +171,6 @@ fn in_initrd() -> bool {
     std::path::Path::new("/etc/initrd-release").exists()
 }
 
-fn is_target_active(runtime: &RuntimeManager, target: &str) -> bool {
-    runtime
-        .get_unit(target)
-        .is_some_and(|unit| unit.active_state == ActiveState::Active)
-}
-
 fn kernel_cmdline_override_target_from(cmdline: &str, in_initrd: bool) -> Option<String> {
     let mut remaining = cmdline;
     let mut selected = None;
@@ -249,18 +242,6 @@ fn apply_hostname_from_etc() -> std::io::Result<Option<String>> {
 #[cfg(not(target_os = "linux"))]
 fn apply_hostname_from_etc() -> std::io::Result<Option<String>> {
     Ok(None)
-}
-
-fn wait_target_active(runtime: &mut RuntimeManager, target: &str, timeout: Duration) -> bool {
-    let started = Instant::now();
-    while started.elapsed() < timeout {
-        if is_target_active(runtime, target) {
-            return true;
-        }
-        let _ = runtime.reap_children();
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    is_target_active(runtime, target)
 }
 
 #[cfg(target_os = "linux")]
@@ -890,10 +871,9 @@ fn main() {
             runtime.start_default_target(in_initrd, FALLBACK_DEFAULT_TARGET)
         };
 
-        let selected = match start_result {
+        match start_result {
             Ok(selected) => {
                 boot_log(&format!("selected boot target: {selected}"));
-                selected
             }
             Err(e) => {
                 // do_queue_default_job() tries rescue.target when the selected
@@ -904,24 +884,12 @@ fn main() {
                 if let Err(rescue_error) = runtime.start_named_target("rescue.target") {
                     fail_closed("rescue target startup", rescue_error);
                 }
-                "rescue.target".to_string()
             }
         };
-        let activated = !selected.is_empty()
-            && wait_target_active(&mut runtime, &selected, Duration::from_secs(15));
-
-        if !activated {
-            boot_log("default target activation timeout/failure; falling back to emergency.target");
-            if let Err(e) = runtime.start_named_target("emergency.target") {
-                fail_closed("emergency target startup", e);
-            }
-            if !wait_target_active(&mut runtime, "emergency.target", Duration::from_secs(15)) {
-                fail_closed(
-                    "emergency target activation",
-                    "emergency.target did not reach active state",
-                );
-            }
-        }
+        // The C manager queues the selected target and immediately enters its
+        // event loop. Unit activation is asynchronous; failures are reported
+        // by the normal job transaction and do not cause PID 1 to invent an
+        // emergency.target fallback after a wall-clock timeout.
     } else if let Err(e) = runtime.start_default_target(false, FALLBACK_DEFAULT_TARGET) {
         eprintln!("systemd: target startup failed: {:?}", e);
     }
