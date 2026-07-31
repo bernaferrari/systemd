@@ -4,14 +4,14 @@
 //
 // NULL-terminated string array utility functions.
 
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 use std::marker::PhantomData;
 
 use libc::c_char;
 
 use crate::ffi::{
-    calloc, free, malloc, memmove, reallocarray, strcasecmp, strcmp, strdup, strndup, Errno,
-    SIZE_MAX,
+    Errno, SIZE_MAX, calloc, free, malloc, memmove, reallocarray, strcasecmp, strcmp, strdup,
+    strndup,
 };
 
 mod allocating_transforms;

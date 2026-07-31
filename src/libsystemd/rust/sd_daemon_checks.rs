@@ -492,6 +492,95 @@ pub fn is_socket_inet(
     sd_is_socket_inet(fd, family, sock_type, listening, port)
 }
 
+#[derive(Clone, Copy)]
+enum InetSocketAddress {
+    V4(libc::sockaddr_in),
+    V6(libc::sockaddr_in6),
+}
+
+impl InetSocketAddress {
+    fn family(self) -> i32 {
+        match self {
+            Self::V4(_) => libc::AF_INET,
+            Self::V6(_) => libc::AF_INET6,
+        }
+    }
+}
+
+/// # Safety
+///
+/// `addr` must be readable for `addr_len` bytes and aligned for the already
+/// validated internet address `family`.
+unsafe fn read_inet_socket_address(
+    addr: *const libc::sockaddr,
+    addr_len: usize,
+    family: i32,
+) -> Result<InetSocketAddress> {
+    // SAFETY: the helper contract guarantees alignment and `addr_len` readable
+    // bytes. Full struct reads occur only after their length checks.
+    unsafe {
+        match family {
+            libc::AF_INET => {
+                if addr_len < size_of::<libc::sockaddr_in>() {
+                    return Err(DaemonCheckError::InvalidInput("addr_len"));
+                }
+                Ok(InetSocketAddress::V4(std::ptr::read(
+                    addr.cast::<libc::sockaddr_in>(),
+                )))
+            }
+            libc::AF_INET6 => {
+                if addr_len < size_of::<libc::sockaddr_in6>() {
+                    return Err(DaemonCheckError::InvalidInput("addr_len"));
+                }
+                Ok(InetSocketAddress::V6(std::ptr::read(
+                    addr.cast::<libc::sockaddr_in6>(),
+                )))
+            }
+            _ => Err(DaemonCheckError::InvalidInput("family")),
+        }
+    }
+}
+
+fn read_inet_socket_address_from_storage(
+    storage: &libc::sockaddr_storage,
+    len: libc::socklen_t,
+) -> Result<InetSocketAddress> {
+    match sockaddr_family(storage) {
+        libc::AF_INET if len >= size_of::<libc::sockaddr_in>() as libc::socklen_t => {
+            // SAFETY: `getsockname` initialized `storage` with an AF_INET address
+            // of at least the checked complete struct length.
+            Ok(InetSocketAddress::V4(unsafe {
+                std::ptr::read(std::ptr::from_ref(storage).cast::<libc::sockaddr_in>())
+            }))
+        }
+        libc::AF_INET6 if len >= size_of::<libc::sockaddr_in6>() as libc::socklen_t => {
+            // SAFETY: `getsockname` initialized `storage` with an AF_INET6 address
+            // of at least the checked complete struct length.
+            Ok(InetSocketAddress::V6(unsafe {
+                std::ptr::read(std::ptr::from_ref(storage).cast::<libc::sockaddr_in6>())
+            }))
+        }
+        libc::AF_INET | libc::AF_INET6 => Err(DaemonCheckError::InvalidInput("addr_len")),
+        _ => Err(DaemonCheckError::InvalidInput("family")),
+    }
+}
+
+fn inet_socket_address_matches(actual: InetSocketAddress, expected: InetSocketAddress) -> bool {
+    match (actual, expected) {
+        (InetSocketAddress::V4(actual), InetSocketAddress::V4(expected)) => {
+            (expected.sin_port == 0 || actual.sin_port == expected.sin_port)
+                && actual.sin_addr.s_addr == expected.sin_addr.s_addr
+        }
+        (InetSocketAddress::V6(actual), InetSocketAddress::V6(expected)) => {
+            (expected.sin6_port == 0 || actual.sin6_port == expected.sin6_port)
+                && (expected.sin6_flowinfo == 0 || actual.sin6_flowinfo == expected.sin6_flowinfo)
+                && (expected.sin6_scope_id == 0 || actual.sin6_scope_id == expected.sin6_scope_id)
+                && actual.sin6_addr.s6_addr == expected.sin6_addr.s6_addr
+        }
+        _ => false,
+    }
+}
+
 /// Check whether `fd` is an internet socket matching `addr`.
 ///
 /// # Safety
@@ -515,7 +604,6 @@ pub unsafe fn sd_is_socket_sockaddr(
     if addr_len < size_of::<libc::sa_family_t>() {
         return Err(DaemonCheckError::InvalidInput("addr_len"));
     }
-
     // SAFETY: upheld by this function's caller: `addr` designates at least a
     // `sa_family_t`, and `read_unaligned` does not impose stronger alignment.
     let addr_family = unsafe { std::ptr::read_unaligned(addr.cast::<libc::sa_family_t>()) } as i32;
@@ -537,47 +625,11 @@ pub unsafe fn sd_is_socket_sockaddr(
         return Ok(false);
     }
 
-    match addr_family {
-        libc::AF_INET => {
-            if addr_len < size_of::<libc::sockaddr_in>()
-                || actual_len < size_of::<libc::sockaddr_in>() as libc::socklen_t
-            {
-                return Err(DaemonCheckError::InvalidInput("addr_len"));
-            }
-            // SAFETY: arguments satisfy the libc `sockaddr_in` contract and any passed pointers remain valid for the call.
-            let expected = unsafe { &*(addr as *const libc::sockaddr_in) };
-            // SAFETY: arguments satisfy the libc `sockaddr_in` contract and any passed pointers remain valid for the call.
-            let actual = unsafe { &*(&storage as *const _ as *const libc::sockaddr_in) };
-            if expected.sin_port != 0 && actual.sin_port != expected.sin_port {
-                return Ok(false);
-            }
-            Ok(actual.sin_addr.s_addr == expected.sin_addr.s_addr)
-        }
-        libc::AF_INET6 => {
-            if addr_len < size_of::<libc::sockaddr_in6>()
-                || actual_len < size_of::<libc::sockaddr_in6>() as libc::socklen_t
-            {
-                return Err(DaemonCheckError::InvalidInput("addr_len"));
-            }
-            // SAFETY: arguments satisfy the libc `sockaddr_in6` contract and any passed pointers remain valid for the call.
-            let expected = unsafe { &*(addr as *const libc::sockaddr_in6) };
-            // SAFETY: arguments satisfy the libc `sockaddr_in6` contract and any passed pointers remain valid for the call.
-            let actual = unsafe { &*(&storage as *const _ as *const libc::sockaddr_in6) };
-
-            if expected.sin6_port != 0 && actual.sin6_port != expected.sin6_port {
-                return Ok(false);
-            }
-            if expected.sin6_flowinfo != 0 && actual.sin6_flowinfo != expected.sin6_flowinfo {
-                return Ok(false);
-            }
-            if expected.sin6_scope_id != 0 && actual.sin6_scope_id != expected.sin6_scope_id {
-                return Ok(false);
-            }
-
-            Ok(actual.sin6_addr.s6_addr == expected.sin6_addr.s6_addr)
-        }
-        _ => unreachable!(),
-    }
+    // SAFETY: after the existing family and length checks, this export's raw
+    // address contract supplies a readable, aligned complete address object.
+    let expected = unsafe { read_inet_socket_address(addr, addr_len, addr_family) }?;
+    let actual = read_inet_socket_address_from_storage(&storage, actual_len)?;
+    Ok(inet_socket_address_matches(actual, expected))
 }
 
 /// # Safety
@@ -777,57 +829,69 @@ fn set_fd_cloexec(fd: RawFd) -> Result<()> {
     Ok(())
 }
 
+enum NotifySocketAddress<'a> {
+    Unix(&'a libc::sockaddr_un, libc::socklen_t),
+    #[cfg(target_os = "linux")]
+    Vsock(&'a libc::sockaddr_vm, libc::socklen_t),
+}
+
+impl NotifySocketAddress<'_> {
+    fn as_raw_parts(&self) -> (*const libc::sockaddr, libc::socklen_t) {
+        match self {
+            Self::Unix(address, len) => (std::ptr::from_ref(*address).cast(), *len),
+            #[cfg(target_os = "linux")]
+            Self::Vsock(address, len) => (std::ptr::from_ref(*address).cast(), *len),
+        }
+    }
+}
+
+struct NotifySocketFd(RawFd);
+
+impl Drop for NotifySocketFd {
+    fn drop(&mut self) {
+        // SAFETY: this guard exclusively owns a descriptor returned by socket().
+        unsafe { libc::close(self.0) };
+    }
+}
+
+fn send_notify_datagram(fd: RawFd, payload: &[u8], address: NotifySocketAddress<'_>) -> Result<()> {
+    let (address, address_len) = address.as_raw_parts();
+    // SAFETY: the typed address reference remains live for the call and its
+    // matching socket length is carried with it; payload is a live byte slice.
+    let sent = unsafe {
+        libc::sendto(
+            fd,
+            payload.as_ptr().cast(),
+            payload.len(),
+            libc::MSG_NOSIGNAL,
+            address,
+            address_len,
+        )
+    };
+    if sent < 0 {
+        Err(DaemonCheckError::Io(last_errno()))
+    } else if sent as usize != payload.len() {
+        Err(DaemonCheckError::Io(libc::EIO))
+    } else {
+        Ok(())
+    }
+}
+
 fn send_notify_message(notify_socket: &str, payload: &[u8]) -> Result<()> {
-    if let Ok((mut addr, addr_len)) = parse_notify_socket_unix(notify_socket) {
-        let fd = create_socket_cloexec(libc::AF_UNIX, libc::SOCK_DGRAM)?;
-        // SAFETY: arguments satisfy the libc `sendto` contract and any passed pointers remain valid for the call.
-        let sent = unsafe {
-            libc::sendto(
-                fd,
-                payload.as_ptr() as *const libc::c_void,
-                payload.len(),
-                libc::MSG_NOSIGNAL,
-                &mut addr as *mut _ as *const libc::sockaddr,
-                addr_len,
-            )
-        };
-        let send_result = if sent < 0 {
-            Err(DaemonCheckError::Io(last_errno()))
-        } else if sent as usize != payload.len() {
-            Err(DaemonCheckError::Io(libc::EIO))
-        } else {
-            Ok(())
-        };
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return send_result;
+    if let Ok((addr, addr_len)) = parse_notify_socket_unix(notify_socket) {
+        let fd = NotifySocketFd(create_socket_cloexec(libc::AF_UNIX, libc::SOCK_DGRAM)?);
+        return send_notify_datagram(fd.0, payload, NotifySocketAddress::Unix(&addr, addr_len));
     }
 
     #[cfg(target_os = "linux")]
     {
-        if let Some((mut addr, addr_len, sock_type)) = parse_notify_socket_vsock(notify_socket)? {
-            let fd = create_socket_cloexec(libc::AF_VSOCK, sock_type)?;
-            // SAFETY: arguments satisfy the libc `sendto` contract and any passed pointers remain valid for the call.
-            let sent = unsafe {
-                libc::sendto(
-                    fd,
-                    payload.as_ptr() as *const libc::c_void,
-                    payload.len(),
-                    libc::MSG_NOSIGNAL,
-                    &mut addr as *mut _ as *const libc::sockaddr,
-                    addr_len,
-                )
-            };
-            let send_result = if sent < 0 {
-                Err(DaemonCheckError::Io(last_errno()))
-            } else if sent as usize != payload.len() {
-                Err(DaemonCheckError::Io(libc::EIO))
-            } else {
-                Ok(())
-            };
-            // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-            unsafe { libc::close(fd) };
-            return send_result;
+        if let Some((addr, addr_len, sock_type)) = parse_notify_socket_vsock(notify_socket)? {
+            let fd = NotifySocketFd(create_socket_cloexec(libc::AF_VSOCK, sock_type)?);
+            return send_notify_datagram(
+                fd.0,
+                payload,
+                NotifySocketAddress::Vsock(&addr, addr_len),
+            );
         }
     }
 

@@ -41,6 +41,69 @@ pub use scan::{
     rs_version_is_valid,
 };
 
+/// A writable C string represented by the bytes before its terminating NUL.
+///
+/// Keeping the terminator outside the slice makes byte-oriented transforms
+/// naturally preserve it and moves the raw C-string validation to one audited
+/// constructor at each ABI boundary.
+struct CStringBytesMut<'a> {
+    bytes: &'a mut [u8],
+    terminator: *mut c_char,
+}
+
+impl<'a> CStringBytesMut<'a> {
+    /// # Safety
+    /// `ptr` must be non-null, writable through its terminating NUL, and
+    /// remain uniquely borrowed for the returned lifetime.
+    unsafe fn from_nul_terminated(ptr: *mut c_char) -> Self {
+        // SAFETY: the caller guarantees ptr names a live, NUL-terminated C string.
+        let length = unsafe { CStr::from_ptr(ptr) }.to_bytes().len();
+        // SAFETY: `length` was measured from ptr before its writable terminator.
+        let bytes = unsafe { std::slice::from_raw_parts_mut(ptr.cast::<u8>(), length) };
+        // SAFETY: ptr.add(length) is the measured NUL byte.
+        let terminator = unsafe { ptr.add(length) };
+        Self { bytes, terminator }
+    }
+
+    /// # Safety
+    /// `ptr` must be writable for exactly `length` bytes and remain uniquely
+    /// borrowed for the returned lifetime. No NUL terminator is required.
+    unsafe fn from_counted(ptr: *mut c_char, length: usize) -> Self {
+        // SAFETY: the caller supplies an exact writable byte range.
+        let bytes = unsafe { std::slice::from_raw_parts_mut(ptr.cast::<u8>(), length) };
+        Self {
+            bytes,
+            terminator: std::ptr::null_mut(),
+        }
+    }
+
+    fn truncate_at(&mut self, index: usize) {
+        debug_assert!(index <= self.bytes.len());
+        if index < self.bytes.len() {
+            self.bytes[index] = 0;
+        } else if !self.terminator.is_null() {
+            // SAFETY: from_nul_terminated recorded the writable terminator.
+            unsafe { *self.terminator = 0 };
+        }
+    }
+
+    fn ascii_lowercase(&mut self) {
+        for byte in self.bytes.iter_mut() {
+            *byte = ascii_tolower_byte(*byte);
+        }
+    }
+
+    fn ascii_uppercase(&mut self) {
+        for byte in self.bytes.iter_mut() {
+            *byte = if byte.is_ascii_lowercase() {
+                *byte - (b'a' - b'A')
+            } else {
+                *byte
+            };
+        }
+    }
+}
+
 // ── string-util.h inline functions ────────────────────────────────────────
 
 /// Shadow of C strcmp_ptr() from string-util.h
@@ -477,21 +540,6 @@ pub unsafe extern "C" fn rs_string_contains_word(
 
 // ── empty_or_dash_to_null ──────────────────────────────────────────────────
 
-/// Check the `empty_or_dash()` C-string predicate without constructing a Rust
-/// reference to caller-owned memory.
-///
-/// # Safety
-/// If non-null, `str_` must be readable through a terminating NUL. In
-/// particular, a leading dash requires that the following byte is readable.
-unsafe fn rs_empty_or_dash(str_: *const c_char) -> bool {
-    if str_.is_null() {
-        return true;
-    }
-
-    // SAFETY: the caller guarantees str_ is readable through its terminating NUL.
-    unsafe { *str_ == 0 || (*str_ == b'-' as c_char && *str_.add(1) == 0) }
-}
-
 /// Shadow of C empty_or_dash_to_null() from string-util.h
 /// Returns NULL if string is NULL, empty, or "-"; otherwise returns the string.
 ///
@@ -503,11 +551,16 @@ unsafe fn rs_empty_or_dash(str_: *const c_char) -> bool {
 /// C-string inputs must remain NUL-terminated and live for the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_empty_or_dash_to_null(p: *const c_char) -> *const c_char {
-    // SAFETY: this function forwards the optional C-string contract.
-    if unsafe { rs_empty_or_dash(p) } {
+    if p.is_null() {
         std::ptr::null()
     } else {
-        p
+        // SAFETY: the caller guarantees non-null p is a live C string.
+        let bytes = unsafe { CStr::from_ptr(p) }.to_bytes();
+        if bytes.is_empty() || bytes == b"-" {
+            std::ptr::null()
+        } else {
+            p
+        }
     }
 }
 
@@ -822,26 +875,28 @@ pub unsafe extern "C" fn rs_delete_trailing_chars(
     if s.is_null() {
         return std::ptr::null_mut();
     }
-    let mut last_good: usize = 0;
-    let mut i: usize = 0;
-    // SAFETY: the caller guarantees s is writable through its terminating NUL.
-    while unsafe { *s.add(i) } != 0 {
-        // SAFETY: i currently indexes a byte before the terminator.
-        let byte = unsafe { *s.add(i) } as u8;
-        let rejected = if bad.is_null() {
-            WHITESPACE.contains(&byte)
-        } else {
-            // SAFETY: the caller guarantees bad remains a readable C string;
-            // scanning it anew preserves C behavior when bad aliases s.
-            unsafe { c_string_contains_byte(bad, byte) }
-        };
-        if !rejected {
-            last_good = i + 1;
-        }
-        i += 1;
-    }
-    // SAFETY: last_good is within the original C string allocation.
-    unsafe { *s.add(last_good) = 0 };
+    // First perform the complete read-only scan. This deliberately precedes
+    // the mutable borrow so a character set aliased into `s` keeps the same
+    // pre-truncation view as C.
+    let last_good = {
+        // SAFETY: the caller guarantees s is a live C string.
+        let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+        bytes
+            .iter()
+            .rposition(|byte| {
+                if bad.is_null() {
+                    !WHITESPACE.contains(byte)
+                } else {
+                    // SAFETY: the caller guarantees bad remains readable;
+                    // scanning it before the mutation preserves aliasing behavior.
+                    !unsafe { c_string_contains_byte(bad, *byte) }
+                }
+            })
+            .map_or(0, |index| index + 1)
+    };
+    // SAFETY: the read-only references above have ended; s is writable through
+    // its recorded terminator and `last_good` is an in-bounds byte offset.
+    unsafe { CStringBytesMut::from_nul_terminated(s) }.truncate_at(last_good);
     s
 }
 
@@ -861,17 +916,14 @@ pub unsafe extern "C" fn rs_truncate_nl_full(s: *mut c_char, ret_len: *mut usize
     if s.is_null() {
         return std::ptr::null_mut();
     }
-    let mut n: usize = 0;
-    while
     // SAFETY: the caller guarantees s is writable through its NUL terminator.
-    unsafe { *s.add(n) } != 0
-        // SAFETY: n currently indexes a byte within the C string.
-        && !NEWLINE.contains(&(unsafe { *s.add(n) } as u8))
-    {
-        n += 1;
-    }
-    // SAFETY: n is within the original C string allocation.
-    unsafe { *s.add(n) = 0 };
+    let mut string = unsafe { CStringBytesMut::from_nul_terminated(s) };
+    let n = string
+        .bytes
+        .iter()
+        .position(|byte| NEWLINE.contains(byte))
+        .unwrap_or(string.bytes.len());
+    string.truncate_at(n);
     if !ret_len.is_null() {
         // SAFETY: the caller guarantees non-null ret_len is writable.
         unsafe { *ret_len = n };
@@ -893,14 +945,8 @@ pub unsafe extern "C" fn rs_ascii_strlower(s: *mut c_char) -> *mut c_char {
     if s.is_null() {
         return std::ptr::null_mut();
     }
-    let mut p = s;
-    // SAFETY: the caller guarantees p is writable through its NUL terminator.
-    while unsafe { *p } != 0 {
-        // SAFETY: p currently points to a writable byte before the terminator.
-        unsafe { *p = ascii_tolower_byte(*p as u8) as c_char };
-        // SAFETY: advancing from a non-NUL byte remains within the C string.
-        p = unsafe { p.add(1) };
-    }
+    // SAFETY: the caller guarantees s is writable through its NUL terminator.
+    unsafe { CStringBytesMut::from_nul_terminated(s) }.ascii_lowercase();
     s
 }
 
@@ -916,16 +962,8 @@ pub unsafe extern "C" fn rs_ascii_strupper(s: *mut c_char) -> *mut c_char {
     if s.is_null() {
         return std::ptr::null_mut();
     }
-    let mut p = s;
-    // SAFETY: the caller guarantees p is writable through its NUL terminator.
-    while unsafe { *p } != 0 {
-        // SAFETY: p currently points to a byte before the terminator.
-        let c = unsafe { *p } as u8;
-        // SAFETY: p currently points to a writable byte.
-        unsafe { *p = (if c >= b'a' && c <= b'z' { c - 32 } else { c }) as c_char };
-        // SAFETY: advancing from a non-NUL byte remains within the C string.
-        p = unsafe { p.add(1) };
-    }
+    // SAFETY: the caller guarantees s is writable through its NUL terminator.
+    unsafe { CStringBytesMut::from_nul_terminated(s) }.ascii_uppercase();
     s
 }
 
@@ -938,10 +976,12 @@ pub unsafe extern "C" fn rs_ascii_strupper(s: *mut c_char) -> *mut c_char {
 /// C-string inputs must remain NUL-terminated and live for the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ascii_strlower_n(s: *mut c_char, n: usize) -> *mut c_char {
-    for i in 0..n {
-        // SAFETY: the caller guarantees s is writable for exactly n bytes.
-        unsafe { *s.add(i) = ascii_tolower_byte(*s.add(i) as u8) as c_char };
+    // C permits a null pointer when the counted operation is empty.
+    if n == 0 {
+        return s;
     }
+    // SAFETY: the caller guarantees s is writable for exactly n bytes.
+    unsafe { CStringBytesMut::from_counted(s, n) }.ascii_lowercase();
     s
 }
 
@@ -959,29 +999,31 @@ pub unsafe extern "C" fn rs_first_word(s: *const c_char, word: *const c_char) ->
     if s.is_null() || word.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: the caller guarantees word is a live C string.
-    if unsafe { *word } == 0 {
-        return s as *mut c_char;
-    }
     // SAFETY: the caller guarantees s and word are live C strings.
     let s_bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
     // SAFETY: as above.
     let w_bytes = unsafe { CStr::from_ptr(word) }.to_bytes();
+    if w_bytes.is_empty() {
+        return s.cast_mut();
+    }
     if !s_bytes.starts_with(w_bytes) {
         return std::ptr::null_mut();
     }
-    // SAFETY: starts_with proved the matched word length lies within s.
-    let p = unsafe { s.add(w_bytes.len()) };
-    // SAFETY: p is an in-bounds suffix of s.
-    if unsafe { *p } == 0 {
-        return p as *mut c_char;
+    let suffix = &s_bytes[w_bytes.len()..];
+    if suffix.is_empty() {
+        // SAFETY: the matched prefix spans exactly the complete C string.
+        return unsafe { s.add(w_bytes.len()).cast_mut() };
     }
-    // SAFETY: p is an in-bounds suffix of the caller's C string.
-    let after = unsafe { skip_leading_chars(p.cast(), std::ptr::null()) };
-    if after == p as *const u8 {
+    let skipped = suffix
+        .iter()
+        .take_while(|byte| WHITESPACE.contains(byte))
+        .count();
+    if skipped == 0 {
         return std::ptr::null_mut();
     }
-    after as *mut c_char
+    // SAFETY: the matched prefix and skipped whitespace are in-bounds suffixes
+    // of the caller's C string.
+    unsafe { s.add(w_bytes.len() + skipped).cast_mut() }
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────

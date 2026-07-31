@@ -4,11 +4,11 @@
 //
 // Allocating strv transforms with C-owned results and explicit rollback rules.
 
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 
 use libc::c_char;
 
-use crate::ffi::{calloc, free, reallocarray, strdup, Errno, SIZE_MAX};
+use crate::ffi::{Errno, SIZE_MAX, calloc, free, reallocarray, strdup};
 
 use super::{rs_strv_copy_n, rs_strv_length, strv_iter};
 

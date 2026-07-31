@@ -18,7 +18,156 @@ const DNS_LABEL_LDH: u32 = 1 << 0;
 const DNS_LABEL_NO_ESCAPES: u32 = 1 << 1;
 const DNS_LABEL_LEAVE_TRAILING_DOT: u32 = 1 << 2;
 
+/// Canonical conversion from a nullable ABI C string to the byte-only DNS
+/// parser input. Every use is covered by its enclosing C ABI contract.
+macro_rules! dns_bytes_or_none {
+    ($name:expr) => {{
+        if $name.is_null() {
+            None
+        } else {
+            // SAFETY: the caller's C ABI contract guarantees a live C string.
+            Some(unsafe { std::ffi::CStr::from_ptr($name) }.to_bytes())
+        }
+    }};
+}
+
 // ── dns_label_unescape ──────────────────────────────────────────────────
+
+#[derive(Clone, Copy)]
+struct UnescapedLabel {
+    bytes: [u8; DNS_LABEL_MAX],
+    len: usize,
+    next: usize,
+    remaining_capacity: usize,
+}
+
+fn dns_label_unescape_bytes(
+    name: &[u8],
+    mut capacity: usize,
+    flags: u32,
+) -> Result<UnescapedLabel, i32> {
+    let mut bytes = [0; DNS_LABEL_MAX];
+    let mut len = 0;
+    let mut cursor = 0;
+    let mut last = None;
+
+    while let Some(&byte) = name.get(cursor) {
+        if byte == b'.' {
+            if flags & DNS_LABEL_LDH != 0 && last == Some(b'-') {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            let next = if cursor + 1 < name.len() || flags & DNS_LABEL_LEAVE_TRAILING_DOT == 0 {
+                cursor + 1
+            } else {
+                cursor
+            };
+            if len == 0 && next < name.len() {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            if next < name.len() && name[next] == b'.' && flags & DNS_LABEL_LEAVE_TRAILING_DOT == 0
+            {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            return Ok(UnescapedLabel {
+                bytes,
+                len,
+                next,
+                remaining_capacity: capacity,
+            });
+        }
+
+        if len >= DNS_LABEL_MAX {
+            return Err(Errno::EINVAL.to_neg_errno());
+        }
+        if capacity == 0 {
+            return Err(Errno::ENOBUFS.to_neg_errno());
+        }
+
+        let decoded = if byte == b'\\' {
+            if flags & DNS_LABEL_NO_ESCAPES != 0 {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            let escaped = *name
+                .get(cursor + 1)
+                .ok_or_else(|| Errno::EINVAL.to_neg_errno())?;
+            match escaped {
+                b'\\' | b'.' => {
+                    if flags & DNS_LABEL_LDH != 0 {
+                        return Err(Errno::EINVAL.to_neg_errno());
+                    }
+                    cursor += 2;
+                    escaped
+                }
+                b'0'..=b'9' => {
+                    let second = *name
+                        .get(cursor + 2)
+                        .ok_or_else(|| Errno::EINVAL.to_neg_errno())?;
+                    let third = *name
+                        .get(cursor + 3)
+                        .ok_or_else(|| Errno::EINVAL.to_neg_errno())?;
+                    if !second.is_ascii_digit() || !third.is_ascii_digit() {
+                        return Err(Errno::EINVAL.to_neg_errno());
+                    }
+                    let value = (escaped - b'0') as u16 * 100
+                        + (second - b'0') as u16 * 10
+                        + (third - b'0') as u16;
+                    if value > u8::MAX as u16
+                        || (flags & DNS_LABEL_LDH != 0
+                            && !crate::hostname_util::valid_ldh_char(value as u8))
+                    {
+                        return Err(Errno::EINVAL.to_neg_errno());
+                    }
+                    cursor += 4;
+                    value as u8
+                }
+                _ => return Err(Errno::EINVAL.to_neg_errno()),
+            }
+        } else {
+            if byte < 0x20 || byte == 0x7f {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            if flags & DNS_LABEL_LDH != 0 {
+                if !crate::hostname_util::valid_ldh_char(byte) || (len == 0 && byte == b'-') {
+                    return Err(Errno::EINVAL.to_neg_errno());
+                }
+            }
+            cursor += 1;
+            byte
+        };
+
+        bytes[len] = decoded;
+        len += 1;
+        capacity -= 1;
+        last = Some(decoded);
+    }
+
+    if flags & DNS_LABEL_LDH != 0 && last == Some(b'-') {
+        return Err(Errno::EINVAL.to_neg_errno());
+    }
+    Ok(UnescapedLabel {
+        bytes,
+        len,
+        next: name.len(),
+        remaining_capacity: capacity,
+    })
+}
+
+fn dns_name_count_labels_bytes(name: &[u8]) -> Result<i32, i32> {
+    let mut cursor = 0;
+    let mut count = 0usize;
+    while cursor < name.len() {
+        let label = dns_label_unescape_bytes(&name[cursor..], DNS_LABEL_MAX + 1, 0)?;
+        if label.len == 0 {
+            break;
+        }
+        count += 1;
+        if count > DNS_N_LABELS_MAX {
+            return Err(Errno::EINVAL.to_neg_errno());
+        }
+        cursor += label.next;
+    }
+    Ok(count as i32)
+}
 
 /// Shadow of C dns_label_unescape()
 /// Parses one DNS label from *name, writes unescaped form to dest.
@@ -35,165 +184,41 @@ const DNS_LABEL_LEAVE_TRAILING_DOT: u32 = 1 << 2;
 pub unsafe extern "C" fn rs_dns_label_unescape(
     name: *mut *const c_char,
     dest: *mut c_char,
-    mut sz: usize,
+    sz: usize,
     flags: u32,
 ) -> i32 {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
+    if name.is_null() {
+        return Errno::EINVAL.to_neg_errno();
+    }
+    // SAFETY: the ABI contract guarantees the input pointer slot is readable,
+    // non-null strings are NUL-terminated, and a non-null output is writable.
     unsafe {
-        if name.is_null() {
-            return Errno::EINVAL.to_neg_errno();
-        }
-
-        let mut n = *name;
-
-        // `isempty(*name)` in the C implementation also accepts a null string.
-        if n.is_null() || *n == 0 {
+        let input = *name;
+        if input.is_null() {
             if !dest.is_null() && sz >= 1 {
                 *dest = 0;
             }
             return 0;
         }
-
-        let mut d = dest;
-        let mut r: i32 = 0;
-        let mut last_char: c_char = 0;
-        let flags = flags as u32;
-
-        loop {
-            let c = *n;
-
-            if c == 0 || c == b'.' as c_char {
-                // Trailing dash check for LDH mode
-                if (flags & DNS_LABEL_LDH) != 0 && last_char == b'-' as c_char {
-                    return Errno::EINVAL.to_neg_errno(); // -EINVAL
-                }
-
-                // Skip the dot separator (unless leaving trailing dot)
-                if c == b'.' as c_char {
-                    let next = *n.add(1);
-                    if next != 0 || (flags & DNS_LABEL_LEAVE_TRAILING_DOT) == 0 {
-                        n = n.add(1);
-                    }
-                }
-                break;
+        let input_bytes = std::ffi::CStr::from_ptr(input).to_bytes();
+        if input_bytes.is_empty() {
+            if !dest.is_null() && sz >= 1 {
+                *dest = 0;
             }
-
-            if r as usize >= DNS_LABEL_MAX {
-                return Errno::EINVAL.to_neg_errno(); // -EINVAL
-            }
-
-            if sz == 0 {
-                return Errno::ENOBUFS.to_neg_errno(); // -ENOBUFS
-            }
-
-            if c == b'\\' as c_char {
-                // Escaped character
-                if (flags & DNS_LABEL_NO_ESCAPES) != 0 {
-                    return Errno::EINVAL.to_neg_errno(); // -EINVAL
-                }
-
-                n = n.add(1);
-                let ec = *n;
-
-                if ec == 0 {
-                    return Errno::EINVAL.to_neg_errno(); // -EINVAL (backslash at end)
-                } else if ec == b'\\' as c_char || ec == b'.' as c_char {
-                    // Escaped backslash or dot
-                    if (flags & DNS_LABEL_LDH) != 0 {
-                        return Errno::EINVAL.to_neg_errno(); // -EINVAL
-                    }
-
-                    last_char = ec;
-                    if !d.is_null() {
-                        *d = ec;
-                        d = d.add(1);
-                    }
-                    sz -= 1;
-                    r += 1;
-                    n = n.add(1);
-                } else {
-                    let eb = ec as u8;
-                    if eb >= b'0' && eb <= b'9' {
-                        // \DDD decimal escape
-                        let b1 = *n.add(1) as u8;
-                        if !b1.is_ascii_digit() {
-                            return Errno::EINVAL.to_neg_errno();
-                        }
-                        let b2 = *n.add(2) as u8;
-                        if !b2.is_ascii_digit() {
-                            return Errno::EINVAL.to_neg_errno(); // -EINVAL
-                        }
-
-                        let k = ((eb - b'0') as u32 * 100)
-                            + ((b1 - b'0') as u32 * 10)
-                            + ((b2 - b'0') as u32);
-
-                        if k > 255 {
-                            return Errno::EINVAL.to_neg_errno(); // -EINVAL
-                        }
-
-                        if (flags & DNS_LABEL_LDH) != 0
-                            && !crate::hostname_util::rs_valid_ldh_char(k as c_char)
-                        {
-                            return Errno::EINVAL.to_neg_errno(); // -EINVAL
-                        }
-
-                        last_char = k as c_char;
-                        if !d.is_null() {
-                            *d = k as c_char;
-                            d = d.add(1);
-                        }
-                        sz -= 1;
-                        r += 1;
-                        n = n.add(3);
-                    } else {
-                        return Errno::EINVAL.to_neg_errno(); // -EINVAL
-                    }
-                }
-            } else {
-                let cu = c as u8;
-                if cu >= 0x20 && cu != 0x7F {
-                    // Normal character
-                    if (flags & DNS_LABEL_LDH) != 0 {
-                        if !crate::hostname_util::rs_valid_ldh_char(c) {
-                            return Errno::EINVAL.to_neg_errno(); // -EINVAL
-                        }
-                        if r == 0 && c == b'-' as c_char {
-                            return Errno::EINVAL.to_neg_errno(); // -EINVAL (leading dash)
-                        }
-                    }
-
-                    last_char = c;
-                    if !d.is_null() {
-                        *d = c;
-                        d = d.add(1);
-                    }
-                    sz -= 1;
-                    r += 1;
-                    n = n.add(1);
-                } else {
-                    return Errno::EINVAL.to_neg_errno(); // -EINVAL (control character)
-                }
+            return 0;
+        }
+        let label = match dns_label_unescape_bytes(input_bytes, sz, flags) {
+            Ok(label) => label,
+            Err(error) => return error,
+        };
+        if !dest.is_null() {
+            std::ptr::copy_nonoverlapping(label.bytes.as_ptr().cast::<c_char>(), dest, label.len);
+            if label.remaining_capacity >= 1 {
+                *dest.add(label.len) = 0;
             }
         }
-
-        // Empty label that is not at the end?
-        if r == 0 && *n != 0 {
-            return Errno::EINVAL.to_neg_errno(); // -EINVAL
-        }
-
-        // More than one trailing dot?
-        if *n == b'.' as c_char && (flags & DNS_LABEL_LEAVE_TRAILING_DOT) == 0 {
-            return Errno::EINVAL.to_neg_errno(); // -EINVAL
-        }
-
-        if sz >= 1 && !d.is_null() {
-            *d = 0;
-        }
-
-        *name = n;
-        r
+        *name = input.add(label.next);
+        label.len as i32
     }
 }
 
@@ -621,21 +646,7 @@ pub unsafe extern "C" fn rs_dns_name_parent(name: *mut *const c_char) -> i32 {
 /// C-string inputs must remain NUL-terminated and live for the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_dns_name_is_root(name: *const c_char) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if name.is_null() {
-            return false;
-        }
-        let c0 = *name;
-        if c0 == 0 {
-            return true;
-        }
-        if c0 == b'.' as c_char && *name.add(1) == 0 {
-            return true;
-        }
-        false
-    }
+    matches!(dns_bytes_or_none!(name), Some(b"") | Some(b"."))
 }
 
 // ── dns_name_equal ──────────────────────────────────────────────────────
@@ -824,32 +835,10 @@ pub unsafe extern "C" fn rs_dns_name_startswith(name: *const c_char, prefix: *co
 /// C-string inputs must remain NUL-terminated and live for the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_dns_name_count_labels(name: *const c_char) -> i32 {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if name.is_null() {
-            return Errno::EINVAL.to_neg_errno();
-        }
-
-        let mut n = name;
-        let mut count: u32 = 0;
-
-        loop {
-            let r = rs_dns_name_parent(&mut n);
-            if r < 0 {
-                return r;
-            }
-            if r == 0 {
-                break;
-            }
-            if count as usize >= DNS_N_LABELS_MAX {
-                return Errno::EINVAL.to_neg_errno(); // -EINVAL
-            }
-            count += 1;
-        }
-
-        count as i32
-    }
+    let Some(name) = dns_bytes_or_none!(name) else {
+        return Errno::EINVAL.to_neg_errno();
+    };
+    dns_name_count_labels_bytes(name).unwrap_or_else(|error| error)
 }
 
 // ── dns_srv_type_is_valid ───────────────────────────────────────────────
@@ -857,31 +846,23 @@ pub unsafe extern "C" fn rs_dns_name_count_labels(name: *const c_char) -> i32 {
 /// Helper: validates a single service type label.
 /// RFC 6335 Section 5.1: first char '_', second char letter, rest alphanumeric or hyphen.
 ///
-/// # Safety
-/// `label` must reference at least `n` readable bytes for the duration of the
-/// call.
-unsafe fn srv_type_label_is_valid(label: *const c_char, n: usize) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if n < 2 {
-            return false;
-        }
-        if *label != b'_' as c_char {
-            return false;
-        }
-        let second = *label.add(1) as u8;
-        if !second.is_ascii_alphabetic() {
-            return false;
-        }
-        for i in 2..n {
-            let c = *label.add(i) as u8;
-            if !c.is_ascii_alphabetic() && !c.is_ascii_digit() && c != b'-' {
-                return false;
-            }
-        }
-        true
-    }
+fn srv_type_label_is_valid(label: &[u8]) -> bool {
+    label.len() >= 2
+        && label[0] == b'_'
+        && label[1].is_ascii_alphabetic()
+        && label[2..]
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
+}
+
+fn srv_type_label_is_valid_chars(label: &[c_char]) -> bool {
+    label.len() >= 2
+        && label[0] == b'_' as c_char
+        && (label[1] as u8).is_ascii_alphabetic()
+        && label[2..].iter().all(|byte| {
+            let byte = *byte as u8;
+            byte.is_ascii_alphanumeric() || byte == b'-'
+        })
 }
 
 /// Shadow of C dns_srv_type_is_valid()
@@ -894,40 +875,26 @@ unsafe fn srv_type_label_is_valid(label: *const c_char, n: usize) -> bool {
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
 pub unsafe fn rs_dns_srv_type_is_valid(name: *const c_char) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if name.is_null() {
+    if name.is_null() {
+        return false;
+    }
+    let Some(name) = dns_bytes_or_none!(name) else {
+        return false;
+    };
+    let mut cursor = 0;
+    let mut labels = 0;
+    while cursor < name.len() {
+        let label = match dns_label_unescape_bytes(&name[cursor..], DNS_LABEL_MAX + 1, 0) {
+            Ok(label) => label,
+            Err(_) => return false,
+        };
+        if label.len == 0 || labels >= 2 || !srv_type_label_is_valid(&label.bytes[..label.len]) {
             return false;
         }
-
-        let mut n = name;
-        let mut c: u32 = 0;
-
-        loop {
-            let mut label: [c_char; DNS_LABEL_MAX + 1] = [0; DNS_LABEL_MAX + 1];
-
-            let r = rs_dns_label_unescape(&mut n, label.as_mut_ptr(), DNS_LABEL_MAX + 1, 0);
-            if r < 0 {
-                return false;
-            }
-            if r == 0 {
-                break;
-            }
-
-            if c >= 2 {
-                return false;
-            }
-
-            if !srv_type_label_is_valid(label.as_ptr(), r as usize) {
-                return false;
-            }
-
-            c += 1;
-        }
-
-        c == 2
+        labels += 1;
+        cursor += label.next;
     }
+    labels == 2
 }
 
 /// Shadow of C dnssd_srv_type_is_valid()
@@ -942,14 +909,14 @@ pub unsafe fn rs_dns_srv_type_is_valid(name: *const c_char) -> bool {
 pub unsafe fn rs_dnssd_srv_type_is_valid(name: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
+    // SAFETY: this wrapper forwards the C-string contract to the validator.
+    if !unsafe { rs_dns_srv_type_is_valid(name) } {
+        return false;
+    }
+    // SAFETY: the validator accepted the non-null C string.
     unsafe {
-        if !rs_dns_srv_type_is_valid(name) {
-            return false;
-        }
-
-        let n = name;
-        rs_dns_name_endswith(n, c"_tcp".as_ptr()) > 0
-            || rs_dns_name_endswith(n, c"_udp".as_ptr()) > 0
+        rs_dns_name_endswith(name, c"_tcp".as_ptr()) > 0
+            || rs_dns_name_endswith(name, c"_udp".as_ptr()) > 0
     }
 }
 
@@ -2132,7 +2099,7 @@ pub unsafe extern "C" fn rs_dns_service_split(
             }
 
             if bn > 0 {
-                if !srv_type_label_is_valid(b.as_ptr(), bn as usize) {
+                if !srv_type_label_is_valid_chars(&b[..bn as usize]) {
                     do_finish = true;
                 } else {
                     x += 1;
@@ -2143,7 +2110,7 @@ pub unsafe extern "C" fn rs_dns_service_split(
                         return cn;
                     }
 
-                    if cn > 0 && srv_type_label_is_valid(c.as_ptr(), cn as usize) {
+                    if cn > 0 && srv_type_label_is_valid_chars(&c[..cn as usize]) {
                         x += 1;
                     }
                 }
@@ -2153,7 +2120,7 @@ pub unsafe extern "C" fn rs_dns_service_split(
         if !do_finish {
             match x {
                 2 => {
-                    if !srv_type_label_is_valid(a.as_ptr(), an as usize) {
+                    if !srv_type_label_is_valid_chars(&a[..an as usize]) {
                         // fall through to finish
                     } else {
                         // OK, got <type> . <type2> . <domain>
@@ -2399,5 +2366,17 @@ mod tests {
             rs_dns_label_unescape(&mut p, out.as_mut_ptr(), out.len(), DNS_LABEL_LDH as u32)
         };
         assert_eq!(r, Errno::EINVAL.to_neg_errno());
+    }
+
+    #[test]
+    fn label_core_preserves_bytes_capacity_and_cursor() {
+        let label = dns_label_unescape_bytes(b"x\\255.y", 4, 0).unwrap();
+        assert_eq!(&label.bytes[..label.len], b"x\xff");
+        assert_eq!(label.next, 6);
+        assert_eq!(label.remaining_capacity, 2);
+        assert!(matches!(
+            dns_label_unescape_bytes(b"x", 0, 0),
+            Err(error) if error == Errno::ENOBUFS.to_neg_errno()
+        ));
     }
 }
