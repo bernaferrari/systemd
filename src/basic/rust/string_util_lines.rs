@@ -14,8 +14,7 @@ use std::ffi::{CStr, c_void};
 use libc::c_char;
 
 use crate::extract_word::rs_extract_first_word;
-use crate::ffi::{Errno, free, malloc, strlen};
-use crate::string_util::owned::rs_strdup_to_full;
+use crate::ffi::{Errno, free, malloc};
 
 const NEWLINE: &[u8] = b"\n\r";
 
@@ -38,13 +37,69 @@ fn c_string_copy(bytes: &[u8]) -> Option<*mut c_char> {
     Some(value)
 }
 
-/// # Safety
-/// `ret` and `source` must meet `rs_strdup_to_full`'s output and C-string
-/// contracts, respectively.
-unsafe fn strdup_to(ret: *mut *mut c_char, source: *const c_char) -> i32 {
-    // SAFETY: this helper forwards its exact pointer contract unchanged.
-    let result = unsafe { rs_strdup_to_full(ret, source) };
-    if result < 0 { result } else { 0 }
+/// Return the selected line and whether more bytes follow its newline.
+/// `None` represents C's special null source result for an unterminated first
+/// line; an empty slice is the allocated empty-string result for a missing
+/// later line.
+fn extract_line_bytes(bytes: &[u8], wanted: usize) -> Option<(&[u8], bool)> {
+    let (mut cursor, mut line) = (0usize, 0usize);
+    loop {
+        let remainder = &bytes[cursor..];
+        let line_end = remainder
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .unwrap_or(remainder.len());
+        let has_newline = line_end < remainder.len();
+        if line == wanted {
+            if has_newline {
+                return Some((&remainder[..line_end], line_end + 1 < remainder.len()));
+            }
+            return if cursor == 0 {
+                None
+            } else {
+                Some((remainder, false))
+            };
+        }
+        if !has_newline {
+            return Some((&[], false));
+        }
+        cursor += line_end + 1;
+        line += 1;
+    }
+}
+
+/// Scope two borrowed C strings to a single line-search operation so only this
+/// adapter performs raw C-string conversion.
+fn with_line_search_bytes<T>(
+    haystack: *const c_char,
+    needle: *const c_char,
+    search: impl FnOnce(&[u8], &[u8]) -> T,
+) -> Option<T> {
+    if haystack.is_null() || needle.is_null() {
+        return None;
+    }
+    // SAFETY: each public caller guarantees both inputs are readable C strings
+    // for this synchronous, non-retaining search.
+    let haystack = unsafe { CStr::from_ptr(haystack).to_bytes() };
+    // SAFETY: see the preceding conversion for the same ABI contract.
+    let needle = unsafe { CStr::from_ptr(needle).to_bytes() };
+    Some(search(haystack, needle))
+}
+
+fn find_line_startswith_offset(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    let mut offset = 0usize;
+    loop {
+        if haystack[offset..].starts_with(needle) {
+            return Some(offset + needle.len());
+        }
+        if offset == haystack.len() {
+            return None;
+        }
+        offset += haystack[offset..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(haystack.len() - offset, |line_len| line_len + 1);
+    }
 }
 
 /// # Safety
@@ -113,58 +168,19 @@ pub unsafe extern "C" fn rs_string_extract_line(
     if s.is_null() || ret.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
-    let mut cursor = 0usize;
-    let mut line = 0usize;
-    loop {
-        let mut end = cursor;
-        loop {
-            // SAFETY: `end` advances only while traversing the input C string.
-            let byte = unsafe { *s.add(end) };
-            if byte == 0 || byte == b'\n' as c_char {
-                break;
-            }
-            end += 1;
-        }
-        // SAFETY: `end` was found by traversing the input C string.
-        let has_newline = unsafe { *s.add(end) } == b'\n' as c_char;
-        if line == wanted {
-            if has_newline {
-                let length = end - cursor;
-                // SAFETY: allocation includes the selected line and trailing NUL.
-                let value = malloc(length + 1).cast::<c_char>();
-                if value.is_null() {
-                    return Errno::ENOMEM.to_neg_errno();
-                }
-                // SAFETY: source and destination ranges contain `length` bytes;
-                // `value` owns one extra byte for the terminator and `ret` is optional.
-                unsafe {
-                    std::ptr::copy_nonoverlapping(
-                        s.add(cursor).cast::<u8>(),
-                        value.cast::<u8>(),
-                        length,
-                    );
-                    *value.add(length) = 0;
-                    *ret = value;
-                }
-                // SAFETY: a newline was found at `end`, so `end + 1` remains in range.
-                return i32::from(unsafe { *s.add(end + 1) } != 0);
-            }
-            let source = if cursor == 0 {
-                std::ptr::null()
-            } else {
-                // SAFETY: `cursor` is an offset established while scanning `s`.
-                unsafe { s.add(cursor) }
-            };
-            // SAFETY: `source` and `ret` satisfy `strdup_to`'s forwarded contract.
-            return unsafe { strdup_to(ret, source) };
-        }
-        if !has_newline {
-            // SAFETY: the static empty C string and optional `ret` satisfy the helper contract.
-            return unsafe { strdup_to(ret, c"".as_ptr()) };
-        }
-        cursor = end + 1;
-        line += 1;
-    }
+    // SAFETY: the C ABI contract makes `s` a readable NUL-terminated string.
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let Some((line, has_more)) = extract_line_bytes(bytes, wanted) else {
+        // SAFETY: `ret` is writable and receives C's null source result.
+        unsafe { *ret = std::ptr::null_mut() };
+        return 0;
+    };
+    let Some(value) = c_string_copy(line) else {
+        return Errno::ENOMEM.to_neg_errno();
+    };
+    // SAFETY: `ret` was checked non-null and is writable by this function contract.
+    unsafe { *ret = value };
+    i32::from(has_more)
 }
 
 /// # Safety
@@ -174,30 +190,12 @@ pub unsafe extern "C" fn rs_find_line_startswith_internal(
     haystack: *const c_char,
     needle: *const c_char,
 ) -> *mut c_char {
-    if haystack.is_null() || needle.is_null() {
+    let Some(Some(offset)) = with_line_search_bytes(haystack, needle, find_line_startswith_offset)
+    else {
         return std::ptr::null_mut();
-    }
-    // SAFETY: both inputs are readable C strings by the function contract.
-    let haystack_bytes = unsafe { CStr::from_ptr(haystack) }.to_bytes();
-    // SAFETY: both inputs are readable C strings by the function contract.
-    let needle_bytes = unsafe { CStr::from_ptr(needle) }.to_bytes();
-    let mut offset = 0usize;
-    loop {
-        if haystack_bytes[offset..].starts_with(needle_bytes) {
-            // SAFETY: the returned offset lies at or before the input terminator.
-            return unsafe { (haystack as *mut c_char).add(offset + needle_bytes.len()) };
-        }
-        if offset >= haystack_bytes.len() {
-            break;
-        }
-        while offset < haystack_bytes.len() && haystack_bytes[offset] != b'\n' {
-            offset += 1;
-        }
-        if offset < haystack_bytes.len() {
-            offset += 1;
-        }
-    }
-    std::ptr::null_mut()
+    };
+    // SAFETY: the safe search offset is at or before the input C terminator.
+    unsafe { (haystack as *mut c_char).add(offset) }
 }
 
 /// # Safety
@@ -207,18 +205,20 @@ pub unsafe extern "C" fn rs_find_line_internal(
     haystack: *const c_char,
     needle: *const c_char,
 ) -> *mut c_char {
-    // SAFETY: this function forwards the same C-string contract to the helper.
-    let after = unsafe { rs_find_line_startswith_internal(haystack, needle) };
-    if after.is_null() {
+    let start = with_line_search_bytes(haystack, needle, |bytes, needle| {
+        let after = find_line_startswith_offset(bytes, needle)?;
+        match bytes.get(after) {
+            None => Some(after - needle.len()),
+            Some(byte) if NEWLINE.contains(byte) => Some(after - needle.len()),
+            Some(_) => None,
+        }
+    })
+    .flatten();
+    let Some(start) = start else {
         return std::ptr::null_mut();
-    }
-    // SAFETY: non-null `after` aliases a byte within the validated haystack string.
-    let after_byte = unsafe { *after } as u8;
-    if !(after_byte == 0 || NEWLINE.contains(&after_byte)) {
-        return std::ptr::null_mut();
-    }
-    // SAFETY: `after` was formed by adding exactly `needle.len()` to haystack.
-    unsafe { after.sub(strlen(needle)) }
+    };
+    // SAFETY: `start` is the matching line start established by the safe core.
+    unsafe { (haystack as *mut c_char).add(start) }
 }
 
 /// # Safety
@@ -228,22 +228,20 @@ pub unsafe extern "C" fn rs_find_line_after_internal(
     haystack: *const c_char,
     needle: *const c_char,
 ) -> *mut c_char {
-    // SAFETY: this function forwards the same C-string contract to the helper.
-    let after = unsafe { rs_find_line_startswith_internal(haystack, needle) };
-    if after.is_null() {
-        return after;
-    }
-    // SAFETY: non-null `after` aliases a byte within the validated haystack string.
-    let after_byte = unsafe { *after } as u8;
-    if after_byte == 0 {
-        return after;
-    }
-    if NEWLINE.contains(&after_byte) {
-        // SAFETY: a newline byte is followed by another byte in the C string.
-        unsafe { after.add(1) }
-    } else {
-        std::ptr::null_mut()
-    }
+    let offset = with_line_search_bytes(haystack, needle, |bytes, needle| {
+        let after = find_line_startswith_offset(bytes, needle)?;
+        match bytes.get(after) {
+            None => Some(after),
+            Some(byte) if NEWLINE.contains(byte) => Some(after + 1),
+            Some(_) => None,
+        }
+    })
+    .flatten();
+    let Some(offset) = offset else {
+        return std::ptr::null_mut();
+    };
+    // SAFETY: `offset` is the terminator or byte after a newline in haystack.
+    unsafe { (haystack as *mut c_char).add(offset) }
 }
 
 /// # Safety

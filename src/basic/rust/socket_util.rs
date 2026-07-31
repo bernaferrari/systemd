@@ -745,29 +745,35 @@ pub unsafe extern "C" fn rs_sockaddr_set_in_addr(
         libc::AF_INET => {
             // SAFETY: `a` contains C `in_addr_union`, whose first member is
             // `in_addr`; `u` has room for the C union's `sockaddr_in` member.
-            let in_addr = unsafe { ptr::read(a.cast::<libc::in_addr>()) };
-            let value = libc::sockaddr_in {
-                sin_family: libc::AF_INET as libc::sa_family_t,
-                sin_port: port.to_be(),
-                sin_addr: in_addr,
-                sin_zero: [0; 8],
-            };
-            // SAFETY: the C layout guarantee above permits replacing this member.
-            unsafe { ptr::write(u.cast::<libc::sockaddr_in>(), value) };
+            unsafe {
+                let in_addr = ptr::read(a.cast::<libc::in_addr>());
+                ptr::write(
+                    u.cast::<libc::sockaddr_in>(),
+                    libc::sockaddr_in {
+                        sin_family: libc::AF_INET as libc::sa_family_t,
+                        sin_port: port.to_be(),
+                        sin_addr: in_addr,
+                        sin_zero: [0; 8],
+                    },
+                );
+            }
             0
         }
         libc::AF_INET6 => {
             // SAFETY: `in6_addr` starts at the same offset in C's address union.
-            let in6_addr = unsafe { ptr::read(a.cast::<libc::in6_addr>()) };
-            let value = libc::sockaddr_in6 {
-                sin6_family: libc::AF_INET6 as libc::sa_family_t,
-                sin6_port: port.to_be(),
-                sin6_flowinfo: 0,
-                sin6_addr: in6_addr,
-                sin6_scope_id: 0,
-            };
-            // SAFETY: the C layout guarantee above permits replacing this member.
-            unsafe { ptr::write(u.cast::<libc::sockaddr_in6>(), value) };
+            unsafe {
+                let in6_addr = ptr::read(a.cast::<libc::in6_addr>());
+                ptr::write(
+                    u.cast::<libc::sockaddr_in6>(),
+                    libc::sockaddr_in6 {
+                        sin6_family: libc::AF_INET6 as libc::sa_family_t,
+                        sin6_port: port.to_be(),
+                        sin6_flowinfo: 0,
+                        sin6_addr: in6_addr,
+                        sin6_scope_id: 0,
+                    },
+                );
+            }
             0
         }
         _ => -libc::EAFNOSUPPORT,
@@ -858,20 +864,15 @@ pub fn sockaddr_un_from_path_bytes(path: &[u8]) -> Result<(libc::sockaddr_un, us
         });
     }
     un.sun_family = libc::AF_UNIX as libc::sa_family_t;
-    let destination = un.sun_path.as_mut_ptr().cast::<u8>();
     if first == b'@' {
-        // SAFETY: capacity was checked; source and destination do not overlap.
-        unsafe {
-            ptr::copy_nonoverlapping(bytes[1..].as_ptr(), destination.add(1), bytes.len() - 1)
-        };
-        // SAFETY: `bytes.len() < capacity` follows from the checked +1 above.
-        unsafe { *destination.add(bytes.len()) = 0 };
+        for (destination, source) in un.sun_path[1..bytes.len()].iter_mut().zip(&bytes[1..]) {
+            *destination = *source as c_char;
+        }
         Ok((un, offset_of!(libc::sockaddr_un, sun_path) + bytes.len()))
     } else {
-        // SAFETY: capacity was checked; source and destination do not overlap.
-        unsafe { ptr::copy_nonoverlapping(bytes.as_ptr(), destination, bytes.len()) };
-        // SAFETY: `bytes.len() < capacity` follows from the checked +1 above.
-        unsafe { *destination.add(bytes.len()) = 0 };
+        for (destination, source) in un.sun_path[..bytes.len()].iter_mut().zip(bytes) {
+            *destination = *source as c_char;
+        }
         Ok((
             un,
             offset_of!(libc::sockaddr_un, sun_path) + bytes.len() + 1,
@@ -955,10 +956,7 @@ unsafe fn socket_address_verify_c(a: *const CSocketAddress, strict: bool) -> i32
                 return -libc::EINVAL;
             }
             if strict && (address.size as usize) > offset && un.sun_path[0] != 0 {
-                // SAFETY: `sun_path` is an in-aggregate fixed-size array.
-                let bytes = unsafe {
-                    std::slice::from_raw_parts(un.sun_path.as_ptr().cast::<u8>(), un.sun_path.len())
-                };
+                let bytes = &un.sun_path;
                 if let Some(nul) = bytes.iter().position(|byte| *byte == 0) {
                     if address.size as usize != offset + nul + 1 {
                         return -libc::EINVAL;
@@ -1035,14 +1033,13 @@ pub unsafe extern "C" fn rs_socket_address_get_path(a: *const c_void) -> *const 
     }
 }
 
-/// # Safety
-/// `un` must be a valid C `sockaddr_un`; `size` must fit `socklen_t`.
-unsafe fn socket_address_from_un(un: libc::sockaddr_un, size: usize) -> CSocketAddress {
-    // SAFETY: all-zero is valid for the C aggregate before assigning its union member.
-    let mut address: CSocketAddress = unsafe { zeroed() };
-    address.sockaddr.un = un;
-    address.size = size as libc::socklen_t;
-    address
+fn socket_address_from_un(un: libc::sockaddr_un, size: usize) -> CSocketAddress {
+    CSocketAddress {
+        sockaddr: CSockaddrUnion { un },
+        size: size as libc::socklen_t,
+        type_: 0,
+        protocol: 0,
+    }
 }
 
 /// # Safety
@@ -1067,8 +1064,7 @@ pub unsafe extern "C" fn rs_socket_address_parse_unix(
         Ok(value) => value,
         Err(error) => return error,
     };
-    // SAFETY: helper input came from the validated Unix-path constructor.
-    let address = unsafe { socket_address_from_un(un, size) };
+    let address = socket_address_from_un(un, size);
     // SAFETY: output contract supplies complete writable C SocketAddress storage.
     unsafe { ptr::write(ret_address.cast::<CSocketAddress>(), address) };
     0
@@ -1133,18 +1129,21 @@ pub unsafe extern "C" fn rs_socket_address_parse_vsock(
     };
     // SAFETY: `strndup()` returned this allocation exactly once above.
     unsafe { libc::free(cid_string.cast()) };
-    // SAFETY: all-zero is valid for the C aggregate before assigning its union member.
-    let mut address: CSocketAddress = unsafe { zeroed() };
-    address.sockaddr.vm = CSockaddrVm {
-        svm_family: AF_VSOCK as libc::sa_family_t,
-        svm_reserved1: 0,
-        svm_port: port,
-        svm_cid: cid,
-        svm_flags: 0,
-        svm_zero: [0; 3],
+    let address = CSocketAddress {
+        sockaddr: CSockaddrUnion {
+            vm: CSockaddrVm {
+                svm_family: AF_VSOCK as libc::sa_family_t,
+                svm_reserved1: 0,
+                svm_port: port,
+                svm_cid: cid,
+                svm_flags: 0,
+                svm_zero: [0; 3],
+            },
+        },
+        size: size_of::<CSockaddrVm>() as libc::socklen_t,
+        type_,
+        protocol: 0,
     };
-    address.size = size_of::<CSockaddrVm>() as libc::socklen_t;
-    address.type_ = type_;
     // SAFETY: output contract supplies complete writable C SocketAddress storage.
     unsafe { ptr::write(ret_address.cast::<CSocketAddress>(), address) };
     0
