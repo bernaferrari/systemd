@@ -4,6 +4,8 @@
 //
 // Duration parsing and its byte-oriented C-string helpers.
 
+use std::ffi::CStr;
+
 use libc::c_char;
 
 use crate::ffi::Errno;
@@ -16,54 +18,37 @@ use super::types::{
 const WHITESPACE: &[u8] = b" \t\n\r";
 const DIGITS: &[u8] = b"0123456789";
 
-/// # Safety
-/// `p` must point to a readable NUL-terminated C string.
-unsafe fn parse_nonnegative_decimal(p: *const c_char) -> Result<(u64, *const c_char), i32> {
-    if p.is_null() {
-        return Err(Errno::EINVAL.to_neg_errno());
-    }
-
-    let start = p;
-    let mut q = p;
+fn parse_nonnegative_decimal_bytes(input: &[u8], start: usize) -> Result<(u64, usize), i32> {
+    let mut cursor = start;
     // strtoll(), used by the C authority, accepts the full C-locale
     // whitespace set even though skip_leading_chars() above intentionally
     // uses systemd's narrower WHITESPACE definition.
     while matches!(
-        // SAFETY: the caller guarantees q remains within a live NUL-terminated string.
-        unsafe { *q } as u8,
-        b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c
+        input.get(cursor),
+        Some(b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c)
     ) {
-        q = q.wrapping_add(1);
+        cursor += 1;
     }
 
-    // SAFETY: q remains within the caller's live C string.
-    let sign = unsafe { *q };
-    let negative = sign == b'-' as c_char;
-    if negative || sign == b'+' as c_char {
-        q = q.wrapping_add(1);
+    let sign = input.get(cursor).copied();
+    let negative = sign == Some(b'-');
+    if matches!(sign, Some(b'-' | b'+')) {
+        cursor += 1;
     }
 
-    let digits_start = q;
+    let digits_start = cursor;
     let mut value = 0_u64;
 
-    // SAFETY: the caller guarantees q remains within a live NUL-terminated string.
-    while unsafe { *q } != 0 {
-        // SAFETY: q currently points before the terminating NUL.
-        let c = unsafe { *q } as u8;
-        if !c.is_ascii_digit() {
-            break;
-        }
-
+    while let Some(&c) = input.get(cursor).filter(|byte| byte.is_ascii_digit()) {
         value = value
             .checked_mul(10)
             .and_then(|v| v.checked_add((c - b'0') as u64))
             .filter(|v| *v <= i64::MAX as u64)
             .ok_or_else(|| Errno::ERANGE.to_neg_errno())?;
-        // SAFETY: advancing from a digit remains within the C string allocation.
-        q = unsafe { q.add(1) };
+        cursor += 1;
     }
 
-    if q == digits_start {
+    if cursor == digits_start {
         // strtoll() reports no conversion by leaving endptr at the original
         // input. The caller needs that distinction to accept ".5" while
         // rejecting inputs such as "+.5".
@@ -73,35 +58,19 @@ unsafe fn parse_nonnegative_decimal(p: *const c_char) -> Result<(u64, *const c_c
         return Err(Errno::ERANGE.to_neg_errno());
     }
 
-    Ok((value, q))
+    Ok((value, cursor))
 }
 
-// SAFETY: p must address a readable, NUL-terminated C string; the returned
-// pointer is an in-bounds position within that same string.
-unsafe fn skip_leading_chars(p: *const c_char, _bad: *const u8) -> *const c_char {
-    let mut q = p;
-    // SAFETY: the caller guarantees q remains within a live NUL-terminated string.
-    while unsafe { *q } != 0 {
-        // SAFETY: q currently points before the terminating NUL.
-        let c = unsafe { *q } as u8;
-        let mut ws = false;
-        for &w in WHITESPACE.iter() {
-            if c == w {
-                ws = true;
-                break;
-            }
-        }
-        if !ws {
-            break;
-        }
-        // SAFETY: advancing from a non-NUL byte remains within the C string allocation.
-        q = unsafe { q.add(1) };
+fn skip_leading_chars_bytes(input: &[u8], mut cursor: usize) -> usize {
+    while input
+        .get(cursor)
+        .is_some_and(|byte| WHITESPACE.contains(byte))
+    {
+        cursor += 1;
     }
-    q
+    cursor
 }
 
-// SAFETY: This helper reads only the checked Rust slice and scalar argument;
-// its unsafe signature keeps the pointer-oriented parser helper interface.
 fn in_charset(c: u8, s: &[u8]) -> bool {
     for &ch in s.iter() {
         if ch == c {
@@ -111,49 +80,19 @@ fn in_charset(c: u8, s: &[u8]) -> bool {
     false
 }
 
-// SAFETY: s must address a readable, NUL-terminated C string. prefix is a
-// valid Rust slice, and a successful return stays within the input string.
-unsafe fn startswith(s: *const c_char, prefix: &[u8]) -> *const c_char {
-    let mut si: usize = 0;
-    let mut pi: usize = 0;
-    loop {
-        if pi >= prefix.len() || prefix[pi] == 0 {
-            // SAFETY: si counts bytes successfully matched within the caller's C string.
-            return unsafe { s.add(si) };
-        }
-        // SAFETY: the caller guarantees s is readable through its NUL terminator.
-        if unsafe { *s.add(si) } != prefix[pi] as c_char {
-            return std::ptr::null();
-        }
-        si += 1;
-        pi += 1;
-    }
+fn startswith_bytes(input: &[u8], cursor: usize, prefix: &[u8]) -> Option<usize> {
+    let prefix = prefix.strip_suffix(&[0]).unwrap_or(prefix);
+    input
+        .get(cursor..)
+        .filter(|remaining| remaining.starts_with(prefix))
+        .map(|_| cursor + prefix.len())
 }
 
-// SAFETY: p must address a readable, NUL-terminated C string; accept is a
-// valid Rust slice, so scanning stops before reading past the terminator.
-unsafe fn strspn_chars(p: *const c_char, accept: &[u8]) -> usize {
-    let mut n: usize = 0;
-    let mut q = p;
-    // SAFETY: the caller guarantees q remains within a live NUL-terminated string.
-    while unsafe { *q } != 0 {
-        // SAFETY: q currently points before the terminating NUL.
-        let c = unsafe { *q } as u8;
-        let mut found = false;
-        for &a in accept.iter() {
-            if c == a {
-                found = true;
-                break;
-            }
-        }
-        if !found {
-            break;
-        }
-        n += 1;
-        // SAFETY: advancing from a non-NUL byte remains within the C string allocation.
-        q = unsafe { q.add(1) };
-    }
-    n
+fn strspn_chars_bytes(input: &[u8], cursor: usize, accept: &[u8]) -> usize {
+    input[cursor..]
+        .iter()
+        .take_while(|byte| accept.contains(byte))
+        .count()
 }
 
 // ── extract_multiplier ────────────────────────────────────────────────────
@@ -288,20 +227,89 @@ static MULTIPLIER_TABLE: &[TimeMultiplier] = &[
     },
 ];
 
-/// Returns pointer past the matched suffix, or the original pointer if no match.
-// SAFETY: p must be a readable, NUL-terminated C string and ret_multiplier
-// must be writable; returned pointers remain within p's original allocation.
-unsafe fn extract_multiplier(p: *const c_char, ret_multiplier: *mut u64) -> *const c_char {
-    for entry in MULTIPLIER_TABLE.iter() {
-        // SAFETY: the caller guarantees p is a live C string; suffix is a static byte slice.
-        let e = unsafe { startswith(p, entry.suffix) };
-        if !e.is_null() {
-            // SAFETY: the caller guarantees ret_multiplier is writable.
-            unsafe { *ret_multiplier = entry.usec };
-            return e;
+fn extract_multiplier_bytes(input: &[u8], cursor: usize, default_unit: u64) -> (usize, u64) {
+    for entry in MULTIPLIER_TABLE {
+        if let Some(end) = startswith_bytes(input, cursor, entry.suffix) {
+            return (end, entry.usec);
         }
     }
-    p
+    (cursor, default_unit)
+}
+
+fn parse_time_bytes(input: &[u8], default_unit: u64) -> Result<u64, i32> {
+    if default_unit == 0 {
+        return Err(Errno::EINVAL.to_neg_errno());
+    }
+
+    let mut cursor = skip_leading_chars_bytes(input, 0);
+    if let Some(end) = startswith_bytes(input, cursor, b"infinity") {
+        let next = input.get(end).copied().unwrap_or(0);
+        if !in_charset(next, WHITESPACE) && next != 0 {
+            return Err(Errno::EINVAL.to_neg_errno());
+        }
+        return Ok(USEC_INFINITY);
+    }
+
+    let mut usec = 0_u64;
+    let mut something = false;
+    loop {
+        cursor = skip_leading_chars_bytes(input, cursor);
+        if cursor == input.len() {
+            if !something {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+            break;
+        }
+        if input[cursor] == b'-' {
+            return Err(Errno::ERANGE.to_neg_errno());
+        }
+
+        let (integer, end) = parse_nonnegative_decimal_bytes(input, cursor)?;
+        let had_dot = input.get(end) == Some(&b'.');
+        let mut next = end;
+        if had_dot {
+            next += 1;
+            next += strspn_chars_bytes(input, next, DIGITS);
+        }
+
+        let before_whitespace = next;
+        next += strspn_chars_bytes(input, next, WHITESPACE);
+        let (after_multiplier, multiplier) = extract_multiplier_bytes(input, next, default_unit);
+        if after_multiplier == before_whitespace && input.get(after_multiplier).is_some() {
+            return Err(Errno::EINVAL.to_neg_errno());
+        }
+        cursor = after_multiplier;
+
+        if integer >= USEC_INFINITY / multiplier {
+            return Err(Errno::ERANGE.to_neg_errno());
+        }
+        let whole = integer * multiplier;
+        if whole >= USEC_INFINITY - usec {
+            return Err(Errno::ERANGE.to_neg_errno());
+        }
+        usec += whole;
+        something = true;
+
+        if had_dot {
+            let mut scale = multiplier / 10;
+            let mut fraction = end + 1;
+            let fraction_start = fraction;
+            while let Some(&digit) = input.get(fraction).filter(|byte| byte.is_ascii_digit()) {
+                let value = (digit - b'0') as u64 * scale;
+                if value >= USEC_INFINITY - usec {
+                    return Err(Errno::ERANGE.to_neg_errno());
+                }
+                usec += value;
+                scale /= 10;
+                fraction += 1;
+            }
+            if fraction == fraction_start {
+                return Err(Errno::EINVAL.to_neg_errno());
+            }
+        }
+    }
+
+    Ok(usec)
 }
 
 // ── parse_time ────────────────────────────────────────────────────────────
@@ -323,136 +331,16 @@ pub unsafe extern "C" fn rs_parse_time(t: *const c_char, ret: *mut u64, default_
     if t.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
-    if default_unit == 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-
-    // SAFETY: the caller guarantees t is a live NUL-terminated C string.
-    let mut p = unsafe { skip_leading_chars(t, std::ptr::null()) };
-
-    // Check for "infinity"
-    let inf = b"infinity";
-    // SAFETY: p is an in-bounds position in the caller's C string.
-    let s = unsafe { startswith(p, inf) };
-    if !s.is_null() {
-        // SAFETY: s points within the caller's NUL-terminated C string.
-        let c = unsafe { *s } as u8;
-        if !in_charset(c, WHITESPACE) && c != 0 {
-            return Errno::EINVAL.to_neg_errno();
-        }
-        if !ret.is_null() {
-            // SAFETY: the caller guarantees non-null ret is writable.
-            unsafe { *ret = USEC_INFINITY };
-        }
-        return 0;
-    }
-
-    let mut usec: u64 = 0;
-    let mut something = false;
-
-    loop {
-        let mut multiplier = default_unit;
-
-        // SAFETY: p remains within the caller's C string.
-        p = unsafe { skip_leading_chars(p, std::ptr::null()) };
-        // SAFETY: p remains within the caller's C string.
-        if unsafe { *p } == 0 {
-            if !something {
-                return Errno::EINVAL.to_neg_errno();
-            }
-            break;
-        }
-
-        // Don't allow "-0"
-        // SAFETY: p remains within the caller's C string.
-        if unsafe { *p } == b'-' as c_char {
-            return Errno::ERANGE.to_neg_errno();
-        }
-
-        // SAFETY: p remains within the caller's live C string.
-        let (l, endptr) = match unsafe { parse_nonnegative_decimal(p) } {
-            Ok(v) => v,
-            Err(e) => return e,
+    // SAFETY: the caller guarantees `t` is a live NUL-terminated C string;
+    // non-null `ret` is writable for the final publication below.
+    unsafe {
+        let usec = match parse_time_bytes(CStr::from_ptr(t).to_bytes(), default_unit) {
+            Ok(usec) => usec,
+            Err(error) => return error,
         };
-
-        // SAFETY: parse_nonnegative_decimal returns an in-bounds pointer.
-        let had_dot = unsafe { *endptr } == b'.' as c_char;
-        if had_dot {
-            // Skip past dot and any digits after it
-            p = endptr;
-            // SAFETY: the dot is a non-NUL byte within the caller's C string.
-            p = unsafe { p.add(1) };
-            // SAFETY: p remains in the C string and strspn_chars returns an in-bounds count.
-            let digit_count = unsafe { strspn_chars(p, DIGITS) };
-            // SAFETY: digit_count was measured from p within the same string.
-            p = unsafe { p.add(digit_count) };
-        } else {
-            p = endptr;
+        if !ret.is_null() {
+            *ret = usec;
         }
-
-        // Try to extract multiplier suffix
-        // SAFETY: p remains within the caller's C string.
-        let ws_len = unsafe { strspn_chars(p, WHITESPACE) };
-        // SAFETY: ws_len was measured from p within the same string.
-        let before_whitespace = p;
-        let mut p2 = unsafe { p.add(ws_len) };
-        // SAFETY: p2 is in-bounds and multiplier is a live writable u64.
-        p2 = unsafe { extract_multiplier(p2, &mut multiplier) };
-
-        // Don't allow '12.34.56', but accept '12.34 .56' or '12.34s.56'
-        // SAFETY: p2 is an in-bounds pointer returned by extract_multiplier.
-        if p2 == before_whitespace && unsafe { *p2 } != 0 {
-            return Errno::EINVAL.to_neg_errno();
-        }
-
-        p = p2;
-
-        if l >= USEC_INFINITY / multiplier {
-            return Errno::ERANGE.to_neg_errno();
-        }
-
-        let k = l * multiplier;
-        if k >= USEC_INFINITY - usec {
-            return Errno::ERANGE.to_neg_errno();
-        }
-
-        usec += k;
-        something = true;
-
-        if had_dot {
-            let mut m = multiplier / 10;
-            let mut b = endptr;
-            // SAFETY: endptr points at the known dot within the C string.
-            b = unsafe { b.add(1) };
-            let dot_start = b;
-
-            // SAFETY: b remains within the caller's NUL-terminated C string.
-            while unsafe { *b } != 0 {
-                // SAFETY: b currently points before the terminating NUL.
-                let c = unsafe { *b } as u8;
-                if c < b'0' || c > b'9' {
-                    break;
-                }
-                let k = (c - b'0') as u64 * m;
-                if k >= USEC_INFINITY - usec {
-                    return Errno::ERANGE.to_neg_errno();
-                }
-                usec += k;
-                m /= 10;
-                // SAFETY: advancing from a digit remains within the C string.
-                b = unsafe { b.add(1) };
-            }
-
-            // Don't allow "0.-0", "3.+1", "3. 1", "3.sec" or "3.hoge"
-            if b == dot_start {
-                return Errno::EINVAL.to_neg_errno();
-            }
-        }
-    }
-
-    if !ret.is_null() {
-        // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = usec };
     }
     0
 }
@@ -481,10 +369,7 @@ pub unsafe extern "C" fn rs_parse_sec(t: *const c_char, ret: *mut u64) -> i32 {
 /// crossing the pointer-oriented C ABI.
 pub fn parse_sec(value: &str) -> Result<u64, i32> {
     let value = std::ffi::CString::new(value).map_err(|_| Errno::EINVAL.to_neg_errno())?;
-    let mut parsed = 0;
-    // SAFETY: `value` is NUL-terminated and `parsed` is a live writable u64.
-    let result = unsafe { rs_parse_sec(value.as_ptr(), &mut parsed) };
-    if result < 0 { Err(result) } else { Ok(parsed) }
+    parse_time_bytes(value.as_bytes(), USEC_PER_SEC)
 }
 
 // SAFETY: A non-null t must be a readable, NUL-terminated C string; a
@@ -529,17 +414,18 @@ pub unsafe extern "C" fn rs_parse_sec_def_infinity(t: *const c_char, ret: *mut u
         return Errno::EINVAL.to_neg_errno();
     }
 
-    // SAFETY: t is a caller-validated C string.
-    let ws_len = unsafe { strspn_chars(t, WHITESPACE) };
-    // SAFETY: ws_len was measured from t within the same string.
-    let trimmed = unsafe { t.add(ws_len) };
-    // SAFETY: trimmed remains within the caller's C string.
-    if unsafe { *trimmed } == 0 {
-        // SAFETY: ret is non-null and writable by the caller contract.
-        unsafe { *ret = USEC_INFINITY };
-        return 0;
+    // SAFETY: the caller supplies a live C string and writable output storage.
+    unsafe {
+        let input = CStr::from_ptr(t).to_bytes();
+        if skip_leading_chars_bytes(input, 0) == input.len() {
+            *ret = USEC_INFINITY;
+            return 0;
+        }
+        let value = match parse_time_bytes(input, USEC_PER_SEC) {
+            Ok(value) => value,
+            Err(error) => return error,
+        };
+        *ret = value;
     }
-
-    // SAFETY: this function forwards the same validated input/output contracts.
-    unsafe { rs_parse_sec(t, ret) }
+    0
 }
