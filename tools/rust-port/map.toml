@@ -62,8 +62,8 @@ tier = 1
 symbols = 18
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/hexdecoct.c" = "bbe624cc4f2ed9edb72ff364123372ad8e1992d3", "src/basic/hexdecoct.h" = "ed3c9dc39d8ecdcc4a5f3d0d0a0af3c5f30cec2e" }
-last_reviewed_rust_blobs = { "src/basic/rust/hexdecoct.rs" = "0b426eaf1d7c66c8659a8e4f5bc778364c09d0b6", "src/basic/rust/hexdecoct.h" = "3e8148f327859e62b6b33d0c972136b82333c5da" }
-notes = "Reviewed static codec ABI slice 2026-07-30; no build/tests/VM. Eighteen facades preserve scalar masking/decoding plus reviewed libc allocation, pointer/length, padding, C WHITESPACE (space/tab/LF/CR) decoding, line wrapping, secure-wipe, and success-only output publication. FILE* diagnostics remain C-only. C remains production authority; runtime parity remains P2."
+last_reviewed_rust_blobs = { "src/basic/rust/hexdecoct.rs" = "cd3963b27cdae61d68b841fef398b252850d8b7d", "src/basic/rust/hexdecoct.h" = "3e8148f327859e62b6b33d0c972136b82333c5da" }
+notes = "Reviewed static codec ABI slice 2026-07-30; no build/tests/VM. Eighteen facades preserve scalar masking/decoding plus reviewed libc allocation, pointer/length, padding, C WHITESPACE (space/tab/LF/CR) decoding, exact-range base32 decoding, line wrapping, secure-wipe, and success-only output publication. FILE* diagnostics remain C-only. C remains production authority; runtime parity remains P2."
 
 [sort-util]
 c_paths = ["src/basic/sort-util.c", "src/basic/sort-util.h"]

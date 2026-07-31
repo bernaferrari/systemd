@@ -238,7 +238,9 @@ pub fn base32hexmem(data: &[u8], padding: bool) -> String {
 }
 
 pub fn unbase32hexmem(s: &str, padding: bool) -> Result<Vec<u8>, i32> {
-    let mut input = s.trim().to_string();
+    // The C API consumes an exact `(pointer, length)` byte range; unlike the
+    // streaming hex/base64 decoders, it does not skip whitespace.
+    let mut input = s.to_string();
     if padding && !input.len().is_multiple_of(8) {
         return Err(Errno::EINVAL.to_neg_errno());
     }
@@ -1612,6 +1614,16 @@ mod tests {
         let encoded = base32hexmem(b"foo", true);
         assert_eq!(encoded, "CPNMU===");
         assert_eq!(unbase32hexmem(&encoded, true).unwrap(), b"foo");
+    }
+
+    #[test]
+    fn base32_decoder_rejects_whitespace_like_c() {
+        for input in [" CPNMU===", "CPNMU=== ", "CPNMU===\n", "CPNMU===\u{a0}"] {
+            assert!(
+                unbase32hexmem(input, true).is_err(),
+                "accepted whitespace-padded base32 input: {input:?}"
+            );
+        }
     }
 
     #[test]
