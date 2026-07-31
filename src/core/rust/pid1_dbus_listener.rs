@@ -53,6 +53,11 @@ mod imp {
         Io(io::Error),
         PeerCredentials(nix::errno::Errno),
         InvalidPeerPid,
+        /// The per-connection D-Bus server ID could not be randomized.
+        ///
+        /// The accepted stream is dropped before this error is returned, so a
+        /// connection can never authenticate with a fabricated server ID.
+        ServerIdGeneration(nix::errno::Errno),
         Authentication(ServerAuthError),
         ConnectionLimit,
         ConnectionIdExhausted,
@@ -495,6 +500,19 @@ mod imp {
             &mut self,
             server_id: impl FnOnce() -> [u8; 16],
         ) -> Result<PrivateBusConnectionId, PrivateBusAcceptError> {
+            self.try_accept_one_with(|| Ok(server_id()))
+        }
+
+        /// Fallible variant of [`Self::accept_one_with`].
+        ///
+        /// The random ID is requested only after `accept()`, the
+        /// connection-limit check, and `SO_PEERCRED` succeeded. If the source
+        /// fails, the newly accepted stream is dropped and the error is
+        /// reported to the event-source owner rather than substituting an ID.
+        pub fn try_accept_one_with(
+            &mut self,
+            server_id: impl FnOnce() -> Result<[u8; 16], nix::errno::Errno>,
+        ) -> Result<PrivateBusConnectionId, PrivateBusAcceptError> {
             let (stream, _) = self.listener.accept().map_err(PrivateBusAcceptError::Io)?;
             stream
                 .set_nonblocking(true)
@@ -513,7 +531,8 @@ mod imp {
                 credentials.uid(),
                 credentials.gid(),
             );
-            let auth = PrivateBusServerAuth::new(peer, self.manager_effective_uid, server_id())
+            let server_id = server_id().map_err(PrivateBusAcceptError::ServerIdGeneration)?;
+            let auth = PrivateBusServerAuth::new(peer, self.manager_effective_uid, server_id)
                 .map_err(PrivateBusAcceptError::Authentication)?;
 
             let id = PrivateBusConnectionId(self.next_connection_id);

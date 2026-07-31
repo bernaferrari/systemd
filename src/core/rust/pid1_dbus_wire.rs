@@ -7,7 +7,11 @@
 //! bodies needed by the deliberately small private-manager surface. It rejects
 //! file descriptors, containers, malformed alignment, duplicate fields, and
 //! messages beyond sd-bus' 128 MiB limit before allocating from declared
-//! lengths. Every read is bounds checked and this module contains no `unsafe`.
+//! lengths. [`PrivateBusWireAccumulator`] turns a nonblocking byte stream into
+//! complete frames without discarding a partial or pipelined message. Its
+//! caller obtains an exact read budget, so a disconnected private-bus
+//! transport can apply backpressure before its per-connection memory cap is
+//! reached. Every read is bounds checked and this module contains no `unsafe`.
 
 use std::collections::BTreeMap;
 
@@ -93,6 +97,199 @@ pub enum WireError {
     MessageTooLarge,
     Overflow,
     Truncated,
+}
+
+/// Failure while retaining a private-bus byte stream before method dispatch.
+///
+/// The accumulator never drops bytes after returning an error. A caller that
+/// receives [`Self::FrameTooLarge`] or [`Self::BufferLimitExceeded`] should
+/// close the untrusted peer instead of trying to consume more input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrivateBusWireAccumulatorError {
+    /// The requested bound cannot hold a D-Bus primary header or exceeds the
+    /// protocol-wide message maximum.
+    InvalidCapacity { capacity: usize },
+    /// Appending this read would exceed the configured per-connection bound.
+    BufferLimitExceeded {
+        buffered: usize,
+        incoming: usize,
+        capacity: usize,
+    },
+    /// The caller tried to read past the advertised per-frame read budget.
+    ReadBudgetExceeded { incoming: usize, budget: usize },
+    /// The allocator could not reserve space within the configured bound.
+    AllocationFailed,
+    /// The primary header declares a frame that cannot fit in this
+    /// accumulator, even if it is otherwise a protocol-valid size.
+    FrameTooLarge {
+        frame_length: usize,
+        capacity: usize,
+    },
+    /// The accumulated bytes fail D-Bus framing or method-call validation.
+    Wire(WireError),
+}
+
+impl From<WireError> for PrivateBusWireAccumulatorError {
+    fn from(error: WireError) -> Self {
+        Self::Wire(error)
+    }
+}
+
+/// Bounded framing buffer for one authenticated private-bus stream.
+///
+/// Construct this with a cap appropriate for the transport's connection
+/// limit, seed it with `AuthenticatedPrivateBusStream::buffered()` after the
+/// D-Bus `BEGIN` handoff, and use [`Self::read_budget`] to limit every
+/// nonblocking socket read. [`Self::take_next_method_call`] consumes exactly
+/// one decoded frame; bytes belonging to a following frame remain buffered.
+///
+/// This deliberately performs no stream I/O or manager dispatch. Keeping it
+/// separate lets the event source decide when a peer is readable while this
+/// type enforces framing, backpressure, and bounded retained input.
+#[derive(Debug)]
+pub struct PrivateBusWireAccumulator {
+    bytes: Vec<u8>,
+    capacity: usize,
+}
+
+impl PrivateBusWireAccumulator {
+    /// Create an empty accumulator with a strict per-connection byte cap.
+    ///
+    /// The cap includes complete frames awaiting dispatch and all partial or
+    /// pipelined bytes. It must hold a primary header and is never permitted
+    /// to exceed the D-Bus maximum message size.
+    pub fn new(capacity: usize) -> Result<Self, PrivateBusWireAccumulatorError> {
+        if !(PRIMARY_HEADER_SIZE..=MAX_MESSAGE_SIZE).contains(&capacity) {
+            return Err(PrivateBusWireAccumulatorError::InvalidCapacity { capacity });
+        }
+        Ok(Self {
+            bytes: Vec::new(),
+            capacity,
+        })
+    }
+
+    /// Create an accumulator while retaining bytes pipelined after D-Bus
+    /// authentication completed.
+    pub fn from_buffered(
+        capacity: usize,
+        buffered: &[u8],
+    ) -> Result<Self, PrivateBusWireAccumulatorError> {
+        let mut accumulator = Self::new(capacity)?;
+        accumulator.append_within_capacity(buffered)?;
+        Ok(accumulator)
+    }
+
+    /// Retained input, including an incomplete first frame and any following
+    /// pipelined frames. The slice is never mutated by an unsuccessful call.
+    pub fn buffered(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// Consume the accumulator and return every byte not yet dispatched.
+    pub fn into_buffered(self) -> Vec<u8> {
+        self.bytes
+    }
+
+    pub const fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    pub fn remaining_capacity(&self) -> usize {
+        self.capacity - self.bytes.len()
+    }
+
+    /// Maximum number of bytes the transport may read without buffering past
+    /// the current frame or the configured cap.
+    ///
+    /// A zero result is backpressure: a complete first frame must be consumed
+    /// with [`Self::take_next_method_call`] before reading again. This method
+    /// checks the primary header as soon as it is available, allowing a peer
+    /// that declares a frame larger than the configured cap to be rejected
+    /// without waiting for or allocating its body.
+    pub fn read_budget(&self) -> Result<usize, PrivateBusWireAccumulatorError> {
+        let Some(frame_length) = frame_length_from_primary(&self.bytes)? else {
+            return Ok(self.remaining_capacity());
+        };
+        if frame_length > self.capacity {
+            return Err(PrivateBusWireAccumulatorError::FrameTooLarge {
+                frame_length,
+                capacity: self.capacity,
+            });
+        }
+        if self.bytes.len() >= frame_length {
+            return Ok(0);
+        }
+        Ok((frame_length - self.bytes.len()).min(self.remaining_capacity()))
+    }
+
+    /// Retain bytes obtained from a single nonblocking stream read.
+    ///
+    /// Callers should pass at most [`Self::read_budget`] bytes. This method
+    /// enforces that contract atomically, preserving all bytes already
+    /// retained for later disconnect diagnostics or orderly teardown.
+    pub fn receive(&mut self, input: &[u8]) -> Result<(), PrivateBusWireAccumulatorError> {
+        let budget = self.read_budget()?;
+        if input.len() > budget {
+            return Err(PrivateBusWireAccumulatorError::ReadBudgetExceeded {
+                incoming: input.len(),
+                budget,
+            });
+        }
+        self.append_within_capacity(input)
+    }
+
+    fn append_within_capacity(
+        &mut self,
+        input: &[u8],
+    ) -> Result<(), PrivateBusWireAccumulatorError> {
+        let buffered = self.bytes.len();
+        let total = buffered.checked_add(input.len()).ok_or(
+            PrivateBusWireAccumulatorError::BufferLimitExceeded {
+                buffered,
+                incoming: input.len(),
+                capacity: self.capacity,
+            },
+        )?;
+        if total > self.capacity {
+            return Err(PrivateBusWireAccumulatorError::BufferLimitExceeded {
+                buffered,
+                incoming: input.len(),
+                capacity: self.capacity,
+            });
+        }
+        self.bytes
+            .try_reserve_exact(input.len())
+            .map_err(|_| PrivateBusWireAccumulatorError::AllocationFailed)?;
+        self.bytes.extend_from_slice(input);
+        Ok(())
+    }
+
+    /// Decode and remove one complete method-call frame, if available.
+    ///
+    /// Invalid or incomplete frames remain byte-for-byte available to the
+    /// caller. Only a successfully decoded frame is removed.
+    pub fn take_next_method_call(
+        &mut self,
+    ) -> Result<Option<MethodCall>, PrivateBusWireAccumulatorError> {
+        let Some(frame_length) = frame_length_from_primary(&self.bytes)? else {
+            return Ok(None);
+        };
+        if frame_length > self.capacity {
+            return Err(PrivateBusWireAccumulatorError::FrameTooLarge {
+                frame_length,
+                capacity: self.capacity,
+            });
+        }
+        if self.bytes.len() < frame_length {
+            return Ok(None);
+        }
+
+        let (call, consumed) = decode_method_call(&self.bytes)?
+            .ok_or(PrivateBusWireAccumulatorError::Wire(WireError::Truncated))?;
+        debug_assert_eq!(consumed, frame_length);
+        self.bytes.drain(..consumed);
+        Ok(Some(call))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -536,8 +733,13 @@ fn take_u32(fields: &mut BTreeMap<u8, HeaderValue>, code: u8) -> Result<Option<u
     }
 }
 
-/// Decode one complete D-Bus method-call frame, retaining incomplete input.
-pub fn decode_method_call(input: &[u8]) -> Result<Option<(MethodCall, usize)>, WireError> {
+/// Return the full frame length once a primary header is available.
+///
+/// This intentionally validates every primary-header field needed to safely
+/// calculate the length, but it does not inspect the variable-sized header or
+/// body. Stream accumulation uses it to impose a local cap before collecting
+/// a peer-controlled body length.
+fn frame_length_from_primary(input: &[u8]) -> Result<Option<usize>, WireError> {
     if input.len() < PRIMARY_HEADER_SIZE {
         return Ok(None);
     }
@@ -554,8 +756,7 @@ pub fn decode_method_call(input: &[u8]) -> Result<Option<(MethodCall, usize)>, W
 
     let body_length =
         usize::try_from(endian.read_u32(&input[4..8])?).map_err(|_| WireError::Overflow)?;
-    let serial = endian.read_u32(&input[8..12])?;
-    if serial == 0 {
+    if endian.read_u32(&input[8..12])? == 0 {
         return Err(WireError::InvalidSerial);
     }
     let header_length =
@@ -570,9 +771,26 @@ pub fn decode_method_call(input: &[u8]) -> Result<Option<(MethodCall, usize)>, W
     if message_length > MAX_MESSAGE_SIZE {
         return Err(WireError::MessageTooLarge);
     }
+    Ok(Some(message_length))
+}
+
+/// Decode one complete D-Bus method-call frame, retaining incomplete input.
+pub fn decode_method_call(input: &[u8]) -> Result<Option<(MethodCall, usize)>, WireError> {
+    let Some(message_length) = frame_length_from_primary(input)? else {
+        return Ok(None);
+    };
+    let endian = Endian::try_from(input[0])?;
+    let serial = endian.read_u32(&input[8..12])?;
     if input.len() < message_length {
         return Ok(None);
     }
+
+    let header_length =
+        usize::try_from(endian.read_u32(&input[12..16])?).map_err(|_| WireError::Overflow)?;
+    let header_end = PRIMARY_HEADER_SIZE
+        .checked_add(header_length)
+        .ok_or(WireError::Overflow)?;
+    let body_offset = align_to(header_end, 8)?;
 
     let mut fields = decode_headers(endian, input, header_length)?;
     let path = take_text(&mut fields, HEADER_PATH)?.ok_or(WireError::MissingHeader("path"))?;
@@ -885,6 +1103,168 @@ mod tests {
         for length in 0..bytes.len() {
             assert_eq!(decode_method_call(&bytes[..length]), Ok(None));
         }
+    }
+
+    #[test]
+    fn accumulator_assembles_partial_reads_and_only_consumes_complete_frames() {
+        let bytes = encode_call(
+            Endian::Little,
+            17,
+            "/org/freedesktop/systemd1",
+            "org.freedesktop.systemd1.Manager",
+            "StartUnit",
+            "ss",
+            &["demo.service", "replace"],
+        );
+        let mut accumulator = PrivateBusWireAccumulator::new(bytes.len()).unwrap();
+
+        for byte in &bytes[..bytes.len() - 1] {
+            assert_eq!(
+                accumulator.read_budget(),
+                Ok(accumulator.remaining_capacity())
+            );
+            accumulator.receive(std::slice::from_ref(byte)).unwrap();
+            assert_eq!(accumulator.take_next_method_call(), Ok(None));
+        }
+        assert_eq!(accumulator.read_budget(), Ok(1));
+        accumulator.receive(&bytes[bytes.len() - 1..]).unwrap();
+        assert_eq!(accumulator.read_budget(), Ok(0));
+
+        let call = accumulator.take_next_method_call().unwrap().unwrap();
+        assert_eq!(call.serial, 17);
+        assert_eq!(
+            call.decode_two_strings(),
+            Ok(("demo.service".into(), "replace".into()))
+        );
+        assert!(accumulator.buffered().is_empty());
+        assert_eq!(accumulator.read_budget(), Ok(bytes.len()));
+    }
+
+    #[test]
+    fn accumulator_preserves_pipelined_and_auth_handoff_bytes() {
+        let first = encode_call(
+            Endian::Little,
+            1,
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus.Peer",
+            "Ping",
+            "",
+            &[],
+        );
+        let second = encode_call(
+            Endian::Little,
+            2,
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus.Peer",
+            "Ping",
+            "",
+            &[],
+        );
+        let split = second.len() / 2;
+        let mut handoff = first.clone();
+        handoff.extend_from_slice(&second[..split]);
+        let mut accumulator =
+            PrivateBusWireAccumulator::from_buffered(first.len() + second.len(), &handoff).unwrap();
+
+        assert_eq!(accumulator.read_budget(), Ok(0));
+        assert_eq!(
+            accumulator.take_next_method_call().unwrap().unwrap().serial,
+            1
+        );
+        assert_eq!(accumulator.buffered(), &second[..split]);
+        assert_eq!(accumulator.read_budget(), Ok(second.len() - split));
+
+        accumulator.receive(&second[split..]).unwrap();
+        assert_eq!(
+            accumulator.take_next_method_call().unwrap().unwrap().serial,
+            2
+        );
+        assert!(accumulator.buffered().is_empty());
+    }
+
+    #[test]
+    fn accumulator_reports_backpressure_and_rejects_overflow_atomically() {
+        let bytes = encode_call(
+            Endian::Little,
+            1,
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus.Peer",
+            "Ping",
+            "",
+            &[],
+        );
+        let mut accumulator = PrivateBusWireAccumulator::new(bytes.len()).unwrap();
+        accumulator.receive(&bytes[..8]).unwrap();
+        let retained = accumulator.buffered().to_vec();
+        let mut overflowing = bytes[8..].to_vec();
+        overflowing.push(0);
+        assert_eq!(
+            accumulator.receive(&overflowing),
+            Err(PrivateBusWireAccumulatorError::ReadBudgetExceeded {
+                incoming: bytes.len() - 7,
+                budget: bytes.len() - 8,
+            })
+        );
+        assert_eq!(accumulator.buffered(), retained);
+
+        // Respecting the advertised budget fills the pending frame and stops
+        // the next socket read until dispatch consumes it.
+        let budget = accumulator.read_budget().unwrap();
+        assert_eq!(budget, bytes.len() - 8);
+        accumulator.receive(&bytes[8..8 + budget]).unwrap();
+        assert_eq!(accumulator.read_budget(), Ok(0));
+        assert_eq!(
+            accumulator.receive(&[0]),
+            Err(PrivateBusWireAccumulatorError::ReadBudgetExceeded {
+                incoming: 1,
+                budget: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn accumulator_rejects_declared_frame_larger_than_local_cap_without_loss() {
+        let bytes = encode_call(
+            Endian::Little,
+            1,
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus.Peer",
+            "Ping",
+            "",
+            &[],
+        );
+        let capacity = PRIMARY_HEADER_SIZE;
+        let mut accumulator = PrivateBusWireAccumulator::new(capacity).unwrap();
+        accumulator.receive(&bytes[..PRIMARY_HEADER_SIZE]).unwrap();
+        let expected = PrivateBusWireAccumulatorError::FrameTooLarge {
+            frame_length: bytes.len(),
+            capacity,
+        };
+        assert_eq!(accumulator.read_budget(), Err(expected.clone()));
+        assert_eq!(accumulator.take_next_method_call(), Err(expected));
+        assert_eq!(accumulator.buffered(), &bytes[..PRIMARY_HEADER_SIZE]);
+    }
+
+    #[test]
+    fn accumulator_validates_its_capacity() {
+        let too_small = PRIMARY_HEADER_SIZE - 1;
+        assert!(matches!(
+            PrivateBusWireAccumulator::new(too_small),
+            Err(PrivateBusWireAccumulatorError::InvalidCapacity { capacity }) if capacity == too_small
+        ));
+        let too_large = MAX_MESSAGE_SIZE + 1;
+        assert!(matches!(
+            PrivateBusWireAccumulator::new(too_large),
+            Err(PrivateBusWireAccumulatorError::InvalidCapacity { capacity }) if capacity == too_large
+        ));
+        assert!(matches!(
+            PrivateBusWireAccumulator::from_buffered(PRIMARY_HEADER_SIZE, &[0; 17]),
+            Err(PrivateBusWireAccumulatorError::BufferLimitExceeded {
+                buffered: 0,
+                incoming: 17,
+                capacity: PRIMARY_HEADER_SIZE,
+            })
+        ));
     }
 
     #[test]

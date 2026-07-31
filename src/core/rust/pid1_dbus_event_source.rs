@@ -52,6 +52,9 @@ mod imp {
     pub enum PrivateBusEventSourceError {
         EventLoop(Errno),
         ListenerUnavailable,
+        /// `sd_id128_randomize()`'s equivalent failed after accepting a
+        /// peer, so the stream was dropped without a server ID.
+        ServerIdGeneration(Errno),
         SourceIdExhausted,
         InconsistentOwnership,
     }
@@ -204,15 +207,17 @@ mod imp {
         ///
         /// `server_id` is called only for a connection which passed accept,
         /// the table limit, and `SO_PEERCRED`. Production integration must use
-        /// the same cryptographically strong random-id contract as
-        /// `sd_id128_randomize()`; deterministic generators are useful only to
-        /// test this disconnected adapter.
+        /// the same cryptographically strong, fallible random-id contract as
+        /// `sd_id128_randomize()`. On failure the accepted peer is closed and
+        /// [`PrivateBusEventSourceError::ServerIdGeneration`] is returned;
+        /// deterministic generators are useful only to test this disconnected
+        /// adapter.
         pub fn dispatch_ready(
             &mut self,
             event_loop: &mut EventLoop,
             accept_budget: NonZeroUsize,
             authentication_budget: NonZeroUsize,
-            server_id: impl FnMut() -> [u8; 16],
+            server_id: impl FnMut() -> Result<[u8; 16], Errno>,
         ) -> Result<PrivateBusDispatchOutcome, PrivateBusEventSourceError> {
             self.dispatch_ready_with_connection_limit(
                 event_loop,
@@ -237,7 +242,7 @@ mod imp {
             accept_budget: NonZeroUsize,
             authentication_budget: NonZeroUsize,
             connection_limit: usize,
-            mut server_id: impl FnMut() -> [u8; 16],
+            mut server_id: impl FnMut() -> Result<[u8; 16], Errno>,
         ) -> Result<PrivateBusDispatchOutcome, PrivateBusEventSourceError> {
             let mut outcome = PrivateBusDispatchOutcome::default();
             let listener_events = self.listener_events.replace(EpollFlags::empty());
@@ -251,7 +256,7 @@ mod imp {
                         outcome.connection_limit_reached = true;
                         break;
                     }
-                    match self.listener.accept_one_with(&mut server_id) {
+                    match self.listener.try_accept_one_with(&mut server_id) {
                         Ok(id) => {
                             self.register_connection(event_loop, id)?;
                             outcome.accepted += 1;
@@ -261,9 +266,12 @@ mod imp {
                         {
                             break;
                         }
+                        Err(PrivateBusAcceptError::ServerIdGeneration(error)) => {
+                            return Err(PrivateBusEventSourceError::ServerIdGeneration(error));
+                        }
                         Err(_) => {
                             // The accepted descriptor is already dropped by
-                            // `accept_one_with()`. Like C, one malformed or
+                            // `try_accept_one_with()`. Like C, one malformed or
                             // unauthorized peer does not disable the listener.
                             outcome.refused += 1;
                         }
@@ -505,7 +513,7 @@ mod imp {
         use std::io::{Read, Write};
         use std::os::unix::net::{UnixListener, UnixStream};
         use std::path::PathBuf;
-        use std::time::{SystemTime, UNIX_EPOCH};
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
         use nix::unistd::geteuid;
 
@@ -541,7 +549,7 @@ mod imp {
                     event_loop,
                     NonZeroUsize::new(8).unwrap(),
                     NonZeroUsize::new(8).unwrap(),
-                    || [0x5a; 16],
+                    || Ok([0x5a; 16]),
                 )
                 .unwrap()
         }
@@ -624,6 +632,36 @@ mod imp {
         }
 
         #[test]
+        fn server_id_failure_closes_the_accepted_peer_and_is_propagated() {
+            let (path, mut event_loop, mut owner) = owner("server-id-failure");
+            let mut client = UnixStream::connect(&path).unwrap();
+
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            assert_eq!(
+                owner.dispatch_ready(
+                    &mut event_loop,
+                    NonZeroUsize::new(1).unwrap(),
+                    NonZeroUsize::new(1).unwrap(),
+                    || Err(nix::errno::Errno::EIO),
+                ),
+                Err(PrivateBusEventSourceError::ServerIdGeneration(
+                    nix::errno::Errno::EIO
+                ))
+            );
+            assert_eq!(owner.listener().connection_count(), 0);
+            assert_eq!(owner.registered_connection_count(), 0);
+            assert_eq!(owner.authenticated_connection_count(), 0);
+
+            client
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            assert_eq!(client.read(&mut [0_u8; 1]).unwrap(), 0);
+
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
         fn authentication_error_is_unregistered_without_disabling_listener() {
             let (path, mut event_loop, mut owner) = owner("bad-auth");
             let mut rejected = UnixStream::connect(&path).unwrap();
@@ -658,7 +696,7 @@ mod imp {
                     &mut event_loop,
                     NonZeroUsize::new(1).unwrap(),
                     NonZeroUsize::new(1).unwrap(),
-                    || [0x31; 16],
+                    || Ok([0x31; 16]),
                 )
                 .unwrap();
             assert_eq!(outcome.accepted, 1);
@@ -671,7 +709,7 @@ mod imp {
                     &mut event_loop,
                     NonZeroUsize::new(1).unwrap(),
                     NonZeroUsize::new(1).unwrap(),
-                    || [0x32; 16],
+                    || Ok([0x32; 16]),
                 )
                 .unwrap();
             assert_eq!(outcome.accepted, 1);

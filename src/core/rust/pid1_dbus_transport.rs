@@ -122,7 +122,7 @@ mod imp {
             event_loop: &mut EventLoop,
             accept_budget: NonZeroUsize,
             authentication_budget: NonZeroUsize,
-            server_id: impl FnMut() -> [u8; 16],
+            server_id: impl FnMut() -> Result<[u8; 16], nix::errno::Errno>,
         ) -> Result<PrivateBusDispatchOutcome, PrivateBusTransportError> {
             let available_for_event_sources = self
                 .connection_limit
@@ -261,7 +261,7 @@ mod imp {
                     event_loop,
                     NonZeroUsize::new(8).unwrap(),
                     NonZeroUsize::new(8).unwrap(),
-                    || [0x5a; 16],
+                    || Ok([0x5a; 16]),
                 )
                 .unwrap()
         }
@@ -338,6 +338,33 @@ mod imp {
             assert_eq!(owner.retained_connection_count(), 1);
 
             drop((first, second, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn server_id_failure_is_propagated_without_retaining_a_stream() {
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "server-id-failure", 1);
+            let client = UnixStream::connect(&path).unwrap();
+
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            assert_eq!(
+                owner.dispatch_ready(
+                    &mut event_loop,
+                    NonZeroUsize::new(1).unwrap(),
+                    NonZeroUsize::new(1).unwrap(),
+                    || Err(nix::errno::Errno::EIO),
+                ),
+                Err(PrivateBusTransportError::EventSource(
+                    PrivateBusEventSourceError::ServerIdGeneration(nix::errno::Errno::EIO)
+                ))
+            );
+            assert_eq!(owner.retained_connection_count(), 0);
+            assert_eq!(owner.authentication_connection_count(), 0);
+            assert_eq!(owner.handoff_connection_count(), 0);
+            assert_eq!(owner.wire_connection_count(), 0);
+
+            drop((client, owner));
             std::fs::remove_file(path).unwrap();
         }
 
