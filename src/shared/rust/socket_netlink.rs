@@ -195,6 +195,11 @@ impl From<io::Error> for SocketNetlinkError {
 /// Convenient type alias for results in this module.
 pub type Result<T> = std::result::Result<T, SocketNetlinkError>;
 
+#[inline]
+const fn is_systemd_whitespace(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\r')
+}
+
 // ── IP address union ────────────────────────────────────────────────
 
 /// Union-style enum representing either an IPv4 or IPv6 address.
@@ -813,7 +818,9 @@ pub fn socket_address_parse(s: &str) -> Result<SocketAddress> {
 ///
 /// Mirrors C `socket_address_parse_netlink()`.
 pub fn socket_address_parse_netlink(s: &str) -> Result<SocketAddress> {
-    let mut parts = s.splitn(2, |c: char| c.is_whitespace());
+    // C uses extract_first_word(..., separators = NULL), whose default is
+    // systemd's four-byte WHITESPACE set rather than Unicode whitespace.
+    let mut parts = s.splitn(2, is_systemd_whitespace);
     let family_str = parts
         .next()
         .filter(|s| !s.is_empty())
@@ -821,7 +828,7 @@ pub fn socket_address_parse_netlink(s: &str) -> Result<SocketAddress> {
     let protocol = netlink_family_from_string(family_str)?;
     let groups = parts
         .next()
-        .map(str::trim)
+        .map(|value| value.trim_matches(is_systemd_whitespace))
         .filter(|s| !s.is_empty())
         .map(|s| s.parse::<u32>())
         .transpose()
@@ -1492,6 +1499,16 @@ mod tests {
                 protocol: NETLINK_AUDIT
             }
         );
+    }
+
+    #[test]
+    fn test_socket_address_parse_netlink_uses_c_whitespace_grammar() {
+        for separator in [' ', '\t', '\n', '\r'] {
+            assert!(socket_address_parse_netlink(&format!("route{separator}7")).is_ok());
+        }
+        for separator in ['\u{b}', '\u{c}', '\u{a0}'] {
+            assert!(socket_address_parse_netlink(&format!("route{separator}7")).is_err());
+        }
     }
 
     #[test]
