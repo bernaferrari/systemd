@@ -16,13 +16,7 @@ use libc::c_char;
 use crate::ffi::{Errno, calloc, free, malloc};
 
 pub(crate) fn alloc_empty_c_string() -> *mut c_char {
-    // SAFETY: malloc(1) returns null or one writable byte owned by the caller.
-    let ptr = malloc(1).cast::<c_char>();
-    if !ptr.is_null() {
-        // SAFETY: successful malloc above provided exactly one writable byte.
-        unsafe { *ptr = 0 };
-    }
-    ptr
+    alloc_c_string_from_bytes(&[])
 }
 
 pub(crate) fn alloc_c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
@@ -75,9 +69,13 @@ pub unsafe fn rs_free_and_strdup(p: *mut *mut c_char, s: *const c_char) -> i32 {
 
     // SAFETY: `p` is writable for one pointer by the function contract.
     let old = unsafe { *p };
-    // SAFETY: `old` and non-null `s` meet this public function's C-string
-    // contract.
-    if unsafe { c_strings_equal_null_safe(old, s) } {
+    let unchanged = match (old.is_null(), s.is_null()) {
+        (true, true) => true,
+        (true, false) | (false, true) => false,
+        // SAFETY: both non-null pointers are live C strings by this API's contract.
+        (false, false) => unsafe { CStr::from_ptr(old) == CStr::from_ptr(s) },
+    };
+    if unchanged {
         return 0;
     }
     let replacement = if s.is_null() {
@@ -143,23 +141,6 @@ pub unsafe fn rs_free_and_strndup(p: *mut *mut c_char, s: *const c_char, l: usiz
     // SAFETY: `p` is writable and receives unique ownership of replacement.
     unsafe { *p = replacement };
     1
-}
-
-/// Null-safe content equality matching C's `streq_ptr()`. The raw pointers are
-/// not compared for identity because distinct owned allocations may hold the
-/// same string and must retain the C API's no-op result.
-///
-/// # Safety
-/// Each non-null pointer must reference a readable NUL-terminated C string.
-unsafe fn c_strings_equal_null_safe(left: *const c_char, right: *const c_char) -> bool {
-    match (left.is_null(), right.is_null()) {
-        (true, true) => true,
-        (true, false) | (false, true) => false,
-        (false, false) => {
-            // SAFETY: required by this helper's contract.
-            unsafe { CStr::from_ptr(left).to_bytes() == CStr::from_ptr(right).to_bytes() }
-        }
-    }
 }
 
 /// Return whether `strndup(source, len)` would retain the current `old`
