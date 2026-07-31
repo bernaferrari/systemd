@@ -203,60 +203,55 @@ pub fn pe_header_get_data_directory(pe_header: &[u8], index: usize) -> Option<(u
     Some((va, sz))
 }
 
-/// Read a little-endian 16-bit packed PE field.
-///
-/// # Safety
-/// `base.add(offset)` must designate two readable bytes in the same PE header
-/// allocation. PE headers are packed, so an unaligned read is intentional.
-unsafe fn read_pe_u16(base: *const u8, offset: usize) -> u16 {
-    // SAFETY: guaranteed by this helper's documented packed-header contract.
+/// Read a little-endian 16-bit packed PE field. This private helper is called
+/// only by the documented C ABI adapters below.
+fn read_pe_u16(base: *const u8, offset: usize) -> u16 {
+    // SAFETY: each caller establishes that the packed header includes the
+    // field at `offset`; PE fields intentionally have no alignment guarantee.
     u16::from_le(unsafe { std::ptr::read_unaligned(base.add(offset).cast::<u16>()) })
 }
 
-/// Read a little-endian 32-bit packed PE field.
-///
-/// # Safety
-/// `base.add(offset)` must designate four readable bytes in the same PE header
-/// allocation. PE headers are packed, so an unaligned read is intentional.
-unsafe fn read_pe_u32(base: *const u8, offset: usize) -> u32 {
-    // SAFETY: guaranteed by this helper's documented packed-header contract.
+/// Read a little-endian 32-bit packed PE field. This private helper is called
+/// only by the documented C ABI adapters below.
+fn read_pe_u32(base: *const u8, offset: usize) -> u32 {
+    // SAFETY: each caller establishes that the packed header includes the
+    // field at `offset`; PE fields intentionally have no alignment guarantee.
     u32::from_le(unsafe { std::ptr::read_unaligned(base.add(offset).cast::<u32>()) })
 }
 
 /// Locate a section by its C-string name without imposing Rust alignment on the
 /// packed `IMAGE_SECTION_HEADER` input.
 ///
-/// # Safety
-/// If `n_sections` is non-zero, `sections` must point to that many contiguous,
-/// readable 40-byte PE section headers. `name` must be a readable NUL-terminated
-/// C string.
-unsafe fn find_section_raw(
-    sections: *const u8,
-    n_sections: usize,
-    name: *const c_char,
-) -> *const u8 {
+/// The exported C ABI adapters establish the packed section-table and C-string
+/// contracts; this private helper works over a bounded byte view.
+fn find_section_raw(sections: *const u8, n_sections: usize, name: *const c_char) -> *const u8 {
     if name.is_null() || (sections.is_null() && n_sections != 0) {
         return std::ptr::null();
     }
     if n_sections > isize::MAX as usize / IMAGE_SECTION_HEADER_SIZE {
         return std::ptr::null();
     }
-    // SAFETY: guaranteed by this helper's documented C-string contract.
+    // SAFETY: the private helper is only called by audited C ABI adapters.
     let name = unsafe { CStr::from_ptr(name) }.to_bytes();
     if name.len() > IMAGE_SECTION_HEADER_NAME_SIZE {
         return std::ptr::null();
     }
-    for index in 0..n_sections {
-        // SAFETY: the helper contract guarantees the packed section table is readable.
-        let section = unsafe { sections.add(index * IMAGE_SECTION_HEADER_SIZE) };
-        // SAFETY: every section has an eight-byte Name field at offset zero.
-        let section_name =
-            unsafe { std::slice::from_raw_parts(section, IMAGE_SECTION_HEADER_NAME_SIZE) };
+    if n_sections == 0 {
+        return std::ptr::null();
+    }
+    let Some(table_len) = n_sections.checked_mul(IMAGE_SECTION_HEADER_SIZE) else {
+        return std::ptr::null();
+    };
+    // SAFETY: the C ABI adapter establishes a readable packed table of this
+    // exact checked byte length.
+    let table = unsafe { std::slice::from_raw_parts(sections, table_len) };
+    for (index, section) in table.chunks_exact(IMAGE_SECTION_HEADER_SIZE).enumerate() {
+        let section_name = &section[..IMAGE_SECTION_HEADER_NAME_SIZE];
         if section_name[..name.len()] == name[..]
             && (name.len() == IMAGE_SECTION_HEADER_NAME_SIZE
                 || section_name[name.len()..].iter().all(|byte| *byte == 0))
         {
-            return section;
+            return table[index * IMAGE_SECTION_HEADER_SIZE..].as_ptr();
         }
     }
     std::ptr::null()
@@ -273,8 +268,7 @@ pub unsafe extern "C" fn rs_pe_header_is_64bit(h: *const c_void) -> bool {
     if h.is_null() {
         return false;
     }
-    // SAFETY: required by this FFI boundary's packed-header contract.
-    match unsafe { read_pe_u16(h.cast::<u8>(), OPTIONAL_HEADER_MAGIC_OFFSET) } {
+    match read_pe_u16(h.cast::<u8>(), OPTIONAL_HEADER_MAGIC_OFFSET) {
         PE32_MAGIC => false,
         PE32PLUS_MAGIC => true,
         // C asserts for malformed magic. The shadow is deliberately fail-closed.
@@ -294,8 +288,7 @@ pub unsafe extern "C" fn rs_pe_section_table_find(
     n_sections: usize,
     name: *const c_char,
 ) -> *const c_void {
-    // SAFETY: required by this FFI boundary's section-table and C-string contract.
-    unsafe { find_section_raw(sections.cast::<u8>(), n_sections, name) }.cast::<c_void>()
+    find_section_raw(sections.cast::<u8>(), n_sections, name).cast::<c_void>()
 }
 
 /// Exact packed C ABI shadow of `pe_header_find_section()`.
@@ -314,15 +307,11 @@ pub unsafe extern "C" fn rs_pe_header_find_section(
     if pe_header.is_null() {
         return std::ptr::null();
     }
-    // SAFETY: required by this FFI boundary's packed-header contract.
-    let n_sections = unsafe {
-        read_pe_u16(
-            pe_header.cast::<u8>(),
-            IMAGE_FILE_HEADER_NUMBER_OF_SECTIONS_OFFSET,
-        )
-    } as usize;
-    // SAFETY: the section-table precondition is documented by this FFI boundary.
-    unsafe { find_section_raw(sections.cast::<u8>(), n_sections, name) }.cast::<c_void>()
+    let n_sections = read_pe_u16(
+        pe_header.cast::<u8>(),
+        IMAGE_FILE_HEADER_NUMBER_OF_SECTIONS_OFFSET,
+    ) as usize;
+    find_section_raw(sections.cast::<u8>(), n_sections, name).cast::<c_void>()
 }
 
 /// Exact packed C ABI shadow of `pe_is_uki()`.
@@ -337,21 +326,12 @@ pub unsafe extern "C" fn rs_pe_is_uki(pe_header: *const c_void, sections: *const
         return false;
     }
     let header = pe_header.cast::<u8>();
-    // SAFETY: required by this FFI boundary's packed-header contract.
-    if unsafe { read_pe_u16(header, OPTIONAL_HEADER_SUBSYSTEM_OFFSET) }
-        != IMAGE_SUBSYSTEM_EFI_APPLICATION
-    {
+    if read_pe_u16(header, OPTIONAL_HEADER_SUBSYSTEM_OFFSET) != IMAGE_SUBSYSTEM_EFI_APPLICATION {
         return false;
     }
-    // SAFETY: required by this FFI boundary's packed-header contract.
-    let n_sections =
-        unsafe { read_pe_u16(header, IMAGE_FILE_HEADER_NUMBER_OF_SECTIONS_OFFSET) } as usize;
-    // SAFETY: static names are valid NUL-terminated C strings and the table
-    // precondition is documented by this FFI boundary.
-    unsafe {
-        !find_section_raw(sections.cast::<u8>(), n_sections, c".osrel".as_ptr()).is_null()
-            && !find_section_raw(sections.cast::<u8>(), n_sections, c".linux".as_ptr()).is_null()
-    }
+    let n_sections = read_pe_u16(header, IMAGE_FILE_HEADER_NUMBER_OF_SECTIONS_OFFSET) as usize;
+    !find_section_raw(sections.cast::<u8>(), n_sections, c".osrel".as_ptr()).is_null()
+        && !find_section_raw(sections.cast::<u8>(), n_sections, c".linux".as_ptr()).is_null()
 }
 
 /// Exact packed C ABI shadow of `pe_is_addon()`.
@@ -366,27 +346,15 @@ pub unsafe extern "C" fn rs_pe_is_addon(pe_header: *const c_void, sections: *con
         return false;
     }
     let header = pe_header.cast::<u8>();
-    // SAFETY: required by this FFI boundary's packed-header contract.
-    if unsafe { read_pe_u16(header, OPTIONAL_HEADER_SUBSYSTEM_OFFSET) }
-        != IMAGE_SUBSYSTEM_EFI_APPLICATION
-    {
+    if read_pe_u16(header, OPTIONAL_HEADER_SUBSYSTEM_OFFSET) != IMAGE_SUBSYSTEM_EFI_APPLICATION {
         return false;
     }
-    // SAFETY: required by this FFI boundary's packed-header contract.
-    let n_sections =
-        unsafe { read_pe_u16(header, IMAGE_FILE_HEADER_NUMBER_OF_SECTIONS_OFFSET) } as usize;
-    // SAFETY: static names are valid NUL-terminated C strings and the table
-    // precondition is documented by this FFI boundary.
-    unsafe {
-        find_section_raw(sections.cast::<u8>(), n_sections, c".linux".as_ptr()).is_null()
-            && (!find_section_raw(sections.cast::<u8>(), n_sections, c".cmdline".as_ptr())
-                .is_null()
-                || !find_section_raw(sections.cast::<u8>(), n_sections, c".dtb".as_ptr()).is_null()
-                || !find_section_raw(sections.cast::<u8>(), n_sections, c".initrd".as_ptr())
-                    .is_null()
-                || !find_section_raw(sections.cast::<u8>(), n_sections, c".ucode".as_ptr())
-                    .is_null())
-    }
+    let n_sections = read_pe_u16(header, IMAGE_FILE_HEADER_NUMBER_OF_SECTIONS_OFFSET) as usize;
+    find_section_raw(sections.cast::<u8>(), n_sections, c".linux".as_ptr()).is_null()
+        && (!find_section_raw(sections.cast::<u8>(), n_sections, c".cmdline".as_ptr()).is_null()
+            || !find_section_raw(sections.cast::<u8>(), n_sections, c".dtb".as_ptr()).is_null()
+            || !find_section_raw(sections.cast::<u8>(), n_sections, c".initrd".as_ptr()).is_null()
+            || !find_section_raw(sections.cast::<u8>(), n_sections, c".ucode".as_ptr()).is_null())
 }
 
 /// Exact packed C ABI shadow of `pe_is_native()`.
@@ -399,8 +367,7 @@ pub unsafe extern "C" fn rs_pe_is_native(pe_header: *const c_void) -> bool {
     if pe_header.is_null() {
         return false;
     }
-    // SAFETY: required by this FFI boundary's packed-header contract.
-    let machine = unsafe { read_pe_u16(pe_header.cast::<u8>(), IMAGE_FILE_HEADER_MACHINE_OFFSET) };
+    let machine = read_pe_u16(pe_header.cast::<u8>(), IMAGE_FILE_HEADER_MACHINE_OFFSET);
     #[cfg(target_arch = "aarch64")]
     {
         machine == 0xaa64
@@ -445,9 +412,8 @@ pub unsafe extern "C" fn rs_pe_header_get_data_directory(
         return std::ptr::null();
     }
     let header = pe_header.cast::<u8>();
-    // SAFETY: required by this FFI boundary's packed-header contract.
     let (n_directories_offset, directories_offset) =
-        match unsafe { read_pe_u16(header, OPTIONAL_HEADER_MAGIC_OFFSET) } {
+        match read_pe_u16(header, OPTIONAL_HEADER_MAGIC_OFFSET) {
             PE32_MAGIC => (
                 PE32_NUMBER_OF_RVA_AND_SIZES_OFFSET,
                 PE32_DATA_DIRECTORY_OFFSET,
@@ -459,8 +425,7 @@ pub unsafe extern "C" fn rs_pe_header_get_data_directory(
             // C asserts for malformed magic. The shadow is deliberately fail-closed.
             _ => return std::ptr::null(),
         };
-    // SAFETY: required by this FFI boundary's packed-header contract.
-    if i >= unsafe { read_pe_u32(header, n_directories_offset) } as usize {
+    if i >= read_pe_u32(header, n_directories_offset) as usize {
         return std::ptr::null();
     }
     let Some(offset) = i
@@ -472,8 +437,7 @@ pub unsafe extern "C" fn rs_pe_header_get_data_directory(
     if offset > isize::MAX as usize {
         return std::ptr::null();
     }
-    // SAFETY: the FFI contract guarantees the claimed directory entry is readable.
-    unsafe { header.add(offset) }.cast::<c_void>()
+    header.wrapping_add(offset).cast::<c_void>()
 }
 
 #[cfg(test)]
