@@ -90,6 +90,11 @@ impl GeneratorInvocation {
 pub struct PreparedGeneratorRun {
     pub discovery: GeneratorDiscoveryReport,
     pub invocations: Vec<GeneratorInvocation>,
+    /// C creates the output triplet as soon as any generator search path
+    /// exists, even when enumeration yields no executable. The eventual
+    /// lifecycle owner must call `lookup_paths_trim_generator()` after the
+    /// run (or after deciding that there is nothing to execute).
+    pub output_directories_prepared: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,6 +208,20 @@ pub fn discover_generator_executables(search_directories: &[PathBuf]) -> Generat
     }
 }
 
+fn generator_path_any(
+    search_directories: &[PathBuf],
+    ignored_errors: &mut Vec<(PathBuf, String)>,
+) -> bool {
+    for path in search_directories {
+        match path.try_exists() {
+            Ok(true) => return true,
+            Ok(false) => {}
+            Err(error) => ignored_errors.push((path.clone(), error.to_string())),
+        }
+    }
+    false
+}
+
 /// Prepare generator argv only after all three output directories have been
 /// created successfully. This function does not execute anything: the PID 1
 /// caller must still provide C's fork/reset-signals/new-mount-namespace/slave
@@ -219,18 +238,30 @@ pub fn prepare_generator_run(
     paths: &LookupPaths,
     search_directories: &[PathBuf],
 ) -> Result<PreparedGeneratorRun, LookupPathsError> {
-    let discovery = discover_generator_executables(search_directories);
-    if discovery.executables.is_empty() {
+    let mut path_errors = Vec::new();
+    if !generator_path_any(search_directories, &mut path_errors) {
         return Ok(PreparedGeneratorRun {
-            discovery,
+            discovery: GeneratorDiscoveryReport {
+                ignored_errors: path_errors,
+                ..GeneratorDiscoveryReport::default()
+            },
             invocations: Vec::new(),
+            output_directories_prepared: false,
         });
     }
 
+    // Preserve manager_run_generators() ordering: output setup is attempted
+    // after the cheap path-existence gate but before executable enumeration.
+    // Consequently an invalid output path remains a startup error even when
+    // the existing search directory contains no usable generator.
     let [output, early, late] = paths
         .generator_triplet()
         .ok_or(LookupPathsError::MissingGeneratorDirectories)?;
     lookup_paths_mkdir_generator(paths)?;
+
+    let mut discovery = discover_generator_executables(search_directories);
+    path_errors.append(&mut discovery.ignored_errors);
+    discovery.ignored_errors = path_errors;
 
     let invocations = discovery
         .executables
@@ -247,6 +278,7 @@ pub fn prepare_generator_run(
     Ok(PreparedGeneratorRun {
         discovery,
         invocations,
+        output_directories_prepared: true,
     })
 }
 
@@ -567,6 +599,56 @@ mod tests {
         assert!(run.discovery.masked_names.is_empty());
         assert!(run.discovery.ignored_errors.is_empty());
         assert_eq!(run.invocations.len(), 1);
+        assert!(run.output_directories_prepared);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn existing_empty_search_directory_still_prepares_and_marks_output_triplet() {
+        let root = temp_root("prepare-empty-search-path");
+        let binaries = root.join("binaries");
+        fs::create_dir_all(&binaries).unwrap();
+        let paths = sample_paths(&root.join("outputs"));
+
+        let run = prepare_generator_run(&paths, &[binaries]).unwrap();
+
+        assert!(run.discovery.executables.is_empty());
+        assert!(run.invocations.is_empty());
+        assert!(run.output_directories_prepared);
+        assert!(paths.generator.as_ref().unwrap().is_dir());
+        assert!(paths.generator_early.as_ref().unwrap().is_dir());
+        assert!(paths.generator_late.as_ref().unwrap().is_dir());
+
+        lookup_paths_trim_generator(&paths).unwrap();
+        assert!(!paths.generator.as_ref().unwrap().exists());
+        assert!(!paths.generator_early.as_ref().unwrap().exists());
+        assert!(!paths.generator_late.as_ref().unwrap().exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn absent_search_paths_skip_output_validation_and_creation() {
+        let root = temp_root("prepare-no-search-path");
+        let paths = LookupPaths::default();
+
+        let run = prepare_generator_run(&paths, &[root.join("missing")]).unwrap();
+
+        assert!(run.discovery.executables.is_empty());
+        assert!(run.invocations.is_empty());
+        assert!(!run.output_directories_prepared);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn existing_search_path_validates_outputs_before_enumerating_executables() {
+        let root = temp_root("prepare-validates-outputs-first");
+        let binaries = root.join("empty-binaries");
+        fs::create_dir_all(&binaries).unwrap();
+
+        assert_eq!(
+            prepare_generator_run(&LookupPaths::default(), &[binaries]),
+            Err(LookupPathsError::MissingGeneratorDirectories)
+        );
         let _ = fs::remove_dir_all(root);
     }
 

@@ -14,6 +14,7 @@ mod imp {
     use std::cell::RefCell;
     use std::io::{self, IoSliceMut};
     use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+    use std::os::unix::fs::MetadataExt;
     use std::os::unix::net::UnixDatagram;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
@@ -217,8 +218,21 @@ mod imp {
     pub struct NotifySourceOwner {
         socket: UnixDatagram,
         path: PathBuf,
+        /// Device/inode identity captured immediately after bind. Cleanup
+        /// may remove the pathname only while it still names this exact
+        /// socket; a later manager or an administrator may safely replace it.
+        bound_identity: (u64, u64),
         ready: Rc<RefCell<bool>>,
         registered: Option<OwnedFd>,
+    }
+
+    fn remove_owned_path(path: &Path, bound_identity: (u64, u64)) {
+        let still_owned = std::fs::metadata(path)
+            .map(|metadata| (metadata.dev(), metadata.ino()) == bound_identity)
+            .unwrap_or(false);
+        if still_owned {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     impl NotifySourceOwner {
@@ -239,12 +253,30 @@ mod imp {
             }
 
             let socket = UnixDatagram::bind(path)?;
-            socket.set_nonblocking(true)?;
-            setsockopt(&socket, sockopt::PassCred, &true)
-                .map_err(|error| io::Error::from_raw_os_error(error as i32))?;
+            let metadata = match std::fs::metadata(path) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    // The descriptor remains owned by this stack frame and
+                    // will close on return. Do not attempt an unconditional
+                    // unlink when ownership could not be proven.
+                    return Err(error);
+                }
+            };
+            let bound_identity = (metadata.dev(), metadata.ino());
+            if let Err(error) = socket.set_nonblocking(true) {
+                remove_owned_path(path, bound_identity);
+                return Err(error);
+            }
+            if let Err(error) = setsockopt(&socket, sockopt::PassCred, &true)
+                .map_err(|error| io::Error::from_raw_os_error(error as i32))
+            {
+                remove_owned_path(path, bound_identity);
+                return Err(error);
+            }
             Ok(Self {
                 socket,
                 path: path.to_path_buf(),
+                bound_identity,
                 ready: Rc::new(RefCell::new(false)),
                 registered: None,
             })
@@ -381,6 +413,12 @@ mod imp {
         }
     }
 
+    impl Drop for NotifySourceOwner {
+        fn drop(&mut self) {
+            remove_owned_path(&self.path, self.bound_identity);
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -426,7 +464,7 @@ mod imp {
             owner.unregister(&mut event_loop).unwrap();
             assert!(!owner.registered());
             drop((sender, owner));
-            std::fs::remove_file(path).unwrap();
+            assert!(!path.exists());
         }
 
         #[test]
@@ -441,7 +479,7 @@ mod imp {
             assert_eq!(owner.recv_one().unwrap().text, "READY=1");
 
             drop((sender, owner));
-            std::fs::remove_file(path).unwrap();
+            assert!(!path.exists());
         }
 
         #[test]
@@ -454,6 +492,19 @@ mod imp {
                     .kind(),
                 io::ErrorKind::AlreadyExists
             );
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn drop_does_not_remove_a_replaced_path() {
+            let path = socket_path("replacement");
+            let owner = NotifySourceOwner::bind(&path).unwrap();
+            std::fs::remove_file(&path).unwrap();
+            std::fs::write(&path, b"foreign path").unwrap();
+
+            drop(owner);
+
+            assert_eq!(std::fs::read(&path).unwrap(), b"foreign path");
             std::fs::remove_file(path).unwrap();
         }
 

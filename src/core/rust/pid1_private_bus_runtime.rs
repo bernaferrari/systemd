@@ -64,6 +64,10 @@ mod imp {
     pub enum Pid1PrivateBusRuntimeError {
         Server(PrivateBusServerError),
         CommandInbox(nix::errno::Errno),
+        /// Teardown has detached this owner from the event loop. Dispatching
+        /// its stale transport or shared command inbox afterward could act on
+        /// a peer whose reply route has already been released.
+        Unregistered,
     }
 
     impl From<PrivateBusServerError> for Pid1PrivateBusRuntimeError {
@@ -81,6 +85,7 @@ mod imp {
     pub struct Pid1PrivateBusRuntime {
         server: PrivateBusServer,
         adapter: Pid1DbusCommandAdapter,
+        active: bool,
     }
 
     impl Pid1PrivateBusRuntime {
@@ -104,6 +109,7 @@ mod imp {
             Ok(Self {
                 server,
                 adapter: Pid1DbusCommandAdapter::new(command_sender),
+                active: true,
             })
         }
 
@@ -129,6 +135,7 @@ mod imp {
             Ok(Some(Self {
                 server,
                 adapter: Pid1DbusCommandAdapter::new(command_sender),
+                active: true,
             }))
         }
 
@@ -153,6 +160,9 @@ mod imp {
             budget: Pid1PrivateBusTurnBudget,
             server_id: impl FnMut() -> Result<[u8; 16], nix::errno::Errno>,
         ) -> Result<Pid1PrivateBusTurnOutcome, Pid1PrivateBusRuntimeError> {
+            if !self.active {
+                return Err(Pid1PrivateBusRuntimeError::Unregistered);
+            }
             let ingress =
                 self.server
                     .dispatch_ready(event_loop, &self.adapter, budget.server, server_id)?;
@@ -177,8 +187,18 @@ mod imp {
             &mut self,
             event_loop: &mut EventLoop,
         ) -> Result<(), Pid1PrivateBusRuntimeError> {
-            self.server.unregister(event_loop)?;
-            Ok(())
+            if !self.active {
+                return Ok(());
+            }
+
+            // `PrivateBusServer::unregister()` is deliberately best-effort:
+            // it removes every owned source/stream even when an epoll delete
+            // reports an error. Once that teardown starts, no later turn may
+            // touch the shared command inbox through this reply-less
+            // transport, regardless of the returned status.
+            let result = self.server.unregister(event_loop);
+            self.active = false;
+            result.map_err(Into::into)
         }
     }
 
@@ -408,6 +428,18 @@ mod imp {
 
             private_bus.unregister(&mut event_loop).unwrap();
             assert_eq!(private_bus.retained_connection_count(), 0);
+            assert!(matches!(
+                private_bus.dispatch_turn(
+                    &mut event_loop,
+                    &mut command_inbox,
+                    &mut manager,
+                    &mut authorizer,
+                    budget(),
+                    || Ok([0x5a; 16]),
+                ),
+                Err(Pid1PrivateBusRuntimeError::Unregistered)
+            ));
+            private_bus.unregister(&mut event_loop).unwrap();
             std::fs::remove_file(path).unwrap();
         }
 

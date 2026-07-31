@@ -24,6 +24,14 @@ pub(crate) enum AuthenticatedNotifyDispatch {
     IgnoredUnknownSender {
         pid: u32,
     },
+    /// The numeric credential maps to a unit, but does not have a live,
+    /// manager-owned pidfd identity. Numeric PID fallback is deliberately
+    /// forbidden for manager state changes, because a stale routing entry
+    /// must not authorize a recycled PID.
+    IgnoredUnstableIdentity {
+        unit: String,
+        pid: u32,
+    },
     IgnoredUnauthorized {
         unit: String,
         pid: u32,
@@ -60,6 +68,18 @@ impl RuntimeManager {
         let Some(unit) = self.pid_to_unit_map.get(&sender_pid).cloned() else {
             return AuthenticatedNotifyDispatch::IgnoredUnknownSender { pid: sender_pid };
         };
+        // SCM_CREDENTIALS proves who sent this datagram at receive time, but
+        // it does not turn its numeric PID into a stable lifecycle token. A
+        // tracked pidfd remains tied to the original task: signal 0 fails if
+        // that task exited, even if Linux has already recycled the number.
+        // This deliberately rejects NotifyAccess=all cgroup descendants
+        // until cgroup routing can acquire and verify their own pidfds.
+        if !self.has_live_notify_identity(sender_pid) {
+            return AuthenticatedNotifyDispatch::IgnoredUnstableIdentity {
+                unit,
+                pid: sender_pid,
+            };
+        }
         let authorized = i32::try_from(sender_pid).ok().is_some_and(|pid| {
             self.services
                 .get(&unit)
@@ -176,6 +196,17 @@ impl RuntimeManager {
             fd_store_ignored: !matches!(notification.fd_store, NotifyFdStoreRequest::None),
             status_observed: notification.status.is_some(),
         }
+    }
+
+    /// The only currently supported notify route is an exact, live process
+    /// which PID 1 already owns in `ProcessTracker`. This is intentionally
+    /// narrower than C's cgroup-based `manager_get_units_for_pidref()` and is
+    /// the explicit fail-closed boundary that keeps this model disconnected
+    /// from production transport.
+    fn has_live_notify_identity(&self, pid: u32) -> bool {
+        self.process_tracker
+            .identity(pid)
+            .is_some_and(|identity| identity.has_pidfd() && identity.signal(0).is_ok())
     }
 
     #[cfg(target_os = "linux")]

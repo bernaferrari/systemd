@@ -84,6 +84,12 @@ fn authenticated_notify(pid: u32, text: &str) -> crate::pid1_notify_source::Pars
 
 #[cfg(target_os = "linux")]
 fn authorize_notify_main_pid(mgr: &mut RuntimeManager, name: &str, pid: u32) {
+    let identity = systemd_platform_rs::spawn::ProcessTracker::acquire_identity(pid)
+        .expect("test sender must have a pidfd identity");
+    assert!(identity.has_pidfd());
+    mgr.process_tracker
+        .adopt_identity(identity)
+        .expect("test sender identity must be adoptable");
     mgr.inject_test_main_pid(name, pid);
     let service = mgr.services.get_mut(name).unwrap();
     service.notify_access = NotifyAccess::Main;
@@ -107,10 +113,11 @@ fn authenticated_notify_ready_advances_only_an_authorized_notify_service() {
         ServiceType::Notify,
         |_| {},
     );
-    authorize_notify_main_pid(&mut mgr, "ready.service", 41_101);
+    let sender_pid = std::process::id();
+    authorize_notify_main_pid(&mut mgr, "ready.service", sender_pid);
 
     let outcome = mgr.dispatch_authenticated_notify(authenticated_notify(
-        41_101,
+        sender_pid,
         "READY=1\nSTATUS=ready\nMAINPID=999\nFDSTORE=1\nFDNAME=kept",
     ));
     assert!(matches!(
@@ -130,10 +137,11 @@ fn authenticated_notify_ready_advances_only_an_authorized_notify_service() {
         Some(ServiceState::Running)
     );
 
-    let outcome = mgr.dispatch_authenticated_notify(authenticated_notify(41_102, "READY=1"));
+    let unknown_pid = sender_pid.checked_add(1).unwrap();
+    let outcome = mgr.dispatch_authenticated_notify(authenticated_notify(unknown_pid, "READY=1"));
     assert_eq!(
         outcome,
-        AuthenticatedNotifyDispatch::IgnoredUnknownSender { pid: 41_102 }
+        AuthenticatedNotifyDispatch::IgnoredUnknownSender { pid: unknown_pid }
     );
 }
 
@@ -148,14 +156,15 @@ fn authenticated_notify_honors_reload_freshness_and_watchdog_ownership() {
         ServiceType::NotifyReload,
         |_| {},
     );
-    authorize_notify_main_pid(&mut mgr, "reload.service", 41_102);
+    let sender_pid = std::process::id();
+    authorize_notify_main_pid(&mut mgr, "reload.service", sender_pid);
     mgr.services
         .get_mut("reload.service")
         .unwrap()
         .reload_begin_usec = 77;
 
     let stale = mgr.dispatch_authenticated_notify(authenticated_notify(
-        41_102,
+        sender_pid,
         "RELOADING=1\nMONOTONIC_USEC=76",
     ));
     assert!(matches!(stale, AuthenticatedNotifyDispatch::Applied { .. }));
@@ -167,7 +176,7 @@ fn authenticated_notify_honors_reload_freshness_and_watchdog_ownership() {
     );
 
     let fresh = mgr.dispatch_authenticated_notify(authenticated_notify(
-        41_102,
+        sender_pid,
         "RELOADING=1\nMONOTONIC_USEC=77",
     ));
     assert!(matches!(fresh, AuthenticatedNotifyDispatch::Applied { .. }));
@@ -183,7 +192,7 @@ fn authenticated_notify_honors_reload_freshness_and_watchdog_ownership() {
         .get_mut("reload.service")
         .unwrap()
         .watchdog_usec = 1_000_000;
-    let ping = mgr.dispatch_authenticated_notify(authenticated_notify(41_102, "WATCHDOG=1"));
+    let ping = mgr.dispatch_authenticated_notify(authenticated_notify(sender_pid, "WATCHDOG=1"));
     assert!(matches!(
         ping,
         AuthenticatedNotifyDispatch::Applied {
@@ -196,7 +205,8 @@ fn authenticated_notify_honors_reload_freshness_and_watchdog_ownership() {
             .contains_key("reload.service")
     );
 
-    let stopping = mgr.dispatch_authenticated_notify(authenticated_notify(41_102, "STOPPING=1"));
+    let stopping =
+        mgr.dispatch_authenticated_notify(authenticated_notify(sender_pid, "STOPPING=1"));
     assert!(matches!(
         stopping,
         AuthenticatedNotifyDispatch::Applied {
@@ -213,6 +223,46 @@ fn authenticated_notify_honors_reload_freshness_and_watchdog_ownership() {
     assert!(
         !mgr.service_watchdog_deadlines
             .contains_key("reload.service")
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn authenticated_notify_rejects_a_numeric_pid_without_a_live_pidfd() {
+    let mut mgr = new_test_runtime_manager();
+    insert_fsm_service(
+        &mut mgr,
+        "untrusted.service",
+        ServiceState::Start,
+        ServiceType::Notify,
+        |_| {},
+    );
+    let stale_pid = 41_103;
+    // Deliberately create the legacy numeric route without adopting a process
+    // identity. A reused PID must never turn it into a notify authorization.
+    mgr.inject_test_main_pid("untrusted.service", stale_pid);
+    let service = mgr.services.get_mut("untrusted.service").unwrap();
+    service.notify_access = NotifyAccess::Main;
+    service.main_pid = Some(PidRef {
+        pid: stale_pid as i32,
+        start_time: None,
+        is_self: false,
+        is_child: Some(true),
+    });
+    service.main_pid_known = true;
+
+    assert_eq!(
+        mgr.dispatch_authenticated_notify(authenticated_notify(stale_pid, "READY=1")),
+        AuthenticatedNotifyDispatch::IgnoredUnstableIdentity {
+            unit: "untrusted.service".to_owned(),
+            pid: stale_pid,
+        }
+    );
+    assert_eq!(
+        mgr.services
+            .get("untrusted.service")
+            .map(|service| service.state),
+        Some(ServiceState::Start)
     );
 }
 
