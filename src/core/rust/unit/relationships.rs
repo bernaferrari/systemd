@@ -87,9 +87,10 @@ pub fn unit_dbus_path(unit: &Unit) -> Result<String> {
 pub fn unit_dbus_path_invocation_id(unit: &Unit) -> Result<String> {
     let id = unit.invocation_id.ok_or(UnitError::Missing)?;
     Ok(format!(
-        "/org/freedesktop/systemd1/unit/{}/invocation/{:02x?}",
-        sanitize_bus_path_fragment(unit.id.as_deref().ok_or(UnitError::Missing)?),
-        id
+        "/org/freedesktop/systemd1/unit/{}",
+        id.iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>(),
     ))
 }
 

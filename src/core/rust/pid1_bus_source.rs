@@ -131,6 +131,16 @@ mod imp {
             )
         }
 
+        /// Detach the wake descriptor from the current event-loop instance.
+        /// The inbox and its eventfd remain owned by the outer PID 1
+        /// lifecycle and may be registered again after a reexec/reload turn.
+        pub fn unregister(&self, event_loop: &mut EventLoop) -> Result<(), Errno> {
+            match event_loop.remove_source(&self.wake, PID1_BUS_COMMAND_SOURCE_ID) {
+                Err(Errno::ENOENT) => Ok(()),
+                result => result,
+            }
+        }
+
         pub fn dispatch_pending<A: Pid1CommandAuthorizer + ?Sized>(
             &mut self,
             runtime: &mut RuntimeManager,
@@ -199,6 +209,9 @@ mod imp {
             assert_eq!(outcome.dispatched, 1);
             assert_eq!(reply.try_recv(), Ok(Err(Pid1CommandError::Unauthorized)));
             assert_eq!(event_loop.run_once(0), Ok(false));
+            inbox.unregister(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(false));
+            inbox.unregister(&mut event_loop).unwrap();
         }
 
         #[test]

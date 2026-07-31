@@ -632,6 +632,10 @@ mod imp {
                     crate::pid1_manager_commands::Pid1CommandError::Unauthorized
                     | crate::pid1_manager_commands::Pid1CommandError::NoSuchUnit { .. }
                     | crate::pid1_manager_commands::Pid1CommandError::NoUnitForPid { .. }
+                    | crate::pid1_manager_commands::Pid1CommandError::NoUnitForInvocationId {
+                        ..
+                    }
+                    | crate::pid1_manager_commands::Pid1CommandError::NoUnitForCallerPid { .. }
                     | crate::pid1_manager_commands::Pid1CommandError::Runtime(_),
                 ),
             ) => Pid1DbusProtocolError::Failed,
@@ -1054,7 +1058,10 @@ mod imp {
         }
 
         fn wire_slot_config(input_capacity: usize) -> PrivateBusWireSlotConfig {
-            PrivateBusWireSlotConfig::new(input_capacity, NonZeroUsize::new(2).unwrap(), 512, 1024)
+            // The bounded Introspect reply is currently ~750 bytes. Keep the
+            // fixture above that protocol minimum while preserving a small,
+            // deterministic cap for malformed/oversized-frame tests below.
+            PrivateBusWireSlotConfig::new(input_capacity, NonZeroUsize::new(2).unwrap(), 1024, 2048)
         }
 
         fn push_padding(bytes: &mut Vec<u8>, alignment: usize) {
@@ -1135,6 +1142,25 @@ mod imp {
             push_header(&mut fields, 3, b's', "GetUnitByPID");
             push_header(&mut fields, 8, b'g', "u");
             let body = pid.to_le_bytes();
+            let mut output = vec![b'l', 1, 0, 1];
+            output.extend_from_slice(&(body.len() as u32).to_le_bytes());
+            output.extend_from_slice(&serial.to_le_bytes());
+            output.extend_from_slice(&(fields.len() as u32).to_le_bytes());
+            output.extend_from_slice(&fields);
+            push_padding(&mut output, 8);
+            output.extend_from_slice(&body);
+            output
+        }
+
+        fn manager_invocation_id_call(serial: u32, invocation_id: [u8; 16]) -> Vec<u8> {
+            let mut fields = Vec::new();
+            push_header(&mut fields, 1, b'o', "/org/freedesktop/systemd1");
+            push_header(&mut fields, 2, b's', "org.freedesktop.systemd1.Manager");
+            push_header(&mut fields, 3, b's', "GetUnitByInvocationID");
+            push_header(&mut fields, 8, b'g', "ay");
+            let mut body = Vec::with_capacity(4 + invocation_id.len());
+            body.extend_from_slice(&(invocation_id.len() as u32).to_le_bytes());
+            body.extend_from_slice(&invocation_id);
             let mut output = vec![b'l', 1, 0, 1];
             output.extend_from_slice(&(body.len() as u32).to_le_bytes());
             output.extend_from_slice(&serial.to_le_bytes());
@@ -1493,6 +1519,75 @@ mod imp {
                 frame
                     .windows(b"/org/freedesktop/systemd1/unit/example_2eservice".len())
                     .any(|window| window == b"/org/freedesktop/systemd1/unit/example_2eservice")
+            );
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn get_unit_by_invocation_id_wire_call_returns_id_stable_path() {
+            let invocation_id = [0xab; 16];
+            let call = manager_invocation_id_call(33, invocation_id);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "get-unit-by-invocation-id", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, mut inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert!(matches!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::Submitted { .. })
+            ));
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            let mut runtime = crate::runtime_manager::RuntimeManager::new();
+            runtime.inject_test_unit(
+                "example.service",
+                "Example Service",
+                crate::unit::ActiveState::Active,
+                "running",
+            );
+            runtime.inject_test_invocation_id("example.service", invocation_id);
+            assert_eq!(
+                inbox
+                    .dispatch_pending(
+                        &mut runtime,
+                        &mut AllowAuthorizer,
+                        NonZeroUsize::new(1).unwrap(),
+                    )
+                    .unwrap()
+                    .dispatched,
+                1
+            );
+            assert_eq!(
+                owner
+                    .poll_wire_slot_replies(wire_id, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .enqueued,
+                1
+            );
+            let frame = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap();
+            assert_eq!(frame[1], 2, "GetUnitByInvocationID must return, not error");
+            assert!(
+                frame
+                    .windows(
+                        b"/org/freedesktop/systemd1/unit/abababababababababababababababab".len()
+                    )
+                    .any(|window| {
+                        window == b"/org/freedesktop/systemd1/unit/abababababababababababababababab"
+                    })
             );
 
             owner.unregister(&mut event_loop).unwrap();

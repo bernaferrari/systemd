@@ -349,6 +349,33 @@ impl MethodCall {
         self.endian.read_u32(&self.body)
     }
 
+    /// Decode one D-Bus byte array (`ay`). The D-Bus array payload starts
+    /// with its four-byte byte length; because a byte has alignment one, its
+    /// elements immediately follow that length without additional padding.
+    ///
+    /// This intentionally returns an owned vector only after proving the
+    /// declared length consumes the complete, already bounded message body.
+    /// Callers that require a fixed-size value (such as `sd_id128_t`) must
+    /// validate that size at their semantic boundary.
+    pub fn decode_one_byte_array(&self) -> Result<Vec<u8>, WireError> {
+        if self.signature != "ay" {
+            return Err(WireError::InvalidSignature);
+        }
+        let length_bytes: [u8; 4] = self
+            .body
+            .get(..4)
+            .ok_or(WireError::Truncated)?
+            .try_into()
+            .map_err(|_| WireError::Truncated)?;
+        let length = usize::try_from(self.endian.read_u32(&length_bytes)?)
+            .map_err(|_| WireError::Overflow)?;
+        let end = 4usize.checked_add(length).ok_or(WireError::Overflow)?;
+        if end != self.body.len() {
+            return Err(WireError::InvalidBody);
+        }
+        Ok(self.body[4..].to_vec())
+    }
+
     pub fn decode_two_strings(&self) -> Result<(String, String), WireError> {
         if self.signature != "ss" {
             return Err(WireError::InvalidSignature);

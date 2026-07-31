@@ -578,6 +578,19 @@ impl RuntimeManager {
         Self::new_with_cgroup_root(cgroup_root)
     }
 
+    /// Verify that the manager's cgroup capability was opened successfully.
+    ///
+    /// C's `manager_new()` fails before startup when it cannot establish the
+    /// manager cgroup.  `CgroupRoot` intentionally keeps construction
+    /// infallible so unit-test managers can be assembled without a mounted
+    /// cgroupfs, but PID 1 must make the failure explicit before it queues any
+    /// boot job.  Keeping this check separate preserves the lightweight test
+    /// constructor while preventing a production manager from silently
+    /// running without cgroup accounting and process containment.
+    pub fn validate_cgroup_root(&self) -> std::io::Result<()> {
+        self.cgroup_root.handoff_fd().map(|_| ())
+    }
+
     fn new_with_cgroup_root(cgroup_root: PathBuf) -> Self {
         #[cfg(target_os = "linux")]
         let bound_stop_retry_timer = match systemd_platform_rs::time::BoottimeTimerFd::new() {

@@ -945,6 +945,21 @@ fn run_event_loop(
                         apply_signal_action(&mut guard, action)
                     };
                     if let Some(exit) = exit {
+                        exec_status_sources
+                            .unregister(&mut event_loop)
+                            .unwrap_or_else(|error| {
+                                fail_closed("exec-status event-source teardown", error)
+                            });
+                        socket_sources
+                            .unregister(&mut event_loop)
+                            .unwrap_or_else(|error| {
+                                fail_closed("socket event-source teardown", error)
+                            });
+                        idle_pipe_source
+                            .unregister(&mut event_loop)
+                            .unwrap_or_else(|error| {
+                                fail_closed("idle-pipe event-source teardown", error)
+                            });
                         cgroup_source
                             .unregister(&mut event_loop)
                             .unwrap_or_else(|error| {
@@ -955,6 +970,11 @@ fn run_event_loop(
                                 .unregister(&mut event_loop)
                                 .unwrap_or_else(|error| fail_closed("private-bus teardown", error));
                         }
+                        command_inbox
+                            .unregister(&mut event_loop)
+                            .unwrap_or_else(|error| {
+                                fail_closed("manager bus command-source teardown", error)
+                            });
                         return ManagerLoopExit::from_signal(
                             exit,
                             reclaim_event_loop_runtime(runtime),
@@ -1035,6 +1055,19 @@ fn run_event_loop(
                         })
                 };
                 if let Some(request) = command_outcome.objective {
+                    exec_status_sources
+                        .unregister(&mut event_loop)
+                        .unwrap_or_else(|error| {
+                            fail_closed("exec-status event-source teardown", error)
+                        });
+                    socket_sources
+                        .unregister(&mut event_loop)
+                        .unwrap_or_else(|error| fail_closed("socket event-source teardown", error));
+                    idle_pipe_source
+                        .unregister(&mut event_loop)
+                        .unwrap_or_else(|error| {
+                            fail_closed("idle-pipe event-source teardown", error)
+                        });
                     cgroup_source
                         .unregister(&mut event_loop)
                         .unwrap_or_else(|error| fail_closed("cgroup event-source teardown", error));
@@ -1043,6 +1076,11 @@ fn run_event_loop(
                             .unregister(&mut event_loop)
                             .unwrap_or_else(|error| fail_closed("private-bus teardown", error));
                     }
+                    command_inbox
+                        .unregister(&mut event_loop)
+                        .unwrap_or_else(|error| {
+                            fail_closed("manager bus command-source teardown", error)
+                        });
                     return ManagerLoopExit::from_command(
                         reclaim_event_loop_runtime(runtime),
                         request,
@@ -1149,6 +1187,14 @@ fn main() {
     let mut runtime = manager_cgroup_root
         .map(RuntimeManager::new_at_cgroup_root)
         .unwrap_or_else(RuntimeManager::new);
+
+    // Match C's manager_new(): a system manager without an opened cgroup
+    // authority cannot safely account, contain, or reap its units.  The
+    // constructor remains infallible for synthetic unit tests, so enforce the
+    // production failure boundary here before any boot transaction is queued.
+    if is_pid1 && let Err(error) = runtime.validate_cgroup_root() {
+        fail_closed("manager cgroup capability", error);
+    }
 
     if is_pid1 {
         boot_log("step 6/8: select boot target");

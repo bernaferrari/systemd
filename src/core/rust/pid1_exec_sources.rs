@@ -193,6 +193,24 @@ impl ExecStatusSourceOwner {
             .map(|inbox| !inbox.is_empty())
     }
 
+    /// Detach every exec-status registration before the current manager-loop
+    /// invocation ends. Pending status channels remain owned by
+    /// `RuntimeManager` and can be registered again by the next invocation.
+    pub fn unregister(&mut self, event_loop: &mut EventLoop) -> Result<(), Errno> {
+        let pids: Vec<u32> = self.registered.keys().copied().collect();
+        for pid in pids {
+            let Some(source) = self.registered.remove(&pid) else {
+                continue;
+            };
+            event_loop.remove_source(&source.fd, source.data_id)?;
+        }
+        self.inbox
+            .try_borrow_mut()
+            .map_err(|_| Errno::EBUSY)?
+            .clear();
+        Ok(())
+    }
+
     pub fn registered_count(&self) -> usize {
         self.registered.len()
     }

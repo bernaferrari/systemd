@@ -119,6 +119,16 @@ impl IdlePipeSourceOwner {
         Ok(value)
     }
 
+    /// Detach the registration clone while leaving the manager-owned idle
+    /// gate intact for a subsequent event-loop invocation.
+    pub fn unregister(&mut self, event_loop: &mut EventLoop) -> Result<(), Errno> {
+        *self.alerted.try_borrow_mut().map_err(|_| Errno::EBUSY)? = false;
+        let Some(registered) = self.registered.take() else {
+            return Ok(());
+        };
+        event_loop.remove_source(&registered.fd, IDLE_PIPE_SOURCE_ID)
+    }
+
     pub fn registered(&self) -> bool {
         self.registered.is_some()
     }
@@ -155,6 +165,20 @@ mod tests {
         assert!(source.take_alert().unwrap());
         assert!(!source.take_alert().unwrap());
 
+        source.unregister(&mut event_loop).unwrap();
+        assert!(!source.registered());
+        assert_eq!(event_loop.run_once(0), Ok(false));
+        source.unregister(&mut event_loop).unwrap();
+
+        // Teardown owns only the epoll duplicate. The manager retains and can
+        // expose the same generation again in a fresh manager-loop invocation.
+        source
+            .reconcile(
+                &mut event_loop,
+                runtime.idle_pipe_alert_descriptor().unwrap(),
+            )
+            .unwrap();
+        assert!(source.registered());
         runtime.close_idle_pipe();
         source.reconcile(&mut event_loop, None).unwrap();
         assert!(!source.registered());

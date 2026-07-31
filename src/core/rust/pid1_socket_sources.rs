@@ -191,7 +191,57 @@ impl SocketSourceOwner {
             .pop_front())
     }
 
+    /// Detach every listener registration before the manager event-loop
+    /// invocation is destroyed or its runtime is handed back to the outer
+    /// lifecycle. The manager remains the authoritative listener owner; this
+    /// drops only the duplicated descriptors used by epoll.
+    pub fn unregister(&mut self, event_loop: &mut EventLoop) -> Result<(), Errno> {
+        let keys: Vec<SourceKey> = self.registered.keys().cloned().collect();
+        for key in keys {
+            let Some(source) = self.registered.remove(&key) else {
+                continue;
+            };
+            event_loop.remove_source(&source.fd, source.data_id)?;
+        }
+        self.inbox
+            .try_borrow_mut()
+            .map_err(|_| Errno::EBUSY)?
+            .clear();
+        Ok(())
+    }
+
     pub fn registered_count(&self) -> usize {
         self.registered.len()
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use crate::socket_activation::SocketActivationManager;
+
+    #[test]
+    fn teardown_detaches_all_listener_sources_and_is_idempotent() {
+        let mut sockets = SocketActivationManager::new();
+        sockets
+            .register_listen_streams(
+                "listener.socket",
+                &["127.0.0.1:0".to_string(), "127.0.0.1:0".to_string()],
+                None,
+            )
+            .unwrap();
+        let mut event_loop = EventLoop::new().unwrap();
+        let mut sources = SocketSourceOwner::new();
+        sources
+            .reconcile(&mut event_loop, sockets.listener_descriptors())
+            .unwrap();
+        assert_eq!(sources.registered_count(), 2);
+
+        sources.unregister(&mut event_loop).unwrap();
+        assert_eq!(sources.registered_count(), 0);
+        assert_eq!(event_loop.run_once(0), Ok(false));
+
+        sources.unregister(&mut event_loop).unwrap();
+        assert_eq!(sources.registered_count(), 0);
     }
 }

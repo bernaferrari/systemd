@@ -7,7 +7,9 @@ use crate::ffi::Errno;
 use crate::job::Job;
 use crate::runtime_manager::RuntimeManager;
 use crate::transaction::JobMode;
-use crate::unit::{ActiveState, LoadState, PidRef, Unit, unit_dbus_path};
+use crate::unit::{
+    ActiveState, LoadState, PidRef, Unit, unit_dbus_path, unit_dbus_path_invocation_id,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Virtualization {
@@ -278,6 +280,38 @@ pub fn manager_get_unit_path_by_invocation_id(
         .find(|unit| unit.invocation_id == Some(parsed))
         .ok_or(Errno::ENOENT)?;
     unit_dbus_path(unit).map_err(|_| Errno::EINVAL)
+}
+
+/// Resolve an already-loaded unit by its binary invocation ID and return the
+/// invocation-ID-stable object path. This is deliberately distinct from the
+/// legacy string helper above: the D-Bus API carries `sd_id128_t` as `ay`, not
+/// as a printable string, and C returns a path keyed by that ID rather than
+/// the unit's mutable name.
+pub fn manager_get_unit_invocation_path_by_id(
+    runtime: &RuntimeManager,
+    invocation_id: [u8; 16],
+) -> Result<String> {
+    let unit = runtime
+        .list_units()
+        .into_iter()
+        .find(|unit| unit.invocation_id == Some(invocation_id))
+        .ok_or(Errno::ENOENT)?;
+    unit_dbus_path_invocation_id(unit).map_err(|_| Errno::EINVAL)
+}
+
+/// Resolve an already-loaded unit by PID and return its invocation-ID-stable
+/// object path. The caller supplies a kernel-authenticated PID when this is
+/// used for the all-zero invocation ID D-Bus convention.
+pub fn manager_get_unit_invocation_path_by_pid(
+    runtime: &RuntimeManager,
+    pid: u32,
+) -> Result<String> {
+    let unit = runtime
+        .list_units()
+        .into_iter()
+        .find(|unit| unit_matches_pid(unit, pid))
+        .ok_or(Errno::ENOENT)?;
+    unit_dbus_path_invocation_id(unit).map_err(|_| Errno::EINVAL)
 }
 
 pub fn manager_get_unit_path_by_control_group(

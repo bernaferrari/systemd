@@ -22,6 +22,7 @@ const ERROR_LIMITS_EXCEEDED: &str = "org.freedesktop.DBus.Error.LimitsExceeded";
 const ERROR_DISCONNECTED: &str = "org.freedesktop.DBus.Error.Disconnected";
 const ERROR_NO_SUCH_UNIT: &str = "org.freedesktop.systemd1.NoSuchUnit";
 const ERROR_NO_UNIT_FOR_PID: &str = "org.freedesktop.systemd1.NoUnitForPID";
+const ERROR_NO_UNIT_FOR_INVOCATION_ID: &str = "org.freedesktop.systemd1.NoUnitForInvocationID";
 
 const MESSAGE_ACCESS_DENIED: &str = "Permission denied.";
 const MESSAGE_RUNTIME_FAILED: &str = "PID 1 manager command failed.";
@@ -40,7 +41,8 @@ const PID1_SHADOW_INTROSPECTION_XML: &str = concat!(
     "<method name=\"Introspect\"/>",
     "</interface>",
     "<interface name=\"org.freedesktop.systemd1.Manager\">",
-    "<method name=\"GetUnit\"/><method name=\"LoadUnit\"/>",
+    "<method name=\"GetUnit\"/><method name=\"GetUnitByPID\"/>",
+    "<method name=\"GetUnitByInvocationID\"/><method name=\"LoadUnit\"/>",
     "<method name=\"StartUnit\"/><method name=\"StopUnit\"/>",
     "<method name=\"ReloadUnit\"/><method name=\"RestartUnit\"/>",
     "</interface>",
@@ -144,6 +146,24 @@ impl Pid1DbusReplyAdapter {
                     &message,
                 )
             }
+            Err(Pid1CommandError::NoUnitForInvocationId { invocation_id }) => {
+                let id = invocation_id
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>();
+                let message = format!("No unit with the specified invocation ID {id} known.");
+                encode_error_reply(
+                    endian,
+                    serial,
+                    reply_serial,
+                    ERROR_NO_UNIT_FOR_INVOCATION_ID,
+                    &message,
+                )
+            }
+            Err(Pid1CommandError::NoUnitForCallerPid { pid }) => {
+                let message = format!("Client {pid} not member of any unit.");
+                encode_error_reply(endian, serial, reply_serial, ERROR_NO_SUCH_UNIT, &message)
+            }
             Err(error) => {
                 let (name, message) = error_details(error);
                 encode_error_reply(endian, serial, reply_serial, name, message)
@@ -186,6 +206,12 @@ fn error_details(error: Pid1CommandError) -> (&'static str, &'static str) {
         Pid1CommandError::Unauthorized => (ERROR_ACCESS_DENIED, MESSAGE_ACCESS_DENIED),
         Pid1CommandError::NoSuchUnit { .. } => unreachable!("handled with its unit name"),
         Pid1CommandError::NoUnitForPid { .. } => unreachable!("handled with its PID"),
+        Pid1CommandError::NoUnitForInvocationId { .. } => {
+            unreachable!("handled with its invocation ID")
+        }
+        Pid1CommandError::NoUnitForCallerPid { .. } => {
+            unreachable!("handled with its caller PID")
+        }
         Pid1CommandError::Runtime(_) => (ERROR_FAILED, MESSAGE_RUNTIME_FAILED),
         Pid1CommandError::InboxFull => (ERROR_LIMITS_EXCEEDED, MESSAGE_INBOX_FULL),
         Pid1CommandError::InboxClosed => (ERROR_DISCONNECTED, MESSAGE_INBOX_CLOSED),
@@ -347,6 +373,18 @@ mod tests {
                 Pid1CommandError::NoUnitForPid { pid: 4242 },
                 ERROR_NO_UNIT_FOR_PID,
                 "PID 4242 does not belong to any loaded unit.",
+            ),
+            (
+                Pid1CommandError::NoUnitForInvocationId {
+                    invocation_id: [0x42; 16],
+                },
+                ERROR_NO_UNIT_FOR_INVOCATION_ID,
+                "No unit with the specified invocation ID 42424242424242424242424242424242 known.",
+            ),
+            (
+                Pid1CommandError::NoUnitForCallerPid { pid: 4242 },
+                ERROR_NO_SUCH_UNIT,
+                "Client 4242 not member of any unit.",
             ),
             (
                 Pid1CommandError::InboxFull,

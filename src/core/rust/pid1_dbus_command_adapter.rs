@@ -4,7 +4,7 @@
 // PORT-SYNC: src/core/dbus.c (the direct private-bus manager method dispatch).
 //!
 //! This adapter supports the standard `Introspectable.Introspect` request and
-//! only `GetUnit`, `GetUnitByPID`, `LoadUnit`, `StartUnit`, `StopUnit`,
+//! only `GetUnit`, `GetUnitByPID`, `GetUnitByInvocationID`, `LoadUnit`, `StartUnit`, `StopUnit`,
 //! `ReloadUnit`, and `RestartUnit` at the manager object path.
 //! It deliberately has no socket, reply, event-loop, or authorization policy:
 //! callers must supply the `SenderIdentity` derived from the connection's
@@ -109,6 +109,9 @@ impl Pid1DbusCommandAdapter {
             "GetUnitByPID" => Ok(Pid1ManagerCommand::GetUnitByPid {
                 pid: decode_one_u32(call)?,
             }),
+            "GetUnitByInvocationID" => Ok(Pid1ManagerCommand::GetUnitByInvocationId {
+                invocation_id: decode_invocation_id(call)?,
+            }),
             "LoadUnit" => Ok(Pid1ManagerCommand::LoadUnit {
                 name: decode_one_string(call)?,
             }),
@@ -212,6 +215,22 @@ fn decode_one_u32(call: &MethodCall) -> Result<u32, Pid1DbusCommandAdapterError>
         .map_err(|cause| Pid1DbusCommandAdapterError::InvalidPayload {
             member: call.member.clone(),
             cause,
+        })
+}
+
+fn decode_invocation_id(call: &MethodCall) -> Result<[u8; 16], Pid1DbusCommandAdapterError> {
+    require_signature(call, "ay")?;
+    let bytes = call.decode_one_byte_array().map_err(|cause| {
+        Pid1DbusCommandAdapterError::InvalidPayload {
+            member: call.member.clone(),
+            cause,
+        }
+    })?;
+    bytes
+        .try_into()
+        .map_err(|_| Pid1DbusCommandAdapterError::InvalidPayload {
+            member: call.member.clone(),
+            cause: WireError::InvalidBody,
         })
 }
 
@@ -360,6 +379,26 @@ mod tests {
         decode_method_call(&bytes).unwrap().unwrap().0
     }
 
+    fn invocation_id_call(invocation_id: [u8; 16]) -> MethodCall {
+        let endian = Endian::Little;
+        let mut fields = Vec::new();
+        push_header(endian, &mut fields, 1, b'o', PID1_MANAGER_PATH);
+        push_header(endian, &mut fields, 2, b's', PID1_MANAGER_INTERFACE);
+        push_header(endian, &mut fields, 3, b's', "GetUnitByInvocationID");
+        push_header(endian, &mut fields, 8, b'g', "ay");
+        let mut body = Vec::with_capacity(4 + invocation_id.len());
+        body.extend_from_slice(&(invocation_id.len() as u32).to_le_bytes());
+        body.extend_from_slice(&invocation_id);
+        let mut bytes = vec![b'l', 1, 0, 1];
+        bytes.extend_from_slice(&(u32::try_from(body.len()).unwrap()).to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&(u32::try_from(fields.len()).unwrap()).to_le_bytes());
+        bytes.extend_from_slice(&fields);
+        push_padding(&mut bytes, 8);
+        bytes.extend_from_slice(&body);
+        decode_method_call(&bytes).unwrap().unwrap().0
+    }
+
     #[test]
     fn maps_the_bounded_manager_method_subset() {
         assert_eq!(
@@ -383,6 +422,12 @@ mod tests {
         assert_eq!(
             Pid1DbusCommandAdapter::command_for(&pid_call("GetUnitByPID", 42)),
             Ok(Pid1ManagerCommand::GetUnitByPid { pid: 42 })
+        );
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&invocation_id_call([0x42; 16])),
+            Ok(Pid1ManagerCommand::GetUnitByInvocationId {
+                invocation_id: [0x42; 16],
+            })
         );
         assert_eq!(
             Pid1DbusCommandAdapter::command_for(&call("LoadUnit", "s", &["a.service"])),

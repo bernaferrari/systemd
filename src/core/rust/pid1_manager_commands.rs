@@ -85,6 +85,13 @@ pub enum Pid1ManagerCommand {
     GetUnitByPid {
         pid: u32,
     },
+    /// Return the invocation-ID object path for an already-loaded unit.
+    /// A null ID resolves the authenticated caller's unit, matching
+    /// `method_get_unit_by_invocation_id()` in C. No unit is loaded while
+    /// performing either lookup.
+    GetUnitByInvocationId {
+        invocation_id: [u8; 16],
+    },
     LoadUnit {
         name: String,
     },
@@ -134,6 +141,16 @@ pub enum Pid1CommandError {
         name: String,
     },
     NoUnitForPid {
+        pid: u32,
+    },
+    /// A non-null invocation ID has no loaded unit. C exposes this separately
+    /// from `NoSuchUnit` and `NoUnitForPID`.
+    NoUnitForInvocationId {
+        invocation_id: [u8; 16],
+    },
+    /// A null invocation ID asks for the kernel-authenticated caller's unit.
+    /// C reports this as `NoSuchUnit` with a caller-specific diagnostic.
+    NoUnitForCallerPid {
         pid: u32,
     },
     Runtime(Errno),
@@ -364,6 +381,29 @@ fn dispatch(
                 Err(Errno::ENOENT) => Err(Pid1CommandError::NoUnitForPid { pid }),
                 Err(error) => Err(Pid1CommandError::Runtime(error)),
             };
+        }
+        Pid1ManagerCommand::GetUnitByInvocationId { invocation_id } => {
+            let path = if invocation_id == [0; 16] {
+                crate::dbus_manager::manager_get_unit_invocation_path_by_pid(
+                    runtime,
+                    sender.peer().pid(),
+                )
+                .map_err(|error| match error {
+                    Errno::ENOENT => Pid1CommandError::NoUnitForCallerPid {
+                        pid: sender.peer().pid(),
+                    },
+                    error => Pid1CommandError::Runtime(error),
+                })?
+            } else {
+                crate::dbus_manager::manager_get_unit_invocation_path_by_id(runtime, invocation_id)
+                    .map_err(|error| match error {
+                        Errno::ENOENT => Pid1CommandError::NoUnitForInvocationId { invocation_id },
+                        error => Pid1CommandError::Runtime(error),
+                    })?
+            };
+            return Ok(Pid1CommandEffect::Reply(Pid1ManagerReply::UnitLoaded {
+                path,
+            }));
         }
         Pid1ManagerCommand::LoadUnit { name } => runtime.load_unit(&name).and_then(|()| {
             crate::dbus_manager::manager_get_unit_path(runtime, &name)
@@ -720,6 +760,110 @@ mod tests {
         assert_eq!(
             reply.try_recv(),
             Ok(Err(Pid1CommandError::NoUnitForPid { pid: 4242 }))
+        );
+        assert_eq!(runtime.unit_count(), 0);
+    }
+
+    #[test]
+    fn get_unit_by_invocation_id_returns_its_id_stable_path_without_loading() {
+        let invocation_id = [0xabu8; 16];
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender
+            .try_send(
+                sender_identity(),
+                Pid1ManagerCommand::GetUnitByInvocationId { invocation_id },
+            )
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+        runtime.inject_test_unit(
+            "example.service",
+            "Example Service",
+            crate::unit::ActiveState::Active,
+            "running",
+        );
+        runtime.inject_test_invocation_id("example.service", invocation_id);
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(
+            reply.try_recv(),
+            Ok(Ok(Pid1ManagerReply::UnitLoaded {
+                path: "/org/freedesktop/systemd1/unit/abababababababababababababababab".into(),
+            }))
+        );
+        assert_eq!(runtime.unit_count(), 1);
+    }
+
+    #[test]
+    fn null_invocation_id_resolves_the_authenticated_caller_only() {
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender
+            .try_send(
+                SenderIdentity::from_authenticated_peer(
+                    AuthenticatedPeer::from_kernel_peer_credentials(4242, 1000, 1000),
+                ),
+                Pid1ManagerCommand::GetUnitByInvocationId {
+                    invocation_id: [0; 16],
+                },
+            )
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+        runtime.inject_test_unit(
+            "example.service",
+            "Example Service",
+            crate::unit::ActiveState::Active,
+            "running",
+        );
+        runtime.inject_test_main_pid("example.service", 4242);
+        runtime.inject_test_invocation_id("example.service", [0xcd; 16]);
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(
+            reply.try_recv(),
+            Ok(Ok(Pid1ManagerReply::UnitLoaded {
+                path: "/org/freedesktop/systemd1/unit/cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd".into(),
+            }))
+        );
+    }
+
+    #[test]
+    fn missing_invocation_id_preserves_the_distinct_c_error_without_loading() {
+        let invocation_id = [0x42; 16];
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender
+            .try_send(
+                sender_identity(),
+                Pid1ManagerCommand::GetUnitByInvocationId { invocation_id },
+            )
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(
+            reply.try_recv(),
+            Ok(Err(Pid1CommandError::NoUnitForInvocationId {
+                invocation_id
+            }))
         );
         assert_eq!(runtime.unit_count(), 0);
     }
