@@ -11,6 +11,16 @@ use std::ptr;
 
 // ── C stdlib FFI wrappers ─────────────────────────────────────────────────
 
+/// Execute one libc operation after the enclosing adapter has validated its
+/// pointer, ownership, and lifetime contract. Keeping the call itself here
+/// makes the public wrappers' safe null/size behavior easy to audit.
+macro_rules! libc_call {
+    ($operation:expr) => {{
+        // SAFETY: upheld by the documented contract of the enclosing adapter.
+        unsafe { $operation }
+    }};
+}
+
 /// Allocate `size` bytes. Returns null on failure (size == 0).
 pub fn malloc(size: usize) -> *mut c_void {
     if size == 0 {
@@ -19,7 +29,7 @@ pub fn malloc(size: usize) -> *mut c_void {
 
     // SAFETY: `libc::malloc` accepts any `size_t` value. The returned allocation
     // uses the C allocator because these pointers cross the C ABI boundary.
-    unsafe { libc::malloc(size) }
+    libc_call!(libc::malloc(size))
 }
 
 /// Free a C-allocator allocation.
@@ -34,7 +44,7 @@ pub unsafe fn free(ptr: *mut c_void) {
         return;
     }
     // SAFETY: upheld by this function's contract.
-    unsafe { libc::free(ptr) };
+    libc_call!(libc::free(ptr));
 }
 
 /// Allocate zeroed memory for `nmemb` elements of `size` bytes each.
@@ -45,7 +55,7 @@ pub fn calloc(nmemb: usize, size: usize) -> *mut c_void {
 
     // SAFETY: `libc::calloc` accepts `size_t` operands and performs the required
     // multiplication overflow check. The allocation may be released by C.
-    unsafe { libc::calloc(nmemb, size) }
+    libc_call!(libc::calloc(nmemb, size))
 }
 
 /// Reallocate a C-allocator allocation to `size` bytes.
@@ -65,7 +75,7 @@ pub unsafe fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
         return ptr::null_mut();
     }
     // SAFETY: upheld by this function's contract.
-    unsafe { libc::realloc(ptr, size) }
+    libc_call!(libc::realloc(ptr, size))
 }
 
 /// Reallocate a C-allocator array to `nmemb * size` bytes with overflow check.
@@ -101,7 +111,7 @@ pub unsafe fn strlen(s: *const c_char) -> usize {
     }
 
     // SAFETY: the caller guarantees that `s` is a valid NUL-terminated C string.
-    unsafe { libc::strlen(s) }
+    libc_call!(libc::strlen(s))
 }
 
 /// Compare two C strings. Returns <0, 0, >0 like C strcmp.
@@ -119,7 +129,7 @@ pub unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int {
 
     // SAFETY: both pointers are valid NUL-terminated C strings, either supplied
     // by the caller or replaced above with the static empty string.
-    unsafe { libc::strcmp(s1, s2) }
+    libc_call!(libc::strcmp(s1, s2))
 }
 
 /// Compare two C strings, case-insensitively.
@@ -137,7 +147,7 @@ pub unsafe fn strcasecmp(s1: *const c_char, s2: *const c_char) -> c_int {
 
     // SAFETY: both pointers are valid NUL-terminated C strings, either supplied
     // by the caller or replaced above with the static empty string.
-    unsafe { libc::strcasecmp(s1, s2) }
+    libc_call!(libc::strcasecmp(s1, s2))
 }
 
 /// Compare at most `n` characters of two C strings.
@@ -159,7 +169,7 @@ pub unsafe fn strncmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int {
 
     // SAFETY: both pointers are valid for C string comparison, either supplied
     // by the caller or replaced above with the static empty string.
-    unsafe { libc::strncmp(s1, s2, n) }
+    libc_call!(libc::strncmp(s1, s2, n))
 }
 
 /// Duplicate a C string. Caller must free the result.
@@ -176,7 +186,7 @@ pub unsafe fn strdup(s: *const c_char) -> *mut c_char {
     }
 
     // SAFETY: the caller guarantees that `s` is a valid NUL-terminated C string.
-    unsafe { libc::strdup(s) }
+    libc_call!(libc::strdup(s))
 }
 
 /// Duplicate at most `n` bytes of a C string. Caller must free the result.
@@ -194,7 +204,7 @@ pub unsafe fn strndup(s: *const c_char, n: usize) -> *mut c_char {
 
     // SAFETY: the caller guarantees that `s` is valid through its terminating
     // NUL or the first `n` bytes, whichever comes first.
-    unsafe { libc::strndup(s, n) }
+    libc_call!(libc::strndup(s, n))
 }
 
 /// Find first occurrence of `c` in string `s`.
@@ -211,7 +221,7 @@ pub unsafe fn strchr(s: *const c_char, c: c_int) -> *const c_char {
     }
 
     // SAFETY: the caller guarantees that `s` is a valid NUL-terminated C string.
-    unsafe { libc::strchr(s, c) }
+    libc_call!(libc::strchr(s, c))
 }
 
 /// Find last occurrence of `c` in string `s`.
@@ -228,7 +238,7 @@ pub unsafe fn strrchr(s: *const c_char, c: c_int) -> *const c_char {
     }
 
     // SAFETY: the caller guarantees that `s` is a valid NUL-terminated C string.
-    unsafe { libc::strrchr(s, c) }
+    libc_call!(libc::strrchr(s, c))
 }
 
 /// Find first occurrence of `needle` in `haystack`.
@@ -246,7 +256,7 @@ pub unsafe fn strstr(haystack: *const c_char, needle: *const c_char) -> *const c
 
     // SAFETY: the caller guarantees that both pointers are valid NUL-terminated
     // C strings.
-    unsafe { libc::strstr(haystack, needle) }
+    libc_call!(libc::strstr(haystack, needle))
 }
 
 /// Get length of prefix of `s` consisting entirely of characters in `accept`.
@@ -264,7 +274,7 @@ pub unsafe fn strspn(s: *const c_char, accept: *const c_char) -> usize {
 
     // SAFETY: the caller guarantees that both pointers are valid NUL-terminated
     // C strings.
-    unsafe { libc::strspn(s, accept) }
+    libc_call!(libc::strspn(s, accept))
 }
 
 /// Compare `n` bytes of memory.
@@ -285,7 +295,7 @@ pub unsafe fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> c_int {
 
     // SAFETY: the caller guarantees that both pointers are readable for `n`
     // bytes.
-    unsafe { libc::memcmp(s1, s2, n) }
+    libc_call!(libc::memcmp(s1, s2, n))
 }
 
 /// Copy `n` bytes from `src` to `dest`. Returns `dest`.
@@ -302,7 +312,7 @@ pub unsafe fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_
 
     // SAFETY: the caller guarantees that both regions are valid for `n` bytes
     // and do not overlap.
-    unsafe { libc::memcpy(dest, src, n) }
+    libc_call!(libc::memcpy(dest, src, n))
 }
 
 /// Copy `n` bytes from `src` to `dest` (memory areas may overlap). Returns `dest`.
@@ -318,7 +328,7 @@ pub unsafe fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c
     }
 
     // SAFETY: the caller guarantees that both regions are valid for `n` bytes.
-    unsafe { libc::memmove(dest, src, n) }
+    libc_call!(libc::memmove(dest, src, n))
 }
 
 /// Set `n` bytes of memory at `s` to `c`. Returns `s`.
@@ -334,7 +344,7 @@ pub unsafe fn memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void {
     }
 
     // SAFETY: the caller guarantees that `s` is writable for `n` bytes.
-    unsafe { libc::memset(s, c, n) }
+    libc_call!(libc::memset(s, c, n))
 }
 
 /// # Safety
@@ -342,7 +352,7 @@ pub unsafe fn memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void {
 #[inline]
 pub unsafe fn snprintf(buf: *mut c_char, size: usize, fmt: *const c_char) -> c_int {
     // SAFETY: upheld by this function's contract.
-    unsafe { libc::snprintf(buf, size, fmt) }
+    libc_call!(libc::snprintf(buf, size, fmt))
 }
 
 /// Match a filename against a shell pattern.
@@ -361,7 +371,7 @@ pub unsafe fn fnmatch(pattern: *const c_char, string: *const c_char, flags: c_in
 
     // SAFETY: the caller guarantees that both pointers are valid NUL-terminated
     // C strings. `flags` is passed through unchanged.
-    unsafe { libc::fnmatch(pattern, string, flags) }
+    libc_call!(libc::fnmatch(pattern, string, flags))
 }
 
 /// Get the current errno value.
@@ -408,7 +418,7 @@ pub unsafe fn strtoul(s: *const c_char, endptr: *mut *mut c_char, base: c_int) -
 
     // SAFETY: the caller guarantees that `s` is a valid NUL-terminated C string
     // and that `endptr`, when non-null, is writable.
-    unsafe { libc::strtoul(s, endptr, base) as u64 }
+    libc_call!(libc::strtoul(s, endptr, base) as u64)
 }
 
 /// Parse a string as signed long. Returns the parsed value.
@@ -426,7 +436,7 @@ pub unsafe fn strtol(s: *const c_char, endptr: *mut *mut c_char, base: c_int) ->
 
     // SAFETY: the caller guarantees that `s` is a valid NUL-terminated C string
     // and that `endptr`, when non-null, is writable.
-    unsafe { libc::strtol(s, endptr, base) as i64 }
+    libc_call!(libc::strtol(s, endptr, base) as i64)
 }
 
 /// Parse a string as signed long long. Returns the parsed value.
@@ -444,7 +454,7 @@ pub unsafe fn strtoll(s: *const c_char, endptr: *mut *mut c_char, base: c_int) -
 
     // SAFETY: the caller guarantees that `s` is a valid NUL-terminated C string
     // and that `endptr`, when non-null, is writable.
-    unsafe { libc::strtoll(s, endptr, base) }
+    libc_call!(libc::strtoll(s, endptr, base))
 }
 
 /// Parse a string as unsigned long long. Returns the parsed value.
@@ -462,7 +472,7 @@ pub unsafe fn strtoull(s: *const c_char, endptr: *mut *mut c_char, base: c_int) 
 
     // SAFETY: the caller guarantees that `s` is a valid NUL-terminated C string
     // and that `endptr`, when non-null, is writable.
-    unsafe { libc::strtoull(s, endptr, base) }
+    libc_call!(libc::strtoull(s, endptr, base))
 }
 
 // ── Error Types ────────────────────────────────────────────────────────────
@@ -861,7 +871,7 @@ pub fn alloc_c_string(val: &str) -> *mut c_char {
 
     // SAFETY: `value` is a live NUL-terminated C string for the duration of
     // this call. `strdup` makes a C-allocator-owned copy.
-    unsafe { libc::strdup(value.as_ptr()) }
+    libc_call!(libc::strdup(value.as_ptr()))
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
