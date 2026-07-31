@@ -8,6 +8,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+use nix::unistd::{Gid, Uid};
 #[cfg(target_os = "linux")]
 use std::ffi::CStr;
 #[cfg(target_os = "linux")]
@@ -332,8 +333,7 @@ pub(super) fn resolve_group_name_from_gid(_gid: libc::gid_t) -> Option<String> {
 }
 
 pub(super) fn resolve_user_name() -> String {
-    // SAFETY: `geteuid` has no additional safety preconditions.
-    let uid = unsafe { libc::geteuid() };
+    let uid = Uid::effective().as_raw();
     resolve_passwd_record(uid)
         .map(|(name, _, _)| name)
         .or_else(|| env::var("USER").ok())
@@ -341,24 +341,20 @@ pub(super) fn resolve_user_name() -> String {
 }
 
 pub(super) fn resolve_user_id() -> String {
-    // SAFETY: `geteuid` has no additional safety preconditions.
-    unsafe { libc::geteuid() }.to_string()
+    Uid::effective().as_raw().to_string()
 }
 
 pub(super) fn resolve_group_name() -> String {
-    // SAFETY: `getegid` has no additional safety preconditions.
-    let gid = unsafe { libc::getegid() };
+    let gid = Gid::effective().as_raw();
     resolve_group_name_from_gid(gid).unwrap_or_default()
 }
 
 pub(super) fn resolve_group_id() -> String {
-    // SAFETY: `getegid` has no additional safety preconditions.
-    unsafe { libc::getegid() }.to_string()
+    Gid::effective().as_raw().to_string()
 }
 
 pub(super) fn resolve_user_home() -> String {
-    // SAFETY: `geteuid` has no additional safety preconditions.
-    let uid = unsafe { libc::geteuid() };
+    let uid = Uid::effective().as_raw();
     resolve_passwd_record(uid)
         .map(|(_, home, _)| home)
         .or_else(|| env::var("HOME").ok())
@@ -366,8 +362,7 @@ pub(super) fn resolve_user_home() -> String {
 }
 
 pub(super) fn resolve_user_shell() -> String {
-    // SAFETY: `geteuid` has no additional safety preconditions.
-    let uid = unsafe { libc::geteuid() };
+    let uid = Uid::effective().as_raw();
     resolve_passwd_record(uid)
         .map(|(_, _, shell)| shell)
         .or_else(|| env::var("SHELL").ok())
@@ -376,19 +371,10 @@ pub(super) fn resolve_user_shell() -> String {
 
 #[cfg(target_os = "linux")]
 pub(super) fn resolve_kernel_release() -> String {
-    let mut uts = MaybeUninit::<libc::utsname>::zeroed();
-    // SAFETY: `uts` points to writable memory for `uname`.
-    let rc = unsafe { libc::uname(uts.as_mut_ptr()) };
-    if rc < 0 {
-        return String::new();
-    }
-
-    // SAFETY: `uname` initialized `uts` on success.
-    let uts = unsafe { uts.assume_init() };
-    // SAFETY: `release` is NUL-terminated on Linux after a successful `uname`.
-    unsafe { CStr::from_ptr(uts.release.as_ptr()) }
-        .to_string_lossy()
-        .into_owned()
+    nix::sys::utsname::uname()
+        .ok()
+        .map(|uts| uts.release().to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 #[cfg(not(target_os = "linux"))]

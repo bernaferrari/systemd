@@ -65,8 +65,3 @@ reason = "Extract authenticated wire framing, connection ownership, and manager-
 max_lines = 2050
 issue = "systemd-cpuw"
 reason = "Continue extracting RuntimeManager construction and event-source capability handoffs into focused lifecycle modules without duplicating manager state."
-
-[files."src/core/rust/runtime_manager/service_runtime.rs"]
-max_lines = 2020
-issue = "systemd-cpuw"
-reason = "Separate service execution preparation, notify capability injection, and lifecycle state transitions into cohesive modules without weakening the spawn boundary."

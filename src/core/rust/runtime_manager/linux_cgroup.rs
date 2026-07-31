@@ -16,7 +16,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use nix::unistd::{SysconfVar, sysconf};
+use nix::unistd::{SysconfVar, read as nix_read, sysconf, write as nix_write};
 
 const RESOLVE_NO_MAGICLINKS: u64 = 0x02;
 const RESOLVE_NO_SYMLINKS: u64 = 0x04;
@@ -406,20 +406,8 @@ pub(super) fn read_inotify_events(
     inotify: BorrowedFd<'_>,
     buffer: &mut [u8],
 ) -> io::Result<Vec<InotifyEvent>> {
-    // SAFETY: `buffer` is writable for exactly `buffer.len()` bytes and the
-    // borrowed descriptor remains live for this non-owning read.
-    let size = unsafe {
-        libc::read(
-            inotify.as_raw_fd(),
-            buffer.as_mut_ptr().cast(),
-            buffer.len(),
-        )
-    };
-    if size < 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    let size = size as usize;
+    let size =
+        nix_read(inotify, buffer).map_err(|error| io::Error::from_raw_os_error(error as i32))?;
     let header_size = std::mem::size_of::<libc::inotify_event>();
     let mut events = Vec::new();
     let mut offset = 0usize;
@@ -565,18 +553,12 @@ fn duplicate_fd(fd: BorrowedFd<'_>) -> io::Result<OwnedFd> {
 
 fn write_once(fd: BorrowedFd<'_>, content: &[u8]) -> io::Result<()> {
     loop {
-        // SAFETY: `content` is readable for exactly `content.len()` bytes and
-        // the borrowed descriptor remains live for this non-owning write.
-        let written =
-            unsafe { libc::write(fd.as_raw_fd(), content.as_ptr().cast(), content.len()) };
-        if written < 0 {
-            let error = io::Error::last_os_error();
-            if error.kind() == io::ErrorKind::Interrupted {
-                continue;
-            }
-            return Err(error);
-        }
-        if written as usize != content.len() {
+        let written = match nix_write(fd, content) {
+            Ok(written) => written,
+            Err(nix::errno::Errno::EINTR) => continue,
+            Err(error) => return Err(io::Error::from_raw_os_error(error as i32)),
+        };
+        if written != content.len() {
             return Err(io::Error::new(
                 io::ErrorKind::WriteZero,
                 "short write to cgroup control file",

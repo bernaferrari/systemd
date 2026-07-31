@@ -540,15 +540,15 @@
       "missing_safety_sites": [],
       "unsafe_sites": 4
     },
-    "src/core/rust/pid1_generator_lifecycle.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 6
-    },
     "src/core/rust/pid1_dbus_listener.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
+    },
+    "src/core/rust/pid1_generator_lifecycle.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 6
     },
     "src/core/rust/pid1_idle_pipe_source.rs": {
       "missing_safety": 0,
@@ -558,17 +558,17 @@
     "src/core/rust/runtime_manager.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 1
     },
     "src/core/rust/runtime_manager/linux_cgroup.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 14
+      "unsafe_sites": 12
     },
     "src/core/rust/runtime_manager/service_runtime.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 5
+      "unsafe_sites": 3
     },
     "src/core/rust/runtime_manager/tests.rs": {
       "missing_safety": 0,
@@ -578,7 +578,7 @@
     "src/core/rust/runtime_manager/unit_specifier.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 19
+      "unsafe_sites": 10
     },
     "src/core/rust/unit/relationships.rs": {
       "missing_safety": 0,
@@ -730,15 +730,15 @@
       "missing_safety_sites": [],
       "unsafe_sites": 40
     },
-    "src/platform/rust/spawn/linux_hygiene.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
     "src/platform/rust/spawn/linux_cgroup.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
+    },
+    "src/platform/rust/spawn/linux_hygiene.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 5
     },
     "src/platform/rust/spawn/linux_idle.rs": {
       "missing_safety": 0,
@@ -1143,7 +1143,7 @@
   },
   "totals": {
     "missing_safety": 0,
-    "unsafe_sites": 4986
+    "unsafe_sites": 4972
   },
   "version": 2,
   "window": 3

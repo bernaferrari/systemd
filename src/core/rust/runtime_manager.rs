@@ -34,6 +34,8 @@ use crate::unit::{
     UnitType, unit_add_default_target_dependency, unit_add_slice_dependencies, unit_reset_failed,
     unit_set_default_slice,
 };
+#[cfg(target_os = "linux")]
+use nix::unistd::Uid;
 use systemd_platform_rs::spawn::{self, ChildState, ProcessTracker};
 pub type Result<T> = std::result::Result<T, Errno>;
 
@@ -956,9 +958,7 @@ impl RuntimeManager {
             return true;
         }
 
-        // SAFETY: geteuid() has no arguments, does not dereference memory, and
-        // is safe to call from ordinary process context.
-        if unsafe { libc::geteuid() } != 0 {
+        if !Uid::effective().is_root() {
             return true;
         }
         let Ok(c_path) = CString::new(path.as_os_str().as_bytes()) else {

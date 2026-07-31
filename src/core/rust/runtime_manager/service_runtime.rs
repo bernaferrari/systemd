@@ -6,7 +6,7 @@
  */
 use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::time::{Duration, Instant};
 
 use super::unit_file::{ExecContextConfig, UnitFileInfo};
@@ -24,6 +24,8 @@ use crate::service::{
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use crate::transaction::JobMode;
 use crate::unit::DependencyKind;
+#[cfg(target_os = "linux")]
+use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 use systemd_libsystemd_rs::sd_journal_send::sd_journal_stream_fd;
 use systemd_platform_rs::spawn::{self, ChildProcess, ChildState};
 
@@ -437,9 +439,7 @@ impl RuntimeManager {
         if info.exec_context.tty_reset.unwrap_or(false)
             && let Some(fd) = Self::open_write_fd(tty_path, false, false, false)
         {
-            // SAFETY: fd is owned and valid, and the escape sequence is a
-            // valid four-byte buffer for the duration of this call.
-            let _ = unsafe { libc::write(fd.as_raw_fd(), b"\x1bc\n".as_ptr().cast(), 4) };
+            let _ = nix::unistd::write(fd.as_fd(), b"\x1bc\n");
         }
 
         if info.exec_context.tty_vhangup.unwrap_or(false)
@@ -495,47 +495,37 @@ impl RuntimeManager {
         {
             let mut changed = Vec::new();
             loop {
-                let mut status: libc::c_int = 0;
-                // SAFETY: status is a valid writable c_int for waitpid(), and
-                // -1 with WNOHANG is a valid request to poll any child process.
-                let pid =
-                    unsafe { libc::waitpid(-1, &mut status as *mut libc::c_int, libc::WNOHANG) };
-                if pid > 0 {
-                    let pid_u = pid as u32;
-                    let child_state = if libc::WIFEXITED(status) {
-                        let code = libc::WEXITSTATUS(status);
+                let status =
+                    match waitpid(nix::unistd::Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
+                        Ok(status) => status,
+                        Err(nix::errno::Errno::ECHILD) => break,
+                        Err(nix::errno::Errno::EINTR) => continue,
+                        Err(_) => break,
+                    };
+                let (pid, child_state) = match status {
+                    WaitStatus::Exited(pid, code) => (
+                        pid,
                         if code == 0 {
                             ChildState::ExitedCleanly
                         } else {
                             ChildState::ExitedWithCode(code)
-                        }
-                    } else if libc::WIFSIGNALED(status) {
-                        ChildState::KilledBySignal(libc::WTERMSIG(status))
-                    } else {
-                        ChildState::Running
-                    };
-
-                    if !matches!(child_state, ChildState::Running) {
-                        if let Some(child) = self.process_tracker.get_mut(pid_u) {
-                            child.state = child_state;
-                            changed.push(pid_u);
-                        }
-                        continue;
+                        },
+                    ),
+                    WaitStatus::Signaled(pid, signal, _) => {
+                        (pid, ChildState::KilledBySignal(signal as i32))
                     }
-                }
+                    WaitStatus::StillAlive
+                    | WaitStatus::Stopped(_, _)
+                    | WaitStatus::Continued(_)
+                    | WaitStatus::PtraceEvent(_, _, _)
+                    | WaitStatus::PtraceSyscall(_) => break,
+                };
 
-                if pid == 0 {
-                    break;
+                let pid_u = pid.as_raw() as u32;
+                if let Some(child) = self.process_tracker.get_mut(pid_u) {
+                    child.state = child_state;
+                    changed.push(pid_u);
                 }
-
-                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                if errno == libc::ECHILD {
-                    break;
-                }
-                if errno == libc::EINTR {
-                    continue;
-                }
-                break;
             }
             changed
         }
