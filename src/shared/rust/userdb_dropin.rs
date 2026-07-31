@@ -300,7 +300,9 @@ impl<'a> JsonParser<'a> {
         Ok(value)
     }
 
-    /// Parse a JSON string (handles basic escape sequences).
+    /// Parse a JSON string using the same escape grammar as systemd's JSON
+    /// tokenizer. In particular, unknown escapes and lone UTF-16 surrogates
+    /// are rejected instead of being silently passed through.
     fn parse_string(&mut self) -> DropinResult<String> {
         if self.next_char() != Some('"') {
             return Err(DropinError::ParseError(format!(
@@ -313,29 +315,88 @@ impl<'a> JsonParser<'a> {
         loop {
             match self.next_char() {
                 Some('"') => return Ok(result),
-                Some('\\') => {
-                    let escaped = match self.next_char() {
-                        Some('"') => '"',
-                        Some('\\') => '\\',
-                        Some('/') => '/',
-                        Some('n') => '\n',
-                        Some('r') => '\r',
-                        Some('t') => '\t',
-                        Some('b') => '\u{0008}',
-                        Some('f') => '\u{000C}',
-                        Some(c) => c, // pass through unknown escapes
-                        None => {
-                            return Err(DropinError::ParseError(
-                                "unterminated string escape".into(),
-                            ));
-                        }
-                    };
-                    result.push(escaped);
+                Some('\\') => match self.next_char() {
+                    Some('"') => result.push('"'),
+                    Some('\\') => result.push('\\'),
+                    Some('/') => result.push('/'),
+                    Some('n') => result.push('\n'),
+                    Some('r') => result.push('\r'),
+                    Some('t') => result.push('\t'),
+                    Some('b') => result.push('\u{0008}'),
+                    Some('f') => result.push('\u{000C}'),
+                    Some('u') => {
+                        let first = self.parse_unicode_escape()?;
+                        let codepoint = if (0xD800..=0xDBFF).contains(&first) {
+                            if self.next_char() != Some('\\') || self.next_char() != Some('u') {
+                                return Err(DropinError::ParseError(
+                                    "high surrogate is not followed by a low surrogate".into(),
+                                ));
+                            }
+                            let second = self.parse_unicode_escape()?;
+                            if !(0xDC00..=0xDFFF).contains(&second) {
+                                return Err(DropinError::ParseError(
+                                    "invalid low surrogate".into(),
+                                ));
+                            }
+                            0x1_0000
+                                + (((first as u32) - 0xD800) << 10)
+                                + ((second as u32) - 0xDC00)
+                        } else if (0xDC00..=0xDFFF).contains(&first) {
+                            return Err(DropinError::ParseError("unexpected low surrogate".into()));
+                        } else {
+                            first as u32
+                        };
+                        let Some(ch) = char::from_u32(codepoint) else {
+                            return Err(DropinError::ParseError("invalid Unicode escape".into()));
+                        };
+                        result.push(ch);
+                    }
+                    Some(_) => {
+                        return Err(DropinError::ParseError("invalid string escape".into()));
+                    }
+                    None => {
+                        return Err(DropinError::ParseError("unterminated string escape".into()));
+                    }
+                },
+                Some(c) if (c as u32) < 0x20 || c == '\u{7f}' => {
+                    return Err(DropinError::ParseError(
+                        "control character in string".into(),
+                    ));
                 }
                 Some(c) => result.push(c),
                 None => return Err(DropinError::ParseError("unterminated string".into())),
             }
         }
+    }
+
+    /// Parse the four hexadecimal digits following a `\\u` escape.
+    fn parse_unicode_escape(&mut self) -> DropinResult<u16> {
+        let start = self.pos;
+        let end = start.saturating_add(4);
+        let Some(digits) = self.input.get(start..end) else {
+            return Err(DropinError::ParseError("truncated Unicode escape".into()));
+        };
+        let mut value = 0u16;
+        for byte in digits.bytes() {
+            let digit = match byte {
+                b'0'..=b'9' => byte - b'0',
+                b'a'..=b'f' => byte - b'a' + 10,
+                b'A'..=b'F' => byte - b'A' + 10,
+                _ => {
+                    return Err(DropinError::ParseError("invalid Unicode escape".into()));
+                }
+            };
+            value = (value << 4) | u16::from(digit);
+        }
+        self.pos = end;
+        // systemd rejects U+0000 in JSON strings because its representation is
+        // NUL-terminated, so retain that behavior for drop-in records.
+        if value == 0 {
+            return Err(DropinError::ParseError(
+                "NUL Unicode escape is not permitted".into(),
+            ));
+        }
+        Ok(value)
     }
 
     /// Parse a JSON number (integer or floating-point).
@@ -345,8 +406,14 @@ impl<'a> JsonParser<'a> {
             self.next_char();
         }
 
-        while let Some('0'..='9') = self.peek() {
+        if self.peek() == Some('0') {
             self.next_char();
+            // JSON does not permit leading zeroes. The C parser consumes only
+            // this digit, then rejects any following digit as a bad delimiter.
+        } else {
+            while let Some('0'..='9') = self.peek() {
+                self.next_char();
+            }
         }
 
         if self.peek() == Some('.') {
@@ -1090,6 +1157,36 @@ mod tests {
     fn test_parse_json_string_escapes() {
         let json = parse_json(r#"{"name": "hello \"world\""}"#).unwrap();
         assert_eq!(json.get_str("name"), Some("hello \"world\""));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_parse_json_unicode_escapes_match_c_grammar() {
+        let json = parse_json(r#"{"name":"caf\u00e9","emoji":"\uD83D\uDE00"}"#).unwrap();
+        assert_eq!(json.get_str("name"), Some("café"));
+        assert_eq!(json.get_str("emoji"), Some("😀"));
+
+        for invalid in [
+            r#"{"name":"\q"}"#,
+            r#"{"name":"\uD800"}"#,
+            r#"{"name":"\uDC00"}"#,
+            r#"{"name":"\uD800\u0041"}"#,
+            r#"{"name":"\u0000"}"#,
+        ] {
+            assert!(
+                parse_json(invalid).is_err(),
+                "accepted invalid JSON: {invalid}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_parse_json_rejects_unescaped_controls_and_leading_zeroes() {
+        assert!(parse_json("{\"name\":\"line\nfeed\"}").is_err());
+        assert!(parse_json("{\"name\":\"delete\u{7f}\"}").is_err());
+        assert!(parse_json(r#"{"uid":01}"#).is_err());
+        assert!(parse_json(r#"{"uid":-01}"#).is_err());
     }
 
     #[cfg(target_os = "linux")]
