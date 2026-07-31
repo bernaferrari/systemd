@@ -339,7 +339,7 @@ fn notify_readiness_allows_only_the_wired_direct_main_subset() {
     info.service.watchdog_sec = Some(1);
     assert_eq!(
         super::service_readiness::readiness_rejection(ServiceType::Notify, &info, true),
-        Some("Type=notify watchdog supervision is not implemented")
+        None
     );
 }
 

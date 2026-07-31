@@ -17,13 +17,13 @@ use nix::fcntl::{FcntlArg, OFlag, fcntl};
 use nix::sys::signal::SigSet;
 use nix::unistd::{Pid, pipe2, read, setsid};
 use seccompiler::BpfProgram;
-use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
-use std::os::unix::ffi::OsStrExt;
 
 #[path = "linux_cgroup.rs"]
 mod cgroup;
+#[path = "linux_environment.rs"]
+mod environment;
 #[path = "linux_exec_status.rs"]
 mod exec_status;
 #[path = "linux_hygiene.rs"]
@@ -33,6 +33,7 @@ mod idle;
 #[path = "linux_process.rs"]
 mod process;
 use cgroup::delegate_cgroup_access;
+use environment::prepare_environment;
 use exec_status::consume_exec_status_bytes;
 use hygiene::{
     child_sanitize_inherited_fds, close_original_activation_fds, duplicate_activation_fds,
@@ -225,6 +226,7 @@ struct PreparedNamespace {
 
 struct PreparedExecContext {
     skip: bool,
+    has_watchdog: bool,
     environment: Vec<CString>,
     working_directory: Option<CString>,
     oom_score_adjust: Option<Vec<u8>>,
@@ -248,6 +250,7 @@ struct PreparedSecurity {
 struct PreparedEnvironment {
     storage: Vec<CString>,
     has_activation: bool,
+    has_watchdog: bool,
 }
 
 struct ChildScratch {
@@ -255,8 +258,10 @@ struct ChildScratch {
     pointers: Vec<*const libc::c_char>,
     main_pid: [u8; 32],
     listen_pid: [u8; 32],
+    watchdog_pid: [u8; 32],
     main_pid_index: usize,
     listen_pid_index: Option<usize>,
+    watchdog_pid_index: Option<usize>,
 }
 
 struct PreparedLaunch {
@@ -363,104 +368,6 @@ fn validate_stdio_fds(stdio: SpawnStdio) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-fn prepare_environment(
-    security: &SpawnSecurity,
-    skip_exec_context: bool,
-) -> Result<Vec<CString>, String> {
-    let mut environment: BTreeMap<Vec<u8>, Vec<u8>> = std::env::vars_os()
-        .map(|(key, value)| {
-            (
-                key.as_os_str().as_bytes().to_vec(),
-                value.as_os_str().as_bytes().to_vec(),
-            )
-        })
-        .collect();
-
-    if !skip_exec_context {
-        for path in &security.environment_file {
-            let mut file_environment = BTreeMap::new();
-            super::parse_environment_file(path, &mut file_environment)?;
-            environment.extend(
-                file_environment
-                    .into_iter()
-                    .map(|(key, value)| (key.into_bytes(), value.into_bytes())),
-            );
-        }
-
-        for assignment in &security.environment {
-            let Some((key, value)) = assignment.split_once('=') else {
-                continue;
-            };
-            let key = key.trim();
-            if !key.is_empty() {
-                environment.insert(key.as_bytes().to_vec(), value.as_bytes().to_vec());
-            }
-        }
-
-        for key in &security.pass_environment {
-            if let Some(value) = std::env::var_os(key) {
-                environment.insert(
-                    key.as_bytes().to_vec(),
-                    value.as_os_str().as_bytes().to_vec(),
-                );
-            }
-        }
-
-        for key in &security.unset_environment {
-            let target = key.split('=').next().unwrap_or(key).trim();
-            if !target.is_empty() {
-                environment.remove(target.as_bytes());
-            }
-        }
-    }
-
-    // PID 1 owns these values. Inherited or unit-supplied copies must never
-    // shadow the launch-specific assignments appended by PreparedEnvironment.
-    for runtime_name in [
-        "MAINPID",
-        "LISTEN_PID",
-        "LISTEN_FDS",
-        "LISTEN_FDNAMES",
-        "LISTEN_PIDFDID",
-        "NOTIFY_SOCKET",
-    ] {
-        environment.remove(runtime_name.as_bytes());
-    }
-
-    // `NOTIFY_SOCKET` is a manager-owned transport capability, not ordinary
-    // unit environment. Add it only after EnvironmentFile=/Environment=/
-    // PassEnvironment=/UnsetEnvironment= have run, matching the precedence
-    // of ExecParameters::notify_socket in C.
-    if let Some(notify_socket) = &security.notify_socket {
-        if !notify_socket.starts_with('/') || notify_socket.as_bytes().contains(&0) {
-            return Err("manager supplied an invalid NOTIFY_SOCKET path".to_string());
-        }
-        environment.insert(b"NOTIFY_SOCKET".to_vec(), notify_socket.as_bytes().to_vec());
-    }
-
-    environment
-        .into_iter()
-        .map(|(key, value)| {
-            if key.is_empty() || key.contains(&b'=') || key.contains(&0) {
-                return Err(format!(
-                    "invalid environment variable name {:?}",
-                    String::from_utf8_lossy(&key)
-                ));
-            }
-            let mut assignment = Vec::with_capacity(key.len() + 1 + value.len());
-            assignment.extend_from_slice(&key);
-            assignment.push(b'=');
-            assignment.extend_from_slice(&value);
-            CString::new(assignment).map_err(|error| {
-                format!(
-                    "invalid environment value for {:?}: {error}",
-                    String::from_utf8_lossy(&key)
-                )
-            })
-        })
-        .collect()
 }
 
 fn capability_mask(set: &caps::CapsHashSet) -> u64 {
@@ -628,10 +535,11 @@ fn prepare_namespace(security: &SpawnSecurity) -> Result<PreparedNamespace, Stri
 
 fn prepare_exec_context(security: &SpawnSecurity) -> Result<PreparedExecContext, String> {
     let skip = security.command_prefixes.contains("!!");
-    let environment = prepare_environment(security, skip)?;
+    let (environment, has_watchdog) = prepare_environment(security, skip)?;
     if skip {
         return Ok(PreparedExecContext {
             skip,
+            has_watchdog,
             environment,
             working_directory: None,
             oom_score_adjust: None,
@@ -698,6 +606,7 @@ fn prepare_exec_context(security: &SpawnSecurity) -> Result<PreparedExecContext,
 
     Ok(PreparedExecContext {
         skip,
+        has_watchdog,
         environment,
         working_directory,
         oom_score_adjust,
@@ -789,7 +698,8 @@ impl ChildScratch {
                     5
                 } else {
                     2
-                },
+                }
+                + usize::from(launch.environment.has_watchdog),
         );
         pointers.extend(
             launch
@@ -810,6 +720,13 @@ impl ChildScratch {
             pointers.push(launch.activation.listen_fd_names_assignment.as_ptr());
             Some(index)
         };
+        let watchdog_pid_index = if launch.environment.has_watchdog {
+            let index = pointers.len();
+            pointers.push(std::ptr::null());
+            Some(index)
+        } else {
+            None
+        };
         pointers.push(std::ptr::null());
 
         Self {
@@ -817,8 +734,10 @@ impl ChildScratch {
             pointers,
             main_pid: [0; 32],
             listen_pid: [0; 32],
+            watchdog_pid: [0; 32],
             main_pid_index,
             listen_pid_index,
+            watchdog_pid_index,
         }
     }
 
@@ -828,6 +747,10 @@ impl ChildScratch {
         if let Some(index) = self.listen_pid_index {
             write_decimal_assignment(&mut self.listen_pid, b"LISTEN_PID=", pid as u32);
             self.pointers[index] = self.listen_pid.as_ptr().cast();
+        }
+        if let Some(index) = self.watchdog_pid_index {
+            write_decimal_assignment(&mut self.watchdog_pid, b"WATCHDOG_PID=", pid as u32);
+            self.pointers[index] = self.watchdog_pid.as_ptr().cast();
         }
     }
 }
@@ -943,12 +866,14 @@ impl PreparedLaunch {
                 )?;
             }
         }
+        let has_watchdog = security.exec_context.has_watchdog;
         let environment_storage = std::mem::take(&mut security.exec_context.environment);
         let executable_candidates =
             prepare_executable_candidates(&argv_storage[0], &environment_storage)?;
         let environment = PreparedEnvironment {
             storage: environment_storage,
             has_activation: !activation.source_fds.is_empty(),
+            has_watchdog,
         };
 
         Ok(Self {
@@ -1987,7 +1912,9 @@ mod tests {
             notify_socket: Some("/run/systemd/notify".to_owned()),
             ..SpawnSecurity::default()
         };
-        let environment = prepare_environment(&security, false).expect("prepare environment");
+        let (environment, has_watchdog) =
+            prepare_environment(&security, false).expect("prepare environment");
+        assert!(!has_watchdog);
         let notify_entries = environment
             .iter()
             .filter_map(|entry| entry.to_str().ok())
@@ -2003,6 +1930,36 @@ mod tests {
             ..SpawnSecurity::default()
         };
         assert!(prepare_environment(&security, false).is_err());
+    }
+
+    #[test]
+    fn manager_watchdog_environment_overrides_unit_values() {
+        let security = SpawnSecurity {
+            environment: vec!["WATCHDOG_USEC=unit-controlled".to_owned()],
+            unset_environment: vec!["WATCHDOG_USEC".to_owned()],
+            watchdog_usec: Some(1_500_000),
+            ..SpawnSecurity::default()
+        };
+        let (environment, has_watchdog) =
+            prepare_environment(&security, false).expect("prepare environment");
+        let watchdog_entries = environment
+            .iter()
+            .filter_map(|entry| entry.to_str().ok())
+            .filter(|entry| entry.starts_with("WATCHDOG_USEC="))
+            .collect::<Vec<_>>();
+        assert_eq!(watchdog_entries, ["WATCHDOG_USEC=1500000"]);
+        assert!(has_watchdog);
+
+        let (_, skipped_watchdog) = prepare_environment(
+            &SpawnSecurity {
+                command_prefixes: "!!".to_owned(),
+                watchdog_usec: Some(1_500_000),
+                ..security
+            },
+            true,
+        )
+        .expect("prepare skipped environment");
+        assert!(!skipped_watchdog);
     }
 
     #[test]

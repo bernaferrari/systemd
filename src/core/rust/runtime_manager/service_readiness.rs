@@ -32,7 +32,8 @@ pub(super) fn readiness_rejection(
         // for a normal Type=notify READY=/STOPPING= lifecycle. Cgroup-child
         // routing, NotifyAccess=exec/all, watchdog configuration, FDSTORE,
         // and Type=notify-reload remain fail closed until their contracts are
-        // complete.
+        // complete. Watchdog pings use the same authenticated direct-main
+        // route and manager-owned deadline already used by the service FSM.
         ServiceType::Notify if !authenticated_notify_socket_configured => {
             Some("Type=notify requires a bound authenticated sd_notify socket")
         }
@@ -43,9 +44,6 @@ pub(super) fn readiness_rejection(
             ) =>
         {
             Some("Type=notify currently supports only NotifyAccess=main")
-        }
-        ServiceType::Notify if info.service.watchdog_sec.is_some_and(|value| value > 0) => {
-            Some("Type=notify watchdog supervision is not implemented")
         }
         ServiceType::Notify
             if info

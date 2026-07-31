@@ -134,7 +134,8 @@ impl RuntimeManager {
     /// and reload propagation each still need their own owned contracts. The
     /// transitions below are the pieces which already have a single
     /// RuntimeManager owner and can be applied without guessing identity or
-    /// fabricating descriptors.
+    /// fabricating descriptors. `WATCHDOG=1` refreshes the manager-owned
+    /// deadline; `WATCHDOG=trigger` remains intentionally unsupported.
     #[cfg(target_os = "linux")]
     pub(crate) fn dispatch_authenticated_notify(
         &mut self,

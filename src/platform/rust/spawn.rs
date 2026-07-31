@@ -208,6 +208,9 @@ pub struct SpawnSecurity {
     /// environment transformations so a service cannot redirect its own
     /// lifecycle protocol to an arbitrary peer.
     pub notify_socket: Option<String>,
+    /// Watchdog interval exported only for the service's main command. The
+    /// child-side launch path fills `WATCHDOG_PID` once its PID is known.
+    pub watchdog_usec: Option<u64>,
     pub working_directory: Option<String>,
     pub limits: BTreeMap<String, String>,
     pub nice: Option<i32>,

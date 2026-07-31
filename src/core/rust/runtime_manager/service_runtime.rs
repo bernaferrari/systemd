@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-/*
- * Own service state transitions, child tracking, deadlines, and process execution. Job and
- * transaction construction stays with RuntimeManager; cgroup realization stays in cgroup_runtime.
- */
 use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
@@ -421,6 +417,7 @@ impl RuntimeManager {
             pass_environment: exec.pass_environment.clone(),
             unset_environment: exec.unset_environment.clone(),
             notify_socket: None,
+            watchdog_usec: None,
             working_directory: exec.working_directory.clone(),
             limits: exec.limits.clone(),
             nice: exec.nice,
@@ -949,6 +946,11 @@ impl RuntimeManager {
                 .unwrap_or_else(|| Errno::EBADF.to_neg_errno());
         }
         let mut security = self.build_spawn_security(name, &info.exec_context, &spec.prefixes);
+        security.watchdog_usec = (role == TrackedPidRole::Main)
+            .then_some(info.service.watchdog_sec)
+            .flatten()
+            .filter(|watchdog_sec| *watchdog_sec > 0)
+            .map(|watchdog_sec| watchdog_sec.saturating_mul(1_000_000));
         if self.services.get(name).is_some_and(|service| {
             service_exec_needs_notify_socket(service, role == TrackedPidRole::Control)
         }) {
