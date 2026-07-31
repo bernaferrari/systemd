@@ -4,10 +4,12 @@
 //
 
 use std::env;
-use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::mem::{offset_of, size_of, zeroed};
-use std::os::fd::{AsRawFd, RawFd};
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
+use std::mem::{offset_of, size_of};
+use std::net::Shutdown;
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
+use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -242,58 +244,31 @@ fn sd_journal_stream_fd_at_path(
     priority: i32,
     level_prefix: i32,
 ) -> Result<RawFd> {
-    let fd = create_stream_socket()?;
-    if let Err(e) = connect_unix_path(fd, path) {
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return Err(e);
-    }
-
-    // SAFETY: arguments satisfy the libc `shutdown` contract and any passed pointers remain valid for the call.
-    if unsafe { libc::shutdown(fd, libc::SHUT_RD) } < 0 {
-        let err = neg_errno();
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return Err(err);
-    }
-
-    let sndbuf = SNDBUF_SIZE as libc::c_int;
-    // SAFETY: arguments satisfy the libc `setsockopt` contract and any passed pointers remain valid for the call.
-    let _ = unsafe {
-        libc::setsockopt(
-            fd,
-            libc::SOL_SOCKET,
-            libc::SO_SNDBUF,
-            &sndbuf as *const _ as *const libc::c_void,
-            size_of::<libc::c_int>() as libc::socklen_t,
-        )
-    };
+    validate_unix_socket_path(path)?;
+    let mut stream = UnixStream::connect(path).map_err(neg_io_error)?;
+    stream.shutdown(Shutdown::Read).map_err(neg_io_error)?;
+    set_stream_send_buffer(&stream);
 
     let header = journal_stream_header(identifier, priority, level_prefix)?;
-    if let Err(e) = loop_write(fd, &header) {
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return Err(e);
-    }
-
-    Ok(fd)
+    stream.write_all(&header).map_err(neg_io_error)?;
+    Ok(stream.into_raw_fd())
 }
 
 fn send_journal_payload(path: &str, payload: &[u8]) -> Result<()> {
-    let fd = create_datagram_socket()?;
-    let send_result = send_unix_datagram(fd, path, payload);
-    // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-    unsafe { libc::close(fd) };
-    send_result
+    validate_unix_socket_path(path)?;
+    let socket = UnixDatagram::unbound().map_err(neg_io_error)?;
+    let sent = socket.send_to(payload, path).map_err(neg_io_error)?;
+    if sent == payload.len() {
+        Ok(())
+    } else {
+        Err(-libc::EIO)
+    }
 }
 
 fn send_payload_via_fd(path: &str, payload: &[u8]) -> Result<()> {
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    if let Ok(fd) = create_memfd_with_payload(payload) {
-        let r = send_fd_over_unix_datagram(path, fd);
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return r;
+    if let Ok(file) = create_memfd_with_payload(payload) {
+        return send_fd_over_unix_datagram(path, file.as_raw_fd());
     }
 
     let mut temp_path = std::env::temp_dir();
@@ -323,239 +298,95 @@ fn send_payload_via_fd(path: &str, payload: &[u8]) -> Result<()> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
-fn create_memfd_with_payload(payload: &[u8]) -> Result<RawFd> {
+fn create_memfd_with_payload(payload: &[u8]) -> Result<File> {
     let name = b"journal-data\0";
-    // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
+    // SAFETY: name is NUL-terminated and remains live for the call; the
+    // returned descriptor is checked before ownership transfer.
     let fd = unsafe { libc::memfd_create(name.as_ptr() as *const libc::c_char, libc::MFD_CLOEXEC) };
     if fd < 0 {
         return Err(neg_errno());
     }
-    if let Err(e) = loop_write(fd, payload) {
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return Err(e);
-    }
-    Ok(fd)
+    // SAFETY: memfd_create returned a uniquely owned descriptor, transferred
+    // once to OwnedFd so errors close it automatically.
+    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    let mut file = File::from(fd);
+    file.write_all(payload).map_err(neg_io_error)?;
+    Ok(file)
 }
 
 fn send_fd_over_unix_datagram(path: &str, fd_to_send: RawFd) -> Result<()> {
-    let sock = create_datagram_socket()?;
-    // SAFETY: `libc::sockaddr_un` is POD and may be zero-initialized before filling `sun_family/sun_path`.
-    let mut sockaddr = unsafe { zeroed::<libc::sockaddr_un>() };
-    if path.is_empty() {
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(sock) };
-        return Err(NEG_EINVAL);
-    }
-    let path_bytes = path.as_bytes();
-    if path_bytes.len() + 1 > sockaddr.sun_path.len() {
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(sock) };
-        return Err(NEG_EINVAL);
-    }
-    sockaddr.sun_family = libc::AF_UNIX as libc::sa_family_t;
-    for (i, b) in path_bytes.iter().enumerate() {
-        sockaddr.sun_path[i] = *b as libc::c_char;
-    }
-    sockaddr.sun_path[path_bytes.len()] = 0;
-    let name_len = offset_of!(libc::sockaddr_un, sun_path) + path_bytes.len() + 1;
-    let name_len = libc::socklen_t::try_from(name_len).map_err(|_| NEG_EINVAL)?;
+    validate_unix_socket_path(path)?;
+    let socket = UnixDatagram::unbound().map_err(neg_io_error)?;
+    socket.connect(path).map_err(neg_io_error)?;
+    send_fd_message(&socket, fd_to_send)
+}
 
-    let mut byte: u8 = 0;
+fn send_fd_message(socket: &UnixDatagram, fd_to_send: RawFd) -> Result<()> {
+    let mut byte = 0_u8;
     let mut iov = libc::iovec {
         iov_base: (&mut byte as *mut u8).cast(),
         iov_len: 1,
     };
+    // SAFETY: CMSG_SPACE is a pure layout calculation for the one RawFd we
+    // store in the live control buffer below.
+    let control_len = unsafe { libc::CMSG_SPACE(size_of::<RawFd>() as u32) as usize };
+    let mut control = vec![0_u8; control_len];
+    let mut msg = libc::msghdr {
+        msg_name: std::ptr::null_mut(),
+        msg_namelen: 0,
+        msg_iov: &mut iov,
+        msg_iovlen: 1,
+        msg_control: control.as_mut_ptr().cast(),
+        msg_controllen: control.len(),
+        msg_flags: 0,
+    };
 
-    // SAFETY: arguments satisfy the libc `CMSG_SPACE` contract and any passed pointers remain valid for the call.
-    let cmsg_space = unsafe { libc::CMSG_SPACE(size_of::<RawFd>() as u32) } as usize;
-    let mut control = vec![0u8; cmsg_space];
-    // SAFETY: `libc::msghdr` is POD and may be zero-initialized before its fields are populated.
-    let mut msg = unsafe { zeroed::<libc::msghdr>() };
-    msg.msg_name = (&mut sockaddr as *mut libc::sockaddr_un).cast();
-    msg.msg_namelen = name_len;
-    msg.msg_iov = &mut iov;
-    msg.msg_iovlen = 1;
-    msg.msg_control = control.as_mut_ptr().cast();
-    msg.msg_controllen = control.len() as _;
-
-    // SAFETY: arguments satisfy the libc `CMSG_FIRSTHDR` contract and any passed pointers remain valid for the call.
-    unsafe {
+    // SAFETY: msg refers only to the live iov/control buffers. The CMSG
+    // allocation has space for exactly one RawFd, and socket is connected for
+    // the full sendmsg call.
+    let sent = unsafe {
         let cmsg = libc::CMSG_FIRSTHDR(&msg);
         if cmsg.is_null() {
-            libc::close(sock);
             return Err(-libc::EIO);
         }
         (*cmsg).cmsg_level = libc::SOL_SOCKET;
         (*cmsg).cmsg_type = libc::SCM_RIGHTS;
         (*cmsg).cmsg_len = libc::CMSG_LEN(size_of::<RawFd>() as u32) as _;
-        std::ptr::write(libc::CMSG_DATA(cmsg).cast::<RawFd>(), fd_to_send);
+        libc::CMSG_DATA(cmsg).cast::<RawFd>().write(fd_to_send);
         msg.msg_controllen = (*cmsg).cmsg_len as _;
-
-        let n = libc::sendmsg(sock, &msg, libc::MSG_NOSIGNAL);
-        let ret = if n < 0 { Err(neg_errno()) } else { Ok(()) };
-        libc::close(sock);
-        ret
-    }
-}
-
-fn create_datagram_socket() -> Result<RawFd> {
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    {
-        // SAFETY: arguments satisfy the libc `socket` contract and any passed pointers remain valid for the call.
-        let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
-        if fd >= 0 {
-            return Ok(fd);
-        }
-    }
-
-    // SAFETY: arguments satisfy the libc `socket` contract and any passed pointers remain valid for the call.
-    let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0) };
-    if fd < 0 {
+        libc::sendmsg(socket.as_raw_fd(), &msg, libc::MSG_NOSIGNAL)
+    };
+    if sent < 0 {
         return Err(neg_errno());
     }
-    // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
-    if flags < 0 {
-        let err = neg_errno();
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return Err(err);
-    }
-    // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-    if unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0 {
-        let err = neg_errno();
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return Err(err);
-    }
-    Ok(fd)
+    Ok(())
 }
 
-fn send_unix_datagram(fd: RawFd, path: &str, payload: &[u8]) -> Result<()> {
-    // SAFETY: `libc::sockaddr_un` is POD and may be zero-initialized before filling `sun_family/sun_path`.
-    let mut sockaddr = unsafe { zeroed::<libc::sockaddr_un>() };
-    if path.is_empty() {
+fn validate_unix_socket_path(path: &str) -> Result<()> {
+    let max_path_len = size_of::<libc::sockaddr_un>() - offset_of!(libc::sockaddr_un, sun_path);
+    if path.is_empty() || path.len() + 1 > max_path_len {
         return Err(NEG_EINVAL);
     }
-    let path_bytes = path.as_bytes();
-    if path_bytes.len() + 1 > sockaddr.sun_path.len() {
-        return Err(NEG_EINVAL);
-    }
-    sockaddr.sun_family = libc::AF_UNIX as libc::sa_family_t;
-    for (i, b) in path_bytes.iter().enumerate() {
-        sockaddr.sun_path[i] = *b as libc::c_char;
-    }
-    sockaddr.sun_path[path_bytes.len()] = 0;
-    let len = offset_of!(libc::sockaddr_un, sun_path) + path_bytes.len() + 1;
-    let sock_len = libc::socklen_t::try_from(len).map_err(|_| NEG_EINVAL)?;
-    // SAFETY: arguments satisfy the libc `sendto` contract and any passed pointers remain valid for the call.
-    let n = unsafe {
-        libc::sendto(
-            fd,
-            payload.as_ptr() as *const libc::c_void,
-            payload.len(),
-            libc::MSG_NOSIGNAL,
-            &sockaddr as *const _ as *const libc::sockaddr,
-            sock_len,
+    Ok(())
+}
+
+fn set_stream_send_buffer(stream: &UnixStream) {
+    let sndbuf = SNDBUF_SIZE as libc::c_int;
+    // SAFETY: stream owns a live socket descriptor and sndbuf is a valid
+    // c_int option value for the duration of this best-effort call.
+    let _ = unsafe {
+        libc::setsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_SNDBUF,
+            (&sndbuf as *const libc::c_int).cast(),
+            size_of::<libc::c_int>() as libc::socklen_t,
         )
     };
-    if n < 0 {
-        return Err(neg_errno());
-    }
-    if usize::try_from(n).map_err(|_| -libc::EIO)? != payload.len() {
-        return Err(-libc::EIO);
-    }
-    Ok(())
 }
 
-fn create_stream_socket() -> Result<RawFd> {
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    {
-        // SAFETY: arguments satisfy the libc `socket` contract and any passed pointers remain valid for the call.
-        let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
-        if fd >= 0 {
-            return Ok(fd);
-        }
-    }
-
-    // SAFETY: arguments satisfy the libc `socket` contract and any passed pointers remain valid for the call.
-    let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
-    if fd < 0 {
-        return Err(neg_errno());
-    }
-
-    // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
-    if flags < 0 {
-        let err = neg_errno();
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return Err(err);
-    }
-    // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-    if unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0 {
-        let err = neg_errno();
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
-        return Err(err);
-    }
-
-    Ok(fd)
-}
-
-fn connect_unix_path(fd: RawFd, path: &str) -> Result<()> {
-    if path.is_empty() {
-        return Err(NEG_EINVAL);
-    }
-
-    let path_bytes = path.as_bytes();
-    // SAFETY: `libc::sockaddr_un` is POD and may be zero-initialized before filling `sun_family/sun_path`.
-    let mut sockaddr = unsafe { zeroed::<libc::sockaddr_un>() };
-    let max_len = sockaddr.sun_path.len();
-    if path_bytes.len() + 1 > max_len {
-        return Err(NEG_EINVAL);
-    }
-
-    sockaddr.sun_family = libc::AF_UNIX as libc::sa_family_t;
-    for (i, b) in path_bytes.iter().enumerate() {
-        sockaddr.sun_path[i] = *b as libc::c_char;
-    }
-    sockaddr.sun_path[path_bytes.len()] = 0;
-
-    let len = offset_of!(libc::sockaddr_un, sun_path) + path_bytes.len() + 1;
-    let sock_len = libc::socklen_t::try_from(len).map_err(|_| NEG_EINVAL)?;
-    // SAFETY: arguments satisfy the libc `connect` contract and any passed pointers remain valid for the call.
-    if unsafe { libc::connect(fd, &sockaddr as *const _ as *const libc::sockaddr, sock_len) } < 0 {
-        return Err(neg_errno());
-    }
-
-    Ok(())
-}
-
-fn loop_write(fd: RawFd, data: &[u8]) -> Result<()> {
-    let mut written = 0usize;
-    while written < data.len() {
-        // SAFETY: arguments satisfy the libc `write` contract and any passed pointers remain valid for the call.
-        let n = unsafe {
-            libc::write(
-                fd,
-                data[written..].as_ptr() as *const libc::c_void,
-                data.len() - written,
-            )
-        };
-        if n < 0 {
-            let errno = std::io::Error::last_os_error()
-                .raw_os_error()
-                .unwrap_or(libc::EIO);
-            if errno == libc::EINTR {
-                continue;
-            }
-            return Err(-errno);
-        }
-        written += usize::try_from(n).map_err(|_| -libc::EIO)?;
-    }
-    Ok(())
+fn neg_io_error(error: io::Error) -> i32 {
+    -error.raw_os_error().unwrap_or(libc::EIO)
 }
 
 fn neg_errno() -> i32 {
