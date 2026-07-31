@@ -270,8 +270,10 @@ impl SocketAddress {
     fn to_raw_sockaddr(&self) -> Result<RawSocketAddress> {
         match self {
             Self::Inet { addr, .. } => match addr {
-                SocketAddr::V4(v4) => RawSocketAddress::from_sockaddr_in(sockaddr_in_from(v4)),
-                SocketAddr::V6(v6) => RawSocketAddress::from_sockaddr_in6(sockaddr_in6_from(v6)),
+                SocketAddr::V4(v4) => Ok(RawSocketAddress::from_sockaddr_in(sockaddr_in_from(v4))),
+                SocketAddr::V6(v6) => {
+                    Ok(RawSocketAddress::from_sockaddr_in6(sockaddr_in6_from(v6)))
+                }
             },
             Self::Unix { path, .. } => sockaddr_unix_from(path),
             Self::Netlink { pid, groups, .. } => sockaddr_netlink_from(*pid, *groups),
@@ -398,18 +400,13 @@ fn sockaddr_unix_from(path: &UnixSocketPath) -> Result<RawSocketAddress> {
                 return Err(SocketLabelError::InvalidValue("unix socket path too long"));
             }
 
-            // SAFETY: the validated byte slice and sun_path are non-overlapping, and the destination is large enough.
-            unsafe {
-                ptr::copy_nonoverlapping(
-                    bytes.as_ptr(),
-                    addr.sun_path.as_mut_ptr().cast(),
-                    bytes.len(),
-                );
+            for (slot, byte) in addr.sun_path.iter_mut().zip(bytes) {
+                *slot = *byte as libc::c_char;
             }
 
             let len = base + bytes.len() + usize::from(bytes.len() < sun_path_len);
             set_sockaddr_un_len(&mut addr, len);
-            RawSocketAddress::from_sockaddr_un(addr, len)
+            Ok(RawSocketAddress::from_sockaddr_un(addr, len))
         }
         UnixSocketPath::Abstract(name) => {
             #[cfg(not(target_os = "linux"))]
@@ -433,23 +430,18 @@ fn sockaddr_unix_from(path: &UnixSocketPath) -> Result<RawSocketAddress> {
                     ));
                 }
 
-                // SAFETY: the validated name and sun_path tail are non-overlapping, and the destination is large enough.
-                unsafe {
-                    ptr::copy_nonoverlapping(
-                        name.as_ptr(),
-                        addr.sun_path.as_mut_ptr().add(1).cast(),
-                        name.len(),
-                    );
+                for (slot, byte) in addr.sun_path[1..].iter_mut().zip(name) {
+                    *slot = *byte as libc::c_char;
                 }
 
                 let len = base + 1 + name.len();
                 set_sockaddr_un_len(&mut addr, len);
-                RawSocketAddress::from_sockaddr_un(addr, len)
+                Ok(RawSocketAddress::from_sockaddr_un(addr, len))
             }
         }
         UnixSocketPath::Unnamed => {
             set_sockaddr_un_len(&mut addr, base);
-            RawSocketAddress::from_sockaddr_un(addr, base)
+            Ok(RawSocketAddress::from_sockaddr_un(addr, base))
         }
     }
 }
@@ -464,17 +456,7 @@ fn sockaddr_netlink_from(pid: u32, groups: u32) -> Result<RawSocketAddress> {
         addr.nl_pid = pid;
         addr.nl_groups = groups;
 
-        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        // SAFETY: storage is suitably aligned and large enough for sockaddr_nl, and is exclusively borrowed.
-        unsafe {
-            ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_nl, addr);
-        }
-
-        Ok(RawSocketAddress {
-            storage,
-            len: mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
-        })
+        Ok(RawSocketAddress::from_sockaddr_nl(addr))
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -497,17 +479,7 @@ fn sockaddr_vsock_from(cid: u32, port: u32) -> Result<RawSocketAddress> {
             svm_zero: [0; 4],
         };
 
-        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        // SAFETY: storage is suitably aligned and large enough for sockaddr_vm, and is exclusively borrowed.
-        unsafe {
-            ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_vm, addr);
-        }
-
-        Ok(RawSocketAddress {
-            storage,
-            len: mem::size_of::<libc::sockaddr_vm>() as libc::socklen_t,
-        })
+        Ok(RawSocketAddress::from_sockaddr_vm(addr))
     }
 
     #[cfg(not(target_os = "linux"))]

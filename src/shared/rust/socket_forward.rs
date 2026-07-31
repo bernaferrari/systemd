@@ -611,11 +611,15 @@ fn rights_cmsg_layout(fd_count: usize) -> io::Result<CmsgLayout> {
         .ok_or_else(invalid_cmsg_input)?;
     let payload_len = u32::try_from(payload_bytes).map_err(|_| invalid_cmsg_input())?;
 
-    // SAFETY: `payload_len` is representable by the `libc` CMSG helpers.
-    let cmsg_len = unsafe { libc::CMSG_LEN(payload_len) } as usize;
-    // SAFETY: `payload_len` is representable by the `libc` CMSG helpers.
-    let cmsg_space = unsafe { libc::CMSG_SPACE(payload_len) } as usize;
-    let header_len = unsafe { libc::CMSG_LEN(0) } as usize;
+    // SAFETY: payload_len is representable by the libc CMSG layout helpers,
+    // which calculate sizes only and dereference no memory.
+    let (cmsg_len, cmsg_space, header_len) = unsafe {
+        (
+            libc::CMSG_LEN(payload_len) as usize,
+            libc::CMSG_SPACE(payload_len) as usize,
+            libc::CMSG_LEN(0) as usize,
+        )
+    };
 
     // The libc helpers accept u32 but may wrap their header/alignment addition
     // at the type boundary. Reject such a layout before allocating or writing.
@@ -679,26 +683,25 @@ fn collect_rights(
     max_fds: usize,
 ) -> io::Result<Vec<OwnedFd>> {
     let control_start = hdr.msg_control.cast::<u8>() as usize;
-    // SAFETY: CMSG_LEN is a pure libc layout calculation for a zero-byte
-    // payload and does not dereference memory.
-    let header_len = unsafe { libc::CMSG_LEN(0) } as usize;
     let mut received = Vec::new();
-    // SAFETY: hdr describes the control buffer populated by recvmsg; all
-    // returned pointers are bounds-checked below before dereference.
-    let mut cmsg = unsafe { libc::CMSG_FIRSTHDR(hdr) };
+    // SAFETY: CMSG_LEN only calculates layout and CMSG_FIRSTHDR returns a
+    // pointer into hdr's recvmsg-populated control buffer; it is validated
+    // before every dereference below.
+    let (header_len, mut cmsg) = unsafe { (libc::CMSG_LEN(0) as usize, libc::CMSG_FIRSTHDR(hdr)) };
 
     while !cmsg.is_null() {
         let cmsg_start = cmsg.cast::<u8>() as usize;
-        // SAFETY: `CMSG_FIRSTHDR`/`CMSG_NXTHDR` return a cmsghdr-aligned
-        // pointer within the validated control buffer.
-        let cmsg_len = unsafe { (*cmsg).cmsg_len } as usize;
+        // SAFETY: CMSG_FIRSTHDR/CMSG_NXTHDR return a cmsghdr-aligned pointer
+        // within the control buffer; cmsg is bounds-checked immediately below.
+        let (cmsg_len, is_rights) = unsafe {
+            (
+                (*cmsg).cmsg_len as usize,
+                (*cmsg).cmsg_level == libc::SOL_SOCKET && (*cmsg).cmsg_type == libc::SCM_RIGHTS,
+            )
+        };
         let cmsg_end =
             checked_cmsg_end(control_start, control_len, cmsg_start, cmsg_len, header_len)?;
 
-        // SAFETY: the header is within the validated control buffer.
-        let is_rights = unsafe {
-            (*cmsg).cmsg_level == libc::SOL_SOCKET && (*cmsg).cmsg_type == libc::SCM_RIGHTS
-        };
         if is_rights {
             let payload_len = cmsg_len - header_len;
             if !payload_len.is_multiple_of(std::mem::size_of::<RawFd>()) {

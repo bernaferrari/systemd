@@ -16,43 +16,73 @@ use libc::c_char;
 use crate::ffi::SIZE_MAX;
 use crate::string_util::owned::{alloc_c_string_from_bytes, alloc_empty_c_string};
 
+/// Borrow a NUL-terminated C string only for the duration of a safe core
+/// operation. This keeps all pointer traversal in one audited adapter while
+/// callers retain their existing null semantics.
+fn with_c_string<T>(value: *const c_char, operation: impl FnOnce(&[u8]) -> T) -> Option<T> {
+    if value.is_null() {
+        return None;
+    }
+    // SAFETY: each caller upholds the documented readable NUL-terminated C
+    // string contract for this synchronous closure.
+    Some(operation(unsafe { CStr::from_ptr(value) }.to_bytes()))
+}
+
+fn with_two_c_strings<T>(
+    first: *const c_char,
+    second: *const c_char,
+    operation: impl FnOnce(&[u8], &[u8]) -> T,
+) -> Option<T> {
+    with_c_string(first, |first| {
+        with_c_string(second, |second| operation(first, second))
+    })
+    .flatten()
+}
+
+fn with_three_c_strings<T>(
+    first: *const c_char,
+    second: *const c_char,
+    third: *const c_char,
+    operation: impl FnOnce(&[u8], &[u8], &[u8]) -> T,
+) -> Option<T> {
+    with_c_string(first, |first| {
+        with_c_string(second, |second| {
+            with_c_string(third, |third| operation(first, second, third))
+        })
+    })
+    .flatten()
+    .flatten()
+}
+
 /// # Safety
 /// `a` and `b` must be readable NUL-terminated strings when non-null.
 pub unsafe fn rs_str_common_prefix(a: *const c_char, b: *const c_char) -> usize {
-    if a.is_null() || b.is_null() {
-        return 0;
-    }
-    // SAFETY: both inputs are readable C strings by the function contract.
-    let a = unsafe { CStr::from_ptr(a) }.to_bytes();
-    // SAFETY: both inputs are readable C strings by the function contract.
-    let b = unsafe { CStr::from_ptr(b) }.to_bytes();
-    for (index, (&left, &right)) in a.iter().zip(b).enumerate() {
-        if left != right {
-            return index;
+    with_two_c_strings(a, b, |a, b| {
+        for (index, (&left, &right)) in a.iter().zip(b).enumerate() {
+            if left != right {
+                return index;
+            }
         }
-    }
-    if a.len() == b.len() {
-        SIZE_MAX
-    } else {
-        a.len().min(b.len())
-    }
+        if a.len() == b.len() {
+            SIZE_MAX
+        } else {
+            a.len().min(b.len())
+        }
+    })
+    .unwrap_or(0)
 }
 
 /// # Safety
 /// `string` and `accept` must be readable NUL-terminated strings when non-null.
 pub unsafe fn rs_strspn_from_end(string: *const c_char, accept: *const c_char) -> usize {
-    if string.is_null() || accept.is_null() {
-        return 0;
-    }
-    // SAFETY: both inputs are readable C strings by the function contract.
-    let string = unsafe { CStr::from_ptr(string) }.to_bytes();
-    // SAFETY: both inputs are readable C strings by the function contract.
-    let accept = unsafe { CStr::from_ptr(accept) }.to_bytes();
-    string
-        .iter()
-        .rev()
-        .take_while(|byte| accept.contains(byte))
-        .count()
+    with_two_c_strings(string, accept, |string, accept| {
+        string
+            .iter()
+            .rev()
+            .take_while(|byte| accept.contains(byte))
+            .count()
+    })
+    .unwrap_or(0)
 }
 
 /// # Safety
@@ -69,23 +99,22 @@ pub unsafe fn rs_streq_skip_trailing_chars(
         (true, false) | (false, true) => return false,
         (false, false) => {}
     }
-    // SAFETY: non-null inputs are readable C strings by the function contract.
-    let first = unsafe { CStr::from_ptr(s1) }.to_bytes();
-    // SAFETY: non-null inputs are readable C strings by the function contract.
-    let second = unsafe { CStr::from_ptr(s2) }.to_bytes();
-    let accepted: &[u8] = if ok.is_null() {
-        b" \t\n\r"
-    } else {
-        // SAFETY: non-null `ok` is a readable C string by the function contract.
-        unsafe { CStr::from_ptr(ok) }.to_bytes()
-    };
-    let mut index = 0;
-    while index < first.len() && index < second.len() && first[index] == second[index] {
-        index += 1;
-    }
-
-    first[index..].iter().all(|byte| accepted.contains(byte))
-        && second[index..].iter().all(|byte| accepted.contains(byte))
+    with_two_c_strings(s1, s2, |first, second| {
+        let compare_with = |accepted: &[u8]| {
+            let mut index = 0;
+            while index < first.len() && index < second.len() && first[index] == second[index] {
+                index += 1;
+            }
+            first[index..].iter().all(|byte| accepted.contains(byte))
+                && second[index..].iter().all(|byte| accepted.contains(byte))
+        };
+        if ok.is_null() {
+            compare_with(b" \t\n\r")
+        } else {
+            with_c_string(ok, compare_with).unwrap_or(false)
+        }
+    })
+    .unwrap_or(false)
 }
 
 /// # Safety
@@ -94,18 +123,17 @@ pub unsafe fn rs_strdupspn(a: *const c_char, accept: *const c_char) -> *mut c_ch
     if a.is_null() || accept.is_null() {
         return alloc_empty_c_string();
     }
-    // SAFETY: both inputs are readable C strings by the function contract.
-    let bytes = unsafe { CStr::from_ptr(a) }.to_bytes();
-    // SAFETY: both inputs are readable C strings by the function contract.
-    let accept = unsafe { CStr::from_ptr(accept) }.to_bytes();
-    if bytes.is_empty() || accept.is_empty() {
-        return alloc_empty_c_string();
-    }
-    let length = bytes
-        .iter()
-        .take_while(|byte| accept.contains(byte))
-        .count();
-    alloc_c_string_from_bytes(&bytes[..length])
+    with_two_c_strings(a, accept, |bytes, accept| {
+        if bytes.is_empty() || accept.is_empty() {
+            return alloc_empty_c_string();
+        }
+        let length = bytes
+            .iter()
+            .take_while(|byte| accept.contains(byte))
+            .count();
+        alloc_c_string_from_bytes(&bytes[..length])
+    })
+    .unwrap_or_else(alloc_empty_c_string)
 }
 
 /// # Safety
@@ -114,26 +142,28 @@ pub unsafe fn rs_strdupcspn(a: *const c_char, reject: *const c_char) -> *mut c_c
     if a.is_null() {
         return alloc_empty_c_string();
     }
-    // SAFETY: non-null `a` is a readable C string by the function contract.
-    let bytes = unsafe { CStr::from_ptr(a) }.to_bytes();
-    if bytes.is_empty() {
-        return alloc_empty_c_string();
-    }
-    let length = if reject.is_null() {
-        bytes.len()
-    } else {
-        // SAFETY: non-null `reject` is a readable C string by the contract.
-        let reject = unsafe { CStr::from_ptr(reject) }.to_bytes();
-        if reject.is_empty() {
+    with_c_string(a, |bytes| {
+        if bytes.is_empty() {
+            return alloc_empty_c_string();
+        }
+        let length = if reject.is_null() {
             bytes.len()
         } else {
-            bytes
-                .iter()
-                .take_while(|byte| !reject.contains(byte))
-                .count()
-        }
-    };
-    alloc_c_string_from_bytes(&bytes[..length])
+            with_c_string(reject, |reject| {
+                if reject.is_empty() {
+                    bytes.len()
+                } else {
+                    bytes
+                        .iter()
+                        .take_while(|byte| !reject.contains(byte))
+                        .count()
+                }
+            })
+            .unwrap_or(0)
+        };
+        alloc_c_string_from_bytes(&bytes[..length])
+    })
+    .unwrap_or_else(alloc_empty_c_string)
 }
 
 /// # Safety
@@ -146,8 +176,9 @@ pub unsafe fn rs_string_replace_char(
     if string.is_null() || old_char == 0 || new_char == 0 || old_char == new_char {
         return std::ptr::null_mut();
     }
-    // SAFETY: `string` is a readable C string by the function contract.
-    let length = unsafe { CStr::from_ptr(string) }.to_bytes().len();
+    let Some(length) = with_c_string(string.cast_const(), <[u8]>::len) else {
+        return ptr::null_mut();
+    };
     // SAFETY: `string` is writable for all visible bytes by the contract.
     let bytes = unsafe { std::slice::from_raw_parts_mut(string.cast::<u8>(), length) };
     for byte in bytes {
@@ -183,12 +214,13 @@ pub unsafe fn rs_strrep(s: *const c_char, n: usize) -> *mut c_char {
     if s.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: non-null `s` is a readable C string by the function contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
-    let Some(output) = repeated_bytes(bytes, n) else {
-        return std::ptr::null_mut();
-    };
-    alloc_c_string_from_bytes(&output)
+    with_c_string(s, |bytes| {
+        let Some(output) = repeated_bytes(bytes, n) else {
+            return ptr::null_mut();
+        };
+        alloc_c_string_from_bytes(&output)
+    })
+    .unwrap_or(ptr::null_mut())
 }
 
 fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
@@ -256,14 +288,11 @@ pub unsafe fn rs_strreplace(
     if text.is_null() || old_string.is_null() || new_string.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: all three inputs are readable C strings by the function contract.
-    let text = unsafe { CStr::from_ptr(text) }.to_bytes();
-    // SAFETY: all three inputs are readable C strings by the function contract.
-    let old = unsafe { CStr::from_ptr(old_string) }.to_bytes();
-    // SAFETY: all three inputs are readable C strings by the function contract.
-    let new = unsafe { CStr::from_ptr(new_string) }.to_bytes();
-    let Some(output) = replaced_bytes(text, old, new) else {
-        return std::ptr::null_mut();
-    };
-    alloc_c_string_from_bytes(&output)
+    with_three_c_strings(text, old_string, new_string, |text, old, new| {
+        let Some(output) = replaced_bytes(text, old, new) else {
+            return ptr::null_mut();
+        };
+        alloc_c_string_from_bytes(&output)
+    })
+    .unwrap_or(ptr::null_mut())
 }

@@ -850,8 +850,9 @@ struct CodecAllocation {
 impl CodecAllocation {
     fn allocate(len: usize) -> Option<Self> {
         debug_assert!(len > 0);
-        // SAFETY: callers pass a non-zero length computed with checked arithmetic.
-        let ptr = unsafe { libc::malloc(len) }.cast::<u8>();
+        // The shared allocator preserves libc ownership while handling the
+        // size_t allocation call at the audited FFI boundary.
+        let ptr = crate::ffi::malloc(len).cast::<u8>();
         (!ptr.is_null()).then_some(Self { ptr, len })
     }
 
