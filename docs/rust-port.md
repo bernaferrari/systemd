@@ -36,7 +36,10 @@ Only the following Rust options currently exist:
 - `-Drust-core-pid1=enabled` additionally builds the experimental incomplete
   Rust PID1 as a non-installed developer artifact. It requires
   `-Drust=enabled`, is permitted only with `-Dmode=developer`, and never
-  replaces the installed C `systemd`.
+  replaces the installed C `systemd`. Its `--test` spelling is deliberately
+  narrower than C's complete transaction-testing mode: it is only the
+  PID-namespace signal-startup smoke and refuses outside PID 1, so it cannot
+  silently become a normal manager loop.
 - `-Drust-init-milestones=enabled` enables experimental Rust init milestone
   tests.
 

@@ -13,6 +13,10 @@ use std::collections::BTreeMap;
 
 const PRIMARY_HEADER_SIZE: usize = 16;
 const MAX_MESSAGE_SIZE: usize = 128 * 1024 * 1024;
+// These are the sd-bus/D-Bus protocol limits used by the C parser.
+const MAX_OBJECT_PATH_LENGTH: usize = 64 * 1024;
+const MAX_NAME_LENGTH: usize = 255;
+const MAX_SIGNATURE_LENGTH: usize = 255;
 const PROTOCOL_VERSION: u8 = 1;
 const MESSAGE_TYPE_METHOD_CALL: u8 = 1;
 const MESSAGE_TYPE_METHOD_RETURN: u8 = 2;
@@ -138,8 +142,14 @@ impl MethodCall {
         if self.signature != "ss" {
             return Err(WireError::InvalidSignature);
         }
-        let (first, offset) = decode_string(self.endian, &self.body, 0)?;
-        let offset = align_to(offset, 4)?;
+        let (first, first_end) = decode_string(self.endian, &self.body, 0)?;
+        let offset = align_to(first_end, 4)?;
+        if offset > self.body.len() {
+            return Err(WireError::Truncated);
+        }
+        if self.body[first_end..offset].iter().any(|byte| *byte != 0) {
+            return Err(WireError::InvalidBody);
+        }
         let (second, consumed) = decode_string(self.endian, &self.body, offset)?;
         if consumed != self.body.len() {
             return Err(WireError::InvalidBody);
@@ -183,11 +193,14 @@ fn decode_marshaled_text(
     offset: &mut usize,
     limit: usize,
     signature: bool,
+    padding_error: WireError,
 ) -> Result<String, WireError> {
     let length = if signature {
         usize::from(read_u8(bytes, offset, limit)?)
     } else {
-        *offset = align_to(*offset, 4)?;
+        let aligned = align_to(*offset, 4)?;
+        validate_zero_padding(bytes, *offset, aligned, padding_error)?;
+        *offset = aligned;
         let range = checked_range(*offset, 4, limit)?;
         let length =
             usize::try_from(endian.read_u32(&bytes[range])?).map_err(|_| WireError::Overflow)?;
@@ -208,8 +221,228 @@ fn decode_marshaled_text(
 
 fn decode_string(endian: Endian, bytes: &[u8], start: usize) -> Result<(String, usize), WireError> {
     let mut offset = start;
-    let value = decode_marshaled_text(endian, bytes, &mut offset, bytes.len(), false)?;
+    let value = decode_marshaled_text(
+        endian,
+        bytes,
+        &mut offset,
+        bytes.len(),
+        false,
+        WireError::InvalidBody,
+    )?;
     Ok((value, offset))
+}
+
+fn validate_zero_padding(
+    bytes: &[u8],
+    start: usize,
+    end: usize,
+    padding_error: WireError,
+) -> Result<(), WireError> {
+    let padding = checked_range(
+        start,
+        end.checked_sub(start).ok_or(WireError::Overflow)?,
+        bytes.len(),
+    )?;
+    if bytes[padding].iter().any(|byte| *byte != 0) {
+        return Err(padding_error);
+    }
+    Ok(())
+}
+
+fn is_ascii_alpha(byte: u8) -> bool {
+    byte.is_ascii_alphabetic()
+}
+
+fn is_ascii_name_byte(byte: u8) -> bool {
+    is_ascii_alpha(byte) || byte.is_ascii_digit() || byte == b'_'
+}
+
+fn object_path_is_valid(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    if bytes.len() > MAX_OBJECT_PATH_LENGTH || bytes.first() != Some(&b'/') {
+        return false;
+    }
+    if bytes == b"/" {
+        return true;
+    }
+
+    let mut previous_was_slash = true;
+    for byte in &bytes[1..] {
+        if *byte == b'/' {
+            if previous_was_slash {
+                return false;
+            }
+            previous_was_slash = true;
+        } else if is_ascii_name_byte(*byte) {
+            previous_was_slash = false;
+        } else {
+            return false;
+        }
+    }
+    !previous_was_slash
+}
+
+fn interface_name_is_valid(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes.len() > MAX_NAME_LENGTH {
+        return false;
+    }
+
+    let mut at_label_start = true;
+    let mut found_dot = false;
+    for byte in bytes {
+        if *byte == b'.' {
+            if at_label_start {
+                return false;
+            }
+            found_dot = true;
+            at_label_start = true;
+        } else if is_ascii_alpha(*byte)
+            || (!at_label_start && byte.is_ascii_digit())
+            || *byte == b'_'
+        {
+            at_label_start = false;
+        } else {
+            return false;
+        }
+    }
+    found_dot && !at_label_start
+}
+
+fn service_name_is_valid(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes.len() > MAX_NAME_LENGTH {
+        return false;
+    }
+
+    let unique = bytes[0] == b':';
+    let mut at_label_start = true;
+    let mut found_dot = false;
+    for byte in &bytes[if unique { 1 } else { 0 }..] {
+        if *byte == b'.' {
+            if at_label_start {
+                return false;
+            }
+            found_dot = true;
+            at_label_start = true;
+        } else if is_ascii_alpha(*byte)
+            || ((!at_label_start || unique) && byte.is_ascii_digit())
+            || matches!(*byte, b'_' | b'-')
+        {
+            at_label_start = false;
+        } else {
+            return false;
+        }
+    }
+    found_dot && !at_label_start
+}
+
+fn member_name_is_valid(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= MAX_NAME_LENGTH
+        && bytes.iter().all(|byte| is_ascii_name_byte(*byte))
+}
+
+fn is_basic_signature_type(byte: u8) -> bool {
+    matches!(
+        byte,
+        b'y' | b'b' | b'n' | b'q' | b'i' | b'u' | b'x' | b't' | b'd' | b's' | b'o' | b'g' | b'h'
+    )
+}
+
+fn signature_element_length(
+    signature: &[u8],
+    offset: usize,
+    allow_dict_entry: bool,
+    array_depth: usize,
+    struct_depth: usize,
+) -> Option<usize> {
+    let current = *signature.get(offset)?;
+    if is_basic_signature_type(current) || current == b'v' {
+        return Some(1);
+    }
+    if current == b'a' {
+        if array_depth >= 32 {
+            return None;
+        }
+        return signature_element_length(
+            signature,
+            offset + 1,
+            true,
+            array_depth + 1,
+            struct_depth,
+        )
+        .and_then(|length| length.checked_add(1));
+    }
+    if current == b'(' {
+        if struct_depth >= 32 {
+            return None;
+        }
+        let mut position = offset + 1;
+        while *signature.get(position)? != b')' {
+            position = position.checked_add(signature_element_length(
+                signature,
+                position,
+                false,
+                array_depth,
+                struct_depth + 1,
+            )?)?;
+        }
+        return (position > offset + 1).then_some(position - offset + 1);
+    }
+    if current == b'{' && allow_dict_entry {
+        if struct_depth >= 32 {
+            return None;
+        }
+        let mut position = offset + 1;
+        let mut elements = 0usize;
+        while *signature.get(position)? != b'}' {
+            if elements == 0 && !is_basic_signature_type(*signature.get(position)?) {
+                return None;
+            }
+            position = position.checked_add(signature_element_length(
+                signature,
+                position,
+                false,
+                array_depth,
+                struct_depth + 1,
+            )?)?;
+            elements = elements.checked_add(1)?;
+        }
+        return (elements == 2).then_some(position - offset + 1);
+    }
+    None
+}
+
+fn signature_is_valid(signature: &str) -> bool {
+    let bytes = signature.as_bytes();
+    if bytes.len() > MAX_SIGNATURE_LENGTH {
+        return false;
+    }
+
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let Some(length) = signature_element_length(bytes, offset, true, 0, 0) else {
+            return false;
+        };
+        let Some(next) = offset.checked_add(length) else {
+            return false;
+        };
+        offset = next;
+    }
+    true
+}
+
+fn header_value_type_is_valid(code: u8, value_type: u8) -> bool {
+    match code {
+        HEADER_PATH => value_type == b'o',
+        HEADER_INTERFACE | HEADER_MEMBER | HEADER_ERROR_NAME | HEADER_DESTINATION
+        | HEADER_SENDER => value_type == b's',
+        HEADER_REPLY_SERIAL | HEADER_UNIX_FDS => value_type == b'u',
+        HEADER_SIGNATURE => value_type == b'g',
+        _ => true,
+    }
 }
 
 fn decode_headers(
@@ -225,21 +458,26 @@ fn decode_headers(
     let mut fields = BTreeMap::new();
 
     while offset < limit {
-        offset = align_to(offset, 8)?;
-        if offset == limit {
-            break;
-        }
-        if offset > limit {
+        let aligned = align_to(offset, 8)?;
+        if aligned >= limit {
             return Err(WireError::InvalidHeader);
         }
+        validate_zero_padding(bytes, offset, aligned, WireError::InvalidHeader)?;
+        offset = aligned;
 
         let code = read_u8(bytes, &mut offset, limit)?;
+        if code == 0 {
+            return Err(WireError::InvalidHeader);
+        }
         let signature_length = read_u8(bytes, &mut offset, limit)?;
         if signature_length != 1 {
             return Err(WireError::InvalidHeader);
         }
         let value_type = read_u8(bytes, &mut offset, limit)?;
         if read_u8(bytes, &mut offset, limit)? != 0 {
+            return Err(WireError::InvalidHeader);
+        }
+        if !header_value_type_is_valid(code, value_type) {
             return Err(WireError::InvalidHeader);
         }
 
@@ -250,6 +488,7 @@ fn decode_headers(
                 &mut offset,
                 limit,
                 false,
+                WireError::InvalidHeader,
             )?),
             b'g' => HeaderValue::Text(decode_marshaled_text(
                 endian,
@@ -257,9 +496,12 @@ fn decode_headers(
                 &mut offset,
                 limit,
                 true,
+                WireError::InvalidHeader,
             )?),
             b'u' => {
-                offset = align_to(offset, 4)?;
+                let aligned = align_to(offset, 4)?;
+                validate_zero_padding(bytes, offset, aligned, WireError::InvalidHeader)?;
+                offset = aligned;
                 let range = checked_range(offset, 4, limit)?;
                 offset = offset.checked_add(4).ok_or(WireError::Overflow)?;
                 HeaderValue::U32(endian.read_u32(&bytes[range])?)
@@ -304,7 +546,9 @@ pub fn decode_method_call(input: &[u8]) -> Result<Option<(MethodCall, usize)>, W
     if input[1] != MESSAGE_TYPE_METHOD_CALL {
         return Err(WireError::InvalidMessageType);
     }
-    if input[3] != PROTOCOL_VERSION {
+    // sd-bus accepts both currently defined protocol versions on input while
+    // continuing to emit version 1 frames for this restricted server.
+    if !matches!(input[3], 1 | 2) {
         return Err(WireError::InvalidProtocolVersion);
     }
 
@@ -347,6 +591,32 @@ pub fn decode_method_call(input: &[u8]) -> Result<Option<(MethodCall, usize)>, W
     if fields.contains_key(&HEADER_ERROR_NAME)
         || fields.contains_key(&HEADER_REPLY_SERIAL)
         || !fields.is_empty()
+    {
+        return Err(WireError::InvalidHeader);
+    }
+
+    if !object_path_is_valid(&path)
+        || interface
+            .as_deref()
+            .is_some_and(|name| !interface_name_is_valid(name))
+        || !member_name_is_valid(&member)
+        || destination
+            .as_deref()
+            .is_some_and(|name| !service_name_is_valid(name))
+        || sender
+            .as_deref()
+            .is_some_and(|name| !service_name_is_valid(name))
+    {
+        return Err(WireError::InvalidHeader);
+    }
+    if !signature_is_valid(&signature) {
+        return Err(WireError::InvalidSignature);
+    }
+    // sd-bus reserves these names for its own local disconnect signaling;
+    // external peers are never allowed to claim them.
+    if path == "/org/freedesktop/DBus/Local"
+        || interface.as_deref() == Some("org.freedesktop.DBus.Local")
+        || sender.as_deref() == Some("org.freedesktop.DBus.Local")
     {
         return Err(WireError::InvalidHeader);
     }
@@ -497,6 +767,9 @@ pub fn encode_text_reply(
     if !matches!(value_type, b's' | b'o') {
         return Err(WireError::InvalidSignature);
     }
+    if value_type == b'o' && !object_path_is_valid(value) {
+        return Err(WireError::InvalidBody);
+    }
     let mut body = Vec::new();
     push_marshaled_text(endian, &mut body, value, false)?;
     let signature = char::from(value_type).to_string();
@@ -518,6 +791,9 @@ pub fn encode_error_reply(
     error_name: &str,
     message: &str,
 ) -> Result<Vec<u8>, WireError> {
+    if !interface_name_is_valid(error_name) {
+        return Err(WireError::InvalidHeader);
+    }
     let mut body = Vec::new();
     push_marshaled_text(endian, &mut body, message, false)?;
     encode_message(
@@ -612,6 +888,26 @@ mod tests {
     }
 
     #[test]
+    fn accepts_both_protocol_versions_sd_bus_accepts() {
+        let mut version_two = encode_call(
+            Endian::Little,
+            1,
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus.Peer",
+            "Ping",
+            "",
+            &[],
+        );
+        version_two[3] = 2;
+        assert!(decode_method_call(&version_two).unwrap().is_some());
+        version_two[3] = 3;
+        assert_eq!(
+            decode_method_call(&version_two),
+            Err(WireError::InvalidProtocolVersion)
+        );
+    }
+
+    #[test]
     fn rejects_oversized_declared_body_before_waiting_for_it() {
         let mut bytes = vec![b'l', MESSAGE_TYPE_METHOD_CALL, 0, PROTOCOL_VERSION];
         bytes.extend_from_slice(&(MAX_MESSAGE_SIZE as u32).to_le_bytes());
@@ -642,6 +938,170 @@ mod tests {
         assert_eq!(
             decode_method_call(&bytes),
             Err(WireError::UnsupportedUnixFds)
+        );
+    }
+
+    #[test]
+    fn accepts_the_same_header_name_and_signature_forms_as_sd_bus() {
+        assert!(object_path_is_valid("/"));
+        assert!(object_path_is_valid("/org/freedesktop/systemd1"));
+        assert!(!object_path_is_valid("/org//systemd1"));
+        assert!(!object_path_is_valid("/org/systemd1/"));
+        assert!(!object_path_is_valid("/org/systemd-1"));
+
+        assert!(interface_name_is_valid("org.freedesktop.systemd1"));
+        assert!(!interface_name_is_valid("org..systemd1"));
+        assert!(!interface_name_is_valid("1org.systemd"));
+        assert!(!interface_name_is_valid("org.systemd-1"));
+        assert!(service_name_is_valid("org.freedesktop.systemd1"));
+        assert!(service_name_is_valid(":1.42"));
+        assert!(!service_name_is_valid("org..systemd1"));
+        assert!(!service_name_is_valid("1org.systemd"));
+        assert!(member_name_is_valid("StartUnit"));
+        assert!(!member_name_is_valid("Start-Unit"));
+
+        assert!(signature_is_valid(""));
+        assert!(signature_is_valid("a{sv}"));
+        assert!(signature_is_valid("(ss)"));
+        assert!(!signature_is_valid("a"));
+        assert!(!signature_is_valid("()"));
+        assert!(!signature_is_valid("{ss"));
+        assert!(!signature_is_valid(&("a".repeat(33) + "s")));
+    }
+
+    #[test]
+    fn rejects_invalid_header_values_before_dispatch() {
+        let mut invalid_path = encode_call(
+            Endian::Little,
+            1,
+            "/org/freedesktop/systemd1",
+            "org.freedesktop.systemd1.Manager",
+            "Ping",
+            "",
+            &[],
+        );
+        let path_start = invalid_path
+            .windows(b"/org/freedesktop/systemd1".len())
+            .position(|window| window == b"/org/freedesktop/systemd1")
+            .unwrap();
+        invalid_path[path_start + 1] = b'/';
+        assert_eq!(
+            decode_method_call(&invalid_path),
+            Err(WireError::InvalidHeader)
+        );
+
+        let mut invalid_member = encode_call(
+            Endian::Little,
+            1,
+            "/org/freedesktop/systemd1",
+            "org.freedesktop.systemd1.Manager",
+            "Ping",
+            "",
+            &[],
+        );
+        let member_start = invalid_member
+            .windows(b"Ping".len())
+            .position(|window| window == b"Ping")
+            .unwrap();
+        invalid_member[member_start + 2] = b'-';
+        assert_eq!(
+            decode_method_call(&invalid_member),
+            Err(WireError::InvalidHeader)
+        );
+
+        let mut invalid_signature = encode_call(
+            Endian::Little,
+            1,
+            "/org/freedesktop/systemd1",
+            "org.freedesktop.systemd1.Manager",
+            "Ping",
+            "a",
+            &[],
+        );
+        assert_eq!(
+            decode_method_call(&invalid_signature),
+            Err(WireError::InvalidSignature)
+        );
+        // The wire type for PATH is object path, not string. sd-bus rejects
+        // the wrong variant even when the payload itself is a valid path.
+        invalid_signature[16 + 2] = b's';
+        assert_eq!(
+            decode_method_call(&invalid_signature),
+            Err(WireError::InvalidHeader)
+        );
+    }
+
+    #[test]
+    fn rejects_nonzero_header_and_body_alignment_padding() {
+        let mut fields = Vec::new();
+        push_header_text(
+            Endian::Little,
+            &mut fields,
+            HEADER_PATH,
+            b'o',
+            "/org/freedesktop/systemd1",
+        )
+        .unwrap();
+        let padding_start = fields.len();
+        push_header_text(Endian::Little, &mut fields, HEADER_MEMBER, b's', "Ping").unwrap();
+        assert!(fields.len() > padding_start);
+        fields[padding_start] = 1;
+        let mut bad_header_padding = vec![b'l', MESSAGE_TYPE_METHOD_CALL, 0, PROTOCOL_VERSION];
+        bad_header_padding.extend_from_slice(&0u32.to_le_bytes());
+        bad_header_padding.extend_from_slice(&1u32.to_le_bytes());
+        bad_header_padding.extend_from_slice(&(fields.len() as u32).to_le_bytes());
+        bad_header_padding.extend_from_slice(&fields);
+        push_padding(&mut bad_header_padding, 8).unwrap();
+        assert_eq!(
+            decode_method_call(&bad_header_padding),
+            Err(WireError::InvalidHeader)
+        );
+
+        let bytes = encode_call(
+            Endian::Little,
+            1,
+            "/org/freedesktop/systemd1",
+            "org.freedesktop.systemd1.Manager",
+            "StartUnit",
+            "ss",
+            &["x", "replace"],
+        );
+        let (call, _) = decode_method_call(&bytes).unwrap().unwrap();
+        assert_eq!(
+            call.decode_two_strings(),
+            Ok(("x".into(), "replace".into()))
+        );
+
+        let mut bad_body_padding = bytes;
+        let header_length =
+            u32::from_le_bytes(bad_body_padding[12..16].try_into().unwrap()) as usize;
+        let body_offset = align_to(PRIMARY_HEADER_SIZE + header_length, 8).unwrap();
+        let first_value = body_offset + 4;
+        assert_eq!(&bad_body_padding[first_value..first_value + 2], b"x\0");
+        bad_body_padding[first_value + 2] = 1;
+        let (call, _) = decode_method_call(&bad_body_padding).unwrap().unwrap();
+        assert_eq!(call.decode_two_strings(), Err(WireError::InvalidBody));
+    }
+
+    #[test]
+    fn rejects_local_reserved_names_and_invalid_outbound_names() {
+        let local = encode_call(
+            Endian::Little,
+            1,
+            "/org/freedesktop/DBus/Local",
+            "org.freedesktop.systemd1.Manager",
+            "Ping",
+            "",
+            &[],
+        );
+        assert_eq!(decode_method_call(&local), Err(WireError::InvalidHeader));
+        assert_eq!(
+            encode_text_reply(Endian::Little, 1, 1, b'o', "/bad-path"),
+            Err(WireError::InvalidBody)
+        );
+        assert_eq!(
+            encode_error_reply(Endian::Little, 1, 1, "invalid", "bad"),
+            Err(WireError::InvalidHeader)
         );
     }
 

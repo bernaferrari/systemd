@@ -134,9 +134,23 @@ fn print_help() {
     println!();
     println!("  -h --help            Show this help");
     println!("     --version         Show package version");
-    println!("     --test            Run in test mode");
+    println!("     --test            Run the experimental PID 1 signal-startup smoke");
     println!();
     println!("This Rust implementation takes no positional arguments.");
+    println!("The experimental --test smoke is supported only when this binary is PID 1.");
+}
+
+/// The C implementation's `--test` mode builds and reports a complete
+/// initial transaction. The developer-only Rust PID 1 has not ported that
+/// contract. Its similarly named mode exists solely for the tightly scoped
+/// PID-namespace signal-startup smoke in `test-rust-pid1-syscall-smoke.sh`.
+///
+/// Keep this decision separate from `main()` so a future implementation of
+/// the actual C test contract has one explicit place to replace. In
+/// particular, never let `--test` outside a PID namespace silently become a
+/// normal, long-running manager invocation.
+fn test_smoke_is_supported(action: CliAction, is_pid1: bool) -> bool {
+    action != CliAction::Test || is_pid1
 }
 
 fn print_version() {
@@ -852,6 +866,13 @@ fn main() {
     }
 
     let is_pid1 = std::process::id() == 1;
+    if !test_smoke_is_supported(options.action, is_pid1) {
+        eprintln!(
+            "systemd: --test is currently only the experimental Rust PID 1 signal-startup smoke; run it as PID 1 in an isolated PID namespace"
+        );
+        std::process::exit(CLI_ERROR_EXIT_STATUS);
+    }
+
     if is_pid1 {
         boot_log("running as PID 1, starting early boot sequence");
 
@@ -962,6 +983,14 @@ mod tests {
         let args = vec!["--test".to_string()];
         let options = parse_cli_options(&args).unwrap();
         assert_eq!(options.action, CliAction::Test);
+    }
+
+    #[test]
+    fn test_smoke_never_turns_into_a_non_pid1_manager_loop() {
+        assert!(test_smoke_is_supported(CliAction::Test, true));
+        assert!(!test_smoke_is_supported(CliAction::Test, false));
+        assert!(test_smoke_is_supported(CliAction::Run, false));
+        assert!(test_smoke_is_supported(CliAction::Help, false));
     }
 
     #[test]
