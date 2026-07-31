@@ -2683,7 +2683,7 @@ status = "in-progress"
 tier = 1
 symbols = 0
 sync_status = "needs_review"
-notes = "Safe argument and direct /proc/cmdline parity is implemented: current C enum/string-table values, optional-value kernel-command-line precedence, positional path validation, and the inactive no/state success path. The complete proc_cmdline_strv container/secure-environment source selection and yes/overlay sysroot/backing-device validation, staged mount transition, and cleanup ordering remain unimplemented; yes/overlay fail closed before mount or filesystem side effects."
+notes = "Safe UTF-8 argument and direct /proc/cmdline handling is implemented: current C enum/string-table values, optional-value kernel-command-line precedence, positional path validation (including path_equal-equivalent root spellings), and the inactive no/state success path. Active modes now perform side-effect-free mount-ID/mountinfo preflight, reject non-mount targets, and return success for an already temporary sysroot as C does. The complete byte-oriented argv/cmdline interface, proc_cmdline_strv container/secure-environment source selection, get_block_device_harder/device-mapper/Btrfs backing-device link, chase(CHASE_PREFIX_ROOT), staged yes/overlay transition, recursive remount/unmount, and cleanup ordering remain unimplemented; a non-temporary yes/overlay request fails closed before filesystem side effects. Meson still builds volatile-root.c, so the Rust executable is not yet an installable replacement."
 
 [journal_field_validation]
 c_file = "src/libsystemd/sd-journal/journal-file.c"

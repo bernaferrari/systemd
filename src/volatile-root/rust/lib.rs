@@ -13,6 +13,14 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
+use std::io;
+#[cfg(target_os = "linux")]
+use std::os::fd::AsRawFd;
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::OpenOptionsExt;
+#[cfg(target_os = "linux")]
+use std::path::Path;
+
 /// Mode value for a persistent root.
 pub const VOLATILE_NO: i32 = 0;
 /// Mode value for fully volatile root (tmpfs mount).
@@ -40,7 +48,7 @@ pub const OVERLAY_SYSROOT_DIR: &str = "/run/systemd/overlay-sysroot";
 pub const VOLATILE_ROOT_LINK: &str = "/run/systemd/volatile-root";
 
 /// Tmpfs mount options for volatile root.
-pub const TMPFS_OPTIONS: &str = "mode=0755";
+pub const TMPFS_OPTIONS: &str = "mode=0755,size=25%,nr_inodes=1m";
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
@@ -103,10 +111,22 @@ pub fn validate_path(path: &str) -> Result<(), i32> {
     if !path.starts_with('/') {
         return Err(-libc::EINVAL);
     }
-    if path == "/" {
+    if path_is_root(path) {
         return Err(-libc::EINVAL);
     }
     Ok(())
+}
+
+/// Match `path_equal(path, "/")` for the path spellings relevant here.
+///
+/// `path_equal()` ignores repeated separators and `.` components. Rejecting
+/// only the literal string `/` would allow `//` or `/./` to bypass the guard
+/// immediately before a root mount transition.
+fn path_is_root(path: &str) -> bool {
+    path.starts_with('/')
+        && path
+            .split('/')
+            .all(|component| component.is_empty() || component == ".")
 }
 
 // ── Overlayfs options builder ─────────────────────────────────────────────
@@ -247,6 +267,119 @@ pub const fn mode_requires_root_transition(mode: VolatileMode) -> bool {
     matches!(mode, VolatileMode::Yes | VolatileMode::Overlay)
 }
 
+// ── Read-only sysroot preflight ───────────────────────────────────────────
+
+/// Result of the side-effect-free checks which precede C's backing-device
+/// link and mount transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SysrootState {
+    /// The requested path already resides on a temporary filesystem. C treats
+    /// this as success and performs no backing-device or mount operations.
+    AlreadyTemporary,
+    /// The path is a mount point backed by a non-temporary filesystem.
+    ///
+    /// The caller must not create `/run/systemd/volatile-root` until it can
+    /// immediately continue with the complete C-compatible mount transition.
+    NeedsTransition {
+        /// Filesystem type reported for the mount in `/proc/self/mountinfo`.
+        filesystem_type: String,
+    },
+}
+
+/// Validate the active-mode sysroot without changing the filesystem.
+///
+/// This is the safe, read-only prefix of `run()` in `volatile-root.c`: the
+/// target must be a mount point, and an existing tmpfs/ramfs root is an
+/// immediate success. Linux mount IDs are read through retained file
+/// descriptors, so bind mounts are recognized even when their device number
+/// is identical to the parent filesystem.
+#[cfg(target_os = "linux")]
+pub fn inspect_sysroot(path: &str) -> io::Result<SysrootState> {
+    validate_path(path).map_err(|errno| io::Error::from_raw_os_error(-errno))?;
+
+    let canonical = std::fs::canonicalize(path)?;
+    let parent = canonical
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "sysroot path has no parent"))?;
+
+    let target = open_directory(&canonical)?;
+    let parent = open_directory(parent)?;
+
+    let target_mount_id = mount_id_for_fd(&target)?;
+    let parent_mount_id = mount_id_for_fd(&parent)?;
+    if target_mount_id == parent_mount_id {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "sysroot path is not a mount point",
+        ));
+    }
+
+    let filesystem_type = filesystem_type_for_mount_id(target_mount_id)?;
+    if matches!(filesystem_type.as_str(), "tmpfs" | "ramfs" | "devtmpfs") {
+        Ok(SysrootState::AlreadyTemporary)
+    } else {
+        Ok(SysrootState::NeedsTransition { filesystem_type })
+    }
+}
+
+/// Volatile-root is Linux-specific; preserve a clear diagnostic if the crate
+/// is inspected on another host.
+#[cfg(not(target_os = "linux"))]
+pub fn inspect_sysroot(_path: &str) -> io::Result<SysrootState> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "volatile-root sysroot inspection requires Linux",
+    ))
+}
+
+#[cfg(target_os = "linux")]
+fn open_directory(path: &Path) -> io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+}
+
+#[cfg(target_os = "linux")]
+fn mount_id_for_fd(file: &std::fs::File) -> io::Result<u64> {
+    let fdinfo = std::fs::read_to_string(format!("/proc/self/fdinfo/{}", file.as_raw_fd()))?;
+    parse_mount_id(&fdinfo).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "fdinfo does not contain a mount ID",
+        )
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn filesystem_type_for_mount_id(mount_id: u64) -> io::Result<String> {
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo")?;
+    parse_filesystem_type(&mountinfo, mount_id)
+        .map(str::to_owned)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "mount ID is absent from mountinfo"))
+}
+
+fn parse_mount_id(fdinfo: &str) -> Option<u64> {
+    fdinfo
+        .lines()
+        .find_map(|line| line.strip_prefix("mnt_id:\t")?.trim().parse().ok())
+}
+
+fn parse_filesystem_type(mountinfo: &str, wanted_mount_id: u64) -> Option<&str> {
+    mountinfo.lines().find_map(|line| {
+        let mut fields = line.split_ascii_whitespace();
+        let mount_id = fields.next()?.parse::<u64>().ok()?;
+        if mount_id != wanted_mount_id {
+            return None;
+        }
+
+        // `find()` consumes the separator. The first field after it is the
+        // filesystem type.
+        fields.find(|field| *field == "-")?;
+        fields.next()
+    })
+}
+
 /// Split `/proc/cmdline` into words with the quoting semantics needed by the
 /// `systemd.volatile` lookup. This is deliberately small, but supports both
 /// quote styles and retained backslash escapes so quoted values remain one
@@ -357,6 +490,9 @@ mod tests {
         assert!(validate_path("").is_err());
         assert!(validate_path("relative").is_err());
         assert!(validate_path("/").is_err());
+        assert!(validate_path("//").is_err());
+        assert!(validate_path("/./").is_err());
+        assert!(validate_path("/../").is_ok());
     }
 
     #[test]
@@ -478,5 +614,30 @@ mod tests {
         assert!(!mode_requires_root_transition(VolatileMode::State));
         assert!(mode_requires_root_transition(VolatileMode::Yes));
         assert!(mode_requires_root_transition(VolatileMode::Overlay));
+    }
+
+    #[test]
+    fn tmpfs_limits_match_the_c_rootfs_policy() {
+        assert_eq!(TMPFS_OPTIONS, "mode=0755,size=25%,nr_inodes=1m");
+    }
+
+    #[test]
+    fn parses_mount_id_from_fdinfo() {
+        assert_eq!(
+            parse_mount_id("pos:\t0\nflags:\t0100000\nmnt_id:\t731\n"),
+            Some(731)
+        );
+        assert_eq!(parse_mount_id("pos:\t0\n"), None);
+    }
+
+    #[test]
+    fn finds_filesystem_type_by_mount_id() {
+        let mountinfo = "\
+29 23 0:26 / /sys rw,nosuid - sysfs sysfs rw
+37 23 0:33 / /run rw,nosuid,nodev - tmpfs tmpfs rw,size=1m
+";
+        assert_eq!(parse_filesystem_type(mountinfo, 37), Some("tmpfs"));
+        assert_eq!(parse_filesystem_type(mountinfo, 29), Some("sysfs"));
+        assert_eq!(parse_filesystem_type(mountinfo, 999), None);
     }
 }

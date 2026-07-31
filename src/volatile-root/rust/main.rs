@@ -5,7 +5,9 @@
 //
 // PORT-SYNC: src/volatile-root/volatile-root.c
 
-use systemd_volatile_root_rs::{mode_requires_root_transition, resolve_args_from_cmdline};
+use systemd_volatile_root_rs::{
+    SysrootState, inspect_sysroot, mode_requires_root_transition, resolve_args_from_cmdline,
+};
 
 fn print_help() {
     eprintln!("Usage: systemd-volatile-root [MODE] [PATH]");
@@ -60,10 +62,31 @@ fn main() {
         return;
     }
 
+    match inspect_sysroot(&parsed.path) {
+        Ok(SysrootState::AlreadyTemporary) => {
+            eprintln!(
+                "systemd-volatile-root: {} already is a temporary file system",
+                parsed.path
+            );
+            return;
+        }
+        Ok(SysrootState::NeedsTransition { .. }) => {}
+        Err(error) => {
+            eprintln!(
+                "systemd-volatile-root: failed to validate {} before the volatile-root transition: {error}",
+                parsed.path
+            );
+            std::process::exit(1);
+        }
+    }
+
     // `yes` and `overlay` require C's carefully ordered mount namespace
-    // transition, including source resolution, recursive no-follow unmounts,
-    // and rollback. Keep this boundary fail-closed until that whole sequence
-    // is implemented, rather than approximating it with direct mount calls.
+    // transition, including backing-device discovery, source resolution,
+    // recursive no-follow unmounts, and cleanup. Keep this boundary
+    // fail-closed until that whole sequence is implemented, rather than
+    // approximating it with direct mount calls. In particular, creating the
+    // backing-device symlink here would violate the no-side-effects guarantee
+    // when the following transition is deliberately unavailable.
     eprintln!(
         "systemd-volatile-root: Rust volatile-root mount transition is not implemented; refusing to modify {}",
         parsed.path
