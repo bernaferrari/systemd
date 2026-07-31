@@ -12,14 +12,14 @@ Scope: `src`
 
 ## Snapshot Totals
 
-- All `src` C files: **1832**
+- All `src` C files: **1833**
 - All `src` Rust files: **1296**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
 - Unverified Rust behavior candidates: **1181**
 
 Excluding `src/test`:
-- C files: **1570**
+- C files: **1571**
 - Rust files: **1296**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
@@ -152,7 +152,7 @@ Excluding `src/test`:
 | `vconsole` | 1 | 3 | 0 | 0 | 3 |
 | `veritysetup` | 2 | 0 | 0 | 0 | 0 |
 | `vmspawn` | 11 | 0 | 0 | 0 | 0 |
-| `volatile-root` | 2 | 7 | 0 | 0 | 7 |
+| `volatile-root` | 3 | 7 | 0 | 0 | 7 |
 | `vpick` | 1 | 3 | 0 | 0 | 3 |
 | `xdg-autostart-generator` | 5 | 0 | 0 | 0 | 0 |
 

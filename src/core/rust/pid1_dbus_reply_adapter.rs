@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// PORT-SYNC: src/core/dbus.c (direct private-bus method replies).
+
 //! Disconnected, bounded mapping from PID 1 command results to D-Bus replies.
 //!
 //! The transport retains responsibility for allocating its own outgoing D-Bus
@@ -23,6 +25,23 @@ const MESSAGE_ACCESS_DENIED: &str = "Permission denied.";
 const MESSAGE_RUNTIME_FAILED: &str = "PID 1 manager command failed.";
 const MESSAGE_INBOX_FULL: &str = "PID 1 command inbox is full.";
 const MESSAGE_INBOX_CLOSED: &str = "PID 1 command inbox is closed.";
+
+/// A checked D-Bus error generated before a manager command is accepted.
+///
+/// These errors are deliberately narrower than systemd's full sd-bus error
+/// surface. They let the private wire reject a decoded manager request with
+/// reliable correlation, without pretending to provide the complete manager
+/// vtable or property contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pid1DbusProtocolError {
+    UnknownMethod,
+    UnknownObject,
+    UnknownInterface,
+    InvalidArgs,
+    LimitsExceeded,
+    Disconnected,
+    Failed,
+}
 
 /// Failure while encoding a manager result for one bounded connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +116,27 @@ impl Pid1DbusReplyAdapter {
         }
         Ok(frame)
     }
+
+    /// Encode one bounded local protocol rejection using the caller's exact
+    /// D-Bus serial correlation. Unlike [`Self::encode`], this never accepts
+    /// or waits for manager work.
+    pub fn encode_protocol_error(
+        self,
+        endian: Endian,
+        serial: u32,
+        reply_serial: u32,
+        error: Pid1DbusProtocolError,
+    ) -> Result<Vec<u8>, Pid1DbusReplyAdapterError> {
+        let (name, message) = protocol_error_details(error);
+        let frame = encode_error_reply(endian, serial, reply_serial, name, message)?;
+        if frame.len() > self.capacity {
+            return Err(Pid1DbusReplyAdapterError::ReplyTooLarge {
+                frame_length: frame.len(),
+                capacity: self.capacity,
+            });
+        }
+        Ok(frame)
+    }
 }
 
 fn error_details(error: Pid1CommandError) -> (&'static str, &'static str) {
@@ -105,6 +145,39 @@ fn error_details(error: Pid1CommandError) -> (&'static str, &'static str) {
         Pid1CommandError::Runtime(_) => (ERROR_FAILED, MESSAGE_RUNTIME_FAILED),
         Pid1CommandError::InboxFull => (ERROR_LIMITS_EXCEEDED, MESSAGE_INBOX_FULL),
         Pid1CommandError::InboxClosed => (ERROR_DISCONNECTED, MESSAGE_INBOX_CLOSED),
+    }
+}
+
+fn protocol_error_details(error: Pid1DbusProtocolError) -> (&'static str, &'static str) {
+    match error {
+        Pid1DbusProtocolError::UnknownMethod => (
+            "org.freedesktop.DBus.Error.UnknownMethod",
+            "Unknown manager method.",
+        ),
+        Pid1DbusProtocolError::UnknownObject => (
+            "org.freedesktop.DBus.Error.UnknownObject",
+            "Unknown manager object path.",
+        ),
+        Pid1DbusProtocolError::UnknownInterface => (
+            "org.freedesktop.DBus.Error.UnknownInterface",
+            "Unknown manager interface.",
+        ),
+        Pid1DbusProtocolError::InvalidArgs => (
+            "org.freedesktop.DBus.Error.InvalidArgs",
+            "Invalid manager method arguments.",
+        ),
+        Pid1DbusProtocolError::LimitsExceeded => (
+            "org.freedesktop.DBus.Error.LimitsExceeded",
+            "PID 1 command inbox is full.",
+        ),
+        Pid1DbusProtocolError::Disconnected => (
+            "org.freedesktop.DBus.Error.Disconnected",
+            "PID 1 command inbox is closed.",
+        ),
+        Pid1DbusProtocolError::Failed => (
+            "org.freedesktop.DBus.Error.Failed",
+            "PID 1 could not accept the manager command.",
+        ),
     }
 }
 
@@ -242,5 +315,50 @@ mod tests {
             adapter.encode(Endian::Little, 73, 0, Ok(Pid1ManagerReply::Completed)),
             Err(Pid1DbusReplyAdapterError::Wire(WireError::InvalidSerial))
         );
+    }
+
+    #[test]
+    fn encodes_local_protocol_rejections_with_exact_correlation() {
+        let adapter = Pid1DbusReplyAdapter::new(CAPACITY).unwrap();
+        for (error, name) in [
+            (
+                Pid1DbusProtocolError::UnknownMethod,
+                "org.freedesktop.DBus.Error.UnknownMethod",
+            ),
+            (
+                Pid1DbusProtocolError::UnknownObject,
+                "org.freedesktop.DBus.Error.UnknownObject",
+            ),
+            (
+                Pid1DbusProtocolError::UnknownInterface,
+                "org.freedesktop.DBus.Error.UnknownInterface",
+            ),
+            (
+                Pid1DbusProtocolError::InvalidArgs,
+                "org.freedesktop.DBus.Error.InvalidArgs",
+            ),
+            (
+                Pid1DbusProtocolError::LimitsExceeded,
+                "org.freedesktop.DBus.Error.LimitsExceeded",
+            ),
+            (
+                Pid1DbusProtocolError::Disconnected,
+                "org.freedesktop.DBus.Error.Disconnected",
+            ),
+            (
+                Pid1DbusProtocolError::Failed,
+                "org.freedesktop.DBus.Error.Failed",
+            ),
+        ] {
+            let frame = adapter
+                .encode_protocol_error(Endian::Little, 73, 41, error)
+                .unwrap();
+            assert_correlation(&frame, Endian::Little, 3);
+            assert!(
+                frame
+                    .windows(name.len())
+                    .any(|window| window == name.as_bytes())
+            );
+        }
     }
 }

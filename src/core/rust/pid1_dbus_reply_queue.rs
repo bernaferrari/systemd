@@ -21,7 +21,9 @@ use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 use std::sync::mpsc::TryRecvError;
 
-use crate::pid1_dbus_reply_adapter::{Pid1DbusReplyAdapter, Pid1DbusReplyAdapterError};
+use crate::pid1_dbus_reply_adapter::{
+    Pid1DbusProtocolError, Pid1DbusReplyAdapter, Pid1DbusReplyAdapterError,
+};
 use crate::pid1_dbus_wire::{Endian, MethodCall};
 use crate::pid1_manager_commands::Pid1CommandReplyReceiver;
 
@@ -91,6 +93,10 @@ pub enum PrivateBusReplyQueueError {
     /// Reserving outbound frame bookkeeping failed before a pending receiver
     /// was consumed. The caller may retry polling or close the peer.
     OutboundAllocationFailed,
+    /// A local protocol rejection would exceed the remaining retained output
+    /// budget. No manager operation was accepted, but omitting a required
+    /// D-Bus error would leave the peer waiting, so the slot must be closed.
+    OutboundCapacityExceeded { required: usize, available: usize },
     /// The PID 1 command owner disappeared without producing the reply it
     /// promised. The connection is terminal and must be torn down.
     ReplyChannelClosed { reply_serial: u32 },
@@ -294,6 +300,65 @@ impl PrivateBusReplyQueue {
 
     pub const fn is_terminal(&self) -> bool {
         self.terminal
+    }
+
+    /// Retain a bounded D-Bus error for a decoded request that was rejected
+    /// before any manager work was accepted.
+    ///
+    /// The exact request serial remains reserved in the outbound queue until
+    /// the final byte is written. This gives locally generated errors the same
+    /// duplicate-serial and partial-write guarantees as manager replies. A
+    /// caller that cannot retain this frame must detach the peer rather than
+    /// silently discard a reply-expected request.
+    pub fn enqueue_protocol_error(
+        &mut self,
+        endian: Endian,
+        reply_serial: u32,
+        error: Pid1DbusProtocolError,
+    ) -> Result<(), PrivateBusReplyQueueError> {
+        if self.terminal {
+            return Err(PrivateBusReplyQueueError::TerminalFailure);
+        }
+        if reply_serial == 0 {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::InvalidReplySerial);
+        }
+        if let Some(reserved_reply) = self.reserved_reply {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::ReplyReservationInProgress {
+                reply_serial: reserved_reply,
+            });
+        }
+        if self.reply_serial_is_reserved(reply_serial) {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::DuplicateReplySerial { reply_serial });
+        }
+
+        let serial = self.next_outgoing_serial;
+        let bytes = self
+            .adapter
+            .encode_protocol_error(endian, serial, reply_serial, error)
+            .map_err(PrivateBusReplyQueueError::ReplyEncoding)?;
+        let available = self.outbound_capacity - self.outbound_bytes;
+        if bytes.len() > available {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::OutboundCapacityExceeded {
+                required: bytes.len(),
+                available,
+            });
+        }
+        if self.outbound.try_reserve(1).is_err() {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::OutboundAllocationFailed);
+        }
+        self.outbound_bytes += bytes.len();
+        self.outbound.push_back(OutboundFrame {
+            reply_serial,
+            bytes,
+            offset: 0,
+        });
+        self.take_outgoing_serial();
+        Ok(())
     }
 
     /// Retain a reply receiver using correlation from one decoded call.
@@ -686,6 +751,39 @@ mod tests {
         assert_eq!(queue.outbound_frame_count(), 0);
         assert_eq!(queue.outbound_byte_count(), 0);
         assert!(!queue.is_terminal());
+    }
+
+    #[test]
+    fn protocol_error_reserves_correlation_until_its_frame_is_flushed() {
+        let mut queue = queue(1, FRAME_CAPACITY);
+        queue
+            .enqueue_protocol_error(Endian::Big, 19, Pid1DbusProtocolError::UnknownMethod)
+            .unwrap();
+        assert_eq!(queue.pending_reply_count(), 0);
+        assert_eq!(queue.outbound_frame_count(), 1);
+        let frame = queue.current_frame().unwrap().to_vec();
+        assert_eq!(frame[0], b'B');
+        assert_eq!(frame[1], 3);
+        assert!(
+            frame
+                .windows(b"org.freedesktop.DBus.Error.UnknownMethod".len())
+                .any(|window| window == b"org.freedesktop.DBus.Error.UnknownMethod")
+        );
+        assert_eq!(
+            queue.enqueue_protocol_error(Endian::Big, 19, Pid1DbusProtocolError::UnknownMethod,),
+            Err(PrivateBusReplyQueueError::DuplicateReplySerial { reply_serial: 19 })
+        );
+        assert!(queue.is_terminal());
+
+        queue.clear();
+        queue
+            .enqueue_protocol_error(Endian::Little, 19, Pid1DbusProtocolError::InvalidArgs)
+            .unwrap();
+        let frame_len = queue.current_frame().unwrap().len();
+        assert!(queue.acknowledge_written(frame_len).unwrap());
+        queue
+            .enqueue_protocol_error(Endian::Little, 19, Pid1DbusProtocolError::InvalidArgs)
+            .unwrap();
     }
 
     #[test]

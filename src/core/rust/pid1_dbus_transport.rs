@@ -35,6 +35,7 @@ mod imp {
     use crate::pid1_dbus_listener::{
         AdmittedPrivateBusConnection, PrivateBusConnectionId, PrivateBusListener,
     };
+    use crate::pid1_dbus_reply_adapter::Pid1DbusProtocolError;
     use crate::pid1_dbus_reply_queue::{
         PrivateBusReplyPollOutcome, PrivateBusReplyQueue, PrivateBusReplyQueueError,
         PrivateBusReplyTracking,
@@ -160,6 +161,10 @@ mod imp {
         /// is retained for logging/metrics, but the peer requested that no
         /// protocol response be sent.
         RejectedNoReply { cause: Pid1DbusCommandAdapterError },
+        /// A decoded request was rejected before manager work was accepted,
+        /// and a bounded typed D-Bus error frame was retained for this peer.
+        /// This is intentionally not a claim of full sd-bus/vtable parity.
+        RejectedWithError { error: Pid1DbusProtocolError },
     }
 
     /// Failure in a dispatch turn which cannot safely be represented by the
@@ -374,7 +379,13 @@ mod imp {
                     return Ok(PrivateBusWireDispatchOutcome::RejectedNoReply { cause });
                 }
                 Err(cause) => {
-                    return self.dispatch_failure(PrivateBusWireDispatchError::Adapter(cause));
+                    let error = protocol_error_for_adapter(&cause);
+                    return self
+                        .replies
+                        .enqueue_protocol_error(call.endian, call.serial, error)
+                        .map(|()| PrivateBusWireDispatchOutcome::RejectedWithError { error })
+                        .map_err(PrivateBusWireDispatchError::Reply)
+                        .or_else(|error| self.dispatch_failure(error));
                 }
             };
 
@@ -419,7 +430,13 @@ mod imp {
                     if let Some(reservation) = reservation {
                         self.replies.cancel_reply(reservation);
                     }
-                    return self.dispatch_failure(PrivateBusWireDispatchError::Adapter(cause));
+                    let error = protocol_error_for_adapter(&cause);
+                    return self
+                        .replies
+                        .enqueue_protocol_error(call.endian, call.serial, error)
+                        .map(|()| PrivateBusWireDispatchOutcome::RejectedWithError { error })
+                        .map_err(PrivateBusWireDispatchError::Reply)
+                        .or_else(|error| self.dispatch_failure(error));
                 }
             };
 
@@ -585,6 +602,37 @@ mod imp {
             self.input = PrivateBusWireAccumulator::new(self.input.capacity())
                 .expect("an existing accumulator capacity remains valid");
             self.dispatch_terminal = false;
+        }
+    }
+
+    fn protocol_error_for_adapter(error: &Pid1DbusCommandAdapterError) -> Pid1DbusProtocolError {
+        match error {
+            Pid1DbusCommandAdapterError::WrongPath { .. } => Pid1DbusProtocolError::UnknownObject,
+            Pid1DbusCommandAdapterError::WrongInterface { .. } => {
+                Pid1DbusProtocolError::UnknownInterface
+            }
+            Pid1DbusCommandAdapterError::UnsupportedMember { .. } => {
+                Pid1DbusProtocolError::UnknownMethod
+            }
+            Pid1DbusCommandAdapterError::WrongSignature { .. }
+            | Pid1DbusCommandAdapterError::InvalidPayload { .. }
+            | Pid1DbusCommandAdapterError::InvalidJobMode { .. }
+            | Pid1DbusCommandAdapterError::UnsupportedJobMode { .. } => {
+                Pid1DbusProtocolError::InvalidArgs
+            }
+            Pid1DbusCommandAdapterError::Ingress(Pid1BusSendError::Command(
+                crate::pid1_manager_commands::Pid1CommandError::InboxFull,
+            )) => Pid1DbusProtocolError::LimitsExceeded,
+            Pid1DbusCommandAdapterError::Ingress(Pid1BusSendError::Command(
+                crate::pid1_manager_commands::Pid1CommandError::InboxClosed,
+            )) => Pid1DbusProtocolError::Disconnected,
+            Pid1DbusCommandAdapterError::Ingress(
+                Pid1BusSendError::Wake(_)
+                | Pid1BusSendError::Command(
+                    crate::pid1_manager_commands::Pid1CommandError::Unauthorized
+                    | crate::pid1_manager_commands::Pid1CommandError::Runtime(_),
+                ),
+            ) => Pid1DbusProtocolError::Failed,
         }
     }
 
@@ -1358,7 +1406,7 @@ mod imp {
         }
 
         #[test]
-        fn reply_expected_wire_validation_error_is_terminal_without_waking_pid1() {
+        fn reply_expected_unsupported_call_is_a_typed_error_without_waking_pid1() {
             let call = manager_call(17, "NotImplemented", &[]);
             let mut event_loop = EventLoop::new().unwrap();
             let (path, mut owner) = owner(&mut event_loop, "dispatch-invalid", 1);
@@ -1374,32 +1422,72 @@ mod imp {
 
             assert!(matches!(
                 owner.dispatch_wire_slot_once(wire_id, &adapter),
-                Err(PrivateBusTransportError::WireDispatch(
-                    PrivateBusWireDispatchError::Adapter(
-                        Pid1DbusCommandAdapterError::UnsupportedMember { .. }
-                    )
-                ))
+                Ok(PrivateBusWireDispatchOutcome::RejectedWithError {
+                    error: Pid1DbusProtocolError::UnknownMethod,
+                })
             ));
-            assert!(owner.wire_slot(wire_id).unwrap().is_terminal());
-            assert_eq!(
-                owner.wire_slot_mut(wire_id).unwrap().receive(&[]),
-                Err(PrivateBusWireSlotError::Terminal)
-            );
-            assert_eq!(
-                owner.wire_slot(wire_id).unwrap().readiness().unwrap(),
-                PrivateBusWireSlotReadiness {
-                    read_budget: 0,
-                    reply_write_pending: false,
-                    can_track_reply: false,
-                    terminal: true,
-                }
+            assert!(!owner.wire_slot(wire_id).unwrap().is_terminal());
+            let frame = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap();
+            assert_eq!(frame[1], 3);
+            assert!(
+                frame
+                    .windows(b"org.freedesktop.DBus.Error.UnknownMethod".len())
+                    .any(|window| window == b"org.freedesktop.DBus.Error.UnknownMethod")
             );
 
             inbox.register(&mut event_loop).unwrap();
             assert_eq!(event_loop.run_once(0), Ok(false));
+            let frame_len = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap()
+                .len();
+            assert!(
+                owner
+                    .wire_slot_mut(wire_id)
+                    .unwrap()
+                    .acknowledge_reply_written(frame_len)
+                    .unwrap()
+            );
+            assert!(!owner.wire_slot(wire_id).unwrap().is_terminal());
             owner.unregister(&mut event_loop).unwrap();
             drop((client, owner));
             std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn decoded_adapter_failures_map_to_narrow_protocol_errors() {
+            assert_eq!(
+                protocol_error_for_adapter(&Pid1DbusCommandAdapterError::WrongPath {
+                    actual: "/other".into(),
+                }),
+                Pid1DbusProtocolError::UnknownObject
+            );
+            assert_eq!(
+                protocol_error_for_adapter(&Pid1DbusCommandAdapterError::WrongInterface {
+                    actual: Some("org.example.Other".into()),
+                }),
+                Pid1DbusProtocolError::UnknownInterface
+            );
+            assert_eq!(
+                protocol_error_for_adapter(&Pid1DbusCommandAdapterError::WrongSignature {
+                    member: "LoadUnit".into(),
+                    expected: "s",
+                    actual: "ss".into(),
+                }),
+                Pid1DbusProtocolError::InvalidArgs
+            );
+            assert_eq!(
+                protocol_error_for_adapter(&Pid1DbusCommandAdapterError::Ingress(
+                    Pid1BusSendError::Command(Pid1CommandError::InboxFull),
+                )),
+                Pid1DbusProtocolError::LimitsExceeded
+            );
         }
 
         #[test]

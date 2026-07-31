@@ -58,6 +58,7 @@ mod imp {
         pub bytes_written: usize,
         pub commands_submitted: usize,
         pub no_reply_rejections: usize,
+        pub protocol_error_replies: usize,
         pub replies_inspected: usize,
         pub replies_enqueued: usize,
         pub connections_closed: usize,
@@ -253,6 +254,9 @@ mod imp {
                             }
                             Ok(PrivateBusWireDispatchOutcome::RejectedNoReply { .. }) => {
                                 outcome.no_reply_rejections += 1;
+                            }
+                            Ok(PrivateBusWireDispatchOutcome::RejectedWithError { .. }) => {
+                                outcome.protocol_error_replies += 1;
                             }
                             Err(_) => close = true,
                         }
@@ -473,11 +477,11 @@ mod imp {
             push_text(fields, value, kind == b'g');
         }
 
-        fn load_unit_call(serial: u32) -> Vec<u8> {
+        fn one_string_manager_call(serial: u32, member: &str) -> Vec<u8> {
             let mut fields = Vec::new();
             push_header(&mut fields, 1, b'o', "/org/freedesktop/systemd1");
             push_header(&mut fields, 2, b's', "org.freedesktop.systemd1.Manager");
-            push_header(&mut fields, 3, b's', "LoadUnit");
+            push_header(&mut fields, 3, b's', member);
             push_header(&mut fields, 8, b'g', "s");
 
             let mut body = Vec::new();
@@ -559,7 +563,7 @@ mod imp {
             assert_eq!(&challenge, b"DATA\r\n");
 
             let call_serial = 17;
-            let call = load_unit_call(call_serial);
+            let call = one_string_manager_call(call_serial, "LoadUnit");
             let mut response = b"DATA ".to_vec();
             response.extend_from_slice(&external_token());
             response.extend_from_slice(b"\r\nBEGIN\r\n");
@@ -624,6 +628,89 @@ mod imp {
             server.unregister(&mut event_loop).unwrap();
             assert_eq!(server.retained_connection_count(), 0);
             assert!(std::fs::symlink_metadata(&path).is_ok());
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn unsupported_reply_expected_call_gets_a_bounded_error_and_keeps_its_peer() {
+            let path = socket_path("unsupported");
+            let mut event_loop = EventLoop::new().unwrap();
+            let mut server = PrivateBusServer::bind_path(
+                &mut event_loop,
+                &path,
+                geteuid().as_raw(),
+                NonZeroUsize::new(1).unwrap(),
+                config(),
+            )
+            .unwrap();
+            let (command_sender, _command_inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+            let mut client = UnixStream::connect(&path).unwrap();
+            client
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+
+            event_loop.run_once(0).unwrap();
+            turn(&mut server, &mut event_loop, &adapter);
+            client.write_all(b"\0AUTH EXTERNAL\r\n").unwrap();
+            for _ in 0..2 {
+                event_loop.run_once(0).unwrap();
+                turn(&mut server, &mut event_loop, &adapter);
+            }
+            let mut challenge = [0_u8; 6];
+            client.read_exact(&mut challenge).unwrap();
+            assert_eq!(&challenge, b"DATA\r\n");
+
+            let mut request = b"DATA ".to_vec();
+            request.extend_from_slice(&external_token());
+            request.extend_from_slice(b"\r\nBEGIN\r\n");
+            request.extend_from_slice(&one_string_manager_call(23, "NotImplemented"));
+            client.write_all(&request).unwrap();
+
+            let mut rejected = false;
+            for _ in 0..4 {
+                event_loop.run_once(0).unwrap();
+                rejected |=
+                    turn(&mut server, &mut event_loop, &adapter).protocol_error_replies == 1;
+                if rejected {
+                    break;
+                }
+            }
+            assert!(rejected);
+            assert_eq!(server.wire_connection_count(), 1);
+
+            let mut auth_ok = Vec::new();
+            loop {
+                let mut byte = [0_u8; 1];
+                client.read_exact(&mut byte).unwrap();
+                auth_ok.push(byte[0]);
+                if byte[0] == b'\n' {
+                    break;
+                }
+            }
+            assert!(auth_ok.starts_with(b"OK "));
+
+            event_loop.run_once(0).unwrap();
+            assert!(turn(&mut server, &mut event_loop, &adapter).bytes_written > 0);
+            let mut header = [0_u8; 16];
+            client.read_exact(&mut header).unwrap();
+            assert_eq!(header[1], 3);
+            let body_len =
+                usize::try_from(u32::from_le_bytes(header[4..8].try_into().unwrap())).unwrap();
+            let fields_len =
+                usize::try_from(u32::from_le_bytes(header[12..16].try_into().unwrap())).unwrap();
+            let total = (16 + fields_len).next_multiple_of(8) + body_len;
+            let mut remainder = vec![0_u8; total - header.len()];
+            client.read_exact(&mut remainder).unwrap();
+            assert!(
+                remainder
+                    .windows(b"org.freedesktop.DBus.Error.UnknownMethod".len())
+                    .any(|window| window == b"org.freedesktop.DBus.Error.UnknownMethod")
+            );
+            assert_eq!(server.wire_connection_count(), 1);
+
+            server.unregister(&mut event_loop).unwrap();
             std::fs::remove_file(path).unwrap();
         }
 

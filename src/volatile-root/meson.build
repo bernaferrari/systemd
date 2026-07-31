@@ -71,4 +71,15 @@ shutil.copy2(os.path.join(target_dir, "release", "libsystemd_volatile_root_rs.a"
         test('rust-volatile-root-fail-closed-preflight',
              rust_volatile_root_preflight,
              suite : 'integration-tests')
+
+        rust_volatile_root_namespace = executable(
+                'test-rust-volatile-root-namespace',
+                'test-rust-volatile-root-namespace.c',
+                link_with : [rust_volatile_root_staticlib, libshared],
+                install : false)
+
+        test('rust-volatile-root-private-namespace-transition',
+             rust_volatile_root_namespace,
+             suite : 'integration-tests',
+             protocol : 'exitcode')
 endif
