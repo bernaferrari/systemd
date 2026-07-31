@@ -36,6 +36,103 @@ pub struct RsIoVecWrapper {
     pub count: usize,
 }
 
+impl RsIoVecWrapper {
+    // The exported C ABI functions validate the wrapper representation before
+    // entering this private core, which can work with safe iovec slices.
+    fn entries(&self) -> Option<&[iovec]> {
+        if self.count == 0 {
+            return Some(&[]);
+        }
+        if self.iovec.is_null() {
+            return None;
+        }
+        // SAFETY: the C ABI wrapper contract provides `count` live entries.
+        Some(unsafe { std::slice::from_raw_parts(self.iovec, self.count) })
+    }
+
+    fn entries_mut(&mut self) -> Option<&mut [iovec]> {
+        if self.count == 0 {
+            return Some(&mut []);
+        }
+        if self.iovec.is_null() {
+            return None;
+        }
+        // SAFETY: the C ABI wrapper contract provides exclusive access to
+        // `count` live entries.
+        Some(unsafe { std::slice::from_raw_parts_mut(self.iovec, self.count) })
+    }
+
+    fn done(&mut self, free_buffers: bool) {
+        if free_buffers {
+            if let Some(entries) = self.entries_mut() {
+                for entry in entries {
+                    // SAFETY: the caller's C ownership contract makes every
+                    // non-null base a libc allocation when requested.
+                    unsafe { libc::free(entry.iov_base) };
+                    entry.iov_base = ptr::null_mut();
+                    entry.iov_len = 0;
+                }
+            }
+        }
+
+        // SAFETY: NULL is accepted and a non-NULL iovec array is libc-owned.
+        unsafe { libc::free(self.iovec.cast()) };
+        self.iovec = ptr::null_mut();
+        self.count = 0;
+    }
+
+    fn put(&mut self, data: *mut c_void, len: usize) -> Result<(), c_int> {
+        if self.count >= IOV_MAX {
+            return Err(-libc::E2BIG);
+        }
+        let new_count = self.count + 1;
+        let Some(bytes) = new_count.checked_mul(std::mem::size_of::<iovec>()) else {
+            return Err(-libc::E2BIG);
+        };
+        // SAFETY: NULL is accepted; otherwise the existing iovec array is
+        // libc-owned. A failing realloc preserves the current allocation.
+        let allocation = unsafe { libc::realloc(self.iovec.cast(), bytes) }.cast::<iovec>();
+        if allocation.is_null() {
+            return Err(-libc::ENOMEM);
+        }
+
+        self.iovec = allocation;
+        self.count = new_count;
+        self.entries_mut()
+            .expect("new iovec allocation is non-null")[new_count - 1] = iovec {
+            iov_base: data,
+            iov_len: len,
+        };
+        Ok(())
+    }
+
+    fn rebase(&mut self, old: *mut c_void, new: *mut c_void) {
+        let old = old as usize;
+        let new = new as usize;
+        let Some(entries) = self.entries_mut() else {
+            return;
+        };
+        for entry in entries {
+            if entry.iov_base.is_null() {
+                continue;
+            }
+            let Some(offset) = (entry.iov_base as usize).checked_sub(old) else {
+                continue;
+            };
+            let Some(rebased) = new.checked_add(offset) else {
+                continue;
+            };
+            entry.iov_base = rebased as *mut c_void;
+        }
+    }
+
+    fn size(&self) -> Option<usize> {
+        self.entries()?
+            .iter()
+            .try_fold(0_usize, |total, entry| total.checked_add(entry.iov_len))
+    }
+}
+
 impl IoVecBuffer {
     pub fn new(bytes: impl Into<Box<[u8]>>) -> Self {
         let bytes = bytes.into();
@@ -137,25 +234,10 @@ impl IoVecWrapper {
 /// `iovw` must point to a live, initialized, exclusively accessible
 /// `RsIoVecWrapper`. Its iovec array must have been allocated by libc. When
 /// `free_buffers` is true, every non-NULL base must also be libc-owned.
-unsafe fn ffi_done(iovw: *mut RsIoVecWrapper, free_buffers: bool) {
-    // SAFETY: required by this helper's contract.
+fn ffi_done(iovw: *mut RsIoVecWrapper, free_buffers: bool) {
+    // SAFETY: callers are the audited C ABI adapters below.
     let wrapper = unsafe { &mut *iovw };
-
-    if free_buffers && !wrapper.iovec.is_null() {
-        for index in 0..wrapper.count {
-            // SAFETY: the wrapper contract guarantees `count` live entries.
-            let entry = unsafe { &mut *wrapper.iovec.add(index) };
-            // SAFETY: the helper contract requires libc ownership.
-            unsafe { libc::free(entry.iov_base) };
-            entry.iov_base = ptr::null_mut();
-            entry.iov_len = 0;
-        }
-    }
-
-    // SAFETY: NULL is accepted and a non-NULL array is libc-owned.
-    unsafe { libc::free(wrapper.iovec.cast()) };
-    wrapper.iovec = ptr::null_mut();
-    wrapper.count = 0;
+    wrapper.done(free_buffers);
 }
 
 /// Release only the libc-allocated iovec array.
@@ -170,8 +252,7 @@ pub unsafe extern "C" fn rs_iovw_done(iovw: *mut RsIoVecWrapper) {
         return;
     }
 
-    // SAFETY: this entry point forwards its documented ownership contract.
-    unsafe { ffi_done(iovw, false) };
+    ffi_done(iovw, false);
 }
 
 /// Release every libc-owned buffer and then the iovec array.
@@ -186,8 +267,7 @@ pub unsafe extern "C" fn rs_iovw_done_free(iovw: *mut RsIoVecWrapper) {
         return;
     }
 
-    // SAFETY: this entry point forwards its documented ownership contract.
-    unsafe { ffi_done(iovw, true) };
+    ffi_done(iovw, true);
 }
 
 /// Release the iovec array and its libc-owned wrapper, returning NULL.
@@ -202,8 +282,7 @@ pub unsafe extern "C" fn rs_iovw_free(iovw: *mut RsIoVecWrapper) -> *mut RsIoVec
         return ptr::null_mut();
     }
 
-    // SAFETY: this entry point forwards its documented ownership contract.
-    unsafe { ffi_done(iovw, false) };
+    ffi_done(iovw, false);
     // SAFETY: the wrapper itself is libc-owned by contract.
     unsafe { libc::free(iovw.cast()) };
     ptr::null_mut()
@@ -222,8 +301,7 @@ pub unsafe extern "C" fn rs_iovw_free_free(iovw: *mut RsIoVecWrapper) -> *mut Rs
         return ptr::null_mut();
     }
 
-    // SAFETY: this entry point forwards its documented ownership contract.
-    unsafe { ffi_done(iovw, true) };
+    ffi_done(iovw, true);
     // SAFETY: the wrapper itself is libc-owned by contract.
     unsafe { libc::free(iovw.cast()) };
     ptr::null_mut()
@@ -253,34 +331,10 @@ pub unsafe extern "C" fn rs_iovw_put(
 
     // SAFETY: required by this entry point's exclusive wrapper contract.
     let wrapper = unsafe { &mut *iovw };
-    if wrapper.count >= IOV_MAX {
-        return -libc::E2BIG;
+    match wrapper.put(data, len) {
+        Ok(()) => 1,
+        Err(error) => error,
     }
-
-    let new_count = wrapper.count + 1;
-    let Some(bytes) = new_count.checked_mul(std::mem::size_of::<iovec>()) else {
-        return -libc::E2BIG;
-    };
-    // SAFETY: NULL is accepted; otherwise the old array is libc-owned. On
-    // failure realloc preserves the original allocation.
-    let allocation = unsafe { libc::realloc(wrapper.iovec.cast(), bytes) }.cast::<iovec>();
-    if allocation.is_null() {
-        return -libc::ENOMEM;
-    }
-
-    wrapper.iovec = allocation;
-    // SAFETY: realloc provided room for `new_count` entries.
-    unsafe {
-        ptr::write(
-            wrapper.iovec.add(wrapper.count),
-            iovec {
-                iov_base: data,
-                iov_len: len,
-            },
-        )
-    };
-    wrapper.count = new_count;
-    1
 }
 
 /// Rebase every borrowed iovec from `old` to the corresponding offset at
@@ -303,25 +357,7 @@ pub unsafe extern "C" fn rs_iovw_rebase(
     }
 
     // SAFETY: required by this entry point's exclusive wrapper contract.
-    let wrapper = unsafe { &mut *iovw };
-    if wrapper.count > 0 && wrapper.iovec.is_null() {
-        return;
-    }
-
-    for index in 0..wrapper.count {
-        // SAFETY: the initialized wrapper has `count` live entries.
-        let entry = unsafe { &mut *wrapper.iovec.add(index) };
-        if entry.iov_base.is_null() {
-            continue;
-        }
-        // SAFETY: the caller guarantees same-allocation ordering.
-        let offset = unsafe { entry.iov_base.cast::<u8>().offset_from(old.cast()) };
-        if offset < 0 {
-            continue;
-        }
-        // SAFETY: the caller guarantees the corresponding `new` range.
-        entry.iov_base = unsafe { new.cast::<u8>().offset(offset) }.cast();
-    }
+    unsafe { (&mut *iovw).rebase(old, new) };
 }
 
 /// Return the sum of the iovec lengths, or `SIZE_MAX` on overflow.
@@ -337,24 +373,7 @@ pub unsafe extern "C" fn rs_iovw_size(iovw: *const RsIoVecWrapper) -> usize {
     }
 
     // SAFETY: required by this entry point's wrapper contract.
-    let wrapper = unsafe { &*iovw };
-    if wrapper.count == 0 {
-        return 0;
-    }
-    if wrapper.iovec.is_null() {
-        return usize::MAX;
-    }
-
-    let mut total = 0usize;
-    for index in 0..wrapper.count {
-        // SAFETY: the initialized wrapper has `count` live entries.
-        let len = unsafe { (*wrapper.iovec.add(index)).iov_len };
-        let Some(next) = total.checked_add(len) else {
-            return usize::MAX;
-        };
-        total = next;
-    }
-    total
+    unsafe { (&*iovw).size().unwrap_or(usize::MAX) }
 }
 
 /// Return whether a wrapper is NULL or has no entries.
@@ -369,7 +388,7 @@ pub unsafe extern "C" fn rs_iovw_isempty(iovw: *const RsIoVecWrapper) -> bool {
     }
 
     // SAFETY: required by this entry point's wrapper contract.
-    unsafe { (*iovw).count == 0 }
+    unsafe { (&*iovw).count == 0 }
 }
 
 #[cfg(test)]

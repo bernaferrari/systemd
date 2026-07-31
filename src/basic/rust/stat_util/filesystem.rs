@@ -45,6 +45,53 @@ fn negative_errno() -> libc::c_int {
     -crate::ffi::get_errno()
 }
 
+/// Borrow a required C path for one query only, preventing the C-string
+/// lifetime from escaping into filesystem logic.
+fn with_c_path<T>(
+    path: *const libc::c_char,
+    query: impl FnOnce(&CStr) -> T,
+) -> Result<T, libc::c_int> {
+    if path.is_null() {
+        return Err(-libc::EINVAL);
+    }
+    // SAFETY: exported callers uphold the readable NUL-terminated path contract
+    // for the duration of this synchronous query.
+    Ok(query(unsafe { CStr::from_ptr(path) }))
+}
+
+/// Borrow an optional C path for one query only.
+fn with_optional_c_path<T>(path: *const libc::c_char, query: impl FnOnce(Option<&CStr>) -> T) -> T {
+    let path = if path.is_null() {
+        None
+    } else {
+        // SAFETY: exported callers uphold the readable NUL-terminated path contract.
+        Some(unsafe { CStr::from_ptr(path) })
+    };
+    query(path)
+}
+
+/// Adopt a successful `open(2)` result and preserve errno before ownership is
+/// converted into RAII-managed Rust storage.
+fn adopt_open_fd(fd: libc::c_int) -> Result<OwnedFd, libc::c_int> {
+    if fd < 0 {
+        return Err(negative_errno());
+    }
+    // SAFETY: a nonnegative `open`/`openat` result is a newly owned descriptor.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+fn with_statfs_ref<T>(
+    statfs: *const libc::statfs,
+    query: impl FnOnce(&libc::statfs) -> T,
+) -> Option<T> {
+    if statfs.is_null() {
+        None
+    } else {
+        // SAFETY: exported callers uphold the live native `statfs` pointer contract.
+        Some(query(unsafe { &*statfs }))
+    }
+}
+
 fn xfstatfs(fd: libc::c_int) -> Result<libc::statfs, libc::c_int> {
     if !wildcard_fd_is_valid(fd) {
         return Err(-libc::EBADF);
@@ -111,13 +158,9 @@ fn xstatfsat(dir_fd: libc::c_int, path: Option<&CStr>) -> Result<libc::statfs, l
 
     let (dir_fd, path) = resolve_at_path(dir_fd, Some(path))?;
     // SAFETY: `path` is NUL-terminated and `dir_fd` is a validated descriptor
-    // or AT_FDCWD. The returned descriptor is adopted immediately.
+    // or AT_FDCWD.
     let fd = unsafe { libc::openat(dir_fd, path.as_ptr(), libc::O_PATH | libc::O_CLOEXEC) };
-    if fd < 0 {
-        return Err(negative_errno());
-    }
-    // SAFETY: successful `openat()` returned a newly owned descriptor.
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    let fd = adopt_open_fd(fd)?;
     xfstatfs(fd.as_raw_fd())
 }
 
@@ -198,25 +241,6 @@ fn statfs_path(path: &CStr) -> Result<libc::statfs, libc::c_int> {
     Ok(unsafe { statfs.assume_init() })
 }
 
-// SAFETY: callers must uphold the C-string contract for a non-null pointer.
-unsafe fn nonnull_c_path<'a>(path: *const libc::c_char) -> Result<&'a CStr, libc::c_int> {
-    if path.is_null() {
-        return Err(-libc::EINVAL);
-    }
-    // SAFETY: the caller guarantees a readable NUL-terminated C string.
-    Ok(unsafe { CStr::from_ptr(path) })
-}
-
-// SAFETY: callers must uphold the C-string contract for a non-null pointer.
-unsafe fn optional_c_path<'a>(path: *const libc::c_char) -> Option<&'a CStr> {
-    if path.is_null() {
-        None
-    } else {
-        // SAFETY: the caller guarantees a readable NUL-terminated C string.
-        Some(unsafe { CStr::from_ptr(path) })
-    }
-}
-
 /// Multiply current C's explicitly widened `statvfs` fields.
 ///
 /// GCC's `__builtin_mul_overflow`, used by `MUL_SAFE`, stores the wrapped
@@ -277,9 +301,7 @@ pub unsafe extern "C" fn rs_xstatfsat(
     if ret.is_null() {
         return -libc::EINVAL;
     }
-    // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
-    let statfs = match xstatfsat(dir_fd, path) {
+    let statfs = match with_optional_c_path(path, |path| xstatfsat(dir_fd, path)) {
         Ok(statfs) => statfs,
         Err(error) => return error,
     };
@@ -297,9 +319,7 @@ pub unsafe extern "C" fn rs_is_fs_type_at(
     path: *const libc::c_char,
     magic_value: StatFsType,
 ) -> libc::c_int {
-    // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
-    is_fs_type_at(dir_fd, path, magic_value)
+    with_optional_c_path(path, |path| is_fs_type_at(dir_fd, path, magic_value))
 }
 
 #[unsafe(no_mangle)]
@@ -312,21 +332,14 @@ pub extern "C" fn rs_fd_is_read_only_fs(fd: libc::c_int) -> libc::c_int {
 /// `path` must point to a readable NUL-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_is_read_only_fs(path: *const libc::c_char) -> libc::c_int {
-    // SAFETY: forwarded from this entry point's pointer contract.
-    let path = match unsafe { nonnull_c_path(path) } {
-        Ok(path) => path,
-        Err(error) => return error,
-    };
-
-    // SAFETY: `path` is NUL-terminated; successful open returns a newly owned
-    // descriptor which is adopted immediately.
-    let fd = unsafe { libc::open(path.as_ptr(), libc::O_CLOEXEC | libc::O_PATH) };
-    if fd < 0 {
-        return negative_errno();
+    match with_c_path(path, |path| {
+        // SAFETY: `path` is NUL-terminated by `with_c_path`.
+        let fd = unsafe { libc::open(path.as_ptr(), libc::O_CLOEXEC | libc::O_PATH) };
+        adopt_open_fd(fd).map(|fd| fd_is_read_only_fs(fd.as_raw_fd()))
+    }) {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) | Err(error) => error,
     }
-    // SAFETY: successful `open()` returned a newly owned descriptor.
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-    fd_is_read_only_fs(fd.as_raw_fd())
 }
 
 /// # Safety
@@ -334,11 +347,7 @@ pub unsafe extern "C" fn rs_path_is_read_only_fs(path: *const libc::c_char) -> l
 /// `statfs` must point to a live native `struct statfs`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_temporary_fs(statfs: *const libc::statfs) -> bool {
-    if statfs.is_null() {
-        return false;
-    }
-    // SAFETY: guaranteed by the entry-point contract after the null check.
-    is_temporary_fs(unsafe { &*statfs })
+    with_statfs_ref(statfs, is_temporary_fs).unwrap_or(false)
 }
 
 /// # Safety
@@ -346,11 +355,7 @@ pub unsafe extern "C" fn rs_is_temporary_fs(statfs: *const libc::statfs) -> bool
 /// `statfs` must point to a live native `struct statfs`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_network_fs(statfs: *const libc::statfs) -> bool {
-    if statfs.is_null() {
-        return false;
-    }
-    // SAFETY: guaranteed by the entry-point contract after the null check.
-    is_network_fs(unsafe { &*statfs })
+    with_statfs_ref(statfs, is_network_fs).unwrap_or(false)
 }
 
 #[unsafe(no_mangle)]
@@ -374,14 +379,9 @@ pub extern "C" fn rs_fd_is_network_fs(fd: libc::c_int) -> libc::c_int {
 /// `path` must point to a readable NUL-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_is_temporary_fs(path: *const libc::c_char) -> libc::c_int {
-    // SAFETY: forwarded from this entry point's pointer contract.
-    let path = match unsafe { nonnull_c_path(path) } {
-        Ok(path) => path,
-        Err(error) => return error,
-    };
-    match statfs_path(path) {
-        Ok(statfs) => libc::c_int::from(is_temporary_fs(&statfs)),
-        Err(error) => error,
+    match with_c_path(path, statfs_path) {
+        Ok(Ok(statfs)) => libc::c_int::from(is_temporary_fs(&statfs)),
+        Ok(Err(error)) | Err(error) => error,
     }
 }
 
@@ -390,13 +390,8 @@ pub unsafe extern "C" fn rs_path_is_temporary_fs(path: *const libc::c_char) -> l
 /// `path` must point to a readable NUL-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_is_network_fs(path: *const libc::c_char) -> libc::c_int {
-    // SAFETY: forwarded from this entry point's pointer contract.
-    let path = match unsafe { nonnull_c_path(path) } {
-        Ok(path) => path,
-        Err(error) => return error,
-    };
-    match statfs_path(path) {
-        Ok(statfs) => libc::c_int::from(is_network_fs(&statfs)),
-        Err(error) => error,
+    match with_c_path(path, statfs_path) {
+        Ok(Ok(statfs)) => libc::c_int::from(is_network_fs(&statfs)),
+        Ok(Err(error)) | Err(error) => error,
     }
 }

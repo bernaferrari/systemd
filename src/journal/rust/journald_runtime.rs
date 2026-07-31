@@ -7,8 +7,6 @@ use crate::fuzz_journald_native::{ENTRY_SIZE_MAX, parse_native_message};
 use crate::fuzz_journald_syslog::{parse_syslog_message, try_parse_rfc3164_timestamp};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::error::Error;
-#[cfg(target_os = "linux")]
-use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
