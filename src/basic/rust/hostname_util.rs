@@ -472,6 +472,52 @@ fn hostname_is_valid_bytes(bytes: &[u8], flags: u32) -> bool {
     !hyphen && bytes.len() <= LINUX_HOST_NAME_MAX
 }
 
+/// Clean a writable C-string byte buffer in place and return its visible length.
+///
+/// `bytes` includes the input's trailing NUL, which is rewritten after the
+/// compacted hostname. The destination never advances beyond its source index.
+fn hostname_cleanup_bytes(bytes: &mut [u8]) -> usize {
+    let input_len = bytes.len().saturating_sub(1);
+    let mut destination = 0;
+    let mut dot = true;
+    let mut hyphen = true;
+
+    for source in 0..input_len {
+        let byte = bytes[source];
+        if byte == b'.' {
+            if dot || hyphen {
+                continue;
+            }
+            bytes[destination] = b'.';
+            destination += 1;
+            dot = true;
+            hyphen = false;
+        } else if byte == b'-' {
+            if dot {
+                continue;
+            }
+            bytes[destination] = b'-';
+            destination += 1;
+            dot = false;
+            hyphen = true;
+        } else if valid_ldh_char(byte) || matches!(byte, b'?' | b'$') {
+            bytes[destination] = byte;
+            destination += 1;
+            dot = false;
+            hyphen = false;
+        }
+        if destination >= LINUX_HOST_NAME_MAX {
+            break;
+        }
+    }
+
+    while destination > 0 && matches!(bytes[destination - 1], b'-' | b'.') {
+        destination -= 1;
+    }
+    bytes[destination] = 0;
+    destination
+}
+
 #[inline]
 fn bytes_equal_no_case(left: &[u8], right: &[u8]) -> bool {
     left.len() == right.len()
@@ -589,6 +635,20 @@ fn valid_machine_user_bytes(bytes: &[u8]) -> bool {
     !matches!(bytes, b"." | b"..")
 }
 
+fn machine_spec_valid_bytes(bytes: &[u8]) -> bool {
+    if bytes.is_empty() {
+        return false;
+    }
+
+    let Some(at) = bytes.iter().position(|byte| *byte == b'@') else {
+        return hostname_is_valid_bytes(bytes, ValidHostnameFlags::DOT_HOST.bits());
+    };
+    let user_is_valid = at == 0 || valid_machine_user_bytes(&bytes[..at]);
+    let host_is_valid = at + 1 == bytes.len()
+        || hostname_is_valid_bytes(&bytes[at + 1..], ValidHostnameFlags::DOT_HOST.bits());
+    user_is_valid && host_is_valid
+}
+
 /// C ABI for `valid_ldh_char()`.
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_valid_ldh_char(c: c_char) -> bool {
@@ -625,54 +685,10 @@ pub unsafe extern "C" fn rs_hostname_cleanup(s: *mut c_char) -> *mut c_char {
     }
     // SAFETY: documented by this adapter's C-string contract.
     let input_len = unsafe { CStr::from_ptr(s.cast_const()) }.to_bytes().len();
-    let mut destination = 0;
-    let mut dot = true;
-    let mut hyphen = true;
-
-    for source in 0..input_len {
-        // SAFETY: `source` lies before the validated terminating NUL.
-        let byte = unsafe { *s.add(source) as u8 };
-        if byte == b'.' {
-            if dot || hyphen {
-                continue;
-            }
-            // SAFETY: the write position never advances beyond `source`.
-            unsafe { *s.add(destination) = b'.' as c_char };
-            destination += 1;
-            dot = true;
-            hyphen = false;
-        } else if byte == b'-' {
-            if dot {
-                continue;
-            }
-            // SAFETY: the write position never advances beyond `source`.
-            unsafe { *s.add(destination) = b'-' as c_char };
-            destination += 1;
-            dot = false;
-            hyphen = true;
-        } else if valid_ldh_char(byte) || matches!(byte, b'?' | b'$') {
-            // SAFETY: the write position never advances beyond `source`.
-            unsafe { *s.add(destination) = byte as c_char };
-            destination += 1;
-            dot = false;
-            hyphen = false;
-        }
-        if destination >= LINUX_HOST_NAME_MAX {
-            break;
-        }
-    }
-
-    while destination > 0 {
-        // SAFETY: `destination - 1` is a byte this adapter wrote above.
-        let byte = unsafe { *s.add(destination - 1) as u8 };
-        if !matches!(byte, b'-' | b'.') {
-            break;
-        }
-        destination -= 1;
-    }
-    // SAFETY: `destination` is at most the original input length, so this
-    // NUL write is within the caller-provided writable C string.
-    unsafe { *s.add(destination) = 0 };
+    // SAFETY: the writable C-string contract provides all visible bytes plus
+    // the trailing terminator as one exclusive byte slice.
+    let bytes = unsafe { std::slice::from_raw_parts_mut(s.cast::<u8>(), input_len + 1) };
+    hostname_cleanup_bytes(bytes);
     s
 }
 
@@ -697,11 +713,11 @@ pub unsafe extern "C" fn rs_is_localhost(hostname: *const c_char) -> bool {
 /// # Safety
 /// `hostname` must be null or point to a readable NUL-terminated byte string
 /// that remains live for the call.
-unsafe fn is_synthetic_hostname(hostname: *const c_char, first: &[u8], second: &[u8]) -> bool {
+fn is_synthetic_hostname(hostname: *const c_char, first: &[u8], second: &[u8]) -> bool {
     if hostname.is_null() {
         return false;
     }
-    // SAFETY: forwarded from this helper's C-string contract.
+    // SAFETY: this private helper is called only by the audited C ABI adapters.
     let bytes = unsafe { CStr::from_ptr(hostname) }.to_bytes();
     bytes_in_no_case_set(bytes, &[first, second])
 }
@@ -714,8 +730,7 @@ unsafe fn is_synthetic_hostname(hostname: *const c_char, first: &[u8], second: &
 /// triggering C's assertion.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_gateway_hostname(hostname: *const c_char) -> bool {
-    // SAFETY: forwarded from this adapter's C-string contract.
-    unsafe { is_synthetic_hostname(hostname, b"_gateway", b"_gateway.") }
+    is_synthetic_hostname(hostname, b"_gateway", b"_gateway.")
 }
 
 /// C ABI for `is_outbound_hostname()`.
@@ -726,8 +741,7 @@ pub unsafe extern "C" fn rs_is_gateway_hostname(hostname: *const c_char) -> bool
 /// triggering C's assertion.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_outbound_hostname(hostname: *const c_char) -> bool {
-    // SAFETY: forwarded from this adapter's C-string contract.
-    unsafe { is_synthetic_hostname(hostname, b"_outbound", b"_outbound.") }
+    is_synthetic_hostname(hostname, b"_outbound", b"_outbound.")
 }
 
 /// C ABI for `is_dns_stub_hostname()`.
@@ -738,8 +752,7 @@ pub unsafe extern "C" fn rs_is_outbound_hostname(hostname: *const c_char) -> boo
 /// triggering C's assertion.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_dns_stub_hostname(hostname: *const c_char) -> bool {
-    // SAFETY: forwarded from this adapter's C-string contract.
-    unsafe { is_synthetic_hostname(hostname, b"_localdnsstub", b"_localdnsstub.") }
+    is_synthetic_hostname(hostname, b"_localdnsstub", b"_localdnsstub.")
 }
 
 /// C ABI for `is_dns_proxy_stub_hostname()`.
@@ -750,8 +763,7 @@ pub unsafe extern "C" fn rs_is_dns_stub_hostname(hostname: *const c_char) -> boo
 /// triggering C's assertion.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_dns_proxy_stub_hostname(hostname: *const c_char) -> bool {
-    // SAFETY: forwarded from this adapter's C-string contract.
-    unsafe { is_synthetic_hostname(hostname, b"_localdnsproxy", b"_localdnsproxy.") }
+    is_synthetic_hostname(hostname, b"_localdnsproxy", b"_localdnsproxy.")
 }
 
 /// C ABI for `split_user_at_host()`.
@@ -820,40 +832,9 @@ pub unsafe extern "C" fn rs_machine_spec_valid(s: *const c_char) -> c_int {
     if s.is_null() {
         return 0;
     }
-    let mut user = ptr::null_mut();
-    let mut host = ptr::null_mut();
-    // SAFETY: local output slots are writable; `s` satisfies this function's
-    // documented C-string contract.
-    let split = unsafe { rs_split_user_at_host(s, &mut user, &mut host) };
-    if split == EINVAL {
-        return 0;
-    }
-    if split < 0 {
-        return split;
-    }
-
-    let user_is_valid = if user.is_null() {
-        true
-    } else {
-        // SAFETY: `user` is this function's live allocation from the splitter.
-        valid_machine_user_bytes(unsafe { CStr::from_ptr(user) }.to_bytes())
-    };
-    let host_is_valid = if host.is_null() {
-        true
-    } else {
-        // SAFETY: `host` is this function's live allocation from the splitter.
-        hostname_is_valid_bytes(
-            unsafe { CStr::from_ptr(host) }.to_bytes(),
-            ValidHostnameFlags::DOT_HOST.bits(),
-        )
-    };
-
-    // SAFETY: both pointers are null or unique C allocations created above.
-    unsafe {
-        crate::ffi::free(user.cast());
-        crate::ffi::free(host.cast());
-    }
-    c_int::from(user_is_valid && host_is_valid)
+    // SAFETY: documented by this adapter's C-string contract.
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    c_int::from(machine_spec_valid_bytes(bytes))
 }
 
 #[cfg(test)]
