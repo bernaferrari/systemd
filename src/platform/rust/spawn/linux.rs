@@ -411,8 +411,20 @@ fn prepare_environment(
         "LISTEN_FDS",
         "LISTEN_FDNAMES",
         "LISTEN_PIDFDID",
+        "NOTIFY_SOCKET",
     ] {
         environment.remove(runtime_name.as_bytes());
+    }
+
+    // `NOTIFY_SOCKET` is a manager-owned transport capability, not ordinary
+    // unit environment. Add it only after EnvironmentFile=/Environment=/
+    // PassEnvironment=/UnsetEnvironment= have run, matching the precedence
+    // of ExecParameters::notify_socket in C.
+    if let Some(notify_socket) = &security.notify_socket {
+        if !notify_socket.starts_with('/') || notify_socket.as_bytes().contains(&0) {
+            return Err("manager supplied an invalid NOTIFY_SOCKET path".to_string());
+        }
+        environment.insert(b"NOTIFY_SOCKET".to_vec(), notify_socket.as_bytes().to_vec());
     }
 
     environment
@@ -2042,5 +2054,31 @@ mod tests {
             .map(|candidate| candidate.to_str().unwrap())
             .collect::<Vec<_>>();
         assert_eq!(rendered, ["/opt/bin/daemon", "./daemon", "/usr/bin/daemon"]);
+    }
+
+    #[test]
+    fn manager_notify_socket_overrides_unit_environment_transformations() {
+        let security = SpawnSecurity {
+            environment: vec!["NOTIFY_SOCKET=/unit-controlled".to_owned()],
+            unset_environment: vec!["NOTIFY_SOCKET".to_owned()],
+            notify_socket: Some("/run/systemd/notify".to_owned()),
+            ..SpawnSecurity::default()
+        };
+        let environment = prepare_environment(&security, false).expect("prepare environment");
+        let notify_entries = environment
+            .iter()
+            .filter_map(|entry| entry.to_str().ok())
+            .filter(|entry| entry.starts_with("NOTIFY_SOCKET="))
+            .collect::<Vec<_>>();
+        assert_eq!(notify_entries, ["NOTIFY_SOCKET=/run/systemd/notify"]);
+    }
+
+    #[test]
+    fn manager_notify_socket_requires_an_absolute_non_nul_path() {
+        let security = SpawnSecurity {
+            notify_socket: Some("relative.socket".to_owned()),
+            ..SpawnSecurity::default()
+        };
+        assert!(prepare_environment(&security, false).is_err());
     }
 }

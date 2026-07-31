@@ -325,6 +325,15 @@ mod imp {
             Ok(value)
         }
 
+        /// Keep the next manager turn nonblocking after it exhausted its
+        /// bounded receive budget. This is only a coalesced inbox bit; the
+        /// socket remains the authoritative queue and is never read from an
+        /// epoll callback.
+        pub fn requeue_ready(&self) -> Result<(), Errno> {
+            *self.ready.try_borrow_mut().map_err(|_| Errno::EBUSY)? = true;
+            Ok(())
+        }
+
         /// Receive one bounded datagram and retain only kernel-provided
         /// credentials. SCM_RIGHTS is intentionally rejected and closed: FD
         /// storage requires a separate, fully modeled ownership contract.

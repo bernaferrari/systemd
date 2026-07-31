@@ -511,6 +511,24 @@ pub fn service_notify_sender_authorized(service: &Service, sender_pid: i32) -> b
     }
 }
 
+/// Whether C's `service_exec_needs_notify_socket()` grants this particular
+/// direct child the manager-owned `NOTIFY_SOCKET` capability.
+///
+/// Main commands may notify for every non-`none` access policy. Control
+/// commands need `exec` or `all`; handing the endpoint to a `main`-only
+/// control process would enlarge the accepted sender surface before it even
+/// sends a datagram.
+pub fn service_exec_needs_notify_socket(service: &Service, is_control: bool) -> bool {
+    matches!(
+        (is_control, service_get_notify_access(service)),
+        (true, NotifyAccess::Exec | NotifyAccess::All)
+            | (
+                false,
+                NotifyAccess::Main | NotifyAccess::Exec | NotifyAccess::All
+            )
+    )
+}
+
 /// Preserve the first failure which caused this activation to unwind.
 ///
 /// Cleanup phases may encounter additional failures, but service.c reports the
@@ -894,5 +912,23 @@ mod tests {
 
         service.notify_access_override = NotifyAccess::All;
         assert!(service_notify_sender_authorized(&service, 303));
+    }
+
+    #[test]
+    fn notify_socket_capability_matches_sender_role() {
+        let mut service = Service {
+            notify_access: NotifyAccess::Main,
+            ..Service::default()
+        };
+        assert!(service_exec_needs_notify_socket(&service, false));
+        assert!(!service_exec_needs_notify_socket(&service, true));
+
+        service.notify_access = NotifyAccess::Exec;
+        assert!(service_exec_needs_notify_socket(&service, false));
+        assert!(service_exec_needs_notify_socket(&service, true));
+
+        service.notify_access = NotifyAccess::None;
+        assert!(!service_exec_needs_notify_socket(&service, false));
+        assert!(!service_exec_needs_notify_socket(&service, true));
     }
 }

@@ -97,6 +97,47 @@ pub struct PreparedGeneratorRun {
     pub output_directories_prepared: bool,
 }
 
+/// Result of the complete generator setup/execute/trim lifecycle.
+///
+/// An existing but empty search directory is still `Executed`: C enters
+/// `manager_execute_generators()` after the existence gate even when
+/// enumeration later finds no executable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GeneratorRunOutcome<T> {
+    SkippedNoSearchPath {
+        discovery: GeneratorDiscoveryReport,
+    },
+    Executed {
+        discovery: GeneratorDiscoveryReport,
+        value: T,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GeneratorRunError<E> {
+    Setup(LookupPathsError),
+    Execution {
+        discovery: GeneratorDiscoveryReport,
+        error: E,
+    },
+}
+
+/// Scope guard for C's unconditional `finish:` trim after output setup.
+///
+/// Keeping this private prevents a startup caller from disarming cleanup or
+/// moving it later than generator execution. `Drop` also covers Rust error
+/// propagation and unwinding without introducing any signal-unsafe work in a
+/// child process.
+struct GeneratorOutputTrimGuard<'a> {
+    paths: &'a LookupPaths,
+}
+
+impl Drop for GeneratorOutputTrimGuard<'_> {
+    fn drop(&mut self) {
+        let _ = lookup_paths_trim_generator(self.paths);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeneratorRuntimeScope {
     System,
@@ -257,7 +298,12 @@ pub fn prepare_generator_run(
     let [output, early, late] = paths
         .generator_triplet()
         .ok_or(LookupPathsError::MissingGeneratorDirectories)?;
-    lookup_paths_mkdir_generator(paths)?;
+    if let Err(error) = lookup_paths_mkdir_generator(paths) {
+        // manager_run_generators() reaches its `finish:` label even when
+        // output setup fails after creating only part of the triplet.
+        let _ = lookup_paths_trim_generator(paths);
+        return Err(error);
+    }
 
     let mut discovery = discover_generator_executables(search_directories);
     path_errors.append(&mut discovery.ignored_errors);
@@ -280,6 +326,42 @@ pub fn prepare_generator_run(
         invocations,
         output_directories_prepared: true,
     })
+}
+
+/// Run the complete generator lifecycle through a caller-supplied executor.
+///
+/// This is the safe startup integration seam: setup follows C ordering, the
+/// executor sees the typed argv/discovery plan, and the empty output
+/// directories are trimmed on every return path and during unwinding. The
+/// executor remains responsible for the system-manager sandbox, child
+/// timeout/wait policy, `SYSTEMD_EXEC_PID`, and the 0022 umask; this function
+/// deliberately cannot downgrade those requirements to an unsandboxed PID 1
+/// spawn.
+pub fn run_generators_with<T, E>(
+    paths: &LookupPaths,
+    search_directories: &[PathBuf],
+    execute: impl FnOnce(&PreparedGeneratorRun) -> Result<T, E>,
+) -> Result<GeneratorRunOutcome<T>, GeneratorRunError<E>> {
+    let prepared =
+        prepare_generator_run(paths, search_directories).map_err(GeneratorRunError::Setup)?;
+
+    if !prepared.output_directories_prepared {
+        return Ok(GeneratorRunOutcome::SkippedNoSearchPath {
+            discovery: prepared.discovery,
+        });
+    }
+
+    let _trim_guard = GeneratorOutputTrimGuard { paths };
+    match execute(&prepared) {
+        Ok(value) => Ok(GeneratorRunOutcome::Executed {
+            discovery: prepared.discovery,
+            value,
+        }),
+        Err(error) => Err(GeneratorRunError::Execution {
+            discovery: prepared.discovery,
+            error,
+        }),
+    }
 }
 
 pub fn build_generator_environment(
@@ -649,6 +731,116 @@ mod tests {
             prepare_generator_run(&LookupPaths::default(), &[binaries]),
             Err(LookupPathsError::MissingGeneratorDirectories)
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn setup_failure_trims_partially_created_output_triplet() {
+        let root = temp_root("prepare-failure-trims");
+        let binaries = root.join("empty-binaries");
+        fs::create_dir_all(&binaries).unwrap();
+        let mut paths = sample_paths(&root.join("outputs"));
+        let blocker = root.join("blocked");
+        fs::write(&blocker, b"not a directory").unwrap();
+        paths.generator_early = Some(blocker.clone());
+
+        assert!(prepare_generator_run(&paths, &[binaries]).is_err());
+
+        assert!(!paths.generator.as_ref().unwrap().exists());
+        assert!(blocker.is_file());
+        assert!(!paths.generator_late.as_ref().unwrap().exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn lifecycle_skips_executor_when_no_search_path_exists() {
+        let root = temp_root("lifecycle-skips");
+        let outcome = run_generators_with(
+            &LookupPaths::default(),
+            &[root.join("missing")],
+            |_| -> Result<(), ()> { panic!("executor must not run") },
+        )
+        .unwrap();
+
+        assert_eq!(
+            outcome,
+            GeneratorRunOutcome::SkippedNoSearchPath {
+                discovery: GeneratorDiscoveryReport::default(),
+            }
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn lifecycle_trims_empty_outputs_after_execution_but_keeps_generated_units() {
+        let root = temp_root("lifecycle-success-trims");
+        let binaries = root.join("empty-binaries");
+        fs::create_dir_all(&binaries).unwrap();
+        let paths = sample_paths(&root.join("outputs"));
+
+        let outcome = run_generators_with(&paths, &[binaries], |prepared| {
+            assert!(prepared.invocations.is_empty());
+            fs::write(
+                paths.generator.as_ref().unwrap().join("generated.service"),
+                b"[Service]\nExecStart=/bin/true\n",
+            )
+            .unwrap();
+            Ok::<_, ()>(17)
+        })
+        .unwrap();
+
+        assert_eq!(
+            outcome,
+            GeneratorRunOutcome::Executed {
+                discovery: GeneratorDiscoveryReport::default(),
+                value: 17,
+            }
+        );
+        assert!(paths.generator.as_ref().unwrap().is_dir());
+        assert!(!paths.generator_early.as_ref().unwrap().exists());
+        assert!(!paths.generator_late.as_ref().unwrap().exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn lifecycle_trims_outputs_when_executor_returns_error() {
+        let root = temp_root("lifecycle-error-trims");
+        let binaries = root.join("empty-binaries");
+        fs::create_dir_all(&binaries).unwrap();
+        let paths = sample_paths(&root.join("outputs"));
+
+        let result = run_generators_with(&paths, &[binaries], |_| Err::<(), _>("failed"));
+
+        assert_eq!(
+            result,
+            Err(GeneratorRunError::Execution {
+                discovery: GeneratorDiscoveryReport::default(),
+                error: "failed",
+            })
+        );
+        assert!(!paths.generator.as_ref().unwrap().exists());
+        assert!(!paths.generator_early.as_ref().unwrap().exists());
+        assert!(!paths.generator_late.as_ref().unwrap().exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn lifecycle_trim_guard_covers_executor_unwind() {
+        let root = temp_root("lifecycle-unwind-trims");
+        let binaries = root.join("empty-binaries");
+        fs::create_dir_all(&binaries).unwrap();
+        let paths = sample_paths(&root.join("outputs"));
+
+        let panic = std::panic::catch_unwind(|| {
+            let _ = run_generators_with(&paths, &[binaries], |_| -> Result<(), ()> {
+                panic!("synthetic executor panic")
+            });
+        });
+
+        assert!(panic.is_err());
+        assert!(!paths.generator.as_ref().unwrap().exists());
+        assert!(!paths.generator_early.as_ref().unwrap().exists());
+        assert!(!paths.generator_late.as_ref().unwrap().exists());
         let _ = fs::remove_dir_all(root);
     }
 

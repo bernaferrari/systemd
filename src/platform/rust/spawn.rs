@@ -203,6 +203,11 @@ pub struct SpawnSecurity {
     pub environment_file: Vec<String>,
     pub pass_environment: Vec<String>,
     pub unset_environment: Vec<String>,
+    /// A manager-owned notification endpoint. Unlike unit supplied
+    /// `Environment=NOTIFY_SOCKET=…`, this is injected after all unit
+    /// environment transformations so a service cannot redirect its own
+    /// lifecycle protocol to an arbitrary peer.
+    pub notify_socket: Option<String>,
     pub working_directory: Option<String>,
     pub limits: BTreeMap<String, String>,
     pub nice: Option<i32>,

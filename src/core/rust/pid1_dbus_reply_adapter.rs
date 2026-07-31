@@ -49,6 +49,7 @@ const PID1_SHADOW_INTROSPECTION_XML: &str = concat!(
     "<method name=\"GetUnitByInvocationID\"/><method name=\"LoadUnit\"/>",
     "<method name=\"StartUnit\"/><method name=\"StopUnit\"/>",
     "<method name=\"ReloadUnit\"/><method name=\"RestartUnit\"/>",
+    "<method name=\"ResetFailed\"/>",
     "</interface>",
     "</node>"
 );
@@ -326,6 +327,11 @@ mod tests {
             introspection
                 .windows(b"org.freedesktop.DBus.Introspectable".len())
                 .any(|window| window == b"org.freedesktop.DBus.Introspectable")
+        );
+        assert!(
+            introspection
+                .windows(b"<method name=\"ResetFailed\"/>".len())
+                .any(|window| window == b"<method name=\"ResetFailed\"/>")
         );
         assert!(
             introspection

@@ -11,11 +11,17 @@ use super::unit_specifier::*;
 use super::*;
 use crate::job_tables::{JobResult as CanonicalJobResult, JobState as CanonicalJobState};
 #[cfg(target_os = "linux")]
-use crate::pid1_notify_source::{AuthenticatedNotifyDatagram, NotifyPeerCredentials};
+use crate::pid1_notify_source::{
+    AuthenticatedNotifyDatagram, NotifyPeerCredentials, NotifySourceOwner,
+};
 use crate::service::{NotifyAccess, PidRef};
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use crate::unit::OomPolicy;
+#[cfg(target_os = "linux")]
+use std::num::NonZeroUsize;
 use std::os::fd::AsRawFd;
+#[cfg(target_os = "linux")]
+use std::os::unix::net::UnixDatagram;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use systemd_shared_rs::tests::TestEnvironment;
@@ -263,6 +269,77 @@ fn authenticated_notify_rejects_a_numeric_pid_without_a_live_pidfd() {
             .get("untrusted.service")
             .map(|service| service.state),
         Some(ServiceState::Start)
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn notify_source_dispatches_a_bounded_authenticated_batch_before_reaping() {
+    let mut mgr = new_test_runtime_manager();
+    insert_fsm_service(
+        &mut mgr,
+        "source.service",
+        ServiceState::Start,
+        ServiceType::Notify,
+        |_| {},
+    );
+    let sender_pid = std::process::id();
+    authorize_notify_main_pid(&mut mgr, "source.service", sender_pid);
+
+    let path = test_temp_dir("notify-source.socket");
+    let source = NotifySourceOwner::bind(&path).expect("bind test notify socket");
+    mgr.configure_authenticated_notify_socket(source.path())
+        .expect("configure bound source");
+    let sender = UnixDatagram::unbound().expect("create sender");
+    sender
+        .send_to(b"READY=1\0forged", source.path())
+        .expect("send malformed notification");
+    sender
+        .send_to(b"READY=1\nSTATUS=online", source.path())
+        .expect("send ready notification");
+    // The epoll callback normally sets this bit. Directly setting it here
+    // isolates the manager-owned drain from EventLoop mechanics.
+    source.requeue_ready().expect("queue source readiness");
+
+    let batch = mgr
+        .dispatch_authenticated_notify_source(
+            &source,
+            NonZeroUsize::new(3).expect("nonzero batch limit"),
+        )
+        .expect("drain authenticated source");
+    assert_eq!(batch.accepted_datagrams, 1);
+    assert_eq!(batch.malformed_datagrams, 1);
+    assert_eq!(batch.applied_datagrams, 1);
+    assert!(!batch.budget_exhausted);
+    assert_eq!(
+        mgr.services
+            .get("source.service")
+            .map(|service| service.state),
+        Some(ServiceState::Running)
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn notify_readiness_allows_only_the_wired_direct_main_subset() {
+    let mut info = UnitFileInfo::new("ready.service", PathBuf::from("ready.service"));
+    info.service_type = Some(ServiceType::Notify);
+    assert_eq!(
+        super::service_readiness::readiness_rejection(ServiceType::Notify, &info, true),
+        None
+    );
+
+    info.service.notify_access = Some(NotifyAccess::All);
+    assert_eq!(
+        super::service_readiness::readiness_rejection(ServiceType::Notify, &info, true),
+        Some("Type=notify currently supports only NotifyAccess=main")
+    );
+
+    info.service.notify_access = None;
+    info.service.watchdog_sec = Some(1);
+    assert_eq!(
+        super::service_readiness::readiness_rejection(ServiceType::Notify, &info, true),
+        Some("Type=notify watchdog supervision is not implemented")
     );
 }
 
@@ -3280,6 +3357,34 @@ fn test_reset_failed_clears_failed_state() {
     assert_eq!(
         mgr.units.get("failed.service").map(|u| u.active_state),
         Some(ActiveState::Inactive)
+    );
+}
+
+#[test]
+fn test_reset_all_failed_clears_every_loaded_unit() {
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    insert_test_service(&mut mgr, "failed.service", ServiceState::Failed);
+    mgr.inject_test_unit("active.service", "Active", ActiveState::Active, "running");
+
+    mgr.reset_all_failed().unwrap();
+    assert_eq!(
+        mgr.units
+            .get("failed.service")
+            .map(|unit| unit.active_state),
+        Some(ActiveState::Inactive)
+    );
+    assert_eq!(
+        mgr.services
+            .get("failed.service")
+            .map(|service| service.state),
+        Some(ServiceState::Dead)
+    );
+    assert_eq!(
+        mgr.units
+            .get("active.service")
+            .map(|unit| unit.active_state),
+        Some(ActiveState::Active)
     );
 }
 

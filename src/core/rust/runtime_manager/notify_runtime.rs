@@ -3,11 +3,14 @@
 
 //! Manager-owned dispatch for authenticated service notification datagrams.
 
+use std::num::NonZeroUsize;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use super::RuntimeManager;
 use crate::pid1_notify_source::{
-    NotifyFdStoreRequest, NotifyLifecycle, NotifyMainPid, NotifyWatchdog, ParsedNotifyDatagram,
+    NotifyFdStoreRequest, NotifyLifecycle, NotifyMainPid, NotifyReceiveError, NotifySourceOwner,
+    NotifyWatchdog, ParsedNotifyDatagram,
 };
 use crate::service::{
     NotifyState, ServiceState, ServiceType, service_notify_sender_authorized,
@@ -49,7 +52,80 @@ pub(crate) enum AuthenticatedNotifyDispatch {
     },
 }
 
+/// Bounded result of draining the manager notification socket in one outer
+/// event-loop turn. Errors in individual datagrams are deliberately counted
+/// and dropped, matching C's recoverable receive behavior; a source/epoll
+/// error is returned separately by the owner API.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NotifyDispatchBatch {
+    pub accepted_datagrams: usize,
+    pub malformed_datagrams: usize,
+    pub applied_datagrams: usize,
+    pub budget_exhausted: bool,
+}
+
 impl RuntimeManager {
+    /// Install the path of an already-bound, manager-owned notification
+    /// socket. The path becomes an execution capability, not a unit setting:
+    /// launches only receive it through `service_exec_needs_notify_socket()`.
+    ///
+    /// Refuse replacement while configured. A new manager lifecycle must own
+    /// teardown and rebinding rather than silently redirecting a live
+    /// service's `NOTIFY_SOCKET` to a different peer.
+    pub fn configure_authenticated_notify_socket(&mut self, path: &Path) -> super::Result<()> {
+        let path = path.to_str().ok_or(crate::ffi::Errno::EINVAL)?;
+        if !path.starts_with('/') || path.as_bytes().contains(&0) {
+            return Err(crate::ffi::Errno::EINVAL);
+        }
+        match self.notify_socket_path.as_deref() {
+            Some(current) if current != path => Err(crate::ffi::Errno::EBUSY),
+            Some(_) => Ok(()),
+            None => {
+                self.notify_socket_path = Some(path.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    pub(super) fn authenticated_notify_socket_path(&self) -> Option<&str> {
+        self.notify_socket_path.as_deref()
+    }
+
+    /// Drain a finite notification batch after the epoll source has reported
+    /// readiness. The source authenticates the kernel peer credentials before
+    /// this method considers any service state. A full batch requeues only the
+    /// in-memory readiness bit, so the next outer loop turn keeps draining
+    /// without blocking while other PID 1 sources still get a chance to run.
+    pub fn dispatch_authenticated_notify_source(
+        &mut self,
+        source: &NotifySourceOwner,
+        budget: NonZeroUsize,
+    ) -> Result<NotifyDispatchBatch, crate::ffi::Errno> {
+        if !source.take_ready().map_err(notify_source_errno)? {
+            return Ok(NotifyDispatchBatch::default());
+        }
+
+        let mut outcome = NotifyDispatchBatch::default();
+        for _ in 0..budget.get() {
+            match source.recv_one() {
+                Ok(datagram) => {
+                    outcome.accepted_datagrams += 1;
+                    if matches!(
+                        self.dispatch_authenticated_notify(datagram.parse()),
+                        AuthenticatedNotifyDispatch::Applied { .. }
+                    ) {
+                        outcome.applied_datagrams += 1;
+                    }
+                }
+                Err(NotifyReceiveError::WouldBlock) => return Ok(outcome),
+                Err(_) => outcome.malformed_datagrams += 1,
+            }
+        }
+        source.requeue_ready().map_err(notify_source_errno)?;
+        outcome.budget_exhausted = true;
+        Ok(outcome)
+    }
+
     /// Route a typed datagram only after `NotifySourceOwner` authenticated its
     /// sender through `SCM_CREDENTIALS`.
     ///
@@ -243,5 +319,17 @@ impl RuntimeManager {
         self.service_watchdog_deadlines.remove(name);
         self.arm_signal_deadline(name, ServiceState::StopSigterm, &info);
         self.set_service_state(name, ServiceState::StopSigterm);
+    }
+}
+
+fn notify_source_errno(error: nix::errno::Errno) -> crate::ffi::Errno {
+    // The source's public inbox operations currently return EBUSY only when
+    // an accidental nested manager borrow would violate their one-turn
+    // contract. Preserve that diagnosable condition; map any future source
+    // error to the manager's conservative I/O failure boundary.
+    if error == nix::errno::Errno::EBUSY {
+        crate::ffi::Errno::EBUSY
+    } else {
+        crate::ffi::Errno::EIO
     }
 }

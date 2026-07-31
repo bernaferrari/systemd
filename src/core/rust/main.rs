@@ -37,6 +37,8 @@ use systemd_core_rs::pid1_manager_runtime::{
     ManagerLoopExit, OuterLifecycleDisposition, ReloadPreparationResult, prepare_outer_lifecycle,
 };
 #[cfg(target_os = "linux")]
+use systemd_core_rs::pid1_notify_source::NotifySourceOwner;
+#[cfg(target_os = "linux")]
 use systemd_core_rs::pid1_private_bus_runtime::{Pid1PrivateBusRuntime, Pid1PrivateBusTurnBudget};
 use systemd_core_rs::pid1_socket_sources::SocketSourceOwner;
 use systemd_core_rs::runtime_manager::RuntimeManager;
@@ -59,6 +61,13 @@ const FALLBACK_DEFAULT_TARGET: &str = match option_env!("SYSTEMD_FALLBACK_DEFAUL
 /// incomplete Rust API from a booted system.
 const PRIVATE_BUS_TEST_SOCKET_ENV: &str = "SYSTEMD_RUST_PRIVATE_BUS_TEST_SOCKET";
 const SYSTEM_PRIVATE_BUS_PATH: &str = "/run/systemd/private";
+#[cfg(target_os = "linux")]
+const SYSTEM_NOTIFY_SOCKET_PATH: &str = "/run/systemd/notify";
+
+#[cfg(target_os = "linux")]
+type Pid1NotifySource = NotifySourceOwner;
+#[cfg(not(target_os = "linux"))]
+struct Pid1NotifySource;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 enum CliAction {
@@ -319,65 +328,12 @@ fn apply_hostname_from_etc() -> std::io::Result<Option<String>> {
 
 #[cfg(target_os = "linux")]
 fn mount_setup() -> std::io::Result<()> {
-    use systemd_platform_rs::mount::{self, MountFlags};
-
-    let mounts: &[(&str, &str, &str, MountFlags, &str)] = &[
-        (
-            "proc",
-            "/proc",
-            "proc",
-            MountFlags::MS_NOSUID | MountFlags::MS_NOEXEC | MountFlags::MS_NODEV,
-            "",
-        ),
-        (
-            "sysfs",
-            "/sys",
-            "sysfs",
-            MountFlags::MS_NOSUID | MountFlags::MS_NOEXEC | MountFlags::MS_NODEV,
-            "",
-        ),
-        (
-            "devtmpfs",
-            "/dev",
-            "devtmpfs",
-            MountFlags::MS_NOSUID,
-            "mode=0755",
-        ),
-        (
-            "tmpfs",
-            "/dev/shm",
-            "tmpfs",
-            MountFlags::MS_NOSUID | MountFlags::MS_NODEV,
-            "mode=1777",
-        ),
-        (
-            "tmpfs",
-            "/run",
-            "tmpfs",
-            MountFlags::MS_NOSUID | MountFlags::MS_NODEV,
-            "mode=0755",
-        ),
-        ("tmpfs", "/tmp", "tmpfs", MountFlags::empty(), ""),
-        (
-            "cgroup2",
-            "/sys/fs/cgroup",
-            "cgroup2",
-            MountFlags::MS_NOSUID | MountFlags::MS_NODEV | MountFlags::MS_NOEXEC,
-            "",
-        ),
-    ];
-
-    for &(src, tgt, fstype, flags, data) in mounts {
-        if let Err(e) = mount::mount(src, tgt, fstype, flags, data) {
-            let already_mounted = matches!(e.raw_os_error(), Some(code) if code == libc::EBUSY);
-            if e.kind() != std::io::ErrorKind::AlreadyExists && !already_mounted {
-                eprintln!("systemd: mount {} → {}: {}", src, tgt, e);
-                return Err(e);
-            }
-        }
-    }
-
-    Ok(())
+    // Keep PID 1 on the shared mount-setup table rather than a hand-written
+    // subset. The table owns C's fatal/best-effort policy, container skips,
+    // mount options, writability checks, and runtime-directory preparation;
+    // duplicating only proc/sysfs/devtmpfs here silently omits devpts,
+    // securityfs, pstore, efivarfs, bpf, and the shared-root contract.
+    systemd_shared_rs::mount_setup::mount_setup(false, false).map_err(std::io::Error::other)
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -570,7 +526,10 @@ fn complete_outer_lifecycle(exit: ManagerLoopExit) -> ! {
     )
 }
 
-fn drive_manager_lifecycle(mut runtime: RuntimeManager) -> ! {
+fn drive_manager_lifecycle(
+    mut runtime: RuntimeManager,
+    mut notify_source: Option<Pid1NotifySource>,
+) -> ! {
     // The channel owner outlives each event-loop invocation. A recoverable
     // reload must preserve commands queued behind the lifecycle request.
     let (command_sender, mut command_inbox) = pid1_bus_command_channel(
@@ -580,12 +539,23 @@ fn drive_manager_lifecycle(mut runtime: RuntimeManager) -> ! {
     let mut command_authorizer = command_authorizer_for_runtime();
 
     loop {
-        match prepare_outer_lifecycle(run_event_loop(
+        #[cfg(target_os = "linux")]
+        let loop_exit = run_event_loop(
             runtime,
             &mut command_inbox,
             command_sender.clone(),
             command_authorizer.as_mut(),
-        )) {
+            notify_source.as_mut(),
+        );
+        #[cfg(not(target_os = "linux"))]
+        let loop_exit = run_event_loop(
+            runtime,
+            &mut command_inbox,
+            command_sender.clone(),
+            command_authorizer.as_mut(),
+        );
+
+        match prepare_outer_lifecycle(loop_exit) {
             OuterLifecycleDisposition::ReloadPreparation(
                 ReloadPreparationResult::FailedBeforePointOfNoReturn {
                     runtime: preserved_runtime,
@@ -712,6 +682,7 @@ fn run_event_loop(
     command_inbox: &mut Pid1BusCommandInbox,
     command_sender: Pid1BusCommandSender,
     command_authorizer: &mut dyn Pid1CommandAuthorizer,
+    mut notify_source: Option<&mut NotifySourceOwner>,
 ) -> ManagerLoopExit {
     use nix::sys::epoll::EpollFlags;
     use std::os::fd::AsFd;
@@ -728,6 +699,11 @@ fn run_event_loop(
     };
     if let Err(error) = command_inbox.register(&mut event_loop) {
         fail_closed("manager bus command wake registration", error);
+    }
+    if let Some(source) = notify_source.as_deref_mut()
+        && let Err(error) = source.register(&mut event_loop)
+    {
+        fail_closed("notify socket event-source registration", error);
     }
 
     let signal_mask = match systemd_platform_rs::signal::manager_signal_mask() {
@@ -918,6 +894,24 @@ fn run_event_loop(
             .service_event_timeout(Duration::from_secs(5));
         match event_loop.run_once(epoll_timeout_ms(service_timeout)) {
             Ok(_) => {
+                let notify_batch = if let Some(source) = notify_source.as_deref_mut() {
+                    runtime
+                        .borrow_mut()
+                        .dispatch_authenticated_notify_source(
+                            source,
+                            NonZeroUsize::new(32)
+                                .expect("constant notify dispatch budget is nonzero"),
+                        )
+                        .unwrap_or_else(|error| fail_closed("authenticated notify dispatch", error))
+                } else {
+                    systemd_core_rs::runtime_manager::NotifyDispatchBatch::default()
+                };
+                // C processes notifications before SIGCHLD so a direct child
+                // can publish READY= before reaping observes its exit. A
+                // full bounded batch stays nonblocking on the next turn.
+                if notify_batch.budget_exhausted {
+                    continue;
+                }
                 #[cfg(target_os = "linux")]
                 {
                     let idle_alert = idle_pipe_source
@@ -945,6 +939,11 @@ fn run_event_loop(
                         apply_signal_action(&mut guard, action)
                     };
                     if let Some(exit) = exit {
+                        if let Some(source) = notify_source.as_deref_mut() {
+                            source.unregister(&mut event_loop).unwrap_or_else(|error| {
+                                fail_closed("notify socket teardown", error)
+                            });
+                        }
                         exec_status_sources
                             .unregister(&mut event_loop)
                             .unwrap_or_else(|error| {
@@ -1055,6 +1054,11 @@ fn run_event_loop(
                         })
                 };
                 if let Some(request) = command_outcome.objective {
+                    if let Some(source) = notify_source.as_deref_mut() {
+                        source
+                            .unregister(&mut event_loop)
+                            .unwrap_or_else(|error| fail_closed("notify socket teardown", error));
+                    }
                     exec_status_sources
                         .unregister(&mut event_loop)
                         .unwrap_or_else(|error| {
@@ -1196,6 +1200,27 @@ fn main() {
         fail_closed("manager cgroup capability", error);
     }
 
+    // Bind the receiver before the boot transaction can spawn a service. The
+    // pathname is never inherited from the caller: it becomes a capability
+    // held by this exact manager and is injected only into eligible direct
+    // children. Refusing an existing entry is intentional; PID 1 must never
+    // unlink a pathname it cannot prove it owns.
+    #[cfg(target_os = "linux")]
+    let notify_source = if is_pid1 {
+        let source = NotifySourceOwner::bind(Path::new(SYSTEM_NOTIFY_SOCKET_PATH))
+            .unwrap_or_else(|error| fail_closed("authenticated notify socket bind", error));
+        runtime
+            .configure_authenticated_notify_socket(source.path())
+            .unwrap_or_else(|error| {
+                fail_closed("authenticated notify socket configuration", error)
+            });
+        Some(source)
+    } else {
+        None
+    };
+    #[cfg(not(target_os = "linux"))]
+    let notify_source: Option<Pid1NotifySource> = None;
+
     if is_pid1 {
         boot_log("step 6/8: select boot target");
         let in_initrd = in_initrd();
@@ -1246,7 +1271,7 @@ fn main() {
         runtime.active_count()
     ));
 
-    drive_manager_lifecycle(runtime);
+    drive_manager_lifecycle(runtime, notify_source);
 }
 
 #[cfg(test)]

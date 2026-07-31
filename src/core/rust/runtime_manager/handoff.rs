@@ -242,6 +242,8 @@ fn validate_preflight(runtime: &RuntimeManager) -> Result<(), PrepareHandoffErro
         unit_pid_map,
         pid_to_unit_map,
         pid_role_map,
+        #[cfg(target_os = "linux")]
+        notify_socket_path,
         service_command_sequences,
         service_operation_deadlines,
         job_redispatch_queue,
@@ -297,6 +299,8 @@ fn validate_preflight(runtime: &RuntimeManager) -> Result<(), PrepareHandoffErro
         socket_mgr,
         service_activation_sockets,
         service_manager,
+        #[cfg(target_os = "linux")]
+        notify_socket_path,
     );
     let _duplicated_root_capability_owner = cgroup_root;
     #[cfg(target_os = "linux")]

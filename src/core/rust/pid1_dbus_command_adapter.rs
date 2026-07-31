@@ -6,7 +6,7 @@
 //! This adapter handles the standard connection-local `Peer.Ping` and
 //! `Peer.GetMachineId`, supports `Introspectable.Introspect`, and only `GetUnit`, `GetUnitByPID`,
 //! `GetUnitByInvocationID`, `LoadUnit`, `StartUnit`, `StopUnit`,
-//! `ReloadUnit`, and `RestartUnit` at the manager object path.
+//! `ReloadUnit`, `RestartUnit`, and `ResetFailed` at the manager object path.
 //! It deliberately has no socket, reply, event-loop, or authorization policy:
 //! callers must supply the `SenderIdentity` derived from the connection's
 //! kernel credentials, and command dispatch still invokes its authorizer.
@@ -16,9 +16,9 @@
 //! intentionally has no job mode because its runtime operation always uses
 //! `replace`. Therefore this adapter accepts `ReloadUnit` only with the
 //! explicit `replace` mode instead of silently changing the request. The
-//! public manager's no-argument `ResetFailed` method also has no equivalent
-//! in the current named-unit command seam, so it is decoded and rejected with
-//! a typed error rather than being misrepresented as a named reset.
+//! public manager's no-argument `ResetFailed` method is deliberately mapped
+//! to a distinct all-units command rather than being misrepresented as a
+//! named reset.
 
 use crate::pid1_bus_source::{Pid1BusCommandSender, Pid1BusSendError};
 use crate::pid1_dbus_wire::{MethodCall, WireError};
@@ -196,12 +196,7 @@ impl Pid1DbusCommandAdapter {
             }
             "ResetFailed" => {
                 decode_no_args(call)?;
-                // `Pid1ManagerCommand::ResetFailed` requires a unit name;
-                // inventing an empty name would turn a valid all-units reset
-                // into a different operation.
-                Err(Pid1DbusCommandAdapterError::UnsupportedMember {
-                    member: call.member.clone(),
-                })
+                Ok(Pid1ManagerCommand::ResetAllFailed)
             }
             _ => Err(Pid1DbusCommandAdapterError::UnsupportedMember {
                 member: call.member.clone(),
@@ -536,6 +531,10 @@ mod tests {
                 mode: JobMode::RestartDependencies
             })
         );
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&call("ResetFailed", "", &[])),
+            Ok(Pid1ManagerCommand::ResetAllFailed)
+        );
     }
 
     #[test]
@@ -624,8 +623,8 @@ mod tests {
             Err(Pid1DbusCommandAdapterError::UnsupportedJobMode { .. })
         ));
         assert!(matches!(
-            Pid1DbusCommandAdapter::command_for(&call("ResetFailed", "", &[])),
-            Err(Pid1DbusCommandAdapterError::UnsupportedMember { .. })
+            Pid1DbusCommandAdapter::command_for(&call("ResetFailed", "s", &["unexpected"])),
+            Err(Pid1DbusCommandAdapterError::WrongSignature { .. })
         ));
         let mut introspect_with_body = call("Introspect", "s", &["unexpected"]);
         introspect_with_body.interface = Some(DBUS_INTROSPECTABLE_INTERFACE.into());

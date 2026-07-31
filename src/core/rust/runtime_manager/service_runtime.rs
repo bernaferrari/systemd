@@ -17,8 +17,9 @@ use super::{
 };
 use crate::ffi::Errno;
 use crate::service::{
-    ServiceState, ServiceType, service_record_reload_result, service_record_result,
-    service_reset_reload_result, service_reset_result, service_restart_usec_next,
+    ServiceState, ServiceType, service_exec_needs_notify_socket, service_record_reload_result,
+    service_record_result, service_reset_reload_result, service_reset_result,
+    service_restart_usec_next,
 };
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use crate::transaction::JobMode;
@@ -417,6 +418,7 @@ impl RuntimeManager {
             environment_file: exec.environment_file.clone(),
             pass_environment: exec.pass_environment.clone(),
             unset_environment: exec.unset_environment.clone(),
+            notify_socket: None,
             working_directory: exec.working_directory.clone(),
             limits: exec.limits.clone(),
             nice: exec.nice,
@@ -956,7 +958,17 @@ impl RuntimeManager {
                 .stderr_fd
                 .unwrap_or_else(|| Errno::EBADF.to_neg_errno());
         }
-        let security = self.build_spawn_security(name, &info.exec_context, &spec.prefixes);
+        let mut security = self.build_spawn_security(name, &info.exec_context, &spec.prefixes);
+        if self.services.get(name).is_some_and(|service| {
+            service_exec_needs_notify_socket(service, role == TrackedPidRole::Control)
+        }) {
+            // The path is installed only after PID 1 has bound the receiver.
+            // Never fall back to an inherited `NOTIFY_SOCKET`: that would let
+            // an unrelated parent process steer a service's lifecycle peer.
+            security.notify_socket = self
+                .authenticated_notify_socket_path()
+                .map(ToOwned::to_owned);
+        }
         let confirmation = if cursor.phase == ServiceExecCommand::Start
             && role == TrackedPidRole::Main
             && service_type == ServiceType::Exec
@@ -1379,7 +1391,11 @@ impl RuntimeManager {
         // and prevents a start failure from looking like Dead→Dead.
         self.set_service_state(unit_name, ServiceState::Condition);
 
-        if let Some(reason) = readiness_rejection(service_type, &info) {
+        if let Some(reason) = readiness_rejection(
+            service_type,
+            &info,
+            self.authenticated_notify_socket_path().is_some(),
+        ) {
             eprintln!("systemd: refusing to start {unit_name}: {reason}");
             self.enter_dead(unit_name, ServiceResult::FailureProtocol, true);
             return;

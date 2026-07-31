@@ -81,6 +81,8 @@ mod unit_specifier;
 
 use cgroup_runtime::RealizedUnitCgroup;
 use linux_cgroup::CgroupRoot;
+#[cfg(target_os = "linux")]
+pub use notify_runtime::NotifyDispatchBatch;
 
 #[cfg(test)]
 #[path = "runtime_manager/service_test_events.rs"]
@@ -475,6 +477,11 @@ pub struct RuntimeManager {
     unit_pid_map: HashMap<String, u32>,
     pid_to_unit_map: HashMap<u32, String>,
     pid_role_map: HashMap<u32, TrackedPidRole>,
+    /// A bound, manager-owned notification socket. This is configured only
+    /// by PID 1 after the receiver has been bound, and is injected into
+    /// eligible direct children as an owned execution capability.
+    #[cfg(target_os = "linux")]
+    notify_socket_path: Option<String>,
     service_command_sequences: HashMap<String, service_machine::ServiceCommandSequence>,
     service_operation_deadlines: HashMap<String, service_machine::ServiceOperationDeadline>,
     /// Installed jobs that were merged while their previous operation was
@@ -614,6 +621,8 @@ impl RuntimeManager {
             unit_pid_map: HashMap::new(),
             pid_to_unit_map: HashMap::new(),
             pid_role_map: HashMap::new(),
+            #[cfg(target_os = "linux")]
+            notify_socket_path: None,
             service_command_sequences: HashMap::new(),
             service_operation_deadlines: HashMap::new(),
             job_redispatch_queue: BTreeSet::new(),
@@ -1870,6 +1879,20 @@ impl RuntimeManager {
             && matches!(service.state, ServiceState::Failed)
         {
             service.state = ServiceState::Dead;
+        }
+        Ok(())
+    }
+
+    /// Clear failed state across the complete loaded-unit inventory.
+    ///
+    /// This is the runtime counterpart of C's `manager_reset_failed()`: it
+    /// visits every loaded unit rather than treating an empty unit name as a
+    /// special value. Clone the keys before resetting so no mutable unit
+    /// borrow is held while the service-side state is updated.
+    pub fn reset_all_failed(&mut self) -> Result<()> {
+        let unit_names = self.units.keys().cloned().collect::<Vec<_>>();
+        for name in unit_names {
+            self.reset_failed(&name)?;
         }
         Ok(())
     }

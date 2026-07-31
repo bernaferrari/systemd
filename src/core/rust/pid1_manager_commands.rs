@@ -113,6 +113,13 @@ pub enum Pid1ManagerCommand {
     ResetFailed {
         name: String,
     },
+    /// Reset the failure state of every loaded unit.
+    ///
+    /// This is the public manager's no-argument `ResetFailed` operation.
+    /// It is deliberately distinct from the named helper above: an empty
+    /// unit name must never be used as a lossy stand-in for the all-units
+    /// operation.
+    ResetAllFailed,
     /// Request that the event-loop owner stop normal dispatch and enter the
     /// outer manager lifecycle.
     ///
@@ -431,6 +438,9 @@ fn dispatch(
         Pid1ManagerCommand::ResetFailed { name } => runtime
             .reset_failed(&name)
             .map(|()| Pid1ManagerReply::Completed),
+        Pid1ManagerCommand::ResetAllFailed => runtime
+            .reset_all_failed()
+            .map(|()| Pid1ManagerReply::Completed),
         Pid1ManagerCommand::RequestObjective { objective } => {
             if objective == ManagerObjective::Ok {
                 return Err(Pid1CommandError::Runtime(Errno::EINVAL));
@@ -598,6 +608,25 @@ mod tests {
             later_reply.try_recv(),
             Ok(Err(Pid1CommandError::Runtime(Errno::ENOENT)))
         );
+    }
+
+    #[test]
+    fn reset_all_failed_is_a_distinct_completed_manager_operation() {
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender
+            .try_send(sender_identity(), Pid1ManagerCommand::ResetAllFailed)
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(reply.try_recv(), Ok(Ok(Pid1ManagerReply::Completed)));
     }
 
     #[test]
