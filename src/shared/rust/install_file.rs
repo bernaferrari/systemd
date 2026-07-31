@@ -174,19 +174,76 @@ fn to_cstr(path: &str) -> io::Result<CString> {
     })
 }
 
+/// Open a path relative to `dirfd`, returning an owning descriptor guard.
+fn open_at(dirfd: RawFd, path: &CString, flags: i32) -> io::Result<FdGuard> {
+    // SAFETY: path is a live NUL-terminated string for this call; openat does
+    // not retain its pointer and the returned descriptor is guarded on success.
+    let fd = unsafe { libc::openat(dirfd, path.as_ptr(), flags | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(last_io_error());
+    }
+    Ok(FdGuard::new(fd))
+}
+
+/// Read complete `stat` metadata for a live descriptor.
+fn fstat_fd(fd: RawFd) -> io::Result<libc::stat> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: stat is writable storage for fstat and is read only after a
+    // successful return.
+    if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } < 0 {
+        return Err(last_io_error());
+    }
+    // SAFETY: fstat initialized the full stat object above.
+    Ok(unsafe { stat.assume_init() })
+}
+
+/// Issue a pointer-based ioctl without exposing caller memory to the kernel
+/// beyond the duration of the syscall.
+fn ioctl_ref<T>(fd: RawFd, request: libc::c_ulong, value: &mut T) -> io::Result<()> {
+    // SAFETY: value is live, correctly aligned storage for the request's ABI,
+    // and ioctl does not retain the pointer after it returns.
+    if unsafe { libc::ioctl(fd, request, value) } < 0 {
+        Err(last_io_error())
+    } else {
+        Ok(())
+    }
+}
+
+/// Rename a directory entry while keeping both path pointers scoped to the
+/// syscall boundary.
+fn rename_at(
+    olddirfd: RawFd,
+    oldpath: &CString,
+    newdirfd: RawFd,
+    newpath: &CString,
+) -> io::Result<()> {
+    // SAFETY: both strings are live NUL-terminated paths and renameat does
+    // not retain either pointer.
+    if unsafe { libc::renameat(olddirfd, oldpath.as_ptr(), newdirfd, newpath.as_ptr()) } < 0 {
+        Err(last_io_error())
+    } else {
+        Ok(())
+    }
+}
+
+/// Remove a path using the supplied unlinkat flags.
+fn unlink_at(dirfd: RawFd, path: &CString, flags: i32) -> io::Result<()> {
+    // SAFETY: path is a live NUL-terminated path and unlinkat does not retain
+    // its pointer.
+    if unsafe { libc::unlinkat(dirfd, path.as_ptr(), flags) } < 0 {
+        Err(last_io_error())
+    } else {
+        Ok(())
+    }
+}
+
 /// Re-open an existing fd with different flags via `/proc/self/fd`.
 ///
 /// This is the Rust equivalent of the C `fd_reopen()` helper.
 fn fd_reopen(fd: RawFd, flags: i32) -> io::Result<FdGuard> {
     let proc_path = format!("/proc/self/fd/{fd}");
     let c_path = to_cstr(&proc_path)?;
-    // SAFETY: `c_path` is a live, NUL-terminated pathname for the duration of
-    // the call. `openat()` does not retain the pointer.
-    let new_fd = unsafe { libc::openat(libc::AT_FDCWD, c_path.as_ptr(), flags | libc::O_CLOEXEC) };
-    if new_fd < 0 {
-        return Err(last_io_error());
-    }
-    Ok(FdGuard::new(new_fd))
+    open_at(libc::AT_FDCWD, &c_path, flags)
 }
 
 /// `fsync(2)` a file descriptor.
@@ -216,38 +273,14 @@ fn syncfs_fd(fd: RawFd) -> io::Result<()> {
 fn fsync_directory_of_file(fd: RawFd) -> io::Result<()> {
     let parent_path = format!("/proc/self/fd/{fd}/..");
     let c_path = to_cstr(&parent_path)?;
-    // SAFETY: `c_path` is a live, NUL-terminated pathname for the duration of
-    // the call. `openat()` does not retain the pointer.
-    let dir_fd = unsafe {
-        libc::openat(
-            libc::AT_FDCWD,
-            c_path.as_ptr(),
-            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
-        )
-    };
-    if dir_fd < 0 {
-        return Err(last_io_error());
-    }
-    let dir = FdGuard::new(dir_fd);
+    let dir = open_at(libc::AT_FDCWD, &c_path, libc::O_RDONLY | libc::O_DIRECTORY)?;
     fsync_fd(dir.raw())
 }
 
 /// Sync the parent directory of a file referenced by `(dirfd, name)`.
 fn fsync_parent_at(dirfd: RawFd, name: &str) -> io::Result<()> {
     let c_name = to_cstr(name)?;
-    // SAFETY: `c_name` is a live, NUL-terminated pathname for the duration of
-    // the call. `openat()` does not retain the pointer.
-    let pfd = unsafe {
-        libc::openat(
-            dirfd,
-            c_name.as_ptr(),
-            O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-        )
-    };
-    if pfd < 0 {
-        return Err(last_io_error());
-    }
-    let pfd = FdGuard::new(pfd);
+    let pfd = open_at(dirfd, &c_name, O_PATH | libc::O_NOFOLLOW)?;
     fsync_directory_of_file(pfd.raw())
 }
 
@@ -266,6 +299,17 @@ fn rename_noreplace(
     newdirfd: RawFd,
     newpath: &CString,
 ) -> io::Result<()> {
+    rename_at2(olddirfd, oldpath, newdirfd, newpath, RENAME_NOREPLACE)
+}
+
+/// Invoke Linux `renameat2(2)` with an explicit flag set.
+fn rename_at2(
+    olddirfd: RawFd,
+    oldpath: &CString,
+    newdirfd: RawFd,
+    newpath: &CString,
+    flags: u64,
+) -> io::Result<()> {
     // SAFETY: both `CString` pointers are live and NUL-terminated for the
     // syscall; the kernel copies their contents and does not retain them.
     let r = unsafe {
@@ -275,7 +319,7 @@ fn rename_noreplace(
             oldpath.as_ptr(),
             newdirfd,
             newpath.as_ptr(),
-            RENAME_NOREPLACE,
+            flags,
         )
     };
     if r < 0 { Err(last_io_error()) } else { Ok(()) }
@@ -289,19 +333,7 @@ fn rename_exchange(
     newdirfd: RawFd,
     newpath: &CString,
 ) -> io::Result<()> {
-    // SAFETY: both `CString` pointers are live and NUL-terminated for the
-    // syscall; the kernel copies their contents and does not retain them.
-    let r = unsafe {
-        libc::syscall(
-            SYS_renameat2,
-            olddirfd,
-            oldpath.as_ptr(),
-            newdirfd,
-            newpath.as_ptr(),
-            RENAME_EXCHANGE,
-        )
-    };
-    if r < 0 { Err(last_io_error()) } else { Ok(()) }
+    rename_at2(olddirfd, oldpath, newdirfd, newpath, RENAME_EXCHANGE)
 }
 
 // ── unlinkat_maybe_dir ────────────────────────────────────────────────────
@@ -314,22 +346,12 @@ fn rename_exchange(
 pub fn unlinkat_maybe_dir(dirfd: RawFd, pathname: &str) -> io::Result<()> {
     let c_path = to_cstr(pathname)?;
 
-    // SAFETY: `c_path` is a live, NUL-terminated pathname; `unlinkat()` copies
-    // it during the call and does not retain the pointer.
-    if unsafe { libc::unlinkat(dirfd, c_path.as_ptr(), 0) } >= 0 {
-        return Ok(());
-    }
-
-    let err = io::Error::last_os_error();
-    if err.raw_os_error() == Some(libc::EISDIR) {
-        // SAFETY: `c_path` remains live and NUL-terminated, and `unlinkat()`
-        // does not retain its pointer after returning.
-        if unsafe { libc::unlinkat(dirfd, c_path.as_ptr(), libc::AT_REMOVEDIR) } < 0 {
-            return Err(last_io_error());
+    match unlink_at(dirfd, &c_path, 0) {
+        Ok(()) => Ok(()),
+        Err(error) if error.raw_os_error() == Some(libc::EISDIR) => {
+            unlink_at(dirfd, &c_path, libc::AT_REMOVEDIR)
         }
-        Ok(())
-    } else {
-        Err(err)
+        Err(error) => Err(error),
     }
 }
 
@@ -344,14 +366,7 @@ pub fn unlinkat_maybe_dir(dirfd: RawFd, pathname: &str) -> io::Result<()> {
 /// | Block device   | `BLKROSET` ioctl                                      |
 /// | Other          | `EBADFD`                                              |
 pub fn fs_make_very_read_only(fd: RawFd) -> io::Result<()> {
-    let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
-    // SAFETY: `st` provides valid writable storage for one `libc::stat`; it is
-    // read only after `fstat()` reports success.
-    if unsafe { libc::fstat(fd, st.as_mut_ptr()) } < 0 {
-        return Err(last_io_error());
-    }
-    // SAFETY: the successful `fstat()` above initialized every byte of `st`.
-    let st = unsafe { st.assume_init() };
+    let st = fstat_fd(fd)?;
 
     match st.st_mode & libc::S_IFMT {
         libc::S_IFDIR => {
@@ -378,12 +393,8 @@ pub fn fs_make_very_read_only(fd: RawFd) -> io::Result<()> {
         }
 
         libc::S_IFBLK => {
-            let ro: i32 = 1;
-            // SAFETY: `ro` is a live, correctly aligned `i32`, matching the
-            // `BLKROSET` ioctl's input ABI for the duration of the call.
-            if unsafe { libc::ioctl(fd, BLKROSET as u64, &ro) } < 0 {
-                return Err(last_io_error());
-            }
+            let mut ro: i32 = 1;
+            ioctl_ref(fd, BLKROSET as _, &mut ro)?;
         }
 
         _ => {
@@ -405,14 +416,8 @@ fn btrfs_subvol_set_read_only(fd: RawFd, read_only: bool) -> io::Result<()> {
     const BTRFS_IOC_SUBVOL_SETFLAGS: u64 = 0x4008_420e;
     const BTRFS_SUBVOL_RDONLY: u64 = 2;
 
-    let flags: u64 = if read_only { BTRFS_SUBVOL_RDONLY } else { 0 };
-    // SAFETY: `flags` is a live, correctly aligned `u64`, matching the
-    // `BTRFS_IOC_SUBVOL_SETFLAGS` input ABI for the duration of the call.
-    if unsafe { libc::ioctl(fd, BTRFS_IOC_SUBVOL_SETFLAGS as _, &flags) } < 0 {
-        Err(last_io_error())
-    } else {
-        Ok(())
-    }
+    let mut flags: u64 = if read_only { BTRFS_SUBVOL_RDONLY } else { 0 };
+    ioctl_ref(fd, BTRFS_IOC_SUBVOL_SETFLAGS as _, &mut flags)
 }
 
 /// Set filesystem attribute flags via `FS_IOC_SETFLAGS` ioctl.
@@ -423,24 +428,15 @@ fn chattr_fd(fd: RawFd, set: u32, mask: u32) -> io::Result<()> {
     const FS_IOC_SETFLAGS: u64 = 0x4004_6602;
 
     let mut flags: libc::c_long = 0;
-    // SAFETY: `flags` is live writable storage of the type expected by
-    // `FS_IOC_GETFLAGS`; the kernel does not retain its pointer.
-    if unsafe { libc::ioctl(fd, FS_IOC_GETFLAGS as _, &mut flags) } < 0 {
-        return Err(last_io_error());
-    }
+    ioctl_ref(fd, FS_IOC_GETFLAGS as _, &mut flags)?;
 
     let new_flags = (flags as u32 & !mask) | set;
     if new_flags as libc::c_long == flags {
         return Ok(());
     }
 
-    // SAFETY: the temporary `c_long` is live and correctly aligned for the
-    // `FS_IOC_SETFLAGS` input ABI; the kernel does not retain its pointer.
-    if unsafe { libc::ioctl(fd, FS_IOC_SETFLAGS as _, &(new_flags as libc::c_long)) } < 0 {
-        Err(last_io_error())
-    } else {
-        Ok(())
-    }
+    let mut new_flags = new_flags as libc::c_long;
+    ioctl_ref(fd, FS_IOC_SETFLAGS as _, &mut new_flags)
 }
 
 // ── Graceful error helper ─────────────────────────────────────────────────
@@ -515,28 +511,8 @@ pub fn install_file(
 
     if need_opath(flags) {
         let c_source = to_cstr(source_name)?;
-        // SAFETY: `c_source` is live and NUL-terminated for the call;
-        // `openat()` does not retain its pointer.
-        let pfd_raw = unsafe {
-            libc::openat(
-                source_atfd,
-                c_source.as_ptr(),
-                O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-            )
-        };
-        if pfd_raw < 0 {
-            return Err(last_io_error());
-        }
-        let pfd = FdGuard::new(pfd_raw);
-
-        let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
-        // SAFETY: `st` is valid writable storage for one `libc::stat` and is
-        // only read after `fstat()` reports success.
-        if unsafe { libc::fstat(pfd.raw(), st.as_mut_ptr()) } < 0 {
-            return Err(last_io_error());
-        }
-        // SAFETY: the successful `fstat()` above initialized every byte.
-        let st = unsafe { st.assume_init() };
+        let pfd = open_at(source_atfd, &c_source, O_PATH | libc::O_NOFOLLOW)?;
+        let st = fstat_fd(pfd.raw())?;
 
         match st.st_mode & libc::S_IFMT {
             libc::S_IFREG => match fd_reopen(pfd.raw(), libc::O_RDONLY) {
@@ -598,19 +574,8 @@ pub fn install_file(
         let c_target = to_cstr(tname)?;
 
         if flags.contains(InstallFileFlags::REPLACE) {
-            // Try simple renameat first
-            // SAFETY: both `CString` pointers are live and NUL-terminated;
-            // `renameat()` does not retain them.
-            let r = unsafe {
-                libc::renameat(
-                    source_atfd,
-                    c_source.as_ptr(),
-                    target_atfd,
-                    c_target.as_ptr(),
-                )
-            };
-            if r < 0 {
-                let err = io::Error::last_os_error();
+            // Try simple renameat first.
+            if let Err(err) = rename_at(source_atfd, &c_source, target_atfd, &c_target) {
                 let errno = err.raw_os_error().unwrap_or(0);
 
                 if !matches!(
@@ -622,22 +587,12 @@ pub fn install_file(
 
                 // Target already exists — open it as a directory so we
                 // can clean up its children later.
-                // SAFETY: `c_target` is live and NUL-terminated for the call;
-                // `openat()` does not retain its pointer.
-                let dfd_raw = unsafe {
-                    libc::openat(
-                        target_atfd,
-                        c_target.as_ptr(),
-                        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
-                    )
+                let dfd = match open_at(target_atfd, &c_target, libc::O_RDONLY | libc::O_DIRECTORY)
+                {
+                    Ok(fd) => fd,
+                    Err(error) if error.raw_os_error() == Some(libc::ENOTDIR) => FdGuard::new(-1),
+                    Err(error) => return Err(error),
                 };
-                if dfd_raw < 0 {
-                    let open_err = io::Error::last_os_error();
-                    if open_err.raw_os_error() != Some(libc::ENOTDIR) {
-                        return Err(open_err);
-                    }
-                }
-                let dfd = FdGuard::new(dfd_raw);
 
                 // Try RENAME_EXCHANGE
                 match rename_exchange(source_atfd, &c_source, target_atfd, &c_target) {
@@ -659,19 +614,7 @@ pub fn install_file(
 
                         unlinkat_maybe_dir(target_atfd, tname)?;
 
-                        // SAFETY: both `CString` pointers remain live and
-                        // NUL-terminated; `renameat()` does not retain them.
-                        let r2 = unsafe {
-                            libc::renameat(
-                                source_atfd,
-                                c_source.as_ptr(),
-                                target_atfd,
-                                c_target.as_ptr(),
-                            )
-                        };
-                        if r2 < 0 {
-                            return Err(last_io_error());
-                        }
+                        rename_at(source_atfd, &c_source, target_atfd, &c_target)?;
                     }
                 }
             }

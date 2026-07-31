@@ -155,6 +155,17 @@ type PasswdqcParamsParseFn = unsafe extern "C" fn(
     *const *const c_char,
 ) -> c_int;
 
+/// Resolve a passwdqc symbol only through its audited public C declaration.
+/// The type remains visible at each call site while the dynamic-lookup unsafe
+/// boundary is kept to one place.
+macro_rules! resolve_passwdqc_symbol {
+    ($handle:expr, $name:literal, $symbol_type:ty) => {{
+        // SAFETY: each invocation supplies the exact public declaration for
+        // the named libpasswdqc required symbol.
+        unsafe { resolve_symbol::<$symbol_type>($handle, $name) }
+    }};
+}
+
 /// Cached function pointers.
 #[derive(Clone, Copy)]
 struct PasswdqcSymbols {
@@ -251,51 +262,44 @@ fn load_passwdqc() -> Result<PasswdqcLibrary, PasswdqcError> {
     let handle = UnpublishedDlopenHandle::open(LIBPASSWDQC_SONAME)
         .map_err(|error| PasswdqcError::DlopenFailed(error.to_string()))?;
 
-    // Resolve all required symbols.
-    // SAFETY: every requested type below is the exact declaration from the
-    // libpasswdqc public header for the named required symbol.
-    let params_reset_fn = unsafe {
-        resolve_symbol::<unsafe extern "C" fn(*mut PasswdqcParams)>(
-            &handle,
-            "passwdqc_params_reset",
-        )
-    }?;
-
-    // SAFETY: see the ABI proof above.
-    let params_load_fn = unsafe {
-        resolve_symbol::<
-            unsafe extern "C" fn(*mut PasswdqcParams, *mut *mut c_char, *const c_char) -> c_int,
-        >(&handle, "passwdqc_params_load")
-    }?;
-
-    // SAFETY: see the ABI proof above.
+    // Resolve every required symbol before publishing the loader handle.
+    let params_reset_fn = resolve_passwdqc_symbol!(
+        &handle,
+        "passwdqc_params_reset",
+        // SAFETY: exact public declaration of passwdqc_params_reset.
+        unsafe extern "C" fn(*mut PasswdqcParams)
+    )?;
+    let params_load_fn = resolve_passwdqc_symbol!(
+        &handle,
+        "passwdqc_params_load",
+        // SAFETY: exact public declaration of passwdqc_params_load.
+        unsafe extern "C" fn(*mut PasswdqcParams, *mut *mut c_char, *const c_char) -> c_int
+    )?;
     let params_parse_fn =
-        unsafe { resolve_symbol::<PasswdqcParamsParseFn>(&handle, "passwdqc_params_parse") }?;
-
-    // SAFETY: see the ABI proof above.
-    let params_free_fn = unsafe {
-        resolve_symbol::<unsafe extern "C" fn(*mut PasswdqcParams)>(&handle, "passwdqc_params_free")
-    }?;
-
-    // SAFETY: see the ABI proof above.
-    let check_fn = unsafe {
-        resolve_symbol::<
-            unsafe extern "C" fn(
-                *const PasswdqcParamsQc,
-                *const c_char,
-                *const c_char,
-                *const libc::passwd,
-            ) -> *const c_char,
-        >(&handle, "passwdqc_check")
-    }?;
-
-    // SAFETY: see the ABI proof above.
-    let random_fn = unsafe {
-        resolve_symbol::<unsafe extern "C" fn(*const PasswdqcParamsQc) -> *mut c_char>(
-            &handle,
-            "passwdqc_random",
-        )
-    }?;
+        resolve_passwdqc_symbol!(&handle, "passwdqc_params_parse", PasswdqcParamsParseFn)?;
+    let params_free_fn = resolve_passwdqc_symbol!(
+        &handle,
+        "passwdqc_params_free",
+        // SAFETY: exact public declaration of passwdqc_params_free.
+        unsafe extern "C" fn(*mut PasswdqcParams)
+    )?;
+    let check_fn = resolve_passwdqc_symbol!(
+        &handle,
+        "passwdqc_check",
+        // SAFETY: exact public declaration of passwdqc_check.
+        unsafe extern "C" fn(
+            *const PasswdqcParamsQc,
+            *const c_char,
+            *const c_char,
+            *const libc::passwd,
+        ) -> *const c_char
+    )?;
+    let random_fn = resolve_passwdqc_symbol!(
+        &handle,
+        "passwdqc_random",
+        // SAFETY: exact public declaration of passwdqc_random.
+        unsafe extern "C" fn(*const PasswdqcParamsQc) -> *mut c_char
+    )?;
 
     Ok(PasswdqcLibrary {
         _handle: handle.publish(),
@@ -374,14 +378,12 @@ fn pwqc_allocate_context() -> Result<PasswdqcContext, PasswdqcError> {
     let library = passwdqc_library()?;
     let syms = &library.symbols;
 
-    // SAFETY: calloc provides suitably aligned, zeroed storage for the exact
-    // public passwdqc_params_t representation.
-    let params = unsafe {
-        NonNull::new(
-            libc::calloc(1, std::mem::size_of::<PasswdqcParams>()).cast::<PasswdqcParams>(),
-        )
-        .ok_or(PasswdqcError::ContextAllocationFailed)?
-    };
+    // `ffi::calloc` preserves C allocator provenance for the library-owned
+    // params fields while exposing the allocation result as a safe null check.
+    let params = NonNull::new(
+        crate::ffi::calloc(1, std::mem::size_of::<PasswdqcParams>()).cast::<PasswdqcParams>(),
+    )
+    .ok_or(PasswdqcError::ContextAllocationFailed)?;
     let context = PasswdqcContext { params, library };
 
     // SAFETY: the allocation has the exact public layout and remains owned by

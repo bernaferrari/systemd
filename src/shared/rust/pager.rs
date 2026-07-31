@@ -15,10 +15,11 @@
 use crate::ffi::*;
 use std::env;
 use std::fmt;
-use std::fs::File;
 use std::io::{self, Write as _};
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::net::UnixStream;
 use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 
 use bitflags::bitflags;
 
@@ -121,17 +122,11 @@ pub struct ManPageRef {
 
 // ── Pipe helper ───────────────────────────────────────────────────────────
 
-/// Creates an OS pipe and returns `(read_end, write_end)` as `OwnedFd`s
-/// with `O_CLOEXEC` semantics.
-fn create_pipe() -> Result<(OwnedFd, OwnedFd), io::Error> {
-    let mut fds: [RawFd; 2] = [-1, -1];
-    // SAFETY: pipe2(2) writes two valid file descriptors into `fds` on success.
-    let rc = unsafe { crate::ffi::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) };
-    if rc < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: Both fds are valid and owned by us after a successful pipe2.
-    unsafe { Ok((OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1]))) }
+/// Create a connected Unix stream pair for the pager's stdin and output.
+/// The standard library owns both descriptors and creates them close-on-exec.
+fn create_pipe() -> Result<(UnixStream, OwnedFd), io::Error> {
+    let (read_end, write_end) = UnixStream::pair()?;
+    Ok((read_end, write_end.into()))
 }
 
 /// Duplicate an existing file descriptor, returning the new fd with `FD_CLOEXEC`.
@@ -332,7 +327,7 @@ pub fn build_man_args(man_ref: &ManPageRef) -> Vec<String> {
 /// Holds the spawned pager child process and the saved original stdout/stderr
 /// file descriptors so they can be restored on [`pager_close`].
 pub struct PagerSession {
-    child: Child,
+    child: Mutex<Child>,
     stored_stdout: Option<OwnedFd>,
     stored_stderr: Option<OwnedFd>,
     stdout_redirected: bool,
@@ -343,17 +338,15 @@ pub struct PagerSession {
 impl PagerSession {
     /// Returns `true` if the pager child process is still running.
     pub fn is_active(&self) -> bool {
-        // SAFETY: waitpid receives this live Child's PID and a valid status pointer.
-        unsafe {
-            let pid = self.child.id() as libc::pid_t;
-            let mut status: i32 = 0;
-            libc::waitpid(pid, &mut status, libc::WNOHANG) == 0
-        }
+        self.child
+            .lock()
+            .map(|mut child| matches!(child.try_wait(), Ok(None)))
+            .unwrap_or(false)
     }
 
     /// Returns the process ID of the pager child, if available.
     pub fn pager_pid(&self) -> Option<u32> {
-        Some(self.child.id())
+        self.child.lock().ok().map(|child| child.id())
     }
 }
 
@@ -393,11 +386,18 @@ pub fn pager_open(flags: PagerFlags) -> Result<PagerSession, PagerError> {
     }
 
     // Create the data pipe (parent writes → child reads).
-    let (read_fd, write_fd) = create_pipe().map_err(PagerError::PipeFailed)?;
+    let (read_end, write_fd) = create_pipe().map_err(PagerError::PipeFailed)?;
 
     // ── Build the pager Command ──
-    let mut child = if let Some(ref args) = env_args {
-        spawn_pager_cmd(&args[0], &args[1..], &less_opts, &less_charset, secure_mode)?
+    let child = if let Some(ref args) = env_args {
+        spawn_pager_cmd(
+            &args[0],
+            &args[1..],
+            &less_opts,
+            &less_charset,
+            secure_mode,
+            &read_end,
+        )?
     } else {
         // Try the fallback chain.
         let mut found = None;
@@ -405,16 +405,20 @@ pub fn pager_open(flags: PagerFlags) -> Result<PagerSession, PagerError> {
             if secure_mode == SecureMode::Enabled && !is_pager_allowed_in_secure_mode(pager) {
                 continue;
             }
-            if let Ok(child) = spawn_pager_cmd(pager, &[], &less_opts, &less_charset, secure_mode) {
+            if let Ok(child) = spawn_pager_cmd(
+                pager,
+                &[],
+                &less_opts,
+                &less_charset,
+                secure_mode,
+                &read_end,
+            ) {
                 found = Some(child);
                 break;
             }
         }
         found.ok_or(PagerError::NoPagerFound)?
     };
-
-    // Connect the read end of the pipe to the child's stdin.
-    dup2_fd(read_fd.as_raw_fd(), libc::STDIN_FILENO);
 
     // ── Redirect parent stdout / stderr into the write end ──
     let saved_stdout = dup_fd_cloexec(libc::STDOUT_FILENO);
@@ -424,7 +428,7 @@ pub fn pager_open(flags: PagerFlags) -> Result<PagerSession, PagerError> {
     let stderr_ok = dup2_fd(write_fd.as_raw_fd(), libc::STDERR_FILENO);
 
     Ok(PagerSession {
-        child,
+        child: Mutex::new(child),
         stored_stdout: if stdout_ok { saved_stdout } else { None },
         stored_stderr: if stderr_ok { saved_stderr } else { None },
         stdout_redirected: stdout_ok,
@@ -440,10 +444,12 @@ fn spawn_pager_cmd(
     less_opts: &str,
     less_charset: &Option<String>,
     secure_mode: SecureMode,
+    input: &UnixStream,
 ) -> Result<Child, PagerError> {
+    let input = input.try_clone().map_err(PagerError::SpawnFailed)?;
     let mut cmd = Command::new(program);
     cmd.args(extra_args)
-        .stdin(Stdio::null()) // will be replaced by dup2 after spawn
+        .stdin(Stdio::from(OwnedFd::from(input)))
         .env("LESS", less_opts);
 
     if let Some(cs) = less_charset {
@@ -499,7 +505,11 @@ pub fn pager_close(mut session: PagerSession) -> Result<(), PagerError> {
     session.stderr_redirected = false;
 
     // Reap the pager child.
-    session.child.wait().map_err(PagerError::Io)?;
+    let mut child = session
+        .child
+        .into_inner()
+        .unwrap_or_else(|error| error.into_inner());
+    child.wait().map_err(PagerError::Io)?;
     Ok(())
 }
 
