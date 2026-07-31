@@ -106,6 +106,18 @@ impl CBitmap {
     }
 }
 
+// These private adapters are only reached after the exported C ABI functions
+// have checked NULL and documented the corresponding C Bitmap contract.
+fn with_c_bitmap<T>(bitmap: *const CBitmap, operation: impl FnOnce(&CBitmap) -> T) -> T {
+    // SAFETY: callers are the audited C ABI adapters described above.
+    unsafe { operation(&*bitmap) }
+}
+
+fn with_c_bitmap_mut<T>(bitmap: *mut CBitmap, operation: impl FnOnce(&mut CBitmap) -> T) -> T {
+    // SAFETY: callers are the audited C ABI adapters with exclusive access.
+    unsafe { operation(&mut *bitmap) }
+}
+
 // ── Errors ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -264,8 +276,7 @@ pub unsafe extern "C" fn rs_bitmap_isset(b: *const CBitmap, n: u32) -> bool {
     if b.is_null() {
         return false;
     }
-    // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    unsafe { (&*b).is_set(n) }
+    with_c_bitmap(b, |bitmap| bitmap.is_set(n))
 }
 
 /// Exact C ABI shadow of `bitmap_isclear()`.
@@ -278,8 +289,7 @@ pub unsafe extern "C" fn rs_bitmap_isclear(b: *const CBitmap) -> bool {
     if b.is_null() {
         return true;
     }
-    // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    unsafe { (&*b).is_clear() }
+    with_c_bitmap(b, CBitmap::is_clear)
 }
 
 /// Exact C ABI shadow of `bitmap_equal()`.
@@ -295,8 +305,7 @@ pub unsafe extern "C" fn rs_bitmap_equal(a: *const CBitmap, b: *const CBitmap) -
     if a.is_null() || b.is_null() {
         return false;
     }
-    // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    unsafe { (&*a).equal(&*b) }
+    with_c_bitmap(a, |left| with_c_bitmap(b, |right| left.equal(right)))
 }
 
 /// Exact C ABI shadow of `bitmap_new()`.
@@ -322,31 +331,32 @@ pub unsafe extern "C" fn rs_bitmap_copy(b: *mut CBitmap) -> *mut CBitmap {
     if copy.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    let source = unsafe { (&*b).words() };
-    if source.is_empty() {
-        return copy;
-    }
-    let Some(bytes) = source.len().checked_mul(std::mem::size_of::<u64>()) else {
-        // SAFETY: the local object has not escaped this function.
-        unsafe { libc::free(copy.cast::<c_void>()) };
-        return std::ptr::null_mut();
-    };
-    // SAFETY: libc allocates a word array of the checked byte length.
-    let words = unsafe { libc::malloc(bytes) }.cast::<u64>();
-    if words.is_null() {
-        // SAFETY: the local object has not escaped this function.
-        unsafe { libc::free(copy.cast::<c_void>()) };
-        return std::ptr::null_mut();
-    }
-    // SAFETY: `words` names a fresh allocation for exactly `source.len()`
-    // words and the borrowed source slice is live by the C Bitmap contract.
-    unsafe {
-        slice::from_raw_parts_mut(words, source.len()).copy_from_slice(source);
-        (*copy).bitmaps = words;
-        (*copy).n_bitmaps = source.len();
-    }
-    copy
+    with_c_bitmap(b, |source_bitmap| {
+        let source = source_bitmap.words();
+        if source.is_empty() {
+            return copy;
+        }
+        let Some(bytes) = source.len().checked_mul(std::mem::size_of::<u64>()) else {
+            // SAFETY: the local object has not escaped this function.
+            unsafe { libc::free(copy.cast::<c_void>()) };
+            return std::ptr::null_mut();
+        };
+        // SAFETY: libc allocates a word array of the checked byte length.
+        let words = unsafe { libc::malloc(bytes) }.cast::<u64>();
+        if words.is_null() {
+            // SAFETY: the local object has not escaped this function.
+            unsafe { libc::free(copy.cast::<c_void>()) };
+            return std::ptr::null_mut();
+        }
+        // SAFETY: `words` names a fresh allocation for exactly `source.len()`
+        // words and the borrowed source slice is live by the C Bitmap contract.
+        unsafe {
+            slice::from_raw_parts_mut(words, source.len()).copy_from_slice(source);
+            (*copy).bitmaps = words;
+            (*copy).n_bitmaps = source.len();
+        }
+        copy
+    })
 }
 
 /// Exact C ABI shadow of `bitmap_free()`.
@@ -403,8 +413,7 @@ pub unsafe extern "C" fn rs_bitmap_set(b: *mut CBitmap, n: u32) -> i32 {
     if n > BITMAPS_MAX_ENTRY {
         return -libc::ERANGE;
     }
-    // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    if unsafe { (&mut *b).set(n) } {
+    if with_c_bitmap_mut(b, |bitmap| bitmap.set(n)) {
         0
     } else {
         -libc::ENOMEM
@@ -420,8 +429,7 @@ pub unsafe extern "C" fn rs_bitmap_unset(b: *mut CBitmap, n: u32) {
     if b.is_null() {
         return;
     }
-    // SAFETY: required by this FFI boundary's C bitmap representation contract.
-    unsafe { (&mut *b).unset(n) };
+    with_c_bitmap_mut(b, |bitmap| bitmap.unset(n));
 }
 
 /// Exact C ABI shadow of `bitmap_clear()`.
@@ -434,8 +442,7 @@ pub unsafe extern "C" fn rs_bitmap_clear(b: *mut CBitmap) {
     if b.is_null() {
         return;
     }
-    // SAFETY: required by this FFI boundary's libc ownership contract.
-    unsafe { (&mut *b).clear() };
+    with_c_bitmap_mut(b, CBitmap::clear);
 }
 
 /// Exact C ABI shadow of `bitmap_iterate()`.
@@ -452,10 +459,11 @@ pub unsafe extern "C" fn rs_bitmap_iterate(
     if i.is_null() || n.is_null() || b.is_null() {
         return false;
     }
-    // SAFETY: required by this FFI boundary's bitmap, iterator, and output
-    // pointer contracts.
-    let (bitmap, iter, output) = unsafe { (&*b, &mut *i, &mut *n) };
-    let Some(value) = iterate_words(bitmap.words(), &mut iter.idx) else {
+    // SAFETY: required by this FFI boundary's iterator and output pointer
+    // contracts.
+    let (iter, output) = unsafe { (&mut *i, &mut *n) };
+    let Some(value) = with_c_bitmap(b, |bitmap| iterate_words(bitmap.words(), &mut iter.idx))
+    else {
         return false;
     };
     *output = value;
