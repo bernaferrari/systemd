@@ -718,11 +718,76 @@ struct TodoEntry {
 
 /// Close an owned `DIR*` once and clear its ownership slot.
 fn close_owned_dir(dir: &mut *mut libc::DIR) {
-    if !dir.is_null() {
+    if !(*dir).is_null() {
         // SAFETY: every caller passes its unique ownership slot for a live
         // stream returned by `fdopendir()`; clearing the slot prevents reuse.
         unsafe { libc::closedir(*dir) };
         *dir = std::ptr::null_mut();
+    }
+}
+
+/// Convert a uniquely owned directory descriptor into an owned `DIR*`.
+fn fdopendir_owned(fd: OwnedFd) -> Result<*mut libc::DIR, RmRfError> {
+    let raw_fd = fd.into_raw_fd();
+    // SAFETY: `raw_fd` is uniquely owned and fdopendir either consumes it or
+    // leaves it for the failure path below.
+    let dir = unsafe { libc::fdopendir(raw_fd) };
+    if dir.is_null() {
+        let error = last_errno();
+        // SAFETY: fdopendir failed and did not consume the owned descriptor.
+        unsafe { libc::close(raw_fd) };
+        return Err(RmRfError::from_errno(error, "fdopendir"));
+    }
+    Ok(dir)
+}
+
+/// Borrow the descriptor owned by a live directory stream.
+fn dir_stream_fd(dir: *mut libc::DIR) -> RawFd {
+    // SAFETY: callers retain unique ownership of a live `DIR*` stream.
+    let fd = unsafe { libc::dirfd(dir) };
+    assert!(fd >= 0);
+    fd
+}
+
+/// Read and classify one usable UTF-8 directory entry.
+///
+/// Dot entries and non-UTF-8 names are skipped to preserve the existing
+/// traversal policy; `None` means end of stream.
+fn next_directory_entry(dir: *mut libc::DIR) -> Result<Option<(String, DirectoryHint)>, RmRfError> {
+    loop {
+        clear_errno();
+        // SAFETY: callers retain unique ownership of a live directory stream.
+        let entry = unsafe { libc::readdir(dir) };
+        if entry.is_null() {
+            let errno = last_errno();
+            return if errno == 0 {
+                Ok(None)
+            } else {
+                Err(RmRfError::from_errno(errno, "readdir"))
+            };
+        }
+        // SAFETY: `entry` remains valid until the next readdir call on this
+        // stream, which occurs only after this function returns.
+        let (name, d_type) = unsafe {
+            (
+                std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()),
+                (*entry).d_type,
+            )
+        };
+        let Ok(name) = name.to_str() else {
+            continue;
+        };
+        if matches!(name, "." | "..") {
+            continue;
+        }
+        let hint = if d_type == libc::DT_DIR {
+            DirectoryHint::Directory
+        } else if d_type == libc::DT_UNKNOWN {
+            DirectoryHint::Unknown
+        } else {
+            DirectoryHint::NotDirectory
+        };
+        return Ok(Some((name.to_owned(), hint)));
     }
 }
 
@@ -761,24 +826,9 @@ fn rm_rf_children_impl(
 
     loop {
         if descending {
-            // `fdopendir()` takes ownership on success. Keep the raw
-            // descriptor in hand so the failure path can close it exactly once.
-            let raw_fd = pending_fd
-                .take()
-                .expect("descent requires a pending fd")
-                .into_raw_fd();
-            // SAFETY: `raw_fd` is a uniquely owned live directory descriptor.
-            current_dir = unsafe { libc::fdopendir(raw_fd) };
-            if current_dir.is_null() {
-                let error = last_errno();
-                // SAFETY: `fdopendir()` failed and therefore did not consume
-                // `raw_fd`; this branch retains its sole ownership.
-                unsafe { libc::close(raw_fd) };
-                return Err(RmRfError::from_errno(error, "fdopendir"));
-            }
-            // SAFETY: `current_dir` is a live stream returned by fdopendir().
-            let current_fd = unsafe { libc::dirfd(current_dir) };
-            assert!(current_fd >= 0);
+            current_dir =
+                fdopendir_owned(pending_fd.take().expect("descent requires a pending fd"))?;
+            let current_fd = dir_stream_fd(current_dir);
 
             // Check filesystem type.
             if !flags.contains(RemoveFlags::REMOVE_PHYSICAL) {
@@ -801,8 +851,7 @@ fn rm_rf_children_impl(
             debug_assert!(!todos.is_empty());
             // We are returning from recursion: remove the inner directory.
             let parent = todos.last().unwrap();
-            // SAFETY: todo entries uniquely own live DIR streams.
-            let parent_fd = unsafe { libc::dirfd(parent.dir) };
+            let parent_fd = dir_stream_fd(parent.dir);
             let dirname = current_dirname.as_ref().unwrap();
 
             if let Err(e) = unlinkat_harder(
@@ -838,61 +887,39 @@ fn rm_rf_children_impl(
             current_old_mode = parent.old_mode;
         }
 
-        // SAFETY: both the descent and unwind paths leave `current_dir`
-        // holding the unique live stream for the current level.
-        let current_fd = unsafe { libc::dirfd(current_dir) };
-        assert!(current_fd >= 0);
+        let current_fd = dir_stream_fd(current_dir);
 
         let mut descended = false;
 
         // Iterate directory entries.
         loop {
-            // POSIX only distinguishes a failed readdir() from end-of-directory
-            // through errno, so clear a stale thread-local value first.
-            clear_errno();
-            // SAFETY: `current_dir` remains live and exclusively used by this
-            // traversal until it is moved into a todo frame or closed.
-            let entry = unsafe { libc::readdir(current_dir) };
-            if entry.is_null() {
-                let errno = last_errno();
-                if errno == 0 {
-                    break;
+            let Some((name_str, directory_hint)) = (match next_directory_entry(current_dir) {
+                Ok(entry) => entry,
+                Err(error) => {
+                    close_owned_dir(&mut current_dir);
+                    return Err(error);
                 }
-
-                close_owned_dir(&mut current_dir);
-                return Err(RmRfError::from_errno(errno, "readdir"));
-            }
-            // SAFETY: readdir() returned a live dirent whose d_name is
-            // NUL-terminated for the lifetime of this iteration.
-            let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };
-            let name_str = match name.to_str() {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            if name_str == "." || name_str == ".." {
-                continue;
-            }
-
-            // SAFETY: `entry` is the live dirent returned above.
-            let d_type = unsafe { (*entry).d_type };
-            let directory_hint = if d_type == libc::DT_DIR {
-                DirectoryHint::Directory
-            } else if d_type == libc::DT_UNKNOWN {
-                DirectoryHint::Unknown
-            } else {
-                DirectoryHint::NotDirectory
+            }) else {
+                break;
             };
 
-            match rm_rf_inner_child(current_fd, name_str, directory_hint, flags, root_dev, false) {
+            match rm_rf_inner_child(
+                current_fd,
+                &name_str,
+                directory_hint,
+                flags,
+                root_dev,
+                false,
+            ) {
                 Ok(ChildResult::Removed | ChildResult::Skipped | ChildResult::NeedsRecursion) => {}
                 Err(RmRfError::IsDirectory) => {
                     // Push current state and descend.
-                    let new_dirname = match CString::new(name_str) {
+                    let new_dirname = match CString::new(name_str.as_str()) {
                         Ok(s) => s,
                         Err(_) => continue,
                     };
 
-                    match openat_harder(current_fd, name_str, DIR_OPEN_FLAGS, flags) {
+                    match openat_harder(current_fd, &name_str, DIR_OPEN_FLAGS, flags) {
                         Ok((new_fd, mode)) => {
                             todos.push(TodoEntry {
                                 dir: current_dir,
