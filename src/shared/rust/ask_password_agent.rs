@@ -11,7 +11,7 @@ use std::mem::{self, MaybeUninit};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -1054,19 +1054,13 @@ pub fn create_socket(askpwdir: &Path) -> AskPasswordResult<(OwnedFd, PathBuf)> {
     fs::create_dir_all(askpwdir).map_err(AskPasswordError::from)?;
     let path = askpwdir.join(format!("sck.{:x}", unique_u64()));
 
-    // SAFETY: socket returns a new file descriptor on success.
-    let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_DGRAM | SOCK_CLOEXEC, 0) };
-    if fd < 0 {
-        return errno_result();
-    }
-    // SAFETY: fd is owned here and valid on success path above.
-    let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+    let socket = UnixDatagram::bind(&path).map_err(AskPasswordError::from)?;
 
     let one: i32 = 1;
     // SAFETY: setsockopt only reads the provided integer option value.
     if unsafe {
         libc::setsockopt(
-            owned.as_raw_fd(),
+            socket.as_raw_fd(),
             libc::SOL_SOCKET,
             SO_PASSCRED,
             (&one as *const i32).cast::<c_void>(),
@@ -1077,32 +1071,7 @@ pub fn create_socket(askpwdir: &Path) -> AskPasswordResult<(OwnedFd, PathBuf)> {
         return errno_result();
     }
 
-    // SAFETY: zeroed sockaddr_un is a valid starting state.
-    let mut addr: libc::sockaddr_un = unsafe { mem::zeroed() };
-    addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
-
-    let bytes = path.as_os_str().as_bytes();
-    if bytes.len() >= addr.sun_path.len() {
-        return Err(AskPasswordError::Io(io::ErrorKind::InvalidInput));
-    }
-    for (index, byte) in bytes.iter().enumerate() {
-        addr.sun_path[index] = *byte as libc::c_char;
-    }
-
-    let len = (mem::size_of::<libc::sa_family_t>() + bytes.len() + 1) as libc::socklen_t;
-    // SAFETY: addr contains a valid pathname sockaddr_un.
-    if unsafe {
-        libc::bind(
-            owned.as_raw_fd(),
-            (&addr as *const libc::sockaddr_un).cast::<libc::sockaddr>(),
-            len,
-        )
-    } < 0
-    {
-        return errno_result();
-    }
-
-    Ok((owned, path))
+    Ok((socket.into(), path))
 }
 
 struct PathCleanup {
