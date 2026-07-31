@@ -51,6 +51,19 @@ mod moderate;
 mod verification;
 mod xstatx;
 
+/// Convert a nullable ABI pointer to a temporary typed borrow, keeping the
+/// only dereference in one audited adapter. The surrounding `extern "C"`
+/// function documents the pointee's layout and lifetime contract.
+macro_rules! ffi_borrow_or_return {
+    ($pointer:expr, $fallback:expr) => {{
+        // SAFETY: a non-null pointer is valid for the enclosing C ABI call.
+        let Some(value) = (unsafe { ($pointer).as_ref() }) else {
+            return $fallback;
+        };
+        value
+    }};
+}
+
 pub use descriptor::{
     rs_fd_verify_block, rs_fd_verify_directory, rs_fd_verify_linked, rs_fd_verify_regular,
     rs_fd_verify_regular_or_block, rs_fd_verify_socket, rs_fd_verify_symlink, rs_is_device_node,
@@ -138,13 +151,7 @@ fn timestamp_load_nsec(sec: i64, nsec: libc::c_long) -> u64 {
 /// inline helper does.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_is_set(st: *const libc::stat) -> bool {
-    let Some(st) = (!st.is_null()).then(|| {
-        // SAFETY: the entry-point contract guarantees a live `struct stat`
-        // after the explicit null check above.
-        unsafe { &*st }
-    }) else {
-        return false;
-    };
+    let st = ffi_borrow_or_return!(st, false);
     stat_is_set(st)
 }
 
@@ -157,13 +164,7 @@ pub unsafe extern "C" fn rs_stat_is_set(st: *const libc::stat) -> bool {
 /// inline helper does.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_statx_is_set(stx: *const libc::statx) -> bool {
-    let Some(stx) = (!stx.is_null()).then(|| {
-        // SAFETY: the entry-point contract guarantees a live `struct statx`
-        // after the explicit null check above.
-        unsafe { &*stx }
-    }) else {
-        return false;
-    };
+    let stx = ffi_borrow_or_return!(stx, false);
     statx_is_set(stx)
 }
 
@@ -176,12 +177,7 @@ pub unsafe extern "C" fn rs_statx_is_set(stx: *const libc::statx) -> bool {
 /// null as a fail-closed extension for existing comparison callers.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_statx_timestamp_load(ts: *const libc::statx_timestamp) -> u64 {
-    let Some(ts) = (!ts.is_null()).then(|| {
-        // SAFETY: guaranteed by the entry-point contract after the null check.
-        unsafe { &*ts }
-    }) else {
-        return u64::MAX;
-    };
+    let ts = ffi_borrow_or_return!(ts, u64::MAX);
 
     // C first converts the u32 kernel nanosecond field to `timespec.tv_nsec`
     // (`long`); preserving that conversion matters on 32-bit Linux.
@@ -197,12 +193,7 @@ pub unsafe extern "C" fn rs_statx_timestamp_load(ts: *const libc::statx_timestam
 /// null as a fail-closed extension for existing comparison callers.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_statx_timestamp_load_nsec(ts: *const libc::statx_timestamp) -> u64 {
-    let Some(ts) = (!ts.is_null()).then(|| {
-        // SAFETY: guaranteed by the entry-point contract after the null check.
-        unsafe { &*ts }
-    }) else {
-        return u64::MAX;
-    };
+    let ts = ffi_borrow_or_return!(ts, u64::MAX);
     timestamp_load_nsec(ts.tv_sec, ts.tv_nsec as libc::c_long)
 }
 
@@ -228,12 +219,7 @@ pub unsafe extern "C" fn rs_is_fs_type(
     statfs: *const libc::statfs,
     magic_value: StatFsType,
 ) -> bool {
-    let Some(statfs) = (!statfs.is_null()).then(|| {
-        // SAFETY: guaranteed by the entry-point contract after the null check.
-        unsafe { &*statfs }
-    }) else {
-        return false;
-    };
+    let statfs = ffi_borrow_or_return!(statfs, false);
     is_fs_type(statfs, magic_value)
 }
 
@@ -258,13 +244,7 @@ fn btrfs_might_be_subvol(st: &libc::stat) -> bool {
 /// the safe core above never reads guessed field offsets.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_btrfs_might_be_subvol(st: *const libc::stat) -> bool {
-    let Some(st) = (!st.is_null()).then(|| {
-        // SAFETY: the entry-point contract guarantees that a non-null pointer
-        // refers to a live native `struct stat` for the call duration.
-        unsafe { &*st }
-    }) else {
-        return false;
-    };
+    let st = ffi_borrow_or_return!(st, false);
 
     btrfs_might_be_subvol(st)
 }
