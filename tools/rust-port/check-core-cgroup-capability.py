@@ -284,14 +284,16 @@ def main() -> int:
         return fail("handoff inventory no longer borrows the manager root capability")
     if "runtime.prepare_live_handoff" in pid1_manager:
         return fail("live reload performs unusable handoff preparation/descriptor duplication")
-    for token in (
-        "request rejected before handoff preparation",
-        "error: ReloadPreparationError::VersionedAdopterUnavailable",
-        "#[cfg(test)]\nmod handoff;",
-    ):
-        source = manager if "mod handoff" in token else pid1_manager
-        if token not in source:
-            return fail(f"reload/handoff fail-early boundary lost: {token}")
+    required_handoff_boundary = (
+        "runtime.assess_live_handoff(HandoffPurpose::ReloadInProcess)",
+        "ReloadPreparationResult::FailedBeforePointOfNoReturn",
+        "ReloadPreparationError::VersionedAdopterUnavailable",
+    )
+    missing = [token for token in required_handoff_boundary if token not in pid1_manager]
+    if missing:
+        return fail(f"reload/handoff fail-early boundary lost: {missing}")
+    if "mod handoff;" not in manager:
+        return fail("RuntimeManager no longer compiles the shared handoff inventory module")
 
     c_authority = (
         "if (errno == ENOSYS)\n                        can_openat2 = false;" in chase_c

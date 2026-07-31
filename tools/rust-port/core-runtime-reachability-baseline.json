@@ -311,6 +311,12 @@
         "src/core/rust/fuzz_unit_file.rs"
       ]
     },
+    "generator_runtime": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/generator_runtime.rs"
+      ]
+    },
     "generator_setup": {
       "classification": "compiled-but-disconnected",
       "source_files": [
@@ -527,6 +533,12 @@
         "src/core/rust/pid1_exec_sources.rs"
       ]
     },
+    "pid1_generator_lifecycle": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/pid1_generator_lifecycle.rs"
+      ]
+    },
     "pid1_idle_pipe_source": {
       "classification": "runtime-reachable",
       "source_files": [
@@ -574,6 +586,7 @@
       "source_files": [
         "src/core/rust/runtime_manager/bound_liveness.rs",
         "src/core/rust/runtime_manager/cgroup_runtime.rs",
+        "src/core/rust/runtime_manager/handoff.rs",
         "src/core/rust/runtime_manager/job_runtime.rs",
         "src/core/rust/runtime_manager/linux_cgroup.rs",
         "src/core/rust/runtime_manager/notify_runtime.rs",

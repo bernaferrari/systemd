@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+// PORT-SYNC: src/core/dbus.c (`bus_on_connection()`, `bus_check_peercred()`)
 
 //! Bounded server-side D-Bus authentication for PID 1's private socket.
 //!

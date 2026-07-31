@@ -39,127 +39,16 @@ mod imp {
     };
     use crate::pid1_dbus_reply_adapter::Pid1DbusProtocolError;
     use crate::pid1_dbus_reply_queue::{
-        PrivateBusReplyPollOutcome, PrivateBusReplyQueue, PrivateBusReplyQueueError,
-        PrivateBusReplyTracking,
+        PrivateBusReplyPollOutcome, PrivateBusReplyQueue, PrivateBusReplyTracking,
     };
     use crate::pid1_dbus_transport_types::{
-        PrivateBusWireDispatchError, PrivateBusWireDispatchOutcome,
+        PrivateBusWireDispatchError, PrivateBusWireDispatchOutcome, PrivateBusWireSlotError,
+        PrivateBusWireSlotReadiness,
     };
-    use crate::pid1_dbus_wire::{
-        MethodCall, PrivateBusWireAccumulator, PrivateBusWireAccumulatorError,
+    use crate::pid1_dbus_transport_types::{
+        PrivateBusWireReadOutcome, PrivateBusWireSlotConfig, PrivateBusWireWriteOutcome,
     };
-
-    /// Explicit memory and reply bounds for one authenticated wire slot.
-    ///
-    /// Production integration must select these from its total private-bus
-    /// resource policy rather than relying on an implicit transport default.
-    /// No allocation is performed by this configuration value.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct PrivateBusWireSlotConfig {
-        input_capacity: usize,
-        max_pending_replies: NonZeroUsize,
-        reply_frame_capacity: usize,
-        reply_outbound_capacity: usize,
-    }
-
-    impl PrivateBusWireSlotConfig {
-        /// Create bounds which will be checked again when a concrete
-        /// authenticated handoff is promoted. The latter check accounts for
-        /// binary bytes pipelined immediately after D-Bus `BEGIN`.
-        pub const fn new(
-            input_capacity: usize,
-            max_pending_replies: NonZeroUsize,
-            reply_frame_capacity: usize,
-            reply_outbound_capacity: usize,
-        ) -> Self {
-            Self {
-                input_capacity,
-                max_pending_replies,
-                reply_frame_capacity,
-                reply_outbound_capacity,
-            }
-        }
-
-        pub const fn input_capacity(self) -> usize {
-            self.input_capacity
-        }
-
-        pub const fn max_pending_replies(self) -> NonZeroUsize {
-            self.max_pending_replies
-        }
-
-        pub const fn reply_frame_capacity(self) -> usize {
-            self.reply_frame_capacity
-        }
-
-        pub const fn reply_outbound_capacity(self) -> usize {
-            self.reply_outbound_capacity
-        }
-    }
-
-    /// Non-I/O readiness observed for one retained wire slot.
-    ///
-    /// `read_budget == 0` is intentional backpressure: the dispatcher must
-    /// consume the complete first method call before attempting another stream
-    /// read. `reply_write_pending` only describes already-polled manager
-    /// replies; callers must periodically call [`PrivateBusWireSlot::poll_replies`]
-    /// with their own bounded work budget.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct PrivateBusWireSlotReadiness {
-        pub read_budget: usize,
-        pub reply_write_pending: bool,
-        pub can_track_reply: bool,
-        pub terminal: bool,
-    }
-
-    /// Failure while constructing or operating the ownership state of one
-    /// authenticated private-bus connection.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum PrivateBusWireSlotError {
-        /// An event-source invariant was violated: only a completed D-Bus
-        /// authentication handoff may be promoted to a wire slot.
-        UnauthenticatedHandoff,
-        /// The slot has failed closed and must be detached before any more
-        /// protocol state is accessed.
-        Terminal,
-        Io(Errno),
-        Input(PrivateBusWireAccumulatorError),
-        Reply(PrivateBusReplyQueueError),
-    }
-
-    /// Progress from one bounded nonblocking read on an authenticated slot.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum PrivateBusWireReadOutcome {
-        /// A complete first frame is already buffered and must be dispatched
-        /// before another byte may be retained.
-        Backpressured,
-        WouldBlock,
-        Read {
-            bytes: usize,
-        },
-        PeerClosed,
-    }
-
-    /// Progress from one bounded nonblocking write of the current reply frame.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum PrivateBusWireWriteOutcome {
-        Idle,
-        WouldBlock,
-        Written { bytes: usize, frame_complete: bool },
-        PeerClosed,
-    }
-
-    impl From<PrivateBusWireAccumulatorError> for PrivateBusWireSlotError {
-        fn from(error: PrivateBusWireAccumulatorError) -> Self {
-            Self::Input(error)
-        }
-    }
-
-    impl From<PrivateBusReplyQueueError> for PrivateBusWireSlotError {
-        fn from(error: PrivateBusReplyQueueError) -> Self {
-            Self::Reply(error)
-        }
-    }
+    use crate::pid1_dbus_wire::{MethodCall, PrivateBusWireAccumulator};
 
     /// All non-event-loop state that must live and die with one authenticated
     /// private-bus peer.
@@ -186,11 +75,12 @@ mod imp {
                 .authenticated()
                 .ok_or(PrivateBusWireSlotError::UnauthenticatedHandoff)?
                 .buffered();
-            let input = PrivateBusWireAccumulator::from_buffered(config.input_capacity, buffered)?;
+            let input =
+                PrivateBusWireAccumulator::from_buffered(config.input_capacity(), buffered)?;
             let replies = PrivateBusReplyQueue::new(
-                config.max_pending_replies,
-                config.reply_frame_capacity,
-                config.reply_outbound_capacity,
+                config.max_pending_replies(),
+                config.reply_frame_capacity(),
+                config.reply_outbound_capacity(),
             )?;
             Ok(Self {
                 id,
@@ -969,7 +859,9 @@ mod imp {
         use super::*;
         use crate::pid1_bus_source::pid1_bus_command_channel;
         use crate::pid1_dbus_command_adapter::Pid1DbusCommandAdapter;
+        use crate::pid1_dbus_reply_queue::PrivateBusReplyQueueError;
         use crate::pid1_dbus_wire::Endian;
+        use crate::pid1_dbus_wire::PrivateBusWireAccumulatorError;
         use crate::pid1_manager_commands::{
             AuthenticatedPeer, DenyAllPid1CommandAuthorizer, Pid1CommandAuthorizer,
             Pid1CommandError, Pid1ManagerCommand, SenderIdentity, pid1_manager_command_channel,
@@ -2368,7 +2260,8 @@ mod imp {
 }
 
 pub use crate::pid1_dbus_transport_types::{
-    PrivateBusWireDispatchError, PrivateBusWireDispatchOutcome,
+    PrivateBusWireDispatchError, PrivateBusWireDispatchOutcome, PrivateBusWireReadOutcome,
+    PrivateBusWireSlotConfig, PrivateBusWireWriteOutcome,
 };
 #[cfg(target_os = "linux")]
 pub use imp::*;

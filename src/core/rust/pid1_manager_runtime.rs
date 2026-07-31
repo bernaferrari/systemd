@@ -6,14 +6,17 @@
 //! lifecycle.
 //!
 //! C `manager_reload()` serializes manager state and its descriptor set before
-//! a marked point of no return. Rust has no versioned serializer/adopter yet,
-//! so reload is rejected before handoff preparation and the exact live manager
-//! resumes unchanged. Every other objective remains terminal until its full
-//! state-transfer contract exists.
+//! a marked point of no return. Rust can non-destructively assess whether its
+//! process-local state and descriptor roles are representable, but has no
+//! versioned serializer/adopter yet. Reload is therefore rejected before
+//! ownership changes and the exact live manager resumes unchanged. Every other
+//! objective remains terminal until its full state-transfer contract exists.
 
 use crate::pid1_lifecycle::{OuterLoopExit, outer_loop_exit};
 use crate::pid1_manager_commands::PendingObjectiveRequest;
-use crate::runtime_manager::RuntimeManager;
+use crate::runtime_manager::{
+    HandoffAssessment, HandoffPurpose, PrepareHandoffError, RuntimeManager,
+};
 
 pub struct ManagerLoopExit {
     objective: OuterLoopExit,
@@ -50,16 +53,25 @@ impl ManagerLoopExit {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReloadPreparationError {
-    VersionedAdopterUnavailable,
+    RuntimeStateNotTransferable(PrepareHandoffError),
+    VersionedAdopterUnavailable(HandoffAssessment),
 }
 
 impl std::fmt::Display for ReloadPreparationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::VersionedAdopterUnavailable => formatter.write_str(
-                "manager reload has no versioned state/descriptor adopter; request rejected before handoff preparation",
+            Self::RuntimeStateNotTransferable(error) => write!(
+                formatter,
+                "manager state cannot enter a live handoff: {error}"
+            ),
+            Self::VersionedAdopterUnavailable(assessment) => write!(
+                formatter,
+                "manager reload assessed {} units, {} jobs, and {} descriptor roles, but has no versioned state/descriptor adopter",
+                assessment.unit_count(),
+                assessment.job_count(),
+                assessment.descriptor_count(),
             ),
         }
     }
@@ -87,12 +99,17 @@ fn prepare_reload(
     runtime: RuntimeManager,
     pending_reply: Option<PendingObjectiveRequest>,
 ) -> ReloadPreparationResult {
-    // No manager state or descriptor ownership has changed. Do not run typed
-    // handoff preflight or duplicate descriptors until a versioned adopter can
-    // consume them and complete C's serialize/clear/deserialize transaction.
+    // This only validates process-local state and borrowed descriptor roles.
+    // It does not duplicate descriptors or serialize anything. No manager
+    // state or descriptor ownership has changed, and there is still no point
+    // of no return until a versioned adopter can consume the complete image.
+    let error = match runtime.assess_live_handoff(HandoffPurpose::ReloadInProcess) {
+        Ok(assessment) => ReloadPreparationError::VersionedAdopterUnavailable(assessment),
+        Err(error) => ReloadPreparationError::RuntimeStateNotTransferable(error),
+    };
     ReloadPreparationResult::FailedBeforePointOfNoReturn {
         runtime,
-        error: ReloadPreparationError::VersionedAdopterUnavailable,
+        error,
         pending_reply,
     }
 }
@@ -133,12 +150,46 @@ mod tests {
             panic!("reload must remain recoverable before the point of no return");
         };
 
-        assert_eq!(error, ReloadPreparationError::VersionedAdopterUnavailable);
+        let ReloadPreparationError::VersionedAdopterUnavailable(assessment) = error else {
+            panic!("quiescent manager must reach the adopter boundary");
+        };
+        assert_eq!(assessment.purpose(), HandoffPurpose::ReloadInProcess);
+        assert!(assessment.descriptor_count() >= 1);
         assert_eq!(
             runtime
                 .get_unit("preserved.target")
                 .map(|unit| unit.active_state),
             Some(ActiveState::Active)
+        );
+    }
+
+    #[test]
+    fn reload_preflight_rejects_untransferable_state_without_mutation() {
+        let mut runtime = RuntimeManager::new();
+        runtime.inject_test_unit("running.service", "running", ActiveState::Active, "running");
+        runtime.inject_test_main_pid("running.service", 19);
+
+        let disposition =
+            prepare_outer_lifecycle(ManagerLoopExit::from_signal(OuterLoopExit::Reload, runtime));
+        let OuterLifecycleDisposition::ReloadPreparation(
+            ReloadPreparationResult::FailedBeforePointOfNoReturn { runtime, error, .. },
+        ) = disposition
+        else {
+            panic!("reload must remain recoverable before the point of no return");
+        };
+
+        assert!(matches!(
+            error,
+            ReloadPreparationError::RuntimeStateNotTransferable(
+                PrepareHandoffError::LiveProcessLacksStableIdentity
+            )
+        ));
+        assert_eq!(
+            runtime
+                .get_unit("running.service")
+                .and_then(|unit| unit.main_pid)
+                .map(|pid| pid.0),
+            Some(19)
         );
     }
 

@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+//
+// PORT-SYNC: src/core/main.c prepare_reexecute(); src/core/manager.c manager_reload()
 
 //! Duplicate-before-commit inventory for live manager handoff.
 //!
 //! This module intentionally has no serializer, adopter, or commit operation.
-//! Preparation retains the exact `RuntimeManager` and duplicates transferable
-//! kernel capabilities. Any validation or duplication failure returns that
+//! Production code can only assess process-local state and descriptor roles
+//! through a shared borrow. Test-only preparation retains the exact
+//! `RuntimeManager` and duplicates transferable kernel capabilities to prove
+//! rollback ownership. Any validation or duplication failure returns that
 //! original owner unchanged. A future versioned adopter must exist before a
 //! point-of-no-return API can be added.
 
@@ -16,7 +20,7 @@ use super::RuntimeManager;
 use super::cgroup_runtime::BorrowedCgroupFds;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HandoffPurpose {
+pub enum HandoffPurpose {
     ReloadInProcess,
     Reexecute,
     SwitchRoot,
@@ -83,6 +87,10 @@ pub enum PrepareHandoffError {
         role: String,
         raw_os_error: Option<i32>,
     },
+    UnavailableDescriptorRole {
+        role: String,
+        raw_os_error: Option<i32>,
+    },
 }
 
 impl std::fmt::Display for PrepareHandoffError {
@@ -141,6 +149,13 @@ impl std::fmt::Display for PrepareHandoffError {
                 }
                 Ok(())
             }
+            Self::UnavailableDescriptorRole { role, raw_os_error } => {
+                write!(formatter, "handoff descriptor is unavailable for {role}")?;
+                if let Some(errno) = raw_os_error {
+                    write!(formatter, ": errno {errno}")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -158,8 +173,14 @@ impl RejectedLiveHandoff {
     }
 }
 
+/// A non-owning assessment of the manager state and kernel capabilities that
+/// a future versioned adopter would have to transfer.
+///
+/// Producing this value does not duplicate descriptors, serialize state, or
+/// cross a point of no return. It is therefore safe to use for diagnostics on
+/// the live manager, but it is not permission to reload or reexecute.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HandoffInventory {
+pub struct HandoffAssessment {
     purpose: HandoffPurpose,
     unit_count: usize,
     job_count: usize,
@@ -169,17 +190,33 @@ pub(crate) struct HandoffInventory {
     descriptor_count: usize,
 }
 
-impl HandoffInventory {
-    pub(crate) fn purpose(&self) -> HandoffPurpose {
+impl HandoffAssessment {
+    pub fn purpose(&self) -> HandoffPurpose {
         self.purpose
     }
 
-    pub(crate) fn descriptor_count(&self) -> usize {
+    pub fn unit_count(&self) -> usize {
+        self.unit_count
+    }
+
+    pub fn job_count(&self) -> usize {
+        self.job_count
+    }
+
+    pub fn descriptor_count(&self) -> usize {
         self.descriptor_count
     }
 
-    pub(crate) fn socket_listener_count(&self) -> usize {
+    pub fn socket_listener_count(&self) -> usize {
         self.socket_listener_count
+    }
+
+    pub fn unit_cgroup_count(&self) -> usize {
+        self.unit_cgroup_count
+    }
+
+    pub fn cgroup_watch_count(&self) -> usize {
+        self.cgroup_watch_count
     }
 }
 
@@ -206,12 +243,12 @@ impl DescriptorBundle {
 #[must_use = "prepared handoff must be rolled back until a versioned adopter exists"]
 pub(crate) struct PreparedLiveHandoff {
     original: RuntimeManager,
-    inventory: HandoffInventory,
+    inventory: HandoffAssessment,
     _descriptors: DescriptorBundle,
 }
 
 impl PreparedLiveHandoff {
-    pub(crate) fn inventory(&self) -> &HandoffInventory {
+    pub(crate) fn inventory(&self) -> &HandoffAssessment {
         &self.inventory
     }
 
@@ -424,6 +461,84 @@ fn duplication_error(role: &DescriptorRole, error: std::io::Error) -> PrepareHan
     }
 }
 
+fn unavailable_descriptor_error(
+    role: &DescriptorRole,
+    error: std::io::Error,
+) -> PrepareHandoffError {
+    PrepareHandoffError::UnavailableDescriptorRole {
+        role: role.to_string(),
+        raw_os_error: error.raw_os_error(),
+    }
+}
+
+fn assess_descriptor_roles(runtime: &RuntimeManager) -> Result<usize, PrepareHandoffError> {
+    let mut roles = BTreeSet::new();
+    let mut insert = |role: DescriptorRole| {
+        if roles.insert(role.clone()) {
+            Ok(())
+        } else {
+            Err(PrepareHandoffError::DuplicateDescriptorRole(
+                role.to_string(),
+            ))
+        }
+    };
+
+    let root_role = DescriptorRole::CgroupRoot;
+    runtime
+        .cgroup_root
+        .handoff_fd()
+        .map_err(|error| unavailable_descriptor_error(&root_role, error))?;
+    insert(root_role)?;
+
+    for listener in runtime.socket_mgr.listener_descriptors() {
+        let role = DescriptorRole::SocketListener {
+            unit: listener.unit_name().to_string(),
+            port_index: listener.port_index(),
+        };
+        if listener.upgrade().is_none() {
+            return Err(PrepareHandoffError::ClosedSocketListener {
+                unit: listener.unit_name().to_string(),
+                port_index: listener.port_index(),
+            });
+        }
+        insert(role)?;
+    }
+
+    let mut cgroup_units = runtime.unit_cgroups.keys().collect::<Vec<_>>();
+    cgroup_units.sort_unstable();
+    for unit in cgroup_units {
+        let BorrowedCgroupFds {
+            directory: _,
+            processes_write: _,
+            processes_read: _,
+            events_read: _,
+        } = runtime.unit_cgroups[unit].handoff_fds();
+        for kind in [
+            CgroupFdKind::Directory,
+            CgroupFdKind::ProcessesWrite,
+            CgroupFdKind::ProcessesRead,
+            CgroupFdKind::EventsRead,
+        ] {
+            insert(DescriptorRole::UnitCgroup {
+                unit: unit.clone(),
+                kind,
+            })?;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if runtime.cgroup_inotify_fd.is_some() {
+        insert(DescriptorRole::CgroupInotify)?;
+    }
+
+    #[cfg(target_os = "linux")]
+    if runtime.bound_stop_retry_timer.is_some() {
+        insert(DescriptorRole::BoundStopRetryTimer)?;
+    }
+
+    Ok(roles.len())
+}
+
 fn duplicate_cgroup_fds<F>(
     bundle: &mut DescriptorBundle,
     unit: &str,
@@ -511,30 +626,15 @@ where
 }
 
 impl RuntimeManager {
-    pub(crate) fn prepare_live_handoff(
-        self,
+    /// Validate the process-local state and descriptor-role inventory required
+    /// for a future live handoff without changing ownership.
+    pub fn assess_live_handoff(
+        &self,
         purpose: HandoffPurpose,
-    ) -> Result<PreparedLiveHandoff, RejectedLiveHandoff> {
-        self.prepare_live_handoff_with(purpose, |_, descriptor| descriptor.try_clone_to_owned())
-    }
-
-    fn prepare_live_handoff_with<F>(
-        self,
-        purpose: HandoffPurpose,
-        duplicate: F,
-    ) -> Result<PreparedLiveHandoff, RejectedLiveHandoff>
-    where
-        F: for<'fd> FnMut(&DescriptorRole, BorrowedFd<'fd>) -> io::Result<OwnedFd>,
-    {
-        if let Err(error) = validate_preflight(&self) {
-            return Err(reject(self, error));
-        }
-
-        let descriptors = match duplicate_descriptors_with(&self, duplicate) {
-            Ok(descriptors) => descriptors,
-            Err(error) => return Err(reject(self, error)),
-        };
-        let inventory = HandoffInventory {
+    ) -> Result<HandoffAssessment, PrepareHandoffError> {
+        validate_preflight(self)?;
+        let descriptor_count = assess_descriptor_roles(self)?;
+        Ok(HandoffAssessment {
             purpose,
             unit_count: self.units.len(),
             job_count: self.installed_jobs.len(),
@@ -544,8 +644,37 @@ impl RuntimeManager {
             cgroup_watch_count: self.cgroup_watch_by_wd.len(),
             #[cfg(not(target_os = "linux"))]
             cgroup_watch_count: 0,
-            descriptor_count: descriptors.0.len(),
+            descriptor_count,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn prepare_live_handoff(
+        self,
+        purpose: HandoffPurpose,
+    ) -> Result<PreparedLiveHandoff, RejectedLiveHandoff> {
+        self.prepare_live_handoff_with(purpose, |_, descriptor| descriptor.try_clone_to_owned())
+    }
+
+    #[cfg(test)]
+    fn prepare_live_handoff_with<F>(
+        self,
+        purpose: HandoffPurpose,
+        duplicate: F,
+    ) -> Result<PreparedLiveHandoff, RejectedLiveHandoff>
+    where
+        F: for<'fd> FnMut(&DescriptorRole, BorrowedFd<'fd>) -> io::Result<OwnedFd>,
+    {
+        let inventory = match self.assess_live_handoff(purpose) {
+            Ok(inventory) => inventory,
+            Err(error) => return Err(reject(self, error)),
         };
+
+        let descriptors = match duplicate_descriptors_with(&self, duplicate) {
+            Ok(descriptors) => descriptors,
+            Err(error) => return Err(reject(self, error)),
+        };
+        debug_assert_eq!(inventory.descriptor_count, descriptors.0.len());
         Ok(PreparedLiveHandoff {
             original: self,
             inventory,

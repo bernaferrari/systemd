@@ -94,6 +94,7 @@ pub mod pid1_dbus_transport_types;
 pub mod pid1_dbus_wire;
 pub mod pid1_dbus_wire_source;
 pub mod pid1_exec_sources;
+pub mod pid1_generator_lifecycle;
 pub mod pid1_idle_pipe_source;
 pub mod pid1_lifecycle;
 pub mod pid1_manager_commands;

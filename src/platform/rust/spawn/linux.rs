@@ -15,21 +15,30 @@ use super::{
 use caps::CapSet;
 use nix::fcntl::{FcntlArg, OFlag, fcntl};
 use nix::sys::signal::SigSet;
-use nix::unistd::{Pid, close, dup2_stderr, dup2_stdin, dup2_stdout, pipe2, read, setsid};
+use nix::unistd::{Pid, pipe2, read, setsid};
 use seccompiler::BpfProgram;
 use std::collections::BTreeMap;
-use std::convert::TryInto;
 use std::ffi::{CStr, CString};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 
 #[path = "linux_cgroup.rs"]
 mod cgroup;
+#[path = "linux_exec_status.rs"]
+mod exec_status;
+#[path = "linux_hygiene.rs"]
+mod hygiene;
 #[path = "linux_idle.rs"]
 mod idle;
 #[path = "linux_process.rs"]
 mod process;
 use cgroup::delegate_cgroup_access;
+use exec_status::consume_exec_status_bytes;
+use hygiene::{
+    child_sanitize_inherited_fds, close_original_activation_fds, duplicate_activation_fds,
+    duplicate_child_fd_cloexec, install_activation_fds, redirect_child_stdio,
+    reset_child_signal_dispositions,
+};
 use process::{ServiceFork, spawn_process, terminate_unconfirmed_child};
 
 // Keep the process-identity operations private to the Linux launch
@@ -125,34 +134,38 @@ impl AsFd for ExecStatusHandle {
 
 #[repr(u32)]
 #[derive(Clone, Copy)]
-enum ChildSpawnStage {
-    SignalMask = 1,
-    StatusPipe = 2,
-    ActivationFd = 3,
-    ActivationRemap = 4,
-    StandardInput = 5,
-    StandardOutput = 6,
-    StandardError = 7,
-    Session = 8,
-    Security = 9,
-    Cgroup = 10,
-    Exec = 12,
+pub(super) enum ChildSpawnStage {
+    SignalDisposition = 1,
+    SignalMask = 2,
+    StatusPipe = 3,
+    ActivationFd = 4,
+    ActivationRemap = 5,
+    StandardInput = 6,
+    StandardOutput = 7,
+    StandardError = 8,
+    Session = 9,
+    Security = 10,
+    Cgroup = 11,
+    DescriptorHygiene = 12,
+    Exec = 13,
 }
 
 impl ChildSpawnStage {
     fn description(raw: u32) -> &'static str {
         match raw {
-            1 => "resetting the child signal mask",
-            2 => "preparing the exec-status pipe",
-            3 => "duplicating socket-activation descriptors",
-            4 => "remapping socket-activation descriptors",
-            5 => "redirecting standard input",
-            6 => "redirecting standard output",
-            7 => "redirecting standard error",
-            8 => "creating the child session",
-            9 => "applying child security setup",
-            10 => "placing the child in its unit cgroup",
-            12 => "executing the service command",
+            1 => "resetting the child signal dispositions",
+            2 => "resetting the child signal mask",
+            3 => "preparing the exec-status pipe",
+            4 => "duplicating socket-activation descriptors",
+            5 => "remapping socket-activation descriptors",
+            6 => "redirecting standard input",
+            7 => "redirecting standard output",
+            8 => "redirecting standard error",
+            9 => "creating the child session",
+            10 => "applying child security setup",
+            11 => "placing the child in its unit cgroup",
+            12 => "sanitizing inherited file descriptors",
+            13 => "executing the service command",
             _ => "performing unknown child setup",
         }
     }
@@ -997,14 +1010,14 @@ fn cgroup_is_threaded(directory: BorrowedFd<'_>) -> Result<bool, String> {
         .any(|word| matches!(word, "threaded" | "invalid")))
 }
 
-fn child_errno_or_invalid_argument() -> i32 {
+pub(super) fn child_errno_or_invalid_argument() -> i32 {
     // SAFETY: Linux exposes the calling thread's errno through this pointer.
     // The child reads it immediately after a failed libc operation.
     let errno = unsafe { *libc::__errno_location() };
     if errno == 0 { libc::EINVAL } else { errno }
 }
 
-fn child_report_failure(status_fd: RawFd, stage: ChildSpawnStage, errno: i32) -> ! {
+pub(super) fn child_report_failure(status_fd: RawFd, stage: ChildSpawnStage, errno: i32) -> ! {
     let failure = ChildSpawnFailure {
         stage: stage as u32,
         errno: if errno == 0 { libc::EINVAL } else { errno },
@@ -1508,162 +1521,6 @@ fn child_apply_security(security: &PreparedSecurity) -> Result<(), i32> {
     Ok(())
 }
 
-fn duplicate_child_fd_cloexec(fd: RawFd, minimum_fd: RawFd) -> Result<RawFd, nix::errno::Errno> {
-    // SAFETY: every caller passes a descriptor retained by PreparedLaunch or
-    // an OwnedFd that remains live for this post-fork operation.
-    let fd = unsafe { BorrowedFd::borrow_raw(fd) };
-    fcntl(fd, FcntlArg::F_DUPFD_CLOEXEC(minimum_fd))
-}
-
-fn duplicate_activation_fds(
-    source_fds: &[RawFd],
-    temporary_fds: &mut [RawFd],
-) -> Result<(), (ChildSpawnStage, i32)> {
-    if source_fds.len() != temporary_fds.len() {
-        return Err((ChildSpawnStage::ActivationFd, libc::EINVAL));
-    }
-
-    let first_activation_fd = libc::STDERR_FILENO + 1;
-    let first_temporary_fd = first_activation_fd
-        .checked_add(source_fds.len() as RawFd)
-        .ok_or((ChildSpawnStage::ActivationFd, libc::EMFILE))?;
-
-    // Both vectors were allocated before fork. Write temporary descriptors in
-    // place so the collision-safe remap itself allocates no memory in the
-    // post-fork child.
-    for (source, temporary) in source_fds.iter().zip(temporary_fds.iter_mut()) {
-        *temporary = duplicate_child_fd_cloexec(*source, first_temporary_fd)
-            .map_err(|error| (ChildSpawnStage::ActivationFd, error as i32))?;
-    }
-
-    Ok(())
-}
-
-fn close_original_activation_fds(source_fds: &[RawFd]) {
-    for source in source_fds {
-        if *source > libc::STDERR_FILENO {
-            let _ = close(*source);
-        }
-    }
-}
-
-fn install_activation_fds(
-    temporary_fds: &[RawFd],
-    status_fd: RawFd,
-) -> Result<(), (ChildSpawnStage, i32)> {
-    let first_activation_fd = libc::STDERR_FILENO + 1;
-    for (index, duplicate) in temporary_fds.iter().copied().enumerate() {
-        if duplicate < 0 {
-            return Err((ChildSpawnStage::ActivationRemap, libc::EINVAL));
-        }
-        let target = first_activation_fd + index as RawFd;
-        if target == status_fd {
-            let _ = close(duplicate);
-            return Err((ChildSpawnStage::ActivationRemap, libc::EBUSY));
-        }
-        // SAFETY: `duplicate` was created by F_DUPFD_CLOEXEC above and the
-        // checked target is outside the temporary range. This raw descriptor
-        // remap intentionally replaces any descriptor at `target`; using the
-        // syscall directly avoids falsely claiming unique OwnedFd ownership
-        // for a target slot that exists only until execve or _exit.
-        // SAFETY: duplicate and target satisfy the descriptor invariants above.
-        if unsafe { libc::dup3(duplicate, target, OFlag::empty().bits()) } < 0 {
-            return Err((
-                ChildSpawnStage::ActivationRemap,
-                child_errno_or_invalid_argument(),
-            ));
-        }
-        let _ = close(duplicate);
-    }
-
-    Ok(())
-}
-
-fn redirect_child_stdio(
-    source: Option<RawFd>,
-    target: RawFd,
-    stage: ChildSpawnStage,
-    status_fd: RawFd,
-) {
-    if let Some(source) = source {
-        // SAFETY: stdio sources were validated before fork and remain open in
-        // PreparedLaunch throughout child setup.
-        let source = unsafe { BorrowedFd::borrow_raw(source) };
-        let result = match target {
-            libc::STDIN_FILENO => dup2_stdin(source),
-            libc::STDOUT_FILENO => dup2_stdout(source),
-            libc::STDERR_FILENO => dup2_stderr(source),
-            _ => Err(nix::errno::Errno::EINVAL),
-        };
-        if let Err(error) = result {
-            child_report_failure(status_fd, stage, error as i32);
-        }
-    }
-}
-
-fn child_failure_message(failure: ChildSpawnFailure) -> String {
-    let errno = if failure.errno == 0 {
-        libc::EINVAL
-    } else {
-        failure.errno
-    };
-    format!(
-        "child failed while {} (errno {errno}: {})",
-        ChildSpawnStage::description(failure.stage),
-        std::io::Error::from_raw_os_error(errno)
-    )
-}
-
-fn decode_child_failure(
-    bytes: &[u8; std::mem::size_of::<ChildSpawnFailure>()],
-) -> ChildSpawnFailure {
-    ChildSpawnFailure {
-        stage: u32::from_ne_bytes(bytes[0..4].try_into().expect("fixed-size slice")),
-        errno: i32::from_ne_bytes(bytes[4..8].try_into().expect("fixed-size slice")),
-    }
-}
-
-fn consume_exec_status_bytes(
-    exec_attempted: &mut bool,
-    failure_started: &mut bool,
-    failure_bytes: &mut [u8; std::mem::size_of::<ChildSpawnFailure>()],
-    failure_received: &mut usize,
-    input: &[u8],
-) -> Result<(), String> {
-    for byte in input {
-        if *failure_started {
-            if *failure_received == failure_bytes.len() {
-                return Err(
-                    "child exec-status pipe contained data after a failure record".to_string(),
-                );
-            }
-            failure_bytes[*failure_received] = *byte;
-            *failure_received += 1;
-            if *failure_received == failure_bytes.len() {
-                return Err(child_failure_message(decode_child_failure(failure_bytes)));
-            }
-            continue;
-        }
-
-        match *byte {
-            EXEC_STATUS_EXEC_ATTEMPT if !*exec_attempted => *exec_attempted = true,
-            EXEC_STATUS_EXEC_ATTEMPT => {
-                return Err(
-                    "child exec-status pipe contained duplicate exec-attempt marker".to_string(),
-                );
-            }
-            EXEC_STATUS_FAILURE => {
-                *failure_started = true;
-                *failure_received = 0;
-            }
-            _ => {
-                return Err("child exec-status pipe contained an invalid record marker".to_string());
-            }
-        }
-    }
-    Ok(())
-}
-
 impl ExecStatusHandle {
     /// Advance a nonblocking exec-status read. The child emits an attempt
     /// marker immediately before `execve`; only a following CLOEXEC EOF is a
@@ -1874,6 +1731,13 @@ fn spawn_service_inner(
         }
         ServiceFork::Child => {
             drop(status_read);
+            if let Err(errno) = reset_child_signal_dispositions() {
+                child_report_failure(
+                    status_write.as_raw_fd(),
+                    ChildSpawnStage::SignalDisposition,
+                    errno,
+                );
+            }
             if let Err(error) = reset_child_signal_mask() {
                 child_report_failure(
                     status_write.as_raw_fd(),
@@ -1941,6 +1805,12 @@ fn spawn_service_inner(
                 child_report_failure(status_fd, error.0, error.1);
             }
 
+            if let Err(errno) =
+                child_sanitize_inherited_fds(launch.activation.first_temporary_fd, status_fd)
+            {
+                child_report_failure(status_fd, ChildSpawnStage::DescriptorHygiene, errno);
+            }
+
             if let Err(errno) = child_apply_security(&launch.security) {
                 child_report_failure(status_fd, ChildSpawnStage::Security, errno);
             }
@@ -1980,6 +1850,59 @@ fn spawn_service_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nix::fcntl::FdFlag;
+    use nix::sys::wait::{WaitStatus, waitpid};
+    use std::fs::File;
+    use std::sync::Mutex;
+
+    static SIGNAL_DISPOSITION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn ignore_sigpipe_for_test() -> libc::sigaction {
+        // SAFETY: sigemptyset initializes the action mask. `previous` is
+        // initialized by the successful sigaction call before it is returned,
+        // and SIGPIPE has a mutable disposition on Linux.
+        unsafe {
+            let mut mask = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
+            assert_eq!(libc::sigemptyset(mask.as_mut_ptr()), 0);
+            let action = libc::sigaction {
+                sa_sigaction: libc::SIG_IGN,
+                sa_mask: mask.assume_init(),
+                sa_flags: 0,
+                sa_restorer: None,
+            };
+            let mut previous = std::mem::MaybeUninit::<libc::sigaction>::uninit();
+            assert_eq!(
+                libc::sigaction(libc::SIGPIPE, &action, previous.as_mut_ptr()),
+                0
+            );
+            previous.assume_init()
+        }
+    }
+
+    fn restore_sigpipe_after_test(previous: &libc::sigaction) {
+        // SAFETY: `previous` came from sigaction for SIGPIPE in this process
+        // and is passed back unchanged to restore the test process state.
+        assert_eq!(
+            unsafe { libc::sigaction(libc::SIGPIPE, previous, std::ptr::null_mut()) },
+            0
+        );
+    }
+
+    fn clear_close_on_exec(descriptor: &File) {
+        fcntl(descriptor.as_fd(), FcntlArg::F_SETFD(FdFlag::empty()))
+            .expect("clear FD_CLOEXEC on the parent-owned test descriptor");
+    }
+
+    fn assert_service_exited_cleanly(pid: u32) {
+        loop {
+            match waitpid(Pid::from_raw(pid as i32), None) {
+                Ok(WaitStatus::Exited(_, 0)) => return,
+                Ok(status) => panic!("service {pid} did not exit cleanly: {status:?}"),
+                Err(nix::errno::Errno::EINTR) => continue,
+                Err(error) => panic!("failed to wait for service {pid}: {error}"),
+            }
+        }
+    }
 
     fn failure_payload(stage: u32, errno: i32) -> [u8; std::mem::size_of::<ChildSpawnFailure>()] {
         let mut payload = [0; std::mem::size_of::<ChildSpawnFailure>()];
@@ -2080,5 +2003,69 @@ mod tests {
             ..SpawnSecurity::default()
         };
         assert!(prepare_environment(&security, false).is_err());
+    }
+
+    #[test]
+    fn service_exec_closes_unlisted_parent_descriptors() {
+        let inherited = File::open("/dev/null").expect("open inherited test descriptor");
+        clear_close_on_exec(&inherited);
+        let raw = inherited.as_raw_fd();
+        assert!(raw > libc::STDERR_FILENO);
+
+        let command =
+            format!("/bin/sh -c 'if [ -e /proc/self/fd/{raw} ]; then exit 41; else exit 0; fi'");
+        let pid = spawn_service_with_options_and_activation(
+            &command,
+            SpawnStdio::default(),
+            SpawnSecurity::default(),
+            &[],
+        )
+        .expect("spawn service with inherited manager descriptor");
+
+        assert_service_exited_cleanly(pid);
+    }
+
+    #[test]
+    fn service_exec_preserves_only_remapped_activation_descriptors() {
+        let activation_source = File::open("/dev/null").expect("open activation test descriptor");
+        clear_close_on_exec(&activation_source);
+        let activation = [ActivationFd {
+            fd: activation_source.as_fd(),
+            name: "test-activation",
+        }];
+
+        let command = "/bin/sh -c 'test -e /proc/self/fd/3 && test \"$LISTEN_FDS\" = 1 && test \"$LISTEN_FDNAMES\" = test-activation'";
+        let pid = spawn_service_with_options_and_activation(
+            command,
+            SpawnStdio::default(),
+            SpawnSecurity::default(),
+            &activation,
+        )
+        .expect("spawn service with activation descriptor");
+
+        assert_service_exited_cleanly(pid);
+    }
+
+    #[test]
+    fn service_exec_restores_pid1_sigpipe_disposition() {
+        let _guard = SIGNAL_DISPOSITION_TEST_LOCK
+            .lock()
+            .expect("signal-disposition test lock must not be poisoned");
+        let previous = ignore_sigpipe_for_test();
+
+        let spawned = spawn_service_with_options_and_activation(
+            "/bin/sh -c 'kill -PIPE $$; exit 91'",
+            SpawnStdio::default(),
+            SpawnSecurity::default(),
+            &[],
+        );
+        restore_sigpipe_after_test(&previous);
+        let pid = spawned.expect("spawn service after making the manager ignore SIGPIPE");
+
+        match waitpid(Pid::from_raw(pid as i32), None) {
+            Ok(WaitStatus::Signaled(_, nix::sys::signal::Signal::SIGPIPE, _)) => {}
+            Ok(status) => panic!("service inherited SIGPIPE ignore state: {status:?}"),
+            Err(error) => panic!("failed to wait for SIGPIPE service: {error}"),
+        }
     }
 }

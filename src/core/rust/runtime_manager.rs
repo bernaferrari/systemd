@@ -64,7 +64,6 @@ impl CgroupEventDescriptor {
  */
 mod bound_liveness;
 mod cgroup_runtime;
-#[cfg(test)]
 mod handoff;
 mod job_runtime;
 mod linux_cgroup;
@@ -80,6 +79,7 @@ mod unit_load;
 mod unit_specifier;
 
 use cgroup_runtime::RealizedUnitCgroup;
+pub use handoff::{HandoffAssessment, HandoffPurpose, PrepareHandoffError};
 use linux_cgroup::CgroupRoot;
 #[cfg(target_os = "linux")]
 pub use notify_runtime::NotifyDispatchBatch;

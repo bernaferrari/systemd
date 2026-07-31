@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+// PORT-SYNC: src/core/dbus.c (`bus_init_private()`, `bus_on_connection()`)
 
 //! Safe, same-thread admission stage for PID 1's private D-Bus socket.
 //!
@@ -19,7 +20,7 @@ mod imp {
     use std::collections::BTreeMap;
     use std::fs::Metadata;
     use std::io::{self, Read, Write};
-    use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
+    use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd};
     use std::os::unix::fs::{FileTypeExt, MetadataExt};
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
@@ -28,8 +29,8 @@ mod imp {
 
     use nix::fcntl::AT_FDCWD;
     use nix::sys::socket::{
-        AddressFamily, Backlog, SockFlag, SockType, UnixAddr, bind, getsockopt, listen, socket,
-        sockopt,
+        AddressFamily, Backlog, SockFlag, SockType, UnixAddr, accept4, bind, getsockopt, listen,
+        socket, sockopt,
     };
     use nix::sys::stat::{Mode, UtimensatFlags, umask, utimensat};
     use nix::sys::time::TimeSpec;
@@ -323,6 +324,26 @@ mod imp {
     }
 
     impl PrivateBusListener {
+        /// Accept one connection with the two descriptor invariants required
+        /// by C's `accept4(..., SOCK_NONBLOCK|SOCK_CLOEXEC)` call.
+        ///
+        /// Setting either flag after a plain `accept()` leaves an observable
+        /// race: an unrelated exec could inherit the connection, and an
+        /// event-loop callback could observe a blocking stream. Keep the
+        /// flags part of the kernel admission operation instead.
+        fn accept_nonblocking_cloexec(&self) -> io::Result<UnixStream> {
+            let fd = accept4(
+                self.listener.as_raw_fd(),
+                SockFlag::SOCK_NONBLOCK | SockFlag::SOCK_CLOEXEC,
+            )
+            .map_err(|error| io::Error::from_raw_os_error(error as i32))?;
+
+            // SAFETY: `accept4` returned a fresh, owned descriptor on success.
+            // No other Rust owner exists, and `UnixStream` assumes exactly this
+            // stream-socket ownership when it closes the descriptor on drop.
+            Ok(unsafe { UnixStream::from_raw_fd(fd) })
+        }
+
         /// Create the system manager's private listener at
         /// `/run/systemd/private`.
         ///
@@ -513,9 +534,8 @@ mod imp {
             &mut self,
             server_id: impl FnOnce() -> Result<[u8; 16], nix::errno::Errno>,
         ) -> Result<PrivateBusConnectionId, PrivateBusAcceptError> {
-            let (stream, _) = self.listener.accept().map_err(PrivateBusAcceptError::Io)?;
-            stream
-                .set_nonblocking(true)
+            let stream = self
+                .accept_nonblocking_cloexec()
                 .map_err(PrivateBusAcceptError::Io)?;
 
             if self.connections.len() >= self.connection_limit {
@@ -621,6 +641,22 @@ mod imp {
             // `bus_done_private()` closes the descriptor but leaves the stale
             // pathname for the next initialization to replace.
             assert!(std::fs::symlink_metadata(&path).is_ok());
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn accepted_connections_use_atomic_nonblocking_cloexec_flags() {
+            let (path, mut listener) = listener_with_limit("accepted-flags", 1);
+            let client = UnixStream::connect(&path).unwrap();
+            let id = listener.accept_one([0x1d; 16]).unwrap();
+            let stream = listener.connection(id).unwrap().stream();
+
+            let status = fcntl(stream, FcntlArg::F_GETFL).unwrap();
+            assert!(OFlag::from_bits_truncate(status).contains(OFlag::O_NONBLOCK));
+            let descriptor = fcntl(stream, FcntlArg::F_GETFD).unwrap();
+            assert!(FdFlag::from_bits_truncate(descriptor).contains(FdFlag::FD_CLOEXEC));
+
+            drop((client, listener));
             std::fs::remove_file(path).unwrap();
         }
 

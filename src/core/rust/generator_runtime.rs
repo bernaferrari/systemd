@@ -20,13 +20,14 @@
 
 use crate::generator_setup::{
     GeneratorInvocation, GeneratorRunError, GeneratorRunOutcome, LookupPaths, PreparedGeneratorRun,
-    run_generators_with,
+    discover_generator_executables, run_generators_with,
 };
 use std::collections::BTreeMap;
 #[cfg(target_os = "linux")]
 use std::ffi::CString;
 use std::fmt;
 use std::fs;
+use std::io::Read;
 #[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "linux")]
@@ -34,13 +35,23 @@ use std::os::unix::fs::PermissionsExt;
 #[cfg(target_os = "linux")]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus};
+use std::process::{Child, Command, ExitStatus, Stdio};
 #[cfg(target_os = "linux")]
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use systemd_basic_rs::env_util::{env_name_is_valid, env_value_is_valid};
 
 /// The default `DEFAULT_TIMEOUT_USEC` value used by the generator executor.
 pub const DEFAULT_GENERATOR_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Maximum amount of one environment generator's stdout retained in memory.
+///
+/// C reads the generator's serialization file as one environment file. Rust
+/// keeps the same one-megabyte line ceiling used by `LONG_LINE_MAX`, but also
+/// bounds the *total* retained stream so a broken generator cannot turn PID 1
+/// startup into an unbounded allocation. The reader continues draining after
+/// the limit so the child cannot deadlock on a full stdout pipe.
+pub const MAX_ENVIRONMENT_GENERATOR_OUTPUT: usize = 1024 * 1024;
 
 /// The only permitted direct-execution contexts.
 ///
@@ -118,6 +129,32 @@ impl GeneratorExecutionReport {
     }
 }
 
+/// A non-fatal diagnostic produced while consuming an environment generator's
+/// stdout. C's `gather_environment_generate()` ignores malformed assignments
+/// and invalid names after logging them; retaining that information makes the
+/// PID 1 owner responsible for the corresponding warning without changing the
+/// generated environment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvironmentGeneratorDiagnostic {
+    MalformedAssignment { line: usize },
+    InvalidUtf8 { line: usize },
+    InvalidVariableName { line: usize, name: String },
+}
+
+/// The result of serially executing the environment-generator directory.
+///
+/// `transient_environment` is both the map that must be installed into the
+/// manager and the exact layer passed to the next generator. It deliberately
+/// does not mutate Rust's process-global environment: in edition 2024 that is
+/// unsafe in a multi-threaded process, and the PID 1 startup owner can make
+/// the one, controlled publication after it has accepted this report.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EnvironmentGeneratorExecutionReport {
+    pub transient_environment: BTreeMap<String, String>,
+    pub children: Vec<GeneratorChildReport>,
+    pub diagnostics: Vec<(PathBuf, EnvironmentGeneratorDiagnostic)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeneratorExecutionError {
     UnsupportedPlatform,
@@ -147,6 +184,10 @@ pub enum GeneratorExecutionError {
     Wait {
         executable: PathBuf,
         message: Box<str>,
+    },
+    OutputLimitExceeded {
+        executable: PathBuf,
+        limit: usize,
     },
     TimedOut {
         report: Box<GeneratorExecutionReport>,
@@ -200,6 +241,12 @@ impl fmt::Display for GeneratorExecutionError {
                     executable.display()
                 )
             }
+            Self::OutputLimitExceeded { executable, limit } => write!(
+                formatter,
+                "environment generator {} exceeded the {}-byte stdout limit",
+                executable.display(),
+                limit,
+            ),
             Self::TimedOut { .. } => formatter.write_str("generator batch exceeded its deadline"),
         }
     }
@@ -429,20 +476,44 @@ struct PreparedGeneratorExec {
 
 #[cfg(target_os = "linux")]
 impl PreparedGeneratorExec {
-    fn new(
+    fn for_unit_generator(
         invocation: &GeneratorInvocation,
         environment: &BTreeMap<String, String>,
     ) -> Result<Self, String> {
         validate_invocation(invocation)?;
-        let executable = path_to_cstring(&invocation.executable)?;
-        let argv_storage = [
-            executable.clone(),
-            path_to_cstring(&invocation.output_directory)?,
-            path_to_cstring(&invocation.early_output_directory)?,
-            path_to_cstring(&invocation.late_output_directory)?,
-        ]
-        .into_iter()
-        .collect::<Vec<_>>();
+        Self::with_argv(
+            &invocation.executable,
+            [
+                invocation.executable.as_path(),
+                invocation.output_directory.as_path(),
+                invocation.early_output_directory.as_path(),
+                invocation.late_output_directory.as_path(),
+            ],
+            environment,
+        )
+    }
+
+    /// Environment generators intentionally receive no positional output
+    /// directories. C's `do_spawn()` creates `argv = { path, NULL }` when
+    /// `execute_directories()` is called with a null argv vector.
+    fn for_environment_generator(
+        executable: &Path,
+        environment: &BTreeMap<String, String>,
+    ) -> Result<Self, String> {
+        validate_environment_generator(executable)?;
+        Self::with_argv(executable, [executable], environment)
+    }
+
+    fn with_argv<'a>(
+        executable_path: &Path,
+        argv_paths: impl IntoIterator<Item = &'a Path>,
+        environment: &BTreeMap<String, String>,
+    ) -> Result<Self, String> {
+        let executable = path_to_cstring(executable_path)?;
+        let argv_storage = argv_paths
+            .into_iter()
+            .map(path_to_cstring)
+            .collect::<Result<Vec<_>, _>>()?;
 
         // C starts from the manager environment and overwrites assignments
         // supplied by build_generator_environment(). Capture that complete
@@ -627,6 +698,138 @@ pub fn run_system_generator_lifecycle_with_fallback(
     })
 }
 
+/// Execute environment generators serially and return the accumulated
+/// transient environment.
+///
+/// `execute_directories()` is passed `EXEC_DIR_PARALLEL` by
+/// `manager_run_environment_generators()`, but its stdout callbacks make
+/// `do_execute()` deliberately select serial execution. Each child therefore
+/// observes every valid assignment emitted by its predecessors. Unlike unit
+/// generators these executables receive argv containing only argv[0] and
+/// communicate solely through stdout.
+pub fn execute_environment_generators(
+    search_directories: &[PathBuf],
+    initial_environment: BTreeMap<String, String>,
+    options: &GeneratorExecutionOptions,
+) -> Result<EnvironmentGeneratorExecutionReport, GeneratorExecutionError> {
+    let system_sandbox = match options.sandbox {
+        GeneratorSandbox::SystemIsolationRequired => {
+            return Err(GeneratorExecutionError::IsolationRequired);
+        }
+        #[cfg(target_os = "linux")]
+        GeneratorSandbox::SystemIsolated => {
+            let sandbox = PreparedGeneratorSandbox::prepare();
+            probe_system_sandbox(&sandbox)?;
+            Some(sandbox)
+        }
+        #[cfg(not(target_os = "linux"))]
+        GeneratorSandbox::SystemIsolated => {
+            return Err(GeneratorExecutionError::UnsupportedPlatform);
+        }
+        GeneratorSandbox::UserManagerDirect | GeneratorSandbox::SystemFallbackNoSandbox => None,
+    };
+
+    validate_environment(&initial_environment)?;
+    let deadline = Instant::now()
+        .checked_add(options.timeout)
+        .unwrap_or_else(|| Instant::now() + Duration::from_secs(365 * 24 * 60 * 60));
+    let discovery = discover_generator_executables(search_directories);
+    let mut report = EnvironmentGeneratorExecutionReport {
+        transient_environment: initial_environment,
+        ..EnvironmentGeneratorExecutionReport::default()
+    };
+
+    for executable in discovery.executables {
+        validate_environment_generator(&executable).map_err(|reason| {
+            GeneratorExecutionError::InvalidInvocation {
+                executable: executable.clone(),
+                reason: reason.into(),
+            }
+        })?;
+        let world_writable = generator_is_world_writable(&executable);
+        let (mut child, stdout) = spawn_environment_generator(
+            &executable,
+            &report.transient_environment,
+            #[cfg(target_os = "linux")]
+            system_sandbox.clone(),
+        )
+        .map_err(|message| GeneratorExecutionError::Spawn {
+            executable: executable.clone(),
+            message: message.into(),
+        })?;
+        let reader = std::thread::spawn(move || read_bounded_generator_stdout(stdout));
+        let status = match wait_for_environment_generator(&mut child, deadline) {
+            Ok(status) => status,
+            Err(()) => {
+                terminate_generator_process_group(&mut child);
+                let _ = reader.join();
+                let mut timed_out = GeneratorExecutionReport::default();
+                timed_out.children.push(GeneratorChildReport {
+                    executable,
+                    status: GeneratorChildStatus::Signaled(libc::SIGKILL),
+                    world_writable,
+                });
+                return Err(GeneratorExecutionError::TimedOut {
+                    report: Box::new(timed_out),
+                });
+            }
+        };
+        let output = reader
+            .join()
+            .map_err(|_| GeneratorExecutionError::Wait {
+                executable: executable.clone(),
+                message: "environment generator stdout reader panicked".into(),
+            })?
+            .map_err(|error| GeneratorExecutionError::Wait {
+                executable: executable.clone(),
+                message: format!("failed to read environment generator stdout: {error}").into(),
+            })?;
+        if output.truncated {
+            return Err(GeneratorExecutionError::OutputLimitExceeded {
+                executable,
+                limit: MAX_ENVIRONMENT_GENERATOR_OUTPUT,
+            });
+        }
+
+        report.children.push(GeneratorChildReport {
+            executable: executable.clone(),
+            status: classify_exit_status(status),
+            world_writable,
+        });
+        let parsed = parse_environment_generator_output(&output.bytes);
+        for (name, value) in parsed.assignments {
+            report.transient_environment.insert(name, value);
+        }
+        report.diagnostics.extend(
+            parsed
+                .diagnostics
+                .into_iter()
+                .map(|diagnostic| (executable.clone(), diagnostic)),
+        );
+    }
+    Ok(report)
+}
+
+/// System-manager environment generator execution with the same narrow
+/// mount-namespace fallback policy as unit generators.
+pub fn execute_system_environment_generators_with_fallback(
+    search_directories: &[PathBuf],
+    initial_environment: BTreeMap<String, String>,
+    options: &GeneratorExecutionOptions,
+) -> Result<EnvironmentGeneratorExecutionReport, GeneratorExecutionError> {
+    let mut isolated = options.clone();
+    isolated.sandbox = GeneratorSandbox::SystemIsolated;
+    match execute_environment_generators(search_directories, initial_environment.clone(), &isolated)
+    {
+        Err(error) if error.permits_system_fallback() => {
+            let mut fallback = options.clone();
+            fallback.sandbox = GeneratorSandbox::SystemFallbackNoSandbox;
+            execute_environment_generators(search_directories, initial_environment, &fallback)
+        }
+        result => result,
+    }
+}
+
 fn validate_environment(
     environment: &BTreeMap<String, String>,
 ) -> Result<(), GeneratorExecutionError> {
@@ -658,6 +861,291 @@ fn validate_invocation(invocation: &GeneratorInvocation) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_environment_generator(executable: &Path) -> Result<(), String> {
+    if !executable.is_absolute() {
+        return Err("executable path is not absolute".to_string());
+    }
+    Ok(())
+}
+
+struct BoundedGeneratorOutput {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+fn read_bounded_generator_stdout(
+    mut stdout: std::process::ChildStdout,
+) -> std::io::Result<BoundedGeneratorOutput> {
+    let mut bytes = Vec::new();
+    let mut truncated = false;
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = stdout.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        let remaining = MAX_ENVIRONMENT_GENERATOR_OUTPUT.saturating_sub(bytes.len());
+        let retained = remaining.min(read);
+        bytes.extend_from_slice(&buffer[..retained]);
+        truncated |= retained != read;
+    }
+    Ok(BoundedGeneratorOutput { bytes, truncated })
+}
+
+struct ParsedEnvironmentGeneratorOutput {
+    assignments: Vec<(String, String)>,
+    diagnostics: Vec<EnvironmentGeneratorDiagnostic>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EnvironmentParseState {
+    PreKey,
+    Key,
+    PreValue,
+    Value,
+    ValueEscape,
+    SingleQuoteValue,
+    DoubleQuoteValue,
+    DoubleQuoteValueEscape,
+    Comment,
+    CommentEscape,
+}
+
+fn environment_whitespace(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\n' | b'\r')
+}
+
+fn environment_newline(byte: u8) -> bool {
+    matches!(byte, b'\n' | b'\r')
+}
+
+fn finish_environment_assignment(
+    key: &mut Vec<u8>,
+    value: &mut Vec<u8>,
+    key_trailing_whitespace: Option<usize>,
+    value_trailing_whitespace: Option<usize>,
+    trim_value: bool,
+    line: usize,
+    parsed: &mut ParsedEnvironmentGeneratorOutput,
+) {
+    if let Some(index) = key_trailing_whitespace {
+        key.truncate(index);
+    }
+    if trim_value && let Some(index) = value_trailing_whitespace {
+        value.truncate(index);
+    }
+    let Ok(name) = std::str::from_utf8(key) else {
+        parsed
+            .diagnostics
+            .push(EnvironmentGeneratorDiagnostic::InvalidUtf8 { line });
+        return;
+    };
+    let Ok(value) = std::str::from_utf8(value) else {
+        parsed
+            .diagnostics
+            .push(EnvironmentGeneratorDiagnostic::InvalidUtf8 { line });
+        return;
+    };
+    if !env_name_is_valid(name) {
+        parsed
+            .diagnostics
+            .push(EnvironmentGeneratorDiagnostic::InvalidVariableName {
+                line,
+                name: name.to_string(),
+            });
+        return;
+    }
+    if !env_value_is_valid(value) {
+        parsed
+            .diagnostics
+            .push(EnvironmentGeneratorDiagnostic::MalformedAssignment { line });
+        return;
+    }
+    parsed
+        .assignments
+        .push((name.to_string(), value.to_string()));
+}
+
+/// Parse stdout with the state machine used by C's `load_env_file_pairs()`.
+///
+/// Quotes, backslash continuations, and comments are deliberately parsed
+/// before environment-name validation: a generator can safely print ordinary
+/// `NAME=value` records, while malformed input is ignored with diagnostics as
+/// `gather_environment_generate()` does after logging it.
+fn parse_environment_generator_output(bytes: &[u8]) -> ParsedEnvironmentGeneratorOutput {
+    let mut parsed = ParsedEnvironmentGeneratorOutput {
+        assignments: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+    let mut state = EnvironmentParseState::PreKey;
+    let mut key = Vec::new();
+    let mut value = Vec::new();
+    let mut line = 1;
+    let mut key_line = 1;
+    let mut key_trailing_whitespace = None;
+    let mut value_trailing_whitespace = None;
+
+    for &byte in bytes {
+        match state {
+            EnvironmentParseState::PreKey => {
+                if matches!(byte, b'#' | b';') {
+                    state = EnvironmentParseState::Comment;
+                } else if !environment_whitespace(byte) {
+                    state = EnvironmentParseState::Key;
+                    key.clear();
+                    value.clear();
+                    key.push(byte);
+                    key_line = line;
+                    key_trailing_whitespace = None;
+                } else if environment_newline(byte) {
+                    line += 1;
+                }
+            }
+            EnvironmentParseState::Key => {
+                if environment_newline(byte) {
+                    parsed
+                        .diagnostics
+                        .push(EnvironmentGeneratorDiagnostic::MalformedAssignment {
+                            line: key_line,
+                        });
+                    state = EnvironmentParseState::PreKey;
+                    line += 1;
+                } else if byte == b'=' {
+                    state = EnvironmentParseState::PreValue;
+                    value_trailing_whitespace = None;
+                } else {
+                    if environment_whitespace(byte) {
+                        key_trailing_whitespace.get_or_insert(key.len());
+                    } else {
+                        key_trailing_whitespace = None;
+                    }
+                    key.push(byte);
+                }
+            }
+            EnvironmentParseState::PreValue => {
+                if environment_newline(byte) {
+                    finish_environment_assignment(
+                        &mut key,
+                        &mut value,
+                        key_trailing_whitespace,
+                        None,
+                        false,
+                        key_line,
+                        &mut parsed,
+                    );
+                    state = EnvironmentParseState::PreKey;
+                    line += 1;
+                } else if byte == b'\'' {
+                    state = EnvironmentParseState::SingleQuoteValue;
+                } else if byte == b'"' {
+                    state = EnvironmentParseState::DoubleQuoteValue;
+                } else if byte == b'\\' {
+                    state = EnvironmentParseState::ValueEscape;
+                } else if !environment_whitespace(byte) {
+                    state = EnvironmentParseState::Value;
+                    value.push(byte);
+                }
+            }
+            EnvironmentParseState::Value => {
+                if environment_newline(byte) {
+                    finish_environment_assignment(
+                        &mut key,
+                        &mut value,
+                        key_trailing_whitespace,
+                        value_trailing_whitespace,
+                        true,
+                        key_line,
+                        &mut parsed,
+                    );
+                    state = EnvironmentParseState::PreKey;
+                    line += 1;
+                } else if byte == b'\\' {
+                    state = EnvironmentParseState::ValueEscape;
+                    value_trailing_whitespace = None;
+                } else {
+                    if environment_whitespace(byte) {
+                        value_trailing_whitespace.get_or_insert(value.len());
+                    } else {
+                        value_trailing_whitespace = None;
+                    }
+                    value.push(byte);
+                }
+            }
+            EnvironmentParseState::ValueEscape => {
+                state = EnvironmentParseState::Value;
+                if !environment_newline(byte) {
+                    value.push(byte);
+                }
+            }
+            EnvironmentParseState::SingleQuoteValue => {
+                if byte == b'\'' {
+                    state = EnvironmentParseState::PreValue;
+                } else {
+                    value.push(byte);
+                }
+            }
+            EnvironmentParseState::DoubleQuoteValue => {
+                if byte == b'"' {
+                    state = EnvironmentParseState::PreValue;
+                } else if byte == b'\\' {
+                    state = EnvironmentParseState::DoubleQuoteValueEscape;
+                } else {
+                    value.push(byte);
+                }
+            }
+            EnvironmentParseState::DoubleQuoteValueEscape => {
+                state = EnvironmentParseState::DoubleQuoteValue;
+                if matches!(byte, b'"' | b'\\' | b'`' | b'$') {
+                    value.push(byte);
+                } else if !environment_newline(byte) {
+                    value.push(b'\\');
+                    value.push(byte);
+                }
+            }
+            EnvironmentParseState::Comment => {
+                if byte == b'\\' {
+                    state = EnvironmentParseState::CommentEscape;
+                } else if environment_newline(byte) {
+                    state = EnvironmentParseState::PreKey;
+                    line += 1;
+                }
+            }
+            EnvironmentParseState::CommentEscape => {
+                if environment_newline(byte) {
+                    state = EnvironmentParseState::PreKey;
+                    line += 1;
+                } else {
+                    state = EnvironmentParseState::Comment;
+                }
+            }
+        }
+    }
+
+    match state {
+        EnvironmentParseState::PreValue
+        | EnvironmentParseState::Value
+        | EnvironmentParseState::ValueEscape
+        | EnvironmentParseState::SingleQuoteValue
+        | EnvironmentParseState::DoubleQuoteValue
+        | EnvironmentParseState::DoubleQuoteValueEscape => finish_environment_assignment(
+            &mut key,
+            &mut value,
+            key_trailing_whitespace,
+            value_trailing_whitespace,
+            state == EnvironmentParseState::Value,
+            key_line,
+            &mut parsed,
+        ),
+        EnvironmentParseState::Key => parsed
+            .diagnostics
+            .push(EnvironmentGeneratorDiagnostic::MalformedAssignment { line: key_line }),
+        EnvironmentParseState::PreKey
+        | EnvironmentParseState::Comment
+        | EnvironmentParseState::CommentEscape => {}
+    }
+    parsed
+}
+
 #[cfg(target_os = "linux")]
 fn generator_is_world_writable(path: &Path) -> bool {
     fs::metadata(path)
@@ -678,7 +1166,7 @@ fn spawn_generator(
 ) -> Result<Child, String> {
     validate_invocation(invocation).map_err(|reason| reason.to_string())?;
 
-    let prepared_exec = PreparedGeneratorExec::new(invocation, environment)?;
+    let prepared_exec = PreparedGeneratorExec::for_unit_generator(invocation, environment)?;
     // Command supplies only the fork/error-pipe mechanics. The pre-exec hook
     // invokes the prepared execve itself so SYSTEMD_EXEC_PID is part of the
     // exact envp passed to the generator (putenv alone would not modify the
@@ -688,11 +1176,40 @@ fn spawn_generator(
     command.spawn().map_err(|error| error.to_string())
 }
 
+#[cfg(target_os = "linux")]
+fn spawn_environment_generator(
+    executable: &Path,
+    environment: &BTreeMap<String, String>,
+    sandbox: Option<PreparedGeneratorSandbox>,
+) -> Result<(Child, std::process::ChildStdout), String> {
+    validate_environment_generator(executable)?;
+    let prepared_exec = PreparedGeneratorExec::for_environment_generator(executable, environment)?;
+    let mut command = Command::new(executable);
+    // stdout is installed as fd 1 before `pre_exec`; descriptor hygiene keeps
+    // 0/1/2 while atomically closing every inherited manager descriptor.
+    command.stdin(Stdio::null()).stdout(Stdio::piped());
+    configure_generator_child(&mut command, prepared_exec, sandbox);
+    let mut child = command.spawn().map_err(|error| error.to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "generator stdout pipe was not installed".to_string())?;
+    Ok((child, stdout))
+}
+
 #[cfg(not(target_os = "linux"))]
 fn spawn_generator(
     _invocation: &GeneratorInvocation,
     _environment: &BTreeMap<String, String>,
 ) -> Result<Child, String> {
+    Err(GeneratorExecutionError::UnsupportedPlatform.to_string())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn spawn_environment_generator(
+    _executable: &Path,
+    _environment: &BTreeMap<String, String>,
+) -> Result<(Child, std::process::ChildStdout), String> {
     Err(GeneratorExecutionError::UnsupportedPlatform.to_string())
 }
 
@@ -925,6 +1442,38 @@ fn wait_for_generators(
         .children
         .sort_by(|left, right| left.executable.cmp(&right.executable));
     Ok(report)
+}
+
+/// Wait for one serial environment generator without resetting the batch
+/// deadline. `Err(())` means the caller must terminate its process group.
+fn wait_for_environment_generator(child: &mut Child, deadline: Instant) -> Result<ExitStatus, ()> {
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if Instant::now() >= deadline => return Err(()),
+            Ok(None) => std::thread::sleep(Duration::from_millis(1)),
+            Err(_) => return Err(()),
+        }
+    }
+}
+
+fn terminate_generator_process_group(child: &mut Child) {
+    #[cfg(target_os = "linux")]
+    {
+        let pid = child.id() as i32;
+        // Every generator's pre-exec hook gives it a distinct process group,
+        // so this also reaps helpers holding the stdout pipe open.
+        let _ = nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(-pid),
+            nix::sys::signal::Signal::SIGTERM,
+        );
+        std::thread::sleep(Duration::from_millis(10));
+        let _ = nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(-pid),
+            nix::sys::signal::Signal::SIGKILL,
+        );
+    }
+    let _ = child.wait();
 }
 
 fn terminate_generators(running: &mut [RunningGenerator]) {
@@ -1258,6 +1807,146 @@ mod tests {
         assert_eq!(report.children[0].status, GeneratorChildStatus::Exited(0));
         assert!(lookup.generator.as_ref().unwrap().join("closed").is_file());
         drop(read_end);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn environment_output_parser_matches_env_file_quotes_and_ignores_bad_records() {
+        let parsed = parse_environment_generator_output(
+            b"# ignored\nFOO=plain  \nBAR='two words'\nBAZ=\"one\\$two\"\nJOIN=left\\\nright\n1BAD=no\nNO_EQUALS\n",
+        );
+        assert_eq!(
+            parsed.assignments,
+            vec![
+                ("FOO".to_string(), "plain".to_string()),
+                ("BAR".to_string(), "two words".to_string()),
+                ("BAZ".to_string(), "one$two".to_string()),
+                ("JOIN".to_string(), "leftright".to_string()),
+            ]
+        );
+        assert!(parsed.diagnostics.iter().any(|diagnostic| matches!(
+            diagnostic,
+            EnvironmentGeneratorDiagnostic::InvalidVariableName { name, .. } if name == "1BAD"
+        )));
+        assert!(parsed.diagnostics.iter().any(|diagnostic| matches!(
+            diagnostic,
+            EnvironmentGeneratorDiagnostic::MalformedAssignment { .. }
+        )));
+    }
+
+    #[test]
+    fn environment_generators_feed_valid_assignments_to_later_children_serially() {
+        let root = temp_root("environment-serial");
+        let binaries = root.join("bin");
+        fs::create_dir_all(&binaries).unwrap();
+        generator(
+            &binaries.join("10-first"),
+            "printf 'FIRST=one\\nSPACE=\"two words\"\\n'",
+        );
+        generator(
+            &binaries.join("20-second"),
+            "test \"$FIRST\" = one\nprintf 'SECOND=%s\\n' \"$SPACE\"",
+        );
+
+        let report = execute_environment_generators(
+            &[binaries],
+            BTreeMap::from([("INITIAL".to_string(), "present".to_string())]),
+            &direct_options(),
+        )
+        .unwrap();
+        assert_eq!(report.children.len(), 2);
+        assert!(
+            report
+                .children
+                .iter()
+                .all(|child| { matches!(child.status, GeneratorChildStatus::Exited(0)) })
+        );
+        assert_eq!(
+            report.transient_environment.get("INITIAL"),
+            Some(&"present".into())
+        );
+        assert_eq!(
+            report.transient_environment.get("FIRST"),
+            Some(&"one".into())
+        );
+        assert_eq!(
+            report.transient_environment.get("SPACE"),
+            Some(&"two words".into())
+        );
+        assert_eq!(
+            report.transient_environment.get("SECOND"),
+            Some(&"two words".into())
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn environment_generator_exit_failure_is_ignored_but_output_is_consumed() {
+        let root = temp_root("environment-exit");
+        let binaries = root.join("bin");
+        fs::create_dir_all(&binaries).unwrap();
+        generator(
+            &binaries.join("10-fails"),
+            "printf 'FROM_FAILED=yes\\n'\nexit 7",
+        );
+        generator(
+            &binaries.join("20-follows"),
+            "test \"$FROM_FAILED\" = yes\nprintf 'FOLLOWED=yes\\n'",
+        );
+
+        let report =
+            execute_environment_generators(&[binaries], BTreeMap::new(), &direct_options())
+                .unwrap();
+        assert!(
+            report
+                .children
+                .iter()
+                .any(|child| child.status == GeneratorChildStatus::Exited(7))
+        );
+        assert_eq!(
+            report.transient_environment.get("FROM_FAILED"),
+            Some(&"yes".into())
+        );
+        assert_eq!(
+            report.transient_environment.get("FOLLOWED"),
+            Some(&"yes".into())
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn environment_generator_timeout_uses_the_global_deadline() {
+        let root = temp_root("environment-timeout");
+        let binaries = root.join("bin");
+        fs::create_dir_all(&binaries).unwrap();
+        generator(&binaries.join("10-slow"), "sleep 5 & wait");
+        let mut options = direct_options();
+        options.timeout = Duration::from_millis(20);
+
+        assert!(matches!(
+            execute_environment_generators(&[binaries], BTreeMap::new(), &options),
+            Err(GeneratorExecutionError::TimedOut { .. })
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn environment_generator_stdout_is_bounded_without_deadlocking_the_child() {
+        let root = temp_root("environment-output-limit");
+        let binaries = root.join("bin");
+        fs::create_dir_all(&binaries).unwrap();
+        generator(
+            &binaries.join("10-too-much"),
+            "dd if=/dev/zero bs=1024 count=1025 2>/dev/null",
+        );
+
+        assert!(matches!(
+            execute_environment_generators(&[binaries], BTreeMap::new(), &direct_options()),
+            Err(GeneratorExecutionError::OutputLimitExceeded {
+                limit: MAX_ENVIRONMENT_GENERATOR_OUTPUT,
+                ..
+            })
+        ));
         let _ = fs::remove_dir_all(root);
     }
 }

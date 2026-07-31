@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+// PORT-SYNC: src/core/dbus.c (`bus_init_private()`, `bus_on_connection()`)
 
 //! Bounded PID 1 event-source orchestration for private D-Bus authentication.
 //!
