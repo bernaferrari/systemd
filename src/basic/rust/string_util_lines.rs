@@ -19,6 +19,25 @@ use crate::string_util::owned::rs_strdup_to_full;
 
 const NEWLINE: &[u8] = b"\n\r";
 
+/// Copy byte content into a NUL-terminated C-allocator string.
+///
+/// The safe line-parsing cores use this as their sole allocation bridge, so
+/// callers retain the exact `free(3)` ownership expected by the C ABI.
+fn c_string_copy(bytes: &[u8]) -> Option<*mut c_char> {
+    let allocation_len = bytes.len().checked_add(1)?;
+    let value = malloc(allocation_len).cast::<c_char>();
+    if value.is_null() {
+        return None;
+    }
+    // SAFETY: `value` owns allocation_len bytes, including the final NUL slot.
+    unsafe {
+        let output = std::slice::from_raw_parts_mut(value.cast::<u8>(), allocation_len);
+        output[..bytes.len()].copy_from_slice(bytes);
+        output[bytes.len()] = 0;
+    }
+    Some(value)
+}
+
 /// # Safety
 /// `ret` and `source` must meet `rs_strdup_to_full`'s output and C-string
 /// contracts, respectively.
@@ -40,20 +59,18 @@ pub unsafe extern "C" fn rs_string_truncate_lines(
     if s.is_null() || ret.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
+    // SAFETY: the entry-point contract guarantees s is a live C string.
+    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
     let mut cursor = 0usize;
     let mut end = 0usize;
     let mut count = 0usize;
     let mut truncated = false;
     loop {
         let mut width = 0usize;
-        // SAFETY: `cursor + width` stays within the input C string while scanning.
-        while unsafe { *s.add(cursor + width) } != 0
-            && unsafe { *s.add(cursor + width) } != b'\n' as c_char
-        {
+        while cursor + width < bytes.len() && bytes[cursor + width] != b'\n' {
             width += 1;
         }
-        // SAFETY: the scan offset is within the readable NUL-terminated input.
-        if unsafe { *s.add(cursor + width) } == 0 {
+        if cursor + width == bytes.len() {
             if width == 0 || count >= n_lines {
                 break;
             }
@@ -70,49 +87,14 @@ pub unsafe extern "C" fn rs_string_truncate_lines(
         count += 1;
     }
 
-    // SAFETY: `end` was computed while traversing the input C string.
-    let copy = if unsafe { *s.add(end) } == 0 {
-        // SAFETY: `s` is a readable NUL-terminated input string by contract.
-        let length = unsafe { strlen(s) };
-        // SAFETY: allocation includes the terminator copied below.
-        let value = malloc(length + 1).cast::<c_char>();
-        if value.is_null() {
-            return Errno::ENOMEM.to_neg_errno();
-        }
-        // SAFETY: `value` has `length + 1` bytes and the source string has
-        // exactly `length` visible bytes.
-        unsafe {
-            std::ptr::copy_nonoverlapping(s.cast::<u8>(), value.cast::<u8>(), length);
-            *value.add(length) = 0;
-        }
-        value
+    let copy = if end == bytes.len() {
+        c_string_copy(bytes)
     } else {
-        let mut remainder = end;
-        let mut only_newlines = true;
-        loop {
-            // SAFETY: `remainder` advances only while traversing the input C string.
-            let byte = unsafe { *s.add(remainder) };
-            if byte == 0 {
-                break;
-            }
-            if byte != b'\n' as c_char {
-                only_newlines = false;
-                break;
-            }
-            remainder += 1;
-        }
-        truncated = !only_newlines;
-        // SAFETY: allocation includes the copied prefix and its trailing NUL.
-        let value = malloc(end + 1).cast::<c_char>();
-        if value.is_null() {
-            return Errno::ENOMEM.to_neg_errno();
-        }
-        // SAFETY: `value` owns `end + 1` bytes and the source prefix is readable.
-        unsafe {
-            std::ptr::copy_nonoverlapping(s.cast::<u8>(), value.cast::<u8>(), end);
-            *value.add(end) = 0;
-        }
-        value
+        truncated = !bytes[end..].iter().all(|byte| *byte == b'\n');
+        c_string_copy(&bytes[..end])
+    };
+    let Some(copy) = copy else {
+        return Errno::ENOMEM.to_neg_errno();
     };
     // SAFETY: ret was checked non-null and is writable by the function contract.
     unsafe { *ret = copy };
