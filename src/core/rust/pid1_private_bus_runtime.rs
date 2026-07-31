@@ -144,7 +144,7 @@ mod imp {
         /// same dispatch before the next epoll wait. A returned objective is
         /// deliberately not consumed here, because the outer lifecycle owner
         /// must retain and classify it.
-        pub fn dispatch_turn<A: Pid1CommandAuthorizer>(
+        pub fn dispatch_turn<A: Pid1CommandAuthorizer + ?Sized>(
             &mut self,
             event_loop: &mut EventLoop,
             command_inbox: &mut Pid1BusCommandInbox,

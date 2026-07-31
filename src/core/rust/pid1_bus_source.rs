@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+// PORT-SYNC: src/core/dbus.c (manager event-loop wake ownership).
 
 //! Same-thread wake source for authenticated manager-bus commands.
 //!
@@ -40,7 +41,7 @@ mod imp {
     /// exec-status range. `EventLoop` also rejects collisions.
     const PID1_BUS_COMMAND_SOURCE_ID: u64 = 4;
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum Pid1BusSendError {
         Command(Pid1CommandError),
         Wake(Errno),
@@ -130,7 +131,7 @@ mod imp {
             )
         }
 
-        pub fn dispatch_pending<A: Pid1CommandAuthorizer>(
+        pub fn dispatch_pending<A: Pid1CommandAuthorizer + ?Sized>(
             &mut self,
             runtime: &mut RuntimeManager,
             authorizer: &mut A,
@@ -284,7 +285,7 @@ mod imp {
 mod imp {
     use super::*;
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum Pid1BusSendError {
         Command(Pid1CommandError),
     }
@@ -311,7 +312,7 @@ mod imp {
     }
 
     impl Pid1BusCommandInbox {
-        pub fn dispatch_pending<A: Pid1CommandAuthorizer>(
+        pub fn dispatch_pending<A: Pid1CommandAuthorizer + ?Sized>(
             &mut self,
             runtime: &mut RuntimeManager,
             authorizer: &mut A,

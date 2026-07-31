@@ -630,6 +630,7 @@ mod imp {
                 Pid1BusSendError::Wake(_)
                 | Pid1BusSendError::Command(
                     crate::pid1_manager_commands::Pid1CommandError::Unauthorized
+                    | crate::pid1_manager_commands::Pid1CommandError::NoSuchUnit { .. }
                     | crate::pid1_manager_commands::Pid1CommandError::Runtime(_),
                 ),
             ) => Pid1DbusProtocolError::Failed,
@@ -995,6 +996,19 @@ mod imp {
             }
         }
 
+        #[derive(Default)]
+        struct AllowAuthorizer;
+
+        impl Pid1CommandAuthorizer for AllowAuthorizer {
+            fn authorize(
+                &mut self,
+                _sender: SenderIdentity,
+                _command: &Pid1ManagerCommand,
+            ) -> Result<(), Pid1CommandError> {
+                Ok(())
+            }
+        }
+
         fn socket_path(name: &str) -> PathBuf {
             let stamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -1238,6 +1252,139 @@ mod imp {
                     .unwrap()
                     .current_reply_frame()
                     .is_some()
+            );
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn get_unit_wire_call_returns_exact_object_path_without_loading() {
+            let call = manager_call(29, "GetUnit", &["example.target"]);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "get-unit", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, mut inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert_eq!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::Submitted {
+                    reply: PrivateBusReplyTracking::Queued,
+                })
+            );
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            let mut runtime = crate::runtime_manager::RuntimeManager::new();
+            runtime.inject_test_unit(
+                "example.target",
+                "Example Target",
+                crate::unit::ActiveState::Inactive,
+                "dead",
+            );
+            assert_eq!(
+                inbox
+                    .dispatch_pending(
+                        &mut runtime,
+                        &mut AllowAuthorizer,
+                        NonZeroUsize::new(1).unwrap(),
+                    )
+                    .unwrap()
+                    .dispatched,
+                1
+            );
+            assert_eq!(runtime.unit_count(), 1);
+            assert_eq!(
+                owner
+                    .poll_wire_slot_replies(wire_id, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .enqueued,
+                1
+            );
+            let frame = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap();
+            assert_eq!(frame[1], 2, "GetUnit must return, not error");
+            assert!(
+                frame.windows(b"o\0".len()).any(|window| window == b"o\0"),
+                "GetUnit return signature must be one object path"
+            );
+            assert!(
+                frame
+                    .windows(b"/org/freedesktop/systemd1/unit/example_2etarget".len())
+                    .any(|window| window == b"/org/freedesktop/systemd1/unit/example_2etarget")
+            );
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn get_unit_missing_wire_call_returns_no_such_unit_without_loading() {
+            let call = manager_call(30, "GetUnit", &["missing.target"]);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "get-unit-missing", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, mut inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert!(matches!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::Submitted { .. })
+            ));
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            let mut runtime = crate::runtime_manager::RuntimeManager::new();
+            assert_eq!(
+                inbox
+                    .dispatch_pending(
+                        &mut runtime,
+                        &mut AllowAuthorizer,
+                        NonZeroUsize::new(1).unwrap(),
+                    )
+                    .unwrap()
+                    .dispatched,
+                1
+            );
+            assert_eq!(runtime.unit_count(), 0);
+            assert_eq!(
+                owner
+                    .poll_wire_slot_replies(wire_id, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .enqueued,
+                1
+            );
+            let frame = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap();
+            assert_eq!(frame[1], 3, "missing GetUnit must return an error");
+            assert!(
+                frame
+                    .windows(b"org.freedesktop.systemd1.NoSuchUnit".len())
+                    .any(|window| window == b"org.freedesktop.systemd1.NoSuchUnit")
+            );
+            assert!(
+                frame
+                    .windows(b"Unit missing.target not loaded.".len())
+                    .any(|window| window == b"Unit missing.target not loaded.")
             );
 
             owner.unregister(&mut event_loop).unwrap();

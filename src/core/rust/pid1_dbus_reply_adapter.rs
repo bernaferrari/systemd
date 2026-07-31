@@ -20,6 +20,7 @@ const ERROR_ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
 const ERROR_FAILED: &str = "org.freedesktop.DBus.Error.Failed";
 const ERROR_LIMITS_EXCEEDED: &str = "org.freedesktop.DBus.Error.LimitsExceeded";
 const ERROR_DISCONNECTED: &str = "org.freedesktop.DBus.Error.Disconnected";
+const ERROR_NO_SUCH_UNIT: &str = "org.freedesktop.systemd1.NoSuchUnit";
 
 const MESSAGE_ACCESS_DENIED: &str = "Permission denied.";
 const MESSAGE_RUNTIME_FAILED: &str = "PID 1 manager command failed.";
@@ -102,6 +103,10 @@ impl Pid1DbusReplyAdapter {
                 encode_text_reply(endian, serial, reply_serial, b'o', &path)
             }
             Ok(Pid1ManagerReply::Completed) => encode_empty_reply(endian, serial, reply_serial),
+            Err(Pid1CommandError::NoSuchUnit { name }) => {
+                let message = format!("Unit {name} not loaded.");
+                encode_error_reply(endian, serial, reply_serial, ERROR_NO_SUCH_UNIT, &message)
+            }
             Err(error) => {
                 let (name, message) = error_details(error);
                 encode_error_reply(endian, serial, reply_serial, name, message)
@@ -142,6 +147,7 @@ impl Pid1DbusReplyAdapter {
 fn error_details(error: Pid1CommandError) -> (&'static str, &'static str) {
     match error {
         Pid1CommandError::Unauthorized => (ERROR_ACCESS_DENIED, MESSAGE_ACCESS_DENIED),
+        Pid1CommandError::NoSuchUnit { .. } => unreachable!("handled with its unit name"),
         Pid1CommandError::Runtime(_) => (ERROR_FAILED, MESSAGE_RUNTIME_FAILED),
         Pid1CommandError::InboxFull => (ERROR_LIMITS_EXCEEDED, MESSAGE_INBOX_FULL),
         Pid1CommandError::InboxClosed => (ERROR_DISCONNECTED, MESSAGE_INBOX_CLOSED),
@@ -267,6 +273,13 @@ mod tests {
                 Pid1CommandError::Runtime(Errno::ENOENT),
                 ERROR_FAILED,
                 MESSAGE_RUNTIME_FAILED,
+            ),
+            (
+                Pid1CommandError::NoSuchUnit {
+                    name: "missing.service".into(),
+                },
+                ERROR_NO_SUCH_UNIT,
+                "Unit missing.service not loaded.",
             ),
             (
                 Pid1CommandError::InboxFull,

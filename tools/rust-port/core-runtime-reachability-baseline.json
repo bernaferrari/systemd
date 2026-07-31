@@ -444,61 +444,61 @@
       ]
     },
     "pid1_dbus_auth": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_auth.rs"
       ]
     },
     "pid1_dbus_command_adapter": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_command_adapter.rs"
       ]
     },
     "pid1_dbus_event_source": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_event_source.rs"
       ]
     },
     "pid1_dbus_listener": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_listener.rs"
       ]
     },
     "pid1_dbus_reply_adapter": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_reply_adapter.rs"
       ]
     },
     "pid1_dbus_reply_queue": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_reply_queue.rs"
       ]
     },
     "pid1_dbus_server": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_server.rs"
       ]
     },
     "pid1_dbus_transport": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_transport.rs"
       ]
     },
     "pid1_dbus_wire": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_wire.rs"
       ]
     },
     "pid1_dbus_wire_source": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_wire_source.rs"
       ]
@@ -534,7 +534,7 @@
       ]
     },
     "pid1_private_bus_runtime": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_private_bus_runtime.rs"
       ]

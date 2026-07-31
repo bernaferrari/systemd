@@ -3,7 +3,7 @@
 //! Disconnected mapping from the checked private D-Bus wire format to PID 1 commands.
 // PORT-SYNC: src/core/dbus.c (the direct private-bus manager method dispatch).
 //!
-//! This adapter supports only `LoadUnit`, `StartUnit`, `StopUnit`,
+//! This adapter supports only `GetUnit`, `LoadUnit`, `StartUnit`, `StopUnit`,
 //! `ReloadUnit`, and `RestartUnit` at the manager object path.
 //! It deliberately has no socket, reply, event-loop, or authorization policy:
 //! callers must supply the `SenderIdentity` derived from the connection's
@@ -87,6 +87,9 @@ impl Pid1DbusCommandAdapter {
         validate_endpoint(call)?;
 
         match call.member.as_str() {
+            "GetUnit" => Ok(Pid1ManagerCommand::GetUnit {
+                name: decode_one_string(call)?,
+            }),
             "LoadUnit" => Ok(Pid1ManagerCommand::LoadUnit {
                 name: decode_one_string(call)?,
             }),
@@ -309,6 +312,12 @@ mod tests {
 
     #[test]
     fn maps_the_bounded_manager_method_subset() {
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&call("GetUnit", "s", &["a.service"])),
+            Ok(Pid1ManagerCommand::GetUnit {
+                name: "a.service".into()
+            })
+        );
         assert_eq!(
             Pid1DbusCommandAdapter::command_for(&call("LoadUnit", "s", &["a.service"])),
             Ok(Pid1ManagerCommand::LoadUnit {

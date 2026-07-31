@@ -5,12 +5,21 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::num::NonZeroUsize;
+#[cfg(target_os = "linux")]
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 use systemd_basic_rs::extract_word::{
     EXTRACT_RELAX, EXTRACT_RETAIN_ESCAPE, EXTRACT_UNQUOTE, extract_first_word,
 };
-use systemd_core_rs::pid1_bus_source::{Pid1BusCommandInbox, pid1_bus_command_channel};
+use systemd_core_rs::pid1_bus_source::{
+    Pid1BusCommandInbox, Pid1BusCommandSender, pid1_bus_command_channel,
+};
+#[cfg(target_os = "linux")]
+use systemd_core_rs::pid1_dbus_server::PrivateBusServerTurnBudget;
+#[cfg(target_os = "linux")]
+use systemd_core_rs::pid1_dbus_transport::PrivateBusWireSlotConfig;
 use systemd_core_rs::pid1_exec_sources::ExecStatusSourceOwner;
 #[cfg(target_os = "linux")]
 use systemd_core_rs::pid1_idle_pipe_source::IdlePipeSourceOwner;
@@ -18,10 +27,15 @@ use systemd_core_rs::pid1_lifecycle::{
     OuterLoopExit, SignalAction, SignalRecord, SpecialTargetMode, decode_system_signal,
     outer_loop_exit,
 };
-use systemd_core_rs::pid1_manager_commands::{DenyAllPid1CommandAuthorizer, Pid1CommandError};
+use systemd_core_rs::pid1_manager_commands::{
+    DenyAllPid1CommandAuthorizer, Pid1CommandAuthorizer, Pid1CommandError,
+    PrivateBusPid1CommandAuthorizer,
+};
 use systemd_core_rs::pid1_manager_runtime::{
     ManagerLoopExit, OuterLifecycleDisposition, ReloadPreparationResult, prepare_outer_lifecycle,
 };
+#[cfg(target_os = "linux")]
+use systemd_core_rs::pid1_private_bus_runtime::{Pid1PrivateBusRuntime, Pid1PrivateBusTurnBudget};
 use systemd_core_rs::pid1_socket_sources::SocketSourceOwner;
 use systemd_core_rs::runtime_manager::RuntimeManager;
 use systemd_core_rs::transaction::JobMode;
@@ -36,6 +50,13 @@ const FALLBACK_DEFAULT_TARGET: &str = match option_env!("SYSTEMD_FALLBACK_DEFAUL
     Some(target) => target,
     None => "graphical.target",
 };
+
+/// Test-only private-bus opt-in used by the Linux namespace harness. It is
+/// deliberately path based and refused for PID 1 or the production socket,
+/// so enabling this environment variable cannot silently advertise the
+/// incomplete Rust API from a booted system.
+const PRIVATE_BUS_TEST_SOCKET_ENV: &str = "SYSTEMD_RUST_PRIVATE_BUS_TEST_SOCKET";
+const SYSTEM_PRIVATE_BUS_PATH: &str = "/run/systemd/private";
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 enum CliAction {
@@ -173,6 +194,41 @@ fn boot_log(message: &str) {
         let _ = writeln!(kmsg, "<6>systemd-rust: {message}");
     }
     eprintln!("systemd: {message}");
+}
+
+#[cfg(target_os = "linux")]
+fn private_bus_test_socket_for_pid(pid: u32, path: Option<PathBuf>) -> Option<PathBuf> {
+    if pid == 1 {
+        return None;
+    }
+    let path = path?;
+    if path == Path::new(SYSTEM_PRIVATE_BUS_PATH) {
+        return None;
+    }
+    Some(path)
+}
+
+#[cfg(target_os = "linux")]
+fn private_bus_test_socket() -> Option<PathBuf> {
+    private_bus_test_socket_for_pid(
+        std::process::id(),
+        std::env::var_os(PRIVATE_BUS_TEST_SOCKET_ENV).map(PathBuf::from),
+    )
+}
+
+#[cfg(not(target_os = "linux"))]
+fn private_bus_test_socket() -> Option<PathBuf> {
+    None
+}
+
+fn command_authorizer_for_runtime() -> Box<dyn Pid1CommandAuthorizer> {
+    #[cfg(target_os = "linux")]
+    if private_bus_test_socket().is_some() {
+        return Box::new(PrivateBusPid1CommandAuthorizer::new(
+            nix::unistd::geteuid().as_raw(),
+        ));
+    }
+    Box::new(DenyAllPid1CommandAuthorizer)
 }
 
 fn in_initrd() -> bool {
@@ -327,28 +383,66 @@ fn mount_setup() -> std::io::Result<()> {
     Ok(())
 }
 
-fn bootstrap_cgroup_v2_for_pid(pid: i32) -> std::io::Result<()> {
-    use systemd_platform_rs::cgroup::{self, CgroupController};
+/// Return the cgroup root that C's `manager_setup_cgroup()` derives for PID1.
+///
+/// `cg_pid_get_path()` has already validated the unified cgroup path before
+/// this helper sees it. C removes a trailing `init.scope` when PID1 was
+/// inherited inside one, and strips trailing slashes so the hierarchy root is
+/// represented by the empty path rather than `/`.
+fn manager_cgroup_root_from_pid_path(pid_path: &str) -> String {
+    let root = pid_path.strip_suffix("/init.scope").unwrap_or(pid_path);
+    root.trim_end_matches('/').to_owned()
+}
 
-    let requested = CgroupController::Cpu.mask()
-        | CgroupController::Cpuset.mask()
-        | CgroupController::Io.mask()
-        | CgroupController::Memory.mask()
-        | CgroupController::Pids.mask();
+/// Join C's manager cgroup root with its special init scope name.
+fn init_scope_path(cgroup_root: &str) -> String {
+    if cgroup_root.is_empty() {
+        "init.scope".to_owned()
+    } else {
+        format!("{cgroup_root}/init.scope")
+    }
+}
 
-    let supported = cgroup::cg_mask_supported()?;
-    let _ = cgroup::cg_enable(supported, requested, "/")?;
+/// C-compatible subset of `manager_setup_cgroup()` that is safe to exercise
+/// against a synthetic cgroup filesystem.
+///
+/// In particular, manager setup does *not* enable controllers and does not
+/// create `systemd.slice`: controller enablement belongs to later unit
+/// realization, while the init scope is created directly below the manager's
+/// inherited cgroup root.
+fn bootstrap_cgroup_v2_at_root_for_pid(cgroup_root: &str, pid: i32) -> std::io::Result<()> {
+    use systemd_platform_rs::cgroup;
 
-    let _ = cgroup::cg_create("systemd.slice")?;
-    let _ = cgroup::cg_create("init.scope")?;
+    let scope_path = init_scope_path(cgroup_root);
+    let _ = cgroup::cg_create(&scope_path)?;
 
-    let init_procs = cgroup::cg_get_path("init.scope", Some("cgroup.procs"))?;
-    if !init_procs.exists() {
-        let _ = std::fs::write(&init_procs, "");
+    // Synthetic cgroupfs fixtures are ordinary directories, while the kernel
+    // creates cgroup.procs automatically. Keep the production operation
+    // faithful but let tests provide the kernel-owned file explicitly.
+    cgroup::cg_attach(&scope_path, pid)?;
+
+    // Match C's best-effort migration of userspace processes left in the
+    // manager root. The move is intentionally non-fatal: PID reuse and
+    // concurrent exits are normal while PID 1 takes over the hierarchy.
+    if let Err(error) = cgroup::cg_migrate(cgroup_root, &scope_path, cgroup::CGroupFlags::empty()) {
+        boot_log(&format!(
+            "could not move remaining processes into {scope_path}, ignoring: {error}"
+        ));
     }
 
-    cgroup::cg_attach("init.scope", pid)?;
+    // Preserve C's startup validation/order: this is capability discovery,
+    // not controller delegation. Unit realization later selects controllers
+    // for the cgroups that need them.
+    let _ = cgroup::cg_mask_supported_subtree(cgroup_root)?;
     Ok(())
+}
+
+fn bootstrap_cgroup_v2_for_pid(pid: i32) -> std::io::Result<()> {
+    use systemd_platform_rs::cgroup;
+
+    let pid_path = cgroup::cg_pid_get_path(pid)?;
+    let cgroup_root = manager_cgroup_root_from_pid_path(&pid_path);
+    bootstrap_cgroup_v2_at_root_for_pid(&cgroup_root, pid)
 }
 
 #[cfg(target_os = "linux")]
@@ -466,17 +560,18 @@ fn complete_outer_lifecycle(exit: ManagerLoopExit) -> ! {
 fn drive_manager_lifecycle(mut runtime: RuntimeManager) -> ! {
     // The channel owner outlives each event-loop invocation. A recoverable
     // reload must preserve commands queued behind the lifecycle request.
-    let (_command_sender, mut command_inbox) = pid1_bus_command_channel(
+    let (command_sender, mut command_inbox) = pid1_bus_command_channel(
         NonZeroUsize::new(64).expect("constant command inbox capacity is nonzero"),
     )
     .unwrap_or_else(|error| fail_closed("manager bus command wake setup", error));
-    let mut command_authorizer = DenyAllPid1CommandAuthorizer;
+    let mut command_authorizer = command_authorizer_for_runtime();
 
     loop {
         match prepare_outer_lifecycle(run_event_loop(
             runtime,
             &mut command_inbox,
-            &mut command_authorizer,
+            command_sender.clone(),
+            command_authorizer.as_mut(),
         )) {
             OuterLifecycleDisposition::ReloadPreparation(
                 ReloadPreparationResult::FailedBeforePointOfNoReturn {
@@ -558,6 +653,13 @@ fn epoll_timeout_ms(timeout: Duration) -> isize {
         .expect("timeout was clamped to i32::MAX")
 }
 
+#[cfg(target_os = "linux")]
+fn random_private_bus_server_id() -> Result<[u8; 16], nix::errno::Errno> {
+    systemd_libsystemd_rs::sd_id128_api::sd_id128_randomize()
+        .map(|id| id.0)
+        .map_err(|error| nix::errno::Errno::from_raw(error.checked_neg().unwrap_or(libc::EIO)))
+}
+
 #[cfg(test)]
 mod lifecycle_ownership_tests {
     use super::*;
@@ -572,13 +674,31 @@ mod lifecycle_ownership_tests {
         assert_eq!(recovered.unit_count(), 0);
         assert_eq!(recovered.active_count(), 0);
     }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn private_bus_test_socket_guard_never_selects_production_pid1_path() {
+        assert_eq!(
+            private_bus_test_socket_for_pid(1, Some(PathBuf::from("/tmp/test.sock"))),
+            None
+        );
+        assert_eq!(
+            private_bus_test_socket_for_pid(42, Some(PathBuf::from(SYSTEM_PRIVATE_BUS_PATH)),),
+            None
+        );
+        assert_eq!(
+            private_bus_test_socket_for_pid(42, Some(PathBuf::from("/tmp/test.sock"))),
+            Some(PathBuf::from("/tmp/test.sock"))
+        );
+    }
 }
 
 #[cfg(target_os = "linux")]
 fn run_event_loop(
     runtime: RuntimeManager,
     command_inbox: &mut Pid1BusCommandInbox,
-    command_authorizer: &mut DenyAllPid1CommandAuthorizer,
+    command_sender: Pid1BusCommandSender,
+    command_authorizer: &mut dyn Pid1CommandAuthorizer,
 ) -> ManagerLoopExit {
     use nix::sys::epoll::EpollFlags;
     use std::os::fd::AsFd;
@@ -686,11 +806,42 @@ fn run_event_loop(
         }
     }
 
-    // Do not open an outbound bus client and drain messages. PID 1 needs an
-    // authenticated server transport, org.freedesktop.systemd1 ownership, and
-    // a dispatcher mutating this exact RuntimeManager. Those pieces are not
-    // implemented yet, so the manager API remains explicitly unavailable.
-    eprintln!("systemd: manager D-Bus API unavailable (server transport not implemented)");
+    // The installed PID 1 deliberately does not bind its production private
+    // socket yet: the checked Rust API is still smaller than C's complete
+    // vtable/policy surface. An explicit non-PID1 test pathname nevertheless
+    // exercises this exact event-loop ownership path without changing boot
+    // behavior or replacing `/run/systemd/private`.
+    let mut private_bus = private_bus_test_socket().map(|path| {
+        let config = PrivateBusWireSlotConfig::new(
+            64 * 1024,
+            NonZeroUsize::new(64).expect("private-bus pending limit is nonzero"),
+            16 * 1024,
+            64 * 1024,
+        );
+        let connection_limit = NonZeroUsize::new(4096).expect("private-bus limit is nonzero");
+        let server = Pid1PrivateBusRuntime::bind_path(
+            &mut event_loop,
+            &path,
+            nix::unistd::geteuid().as_raw(),
+            command_sender.clone(),
+            connection_limit,
+            config,
+        )
+        .unwrap_or_else(|error| fail_closed("experimental private-bus test setup", error));
+        eprintln!(
+            "systemd: experimental Rust private-bus event-loop integration enabled at {}",
+            path.display()
+        );
+        server
+    });
+
+    if private_bus.is_none() {
+        // Do not open an outbound bus client and drain messages. PID 1 needs
+        // an authenticated server transport, org.freedesktop.systemd1
+        // ownership, and a dispatcher mutating this exact RuntimeManager.
+        // Those pieces are not complete enough for the installed path.
+        eprintln!("systemd: manager D-Bus API unavailable (server transport not enabled)");
+    }
 
     eprintln!("systemd: entering event loop");
     let mut socket_sources = SocketSourceOwner::new();
@@ -800,15 +951,49 @@ fn run_event_loop(
                         runtime.borrow_mut().fail_socket_activation(&socket_unit);
                     }
                 }
-                let command_outcome = command_inbox
-                    .dispatch_pending(
-                        &mut runtime.borrow_mut(),
-                        command_authorizer,
-                        NonZeroUsize::new(32).expect("constant command dispatch budget is nonzero"),
-                    )
-                    .unwrap_or_else(|error| {
-                        fail_closed("manager bus command wake accounting", error)
-                    });
+                let command_outcome = if let Some(private_bus) = private_bus.as_mut() {
+                    private_bus
+                        .dispatch_turn(
+                            &mut event_loop,
+                            command_inbox,
+                            &mut runtime.borrow_mut(),
+                            command_authorizer,
+                            Pid1PrivateBusTurnBudget {
+                                server: PrivateBusServerTurnBudget {
+                                    accepts: NonZeroUsize::new(32)
+                                        .expect("private-bus accept budget is nonzero"),
+                                    authentication_steps: NonZeroUsize::new(64)
+                                        .expect("private-bus authentication budget is nonzero"),
+                                    promotions: NonZeroUsize::new(64)
+                                        .expect("private-bus promotion budget is nonzero"),
+                                    wire_events: NonZeroUsize::new(64)
+                                        .expect("private-bus wire budget is nonzero"),
+                                    reply_polls_per_event: NonZeroUsize::new(8)
+                                        .expect("private-bus reply budget is nonzero"),
+                                },
+                                manager_commands: NonZeroUsize::new(32)
+                                    .expect("manager command budget is nonzero"),
+                                reply_slots: NonZeroUsize::new(64)
+                                    .expect("private-bus reply slot budget is nonzero"),
+                                reply_polls_per_slot: NonZeroUsize::new(8)
+                                    .expect("private-bus reply poll budget is nonzero"),
+                            },
+                            random_private_bus_server_id,
+                        )
+                        .unwrap_or_else(|error| fail_closed("private-bus manager turn", error))
+                        .manager
+                } else {
+                    command_inbox
+                        .dispatch_pending(
+                            &mut runtime.borrow_mut(),
+                            command_authorizer,
+                            NonZeroUsize::new(32)
+                                .expect("constant command dispatch budget is nonzero"),
+                        )
+                        .unwrap_or_else(|error| {
+                            fail_closed("manager bus command wake accounting", error)
+                        })
+                };
                 if let Some(request) = command_outcome.objective {
                     return ManagerLoopExit::from_command(
                         reclaim_event_loop_runtime(runtime),
@@ -828,7 +1013,8 @@ fn run_event_loop(
 fn run_event_loop(
     mut runtime: RuntimeManager,
     _command_inbox: &mut Pid1BusCommandInbox,
-    _command_authorizer: &mut DenyAllPid1CommandAuthorizer,
+    _command_sender: Pid1BusCommandSender,
+    _command_authorizer: &mut dyn Pid1CommandAuthorizer,
 ) -> ManagerLoopExit {
     eprintln!("systemd: running in non-Linux test mode, polling loop");
 
@@ -1120,35 +1306,56 @@ mod tests {
     }
 
     #[test]
-    fn cgroup_bootstrap_creates_init_scope_and_enables_controllers() {
+    fn cgroup_root_matches_manager_setup_cgroup_scope_handling() {
+        assert_eq!(manager_cgroup_root_from_pid_path("/"), "");
+        assert_eq!(manager_cgroup_root_from_pid_path("/init.scope"), "");
+        assert_eq!(
+            manager_cgroup_root_from_pid_path("/tenant.slice/init.scope"),
+            "/tenant.slice"
+        );
+        assert_eq!(
+            manager_cgroup_root_from_pid_path("/tenant.slice/"),
+            "/tenant.slice"
+        );
+        assert_eq!(init_scope_path(""), "init.scope");
+        assert_eq!(init_scope_path("/tenant.slice"), "/tenant.slice/init.scope");
+    }
+
+    #[test]
+    fn cgroup_bootstrap_attaches_init_scope_below_inherited_root_without_delegation() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
         let environment = unsafe { TestEnvironment::lock() };
         let dir = std::env::temp_dir().join("test-systemd-main-cgroup-bootstrap");
         fs::create_dir_all(&dir).unwrap();
-        fs::write(
-            dir.join("cgroup.controllers"),
-            "cpu cpuset io memory pids\n",
-        )
-        .unwrap();
-        fs::write(dir.join("cgroup.subtree_control"), "").unwrap();
+        let inherited = dir.join("tenant.slice");
+        let scope = inherited.join("init.scope");
+        fs::create_dir_all(&scope).unwrap();
+        fs::write(inherited.join("cgroup.controllers"), "cpu memory pids\n").unwrap();
+        fs::write(inherited.join("cgroup.subtree_control"), "pre-existing\n").unwrap();
+        fs::write(inherited.join("cgroup.procs"), "888\n").unwrap();
+        // cgroupfs creates this file with a new cgroup. The ordinary-directory
+        // fixture supplies it so the safe attach operation is testable.
+        fs::write(scope.join("cgroup.procs"), "").unwrap();
 
         environment.set("SYSTEMD_CGROUP_ROOT", dir.display().to_string());
 
-        bootstrap_cgroup_v2_for_pid(777).unwrap();
+        bootstrap_cgroup_v2_at_root_for_pid("/tenant.slice", 777).unwrap();
 
-        assert!(dir.join("systemd.slice").exists());
-        assert!(dir.join("init.scope").exists());
+        assert!(scope.exists());
+        assert!(!dir.join("systemd.slice").exists());
+        assert!(!dir.join("init.scope").exists());
 
-        let subtree = fs::read_to_string(dir.join("cgroup.subtree_control")).unwrap();
-        assert!(subtree.contains("+cpu"));
-        assert!(subtree.contains("+cpuset"));
-        assert!(subtree.contains("+io"));
-        assert!(subtree.contains("+memory"));
-        assert!(subtree.contains("+pids"));
+        // C manager setup only discovers support; it does not enable or
+        // disable controllers at this stage.
+        assert_eq!(
+            fs::read_to_string(inherited.join("cgroup.subtree_control")).unwrap(),
+            "pre-existing\n"
+        );
 
-        let init_procs = fs::read_to_string(dir.join("init.scope").join("cgroup.procs")).unwrap();
+        let init_procs = fs::read_to_string(scope.join("cgroup.procs")).unwrap();
         assert!(init_procs.contains("777"));
+        assert!(init_procs.contains("888"));
 
         let _ = fs::remove_dir_all(&dir);
     }

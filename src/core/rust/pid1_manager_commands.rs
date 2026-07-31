@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+// PORT-SYNC: src/core/dbus-manager.c (typed manager command handoff).
 
 //! Transport-neutral commands for the single PID 1 [`RuntimeManager`] owner.
 //!
@@ -70,6 +71,11 @@ impl SenderIdentity {
 /// the single owner receives only semantic manager operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pid1ManagerCommand {
+    /// Return the object path for an already-loaded unit. Unlike `LoadUnit`,
+    /// this does not read unit files or otherwise mutate manager state.
+    GetUnit {
+        name: String,
+    },
     LoadUnit {
         name: String,
     },
@@ -109,9 +115,14 @@ pub enum Pid1ManagerReply {
     Completed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pid1CommandError {
     Unauthorized,
+    /// `GetUnit` only observes the existing manager inventory. C returns
+    /// `org.freedesktop.systemd1.NoSuchUnit` rather than loading the name.
+    NoSuchUnit {
+        name: String,
+    },
     Runtime(Errno),
     InboxFull,
     InboxClosed,
@@ -273,7 +284,7 @@ pub fn pid1_manager_command_channel(
 impl Pid1CommandInbox {
     /// Dispatch at most `budget` queued requests. This bounds work per event
     /// loop turn so an eventual bus transport cannot starve signals or sockets.
-    pub fn dispatch_pending<A: Pid1CommandAuthorizer>(
+    pub fn dispatch_pending<A: Pid1CommandAuthorizer + ?Sized>(
         &mut self,
         runtime: &mut RuntimeManager,
         authorizer: &mut A,
@@ -320,6 +331,15 @@ fn dispatch(
     command: Pid1ManagerCommand,
 ) -> Result<Pid1CommandEffect, Pid1CommandError> {
     let reply = match command {
+        Pid1ManagerCommand::GetUnit { name } => {
+            return match crate::dbus_manager::manager_get_unit_path(runtime, &name) {
+                Ok(path) => Ok(Pid1CommandEffect::Reply(Pid1ManagerReply::UnitLoaded {
+                    path,
+                })),
+                Err(Errno::ENOENT) => Err(Pid1CommandError::NoSuchUnit { name }),
+                Err(error) => Err(Pid1CommandError::Runtime(error)),
+            };
+        }
         Pid1ManagerCommand::LoadUnit { name } => runtime.load_unit(&name).and_then(|()| {
             crate::dbus_manager::manager_get_unit_path(runtime, &name)
                 .map(|path| Pid1ManagerReply::UnitLoaded { path })
@@ -544,5 +564,71 @@ mod tests {
             );
             assert_eq!(reply.try_recv(), Ok(Err(Pid1CommandError::Runtime(error))));
         }
+    }
+
+    #[test]
+    fn get_unit_returns_an_existing_path_without_loading_a_unit() {
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender
+            .try_send(
+                sender_identity(),
+                Pid1ManagerCommand::GetUnit {
+                    name: "example.target".into(),
+                },
+            )
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+        runtime.inject_test_unit(
+            "example.target",
+            "Example Target",
+            crate::unit::ActiveState::Inactive,
+            "dead",
+        );
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(
+            reply.try_recv(),
+            Ok(Ok(Pid1ManagerReply::UnitLoaded {
+                path: "/org/freedesktop/systemd1/unit/example_2etarget".into(),
+            }))
+        );
+        assert_eq!(runtime.unit_count(), 1);
+    }
+
+    #[test]
+    fn get_unit_missing_name_returns_no_such_unit_without_loading() {
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender
+            .try_send(
+                sender_identity(),
+                Pid1ManagerCommand::GetUnit {
+                    name: "missing.target".into(),
+                },
+            )
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(
+            reply.try_recv(),
+            Ok(Err(Pid1CommandError::NoSuchUnit {
+                name: "missing.target".into(),
+            }))
+        );
+        assert_eq!(runtime.unit_count(), 0);
     }
 }
