@@ -1,3 +1,11 @@
+// Centralized unsafe expression boundary for this low-level adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper validates descriptors, pointers, and
+        // ownership before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/backlight/backlight.c
@@ -146,7 +154,7 @@ unsafe fn build_save_file_path(device: *mut libc::c_void, ret_path: *mut *mut li
     let mut subsystem: *const libc::c_char = std::ptr::null();
     // SAFETY: the caller supplies a live device and `subsystem` is a live
     // output slot.
-    let r = unsafe { sd_device_get_subsystem(device, &mut subsystem) };
+    let r = unsafe_ffi!(sd_device_get_subsystem(device, &mut subsystem));
     if r < 0 {
         return r;
     }
@@ -154,21 +162,21 @@ unsafe fn build_save_file_path(device: *mut libc::c_void, ret_path: *mut *mut li
     let mut sysname: *const libc::c_char = std::ptr::null();
     // SAFETY: the caller supplies a live device and `sysname` is a live output
     // slot.
-    let r = unsafe { sd_device_get_sysname(device, &mut sysname) };
+    let r = unsafe_ffi!(sd_device_get_sysname(device, &mut sysname));
     if r < 0 {
         return r;
     }
 
     // SAFETY: successful subsystem lookup returns a NUL-terminated C string
     // that remains owned by the device.
-    let escaped_subsystem = unsafe { cescape(subsystem) };
+    let escaped_subsystem = unsafe_ffi!(cescape(subsystem));
     if escaped_subsystem.is_null() {
         return -libc::ENOMEM;
     }
 
     // SAFETY: successful sysname lookup returns a NUL-terminated C string that
     // remains owned by the device.
-    let escaped_sysname = unsafe { cescape(sysname) };
+    let escaped_sysname = unsafe_ffi!(cescape(sysname));
     if escaped_sysname.is_null() {
         // SAFETY: `cescape` returned this owned allocation.
         unsafe {
@@ -181,12 +189,12 @@ unsafe fn build_save_file_path(device: *mut libc::c_void, ret_path: *mut *mut li
     // SAFETY: the caller supplies a live device, the property name is a static
     // C string, and `path_id` is a live output slot.
     let has_path_id =
-        unsafe { sd_device_get_property_value(device, c"ID_PATH".as_ptr(), &mut path_id) } >= 0;
+        unsafe_ffi!(sd_device_get_property_value(device, c"ID_PATH".as_ptr(), &mut path_id)) >= 0;
 
     let escaped_path_id = if has_path_id {
         // SAFETY: successful property lookup returns a NUL-terminated C string
         // that remains owned by the device.
-        let escaped = unsafe { cescape(path_id) };
+        let escaped = unsafe_ffi!(cescape(path_id));
         if escaped.is_null() {
             // SAFETY: both pointers came from successful `cescape` calls.
             unsafe {

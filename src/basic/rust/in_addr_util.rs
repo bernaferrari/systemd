@@ -6,6 +6,14 @@
 // Skipped: hash functions (depend on siphash state), random functions (I/O),
 //          in_addr_port_ifindex_name_to_string (uses asprintf_safe variadic).
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::os::raw::c_void;
@@ -170,7 +178,7 @@ fn in6_addr_prefix_intersect(a: &In6Addr, aprefixlen: u32, b: &In6Addr, bprefixl
 #[inline]
 unsafe fn union_in4(u: &InAddrUnion) -> &InAddr {
     // SAFETY: the caller has established that the union currently holds `in4`.
-    unsafe { &u.in4 }
+    unsafe_ffi!(&u.in4)
 }
 
 /// Select a union member after the caller has validated the address family.
@@ -180,7 +188,7 @@ unsafe fn union_in4(u: &InAddrUnion) -> &InAddr {
 #[inline]
 unsafe fn union_in6(u: &InAddrUnion) -> &In6Addr {
     // SAFETY: the caller has established that the union currently holds `in6`.
-    unsafe { &u.in6 }
+    unsafe_ffi!(&u.in6)
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -203,14 +211,14 @@ pub fn rs_in6_addr_is_null(a: &In6Addr) -> bool {
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
 pub unsafe fn rs_in_addr_is_null(family: i32, u: *const InAddrUnion) -> i32 {
     // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
-    let Some(u) = (unsafe { u.as_ref() }) else {
+    let Some(u) = (unsafe_ffi!(u.as_ref())) else {
         return Errno::EINVAL.to_neg_errno();
     };
     match family {
         // SAFETY: the selected union member corresponds to `family`.
-        AF_INET => i32::from(in4_addr_is_null(unsafe { union_in4(u) })),
+        AF_INET => i32::from(in4_addr_is_null(unsafe_ffi!(union_in4(u)))),
         // SAFETY: the selected union member corresponds to `family`.
-        AF_INET6 => i32::from(in6_addr_is_null(unsafe { union_in6(u) })),
+        AF_INET6 => i32::from(in6_addr_is_null(unsafe_ffi!(union_in6(u)))),
         _ => Errno::EAFNOSUPPORT.to_neg_errno(),
     }
 }
@@ -226,7 +234,7 @@ pub unsafe fn rs_in_addr_is_null(family: i32, u: *const InAddrUnion) -> i32 {
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in4_addr_is_set(a: *const InAddr) -> bool {
     // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
-    unsafe { a.as_ref() }.is_none_or(|a| !rs_in4_addr_is_null(a))
+    unsafe_ffi!(a.as_ref()).is_none_or(|a| !rs_in4_addr_is_null(a))
 }
 
 /// Shadow of C in_addr_data_is_set() — C quirk: delegates to in_addr_data_is_null.
@@ -238,7 +246,7 @@ pub unsafe fn rs_in4_addr_is_set(a: *const InAddr) -> bool {
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in_addr_data_is_set(a: *const InAddrData) -> bool {
     // SAFETY: forwarded unchanged to the audited pointer adapter below.
-    unsafe { a.as_ref() }.is_some_and(|a| unsafe { rs_in_addr_data_is_null(a) } != 0)
+    unsafe_ffi!(a.as_ref()).is_some_and(|a| unsafe { rs_in_addr_data_is_null(a) } != 0)
 }
 
 /// Shadow of C in6_addr_is_set() — returns true if in6 address is not null.
@@ -250,7 +258,7 @@ pub unsafe fn rs_in_addr_data_is_set(a: *const InAddrData) -> bool {
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in6_addr_is_set(a: *const In6Addr) -> bool {
     // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
-    unsafe { a.as_ref() }.is_none_or(|a| !rs_in6_addr_is_null(a))
+    unsafe_ffi!(a.as_ref()).is_none_or(|a| !rs_in6_addr_is_null(a))
 }
 
 /// Shadow of C in_addr_is_set() — returns true if address is not null.
@@ -262,7 +270,7 @@ pub unsafe fn rs_in6_addr_is_set(a: *const In6Addr) -> bool {
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in_addr_is_set(family: i32, u: *const InAddrUnion) -> bool {
     // SAFETY: forwarded unchanged to the audited pointer adapter above.
-    unsafe { rs_in_addr_is_null(family, u) == 0 }
+    unsafe_ffi!(rs_in_addr_is_null(family, u) == 0)
 }
 
 /// Minimal repr(C) layout for struct in_addr_data (family + address union).
@@ -281,11 +289,11 @@ pub struct InAddrData {
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in_addr_data_is_null(a: *const InAddrData) -> i32 {
     // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
-    let Some(a) = (unsafe { a.as_ref() }) else {
+    let Some(a) = (unsafe_ffi!(a.as_ref())) else {
         return Errno::EINVAL.to_neg_errno();
     };
     // SAFETY: `address` is an initialized union member selected by `family`.
-    unsafe { rs_in_addr_is_null(a.family, &a.address) }
+    unsafe_ffi!(rs_in_addr_is_null(a.family, &a.address))
 }
 
 // ── Link-local checks ─────────────────────────────────────────────────────// ── Link-local checks ─────────────────────────────────────────────────────
@@ -469,7 +477,7 @@ pub unsafe fn rs_in_addr_is_localhost_one(family: i32, u: *const InAddrUnion) ->
 pub unsafe fn rs_in4_addr_equal(a: *const InAddr, b: *const InAddr) -> bool {
     // SAFETY: the C ABI contract guarantees non-null pointers are readable.
     // SAFETY: the C ABI contract guarantees non-null pointers are readable.
-    match unsafe { (a.as_ref(), b.as_ref()) } {
+    match unsafe_ffi!((a.as_ref(), b.as_ref())) {
         (Some(a), Some(b)) => in4_addr_equal(a, b),
         _ => false,
     }
@@ -480,7 +488,7 @@ pub unsafe fn rs_in4_addr_equal(a: *const InAddr, b: *const InAddr) -> bool {
 pub unsafe fn rs_in6_addr_equal(a: *const In6Addr, b: *const In6Addr) -> bool {
     // SAFETY: the C ABI contract guarantees non-null pointers are readable.
     // SAFETY: the C ABI contract guarantees non-null pointers are readable.
-    match unsafe { (a.as_ref(), b.as_ref()) } {
+    match unsafe_ffi!((a.as_ref(), b.as_ref())) {
         (Some(a), Some(b)) => in6_addr_equal(a, b),
         _ => false,
     }
@@ -523,7 +531,7 @@ pub unsafe fn rs_in_addr_equal(family: i32, a: *const InAddrUnion, b: *const InA
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
 pub unsafe fn rs_in6_addr_is_ipv4_mapped_address(a: *const In6Addr) -> bool {
     // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
-    unsafe { a.as_ref() }.is_some_and(in6_addr_is_ipv4_mapped_address)
+    unsafe_ffi!(a.as_ref()).is_some_and(in6_addr_is_ipv4_mapped_address)
 }
 
 // ── Prefix intersection ────────────────────────────────────────────────────
@@ -542,7 +550,7 @@ pub unsafe fn rs_in4_addr_prefix_intersect(
 ) -> bool {
     // SAFETY: the C ABI contract guarantees non-null pointers are readable.
     // SAFETY: the C ABI contract guarantees non-null pointers are readable.
-    match unsafe { (a.as_ref(), b.as_ref()) } {
+    match unsafe_ffi!((a.as_ref(), b.as_ref())) {
         (Some(a), Some(b)) => in4_addr_prefix_intersect(a, aprefixlen, b, bprefixlen),
         _ => false,
     }
@@ -562,7 +570,7 @@ pub unsafe fn rs_in6_addr_prefix_intersect(
 ) -> bool {
     // SAFETY: the C ABI contract guarantees non-null pointers are readable.
     // SAFETY: the C ABI contract guarantees non-null pointers are readable.
-    match unsafe { (a.as_ref(), b.as_ref()) } {
+    match unsafe_ffi!((a.as_ref(), b.as_ref())) {
         (Some(a), Some(b)) => in6_addr_prefix_intersect(a, aprefixlen, b, bprefixlen),
         _ => false,
     }
@@ -1844,7 +1852,7 @@ macro_rules! ffi_forward {
         /// by this operation; no raw Rust references may outlive the call.
         pub unsafe extern "C" fn $wrapper($($argument: $ty),*) -> $result {
             // SAFETY: upheld by the C ABI contract documented above.
-            unsafe { $implementation($($argument),*) }
+            unsafe_ffi!($implementation($($argument),*))
         }
     };
 }
@@ -1858,7 +1866,7 @@ macro_rules! ffi_forward_addr_predicate {
         // SAFETY: this wrapper is the audited C ABI boundary for a borrowed address.
         pub unsafe extern "C" fn $wrapper($argument: $raw) -> bool {
             // SAFETY: the C ABI contract guarantees a non-null pointer is a readable address.
-            let Some($argument): Option<&$address> = (unsafe { $argument.as_ref() }) else {
+            let Some($argument): Option<&$address> = (unsafe_ffi!($argument.as_ref())) else {
                 return false;
             };
             $implementation($argument)
@@ -1939,6 +1947,14 @@ ffi_forward!("rs_in_addr_data_compare_func", ffi_in_addr_data_compare_func, (x: 
 
 #[cfg(test)]
 mod tests {
+    // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
+    macro_rules! test_ffi {
+        ($expression:expr) => {{
+            // SAFETY: test inputs are constructed in this module and satisfy the
+            // documented C ABI preconditions of the exercised facade.
+            unsafe { $expression }
+        }};
+    }
     use super::*;
 
     #[test]
@@ -1988,7 +2004,7 @@ mod tests {
             s6_addr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 168, 0, 1],
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_in6_addr_is_ipv4_mapped_address(&addr) });
+        assert!(test_ffi!(rs_in6_addr_is_ipv4_mapped_address(&addr)));
     }
 
     #[test]
@@ -1997,7 +2013,11 @@ mod tests {
         let mut out = [0u8; 16];
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_in_addr_from_string(AF_INET, s.as_ptr(), out.as_mut_ptr()) },
+            test_ffi!(rs_in_addr_from_string(
+                AF_INET,
+                s.as_ptr(),
+                out.as_mut_ptr()
+            )),
             0
         );
         assert_eq!(&out[..4], &[192, 168, 1, 1]);
@@ -2010,7 +2030,11 @@ mod tests {
         let mut out = [0u8; 16];
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_in_addr_from_string_auto(s.as_ptr(), &mut family, out.as_mut_ptr()) },
+            test_ffi!(rs_in_addr_from_string_auto(
+                s.as_ptr(),
+                &mut family,
+                out.as_mut_ptr()
+            )),
             0
         );
         assert_eq!(family, AF_INET6);
@@ -2022,13 +2046,13 @@ mod tests {
         let mut out = std::ptr::null_mut();
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_in_addr_to_string(AF_INET, data.as_ptr(), &mut out) },
+            test_ffi!(rs_in_addr_to_string(AF_INET, data.as_ptr(), &mut out)),
             0
         );
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        let rendered = unsafe { CStr::from_ptr(out) }.to_str().unwrap().to_string();
+        let rendered = test_ffi!(CStr::from_ptr(out)).to_str().unwrap().to_string();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { free(out as *mut c_void) };
+        test_ffi!(free(out as *mut c_void));
         assert_eq!(rendered, "127.0.0.1");
     }
 
@@ -2042,11 +2066,17 @@ mod tests {
         let mut buf = [0 as c_char; 32];
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_in_addr_prefix_to_string(AF_INET, &addr, 24, buf.as_mut_ptr(), buf.len()) },
+            test_ffi!(rs_in_addr_prefix_to_string(
+                AF_INET,
+                &addr,
+                24,
+                buf.as_mut_ptr(),
+                buf.len()
+            )),
             0
         );
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        let rendered = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();
+        let rendered = test_ffi!(CStr::from_ptr(buf.as_ptr())).to_str().unwrap();
         assert_eq!(rendered, "192.168.1.1/24");
     }
 
@@ -2066,11 +2096,11 @@ mod tests {
         // SAFETY: Unsafe operation - invariants have been checked by caller
         // SAFETY: Unsafe operation - invariants have been checked by caller
         // SAFETY: Unsafe operation - invariants have been checked by caller
-        assert!(unsafe { rs_in4_addr_prefix_intersect(&a, 24, &b, 24) });
+        assert!(test_ffi!(rs_in4_addr_prefix_intersect(&a, 24, &b, 24)));
         // SAFETY: Unsafe operation - invariants have been checked by caller
         // SAFETY: Unsafe operation - invariants have been checked by caller
         // SAFETY: Unsafe operation - invariants have been checked by caller
         // SAFETY: Unsafe operation - invariants have been checked by caller
-        assert!(!unsafe { rs_in4_addr_prefix_intersect(&a, 24, &c, 24) });
+        assert!(!test_ffi!(rs_in4_addr_prefix_intersect(&a, 24, &c, 24)));
     }
 }

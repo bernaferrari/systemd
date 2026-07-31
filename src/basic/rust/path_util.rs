@@ -4,6 +4,14 @@
 //
 // Path and filename validation/comparison utilities.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use crate::ffi::{Errno, free, malloc, memcmp, memmove, strchr, strcmp, strdup, strlen};
@@ -123,7 +131,7 @@ unsafe fn rs_path_is_valid_full(p: *const c_char, accept_dot_dot: bool) -> bool 
 unsafe fn isempty(s: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { s.is_null() || *s == 0 }
+    unsafe_ffi!(s.is_null() || *s == 0)
 }
 
 /// Compare two booleans as -1/0/1.
@@ -155,7 +163,7 @@ fn cmp_int(a: i32, b: i32) -> i32 {
 /// obtained from this crate's C-compatible allocation helpers.
 unsafe fn libc_free(p: *mut c_char) {
     // SAFETY: upheld by this helper's contract.
-    unsafe { free(p as *mut std::ffi::c_void) };
+    unsafe_ffi!(free(p as *mut std::ffi::c_void));
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -540,7 +548,7 @@ pub unsafe extern "C" fn rs_is_device_path(path: *const c_char) -> bool {
     }
 
     // SAFETY: guaranteed by the entry-point contract after the null check.
-    is_device_path_bytes(unsafe { CStr::from_ptr(path) }.to_bytes())
+    is_device_path_bytes(unsafe_ffi!(CStr::from_ptr(path)).to_bytes())
 }
 
 /// Check if path starts with /dev/ or /run/systemd/inaccessible/, is normalized, and does not end with /.
@@ -621,7 +629,7 @@ pub unsafe fn rs_path_find_first_component(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_path_find_first_component_inner(p, accept_dot_dot, ret) }
+    unsafe_ffi!(rs_path_find_first_component_inner(p, accept_dot_dot, ret))
 }
 
 /// # Safety
@@ -1310,7 +1318,7 @@ pub unsafe fn rs_path_make_relative(
 pub unsafe fn rs_path_equal(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_path_compare(a, b) == 0 }
+    unsafe_ffi!(rs_path_compare(a, b) == 0)
 }
 
 // ── path_startswith ───────────────────────────────────────────────────────
@@ -1327,7 +1335,7 @@ pub unsafe fn rs_path_equal(a: *const c_char, b: *const c_char) -> bool {
 pub unsafe fn rs_path_startswith(path: *const c_char, prefix: *const c_char) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_path_startswith_full(path, prefix, 0) as *mut c_char }
+    unsafe_ffi!(rs_path_startswith_full(path, prefix, 0) as *mut c_char)
 }
 
 // ── path_is_valid ─────────────────────────────────────────────────────────
@@ -1344,7 +1352,7 @@ pub unsafe fn rs_path_startswith(path: *const c_char, prefix: *const c_char) -> 
 pub unsafe fn rs_path_is_valid(p: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_path_is_valid_full(p, true) }
+    unsafe_ffi!(rs_path_is_valid_full(p, true))
 }
 
 // ── path_is_safe ──────────────────────────────────────────────────────────
@@ -1361,7 +1369,7 @@ pub unsafe fn rs_path_is_valid(p: *const c_char) -> bool {
 pub unsafe fn rs_path_is_safe(p: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_path_is_valid_full(p, false) }
+    unsafe_ffi!(rs_path_is_valid_full(p, false))
 }
 
 // ── filename_or_absolute_path_is_valid ────────────────────────────────────
@@ -1418,7 +1426,7 @@ pub unsafe fn rs_skip_dev_prefix(p: *const c_char) -> *const c_char {
 pub unsafe fn rs_path_simplify(path: *mut c_char) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_path_simplify_full(path, 0) }
+    unsafe_ffi!(rs_path_simplify_full(path, 0))
 }
 
 // ── path_startswith_strv ──────────────────────────────────────────────────
@@ -1621,7 +1629,11 @@ pub unsafe fn rs_path_split_prefix_filename(
 pub unsafe fn rs_path_extract_filename(path: *const c_char, ret: *mut *mut c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_path_split_prefix_filename(path, std::ptr::null_mut(), ret) }
+    unsafe_ffi!(rs_path_split_prefix_filename(
+        path,
+        std::ptr::null_mut(),
+        ret
+    ))
 }
 
 // ── path_extract_directory ────────────────────────────────────────────────
@@ -1790,7 +1802,7 @@ pub unsafe fn rs_path_compare_filename(a: *const c_char, b: *const c_char) -> i3
 pub unsafe fn rs_path_equal_filename(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_path_compare_filename(a, b) == 0 }
+    unsafe_ffi!(rs_path_compare_filename(a, b) == 0)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────

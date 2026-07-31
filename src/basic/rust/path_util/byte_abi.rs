@@ -9,6 +9,14 @@
 //! C-allocator ownership at the ABI boundary. Paths are never interpreted as
 //! UTF-8 and never pass through `std::path::Path`.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use std::cmp::Ordering;
 use std::ffi::CStr;
 use std::ptr;
@@ -486,7 +494,7 @@ fn strv_item_matches_path(path: &[u8], item: &[u8], strip_prefixes: bool) -> boo
 /// `path` must be a live NUL-terminated byte string for the returned borrow.
 unsafe fn path_bytes_unchecked<'a>(path: *const c_char) -> &'a [u8] {
     // SAFETY: upheld by this helper's contract.
-    unsafe { CStr::from_ptr(path) }.to_bytes()
+    unsafe_ffi!(CStr::from_ptr(path)).to_bytes()
 }
 
 /// Every invocation is at an `extern "C"` boundary whose documented contract
@@ -497,7 +505,7 @@ macro_rules! path_bytes {
     ($path:expr) => {{
         // SAFETY: callers check nullability before invoking this adapter; the
         // enclosing C ABI contract guarantees NUL-terminated readable storage.
-        unsafe { path_bytes_unchecked($path) }
+        unsafe_ffi!(path_bytes_unchecked($path))
     }};
 }
 
@@ -514,7 +522,7 @@ macro_rules! path_bytes_or_none {
 fn malloc_bytes(value: &[u8]) -> Result<*mut c_char, i32> {
     let size = value.len().checked_add(1).ok_or(-libc::ENOMEM)?;
     // SAFETY: malloc accepts every size and the null result is checked.
-    let allocation = unsafe { libc::malloc(size) }.cast::<c_char>();
+    let allocation = unsafe_ffi!(libc::malloc(size)).cast::<c_char>();
     if allocation.is_null() {
         return Err(-libc::ENOMEM);
     }
@@ -541,11 +549,11 @@ pub unsafe extern "C" fn rs_path_find_first_component(
         return -libc::EINVAL;
     }
     // SAFETY: guaranteed by the entry-point contract.
-    let input = unsafe { *p };
+    let input = unsafe_ffi!(*p);
     let Some(path) = path_bytes_or_none!(input) else {
         if !ret.is_null() {
             // SAFETY: guaranteed by the entry-point contract.
-            unsafe { *ret = ptr::null() };
+            unsafe_ffi!(*ret = ptr::null());
         }
         return 0;
     };
@@ -606,7 +614,7 @@ pub unsafe extern "C" fn rs_path_find_last_component(
         ptr::null()
     } else {
         // SAFETY: non-null `next` is readable by this export's contract.
-        unsafe { *next }
+        unsafe_ffi!(*next)
     };
     let next_offset = if next_value.is_null() {
         None
@@ -705,7 +713,7 @@ pub unsafe extern "C" fn rs_path_startswith(
     prefix: *const c_char,
 ) -> *mut c_char {
     // SAFETY: this facade forwards the same input contract.
-    unsafe { rs_path_startswith_full(path, prefix, 0) }
+    unsafe_ffi!(rs_path_startswith_full(path, prefix, 0))
 }
 
 /// C ABI mirror of `path_simplify_full()`.
@@ -737,7 +745,7 @@ pub unsafe extern "C" fn rs_path_simplify_full(path: *mut c_char, flags: c_uint)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_simplify(path: *mut c_char) -> *mut c_char {
     // SAFETY: this facade forwards the same input contract.
-    unsafe { rs_path_simplify_full(path, 0) }
+    unsafe_ffi!(rs_path_simplify_full(path, 0))
 }
 
 /// C ABI mirror of `path_simplify_alloc()`.
@@ -753,7 +761,7 @@ pub unsafe extern "C" fn rs_path_simplify_alloc(path: *const c_char, ret: *mut *
     // SAFETY: upheld by this entry point's C-string contract.
     let Some(path) = path_bytes_or_none!(path) else {
         // SAFETY: guaranteed by the entry-point contract.
-        unsafe { *ret = ptr::null_mut() };
+        unsafe_ffi!(*ret = ptr::null_mut());
         return 0;
     };
     let allocation = match malloc_bytes(&simplify_bytes(path, 0)) {
@@ -761,7 +769,7 @@ pub unsafe extern "C" fn rs_path_simplify_alloc(path: *const c_char, ret: *mut *
         Err(error) => return error,
     };
     // SAFETY: output is published only after complete allocation.
-    unsafe { *ret = allocation };
+    unsafe_ffi!(*ret = allocation);
     0
 }
 
@@ -789,7 +797,7 @@ pub unsafe extern "C" fn rs_path_make_relative(
         Err(error) => return error,
     };
     // SAFETY: output is published only after complete allocation.
-    unsafe { *ret = allocation };
+    unsafe_ffi!(*ret = allocation);
     0
 }
 
@@ -857,7 +865,7 @@ pub unsafe extern "C" fn rs_path_startswith_strv(
     let mut index = 0;
     loop {
         // SAFETY: guaranteed by the null-terminated strv contract.
-        let prefix = unsafe { *strv.add(index) };
+        let prefix = unsafe_ffi!(*strv.add(index));
         if prefix.is_null() {
             return ptr::null_mut();
         }
@@ -878,7 +886,7 @@ unsafe fn strv_contains(strv: *const *mut c_char, path: &[u8], strip_prefixes: b
     let mut index = 0;
     loop {
         // SAFETY: guaranteed by the null-terminated strv contract.
-        let item = unsafe { *strv.add(index) };
+        let item = unsafe_ffi!(*strv.add(index));
         if item.is_null() {
             return false;
         }
@@ -907,7 +915,7 @@ pub unsafe extern "C" fn rs_path_strv_contains(
     // SAFETY: the entry contract covers both the C string and strv.
     let path = path_bytes!(path);
     // SAFETY: the entry contract covers the null-terminated string vector.
-    unsafe { strv_contains(strv, path, false) }
+    unsafe_ffi!(strv_contains(strv, path, false))
 }
 
 /// C ABI mirror of `prefixed_path_strv_contains()`.
@@ -926,7 +934,7 @@ pub unsafe extern "C" fn rs_prefixed_path_strv_contains(
     // SAFETY: the entry contract covers both the C string and strv.
     let path = path_bytes!(path);
     // SAFETY: the entry contract covers the null-terminated string vector.
-    unsafe { strv_contains(strv, path, true) }
+    unsafe_ffi!(strv_contains(strv, path, true))
 }
 
 /// C ABI mirror of `path_split_prefix_filename()`.
@@ -962,7 +970,7 @@ pub unsafe extern "C" fn rs_path_split_prefix_filename(
             Ok(allocation) => allocation,
             Err(error) => {
                 // SAFETY: directory is null or owned by this function.
-                unsafe { libc::free(directory.cast()) };
+                unsafe_ffi!(libc::free(directory.cast()));
                 return error;
             }
         },
@@ -992,7 +1000,7 @@ pub unsafe extern "C" fn rs_path_extract_filename(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: this facade forwards the same input and output contracts.
-    unsafe { rs_path_split_prefix_filename(path, ptr::null_mut(), ret) }
+    unsafe_ffi!(rs_path_split_prefix_filename(path, ptr::null_mut(), ret))
 }
 
 /// C ABI mirror of `path_extract_directory()`.
@@ -1006,7 +1014,7 @@ pub unsafe extern "C" fn rs_path_extract_directory(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: this facade forwards the same input and output contracts.
-    let result = unsafe { rs_path_split_prefix_filename(path, ret, ptr::null_mut()) };
+    let result = unsafe_ffi!(rs_path_split_prefix_filename(path, ret, ptr::null_mut()));
     if result < 0 { result } else { 0 }
 }
 

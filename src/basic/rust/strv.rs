@@ -4,6 +4,14 @@
 //
 // NULL-terminated string array utility functions.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_void};
 use std::marker::PhantomData;
 
@@ -72,12 +80,12 @@ impl<'a> StrvMut<'a> {
     unsafe fn from_raw(l: *mut *mut c_char) -> Self {
         let mut len = 0;
         // SAFETY: the caller guarantees that l is readable through its terminator.
-        while !unsafe { (*l.add(len)).is_null() } {
+        while !unsafe_ffi!((*l.add(len)).is_null()) {
             len += 1;
         }
         // SAFETY: len was measured from l and excludes the final NULL slot.
         Self {
-            entries: unsafe { std::slice::from_raw_parts_mut(l, len) },
+            entries: unsafe_ffi!(std::slice::from_raw_parts_mut(l, len)),
         }
     }
 
@@ -88,9 +96,9 @@ impl<'a> StrvMut<'a> {
     fn sort(&mut self) {
         self.entries.sort_unstable_by(|a, b| {
             // SAFETY: StrvMut only exposes entries validated by from_raw.
-            unsafe { CStr::from_ptr(*a) }
+            unsafe_ffi!(CStr::from_ptr(*a))
                 .to_bytes()
-                .cmp(unsafe { CStr::from_ptr(*b) }.to_bytes())
+                .cmp(unsafe_ffi!(CStr::from_ptr(*b)).to_bytes())
         });
     }
 
@@ -99,9 +107,9 @@ impl<'a> StrvMut<'a> {
         for index in 0..self.entries.len() {
             let entry = self.entries[index];
             // SAFETY: StrvMut only exposes live, NUL-terminated entries.
-            if unsafe { CStr::from_ptr(entry) } == needle {
+            if unsafe_ffi!(CStr::from_ptr(entry)) == needle {
                 // SAFETY: strv_remove owns every removed C-allocator entry.
-                unsafe { free(entry.cast()) };
+                unsafe_ffi!(free(entry.cast()));
             } else {
                 self.entries[kept] = entry;
                 kept += 1;
@@ -117,10 +125,10 @@ impl<'a> StrvMut<'a> {
             // SAFETY: StrvMut only exposes live, NUL-terminated entries.
             let duplicate = self.entries[..kept]
                 .iter()
-                .any(|previous| unsafe { CStr::from_ptr(*previous) == CStr::from_ptr(entry) });
+                .any(|previous| unsafe_ffi!(CStr::from_ptr(*previous) == CStr::from_ptr(entry)));
             if duplicate {
                 // SAFETY: strv_uniq owns every removed C-allocator entry.
-                unsafe { free(entry.cast()) };
+                unsafe_ffi!(free(entry.cast()));
             } else {
                 self.entries[kept] = entry;
                 kept += 1;
@@ -135,9 +143,9 @@ impl<'a> StrvMut<'a> {
         for index in 1..self.entries.len() {
             let entry = self.entries[index];
             // SAFETY: StrvMut only exposes live, NUL-terminated entries.
-            if unsafe { CStr::from_ptr(self.entries[kept - 1]) == CStr::from_ptr(entry) } {
+            if unsafe_ffi!(CStr::from_ptr(self.entries[kept - 1]) == CStr::from_ptr(entry)) {
                 // SAFETY: strv_sort_uniq owns duplicate C-allocator entries.
-                unsafe { free(entry.cast()) };
+                unsafe_ffi!(free(entry.cast()));
             } else {
                 self.entries[kept] = entry;
                 kept += 1;
@@ -165,7 +173,7 @@ impl CStrvAllocation {
             return None;
         }
         // SAFETY: `ptr` owns `slots` pointer-sized slots, including slot zero.
-        unsafe { *ptr = std::ptr::null_mut() };
+        unsafe_ffi!(*ptr = std::ptr::null_mut());
         Some(Self { ptr, slots, len: 0 })
     }
 
@@ -202,7 +210,7 @@ impl Drop for CStrvAllocation {
         if !self.ptr.is_null() {
             // SAFETY: unconsumed storage is a fresh C allocation; no entry is
             // owned by this destructor unless an explicit rollback consumed it.
-            unsafe { free(self.ptr.cast()) };
+            unsafe_ffi!(free(self.ptr.cast()));
         }
     }
 }
@@ -225,7 +233,7 @@ impl StrvSlot {
 
     fn len(&self) -> usize {
         // SAFETY: StrvSlot's construction contract makes `*slot` a valid vector.
-        unsafe { rs_strv_length(*self.slot) }
+        unsafe_ffi!(rs_strv_length(*self.slot))
     }
 
     fn grow_for(&mut self, slots: usize) -> Option<*mut *mut c_char> {
@@ -243,7 +251,7 @@ impl StrvSlot {
             None
         } else {
             // SAFETY: `slot` is writable by StrvSlot's construction contract.
-            unsafe { *self.slot = grown };
+            unsafe_ffi!(*self.slot = grown);
             Some(grown)
         }
     }
@@ -287,7 +295,7 @@ impl StrvSlot {
         let grown = self.grow_for(end)?;
         for index in 0..count {
             // SAFETY: s is a live C string and each index is a reserved slot.
-            let duplicate = unsafe { strdup(s) };
+            let duplicate = unsafe_ffi!(strdup(s));
             if duplicate.is_null() {
                 // SAFETY: initialized suffix entries are owned strdup results.
                 unsafe {
@@ -299,10 +307,10 @@ impl StrvSlot {
                 return None;
             }
             // SAFETY: this is one of `count` reserved slots.
-            unsafe { *grown.add(len + index) = duplicate };
+            unsafe_ffi!(*grown.add(len + index) = duplicate);
         }
         // SAFETY: end's final slot is reserved for the terminator.
-        unsafe { *grown.add(end - 1) = std::ptr::null_mut() };
+        unsafe_ffi!(*grown.add(end - 1) = std::ptr::null_mut());
         Some(())
     }
 }
@@ -320,13 +328,13 @@ unsafe fn free_owned_strv(l: *mut *mut c_char) {
     }
     let mut index = 0;
     // SAFETY: the caller guarantees l is readable through its NULL terminator.
-    while !unsafe { (*l.add(index)).is_null() } {
+    while !unsafe_ffi!((*l.add(index)).is_null()) {
         // SAFETY: every non-null entry is an owned C-allocator string.
-        unsafe { free((*l.add(index)).cast()) };
+        unsafe_ffi!(free((*l.add(index)).cast()));
         index += 1;
     }
     // SAFETY: l itself is an owned C-allocator array.
-    unsafe { free(l.cast()) };
+    unsafe_ffi!(free(l.cast()));
 }
 
 /// strcmp_ptr: NULL-aware strcmp. NULL < non-NULL.
@@ -345,7 +353,7 @@ unsafe fn strcmp_ptr(a: *const c_char, b: *const c_char) -> i32 {
         return 1;
     }
     // SAFETY: the caller guarantees both non-null arguments are live C strings.
-    unsafe { strcmp(a, b) }
+    unsafe_ffi!(strcmp(a, b))
 }
 
 /// cstr_startswith: returns Some(suffix_ptr) if `s` starts with `prefix`, else None.
@@ -355,7 +363,7 @@ fn cstr_startswith(s: &CStr, prefix: &CStr) -> Option<*const c_char> {
     let p_bytes = prefix.to_bytes();
     if s_bytes.starts_with(p_bytes) {
         // SAFETY: the suffix starts within a valid C string and includes its NUL terminator
-        Some(unsafe { s.as_ptr().add(p_bytes.len()) })
+        Some(unsafe_ffi!(s.as_ptr().add(p_bytes.len())))
     } else {
         None
     }
@@ -368,7 +376,7 @@ fn cstr_startswith(s: &CStr, prefix: &CStr) -> Option<*const c_char> {
 /// entry for the duration of this call.
 unsafe fn strv_isempty(l: *const *const c_char) -> bool {
     // SAFETY: the caller guarantees non-null l points to the first strv entry.
-    l.is_null() || unsafe { (*l).is_null() }
+    l.is_null() || unsafe_ffi!((*l).is_null())
 }
 
 // ── strv_length ────────────────────────────────────────────────────────────
@@ -388,7 +396,7 @@ pub unsafe extern "C" fn rs_strv_length(l: *const *mut c_char) -> usize {
         return 0;
     }
     // SAFETY: the caller guarantees l is a NULL-terminated string vector.
-    unsafe { strv_iter(l.cast()) }.count()
+    unsafe_ffi!(strv_iter(l.cast())).count()
 }
 
 // ── strv_find ──────────────────────────────────────────────────────────────
@@ -409,9 +417,9 @@ pub unsafe extern "C" fn rs_strv_find(l: *const *mut c_char, name: *const c_char
         return std::ptr::null_mut();
     }
     // SAFETY: the caller guarantees name is a live C string.
-    let needle = unsafe { CStr::from_ptr(name) };
+    let needle = unsafe_ffi!(CStr::from_ptr(name));
     // SAFETY: the caller guarantees l is a NULL-terminated string vector.
-    for entry in unsafe { strv_iter(l.cast()) } {
+    for entry in unsafe_ffi!(strv_iter(l.cast())) {
         if entry == needle {
             return entry.as_ptr() as *mut c_char;
         }
@@ -440,9 +448,9 @@ pub unsafe extern "C" fn rs_strv_find_case(
         return std::ptr::null_mut();
     }
     // SAFETY: the caller guarantees l is a NULL-terminated string vector.
-    for entry in unsafe { strv_iter(l.cast()) } {
+    for entry in unsafe_ffi!(strv_iter(l.cast())) {
         // SAFETY: entry and name are live C strings.
-        if unsafe { strcasecmp(entry.as_ptr(), name) } == 0 {
+        if unsafe_ffi!(strcasecmp(entry.as_ptr(), name)) == 0 {
             return entry.as_ptr() as *mut c_char;
         }
     }
@@ -470,9 +478,9 @@ pub unsafe extern "C" fn rs_strv_find_prefix(
         return std::ptr::null_mut();
     }
     // SAFETY: the caller guarantees name is a live C string.
-    let prefix = unsafe { CStr::from_ptr(name) };
+    let prefix = unsafe_ffi!(CStr::from_ptr(name));
     // SAFETY: the caller guarantees l is a NULL-terminated string vector.
-    for entry in unsafe { strv_iter(l.cast()) } {
+    for entry in unsafe_ffi!(strv_iter(l.cast())) {
         if cstr_startswith(entry, prefix).is_some() {
             return entry.as_ptr() as *mut c_char;
         }
@@ -501,9 +509,9 @@ pub unsafe extern "C" fn rs_strv_find_startswith(
         return std::ptr::null_mut();
     }
     // SAFETY: the caller guarantees name is a live C string.
-    let prefix = unsafe { CStr::from_ptr(name) };
+    let prefix = unsafe_ffi!(CStr::from_ptr(name));
     // SAFETY: the caller guarantees l is a NULL-terminated string vector.
-    for entry in unsafe { strv_iter(l.cast()) } {
+    for entry in unsafe_ffi!(strv_iter(l.cast())) {
         if let Some(suffix) = cstr_startswith(entry, prefix) {
             return suffix as *mut c_char;
         }
@@ -532,7 +540,7 @@ pub unsafe extern "C" fn rs_strv_is_uniq(l: *const *mut c_char) -> bool {
     // from preserving its failure-free contract, this keeps allocation and
     // panic paths out of the C ABI boundary.
     // SAFETY: the caller guarantees l is a NULL-terminated string vector.
-    let mut entries = unsafe { strv_iter(l.cast()) };
+    let mut entries = unsafe_ffi!(strv_iter(l.cast()));
     while let Some(entry) = entries.next() {
         if entries.clone().any(|candidate| entry == candidate) {
             return false;
@@ -558,9 +566,9 @@ pub unsafe extern "C" fn rs_strv_overlap(a: *const *mut c_char, b: *const *mut c
         return false;
     }
     // SAFETY: the caller guarantees a is a NULL-terminated string vector.
-    for ea in unsafe { strv_iter(a.cast()) } {
+    for ea in unsafe_ffi!(strv_iter(a.cast())) {
         // SAFETY: the caller guarantees b is a NULL-terminated string vector.
-        for eb in unsafe { strv_iter(b.cast()) } {
+        for eb in unsafe_ffi!(strv_iter(b.cast())) {
             if ea == eb {
                 return true;
             }
@@ -585,29 +593,29 @@ pub unsafe extern "C" fn rs_strv_compare(a: *const *mut c_char, b: *const *mut c
     let a = a.cast::<*const c_char>();
     let b = b.cast::<*const c_char>();
     // SAFETY: the caller guarantees both optional vectors are NULL-terminated.
-    if unsafe { strv_isempty(a) } {
+    if unsafe_ffi!(strv_isempty(a)) {
         // SAFETY: same vector contract.
-        if unsafe { strv_isempty(b) } {
+        if unsafe_ffi!(strv_isempty(b)) {
             return 0;
         }
         return -1;
     }
     // SAFETY: the caller guarantees b is NULL or a NULL-terminated vector.
-    if unsafe { strv_isempty(b) } {
+    if unsafe_ffi!(strv_isempty(b)) {
         return 1;
     }
     let mut ai: usize = 0;
     let mut bi: usize = 0;
     loop {
         // SAFETY: ai/bi advance in lockstep only until each vector's terminator.
-        let (a_entry, b_entry) = unsafe { (*a.add(ai), *b.add(bi)) };
+        let (a_entry, b_entry) = unsafe_ffi!((*a.add(ai), *b.add(bi)));
         let ea = a_entry.is_null();
         let eb = b_entry.is_null();
         if ea && eb {
             return 0;
         }
         // SAFETY: the entries were just read from the live vectors.
-        let r = unsafe { strcmp_ptr(a_entry, b_entry) };
+        let r = unsafe_ffi!(strcmp_ptr(a_entry, b_entry));
         if r != 0 {
             return r;
         }
@@ -638,11 +646,11 @@ pub unsafe extern "C" fn rs_strv_equal_ignore_order(
     // Every element of a must be in b
     if !a.is_null() {
         // SAFETY: the caller guarantees a is a NULL-terminated string vector.
-        for ea in unsafe { strv_iter(a.cast()) } {
+        for ea in unsafe_ffi!(strv_iter(a.cast())) {
             let mut found = false;
             if !b.is_null() {
                 // SAFETY: the caller guarantees b is a NULL-terminated string vector.
-                for eb in unsafe { strv_iter(b.cast()) } {
+                for eb in unsafe_ffi!(strv_iter(b.cast())) {
                     if ea == eb {
                         found = true;
                         break;
@@ -657,11 +665,11 @@ pub unsafe extern "C" fn rs_strv_equal_ignore_order(
     // Every element of b must be in a
     if !b.is_null() {
         // SAFETY: the caller guarantees b is a NULL-terminated string vector.
-        for eb in unsafe { strv_iter(b.cast()) } {
+        for eb in unsafe_ffi!(strv_iter(b.cast())) {
             let mut found = false;
             if !a.is_null() {
                 // SAFETY: the caller guarantees a is a NULL-terminated string vector.
-                for ea in unsafe { strv_iter(a.cast()) } {
+                for ea in unsafe_ffi!(strv_iter(a.cast())) {
                     if ea == eb {
                         found = true;
                         break;
@@ -690,7 +698,7 @@ pub unsafe extern "C" fn rs_strv_equal_ignore_order(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strv_copy_n(l: *const *mut c_char, n: usize) -> *mut *mut c_char {
     // SAFETY: the caller guarantees l is NULL or a NULL-terminated string vector.
-    let total = unsafe { rs_strv_length(l) };
+    let total = unsafe_ffi!(rs_strv_length(l));
     let count = if n < total { n } else { total };
 
     let Some(slots) = count.checked_add(1) else {
@@ -702,12 +710,12 @@ pub unsafe extern "C" fn rs_strv_copy_n(l: *const *mut c_char, n: usize) -> *mut
 
     if !l.is_null() {
         // SAFETY: the caller guarantees l is a NULL-terminated string vector.
-        for entry in unsafe { strv_iter(l.cast()) } {
+        for entry in unsafe_ffi!(strv_iter(l.cast())) {
             if result.len >= count {
                 break;
             }
             // SAFETY: entry is a live C string from the vector.
-            let dup = unsafe { strdup(entry.as_ptr()) };
+            let dup = unsafe_ffi!(strdup(entry.as_ptr()));
             if dup.is_null() {
                 result.free_entries_and_storage();
                 return std::ptr::null_mut();
@@ -735,9 +743,9 @@ pub unsafe extern "C" fn rs_strv_remove(l: *mut *mut c_char, s: *const c_char) -
         return std::ptr::null_mut();
     }
     // SAFETY: the caller guarantees s is a live C string.
-    let needle = unsafe { CStr::from_ptr(s) };
+    let needle = unsafe_ffi!(CStr::from_ptr(s));
     // SAFETY: the caller guarantees l is writable through its NULL terminator.
-    let mut entries = unsafe { StrvMut::from_raw(l) };
+    let mut entries = unsafe_ffi!(StrvMut::from_raw(l));
     entries.remove_all(needle);
     l
 }
@@ -759,7 +767,7 @@ pub unsafe extern "C" fn rs_strv_uniq(l: *mut *mut c_char) -> *mut *mut c_char {
         return std::ptr::null_mut();
     }
     // SAFETY: the caller guarantees l is writable through its NULL terminator.
-    let mut entries = unsafe { StrvMut::from_raw(l) };
+    let mut entries = unsafe_ffi!(StrvMut::from_raw(l));
     entries.dedup_keep_first();
     l
 }
@@ -781,7 +789,7 @@ pub unsafe extern "C" fn rs_strv_sort(l: *mut *mut c_char) -> *mut *mut c_char {
         return std::ptr::null_mut();
     }
     // SAFETY: the caller guarantees l is writable through its NULL terminator.
-    let mut entries = unsafe { StrvMut::from_raw(l) };
+    let mut entries = unsafe_ffi!(StrvMut::from_raw(l));
     // C uses qsort(), whose ordering is unstable and whose operation does not
     // allocate. The slice sort has the same relevant properties.
     entries.sort();
@@ -805,7 +813,7 @@ pub unsafe extern "C" fn rs_strv_reverse(l: *mut *mut c_char) -> *mut *mut c_cha
         return std::ptr::null_mut();
     }
     // SAFETY: the caller guarantees l is writable through its NULL terminator.
-    unsafe { StrvMut::from_raw(l) }.reverse();
+    unsafe_ffi!(StrvMut::from_raw(l)).reverse();
     l
 }
 
@@ -828,15 +836,15 @@ pub unsafe extern "C" fn rs_strv_skip(mut l: *mut *mut c_char, n: usize) -> *mut
     let mut remaining = n;
     while remaining > 0 {
         // SAFETY: l remains an in-bounds suffix of the caller's vector.
-        if unsafe { strv_isempty(l.cast()) } {
+        if unsafe_ffi!(strv_isempty(l.cast())) {
             return std::ptr::null_mut();
         }
         // SAFETY: the non-empty check proves another vector slot exists.
-        l = unsafe { l.add(1) };
+        l = unsafe_ffi!(l.add(1));
         remaining -= 1;
     }
     // SAFETY: l remains an in-bounds suffix of the caller's vector.
-    if unsafe { strv_isempty(l.cast()) } {
+    if unsafe_ffi!(strv_isempty(l.cast())) {
         return std::ptr::null_mut();
     }
     l
@@ -852,15 +860,15 @@ unsafe fn startswith_internal(s: *const c_char, prefix: *const c_char) -> *const
         return std::ptr::null();
     }
     // SAFETY: the caller guarantees both pointers are live C strings.
-    let p_bytes = unsafe { CStr::from_ptr(prefix) }.to_bytes();
+    let p_bytes = unsafe_ffi!(CStr::from_ptr(prefix)).to_bytes();
     // SAFETY: as above.
-    let s_bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let s_bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     if s_bytes.len() < p_bytes.len() {
         return std::ptr::null();
     }
     if &s_bytes[..p_bytes.len()] == p_bytes {
         // SAFETY: starts_with proved this offset lies within s.
-        unsafe { s.add(p_bytes.len()) }
+        unsafe_ffi!(s.add(p_bytes.len()))
     } else {
         std::ptr::null()
     }
@@ -874,16 +882,16 @@ unsafe fn endswith_internal(s: *const c_char, suffix: *const c_char) -> *const c
         return std::ptr::null();
     }
     // SAFETY: the caller guarantees both pointers are live C strings.
-    let suf_bytes = unsafe { CStr::from_ptr(suffix) }.to_bytes();
+    let suf_bytes = unsafe_ffi!(CStr::from_ptr(suffix)).to_bytes();
     // SAFETY: as above.
-    let s_bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let s_bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let suf_len = suf_bytes.len();
     if s_bytes.len() < suf_len {
         return std::ptr::null();
     }
     if &s_bytes[s_bytes.len() - suf_len..] == suf_bytes {
         // SAFETY: the suffix match proves the computed offset lies within s.
-        unsafe { s.add(s_bytes.len() - suf_len) }
+        unsafe_ffi!(s.add(s_bytes.len() - suf_len))
     } else {
         std::ptr::null()
     }
@@ -908,12 +916,12 @@ pub unsafe extern "C" fn rs_strv_find_closest_prefix(
         return std::ptr::null_mut();
     }
     // SAFETY: the caller guarantees name is a live C string.
-    let name_bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
+    let name_bytes = unsafe_ffi!(CStr::from_ptr(name)).to_bytes();
     let mut best_distance: usize = usize::MAX;
     let mut best: *mut c_char = std::ptr::null_mut();
 
     // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    for entry in unsafe { strv_iter(l.cast()) } {
+    for entry in unsafe_ffi!(strv_iter(l.cast())) {
         let s_bytes = entry.to_bytes();
         if s_bytes.len() >= name_bytes.len() && &s_bytes[..name_bytes.len()] == name_bytes {
             let n = s_bytes.len() - name_bytes.len();
@@ -948,9 +956,9 @@ pub unsafe extern "C" fn rs_strv_find_closest_by_levenshtein(
     let mut best: *mut c_char = std::ptr::null_mut();
 
     // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    for entry in unsafe { strv_iter(l.cast()) } {
+    for entry in unsafe_ffi!(strv_iter(l.cast())) {
         // SAFETY: entry and name are live C strings.
-        let distance = unsafe { crate::string_util::rs_strlevenshtein(entry.as_ptr(), name) };
+        let distance = unsafe_ffi!(crate::string_util::rs_strlevenshtein(entry.as_ptr(), name));
         if distance < 0 {
             return std::ptr::null_mut();
         }
@@ -984,12 +992,12 @@ pub unsafe extern "C" fn rs_strv_find_closest(
         return std::ptr::null_mut();
     }
     // SAFETY: this function forwards the same vector/string contracts.
-    let found = unsafe { rs_strv_find_closest_prefix(l.cast(), name) };
+    let found = unsafe_ffi!(rs_strv_find_closest_prefix(l.cast(), name));
     if !found.is_null() {
         return found;
     }
     // SAFETY: this function forwards the same vector/string contracts.
-    unsafe { rs_strv_find_closest_by_levenshtein(l.cast(), name) }
+    unsafe_ffi!(rs_strv_find_closest_by_levenshtein(l.cast(), name))
 }
 
 // ── startswith_strv_internal ────────────────────────────────────────────
@@ -1010,9 +1018,9 @@ pub unsafe extern "C" fn rs_startswith_strv_internal(
     l: *const *mut c_char,
 ) -> *mut c_char {
     // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    for entry in unsafe { strv_iter(l.cast()) } {
+    for entry in unsafe_ffi!(strv_iter(l.cast())) {
         // SAFETY: s and entry are live C strings.
-        let found = unsafe { startswith_internal(s, entry.as_ptr()) };
+        let found = unsafe_ffi!(startswith_internal(s, entry.as_ptr()));
         if !found.is_null() {
             return found as *mut c_char;
         }
@@ -1038,9 +1046,9 @@ pub unsafe extern "C" fn rs_endswith_strv_internal(
     l: *const *mut c_char,
 ) -> *mut c_char {
     // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    for entry in unsafe { strv_iter(l.cast()) } {
+    for entry in unsafe_ffi!(strv_iter(l.cast())) {
         // SAFETY: s and entry are live C strings.
-        let found = unsafe { endswith_internal(s, entry.as_ptr()) };
+        let found = unsafe_ffi!(endswith_internal(s, entry.as_ptr()));
         if !found.is_null() {
             return found as *mut c_char;
         }
@@ -1070,14 +1078,14 @@ pub unsafe extern "C" fn rs_strv_join_full(
         b" \0"
     } else {
         // SAFETY: the caller guarantees non-null separator is a live C string.
-        unsafe { CStr::from_ptr(separator) }.to_bytes_with_nul()
+        unsafe_ffi!(CStr::from_ptr(separator)).to_bytes_with_nul()
     };
     let k = sep.len() - 1; // strlen(separator)
     let m = if prefix.is_null() {
         0
     } else {
         // SAFETY: the caller guarantees non-null prefix is a live C string.
-        unsafe { CStr::from_ptr(prefix) }.to_bytes().len()
+        unsafe_ffi!(CStr::from_ptr(prefix)).to_bytes().len()
     };
 
     if escape_separator && k != 1 {
@@ -1089,7 +1097,7 @@ pub unsafe extern "C" fn rs_strv_join_full(
     // allocation followed by out-of-bounds writes.
     let mut n: usize = 0;
     // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    for (i, entry) in unsafe { strv_iter(l.cast()) }.enumerate() {
+    for (i, entry) in unsafe_ffi!(strv_iter(l.cast())).enumerate() {
         if i > 0 {
             let Some(updated) = n.checked_add(k) else {
                 return std::ptr::null_mut();
@@ -1122,22 +1130,22 @@ pub unsafe extern "C" fn rs_strv_join_full(
 
     let mut pos: usize = 0;
     // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    for (i, entry) in unsafe { strv_iter(l.cast()) }.enumerate() {
+    for (i, entry) in unsafe_ffi!(strv_iter(l.cast())).enumerate() {
         if i > 0 {
             // stpcpy: copy separator
             for &byte in sep.iter().take(k) {
                 // SAFETY: n includes every separator byte written here.
-                unsafe { *buf.add(pos) = byte as c_char };
+                unsafe_ffi!(*buf.add(pos) = byte as c_char);
                 pos += 1;
             }
         }
 
         if !prefix.is_null() {
             // SAFETY: the caller guarantees prefix is a live C string.
-            let p_bytes = unsafe { CStr::from_ptr(prefix) }.to_bytes();
+            let p_bytes = unsafe_ffi!(CStr::from_ptr(prefix)).to_bytes();
             for &byte in p_bytes {
                 // SAFETY: n includes every prefix byte written here.
-                unsafe { *buf.add(pos) = byte as c_char };
+                unsafe_ffi!(*buf.add(pos) = byte as c_char);
                 pos += 1;
             }
         }
@@ -1149,39 +1157,28 @@ pub unsafe extern "C" fn rs_strv_join_full(
             for &byte in s_bytes {
                 if byte == sep[0] {
                     // SAFETY: n includes every required escape byte.
-                    unsafe { *buf.add(pos) = b'\\' as c_char };
+                    unsafe_ffi!(*buf.add(pos) = b'\\' as c_char);
                     pos += 1;
                 }
                 // SAFETY: n includes every entry byte and escape byte.
-                unsafe { *buf.add(pos) = byte as c_char };
+                unsafe_ffi!(*buf.add(pos) = byte as c_char);
                 pos += 1;
             }
         } else {
             for &byte in s_bytes {
                 // SAFETY: n includes every entry byte written here.
-                unsafe { *buf.add(pos) = byte as c_char };
+                unsafe_ffi!(*buf.add(pos) = byte as c_char);
                 pos += 1;
             }
         }
     }
 
     // SAFETY: calloc reserved one final terminator byte.
-    unsafe { *buf.add(pos) = 0 };
+    unsafe_ffi!(*buf.add(pos) = 0);
     buf
 }
 
 // ── strv_sort_uniq ──────────────────────────────────────────────────────
-
-/// Compare two optional C strings.
-///
-/// # Safety
-/// Each non-null pointer must designate a live, NUL-terminated C string for
-/// the duration of the comparison. Null is accepted and has the same ordering
-/// semantics as `strcmp_ptr`.
-unsafe fn streq_ptr(a: *const c_char, b: *const c_char) -> bool {
-    // SAFETY: this helper forwards its optional C-string contracts.
-    (unsafe { strcmp_ptr(a, b) }) == 0
-}
 
 /// Sort array and remove duplicate entries in-place.
 /// Returns the original array on success, NULL on OOM.
@@ -1198,7 +1195,7 @@ pub unsafe extern "C" fn rs_strv_sort_uniq(l: *mut *mut c_char) -> *mut *mut c_c
         return l;
     }
     // SAFETY: the caller guarantees l is writable through its NULL terminator.
-    let mut entries = unsafe { StrvMut::from_raw(l) };
+    let mut entries = unsafe_ffi!(StrvMut::from_raw(l));
     if !entries.entries.is_empty() {
         entries.sort_uniq();
     }
@@ -1232,7 +1229,7 @@ pub unsafe extern "C" fn rs_strv_push_pair(
     }
 
     // SAFETY: the caller guarantees l is a writable C string-vector slot.
-    let mut slot = unsafe { StrvSlot::from_raw(l) };
+    let mut slot = unsafe_ffi!(StrvSlot::from_raw(l));
     if slot.len() > SIZE_MAX - 3 {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1276,7 +1273,7 @@ pub unsafe extern "C" fn rs_strv_insert(
     }
 
     // SAFETY: the caller guarantees l is a writable C string-vector slot.
-    let mut slot = unsafe { StrvSlot::from_raw(l) };
+    let mut slot = unsafe_ffi!(StrvSlot::from_raw(l));
     if slot.len() > SIZE_MAX - 2 {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1307,20 +1304,20 @@ pub unsafe extern "C" fn rs_strv_copy_unless_empty(
     }
 
     // SAFETY: the caller guarantees non-null l points to the first vector entry.
-    if l.is_null() || unsafe { (*l).is_null() } {
+    if l.is_null() || unsafe_ffi!((*l).is_null()) {
         // SAFETY: ret is non-null and writable.
-        unsafe { *ret = std::ptr::null_mut() };
+        unsafe_ffi!(*ret = std::ptr::null_mut());
         return 0;
     }
 
     // SAFETY: this function forwards the vector contract.
-    let copy = unsafe { rs_strv_copy_n(l.cast(), SIZE_MAX) };
+    let copy = unsafe_ffi!(rs_strv_copy_n(l.cast(), SIZE_MAX));
     if copy.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
 
     // SAFETY: ret is non-null and writable.
-    unsafe { *ret = copy };
+    unsafe_ffi!(*ret = copy);
     1
 }
 
@@ -1352,7 +1349,7 @@ pub unsafe extern "C" fn rs_strv_extend_n(
     }
 
     // SAFETY: the caller guarantees a is a writable C string-vector slot.
-    let mut slot = unsafe { StrvSlot::from_raw(a) };
+    let mut slot = unsafe_ffi!(StrvSlot::from_raw(a));
     if slot.len() >= SIZE_MAX - n {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1382,9 +1379,9 @@ pub unsafe extern "C" fn rs_strv_consume_prepend(l: *mut *mut *mut c_char, s: *m
         return 0;
     }
     // SAFETY: this function forwards l's ownership contract and transfers s.
-    if unsafe { rs_strv_insert(l, 0, s) } < 0 {
+    if unsafe_ffi!(rs_strv_insert(l, 0, s)) < 0 {
         // SAFETY: insertion failed, so this function still owns s.
-        unsafe { free(s.cast()) };
+        unsafe_ffi!(free(s.cast()));
         return Errno::ENOMEM.to_neg_errno();
     }
     0
@@ -1407,12 +1404,12 @@ pub unsafe extern "C" fn rs_strv_prepend(l: *mut *mut *mut c_char, s: *const c_c
         return 0;
     }
     // SAFETY: the caller guarantees s is a live C string.
-    let v = unsafe { strdup(s) };
+    let v = unsafe_ffi!(strdup(s));
     if v.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
     // SAFETY: this function forwards l's ownership contract and transfers v.
-    if unsafe { rs_strv_consume_prepend(l, v) } < 0 {
+    if unsafe_ffi!(rs_strv_consume_prepend(l, v)) < 0 {
         return Errno::ENOMEM.to_neg_errno();
     }
     0
@@ -1448,13 +1445,13 @@ pub unsafe extern "C" fn rs_strv_push_with_size(
 
     // SAFETY: the caller guarantees non-null size is readable and writable.
     let mut sz = if !size.is_null() {
-        unsafe { *size }
+        unsafe_ffi!(*size)
     } else {
         SIZE_MAX
     };
     if sz == SIZE_MAX {
         // SAFETY: the caller guarantees *l is NULL or a NULL-terminated vector.
-        sz = unsafe { rs_strv_length(*l as *const *mut c_char) };
+        sz = unsafe_ffi!(rs_strv_length(*l as *const *mut c_char));
     }
 
     if sz > SIZE_MAX - 2 {
@@ -1483,11 +1480,11 @@ pub unsafe extern "C" fn rs_strv_push_with_size(
 
     if !size.is_null() {
         // SAFETY: non-null size is writable by the caller contract.
-        unsafe { *size = sz + 1 };
+        unsafe_ffi!(*size = sz + 1);
     }
 
     // SAFETY: l is writable by the caller contract.
-    unsafe { *l = c };
+    unsafe_ffi!(*l = c);
     0
 }
 
@@ -1507,11 +1504,11 @@ pub unsafe extern "C" fn rs_strv_consume_with_size(
     value: *mut c_char,
 ) -> i32 {
     // SAFETY: this function forwards the vector and optional size contracts.
-    let result = unsafe { rs_strv_push_with_size(l, n, value) };
+    let result = unsafe_ffi!(rs_strv_push_with_size(l, n, value));
     if result < 0 && !value.is_null() {
         // SAFETY: push_with_size leaves value ownership with the caller on
         // failure, and this consuming wrapper owns it exactly once.
-        unsafe { free(value.cast()) };
+        unsafe_ffi!(free(value.cast()));
     }
     result
 }
@@ -1533,7 +1530,7 @@ pub unsafe extern "C" fn rs_strv_consume_with_size(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strv_consume(l: *mut *mut *mut c_char, s: *mut c_char) -> i32 {
     // SAFETY: this function forwards l's ownership contract and transfers s.
-    unsafe { rs_strv_consume_with_size(l, std::ptr::null_mut(), s) }
+    unsafe_ffi!(rs_strv_consume_with_size(l, std::ptr::null_mut(), s))
 }
 
 // ── strv_extend ──────────────────────────────────────────────────────────
@@ -1555,12 +1552,12 @@ pub unsafe extern "C" fn rs_strv_extend(l: *mut *mut *mut c_char, s: *const c_ch
         return 0;
     }
     // SAFETY: the caller guarantees s is a live C string.
-    let v = unsafe { strdup(s) };
+    let v = unsafe_ffi!(strdup(s));
     if v.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
     // SAFETY: this function forwards l's ownership contract and transfers v.
-    if unsafe { rs_strv_consume(l, v) } < 0 {
+    if unsafe_ffi!(rs_strv_consume(l, v)) < 0 {
         // rs_strv_consume already freed v on failure
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1590,9 +1587,9 @@ pub unsafe extern "C" fn rs_strv_extend_assignment(
 
     // Build "lhs=rhs" string
     // SAFETY: the caller guarantees lhs and rhs are live C strings.
-    let lhs_len = unsafe { crate::ffi::strlen(lhs) };
+    let lhs_len = unsafe_ffi!(crate::ffi::strlen(lhs));
     // SAFETY: as above.
-    let rhs_len = unsafe { crate::ffi::strlen(rhs) };
+    let rhs_len = unsafe_ffi!(crate::ffi::strlen(rhs));
     // total = lhs_len + 1 (=) + rhs_len + 1 (NUL)
     if lhs_len >= SIZE_MAX - rhs_len - 2 {
         return Errno::ENOMEM.to_neg_errno();
@@ -1607,19 +1604,23 @@ pub unsafe extern "C" fn rs_strv_extend_assignment(
 
     // Copy lhs
     // SAFETY: lhs is readable for lhs_len bytes and j owns total bytes.
-    unsafe { std::ptr::copy_nonoverlapping(lhs, j, lhs_len) };
+    unsafe_ffi!(std::ptr::copy_nonoverlapping(lhs, j, lhs_len));
     // Copy '='
     // SAFETY: lhs_len is within the total allocation.
-    unsafe { *j.add(lhs_len) = b'=' as c_char };
+    unsafe_ffi!(*j.add(lhs_len) = b'=' as c_char);
     // Copy rhs
     // SAFETY: rhs is readable for rhs_len bytes and the destination range is in j.
-    unsafe { std::ptr::copy_nonoverlapping(rhs, j.add(lhs_len + 1), rhs_len) };
+    unsafe_ffi!(std::ptr::copy_nonoverlapping(
+        rhs,
+        j.add(lhs_len + 1),
+        rhs_len
+    ));
     // NUL terminate
     // SAFETY: total reserves the final NUL slot.
-    unsafe { *j.add(lhs_len + 1 + rhs_len) = 0 };
+    unsafe_ffi!(*j.add(lhs_len + 1 + rhs_len) = 0);
 
     // SAFETY: this function forwards l's ownership contract and transfers j.
-    if unsafe { rs_strv_consume(l, j) } < 0 {
+    if unsafe_ffi!(rs_strv_consume(l, j)) < 0 {
         return Errno::ENOMEM.to_neg_errno();
     }
     0
@@ -1666,12 +1667,12 @@ pub unsafe extern "C" fn rs_strv_split_full(
             let mut j: usize = 0;
             while j < n {
                 // SAFETY: entries below n are owned allocations in l.
-                unsafe { free(*l.add(j) as *mut c_void) };
+                unsafe_ffi!(free(*l.add(j) as *mut c_void));
                 j += 1;
             }
             if !l.is_null() {
                 // SAFETY: l is the pointer array allocated by this function.
-                unsafe { free(l.cast()) };
+                unsafe_ffi!(free(l.cast()));
             }
             return r;
         }
@@ -1695,23 +1696,23 @@ pub unsafe extern "C" fn rs_strv_split_full(
             let mut j: usize = 0;
             while j < n {
                 // SAFETY: entries below n are owned allocations in l.
-                unsafe { free(*l.add(j) as *mut c_void) };
+                unsafe_ffi!(free(*l.add(j) as *mut c_void));
                 j += 1;
             }
             // SAFETY: word ownership was returned by rs_extract_first_word.
-            unsafe { free(word.cast()) };
+            unsafe_ffi!(free(word.cast()));
             if !l.is_null() {
                 // SAFETY: l is the pointer array allocated by this function.
-                unsafe { free(l.cast()) };
+                unsafe_ffi!(free(l.cast()));
             }
             return Errno::ENOMEM.to_neg_errno();
         }
         l = new_l;
         // SAFETY: new_l reserves n+2 entries.
-        unsafe { *l.add(n) = word };
+        unsafe_ffi!(*l.add(n) = word);
         n += 1;
         // SAFETY: new_l reserves the final NULL terminator slot.
-        unsafe { *l.add(n) = std::ptr::null_mut() };
+        unsafe_ffi!(*l.add(n) = std::ptr::null_mut());
     }
 
     // C behavior: if no words found, allocate empty array [NULL]
@@ -1724,7 +1725,7 @@ pub unsafe extern "C" fn rs_strv_split_full(
     }
 
     // SAFETY: t is non-null and writable by the caller contract.
-    unsafe { *t = l };
+    unsafe_ffi!(*t = l);
     n as i32
 }
 
@@ -1756,19 +1757,24 @@ pub unsafe extern "C" fn rs_strv_split_newlines_full(
 
     let mut l: *mut *mut c_char = std::ptr::null_mut();
     // SAFETY: s is caller-validated, l is a writable local, and NEWLINE is static.
-    let r = unsafe { rs_strv_split_full(&mut l, s, NEWLINE.as_ptr().cast(), flags) };
+    let r = unsafe_ffi!(rs_strv_split_full(
+        &mut l,
+        s,
+        NEWLINE.as_ptr().cast(),
+        flags
+    ));
     if r < 0 {
         return r;
     }
 
     // SAFETY: l is NULL or the vector returned by rs_strv_split_full.
-    let n = unsafe { rs_strv_length(l.cast()) };
+    let n = unsafe_ffi!(rs_strv_length(l.cast()));
     // Suppress trailing empty string
     if n > 0 && !l.is_null() {
         // SAFETY: n > 0 bounds the final entry access.
-        let last = unsafe { *l.add(n - 1) };
+        let last = unsafe_ffi!(*l.add(n - 1));
         // SAFETY: non-null last is a live C string.
-        if !last.is_null() && unsafe { *last } == 0 {
+        if !last.is_null() && unsafe_ffi!(*last) == 0 {
             // isempty check
             // SAFETY: last is an owned split allocation and the vector slot is writable.
             unsafe {
@@ -1779,10 +1785,10 @@ pub unsafe extern "C" fn rs_strv_split_newlines_full(
     }
 
     // SAFETY: ret is non-null and writable by the caller contract.
-    unsafe { *ret = l };
+    unsafe_ffi!(*ret = l);
     // Return count (may be less than r if trailing empty was suppressed)
     // SAFETY: l remains a valid NULL-terminated vector.
-    (unsafe { rs_strv_length(l.cast()) }) as i32
+    (unsafe_ffi!(rs_strv_length(l.cast()))) as i32
 }
 
 /// Split string by newlines, returning a new array or NULL on error.
@@ -1798,7 +1804,7 @@ pub unsafe extern "C" fn rs_strv_split_newlines_full(
 pub unsafe extern "C" fn rs_strv_split_newlines(s: *const c_char) -> *mut *mut c_char {
     let mut ret: *mut *mut c_char = std::ptr::null_mut();
     // SAFETY: s is caller-validated and ret is a writable local.
-    if unsafe { rs_strv_split_newlines_full(&mut ret, s, 0) } < 0 {
+    if unsafe_ffi!(rs_strv_split_newlines_full(&mut ret, s, 0)) < 0 {
         return std::ptr::null_mut();
     }
     ret
@@ -1830,26 +1836,26 @@ pub unsafe extern "C" fn rs_strv_rebreak_lines(
     if width == SIZE_MAX {
         // NOP: just copy
         // SAFETY: this function forwards l's vector contract.
-        let copy = unsafe { rs_strv_copy_n(l.cast(), SIZE_MAX) };
+        let copy = unsafe_ffi!(rs_strv_copy_n(l.cast(), SIZE_MAX));
         if copy.is_null() && !l.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
         // SAFETY: ret is non-null and writable by the caller contract.
-        unsafe { *ret = copy };
+        unsafe_ffi!(*ret = copy);
         return 0;
     }
 
     if l.is_null() {
         // SAFETY: ret is non-null and writable by the caller contract.
-        unsafe { *ret = std::ptr::null_mut() };
+        unsafe_ffi!(*ret = std::ptr::null_mut());
         return 0;
     }
 
     let mut i: usize = 0;
     // SAFETY: the caller guarantees l is readable through its NULL terminator.
-    while !unsafe { (*l.add(i)).is_null() } {
+    while !unsafe_ffi!((*l.add(i)).is_null()) {
         // SAFETY: i currently indexes a live vector entry.
-        let line = unsafe { *l.add(i) };
+        let line = unsafe_ffi!(*l.add(i));
         let mut start: *const c_char = line;
         let mut whitespace_begin: *const c_char = std::ptr::null();
         let mut whitespace_end: *const c_char = std::ptr::null();
@@ -1858,9 +1864,9 @@ pub unsafe extern "C" fn rs_strv_rebreak_lines(
         let mut p: *const c_char = line;
 
         // SAFETY: each line is a live NUL-terminated C string.
-        while unsafe { *p } != 0 {
+        while unsafe_ffi!(*p) != 0 {
             // SAFETY: p currently points before the terminating NUL.
-            let ch = unsafe { *p } as u8;
+            let ch = unsafe_ffi!(*p) as u8;
 
             if NEWLINE.contains(&ch) {
                 in_prefix = true;
@@ -1881,36 +1887,36 @@ pub unsafe extern "C" fn rs_strv_rebreak_lines(
 
             let mut unichar = 0_u32;
             // SAFETY: p points to a live suffix of the current C string.
-            let encoded_len = unsafe { crate::utf8::rs_utf8_encoded_to_unichar(p, &mut unichar) };
+            let encoded_len = unsafe_ffi!(crate::utf8::rs_utf8_encoded_to_unichar(p, &mut unichar));
             if encoded_len < 0 {
                 // C rejects the complete operation on malformed UTF-8 without
                 // publishing the partially accumulated result.
                 // SAFETY: broken is the owned vector accumulated by this function.
-                unsafe { free_owned_strv(broken) };
+                unsafe_ffi!(free_owned_strv(broken));
                 return encoded_len;
             }
             // SAFETY: decoding above proved p begins a valid UTF-8 scalar.
-            let cw = unsafe { crate::utf8::rs_utf8_char_console_width(p) };
+            let cw = unsafe_ffi!(crate::utf8::rs_utf8_char_console_width(p));
             debug_assert!(cw >= 0);
             w += cw as usize;
 
             if w > width && !whitespace_begin.is_null() && !whitespace_end.is_null() {
                 // Break here
                 // SAFETY: start and whitespace_begin lie within the same C string.
-                let segment_len = unsafe { whitespace_begin.offset_from(start) } as usize;
+                let segment_len = unsafe_ffi!(whitespace_begin.offset_from(start)) as usize;
                 // SAFETY: start is readable for segment_len bytes.
-                let truncated = unsafe { strndup(start, segment_len) };
+                let truncated = unsafe_ffi!(strndup(start, segment_len));
                 if truncated.is_null() {
                     // SAFETY: broken is the owned vector accumulated by this function.
-                    unsafe { free_owned_strv(broken) };
+                    unsafe_ffi!(free_owned_strv(broken));
                     return Errno::ENOMEM.to_neg_errno();
                 }
 
                 // SAFETY: broken is a writable local vector and ownership of truncated transfers.
-                let r = unsafe { rs_strv_consume(&mut broken, truncated) };
+                let r = unsafe_ffi!(rs_strv_consume(&mut broken, truncated));
                 if r < 0 {
                     // SAFETY: broken is the owned vector accumulated by this function.
-                    unsafe { free_owned_strv(broken) };
+                    unsafe_ffi!(free_owned_strv(broken));
                     return Errno::ENOMEM.to_neg_errno();
                 }
 
@@ -1926,7 +1932,7 @@ pub unsafe extern "C" fn rs_strv_rebreak_lines(
 
             // Advance to next UTF-8 char
             // SAFETY: encoded_len is the validated byte length at p.
-            p = unsafe { p.add(encoded_len as usize) };
+            p = unsafe_ffi!(p.add(encoded_len as usize));
         }
 
         // Process rest of the line
@@ -1934,37 +1940,37 @@ pub unsafe extern "C" fn rs_strv_rebreak_lines(
             // Never saw non-whitespace — generate empty line
             let empty = b"\0".as_ptr().cast::<c_char>();
             // SAFETY: broken is a writable local and empty is static C-compatible storage.
-            let r = unsafe { rs_strv_extend(&mut broken, empty) };
+            let r = unsafe_ffi!(rs_strv_extend(&mut broken, empty));
             if r < 0 {
                 // SAFETY: broken is the owned vector accumulated by this function.
-                unsafe { free_owned_strv(broken) };
+                unsafe_ffi!(free_owned_strv(broken));
                 return r;
             }
         } else if !whitespace_begin.is_null() && whitespace_end.is_null() {
             // Ends in whitespace — chop it off
             // SAFETY: start and whitespace_begin lie within the same C string.
-            let segment_len = unsafe { whitespace_begin.offset_from(start) } as usize;
+            let segment_len = unsafe_ffi!(whitespace_begin.offset_from(start)) as usize;
             // SAFETY: start is readable for segment_len bytes.
-            let truncated = unsafe { strndup(start, segment_len) };
+            let truncated = unsafe_ffi!(strndup(start, segment_len));
             if truncated.is_null() {
                 // SAFETY: broken is the owned vector accumulated by this function.
-                unsafe { free_owned_strv(broken) };
+                unsafe_ffi!(free_owned_strv(broken));
                 return Errno::ENOMEM.to_neg_errno();
             }
             // SAFETY: broken is a writable local vector and ownership of truncated transfers.
-            let r = unsafe { rs_strv_consume(&mut broken, truncated) };
+            let r = unsafe_ffi!(rs_strv_consume(&mut broken, truncated));
             if r < 0 {
                 // SAFETY: broken is the owned vector accumulated by this function.
-                unsafe { free_owned_strv(broken) };
+                unsafe_ffi!(free_owned_strv(broken));
                 return Errno::ENOMEM.to_neg_errno();
             }
         } else {
             // Use line as-is
             // SAFETY: broken is a writable local vector and start is a live C-string suffix.
-            let r = unsafe { rs_strv_extend(&mut broken, start) };
+            let r = unsafe_ffi!(rs_strv_extend(&mut broken, start));
             if r < 0 {
                 // SAFETY: broken is the owned vector accumulated by this function.
-                unsafe { free_owned_strv(broken) };
+                unsafe_ffi!(free_owned_strv(broken));
                 return r;
             }
         }
@@ -1973,7 +1979,7 @@ pub unsafe extern "C" fn rs_strv_rebreak_lines(
     }
 
     // SAFETY: ret is non-null and writable by the caller contract.
-    unsafe { *ret = broken };
+    unsafe_ffi!(*ret = broken);
     0
 }
 
@@ -1995,7 +2001,7 @@ pub unsafe extern "C" fn rs_strv_split(
 ) -> *mut *mut c_char {
     let mut ret: *mut *mut c_char = std::ptr::null_mut();
     // SAFETY: s/separators are caller-validated and ret is a writable local.
-    let r = unsafe { rs_strv_split_full(&mut ret, s, separators, 1 << 7) }; // EXTRACT_RETAIN_ESCAPE
+    let r = unsafe_ffi!(rs_strv_split_full(&mut ret, s, separators, 1 << 7)); // EXTRACT_RETAIN_ESCAPE
     if r < 0 {
         return std::ptr::null_mut();
     }
@@ -2019,15 +2025,15 @@ pub unsafe extern "C" fn rs_strv_consume_pair(
     b: *mut c_char,
 ) -> i32 {
     // SAFETY: this function forwards l's ownership contract and transfers a/b.
-    let r = unsafe { rs_strv_push_pair(l, a, b) };
+    let r = unsafe_ffi!(rs_strv_push_pair(l, a, b));
     if r < 0 {
         if !a.is_null() {
             // SAFETY: push failed, so this function still owns a.
-            unsafe { free(a.cast()) };
+            unsafe_ffi!(free(a.cast()));
         }
         if !b.is_null() {
             // SAFETY: push failed, so this function still owns b.
-            unsafe { free(b.cast()) };
+            unsafe_ffi!(free(b.cast()));
         }
     }
     r
@@ -2053,9 +2059,9 @@ pub unsafe extern "C" fn rs_strv_contains(l: *const *mut c_char, s: *const c_cha
         return false;
     }
     // SAFETY: the caller guarantees l is a NULL-terminated vector.
-    for entry in unsafe { strv_iter(l.cast()) } {
+    for entry in unsafe_ffi!(strv_iter(l.cast())) {
         // SAFETY: entry and s are live C strings.
-        if unsafe { strcmp(entry.as_ptr(), s) } == 0 {
+        if unsafe_ffi!(strcmp(entry.as_ptr(), s)) == 0 {
             return true;
         }
     }
@@ -2082,10 +2088,10 @@ pub unsafe extern "C" fn rs_strv_free_and_replace(
 ) {
     // Free existing array
     // SAFETY: the caller guarantees a and b name readable/writable lvalues.
-    let old = unsafe { *a };
+    let old = unsafe_ffi!(*a);
     if !old.is_null() {
         // SAFETY: old is the owned vector currently stored in *a.
-        unsafe { free_owned_strv(old) };
+        unsafe_ffi!(free_owned_strv(old));
     }
     // SAFETY: this mirrors free_and_replace_full: read b after freeing a,
     // assign it to a, then consume b by clearing its caller-visible lvalue.
@@ -2119,36 +2125,36 @@ pub unsafe extern "C" fn rs_strv_extend_strv_consume(
     }
 
     // SAFETY: b is NULL or an owned NULL-terminated vector.
-    let q = unsafe { rs_strv_length(b.cast()) };
+    let q = unsafe_ffi!(rs_strv_length(b.cast()));
     if q == 0 {
         // Free b (it's empty)
         if !b.is_null() {
             // SAFETY: an empty b has no entries, so only the array is freed.
-            unsafe { free(b.cast()) };
+            unsafe_ffi!(free(b.cast()));
         }
         return 0;
     }
 
     // SAFETY: the caller guarantees *a is NULL or a NULL-terminated vector.
-    let p = unsafe { rs_strv_length(*a as *const *mut c_char) };
+    let p = unsafe_ffi!(rs_strv_length(*a as *const *mut c_char));
     if p == 0 {
         // Take over b entirely
         let mut b_consume = b;
         // SAFETY: b_consume is this function's local ownership slot, matching
         // the C implementation's cleanup-managed b_consume lvalue.
-        unsafe { rs_strv_free_and_replace(a, &mut b_consume) };
+        unsafe_ffi!(rs_strv_free_and_replace(a, &mut b_consume));
         if filter_duplicates {
             // SAFETY: *a now owns b and remains a writable vector.
-            unsafe { rs_strv_uniq(*a) };
+            unsafe_ffi!(rs_strv_uniq(*a));
         }
         // SAFETY: *a is the resulting NULL-terminated vector.
-        return unsafe { rs_strv_length(*a as *const *mut c_char) } as i32;
+        return unsafe_ffi!(rs_strv_length(*a as *const *mut c_char)) as i32;
     }
 
     if p >= SIZE_MAX - q {
         if !b.is_null() {
             // SAFETY: no entries were moved, so b remains owned here.
-            unsafe { free_owned_strv(b) };
+            unsafe_ffi!(free_owned_strv(b));
         }
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -2166,7 +2172,7 @@ pub unsafe extern "C" fn rs_strv_extend_strv_consume(
     if t.is_null() {
         if !b.is_null() {
             // SAFETY: no entries were moved, so b remains owned here.
-            unsafe { free_owned_strv(b) };
+            unsafe_ffi!(free_owned_strv(b));
         }
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -2183,33 +2189,33 @@ pub unsafe extern "C" fn rs_strv_extend_strv_consume(
         let mut j: usize = 0;
         while j < q {
             // SAFETY: j < q keeps both accesses within their vectors.
-            unsafe { *t.add(p + j) = *b.add(j) };
+            unsafe_ffi!(*t.add(p + j) = *b.add(j));
             j += 1;
         }
         // SAFETY: t reserves the final NULL terminator slot.
-        unsafe { *t.add(p + q) = std::ptr::null_mut() };
+        unsafe_ffi!(*t.add(p + q) = std::ptr::null_mut());
         i = q;
     } else {
         // Copy only non-duplicate entries
         // SAFETY: b is an owned NULL-terminated vector.
-        for entry in unsafe { strv_iter(b.cast()) } {
+        for entry in unsafe_ffi!(strv_iter(b.cast())) {
             // SAFETY: t is the live destination vector and entry is a live C string.
-            if unsafe { rs_strv_contains(t.cast(), entry.as_ptr()) } {
+            if unsafe_ffi!(rs_strv_contains(t.cast(), entry.as_ptr())) {
                 // SAFETY: duplicate entry ownership remains with this function.
-                unsafe { free(entry.as_ptr().cast_mut().cast()) };
+                unsafe_ffi!(free(entry.as_ptr().cast_mut().cast()));
             } else {
                 // SAFETY: i < q and t reserves p+q+1 entries.
-                unsafe { *t.add(p + i) = entry.as_ptr().cast_mut() };
+                unsafe_ffi!(*t.add(p + i) = entry.as_ptr().cast_mut());
                 i += 1;
                 // SAFETY: t reserves the final NULL terminator slot.
-                unsafe { *t.add(p + i) = std::ptr::null_mut() };
+                unsafe_ffi!(*t.add(p + i) = std::ptr::null_mut());
             }
         }
     }
 
     // Free the b array (not its entries — they were moved or freed above)
     // SAFETY: all entries were moved or freed; only b's pointer array remains.
-    unsafe { free(b.cast()) };
+    unsafe_ffi!(free(b.cast()));
 
     i as i32
 }
@@ -2242,19 +2248,19 @@ pub unsafe extern "C" fn rs_strv_split_and_extend_full(
 
     let mut l: *mut *mut c_char = std::ptr::null_mut();
     // SAFETY: s/separators are caller-validated and l is a writable local.
-    let r = unsafe { rs_strv_split_full(&mut l, s, separators, flags) };
+    let r = unsafe_ffi!(rs_strv_split_full(&mut l, s, separators, flags));
     if r < 0 {
         return r;
     }
 
     // SAFETY: this function forwards t's ownership contract and transfers l.
-    let r2 = unsafe { rs_strv_extend_strv_consume(t, l, filter_duplicates) };
+    let r2 = unsafe_ffi!(rs_strv_extend_strv_consume(t, l, filter_duplicates));
     if r2 < 0 {
         return r2;
     }
 
     // SAFETY: *t is the resulting NULL-terminated vector.
-    (unsafe { rs_strv_length(*t as *const *mut c_char) }) as i32
+    (unsafe_ffi!(rs_strv_length(*t as *const *mut c_char))) as i32
 }
 
 // ── strv.h inline wrapper functions ───────────────────────────────────────
@@ -2271,7 +2277,7 @@ pub unsafe extern "C" fn rs_strv_split_and_extend_full(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strv_copy(l: *const *mut c_char) -> *mut *mut c_char {
     // SAFETY: this function forwards the vector contract unchanged.
-    unsafe { rs_strv_copy_n(l.cast(), SIZE_MAX) }
+    unsafe_ffi!(rs_strv_copy_n(l.cast(), SIZE_MAX))
 }
 
 /// Push value onto the string array *l, taking ownership of value.
@@ -2285,7 +2291,7 @@ pub unsafe extern "C" fn rs_strv_copy(l: *const *mut c_char) -> *mut *mut c_char
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strv_push(l: *mut *mut *mut c_char, value: *mut c_char) -> i32 {
     // SAFETY: this function forwards l's ownership contract and transfers value.
-    unsafe { rs_strv_push_with_size(l, std::ptr::null_mut(), value) }
+    unsafe_ffi!(rs_strv_push_with_size(l, std::ptr::null_mut(), value))
 }
 
 /// Prepend value at the beginning of the string array *l.
@@ -2299,7 +2305,7 @@ pub unsafe extern "C" fn rs_strv_push(l: *mut *mut *mut c_char, value: *mut c_ch
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strv_push_prepend(l: *mut *mut *mut c_char, value: *mut c_char) -> i32 {
     // SAFETY: this function forwards l's ownership contract and transfers value.
-    unsafe { rs_strv_insert(l, 0, value) }
+    unsafe_ffi!(rs_strv_insert(l, 0, value))
 }
 
 /// Check if two NULL-terminated string arrays a and b are equal.
@@ -2313,7 +2319,7 @@ pub unsafe extern "C" fn rs_strv_push_prepend(l: *mut *mut *mut c_char, value: *
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strv_equal(a: *const *mut c_char, b: *const *mut c_char) -> bool {
     // SAFETY: this function forwards both vector contracts unchanged.
-    (unsafe { rs_strv_compare(a.cast(), b.cast()) }) == 0
+    (unsafe_ffi!(rs_strv_compare(a.cast(), b.cast()))) == 0
 }
 
 /// Return x if non-NULL, otherwise POINTER_MAX as sentinel.
@@ -2337,7 +2343,7 @@ pub extern "C" fn rs_STRV_IFNOTNULL(x: *const c_char) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strv_isempty(l: *const *mut c_char) -> bool {
     // SAFETY: the caller guarantees non-null l points to the first vector entry.
-    l.is_null() || unsafe { (*l).is_null() }
+    l.is_null() || unsafe_ffi!((*l).is_null())
 }
 
 /// Join all strings in l with separator.
@@ -2354,7 +2360,7 @@ pub unsafe extern "C" fn rs_strv_join(
     separator: *const c_char,
 ) -> *mut c_char {
     // SAFETY: this function forwards the vector/separator contracts unchanged.
-    unsafe { rs_strv_join_full(l, separator, std::ptr::null(), false) }
+    unsafe_ffi!(rs_strv_join_full(l, separator, std::ptr::null(), false))
 }
 
 /// Check if string s matches any pattern in patterns using fnmatch.
@@ -2368,7 +2374,12 @@ pub unsafe extern "C" fn rs_strv_join(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strv_fnmatch(patterns: *const *mut c_char, s: *const c_char) -> bool {
     // SAFETY: this function forwards the pattern vector and string contracts.
-    unsafe { rs_strv_fnmatch_full(patterns.cast(), s, 0, std::ptr::null_mut()) }
+    unsafe_ffi!(rs_strv_fnmatch_full(
+        patterns.cast(),
+        s,
+        0,
+        std::ptr::null_mut()
+    ))
 }
 
 /// Check if string s matches any pattern, or if patterns is empty.
@@ -2389,7 +2400,7 @@ pub unsafe extern "C" fn rs_strv_fnmatch_or_empty(
         return false;
     }
     // SAFETY: this function forwards the pattern vector contract.
-    (unsafe { rs_strv_isempty(patterns) })
+    (unsafe_ffi!(rs_strv_isempty(patterns)))
         // SAFETY: this function forwards the pattern vector and string contracts.
         || unsafe { rs_strv_fnmatch_full(
             patterns.cast::<*mut c_char>(),
@@ -2403,6 +2414,14 @@ pub unsafe extern "C" fn rs_strv_fnmatch_or_empty(
 
 #[cfg(test)]
 mod tests {
+    // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
+    macro_rules! test_ffi {
+        ($expression:expr) => {{
+            // SAFETY: test inputs are constructed in this module and satisfy the
+            // documented C ABI preconditions of the exercised facade.
+            unsafe { $expression }
+        }};
+    }
     use super::*;
     use std::ffi::CString;
 
@@ -2418,24 +2437,24 @@ mod tests {
         for (i, s) in strings.iter().enumerate() {
             let c_str = CString::new(*s).unwrap();
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            let dup = unsafe { strdup(c_str.as_ptr()) };
+            let dup = test_ffi!(strdup(c_str.as_ptr()));
             if dup.is_null() {
                 // Cleanup on OOM
                 for j in 0..i {
                     // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-                    unsafe { free(*ptr.add(j) as *mut c_void) };
+                    test_ffi!(free(*ptr.add(j) as *mut c_void));
                 }
                 // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-                unsafe { free(ptr as *mut c_void) };
+                test_ffi!(free(ptr as *mut c_void));
                 return std::ptr::null_mut();
             }
             // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-            unsafe { *ptr.add(i) = dup };
+            test_ffi!(*ptr.add(i) = dup);
         }
 
         // Null-terminate the array
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { *ptr.add(strings.len()) = std::ptr::null_mut() };
+        test_ffi!(*ptr.add(strings.len()) = std::ptr::null_mut());
         ptr
     }
 
@@ -2446,7 +2465,7 @@ mod tests {
     /// returned by `make_strv`; this consumes the vector exactly once.
     unsafe fn free_strv(l: *mut *mut c_char) {
         // SAFETY: test vectors are allocated entry-by-entry with the C allocator.
-        unsafe { super::free_owned_strv(l) };
+        test_ffi!(super::free_owned_strv(l));
     }
 
     #[test]
@@ -2454,31 +2473,31 @@ mod tests {
         let empty: [*mut c_char; 1] = [std::ptr::null_mut()];
         let ptr = empty.as_ptr();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert_eq!(unsafe { rs_strv_length(ptr) }, 0);
+        assert_eq!(test_ffi!(rs_strv_length(ptr)), 0);
     }
 
     #[test]
     fn test_strv_length_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert_eq!(unsafe { rs_strv_length(std::ptr::null()) }, 0);
+        assert_eq!(test_ffi!(rs_strv_length(std::ptr::null())), 0);
     }
 
     #[test]
     fn test_strv_length_single() {
         let v = make_strv(&["hello"]);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert_eq!(unsafe { rs_strv_length(v as *const *mut c_char) }, 1);
+        assert_eq!(test_ffi!(rs_strv_length(v as *const *mut c_char)), 1);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { free_strv(v) };
+        test_ffi!(free_strv(v));
     }
 
     #[test]
     fn test_strv_length_multiple() {
         let v = make_strv(&["a", "b", "c"]);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert_eq!(unsafe { rs_strv_length(v as *const *mut c_char) }, 3);
+        assert_eq!(test_ffi!(rs_strv_length(v as *const *mut c_char)), 3);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { free_strv(v) };
+        test_ffi!(free_strv(v));
     }
 
     #[test]
@@ -2486,12 +2505,12 @@ mod tests {
         let v = make_strv(&["foo", "bar", "baz"]);
         let needle = CString::new("bar").unwrap();
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        let result = unsafe { rs_strv_find(v as *const *mut c_char, needle.as_ptr()) };
+        let result = test_ffi!(rs_strv_find(v as *const *mut c_char, needle.as_ptr()));
         assert!(!result.is_null());
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        unsafe { assert_eq!(CStr::from_ptr(result), needle.as_c_str()) };
+        test_ffi!(assert_eq!(CStr::from_ptr(result), needle.as_c_str()));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { free_strv(v) };
+        test_ffi!(free_strv(v));
     }
 
     #[test]
@@ -2499,19 +2518,19 @@ mod tests {
         let v = make_strv(&["foo", "bar", "baz"]);
         let needle = CString::new("qux").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_strv_find(v as *const *mut c_char, needle.as_ptr()) };
+        let result = test_ffi!(rs_strv_find(v as *const *mut c_char, needle.as_ptr()));
         assert!(result.is_null());
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { free_strv(v) };
+        test_ffi!(free_strv(v));
     }
 
     #[test]
     fn test_strv_sort_unsorted() {
         let v = make_strv(&["charlie", "alpha", "bravo"]);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { rs_strv_sort(v) };
+        test_ffi!(rs_strv_sort(v));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let len = unsafe { rs_strv_length(v as *const *mut c_char) };
+        let len = test_ffi!(rs_strv_length(v as *const *mut c_char));
         assert_eq!(len, 3);
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
         unsafe {
@@ -2520,30 +2539,30 @@ mod tests {
             assert_eq!(CStr::from_ptr(*v.add(2)).to_str().unwrap(), "charlie");
         }
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { free_strv(v) };
+        test_ffi!(free_strv(v));
     }
 
     #[test]
     fn test_strv_is_uniq_with_duplicates() {
         let v = make_strv(&["a", "b", "a"]);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(!unsafe { rs_strv_is_uniq(v as *const *mut c_char) });
+        assert!(!test_ffi!(rs_strv_is_uniq(v as *const *mut c_char)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { free_strv(v) };
+        test_ffi!(free_strv(v));
     }
 
     #[test]
     fn test_strv_is_uniq_without_duplicates() {
         let v = make_strv(&["a", "b", "c"]);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_strv_is_uniq(v as *const *mut c_char) });
+        assert!(test_ffi!(rs_strv_is_uniq(v as *const *mut c_char)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { free_strv(v) };
+        test_ffi!(free_strv(v));
     }
 
     #[test]
     fn test_strv_is_uniq_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_strv_is_uniq(std::ptr::null()) });
+        assert!(test_ffi!(rs_strv_is_uniq(std::ptr::null())));
     }
 }

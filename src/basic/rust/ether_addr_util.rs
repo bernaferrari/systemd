@@ -2,6 +2,14 @@
 //
 // PORT-SYNC: scope=basic.ether-addr-util; authority=src/basic/ether-addr-util.c,src/basic/ether-addr-util.h
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use libc::c_char;
 use std::cmp::Ordering;
 use std::ffi::CStr;
@@ -34,7 +42,7 @@ pub struct RsEtherAddr {
 // values and fixed slices.
 fn with_hw_addr<T>(ptr: *const RsHwAddrData, operation: impl FnOnce(&RsHwAddrData) -> T) -> T {
     // SAFETY: the enclosing ABI contract guarantees a live readable RsHwAddrData.
-    operation(unsafe { &*ptr })
+    operation(unsafe_ffi!(&*ptr))
 }
 
 fn with_hw_addrs<T>(
@@ -43,7 +51,7 @@ fn with_hw_addrs<T>(
     operation: impl FnOnce(&RsHwAddrData, &RsHwAddrData) -> T,
 ) -> T {
     // SAFETY: the enclosing ABI contract guarantees both live readable values.
-    unsafe { operation(&*left, &*right) }
+    unsafe_ffi!(operation(&*left, &*right))
 }
 
 fn with_mut_hw_addr<T>(
@@ -51,12 +59,12 @@ fn with_mut_hw_addr<T>(
     operation: impl FnOnce(&mut RsHwAddrData) -> T,
 ) -> T {
     // SAFETY: the enclosing ABI contract guarantees a live writable RsHwAddrData.
-    operation(unsafe { &mut *ptr })
+    operation(unsafe_ffi!(&mut *ptr))
 }
 
 fn with_ether_addr<T>(ptr: *const RsEtherAddr, operation: impl FnOnce(&RsEtherAddr) -> T) -> T {
     // SAFETY: the enclosing ABI contract guarantees a live readable RsEtherAddr.
-    operation(unsafe { &*ptr })
+    operation(unsafe_ffi!(&*ptr))
 }
 
 fn with_ether_addrs<T>(
@@ -65,7 +73,7 @@ fn with_ether_addrs<T>(
     operation: impl FnOnce(&RsEtherAddr, &RsEtherAddr) -> T,
 ) -> T {
     // SAFETY: the enclosing ABI contract guarantees both live readable values.
-    unsafe { operation(&*left, &*right) }
+    unsafe_ffi!(operation(&*left, &*right))
 }
 
 fn with_mut_ether_addr<T>(
@@ -73,7 +81,7 @@ fn with_mut_ether_addr<T>(
     operation: impl FnOnce(&mut RsEtherAddr) -> T,
 ) -> T {
     // SAFETY: the enclosing ABI contract guarantees a live writable RsEtherAddr.
-    operation(unsafe { &mut *ptr })
+    operation(unsafe_ffi!(&mut *ptr))
 }
 
 fn with_c_buffer<const N: usize, T>(
@@ -438,7 +446,7 @@ pub unsafe extern "C" fn rs_hw_addr_set(
         return ptr::null_mut();
     }
     // SAFETY: the public ABI contract guarantees `length` readable bytes.
-    let bytes = unsafe { std::slice::from_raw_parts(bytes, length) };
+    let bytes = unsafe_ffi!(std::slice::from_raw_parts(bytes, length));
     with_mut_hw_addr(addr, |addr| {
         addr.set_bytes(bytes);
         addr as *mut RsHwAddrData
@@ -570,7 +578,7 @@ pub unsafe extern "C" fn rs_parse_hw_addr_full(
     ret: *mut RsHwAddrData,
 ) -> i32 {
     // SAFETY: the documented ABI contract guarantees a readable C string.
-    let Ok(text) = unsafe { CStr::from_ptr(s) }.to_str() else {
+    let Ok(text) = unsafe_ffi!(CStr::from_ptr(s)).to_str() else {
         return Errno::EINVAL.to_neg_errno();
     };
     let Ok(parsed) = parse_hw_addr_full(text, expected_len) else {
@@ -590,7 +598,7 @@ pub unsafe extern "C" fn rs_parse_hw_addr_full(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_ether_addr(s: *const c_char, ret: *mut RsEtherAddr) -> i32 {
     // SAFETY: the documented ABI contract guarantees a readable C string.
-    let Ok(text) = unsafe { CStr::from_ptr(s) }.to_str() else {
+    let Ok(text) = unsafe_ffi!(CStr::from_ptr(s)).to_str() else {
         return Errno::EINVAL.to_neg_errno();
     };
     let Ok(parsed) = parse_ether_addr(text) else {

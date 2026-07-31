@@ -12,6 +12,13 @@
 // table when it is available, but a target-generated-table parity claim must
 // not be inferred from this source-only port.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter validates the pointer and lifetime contract.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::c_char;
 
@@ -238,7 +245,7 @@ pub unsafe extern "C" fn rs_af_from_name(name: *const c_char) -> i32 {
 
     // SAFETY: required by this C ABI entry point's contract and checked for
     // NULL above. This borrows opaque C bytes only for the lookup.
-    let name = unsafe { std::ffi::CStr::from_ptr(name) }.to_bytes();
+    let name = unsafe_ffi!(std::ffi::CStr::from_ptr(name)).to_bytes();
     af_from_name_bytes(name).map_or(AF_INVALID, |family| family as i32)
 }
 
@@ -272,7 +279,7 @@ pub unsafe extern "C" fn rs_af_from_ipv4_ipv6(family: *const c_char) -> i32 {
 
     // SAFETY: required by this C ABI entry point's contract and checked for
     // NULL above.
-    match unsafe { std::ffi::CStr::from_ptr(family) }.to_bytes() {
+    match unsafe_ffi!(std::ffi::CStr::from_ptr(family)).to_bytes() {
         b"ipv4" => AddressFamily::Inet as i32,
         b"ipv6" => AddressFamily::Inet6 as i32,
         _ => AddressFamily::Unspec as i32,

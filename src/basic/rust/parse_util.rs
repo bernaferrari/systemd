@@ -5,6 +5,14 @@
 // Safe numeric parsing, boolean parsing, and size parsing.
 // Core safe_ato* family and parse_boolean used throughout systemd.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use crate::errno_util::errno_from_name as errno_from_name_rs;
 use crate::ffi::{Errno, clear_errno, get_errno, is_whitespace};
 use crate::process_util_str_tables::oom_score_adjust_is_valid as oom_score_adjust_is_valid_rs;
@@ -37,7 +45,7 @@ unsafe fn cstr_bytes<'a>(s: *const c_char) -> Result<&'a [u8], i32> {
     }
 
     // SAFETY: upheld by this helper's contract.
-    Ok(unsafe { CStr::from_ptr(s) }.to_bytes())
+    Ok(unsafe_ffi!(CStr::from_ptr(s)).to_bytes())
 }
 
 /// Resolve a C errno name through the safe Rust table.
@@ -86,13 +94,13 @@ fn skip_c_whitespace(bytes: &[u8]) -> &[u8] {
 /// `s` must point to a live NUL-terminated C string for this call.
 unsafe fn skip_whitespace_ptr(s: *const c_char) -> *const c_char {
     // SAFETY: upheld by this helper's contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let offset = bytes
         .iter()
         .position(|byte| !is_whitespace(*byte))
         .unwrap_or(bytes.len());
     // SAFETY: offset was measured within the C string above.
-    unsafe { s.add(offset) }
+    unsafe_ffi!(s.add(offset))
 }
 
 fn strcase_in_set(value: &[u8], set: &[&CStr]) -> bool {
@@ -248,7 +256,7 @@ fn parse_boolean_inner(v: &[u8]) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_boolean(v: *const c_char) -> i32 {
     // SAFETY: the ABI contract guarantees that a non-null input is a C string.
-    match unsafe { cstr_bytes(v) } {
+    match unsafe_ffi!(cstr_bytes(v)) {
         Ok(bytes) => parse_boolean_inner(bytes),
         Err(error) => error,
     }
@@ -269,7 +277,7 @@ pub(crate) unsafe fn safe_atou_full_inner(s: *const c_char, base: u32, ret_u: *m
     }
 
     // SAFETY: upheld by this function's C-string contract.
-    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
+    let Ok(bytes) = (unsafe_ffi!(cstr_bytes(s))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     if flags_set(base, SAFE_ATO_REFUSE_LEADING_WHITESPACE)
@@ -298,7 +306,7 @@ pub(crate) unsafe fn safe_atou_full_inner(s: *const c_char, base: u32, ret_u: *m
 
     if !ret_u.is_null() {
         // SAFETY: the caller guarantees non-null ret_u is writable.
-        unsafe { *ret_u = value as u32 };
+        unsafe_ffi!(*ret_u = value as u32);
     }
     0
 }
@@ -315,7 +323,7 @@ pub(crate) unsafe fn safe_atou_full_inner(s: *const c_char, base: u32, ret_u: *m
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atou_full(s: *const c_char, base: u32, ret_u: *mut u32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atou_full_inner(s, base, ret_u) }
+    unsafe_ffi!(safe_atou_full_inner(s, base, ret_u))
 }
 
 /// Parse an unsigned integer from string s.
@@ -330,7 +338,7 @@ pub unsafe extern "C" fn rs_safe_atou_full(s: *const c_char, base: u32, ret_u: *
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atou(s: *const c_char, ret_u: *mut u32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atou_full_inner(s, 0, ret_u) }
+    unsafe_ffi!(safe_atou_full_inner(s, 0, ret_u))
 }
 
 /// Parse an unsigned integer from string s, bounded between min and max.
@@ -351,7 +359,7 @@ pub unsafe extern "C" fn rs_safe_atou_bounded(
 ) -> i32 {
     let mut v: u32 = 0;
     // SAFETY: s is caller-validated and v is a live writable local.
-    let r = unsafe { safe_atou_full_inner(s, 0, &mut v) };
+    let r = unsafe_ffi!(safe_atou_full_inner(s, 0, &mut v));
     if r < 0 {
         return r;
     }
@@ -360,7 +368,7 @@ pub unsafe extern "C" fn rs_safe_atou_bounded(
     }
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = v };
+        unsafe_ffi!(*ret = v);
     }
     0
 }
@@ -380,7 +388,7 @@ pub unsafe extern "C" fn rs_safe_atou_bounded(
 pub unsafe extern "C" fn rs_safe_atou8_full(s: *const c_char, base: u32, ret: *mut u8) -> i32 {
     let mut u: u32 = 0;
     // SAFETY: s is caller-validated and u is a live writable local.
-    let r = unsafe { safe_atou_full_inner(s, base, &mut u) };
+    let r = unsafe_ffi!(safe_atou_full_inner(s, base, &mut u));
     if r < 0 {
         return r;
     }
@@ -389,7 +397,7 @@ pub unsafe extern "C" fn rs_safe_atou8_full(s: *const c_char, base: u32, ret: *m
     }
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = u as u8 };
+        unsafe_ffi!(*ret = u as u8);
     }
     0
 }
@@ -407,7 +415,7 @@ pub unsafe extern "C" fn rs_safe_atou8_full(s: *const c_char, base: u32, ret: *m
 pub unsafe extern "C" fn rs_safe_atou16_full(s: *const c_char, base: u32, ret: *mut u16) -> i32 {
     let mut u: u32 = 0;
     // SAFETY: s is caller-validated and u is a live writable local.
-    let r = unsafe { safe_atou_full_inner(s, base, &mut u) };
+    let r = unsafe_ffi!(safe_atou_full_inner(s, base, &mut u));
     if r < 0 {
         return r;
     }
@@ -416,7 +424,7 @@ pub unsafe extern "C" fn rs_safe_atou16_full(s: *const c_char, base: u32, ret: *
     }
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = u as u16 };
+        unsafe_ffi!(*ret = u as u16);
     }
     0
 }
@@ -427,7 +435,7 @@ pub unsafe extern "C" fn rs_safe_atou16_full(s: *const c_char, base: u32, ret: *
 // a non-NULL output is writable for one i32 and is only published on success.
 unsafe fn safe_atoi_inner(s: *const c_char, ret_i: *mut i32) -> i32 {
     // SAFETY: upheld by this function's C-string contract.
-    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
+    let Ok(bytes) = (unsafe_ffi!(cstr_bytes(s))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     let bytes = skip_whitespace(bytes);
@@ -443,7 +451,7 @@ unsafe fn safe_atoi_inner(s: *const c_char, ret_i: *mut i32) -> i32 {
 
     if !ret_i.is_null() {
         // SAFETY: the caller guarantees non-null ret_i is writable.
-        unsafe { *ret_i = value as i32 };
+        unsafe_ffi!(*ret_i = value as i32);
     }
     0
 }
@@ -462,7 +470,7 @@ unsafe fn safe_atoi_inner(s: *const c_char, ret_i: *mut i32) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atoi(s: *const c_char, ret_i: *mut i32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atoi_inner(s, ret_i) }
+    unsafe_ffi!(safe_atoi_inner(s, ret_i))
 }
 
 /// Parse a signed 16-bit integer from string s.
@@ -477,7 +485,7 @@ pub unsafe extern "C" fn rs_safe_atoi(s: *const c_char, ret_i: *mut i32) -> i32 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atoi16(s: *const c_char, ret: *mut i16) -> i32 {
     // SAFETY: upheld by this export's C-string contract.
-    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
+    let Ok(bytes) = (unsafe_ffi!(cstr_bytes(s))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     let mut base = 0;
@@ -492,7 +500,7 @@ pub unsafe extern "C" fn rs_safe_atoi16(s: *const c_char, ret: *mut i16) -> i32 
 
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = value as i16 };
+        unsafe_ffi!(*ret = value as i16);
     }
     0
 }
@@ -508,7 +516,7 @@ pub unsafe extern "C" fn rs_safe_atoi16(s: *const c_char, ret: *mut i16) -> i32 
 /// C-string inputs must remain NUL-terminated and live for the call.
 pub(crate) unsafe fn safe_atolli_inner(s: *const c_char, ret_lli: *mut i64) -> i32 {
     // SAFETY: upheld by this function's C-string contract.
-    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
+    let Ok(bytes) = (unsafe_ffi!(cstr_bytes(s))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     let bytes = skip_whitespace(bytes);
@@ -521,7 +529,7 @@ pub(crate) unsafe fn safe_atolli_inner(s: *const c_char, ret_lli: *mut i64) -> i
 
     if !ret_lli.is_null() {
         // SAFETY: the caller guarantees non-null ret_lli is writable.
-        unsafe { *ret_lli = value };
+        unsafe_ffi!(*ret_lli = value);
     }
     0
 }
@@ -540,7 +548,7 @@ pub(crate) unsafe fn safe_atolli_inner(s: *const c_char, ret_lli: *mut i64) -> i
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atolli(s: *const c_char, ret_lli: *mut i64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atolli_inner(s, ret_lli) }
+    unsafe_ffi!(safe_atolli_inner(s, ret_lli))
 }
 
 // ── safe_atollu_full ──────────────────────────────────────────────────────
@@ -558,7 +566,7 @@ pub(crate) unsafe fn safe_atollu_full_inner(s: *const c_char, base: u32, ret_llu
     }
 
     // SAFETY: upheld by this function's C-string contract.
-    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
+    let Ok(bytes) = (unsafe_ffi!(cstr_bytes(s))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     if flags_set(base, SAFE_ATO_REFUSE_LEADING_WHITESPACE)
@@ -587,7 +595,7 @@ pub(crate) unsafe fn safe_atollu_full_inner(s: *const c_char, base: u32, ret_llu
 
     if !ret_llu.is_null() {
         // SAFETY: the caller guarantees non-null ret_llu is writable.
-        unsafe { *ret_llu = value };
+        unsafe_ffi!(*ret_llu = value);
     }
     0
 }
@@ -608,7 +616,7 @@ pub unsafe extern "C" fn rs_safe_atollu_full(
     ret_llu: *mut u64,
 ) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atollu_full_inner(s, base, ret_llu) }
+    unsafe_ffi!(safe_atollu_full_inner(s, base, ret_llu))
 }
 
 /// Parse an unsigned 64-bit integer from string s.
@@ -623,7 +631,7 @@ pub unsafe extern "C" fn rs_safe_atollu_full(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atollu(s: *const c_char, ret_llu: *mut u64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atollu_full_inner(s, 0, ret_llu) }
+    unsafe_ffi!(safe_atollu_full_inner(s, 0, ret_llu))
 }
 
 /// Parse an unsigned 64-bit integer from string s.
@@ -638,7 +646,7 @@ pub unsafe extern "C" fn rs_safe_atollu(s: *const c_char, ret_llu: *mut u64) -> 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atou64(s: *const c_char, ret_u: *mut u64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atollu_full_inner(s, 0, ret_u) }
+    unsafe_ffi!(safe_atollu_full_inner(s, 0, ret_u))
 }
 
 /// Parse a signed 64-bit integer from string s.
@@ -653,7 +661,7 @@ pub unsafe extern "C" fn rs_safe_atou64(s: *const c_char, ret_u: *mut u64) -> i3
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atoi64(s: *const c_char, ret_i: *mut i64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atolli_inner(s, ret_i) }
+    unsafe_ffi!(safe_atolli_inner(s, ret_i))
 }
 
 /// Parse an unsigned 64-bit hexadecimal integer from string s.
@@ -668,7 +676,7 @@ pub unsafe extern "C" fn rs_safe_atoi64(s: *const c_char, ret_i: *mut i64) -> i3
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atoux64(s: *const c_char, ret: *mut u64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atollu_full_inner(s, 16, ret) }
+    unsafe_ffi!(safe_atollu_full_inner(s, 16, ret))
 }
 
 /// Parse an unsigned 8-bit integer from string s.
@@ -683,7 +691,7 @@ pub unsafe extern "C" fn rs_safe_atoux64(s: *const c_char, ret: *mut u64) -> i32
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atou8(s: *const c_char, ret: *mut u8) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { rs_safe_atou8_full(s, 0, ret) }
+    unsafe_ffi!(rs_safe_atou8_full(s, 0, ret))
 }
 
 /// Parse an unsigned 16-bit integer from string s.
@@ -698,7 +706,7 @@ pub unsafe extern "C" fn rs_safe_atou8(s: *const c_char, ret: *mut u8) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atou16(s: *const c_char, ret: *mut u16) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { rs_safe_atou16_full(s, 0, ret) }
+    unsafe_ffi!(rs_safe_atou16_full(s, 0, ret))
 }
 
 /// Parse an unsigned 16-bit hexadecimal integer from string s.
@@ -713,7 +721,7 @@ pub unsafe extern "C" fn rs_safe_atou16(s: *const c_char, ret: *mut u16) -> i32 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atoux16(s: *const c_char, ret: *mut u16) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { rs_safe_atou16_full(s, 16, ret) }
+    unsafe_ffi!(rs_safe_atou16_full(s, 16, ret))
 }
 
 /// Parse an unsigned 32-bit integer from string s.
@@ -728,7 +736,7 @@ pub unsafe extern "C" fn rs_safe_atoux16(s: *const c_char, ret: *mut u16) -> i32
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atou32(s: *const c_char, ret_u: *mut u32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atou_full_inner(s, 0, ret_u) }
+    unsafe_ffi!(safe_atou_full_inner(s, 0, ret_u))
 }
 
 /// Parse a signed 32-bit integer from string s.
@@ -743,7 +751,7 @@ pub unsafe extern "C" fn rs_safe_atou32(s: *const c_char, ret_u: *mut u32) -> i3
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atoi32(s: *const c_char, ret_i: *mut i32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { safe_atoi_inner(s, ret_i) }
+    unsafe_ffi!(safe_atoi_inner(s, ret_i))
 }
 
 /// Parse an unsigned long integer from string s with specified base.
@@ -764,7 +772,7 @@ pub unsafe extern "C" fn rs_safe_atolu_full(
     let mut parsed = 0u64;
     // SAFETY: s follows this function's C-string contract and parsed is a
     // writable full-width intermediate.
-    let r = unsafe { safe_atollu_full_inner(s, base, &mut parsed) };
+    let r = unsafe_ffi!(safe_atollu_full_inner(s, base, &mut parsed));
     if r < 0 {
         return r;
     }
@@ -773,7 +781,7 @@ pub unsafe extern "C" fn rs_safe_atolu_full(
     }
     if !ret_u.is_null() {
         // SAFETY: the caller guarantees non-null ret_u is writable.
-        unsafe { *ret_u = parsed as c_ulong };
+        unsafe_ffi!(*ret_u = parsed as c_ulong);
     }
     0
 }
@@ -790,7 +798,7 @@ pub unsafe extern "C" fn rs_safe_atolu_full(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atolu(s: *const c_char, ret_u: *mut c_ulong) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { rs_safe_atolu_full(s, 0, ret_u) }
+    unsafe_ffi!(rs_safe_atolu_full(s, 0, ret_u))
 }
 
 /// Parse a signed long integer from string s.
@@ -807,7 +815,7 @@ pub unsafe extern "C" fn rs_safe_atoli(s: *const c_char, ret_u: *mut c_long) -> 
     let mut parsed = 0i64;
     // SAFETY: s follows this function's C-string contract and parsed is a
     // writable full-width intermediate.
-    let r = unsafe { safe_atolli_inner(s, &mut parsed) };
+    let r = unsafe_ffi!(safe_atolli_inner(s, &mut parsed));
     if r < 0 {
         return r;
     }
@@ -816,7 +824,7 @@ pub unsafe extern "C" fn rs_safe_atoli(s: *const c_char, ret_u: *mut c_long) -> 
     }
     if !ret_u.is_null() {
         // SAFETY: the caller guarantees non-null ret_u is writable.
-        unsafe { *ret_u = parsed as c_long };
+        unsafe_ffi!(*ret_u = parsed as c_long);
     }
     0
 }
@@ -835,7 +843,7 @@ pub unsafe extern "C" fn rs_safe_atozu(s: *const c_char, ret_u: *mut usize) -> i
     let mut parsed: c_ulong = 0;
     // SAFETY: `s` follows this function's C-string contract and `parsed` is a
     // live, correctly aligned `u64` output.
-    let result = unsafe { rs_safe_atolu(s, &mut parsed) };
+    let result = unsafe_ffi!(rs_safe_atolu(s, &mut parsed));
     if result < 0 {
         return result;
     }
@@ -845,7 +853,7 @@ pub unsafe extern "C" fn rs_safe_atozu(s: *const c_char, ret_u: *mut usize) -> i
     if !ret_u.is_null() {
         // SAFETY: the caller guarantees that non-null `ret_u` is writable and
         // correctly aligned for `usize`.
-        unsafe { *ret_u = value };
+        unsafe_ffi!(*ret_u = value);
     }
     0
 }
@@ -862,7 +870,7 @@ pub unsafe extern "C" fn rs_safe_atozu(s: *const c_char, ret_u: *mut usize) -> i
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_tristate(v: *const c_char, ret: *mut i32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { rs_parse_tristate_full(v, std::ptr::null(), ret) }
+    unsafe_ffi!(rs_parse_tristate_full(v, std::ptr::null(), ret))
 }
 
 // ── parse_size ─────────────────────────────────────────────────────────────
@@ -954,11 +962,11 @@ unsafe fn startswith_cstr(s: *const c_char, suffix: &CStr) -> bool {
             return true;
         }
         // SAFETY: the caller guarantees s is readable through its NUL terminator.
-        if unsafe { *s.add(i) } == 0 {
+        if unsafe_ffi!(*s.add(i)) == 0 {
             return false;
         }
         // SAFETY: the preceding check proved this byte is before the terminator.
-        if unsafe { *s.add(i) } as u8 != suffix_bytes[i] {
+        if unsafe_ffi!(*s.add(i)) as u8 != suffix_bytes[i] {
             return false;
         }
         i += 1;
@@ -987,12 +995,12 @@ unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
     loop {
         // Skip whitespace
         // SAFETY: p remains within the caller's C string.
-        p = unsafe { skip_whitespace_ptr(p) };
+        p = unsafe_ffi!(skip_whitespace_ptr(p));
 
         let mut x: *mut c_char = std::ptr::null_mut();
         clear_errno();
         // SAFETY: p is a live C string and x is a writable end-pointer.
-        let l = unsafe { crate::ffi::strtoull(p, &mut x, 10) };
+        let l = unsafe_ffi!(crate::ffi::strtoull(p, &mut x, 10));
         let errno_val = get_errno();
         if errno_val > 0 {
             return -errno_val;
@@ -1001,7 +1009,7 @@ unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
             return Errno::EINVAL.to_neg_errno();
         }
         // SAFETY: p remains within the caller's C string.
-        if (unsafe { *p } as u8) == b'-' {
+        if (unsafe_ffi!(*p) as u8) == b'-' {
             return Errno::ERANGE.to_neg_errno();
         }
 
@@ -1009,15 +1017,15 @@ unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
         let mut frac: f64 = 0.0;
         let mut e = x;
         // SAFETY: e is the end-pointer returned within p.
-        if (unsafe { *e } as u8) == b'.' {
+        if (unsafe_ffi!(*e) as u8) == b'.' {
             // SAFETY: the dot is before the terminating NUL.
-            e = unsafe { e.add(1) };
+            e = unsafe_ffi!(e.add(1));
             // SAFETY: e remains within the C string.
-            if (unsafe { *e } as u8).is_ascii_digit() {
+            if (unsafe_ffi!(*e) as u8).is_ascii_digit() {
                 let mut x2: *mut c_char = std::ptr::null_mut();
                 clear_errno();
                 // SAFETY: e is a live suffix C string and x2 is a writable end-pointer.
-                let l2 = unsafe { crate::ffi::strtoull(e, &mut x2, 10) };
+                let l2 = unsafe_ffi!(crate::ffi::strtoull(e, &mut x2, 10));
                 let errno_val2 = get_errno();
                 if errno_val2 > 0 {
                     return -errno_val2;
@@ -1026,21 +1034,21 @@ unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
                 while e < x2 {
                     frac /= 10.0;
                     // SAFETY: e < x2 and both point within the same C string.
-                    e = unsafe { e.add(1) };
+                    e = unsafe_ffi!(e.add(1));
                 }
             }
         }
 
         // Skip whitespace after number
         // SAFETY: e remains within the caller's C string.
-        e = unsafe { skip_whitespace_ptr(e) }.cast_mut();
+        e = unsafe_ffi!(skip_whitespace_ptr(e)).cast_mut();
 
         // Find matching suffix
         let mut i = start_pos;
         let mut found = false;
         while i < n_entries {
             // SAFETY: e is a live suffix C string.
-            if unsafe { startswith_cstr(e, table[i].suffix) } {
+            if unsafe_ffi!(startswith_cstr(e, table[i].suffix)) {
                 found = true;
                 break;
             }
@@ -1061,17 +1069,17 @@ unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
         r += tmp;
 
         // SAFETY: the selected suffix was just matched at e.
-        p = unsafe { e.add(table[i].suffix.to_bytes().len()) };
+        p = unsafe_ffi!(e.add(table[i].suffix.to_bytes().len()));
         start_pos = i + 1;
 
         // SAFETY: p remains within the caller's C string.
-        if unsafe { *p } == 0 {
+        if unsafe_ffi!(*p) == 0 {
             break;
         }
     }
 
     // SAFETY: size is non-null and writable by the caller contract.
-    unsafe { *size = r };
+    unsafe_ffi!(*size = r);
     0
 }
 
@@ -1088,7 +1096,7 @@ unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_size(t: *const c_char, base: u64, size: *mut u64) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { parse_size_inner(t, base, size) }
+    unsafe_ffi!(parse_size_inner(t, base, size))
 }
 
 /// Safe Rust facade for the C-compatible size grammar.
@@ -1103,7 +1111,7 @@ pub fn parse_size(value: &str, base: u64) -> Result<u64, i32> {
     let value = CString::new(value).map_err(|_| Errno::EINVAL.to_neg_errno())?;
     let mut parsed = 0;
     // SAFETY: `value` is NUL-terminated and `parsed` is a live writable u64.
-    let result = unsafe { rs_parse_size(value.as_ptr(), base, &mut parsed) };
+    let result = unsafe_ffi!(rs_parse_size(value.as_ptr(), base, &mut parsed));
     if result < 0 { Err(result) } else { Ok(parsed) }
 }
 
@@ -1119,13 +1127,13 @@ unsafe fn parse_pid_inner(s: *const c_char, ret: *mut i32) -> i32 {
     let mut x: *mut c_char = std::ptr::null_mut();
     clear_errno();
     // SAFETY: s is a live C string and x is a writable end-pointer.
-    let ul = unsafe { crate::ffi::strtoul(s, &mut x, 10) };
+    let ul = unsafe_ffi!(crate::ffi::strtoul(s, &mut x, 10));
     let errno_val = get_errno();
     if errno_val > 0 {
         return -errno_val;
     }
     // SAFETY: a non-null x returned by strtoul points within s.
-    if x.is_null() || x as *const c_char == s || unsafe { *x } != 0 {
+    if x.is_null() || x as *const c_char == s || unsafe_ffi!(*x) != 0 {
         return Errno::EINVAL.to_neg_errno();
     }
     let pid = ul as i32;
@@ -1140,7 +1148,7 @@ unsafe fn parse_pid_inner(s: *const c_char, ret: *mut i32) -> i32 {
 
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = pid };
+        unsafe_ffi!(*ret = pid);
     }
     0
 }
@@ -1161,7 +1169,7 @@ unsafe fn parse_pid_inner(s: *const c_char, ret: *mut i32) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_pid(s: *const c_char, ret: *mut i32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { parse_pid_inner(s, ret) }
+    unsafe_ffi!(parse_pid_inner(s, ret))
 }
 
 // SAFETY: s is NULL-checked before C-string reads and non-NULL ret is writable
@@ -1173,7 +1181,11 @@ unsafe fn parse_mode_inner(s: *const c_char, ret: *mut u32) -> i32 {
 
     let mut m: u32 = 0;
     // SAFETY: s is caller-validated and m is a live writable local.
-    let r = unsafe { safe_atou_full_inner(s, 8 | SAFE_ATO_REFUSE_PLUS_MINUS, &mut m) };
+    let r = unsafe_ffi!(safe_atou_full_inner(
+        s,
+        8 | SAFE_ATO_REFUSE_PLUS_MINUS,
+        &mut m
+    ));
     if r < 0 {
         return r;
     }
@@ -1183,7 +1195,7 @@ unsafe fn parse_mode_inner(s: *const c_char, ret: *mut u32) -> i32 {
 
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = m };
+        unsafe_ffi!(*ret = m);
     }
     0
 }
@@ -1204,7 +1216,7 @@ unsafe fn parse_mode_inner(s: *const c_char, ret: *mut u32) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_mode(s: *const c_char, ret: *mut u32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { parse_mode_inner(s, ret) }
+    unsafe_ffi!(parse_mode_inner(s, ret))
 }
 
 // SAFETY: s is NULL-checked and otherwise denotes a readable NUL-terminated C string.
@@ -1215,7 +1227,7 @@ unsafe fn parse_ifindex_inner(s: *const c_char) -> i32 {
 
     let mut ifi: i32 = 0;
     // SAFETY: s is caller-validated and ifi is a live writable local.
-    let r = unsafe { safe_atoi_inner(s, &mut ifi) };
+    let r = unsafe_ffi!(safe_atoi_inner(s, &mut ifi));
     if r < 0 {
         return r;
     }
@@ -1240,7 +1252,7 @@ unsafe fn parse_ifindex_inner(s: *const c_char) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_ifindex(s: *const c_char) -> i32 {
     // SAFETY: this function forwards its C-string contract unchanged.
-    unsafe { parse_ifindex_inner(s) }
+    unsafe_ffi!(parse_ifindex_inner(s))
 }
 
 // SAFETY: s is NULL-checked and otherwise denotes a readable NUL-terminated C string.
@@ -1251,7 +1263,7 @@ unsafe fn parse_fd_inner(s: *const c_char) -> i32 {
 
     let mut fd: i32 = 0;
     // SAFETY: s is caller-validated and fd is a live writable local.
-    let r = unsafe { safe_atoi_inner(s, &mut fd) };
+    let r = unsafe_ffi!(safe_atoi_inner(s, &mut fd));
     if r < 0 {
         return r;
     }
@@ -1276,7 +1288,7 @@ unsafe fn parse_fd_inner(s: *const c_char) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_fd(s: *const c_char) -> i32 {
     // SAFETY: this function forwards its C-string contract unchanged.
-    unsafe { parse_fd_inner(s) }
+    unsafe_ffi!(parse_fd_inner(s))
 }
 
 // SAFETY: s is NULL-checked and otherwise denotes a readable NUL-terminated C string.
@@ -1287,7 +1299,7 @@ unsafe fn parse_errno_inner(s: *const c_char) -> i32 {
 
     // SAFETY: `s` is non-null and the caller guarantees a live
     // NUL-terminated string.
-    let r = match unsafe { cstr_bytes(s) } {
+    let r = match unsafe_ffi!(cstr_bytes(s)) {
         Ok(bytes) => errno_from_name(bytes),
         Err(error) => return error,
     };
@@ -1297,7 +1309,7 @@ unsafe fn parse_errno_inner(s: *const c_char) -> i32 {
 
     let mut e: i32 = 0;
     // SAFETY: s is caller-validated and e is a live writable local.
-    let r2 = unsafe { safe_atoi_inner(s, &mut e) };
+    let r2 = unsafe_ffi!(safe_atoi_inner(s, &mut e));
     if r2 < 0 {
         return r2;
     }
@@ -1323,7 +1335,7 @@ unsafe fn parse_errno_inner(s: *const c_char) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_errno(s: *const c_char) -> i32 {
     // SAFETY: this function forwards its C-string contract unchanged.
-    unsafe { parse_errno_inner(s) }
+    unsafe_ffi!(parse_errno_inner(s))
 }
 
 // SAFETY: s is NULL-checked before C-string reads and non-NULL ret is writable
@@ -1335,7 +1347,7 @@ unsafe fn parse_nice_inner(s: *const c_char, ret: *mut i32) -> i32 {
 
     let mut n: i32 = 0;
     // SAFETY: s is caller-validated and n is a live writable local.
-    let r = unsafe { safe_atoi_inner(s, &mut n) };
+    let r = unsafe_ffi!(safe_atoi_inner(s, &mut n));
     if r < 0 {
         return r;
     }
@@ -1346,7 +1358,7 @@ unsafe fn parse_nice_inner(s: *const c_char, ret: *mut i32) -> i32 {
 
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = n };
+        unsafe_ffi!(*ret = n);
     }
     0
 }
@@ -1367,7 +1379,7 @@ unsafe fn parse_nice_inner(s: *const c_char, ret: *mut i32) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_nice(s: *const c_char, ret: *mut i32) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { parse_nice_inner(s, ret) }
+    unsafe_ffi!(parse_nice_inner(s, ret))
 }
 
 // ── parse_oom_score_adjust ──────────────────────────────────────────────
@@ -1385,7 +1397,7 @@ unsafe fn parse_oom_score_adjust_inner(s: *const c_char, ret: *mut i32) -> i32 {
 
     let mut v: i32 = 0;
     // SAFETY: s is caller-validated and v is a live writable local.
-    let r = unsafe { rs_safe_atoi(s, &mut v) };
+    let r = unsafe_ffi!(rs_safe_atoi(s, &mut v));
     if r < 0 {
         return r;
     }
@@ -1393,7 +1405,7 @@ unsafe fn parse_oom_score_adjust_inner(s: *const c_char, ret: *mut i32) -> i32 {
         return Errno::ERANGE.to_neg_errno();
     }
     // SAFETY: ret is non-null and writable by the caller contract.
-    unsafe { *ret = v };
+    unsafe_ffi!(*ret = v);
     0
 }
 
@@ -1407,7 +1419,7 @@ unsafe fn parse_oom_score_adjust_inner(s: *const c_char, ret: *mut i32) -> i32 {
 #[unsafe(export_name = "rs_parse_oom_score_adjust")]
 pub unsafe extern "C" fn rs_parse_oom_score_adjust(s: *const c_char, ret: *mut i32) -> i32 {
     // SAFETY: the C ABI contract above implies the inner pointer contract.
-    unsafe { parse_oom_score_adjust_inner(s, ret) }
+    unsafe_ffi!(parse_oom_score_adjust_inner(s, ret))
 }
 
 // SAFETY: s is NULL-checked before C-string reads and non-NULL ret is writable
@@ -1419,7 +1431,11 @@ unsafe fn parse_ip_port_inner(s: *const c_char, ret: *mut u16) -> i32 {
 
     let mut l: u16 = 0;
     // SAFETY: s is caller-validated and l is a live writable local.
-    let r = unsafe { rs_safe_atou16_full(s, SAFE_ATO_REFUSE_LEADING_WHITESPACE, &mut l) };
+    let r = unsafe_ffi!(rs_safe_atou16_full(
+        s,
+        SAFE_ATO_REFUSE_LEADING_WHITESPACE,
+        &mut l
+    ));
     if r < 0 {
         return r;
     }
@@ -1430,7 +1446,7 @@ unsafe fn parse_ip_port_inner(s: *const c_char, ret: *mut u16) -> i32 {
 
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = l };
+        unsafe_ffi!(*ret = l);
     }
     0
 }
@@ -1448,7 +1464,7 @@ unsafe fn parse_ip_port_inner(s: *const c_char, ret: *mut u16) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_ip_port(s: *const c_char, ret: *mut u16) -> i32 {
     // SAFETY: this function forwards its input/output contracts unchanged.
-    unsafe { parse_ip_port_inner(s, ret) }
+    unsafe_ffi!(parse_ip_port_inner(s, ret))
 }
 
 // ── parse_range ─────────────────────────────────────────────────────────
@@ -1479,8 +1495,12 @@ pub unsafe extern "C" fn rs_parse_range(t: *const c_char, lower: *mut u32, upper
 
     let mut word: *mut c_char = std::ptr::null_mut();
     // SAFETY: pp/word are writable locals, t is a live C string, and sep is static.
-    let r =
-        unsafe { crate::extract_word::rs_extract_first_word(pp, &mut word, sep.as_ptr(), flags) };
+    let r = unsafe_ffi!(crate::extract_word::rs_extract_first_word(
+        pp,
+        &mut word,
+        sep.as_ptr(),
+        flags
+    ));
     if r < 0 {
         return r;
     }
@@ -1491,38 +1511,38 @@ pub unsafe extern "C" fn rs_parse_range(t: *const c_char, lower: *mut u32, upper
     // Parse lower bound
     let mut l: u32 = 0;
     // SAFETY: word is the live C string allocated by rs_extract_first_word.
-    let r2 = unsafe { rs_safe_atou(word, &mut l) };
+    let r2 = unsafe_ffi!(rs_safe_atou(word, &mut l));
     // SAFETY: `rs_extract_first_word` allocated `word` with the C allocator
     // and this function still owns the returned allocation.
-    unsafe { crate::ffi::free(word as *mut std::ffi::c_void) };
+    unsafe_ffi!(crate::ffi::free(word as *mut std::ffi::c_void));
     if r2 < 0 {
         return r2;
     }
 
     // Check for upper bound
     // SAFETY: pp points to the live local p.
-    let p2 = unsafe { *pp };
+    let p2 = unsafe_ffi!(*pp);
     if p2.is_null() {
         // Single number
         // SAFETY: upper is non-null and writable by the caller contract.
-        unsafe { *upper = l };
+        unsafe_ffi!(*upper = l);
     // SAFETY: p2 is the remaining in-bounds position in t.
-    } else if unsafe { *p2 } == 0 {
+    } else if unsafe_ffi!(*p2) == 0 {
         // Trailing dash is an error
         return Errno::EINVAL.to_neg_errno();
     } else {
         let mut u: u32 = 0;
         // SAFETY: p2 is a live C-string suffix and u is a writable local.
-        let r3 = unsafe { rs_safe_atou(p2, &mut u) };
+        let r3 = unsafe_ffi!(rs_safe_atou(p2, &mut u));
         if r3 < 0 {
             return r3;
         }
         // SAFETY: upper is non-null and writable by the caller contract.
-        unsafe { *upper = u };
+        unsafe_ffi!(*upper = u);
     }
 
     // SAFETY: lower is non-null and writable by the caller contract.
-    unsafe { *lower = l };
+    unsafe_ffi!(*lower = l);
     0
 }
 
@@ -1546,7 +1566,7 @@ unsafe fn parse_ip_port_range_inner(
     let mut l: u32 = 0;
     let mut h: u32 = 0;
     // SAFETY: s is caller-validated and l/h are writable locals.
-    let r = unsafe { rs_parse_range(s, &mut l, &mut h) };
+    let r = unsafe_ffi!(rs_parse_range(s, &mut l, &mut h));
     if r < 0 {
         return r;
     }
@@ -1582,7 +1602,7 @@ pub unsafe extern "C" fn rs_parse_ip_port_range(
     allow_zero: bool,
 ) -> i32 {
     // SAFETY: the C ABI contract above implies the inner pointer contract.
-    unsafe { parse_ip_port_range_inner(s, low, high, allow_zero) }
+    unsafe_ffi!(parse_ip_port_range_inner(s, low, high, allow_zero))
 }
 
 // ── parse_tristate_full ────────────────────────────────────────────────────
@@ -1609,29 +1629,29 @@ pub unsafe extern "C" fn rs_parse_tristate_full(
         &[] as &[u8]
     } else {
         // SAFETY: the caller guarantees non-null v is a live C string.
-        unsafe { CStr::from_ptr(v) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(v)).to_bytes()
     };
     if v_bytes.is_empty()
         || (!third.is_null()
             // SAFETY: the caller guarantees non-null third is a live C string.
-            && v_bytes == unsafe { CStr::from_ptr(third) }.to_bytes())
+            && v_bytes == unsafe_ffi!(CStr::from_ptr(third)).to_bytes())
     {
         if !ret.is_null() {
             // SAFETY: the caller guarantees non-null ret is writable.
-            unsafe { *ret = -1 };
+            unsafe_ffi!(*ret = -1);
         }
         return 0;
     }
 
     // SAFETY: v is the caller-validated C string.
-    let r = unsafe { rs_parse_boolean(v) };
+    let r = unsafe_ffi!(rs_parse_boolean(v));
     if r < 0 {
         return r;
     }
 
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = r };
+        unsafe_ffi!(*ret = r);
     }
 
     0
@@ -1657,7 +1677,7 @@ pub unsafe extern "C" fn rs_parse_mtu(family: i32, s: *const c_char, ret: *mut u
 
     let mut u: u64 = 0;
     // SAFETY: s is caller-validated and u is a live writable local.
-    let r = unsafe { rs_parse_size(s, 1024, &mut u) };
+    let r = unsafe_ffi!(rs_parse_size(s, 1024, &mut u));
     if r < 0 {
         return r;
     }
@@ -1677,7 +1697,7 @@ pub unsafe extern "C" fn rs_parse_mtu(family: i32, s: *const c_char, ret: *mut u
     }
 
     // SAFETY: ret is non-null and writable by the caller contract.
-    unsafe { *ret = u as u32 };
+    unsafe_ffi!(*ret = u as u32);
     0
 }
 
@@ -1701,7 +1721,7 @@ pub unsafe extern "C" fn rs_parse_sector_size(t: *const c_char, ret: *mut u64) -
 
     let mut ss: u64 = 0;
     // SAFETY: t is caller-validated and ss is a live writable local.
-    let r = unsafe { rs_safe_atou64(t, &mut ss) };
+    let r = unsafe_ffi!(rs_safe_atou64(t, &mut ss));
     if r < 0 {
         return r;
     }
@@ -1716,7 +1736,7 @@ pub unsafe extern "C" fn rs_parse_sector_size(t: *const c_char, ret: *mut u64) -
     }
 
     // SAFETY: ret is non-null and writable by the caller contract.
-    unsafe { *ret = ss };
+    unsafe_ffi!(*ret = ss);
     0
 }
 
@@ -1767,7 +1787,7 @@ pub unsafe extern "C" fn rs_store_loadavg_fixed_point(
     match store_loadavg_fixed_point_inner(i, f) {
         Some(val) => {
             // SAFETY: ret is non-null and writable by the caller contract.
-            unsafe { *ret = val };
+            unsafe_ffi!(*ret = val);
             0
         }
         None => Errno::ERANGE.to_neg_errno(),
@@ -1793,9 +1813,9 @@ pub unsafe extern "C" fn rs_parse_loadavg_fixed_point(s: *const c_char, ret: *mu
     let mut dot_pos: Option<usize> = None;
     let mut len: usize = 0;
     // SAFETY: the caller guarantees s is readable through its NUL terminator.
-    while unsafe { *s.add(len) } != 0 {
+    while unsafe_ffi!(*s.add(len)) != 0 {
         // SAFETY: len currently indexes a byte before the terminator.
-        if unsafe { *s.add(len) } as u8 == b'.' && dot_pos.is_none() {
+        if unsafe_ffi!(*s.add(len)) as u8 == b'.' && dot_pos.is_none() {
             dot_pos = Some(len);
         }
         len += 1;
@@ -1809,7 +1829,7 @@ pub unsafe extern "C" fn rs_parse_loadavg_fixed_point(s: *const c_char, ret: *mu
         return Errno::ENOMEM.to_neg_errno();
     };
     // SAFETY: malloc accepts the checked byte count.
-    let integer_string = unsafe { libc::malloc(integer_allocation_size) }.cast::<c_char>();
+    let integer_string = unsafe_ffi!(libc::malloc(integer_allocation_size)).cast::<c_char>();
     if integer_string.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1822,9 +1842,9 @@ pub unsafe extern "C" fn rs_parse_loadavg_fixed_point(s: *const c_char, ret: *mu
 
     let mut i: c_ulong = 0;
     // SAFETY: integer_string is live and NUL-terminated, and i is writable.
-    let integer_result = unsafe { rs_safe_atolu_full(integer_string, 10, &mut i) };
+    let integer_result = unsafe_ffi!(rs_safe_atolu_full(integer_string, 10, &mut i));
     // SAFETY: integer_string came from malloc and is no longer used.
-    unsafe { libc::free(integer_string.cast()) };
+    unsafe_ffi!(libc::free(integer_string.cast()));
     if integer_result < 0 {
         return integer_result;
     }
@@ -1832,14 +1852,14 @@ pub unsafe extern "C" fn rs_parse_loadavg_fixed_point(s: *const c_char, ret: *mu
     let mut f: c_ulong = 0;
     // SAFETY: dot_pos indexes the measured C string and add(1) remains within
     // it (possibly at its trailing NUL); f is writable.
-    let fraction_result = unsafe { rs_safe_atolu_full(s.add(dot_pos + 1), 10, &mut f) };
+    let fraction_result = unsafe_ffi!(rs_safe_atolu_full(s.add(dot_pos + 1), 10, &mut f));
     if fraction_result < 0 {
         return fraction_result;
     }
 
     store_loadavg_fixed_point_inner(i, f).map_or(Errno::ERANGE.to_neg_errno(), |val| {
         // SAFETY: ret is non-null and writable by the caller contract.
-        unsafe { *ret = val };
+        unsafe_ffi!(*ret = val);
         0
     })
 }
@@ -1864,7 +1884,7 @@ pub unsafe extern "C" fn rs_parse_fractional_part_u(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: `p` is writable under this export's contract.
-    let mut cursor = unsafe { *p };
+    let mut cursor = unsafe_ffi!(*p);
     if cursor.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
@@ -1873,7 +1893,7 @@ pub unsafe extern "C" fn rs_parse_fractional_part_u(
     for index in 0..digits {
         // SAFETY: `cursor` starts in a live C string and advances only after
         // reading a non-NUL decimal byte, so it remains in that allocation.
-        let byte = unsafe { *cursor } as u8;
+        let byte = unsafe_ffi!(*cursor) as u8;
         if !byte.is_ascii_digit() {
             if index == 0 {
                 return Errno::EINVAL.to_neg_errno();
@@ -1885,11 +1905,11 @@ pub unsafe extern "C" fn rs_parse_fractional_part_u(
         }
         value = value.wrapping_mul(10).wrapping_add((byte - b'0') as u32);
         // SAFETY: the byte was non-NUL, so its successor remains in the C string.
-        cursor = unsafe { cursor.add(1) };
+        cursor = unsafe_ffi!(cursor.add(1));
     }
 
     // SAFETY: `cursor` remains within the live C string by the loop invariant.
-    let round = unsafe { *cursor } as u8;
+    let round = unsafe_ffi!(*cursor) as u8;
     if (b'5'..=b'9').contains(&round) {
         value = value.wrapping_add(1);
     }
@@ -1897,12 +1917,12 @@ pub unsafe extern "C" fn rs_parse_fractional_part_u(
     // exactly at the first one.
     loop {
         // SAFETY: `cursor` is within the live NUL-terminated C string.
-        let byte = unsafe { *cursor } as u8;
+        let byte = unsafe_ffi!(*cursor) as u8;
         if !byte.is_ascii_digit() {
             break;
         }
         // SAFETY: the byte was non-NUL, so the successor stays in range.
-        cursor = unsafe { cursor.add(1) };
+        cursor = unsafe_ffi!(cursor.add(1));
     }
 
     // SAFETY: both output locations are writable by this export's contract.

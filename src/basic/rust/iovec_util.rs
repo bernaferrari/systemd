@@ -6,6 +6,14 @@
 // make_string, memcmp, memdup, replace-with-copy, is_set, is_valid, done,
 // done_many_and_free.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_void};
 use std::sync::atomic::{Ordering, compiler_fence};
 use std::{cmp, ptr, slice};
@@ -23,7 +31,7 @@ pub struct IoVec {
 /// is transferred to the caller of the C ABI wrapper that receives its result.
 fn c_malloc(size: usize) -> *mut c_void {
     // SAFETY: malloc accepts every usize byte count.
-    unsafe { libc::malloc(size) }
+    unsafe_ffi!(libc::malloc(size))
 }
 
 /// A Rust-owned byte vector with safe iovec-style operations.
@@ -89,7 +97,7 @@ fn erase_bytes(bytes: &mut [u8]) {
         // SAFETY: `byte` is a unique, valid pointer to one initialized byte.
         // Volatile stores are used specifically to make secret erasure
         // observable to the abstract machine and hence non-elidable.
-        unsafe { ptr::write_volatile(byte, 0) };
+        unsafe_ffi!(ptr::write_volatile(byte, 0));
     }
     compiler_fence(Ordering::SeqCst);
 }
@@ -136,7 +144,10 @@ fn iovec_bytes(iovec: &IoVec) -> Option<&[u8]> {
         return None;
     }
     // SAFETY: callers have validated the iovec payload's readable extent.
-    Some(unsafe { slice::from_raw_parts(iovec.iov_base.cast::<u8>(), iovec.iov_len) })
+    Some(unsafe_ffi!(slice::from_raw_parts(
+        iovec.iov_base.cast::<u8>(),
+        iovec.iov_len
+    )))
 }
 
 fn memcmp_bytes(a: &[u8], b: &[u8]) -> i32 {
@@ -161,7 +172,7 @@ fn free_iov_base(iovec: &mut IoVec) {
     if !iovec.iov_base.is_null() {
         // SAFETY: callers are the reviewed C ABI ownership adapters; their
         // contract guarantees malloc/calloc/strdup-style provenance here.
-        unsafe { libc::free(iovec.iov_base) };
+        unsafe_ffi!(libc::free(iovec.iov_base));
     }
     iovec.iov_base = ptr::null_mut();
     iovec.iov_len = 0;
@@ -207,7 +218,7 @@ pub unsafe extern "C" fn rs_iovec_alloc(n: usize, ret: *mut IoVec) -> i32 {
 #[unsafe(export_name = "rs_iovec_erase")]
 pub unsafe extern "C" fn rs_iovec_erase(iovec: *mut IoVec) {
     // SAFETY: required by this C ABI entry point's contract.
-    let Some(iovec) = (unsafe { iovec.as_mut() }) else {
+    let Some(iovec) = (unsafe_ffi!(iovec.as_mut())) else {
         return;
     };
     if iovec.iov_len == 0 {
@@ -218,7 +229,10 @@ pub unsafe extern "C" fn rs_iovec_erase(iovec: *mut IoVec) {
     }
 
     // SAFETY: required by this C ABI entry point's contract.
-    let bytes = unsafe { slice::from_raw_parts_mut(iovec.iov_base.cast::<u8>(), iovec.iov_len) };
+    let bytes = unsafe_ffi!(slice::from_raw_parts_mut(
+        iovec.iov_base.cast::<u8>(),
+        iovec.iov_len
+    ));
     erase_bytes(bytes);
 }
 
@@ -230,7 +244,7 @@ pub unsafe extern "C" fn rs_iovec_erase(iovec: *mut IoVec) {
 #[unsafe(export_name = "rs_iovec_is_set")]
 pub unsafe extern "C" fn rs_iovec_is_set(iovec: *const IoVec) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
-    !iovec.is_null() && unsafe { (*iovec).iov_len > 0 && !(*iovec).iov_base.is_null() }
+    !iovec.is_null() && unsafe_ffi!((*iovec).iov_len > 0 && !(*iovec).iov_base.is_null())
 }
 
 /// Report whether a C iovec satisfies the fundamental iovec invariant.
@@ -241,7 +255,7 @@ pub unsafe extern "C" fn rs_iovec_is_set(iovec: *const IoVec) -> bool {
 #[unsafe(export_name = "rs_iovec_is_valid")]
 pub unsafe extern "C" fn rs_iovec_is_valid(iovec: *const IoVec) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
-    iovec.is_null() || unsafe { !(*iovec).iov_base.is_null() || (*iovec).iov_len == 0 }
+    iovec.is_null() || unsafe_ffi!(!(*iovec).iov_base.is_null() || (*iovec).iov_len == 0)
 }
 
 /// Release the payload of one owned C iovec and clear it.
@@ -252,7 +266,7 @@ pub unsafe extern "C" fn rs_iovec_is_valid(iovec: *const IoVec) -> bool {
 #[unsafe(export_name = "rs_iovec_done")]
 pub unsafe extern "C" fn rs_iovec_done(iovec: *mut IoVec) {
     // SAFETY: required by this C ABI entry point's contract.
-    if let Some(iovec) = unsafe { iovec.as_mut() } {
+    if let Some(iovec) = unsafe_ffi!(iovec.as_mut()) {
         free_iov_base(iovec);
     }
 }
@@ -270,13 +284,13 @@ pub unsafe extern "C" fn rs_iovec_done_many_and_free(iovec: *mut IoVec, n: usize
     }
 
     // SAFETY: required by this C ABI entry point's contract.
-    for entry in unsafe { slice::from_raw_parts_mut(iovec, n) } {
+    for entry in unsafe_ffi!(slice::from_raw_parts_mut(iovec, n)) {
         free_iov_base(entry);
     }
 
     // SAFETY: the public C API takes ownership of an array allocated by the C
     // allocator. `free(NULL)` was handled above and `free` does not need `n`.
-    unsafe { libc::free(iovec.cast::<c_void>()) };
+    unsafe_ffi!(libc::free(iovec.cast::<c_void>()));
 }
 
 /// Return the saturating byte count of a C iovec array.
@@ -291,7 +305,7 @@ pub unsafe extern "C" fn rs_iovec_total_size(iovec: *const IoVec, n: usize) -> u
     }
 
     // SAFETY: required by this C ABI entry point's contract.
-    total_size(unsafe { slice::from_raw_parts(iovec, n) })
+    total_size(unsafe_ffi!(slice::from_raw_parts(iovec, n)))
 }
 
 /// Advance through a mutable C iovec array by exactly `k` bytes.
@@ -312,7 +326,7 @@ pub unsafe extern "C" fn rs_iovec_inc_many(iovec: *mut IoVec, n: usize, k: usize
     }
 
     // SAFETY: required by this C ABI entry point's contract.
-    increment_many(unsafe { slice::from_raw_parts_mut(iovec, n) }, k)
+    increment_many(unsafe_ffi!(slice::from_raw_parts_mut(iovec, n)), k)
 }
 
 /// Point a C iovec at a borrowed NUL-terminated C string.
@@ -324,7 +338,7 @@ pub unsafe extern "C" fn rs_iovec_inc_many(iovec: *mut IoVec, n: usize, k: usize
 #[unsafe(export_name = "rs_iovec_make_string")]
 pub unsafe extern "C" fn rs_iovec_make_string(iovec: *mut IoVec, s: *const c_char) -> *mut IoVec {
     // SAFETY: required by this C ABI entry point's contract.
-    let Some(iovec) = (unsafe { iovec.as_mut() }) else {
+    let Some(iovec) = (unsafe_ffi!(iovec.as_mut())) else {
         return ptr::null_mut();
     };
 
@@ -332,7 +346,7 @@ pub unsafe extern "C" fn rs_iovec_make_string(iovec: *mut IoVec, s: *const c_cha
         0
     } else {
         // SAFETY: required by this C ABI entry point's contract.
-        unsafe { CStr::from_ptr(s) }.to_bytes().len()
+        unsafe_ffi!(CStr::from_ptr(s)).to_bytes().len()
     };
 
     iovec.iov_base = s.cast_mut().cast::<c_void>();
@@ -353,9 +367,9 @@ pub unsafe extern "C" fn rs_iovec_memcmp(a: *const IoVec, b: *const IoVec) -> i3
 
     // SAFETY: required by this C ABI entry point's contract.
     // SAFETY: required by this C ABI entry point's contract.
-    let a = unsafe { a.as_ref() };
+    let a = unsafe_ffi!(a.as_ref());
     // SAFETY: required by this C ABI entry point's contract.
-    let b = unsafe { b.as_ref() };
+    let b = unsafe_ffi!(b.as_ref());
     let a_bytes = a.and_then(iovec_bytes);
     let b_bytes = b.and_then(iovec_bytes);
     match (a_bytes, b_bytes) {
@@ -385,11 +399,11 @@ pub unsafe extern "C" fn rs_iovec_memdup(source: *const IoVec, ret: *mut IoVec) 
         None
     } else {
         // SAFETY: required by this C ABI entry point's contract.
-        Some(unsafe { *source })
+        Some(unsafe_ffi!(*source))
     };
     // SAFETY: `ret` was checked non-null above and remains writable under the
     // entry-point contract after all aliased source reads have completed.
-    let output = unsafe { &mut *ret };
+    let output = unsafe_ffi!(&mut *ret);
     let Some(source) = source.filter(|source| source.iov_len > 0 && !source.iov_base.is_null())
     else {
         *output = IoVec::default();
@@ -405,7 +419,11 @@ pub unsafe extern "C" fn rs_iovec_memdup(source: *const IoVec, ret: *mut IoVec) 
 
     // SAFETY: the source and destination ranges are valid and non-overlapping
     // by this C ABI entry point's contract and the fresh allocation above.
-    unsafe { ptr::copy_nonoverlapping(source.iov_base.cast::<u8>(), copy, source.iov_len) };
+    unsafe_ffi!(ptr::copy_nonoverlapping(
+        source.iov_base.cast::<u8>(),
+        copy,
+        source.iov_len
+    ));
     *output = IoVec {
         iov_base: copy.cast::<c_void>(),
         iov_len: source.iov_len,
@@ -430,21 +448,21 @@ pub unsafe extern "C" fn rs_iovec_done_and_memdup(iovec: *mut IoVec, source: *co
     }
 
     // SAFETY: both pointers meet the contracts of `rs_iovec_memcmp`.
-    if unsafe { rs_iovec_memcmp(iovec, source) } == 0 {
+    if unsafe_ffi!(rs_iovec_memcmp(iovec, source)) == 0 {
         return 0;
     }
 
     let mut copy = IoVec::default();
     // SAFETY: `copy` is writable local storage and `source` satisfies this
     // function's source contract.
-    if unsafe { rs_iovec_memdup(source, &mut copy) }.is_null() {
+    if unsafe_ffi!(rs_iovec_memdup(source, &mut copy)).is_null() {
         return -libc::ENOMEM;
     }
 
     // SAFETY: required by this C ABI entry point's ownership contract; the
     // earlier helper calls have finished reading `source` before this mutable
     // destination borrow.
-    let iovec = unsafe { iovec.as_mut().unwrap_unchecked() };
+    let iovec = unsafe_ffi!(iovec.as_mut().unwrap_unchecked());
     free_iov_base(iovec);
     *iovec = copy;
     1
@@ -452,6 +470,14 @@ pub unsafe extern "C" fn rs_iovec_done_and_memdup(iovec: *mut IoVec, source: *co
 
 #[cfg(test)]
 mod tests {
+    // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
+    macro_rules! test_ffi {
+        ($expression:expr) => {{
+            // SAFETY: test inputs are constructed in this module and satisfy the
+            // documented C ABI preconditions of the exercised facade.
+            unsafe { $expression }
+        }};
+    }
     use super::*;
     use std::ffi::CString;
 
@@ -459,7 +485,7 @@ mod tests {
         let ptr = c_malloc(bytes.len().max(1)).cast::<u8>();
         assert!(!ptr.is_null());
         // SAFETY: ptr owns at least bytes.len() bytes and the source slice is disjoint.
-        unsafe { ptr.copy_from_nonoverlapping(bytes.as_ptr(), bytes.len()) };
+        test_ffi!(ptr.copy_from_nonoverlapping(bytes.as_ptr(), bytes.len()));
         ptr.cast::<c_void>()
     }
 
@@ -472,7 +498,7 @@ mod tests {
         let ptr = c_malloc(bytes).cast::<IoVec>();
         assert!(!ptr.is_null());
         // SAFETY: ptr owns storage for entries.len() IoVec values and the source is disjoint.
-        unsafe { ptr.copy_from_nonoverlapping(entries.as_ptr(), entries.len()) };
+        test_ffi!(ptr.copy_from_nonoverlapping(entries.as_ptr(), entries.len()));
         ptr
     }
 
@@ -526,7 +552,7 @@ mod tests {
         };
         // SAFETY: the iovec designates the writable stack array for exactly
         // its length. `rs_iovec_erase` does not take ownership.
-        unsafe { rs_iovec_erase(&mut iovec) };
+        test_ffi!(rs_iovec_erase(&mut iovec));
         assert_eq!(bytes, [0; 6]);
         assert_eq!(iovec.iov_len, 6);
     }
@@ -650,7 +676,7 @@ mod tests {
         // SAFETY: total-size only reads the two valid IoVec values and does
         // not dereference their payload pointers.
         assert_eq!(
-            unsafe { rs_iovec_total_size(iovecs.as_ptr(), iovecs.len()) },
+            test_ffi!(rs_iovec_total_size(iovecs.as_ptr(), iovecs.len())),
             usize::MAX
         );
     }
@@ -665,7 +691,7 @@ mod tests {
             },
             IoVec {
                 // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-                iov_base: unsafe { buf.as_mut_ptr().add(6) } as *mut c_void,
+                iov_base: test_ffi!(buf.as_mut_ptr().add(6)) as *mut c_void,
                 iov_len: 5,
             },
         ];

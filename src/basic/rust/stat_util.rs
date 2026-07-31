@@ -251,6 +251,14 @@ pub unsafe extern "C" fn rs_btrfs_might_be_subvol(st: *const libc::stat) -> bool
 
 #[cfg(test)]
 mod tests {
+    // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
+    macro_rules! test_ffi {
+        ($expression:expr) => {{
+            // SAFETY: test inputs are constructed in this module and satisfy the
+            // documented C ABI preconditions of the exercised facade.
+            unsafe { $expression }
+        }};
+    }
     use super::*;
 
     // These layouts are composed entirely of integer fields on the supported
@@ -258,22 +266,22 @@ mod tests {
     // test boundary, so individual cases can focus on the fields they use.
     fn zeroed_stat() -> libc::stat {
         // SAFETY: `libc::stat` has an all-zero valid test representation.
-        unsafe { std::mem::zeroed() }
+        test_ffi!(std::mem::zeroed())
     }
 
     fn zeroed_statx() -> libc::statx {
         // SAFETY: `libc::statx` has an all-zero valid test representation.
-        unsafe { std::mem::zeroed() }
+        test_ffi!(std::mem::zeroed())
     }
 
     fn zeroed_statx_timestamp() -> libc::statx_timestamp {
         // SAFETY: `libc::statx_timestamp` has an all-zero valid test representation.
-        unsafe { std::mem::zeroed() }
+        test_ffi!(std::mem::zeroed())
     }
 
     fn zeroed_statfs() -> libc::statfs {
         // SAFETY: `libc::statfs` has an all-zero valid test representation.
-        unsafe { std::mem::zeroed() }
+        test_ffi!(std::mem::zeroed())
     }
 
     macro_rules! stat_test_adapter {
@@ -281,7 +289,7 @@ mod tests {
             fn $name(value: Option<&$type>) -> $return {
                 // SAFETY: `value` supplies either a live typed borrow or the
                 // explicit fail-closed null case covered by this ABI entry point.
-                unsafe { $target(value.map_or(std::ptr::null(), |value| value)) }
+                test_ffi!($target(value.map_or(std::ptr::null(), |value| value)))
             }
         };
     }
@@ -291,7 +299,7 @@ mod tests {
             fn $name(value: Option<&mut libc::stat>) -> bool {
                 // SAFETY: `value` supplies either an exclusive typed borrow or
                 // the explicit fail-closed null case covered by this ABI entry point.
-                unsafe { $target(value.map_or(std::ptr::null_mut(), |value| value)) }
+                test_ffi!($target(value.map_or(std::ptr::null_mut(), |value| value)))
             }
         };
     }
@@ -350,7 +358,10 @@ mod tests {
     fn with_statfs(statfs: Option<&libc::statfs>, magic: StatFsType) -> bool {
         // SAFETY: `statfs` supplies either a live typed borrow or the explicit
         // fail-closed null case covered by this test ABI entry point.
-        unsafe { rs_is_fs_type(statfs.map_or(std::ptr::null(), |statfs| statfs), magic) }
+        test_ffi!(rs_is_fs_type(
+            statfs.map_or(std::ptr::null(), |statfs| statfs),
+            magic
+        ))
     }
 
     #[test]

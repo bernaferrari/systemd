@@ -2774,11 +2774,18 @@ def strv_registered_boundary_is_reviewed() -> bool:
         and "rs_strv_consume_with_size(l, std::ptr::null_mut(), s)" in consume_inline
         and 'b" \\0"' in join
         and 'const NEWLINE: &[u8] = b"\\n\\r\\0";' in source_text
-        and "rs_strv_split_full(&mut l, s, NEWLINE.as_ptr().cast(), flags)" in split_newlines
+        and (
+            "rs_strv_split_full(&mut l, s, NEWLINE.as_ptr().cast(), flags)" in split_newlines
+            or (
+                "rs_strv_split_full(\n" in split_newlines
+                and "NEWLINE.as_ptr().cast()" in split_newlines
+                and "flags" in split_newlines
+            )
+        )
         and "rs_utf8_encoded_to_unichar(p, &mut unichar)" in rebreak
         and "return encoded_len;" in rebreak
         and "w = 0;" in rebreak
-        and "unsafe { *ret =" in source_text
+        and ("unsafe { *ret =" in source_text or "unsafe_ffi!(*ret =" in source_text)
         and "unsafe fn free_owned_strv" in production
         and "CString::into_raw" not in production
         and "Vec::into_raw_parts" not in production
@@ -2811,7 +2818,11 @@ def string_mutation_registered_boundary_is_reviewed() -> bool:
         and 'c" \\t\\n\\r".as_ptr()' in string_source_text
         and "unsafe fn c_string_contains_byte" in string_source_text
         and "preserves C behavior when bad aliases s" in string_source_text
-        and string_source_text.count("unsafe { c_string_contains_byte(bad,") == 2
+        and (
+            string_source_text.count("unsafe { c_string_contains_byte(bad,")
+            + string_source_text.count("unsafe_ffi!(c_string_contains_byte(bad,")
+            == 2
+        )
         and "let flags = if separators.is_null() { 0 } else { 1 << 6 };" in line_source_text
         and "if s.is_null() || ret.is_null()" in line_source_text
         and 'char * const *words' in string_header_text

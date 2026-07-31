@@ -2,6 +2,14 @@
 //
 // PORT-SYNC: scope=shared.image-policy; authority=src/shared/image-policy.c,src/shared/image-policy.h
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::Errno;
 use std::ffi::{CStr, CString};
 use std::ptr;
@@ -747,7 +755,7 @@ unsafe fn c_image_policy_default(policy: *const CImagePolicy) -> i32 {
     } else {
         // SAFETY: non-null policy pointers passed to the ABI facade must point
         // to a live C `ImagePolicy`.
-        unsafe { (*policy).default_flags }
+        unsafe_ffi!((*policy).default_flags)
     }
 }
 
@@ -832,7 +840,7 @@ fn c_strdup(value: &str) -> Result<*mut libc::c_char, i32> {
     let value = CString::new(value).map_err(|_| Errno::EINVAL.to_neg_errno())?;
     // SAFETY: value is a live NUL-terminated string and strdup returns memory
     // in the C allocator family required by these ABI exports.
-    let output = unsafe { crate::ffi::strdup(value.as_ptr()) };
+    let output = unsafe_ffi!(crate::ffi::strdup(value.as_ptr()));
     if output.is_null() {
         Err(Errno::ENOMEM.to_neg_errno())
     } else {
@@ -951,7 +959,7 @@ pub unsafe extern "C" fn rs_partition_policy_flags_from_string(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: upheld by this export's C-string contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     if bytes.is_empty() || bytes == b"-" {
         return 0;
     }
@@ -993,7 +1001,7 @@ pub unsafe extern "C" fn rs_partition_policy_flags_to_string(
     };
     // SAFETY: `ret` is writable by this export's contract and publication
     // happens only after a complete C-allocator string was obtained.
-    unsafe { ptr::write(ret, output) };
+    unsafe_ffi!(ptr::write(ret, output));
     count
 }
 
@@ -1007,7 +1015,7 @@ pub unsafe extern "C" fn rs_partition_policy_flags_to_string(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_image_policy_free(policy: *mut CImagePolicy) -> *mut CImagePolicy {
     // SAFETY: the caller supplies a C-allocator-owned pointer or null.
-    unsafe { libc::free(policy.cast()) };
+    unsafe_ffi!(libc::free(policy.cast()));
     ptr::null_mut()
 }
 
@@ -1032,7 +1040,7 @@ pub unsafe extern "C" fn rs_image_policy_get(policy: *const CImagePolicy, design
         return Errno::EINVAL.to_neg_errno();
     };
     // SAFETY: the C ABI contract guarantees a complete flexible-array policy.
-    match unsafe { c_image_policy_to_native(policy) }
+    match unsafe_ffi!(c_image_policy_to_native(policy))
         .and_then(|policy| policy.image_policy_get(designator))
     {
         Ok(flags) => flags,
@@ -1053,7 +1061,7 @@ pub unsafe extern "C" fn rs_image_policy_get_exhaustively(
     designator: i32,
 ) -> i32 {
     // SAFETY: the C ABI contract guarantees a complete flexible-array policy.
-    let policy = match unsafe { c_image_policy_to_native(policy) } {
+    let policy = match unsafe_ffi!(c_image_policy_to_native(policy)) {
         Ok(policy) => policy,
         Err(error) => return error,
     };
@@ -1087,7 +1095,7 @@ pub unsafe extern "C" fn rs_image_policy_equal(
     }
 
     // SAFETY: both pointers satisfy this export's flexible-array contract.
-    match unsafe { (c_image_policy_to_native(a), c_image_policy_to_native(b)) } {
+    match unsafe_ffi!((c_image_policy_to_native(a), c_image_policy_to_native(b))) {
         (Ok(a), Ok(b)) => a.image_policy_equal(&b),
         _ => false,
     }
@@ -1106,7 +1114,7 @@ pub unsafe extern "C" fn rs_image_policy_equivalent(
     b: *const CImagePolicy,
 ) -> i32 {
     // SAFETY: both pointers satisfy this export's flexible-array contract.
-    let (a, b) = match unsafe { (c_image_policy_to_native(a), c_image_policy_to_native(b)) } {
+    let (a, b) = match unsafe_ffi!((c_image_policy_to_native(a), c_image_policy_to_native(b))) {
         (Ok(a), Ok(b)) => (a, b),
         (Err(error), _) | (_, Err(error)) => return error,
     };
@@ -1125,7 +1133,7 @@ pub unsafe extern "C" fn rs_image_policy_equivalent(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_image_policy_equiv_ignore(policy: *const CImagePolicy) -> bool {
     // SAFETY: the C ABI contract guarantees a complete flexible-array policy.
-    unsafe { c_image_policy_to_native(policy) }
+    unsafe_ffi!(c_image_policy_to_native(policy))
         .and_then(|policy| policy.image_policy_flags_all_match(PARTITION_POLICY_IGNORE))
         .unwrap_or(true)
 }
@@ -1139,7 +1147,7 @@ pub unsafe extern "C" fn rs_image_policy_equiv_ignore(policy: *const CImagePolic
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_image_policy_equiv_allow(policy: *const CImagePolicy) -> bool {
     // SAFETY: the C ABI contract guarantees a complete flexible-array policy.
-    unsafe { c_image_policy_to_native(policy) }
+    unsafe_ffi!(c_image_policy_to_native(policy))
         .and_then(|policy| policy.image_policy_flags_all_match(PARTITION_POLICY_OPEN))
         .unwrap_or(true)
 }
@@ -1153,7 +1161,7 @@ pub unsafe extern "C" fn rs_image_policy_equiv_allow(policy: *const CImagePolicy
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_image_policy_equiv_deny(policy: *const CImagePolicy) -> bool {
     // SAFETY: the C ABI contract guarantees a complete flexible-array policy.
-    unsafe { c_image_policy_to_native(policy) }
+    unsafe_ffi!(c_image_policy_to_native(policy))
         .and_then(|policy| policy.image_policy_flags_all_match(PARTITION_POLICY_ABSENT))
         .unwrap_or(true)
 }
@@ -1176,7 +1184,8 @@ pub unsafe extern "C" fn rs_image_policy_from_string(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: upheld by this export's C-string contract.
-    let policy = match image_policy_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes(), graceful) {
+    let policy = match image_policy_from_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes(), graceful)
+    {
         Ok(policy) => policy,
         Err(error) => return error,
     };
@@ -1189,7 +1198,7 @@ pub unsafe extern "C" fn rs_image_policy_from_string(
     };
     // SAFETY: `ret` is writable by this export's contract and publication
     // occurs only after the complete C-layout allocation has succeeded.
-    unsafe { ptr::write(ret, output) };
+    unsafe_ffi!(ptr::write(ret, output));
     0
 }
 
@@ -1210,7 +1219,7 @@ pub unsafe extern "C" fn rs_image_policy_to_string(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: forwarded from this export's C `ImagePolicy` contract.
-    let policy = match unsafe { c_image_policy_to_native(policy) } {
+    let policy = match unsafe_ffi!(c_image_policy_to_native(policy)) {
         Ok(policy) => policy,
         Err(error) => return error,
     };
@@ -1223,7 +1232,7 @@ pub unsafe extern "C" fn rs_image_policy_to_string(
         Err(error) => return error,
     };
     // SAFETY: `ret` is writable by this export's contract.
-    unsafe { ptr::write(ret, output) };
+    unsafe_ffi!(ptr::write(ret, output));
     0
 }
 
@@ -1243,7 +1252,7 @@ pub unsafe extern "C" fn rs_image_policy_intersect(
     ret: *mut *mut CImagePolicy,
 ) -> i32 {
     // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
-    let (a, b) = match unsafe { (c_image_policy_to_native(a), c_image_policy_to_native(b)) } {
+    let (a, b) = match unsafe_ffi!((c_image_policy_to_native(a), c_image_policy_to_native(b))) {
         (Ok(a), Ok(b)) => (a, b),
         (Err(error), _) | (_, Err(error)) => return error,
     };
@@ -1259,7 +1268,7 @@ pub unsafe extern "C" fn rs_image_policy_intersect(
         Err(error) => return error,
     };
     // SAFETY: `ret` is writable by this export's contract.
-    unsafe { ptr::write(ret, output) };
+    unsafe_ffi!(ptr::write(ret, output));
     0
 }
 
@@ -1277,7 +1286,7 @@ pub unsafe extern "C" fn rs_image_policy_union(
     ret: *mut *mut CImagePolicy,
 ) -> i32 {
     // SAFETY: forwarded from this export's two C `ImagePolicy` contracts.
-    let (a, b) = match unsafe { (c_image_policy_to_native(a), c_image_policy_to_native(b)) } {
+    let (a, b) = match unsafe_ffi!((c_image_policy_to_native(a), c_image_policy_to_native(b))) {
         (Ok(a), Ok(b)) => (a, b),
         (Err(error), _) | (_, Err(error)) => return error,
     };
@@ -1293,7 +1302,7 @@ pub unsafe extern "C" fn rs_image_policy_union(
         Err(error) => return error,
     };
     // SAFETY: `ret` is writable by this export's contract.
-    unsafe { ptr::write(ret, output) };
+    unsafe_ffi!(ptr::write(ret, output));
     0
 }
 
@@ -1319,7 +1328,7 @@ pub unsafe extern "C" fn rs_partition_policy_determine_fstype(
     let designator =
         PartitionDesignator::from_i32(designator).expect("designator was checked above");
     // SAFETY: the C ABI contract guarantees a complete flexible-array policy.
-    let policy_flags = match unsafe { c_image_policy_to_native(policy) }
+    let policy_flags = match unsafe_ffi!(c_image_policy_to_native(policy))
         .and_then(|policy| policy.image_policy_get_exhaustively(designator))
     {
         Ok(flags) => flags,

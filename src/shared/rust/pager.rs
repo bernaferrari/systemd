@@ -546,6 +546,14 @@ pub fn show_man_page(desc: &str, null_stdio: bool) -> Result<(), PagerError> {
 
 #[cfg(test)]
 mod tests {
+    // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
+    macro_rules! test_ffi {
+        ($expression:expr) => {{
+            // SAFETY: test inputs are constructed in this module and satisfy the
+            // documented C ABI preconditions of the exercised facade.
+            unsafe { $expression }
+        }};
+    }
     use super::*;
     use crate::tests::TestEnvironment;
 
@@ -597,7 +605,7 @@ mod tests {
     fn test_get_less_opts_default() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(ENV_SYSTEMD_LESS);
         assert_eq!(get_less_opts(PagerFlags::empty()), DEFAULT_LESS_OPTS);
     }
@@ -606,7 +614,7 @@ mod tests {
     fn test_get_less_opts_jump_to_end() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(ENV_SYSTEMD_LESS);
         let opts = get_less_opts(PagerFlags::JUMP_TO_END);
         assert!(opts.ends_with(" +G"));
@@ -619,7 +627,7 @@ mod tests {
     fn test_parse_pager_args_empty_string() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGER, "");
         assert_eq!(parse_pager_args(), Some(Vec::new()));
     }
@@ -628,7 +636,7 @@ mod tests {
     fn test_parse_pager_args_cat() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGER, "cat");
         assert_eq!(parse_pager_args(), Some(Vec::new()));
     }
@@ -637,7 +645,7 @@ mod tests {
     fn test_parse_pager_args_normal() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGER, "less -R");
         assert_eq!(parse_pager_args(), Some(vec!["less".into(), "-R".into()]));
     }
@@ -646,7 +654,7 @@ mod tests {
     fn test_parse_pager_args_not_set() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(ENV_SYSTEMD_PAGER);
         environment.remove(ENV_PAGER);
         assert_eq!(parse_pager_args(), None);
@@ -656,7 +664,7 @@ mod tests {
     fn test_is_pager_disabled_via_env_disabled() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGER, "cat");
         assert!(is_pager_disabled_via_env());
     }
@@ -665,7 +673,7 @@ mod tests {
     fn test_is_pager_disabled_via_env_active() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGER, "less");
         assert!(!is_pager_disabled_via_env());
     }
@@ -770,7 +778,7 @@ mod tests {
     fn test_parse_secure_mode_env_enabled() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGERSECURE, "1");
         assert_eq!(parse_secure_mode_env().unwrap(), Some(SecureMode::Enabled));
     }
@@ -779,7 +787,7 @@ mod tests {
     fn test_parse_secure_mode_env_true() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGERSECURE, "true");
         assert_eq!(parse_secure_mode_env().unwrap(), Some(SecureMode::Enabled));
     }
@@ -788,7 +796,7 @@ mod tests {
     fn test_parse_secure_mode_env_disabled() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGERSECURE, "0");
         assert_eq!(parse_secure_mode_env().unwrap(), Some(SecureMode::Disabled));
     }
@@ -797,7 +805,7 @@ mod tests {
     fn test_parse_secure_mode_env_not_set() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(ENV_SYSTEMD_PAGERSECURE);
         assert_eq!(parse_secure_mode_env().unwrap(), None);
     }
@@ -806,7 +814,7 @@ mod tests {
     fn test_parse_secure_mode_env_invalid() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGERSECURE, "garbage");
         assert!(parse_secure_mode_env().is_err());
     }
@@ -817,7 +825,7 @@ mod tests {
     fn test_resolve_secure_mode_explicit() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_PAGERSECURE, "false");
         environment.remove(ENV_SUDO_UID);
         assert_eq!(resolve_secure_mode(), SecureMode::Disabled);
@@ -827,7 +835,7 @@ mod tests {
     fn test_resolve_secure_mode_sudo_fallback() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(ENV_SYSTEMD_PAGERSECURE);
         environment.set(ENV_SUDO_UID, "1000");
         assert_eq!(resolve_secure_mode(), SecureMode::Enabled);
@@ -855,7 +863,7 @@ mod tests {
     fn test_get_less_charset_explicit() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SYSTEMD_LESSCHARSET, "latin1");
         assert_eq!(get_less_charset(), Some("latin1".into()));
     }
@@ -864,7 +872,7 @@ mod tests {
     fn test_get_less_charset_utf8_locale() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(ENV_SYSTEMD_LESSCHARSET);
         environment.set("LC_ALL", "en_US.UTF-8");
         assert_eq!(get_less_charset(), Some("utf-8".into()));
@@ -876,7 +884,7 @@ mod tests {
     fn test_has_sudo_uid_present() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.set(ENV_SUDO_UID, "1000");
         assert!(has_sudo_uid());
     }
@@ -885,7 +893,7 @@ mod tests {
     fn test_has_sudo_uid_absent() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(ENV_SUDO_UID);
         assert!(!has_sudo_uid());
     }

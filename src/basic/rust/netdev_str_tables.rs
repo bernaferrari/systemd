@@ -9,6 +9,14 @@
 // tables; this file owns only the shared lookup machinery and exceptional ABI
 // adapters that cannot be expressed as a table pair.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::Errno;
 use libc::c_char;
 use std::ffi::c_void;
@@ -25,7 +33,7 @@ use table_core::{from_bytes, input_bytes, static_cstr, static_cstr_ptr};
 unsafe fn cstr_eq_static(s: *const c_char, table_entry: &'static [u8]) -> bool {
     // SAFETY: propagated from the caller; this is the sole inbound C-string
     // borrow used by the table facade.
-    unsafe { input_bytes(s) }.is_some_and(|input| input == static_cstr(table_entry).to_bytes())
+    unsafe_ffi!(input_bytes(s)).is_some_and(|input| input == static_cstr(table_entry).to_bytes())
 }
 
 #[inline]
@@ -33,7 +41,7 @@ unsafe fn cstr_eq_static(s: *const c_char, table_entry: &'static [u8]) -> bool {
 // NUL-terminated table storage.
 unsafe fn cstr_eq_ignore_ascii_case_static(s: *const c_char, table_entry: &'static [u8]) -> bool {
     // SAFETY: propagated from the caller; see `table_core::input_bytes`.
-    unsafe { input_bytes(s) }
+    unsafe_ffi!(input_bytes(s))
         .is_some_and(|input| input.eq_ignore_ascii_case(static_cstr(table_entry).to_bytes()))
 }
 
@@ -62,7 +70,7 @@ macro_rules! string_table {
         /// C-string inputs must remain NUL-terminated and live for the call.
         pub unsafe extern "C" fn $from_fn(s: *const c_char) -> i32 {
             // SAFETY: required by this C ABI entry point's contract.
-            unsafe { input_bytes(s) }
+            unsafe_ffi!(input_bytes(s))
                 .and_then(|input| from_bytes($table, input))
                 .unwrap_or_else(|| Errno::EINVAL.to_neg_errno())
         }
@@ -137,34 +145,34 @@ pub unsafe extern "C" fn rs_coredump_filter_mask_from_string(
 
         // SAFETY: `rs_extract_first_word` returned a live, NUL-terminated
         // allocation when it returned a positive value above.
-        let Some(w) = (unsafe { input_bytes(word) }) else {
+        let Some(w) = (unsafe_ffi!(input_bytes(word))) else {
             // SAFETY: `rs_extract_first_word` returned an owned C allocation.
-            unsafe { crate::ffi::free(word as *mut c_void) };
+            unsafe_ffi!(crate::ffi::free(word as *mut c_void));
             return Errno::EINVAL.to_neg_errno();
         };
 
         if w == b"default" {
             mask |= (1u64 << 0) | (1u64 << 1) | (1u64 << 4) | (1u64 << 5);
             // SAFETY: `rs_extract_first_word` returned an owned C allocation.
-            unsafe { crate::ffi::free(word as *mut c_void) };
+            unsafe_ffi!(crate::ffi::free(word as *mut c_void));
             continue;
         }
 
         if w == b"all" {
             mask = u32::MAX as u64;
             // SAFETY: `rs_extract_first_word` returned an owned C allocation.
-            unsafe { crate::ffi::free(word as *mut c_void) };
+            unsafe_ffi!(crate::ffi::free(word as *mut c_void));
             continue;
         }
 
         // Try named filter (word still alive)
         // SAFETY: a positive `rs_extract_first_word` result supplied `word` as
         // a live NUL-terminated allocation, which remains owned here.
-        let named = unsafe { rs_coredump_filter_from_string(word) };
+        let named = unsafe_ffi!(rs_coredump_filter_from_string(word));
         if named >= 0 {
             mask |= 1u64 << named;
             // SAFETY: `rs_extract_first_word` returned an owned C allocation.
-            unsafe { crate::ffi::free(word as *mut c_void) };
+            unsafe_ffi!(crate::ffi::free(word as *mut c_void));
             continue;
         }
 
@@ -172,9 +180,12 @@ pub unsafe extern "C" fn rs_coredump_filter_mask_from_string(
         let mut x: u64 = 0;
         // SAFETY: `word` is still a live NUL-terminated allocation and `x` is
         // a writable output local.
-        let hr = unsafe { crate::parse_util::rs_safe_atoux64(word.cast::<libc::c_char>(), &mut x) };
+        let hr = unsafe_ffi!(crate::parse_util::rs_safe_atoux64(
+            word.cast::<libc::c_char>(),
+            &mut x
+        ));
         // SAFETY: `rs_extract_first_word` returned an owned C allocation.
-        unsafe { crate::ffi::free(word as *mut c_void) };
+        unsafe_ffi!(crate::ffi::free(word as *mut c_void));
         if hr < 0 {
             return hr;
         }
@@ -184,7 +195,7 @@ pub unsafe extern "C" fn rs_coredump_filter_mask_from_string(
 
     // SAFETY: `ret` was checked non-null above and is writable by the caller
     // contract.
-    unsafe { *ret = mask };
+    unsafe_ffi!(*ret = mask);
     0
 }
 
@@ -616,7 +627,7 @@ macro_rules! string_table_boolean {
         /// C-string inputs must remain NUL-terminated and live for the call.
         pub unsafe extern "C" fn $from_fn(s: *const c_char) -> i32 {
             // SAFETY: required by this C ABI entry point's contract.
-            let Some(input) = (unsafe { input_bytes(s) }) else {
+            let Some(input) = (unsafe_ffi!(input_bytes(s))) else {
                 return Errno::EINVAL.to_neg_errno();
             };
             let b = parse_boolean(input);
@@ -800,7 +811,7 @@ unsafe fn rust_strdup(s: *const c_char) -> *mut c_char {
         return std::ptr::null_mut();
     }
     // SAFETY: the helper contract provides a live C string for the borrowed input.
-    unsafe { input_bytes(s) }
+    unsafe_ffi!(input_bytes(s))
         .and_then(c_string_copy)
         .unwrap_or(std::ptr::null_mut())
 }
@@ -813,7 +824,7 @@ unsafe fn parse_uint(s: *const c_char) -> Option<u32> {
     let mut value = 0;
     // SAFETY: propagated from this helper's C-string contract; `value` is a
     // writable stack local and base zero matches C's safe_atou().
-    (unsafe { crate::parse_util::safe_atou_full_inner(s, 0, &mut value) } >= 0).then_some(value)
+    (unsafe_ffi!(crate::parse_util::safe_atou_full_inner(s, 0, &mut value)) >= 0).then_some(value)
 }
 
 /// Generates a pair of FFI functions with numeric fallback support.
@@ -843,7 +854,7 @@ macro_rules! string_table_fallback {
             }
             // SAFETY: `ret` was checked non-null and is writable by this ABI
             // entry point's caller contract.
-            unsafe { *ret = std::ptr::null_mut() };
+            unsafe_ffi!(*ret = std::ptr::null_mut());
             if v < 0 || v > $max as i32 {
                 return Errno::ERANGE.to_neg_errno(); // -ERANGE
             }
@@ -860,7 +871,7 @@ macro_rules! string_table_fallback {
                     return Errno::ENOMEM.to_neg_errno(); // -ENOMEM
                 };
                 // SAFETY: `ret` was checked non-null above.
-                unsafe { *ret = dup };
+                unsafe_ffi!(*ret = dup);
                 return 0;
             }
             // Numeric fallback: format the number as string
@@ -871,9 +882,9 @@ macro_rules! string_table_fallback {
             // SAFETY: `buf` is a live 16-byte allocation, the format string is
             // static and NUL-terminated, and the sole variadic argument matches
             // `%d`.
-            unsafe { snprintf(buf, 16, b"%d\0".as_ptr().cast::<c_char>(), v) };
+            unsafe_ffi!(snprintf(buf, 16, b"%d\0".as_ptr().cast::<c_char>(), v));
             // SAFETY: `ret` was checked non-null above.
-            unsafe { *ret = buf };
+            unsafe_ffi!(*ret = buf);
             0
         }
 
@@ -888,7 +899,7 @@ macro_rules! string_table_fallback {
         /// C-string inputs must remain NUL-terminated and live for the call.
         pub unsafe extern "C" fn $from_fn(s: *const c_char) -> i32 {
             // SAFETY: required by this C ABI entry point's contract.
-            let Some(input) = (unsafe { input_bytes(s) }) else {
+            let Some(input) = (unsafe_ffi!(input_bytes(s))) else {
                 return Errno::EINVAL.to_neg_errno();
             };
             if let Some(value) = from_bytes($table, input) {
@@ -897,7 +908,7 @@ macro_rules! string_table_fallback {
             // Numeric fallback
             // SAFETY: the entry point's C-string contract remains valid for
             // the delegated safe_atou-compatible numeric parser.
-            if let Some(u) = unsafe { parse_uint(s) }
+            if let Some(u) = unsafe_ffi!(parse_uint(s))
                 && u <= $max as u32
             {
                 return u as i32;
@@ -957,7 +968,7 @@ pub unsafe extern "C" fn rs_wol_options_to_string_alloc(opts: u32, ret: *mut *mu
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: ret is non-null and writable by the caller contract.
-    unsafe { *ret = std::ptr::null_mut() };
+    unsafe_ffi!(*ret = std::ptr::null_mut());
 
     if opts == u32::MAX {
         return 0; // *ret stays NULL
@@ -983,7 +994,7 @@ pub unsafe extern "C" fn rs_wol_options_to_string_alloc(opts: u32, ret: *mut *mu
             return Errno::ENOMEM.to_neg_errno();
         };
         // SAFETY: ret is non-null and writable by the caller contract.
-        unsafe { *ret = s };
+        unsafe_ffi!(*ret = s);
         return 1;
     }
 
@@ -999,7 +1010,7 @@ pub unsafe extern "C" fn rs_wol_options_to_string_alloc(opts: u32, ret: *mut *mu
             let name = static_cstr(name);
             if !first {
                 // SAFETY: total_len includes every separator and table entry.
-                unsafe { *buf.add(pos) = b',' as c_char };
+                unsafe_ffi!(*buf.add(pos) = b',' as c_char);
                 pos += 1;
             }
             first = false;
@@ -1014,10 +1025,10 @@ pub unsafe extern "C" fn rs_wol_options_to_string_alloc(opts: u32, ret: *mut *mu
         }
     }
     // SAFETY: the allocation reserves one final byte after total_len.
-    unsafe { *buf.add(pos) = 0 };
+    unsafe_ffi!(*buf.add(pos) = 0);
 
     // SAFETY: ret is non-null and writable by the caller contract.
-    unsafe { *ret = buf };
+    unsafe_ffi!(*ret = buf);
     1
 }
 

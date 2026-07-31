@@ -12,8 +12,7 @@ const TPM2_ALG_SHA512: u16 = 0xD;
 
 #[test]
 fn bond_mode_roundtrip_and_invalid_lookup() {
-    // SAFETY: This test controls all input and output lifetimes; returned pointers are validated before dereference and C allocations are released exactly once.
-    let s = unsafe { rs_bond_mode_to_string(1) };
+    let s = rs_bond_mode_to_string(1);
     assert!(!s.is_null());
     assert_eq!(
         // SAFETY: This test controls all input and output lifetimes; returned pointers are validated before dereference and C allocations are released exactly once.
@@ -52,8 +51,7 @@ fn static_cstr_comparison_uses_terminator_free_bytes() {
 
 #[test]
 fn dns_rcode_table_preserves_the_canonical_yrrset_spelling() {
-    // SAFETY: This test controls all input and output lifetimes; returned pointers are validated before dereference and C allocations are released exactly once.
-    let value = unsafe { rs_dns_rcode_to_string(7) };
+    let value = rs_dns_rcode_to_string(7);
     assert_eq!(
         // SAFETY: This test controls all input and output lifetimes; returned pointers are validated before dereference and C allocations are released exactly once.
         unsafe { CStr::from_ptr(value) }.to_bytes(),

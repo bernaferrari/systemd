@@ -9,6 +9,14 @@
 // function's Safety contract. Every allocation is sized before copying, and
 // word ownership is released exactly once at the extract-word boundary.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_void};
 
 use libc::c_char;
@@ -80,9 +88,9 @@ fn with_line_search_bytes<T>(
     }
     // SAFETY: each public caller guarantees both inputs are readable C strings
     // for this synchronous, non-retaining search.
-    let haystack = unsafe { CStr::from_ptr(haystack).to_bytes() };
+    let haystack = unsafe_ffi!(CStr::from_ptr(haystack).to_bytes());
     // SAFETY: see the preceding conversion for the same ABI contract.
-    let needle = unsafe { CStr::from_ptr(needle).to_bytes() };
+    let needle = unsafe_ffi!(CStr::from_ptr(needle).to_bytes());
     Some(search(haystack, needle))
 }
 
@@ -115,7 +123,7 @@ pub unsafe extern "C" fn rs_string_truncate_lines(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: the entry-point contract guarantees s is a live C string.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let mut cursor = 0usize;
     let mut end = 0usize;
     let mut count = 0usize;
@@ -152,7 +160,7 @@ pub unsafe extern "C" fn rs_string_truncate_lines(
         return Errno::ENOMEM.to_neg_errno();
     };
     // SAFETY: ret was checked non-null and is writable by the function contract.
-    unsafe { *ret = copy };
+    unsafe_ffi!(*ret = copy);
     i32::from(truncated)
 }
 
@@ -169,17 +177,17 @@ pub unsafe extern "C" fn rs_string_extract_line(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: the C ABI contract makes `s` a readable NUL-terminated string.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let Some((line, has_more)) = extract_line_bytes(bytes, wanted) else {
         // SAFETY: `ret` is writable and receives C's null source result.
-        unsafe { *ret = std::ptr::null_mut() };
+        unsafe_ffi!(*ret = std::ptr::null_mut());
         return 0;
     };
     let Some(value) = c_string_copy(line) else {
         return Errno::ENOMEM.to_neg_errno();
     };
     // SAFETY: `ret` was checked non-null and is writable by this function contract.
-    unsafe { *ret = value };
+    unsafe_ffi!(*ret = value);
     i32::from(has_more)
 }
 
@@ -195,7 +203,7 @@ pub unsafe extern "C" fn rs_find_line_startswith_internal(
         return std::ptr::null_mut();
     };
     // SAFETY: the safe search offset is at or before the input C terminator.
-    unsafe { (haystack as *mut c_char).add(offset) }
+    unsafe_ffi!((haystack as *mut c_char).add(offset))
 }
 
 /// # Safety
@@ -218,7 +226,7 @@ pub unsafe extern "C" fn rs_find_line_internal(
         return std::ptr::null_mut();
     };
     // SAFETY: `start` is the matching line start established by the safe core.
-    unsafe { (haystack as *mut c_char).add(start) }
+    unsafe_ffi!((haystack as *mut c_char).add(start))
 }
 
 /// # Safety
@@ -241,7 +249,7 @@ pub unsafe extern "C" fn rs_find_line_after_internal(
         return std::ptr::null_mut();
     };
     // SAFETY: `offset` is the terminator or byte after a newline in haystack.
-    unsafe { (haystack as *mut c_char).add(offset) }
+    unsafe_ffi!((haystack as *mut c_char).add(offset))
 }
 
 /// # Safety
@@ -252,20 +260,20 @@ unsafe fn strv_find(list: *const *const c_char, needle: *const c_char) -> *const
         return std::ptr::null();
     }
     // SAFETY: `needle` is a readable C string by the helper contract.
-    let needle = unsafe { CStr::from_ptr(needle) };
+    let needle = unsafe_ffi!(CStr::from_ptr(needle));
     let mut entry = list;
     loop {
         // SAFETY: `entry` traverses the NUL-terminated vector required by the contract.
-        let value = unsafe { *entry };
+        let value = unsafe_ffi!(*entry);
         if value.is_null() {
             break;
         }
         // SAFETY: every non-null vector element is a readable C string by contract.
-        if unsafe { CStr::from_ptr(value) } == needle {
+        if unsafe_ffi!(CStr::from_ptr(value)) == needle {
             return value;
         }
         // SAFETY: advancing within the NUL-terminated vector stays in its allocation.
-        entry = unsafe { entry.add(1) };
+        entry = unsafe_ffi!(entry.add(1));
     }
     std::ptr::null()
 }
@@ -285,11 +293,16 @@ pub unsafe extern "C" fn rs_string_contains_word_strv(
         let mut word = std::ptr::null_mut();
         // SAFETY: the input and output pointers meet extract_first_word's contract.
         let flags = if separators.is_null() { 0 } else { 1 << 6 };
-        let result = unsafe { rs_extract_first_word(&mut cursor, &mut word, separators, flags) };
+        let result = unsafe_ffi!(rs_extract_first_word(
+            &mut cursor,
+            &mut word,
+            separators,
+            flags
+        ));
         if result == 0 {
             // SAFETY: non-null `ret_word` is writable by the function contract.
             if !ret_word.is_null() {
-                unsafe { *ret_word = std::ptr::null() };
+                unsafe_ffi!(*ret_word = std::ptr::null());
             }
             return 0;
         }
@@ -300,16 +313,16 @@ pub unsafe extern "C" fn rs_string_contains_word_strv(
             std::ptr::null()
         } else {
             // SAFETY: `words` is a NUL-terminated string vector and `word` is a C string.
-            unsafe { strv_find(words.cast(), word) }
+            unsafe_ffi!(strv_find(words.cast(), word))
         };
         if !word.is_null() {
             // SAFETY: extract_first_word returned unique C ownership.
-            unsafe { free(word.cast::<c_void>()) };
+            unsafe_ffi!(free(word.cast::<c_void>()));
         }
         if !found.is_null() {
             // SAFETY: non-null `ret_word` is writable by the function contract.
             if !ret_word.is_null() {
-                unsafe { *ret_word = found };
+                unsafe_ffi!(*ret_word = found);
             }
             return 1;
         }

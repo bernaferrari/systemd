@@ -2,6 +2,14 @@
 //
 // PORT-SYNC: scope=basic.hexdecoct; authority=src/basic/hexdecoct.c,src/basic/hexdecoct.h
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use libc::{c_char, c_void};
@@ -859,13 +867,13 @@ impl CodecAllocation {
     fn bytes_mut(&mut self, content_len: usize) -> &mut [u8] {
         debug_assert!(content_len <= self.len);
         // SAFETY: this allocation is uniquely owned and live for self.len bytes.
-        unsafe { std::slice::from_raw_parts_mut(self.ptr, content_len) }
+        unsafe_ffi!(std::slice::from_raw_parts_mut(self.ptr, content_len))
     }
 
     fn terminate(&mut self, index: usize) {
         debug_assert!(index < self.len);
         // SAFETY: index is within this uniquely owned allocation.
-        unsafe { *self.ptr.add(index) = 0 };
+        unsafe_ffi!(*self.ptr.add(index) = 0);
     }
 
     fn into_raw(mut self) -> *mut u8 {
@@ -885,7 +893,7 @@ impl CodecAllocation {
             }
         }
         // SAFETY: this allocation has not escaped and uses libc ownership.
-        unsafe { libc::free(self.ptr.cast::<c_void>()) };
+        unsafe_ffi!(libc::free(self.ptr.cast::<c_void>()));
         self.ptr = std::ptr::null_mut();
     }
 }
@@ -894,7 +902,7 @@ impl Drop for CodecAllocation {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
             // SAFETY: unconsumed codec allocations are always libc-owned.
-            unsafe { libc::free(self.ptr.cast::<c_void>()) };
+            unsafe_ffi!(libc::free(self.ptr.cast::<c_void>()));
         }
     }
 }
@@ -916,10 +924,10 @@ unsafe fn codec_input_bytes<'a>(p: *const c_void, l: usize) -> Result<&'a [u8], 
     }
     if l == usize::MAX {
         // SAFETY: the helper's contract requires a readable NUL-terminated C string.
-        return Ok(unsafe { CStr::from_ptr(p.cast::<c_char>()) }.to_bytes());
+        return Ok(unsafe_ffi!(CStr::from_ptr(p.cast::<c_char>())).to_bytes());
     }
     // SAFETY: the helper's contract requires `p` to reference `l` readable bytes.
-    Ok(unsafe { std::slice::from_raw_parts(p.cast::<u8>(), l) })
+    Ok(unsafe_ffi!(std::slice::from_raw_parts(p.cast::<u8>(), l)))
 }
 
 /// Hex-encode an explicit byte range with C-allocator-owned output.
@@ -930,7 +938,7 @@ unsafe fn codec_input_bytes<'a>(p: *const c_void, l: usize) -> Result<&'a [u8], 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_hexmem(p: *const c_void, l: usize) -> *mut c_char {
     // SAFETY: this FFI boundary documents the readable-range precondition.
-    let input = match unsafe { codec_input_bytes(p, l) } {
+    let input = match unsafe_ffi!(codec_input_bytes(p, l)) {
         Ok(input) => input,
         Err(_) => return std::ptr::null_mut(),
     };
@@ -971,7 +979,7 @@ pub unsafe extern "C" fn rs_unhexmem_full(
     ret_size: *mut usize,
 ) -> i32 {
     // SAFETY: this FFI boundary documents both explicit and sentinel input modes.
-    let input = match unsafe { codec_input_bytes(p.cast::<c_void>(), l) } {
+    let input = match unsafe_ffi!(codec_input_bytes(p.cast::<c_void>(), l)) {
         Ok(input) => input,
         Err(error) => return error,
     };
@@ -997,12 +1005,12 @@ pub unsafe extern "C" fn rs_unhexmem_full(
     allocation.terminate(decoded_len);
     if !ret_size.is_null() {
         // SAFETY: required by this FFI boundary's output-pointer contract.
-        unsafe { *ret_size = decoded_len };
+        unsafe_ffi!(*ret_size = decoded_len);
     }
     if !ret_data.is_null() {
         let allocation = allocation.into_raw();
         // SAFETY: required by this FFI boundary's output-pointer contract.
-        unsafe { *ret_data = allocation.cast::<c_void>() };
+        unsafe_ffi!(*ret_data = allocation.cast::<c_void>());
     } else {
         allocation.erase_and_free(allocation_len, secure);
     }
@@ -1017,7 +1025,7 @@ pub unsafe extern "C" fn rs_unhexmem_full(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_base32hexmem(p: *const c_void, l: usize, padding: bool) -> *mut c_char {
     // SAFETY: this FFI boundary documents the readable-range precondition.
-    let input = match unsafe { codec_input_bytes(p, l) } {
+    let input = match unsafe_ffi!(codec_input_bytes(p, l)) {
         Ok(input) => input,
         Err(_) => return std::ptr::null_mut(),
     };
@@ -1055,7 +1063,7 @@ pub unsafe extern "C" fn rs_unbase32hexmem(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: this FFI boundary documents both explicit and sentinel input modes.
-    let input = match unsafe { codec_input_bytes(p.cast::<c_void>(), l) } {
+    let input = match unsafe_ffi!(codec_input_bytes(p.cast::<c_void>(), l)) {
         Ok(input) => input,
         Err(error) => return error,
     };
@@ -1137,7 +1145,7 @@ pub unsafe extern "C" fn rs_base64mem_full(
         return Errno::EINVAL.to_neg_errno() as isize;
     }
     // SAFETY: this FFI boundary documents the readable-range precondition.
-    let input = match unsafe { codec_input_bytes(p, l) } {
+    let input = match unsafe_ffi!(codec_input_bytes(p, l)) {
         Ok(input) => input,
         Err(error) => return error as isize,
     };
@@ -1160,7 +1168,7 @@ pub unsafe extern "C" fn rs_base64mem_full(
     allocation.terminate(output_len);
     let allocation = allocation.into_raw();
     // SAFETY: ret satisfies this FFI boundary's output-pointer contract.
-    unsafe { *ret = allocation.cast::<c_char>() };
+    unsafe_ffi!(*ret = allocation.cast::<c_char>());
     output_len as isize
 }
 
@@ -1179,7 +1187,7 @@ pub unsafe extern "C" fn rs_unbase64mem_full(
     ret_size: *mut usize,
 ) -> i32 {
     // SAFETY: this FFI boundary documents both explicit and sentinel input modes.
-    let input = match unsafe { codec_input_bytes(p.cast::<c_void>(), l) } {
+    let input = match unsafe_ffi!(codec_input_bytes(p.cast::<c_void>(), l)) {
         Ok(input) => input,
         Err(error) => return error,
     };
@@ -1210,12 +1218,12 @@ pub unsafe extern "C" fn rs_unbase64mem_full(
     allocation.terminate(decoded_len);
     if !ret_size.is_null() {
         // SAFETY: required by this FFI boundary's output-pointer contract.
-        unsafe { *ret_size = decoded_len };
+        unsafe_ffi!(*ret_size = decoded_len);
     }
     if !ret_data.is_null() {
         let allocation = allocation.into_raw();
         // SAFETY: required by this FFI boundary's output-pointer contract.
-        unsafe { *ret_data = allocation.cast::<c_void>() };
+        unsafe_ffi!(*ret_data = allocation.cast::<c_void>());
     } else {
         allocation.erase_and_free(decoded_capacity, secure);
     }
@@ -1242,12 +1250,12 @@ pub unsafe extern "C" fn rs_base64_append(
         return Errno::EINVAL.to_neg_errno() as isize;
     }
     // SAFETY: required by this FFI boundary's prefix-pointer contract.
-    let old_prefix = unsafe { *prefix };
+    let old_prefix = unsafe_ffi!(*prefix);
     if old_prefix.is_null() && plen != 0 {
         return Errno::EINVAL.to_neg_errno() as isize;
     }
     // SAFETY: this FFI boundary documents the readable-range precondition.
-    let input = match unsafe { codec_input_bytes(p, l) } {
+    let input = match unsafe_ffi!(codec_input_bytes(p, l)) {
         Ok(input) => input,
         Err(error) => return error as isize,
     };
@@ -1318,12 +1326,12 @@ pub unsafe extern "C" fn rs_base64_append(
     // SAFETY: `old_prefix` is either null or a libc allocation, and the new
     // checked size is non-zero. `realloc` preserves the first `plen` bytes.
     let allocation =
-        unsafe { libc::realloc(old_prefix.cast::<c_void>(), allocation_len) }.cast::<u8>();
+        unsafe_ffi!(libc::realloc(old_prefix.cast::<c_void>(), allocation_len)).cast::<u8>();
     if allocation.is_null() {
         return Errno::ENOMEM.to_neg_errno() as isize;
     }
     // SAFETY: the successful realloc result is live for `allocation_len` bytes.
-    let output = unsafe { std::slice::from_raw_parts_mut(allocation, allocation_len) };
+    let output = unsafe_ffi!(std::slice::from_raw_parts_mut(allocation, allocation_len));
     let mut written = plen;
     for line in 0..lines {
         let amount = (encoded_len - line * effective_width).min(effective_width);
@@ -1341,7 +1349,7 @@ pub unsafe extern "C" fn rs_base64_append(
     }
     output[written] = 0;
     // SAFETY: successful completion publishes the potentially moved allocation.
-    unsafe { *prefix = allocation.cast::<c_char>() };
+    unsafe_ffi!(*prefix = allocation.cast::<c_char>());
     written as isize
 }
 
@@ -1360,7 +1368,7 @@ pub unsafe extern "C" fn rs_unhexmem(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: required by the C ABI contract.
-    let input = unsafe { CStr::from_ptr(p) }.to_bytes();
+    let input = unsafe_ffi!(CStr::from_ptr(p)).to_bytes();
     let allocation_len = match input
         .len()
         .checked_add(1)
@@ -1371,7 +1379,7 @@ pub unsafe extern "C" fn rs_unhexmem(
         None => return Errno::ENOMEM.to_neg_errno(),
     };
     // SAFETY: `allocation_len` is non-zero and comes from checked arithmetic.
-    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
+    let allocation = unsafe_ffi!(libc::malloc(allocation_len)).cast::<u8>();
     if allocation.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1385,23 +1393,23 @@ pub unsafe extern "C" fn rs_unhexmem(
     match result {
         Ok(decoded_len) => {
             // SAFETY: the checked allocation has one byte beyond decoded output.
-            unsafe { *allocation.add(decoded_len) = 0 };
+            unsafe_ffi!(*allocation.add(decoded_len) = 0);
             if !ret_size.is_null() {
                 // SAFETY: required by the C ABI contract.
-                unsafe { *ret_size = decoded_len };
+                unsafe_ffi!(*ret_size = decoded_len);
             }
             if !ret_data.is_null() {
                 // SAFETY: required by the C ABI contract.
-                unsafe { *ret_data = allocation.cast::<c_void>() };
+                unsafe_ffi!(*ret_data = allocation.cast::<c_void>());
             } else {
                 // SAFETY: the allocation has not escaped this function.
-                unsafe { libc::free(allocation.cast::<c_void>()) };
+                unsafe_ffi!(libc::free(allocation.cast::<c_void>()));
             }
             0
         }
         Err(error) => {
             // SAFETY: the allocation has not escaped this function.
-            unsafe { libc::free(allocation.cast::<c_void>()) };
+            unsafe_ffi!(libc::free(allocation.cast::<c_void>()));
             error
         }
     }
@@ -1431,10 +1439,10 @@ pub unsafe extern "C" fn rs_base64mem(p: *const c_void, l: usize, ret: *mut *mut
     } else {
         // SAFETY: the C ABI contract requires `p` to reference `l` readable
         // bytes whenever the length is non-zero.
-        unsafe { std::slice::from_raw_parts(p.cast::<u8>(), l) }
+        unsafe_ffi!(std::slice::from_raw_parts(p.cast::<u8>(), l))
     };
     // SAFETY: `allocation_len` is non-zero and comes from checked arithmetic.
-    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
+    let allocation = unsafe_ffi!(libc::malloc(allocation_len)).cast::<u8>();
     if allocation.is_null() {
         return Errno::ENOMEM.to_neg_errno() as isize;
     }
@@ -1465,7 +1473,7 @@ pub unsafe extern "C" fn rs_unbase64mem(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: required by the C ABI contract.
-    let input = unsafe { CStr::from_ptr(p) }.to_bytes();
+    let input = unsafe_ffi!(CStr::from_ptr(p)).to_bytes();
     let allocation_len = match input
         .len()
         .checked_div(4)
@@ -1480,7 +1488,7 @@ pub unsafe extern "C" fn rs_unbase64mem(
         None => return Errno::ENOMEM.to_neg_errno(),
     };
     // SAFETY: `allocation_len` is non-zero and comes from checked arithmetic.
-    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
+    let allocation = unsafe_ffi!(libc::malloc(allocation_len)).cast::<u8>();
     if allocation.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -1494,23 +1502,23 @@ pub unsafe extern "C" fn rs_unbase64mem(
     match result {
         Ok(decoded_len) => {
             // SAFETY: the checked allocation has one byte beyond decoded output.
-            unsafe { *allocation.add(decoded_len) = 0 };
+            unsafe_ffi!(*allocation.add(decoded_len) = 0);
             if !ret_size.is_null() {
                 // SAFETY: required by the C ABI contract.
-                unsafe { *ret_size = decoded_len };
+                unsafe_ffi!(*ret_size = decoded_len);
             }
             if !ret_data.is_null() {
                 // SAFETY: required by the C ABI contract.
-                unsafe { *ret_data = allocation.cast::<c_void>() };
+                unsafe_ffi!(*ret_data = allocation.cast::<c_void>());
             } else {
                 // SAFETY: the allocation has not escaped this function.
-                unsafe { libc::free(allocation.cast::<c_void>()) };
+                unsafe_ffi!(libc::free(allocation.cast::<c_void>()));
             }
             0
         }
         Err(error) => {
             // SAFETY: the allocation has not escaped this function.
-            unsafe { libc::free(allocation.cast::<c_void>()) };
+            unsafe_ffi!(libc::free(allocation.cast::<c_void>()));
             error
         }
     }

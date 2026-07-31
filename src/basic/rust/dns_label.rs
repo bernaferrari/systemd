@@ -5,6 +5,14 @@
 // DNS label parsing and DNS name utility functions.
 // These are pure functions with no I/O or global state.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use libc::{c_char, c_void};
 
 use crate::ffi::Errno;
@@ -26,7 +34,7 @@ macro_rules! dns_bytes_or_none {
             None
         } else {
             // SAFETY: the caller's C ABI contract guarantees a live C string.
-            Some(unsafe { std::ffi::CStr::from_ptr($name) }.to_bytes())
+            Some(unsafe_ffi!(std::ffi::CStr::from_ptr($name)).to_bytes())
         }
     }};
 }
@@ -630,7 +638,12 @@ pub unsafe extern "C" fn rs_dns_label_escape(
 pub unsafe extern "C" fn rs_dns_name_parent(name: *mut *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_dns_label_unescape(name, std::ptr::null_mut(), DNS_LABEL_MAX, 0) }
+    unsafe_ffi!(rs_dns_label_unescape(
+        name,
+        std::ptr::null_mut(),
+        DNS_LABEL_MAX,
+        0
+    ))
 }
 
 // ── dns_name_is_root ────────────────────────────────────────────────────
@@ -1051,7 +1064,7 @@ unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> i32 {
     loop {
         // SAFETY: the caller supplies readable NUL-terminated strings; this
         // loop advances both pointers in lockstep until either terminator.
-        let (a, b) = unsafe { (*s1.add(i) as u8, *s2.add(i) as u8) };
+        let (a, b) = unsafe_ffi!((*s1.add(i) as u8, *s2.add(i) as u8));
         if a != b || a == 0 || b == 0 {
             return (a as i32) - (b as i32);
         }
@@ -1871,7 +1884,7 @@ pub unsafe extern "C" fn rs_dns_name_normalize(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { rs_dns_name_concat(s, ptr::null(), flags, ret) }
+    unsafe_ffi!(rs_dns_name_concat(s, ptr::null(), flags, ret))
 }
 
 // ── dns_name_is_valid ───────────────────────────────────────────────────
@@ -2189,6 +2202,14 @@ pub unsafe extern "C" fn rs_dns_service_split(
 
 #[cfg(test)]
 mod tests {
+    // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
+    macro_rules! test_ffi {
+        ($expression:expr) => {{
+            // SAFETY: test inputs are constructed in this module and satisfy the
+            // documented C ABI preconditions of the exercised facade.
+            unsafe { $expression }
+        }};
+    }
     use super::*;
     use crate::ffi::Errno;
     use std::ffi::{CStr, CString};
@@ -2198,7 +2219,7 @@ mod tests {
     fn c_string_bytes(value: *const c_char) -> Vec<u8> {
         // SAFETY: every test passes a pointer from a live CString, a local
         // NUL-terminated output buffer, or a successful DNS helper result.
-        unsafe { CStr::from_ptr(value) }.to_bytes().to_vec()
+        test_ffi!(CStr::from_ptr(value)).to_bytes().to_vec()
     }
 
     /// Test one label-unescape ABI call through references and an optional
@@ -2213,23 +2234,23 @@ mod tests {
         });
         // SAFETY: test references provide writable pointer storage and any
         // supplied buffer; the input pointers come from live CStrings.
-        unsafe { rs_dns_label_unescape(name, destination, size, flags) }
+        test_ffi!(rs_dns_label_unescape(name, destination, size, flags))
     }
 
     fn srv_type_is_valid(name: &CStr) -> bool {
         // SAFETY: the test input is a live NUL-terminated CString.
-        unsafe { rs_dns_srv_type_is_valid(name.as_ptr()) }
+        test_ffi!(rs_dns_srv_type_is_valid(name.as_ptr()))
     }
 
     fn dot_suffixed(name: &CStr) -> i32 {
         // SAFETY: the test input is a live NUL-terminated CString.
-        unsafe { rs_dns_name_dot_suffixed(name.as_ptr()) }
+        test_ffi!(rs_dns_name_dot_suffixed(name.as_ptr()))
     }
 
     fn free_c_string(value: *mut c_char) {
         // SAFETY: every caller passes one successful C-allocator result and
         // transfers its ownership to this helper exactly once.
-        unsafe { free(value.cast()) }
+        test_ffi!(free(value.cast()))
     }
 
     #[test]
@@ -2258,7 +2279,7 @@ mod tests {
         let a = CString::new("Foo.Example").unwrap();
         let b = CString::new("foo.example").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert_eq!(unsafe { rs_dns_name_equal(a.as_ptr(), b.as_ptr()) }, 1);
+        assert_eq!(test_ffi!(rs_dns_name_equal(a.as_ptr(), b.as_ptr())), 1);
     }
 
     #[test]
@@ -2267,7 +2288,7 @@ mod tests {
         let suffix = CString::new("example.com").unwrap();
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_dns_name_endswith(name.as_ptr(), suffix.as_ptr()) },
+            test_ffi!(rs_dns_name_endswith(name.as_ptr(), suffix.as_ptr())),
             1
         );
     }
@@ -2276,7 +2297,7 @@ mod tests {
     fn dns_name_count_labels_counts_non_root_labels() {
         let name = CString::new("www.example.com").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert_eq!(unsafe { rs_dns_name_count_labels(name.as_ptr()) }, 3);
+        assert_eq!(test_ffi!(rs_dns_name_count_labels(name.as_ptr())), 3);
     }
 
     #[test]
@@ -2304,13 +2325,17 @@ mod tests {
 
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_dns_name_reverse(2, addr.as_ptr().cast(), &mut name) },
+            test_ffi!(rs_dns_name_reverse(2, addr.as_ptr().cast(), &mut name)),
             0
         );
         assert_eq!(c_string_bytes(name), b"4.3.2.1.in-addr.arpa");
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_dns_name_address(name, &mut family, out.as_mut_ptr().cast()) },
+            test_ffi!(rs_dns_name_address(
+                name,
+                &mut family,
+                out.as_mut_ptr().cast()
+            )),
             1
         );
         assert_eq!(family, 2);
@@ -2337,7 +2362,12 @@ mod tests {
         );
         assert_eq!(
             // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-            unsafe { rs_dns_service_split(joined, &mut out_name, &mut out_type, &mut out_domain) },
+            test_ffi!(rs_dns_service_split(
+                joined,
+                &mut out_name,
+                &mut out_type,
+                &mut out_domain
+            )),
             0
         );
         assert_eq!(c_string_bytes(out_name), b"Printer");

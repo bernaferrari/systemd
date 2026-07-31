@@ -1106,6 +1106,14 @@ fn last_errno() -> i32 {
 
 #[cfg(test)]
 mod tests {
+    // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
+    macro_rules! test_ffi {
+        ($expression:expr) => {{
+            // SAFETY: test inputs are constructed in this module and satisfy the
+            // documented C ABI preconditions of the exercised facade.
+            unsafe { $expression }
+        }};
+    }
     use super::*;
     use crate::test_support::TestEnvironment;
     use std::fs::{self, File};
@@ -1127,7 +1135,7 @@ mod tests {
 
     fn save_fd_if_open(fd: RawFd) -> Option<RawFd> {
         // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-        let duplicated = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 128) };
+        let duplicated = test_ffi!(libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 128));
         if duplicated >= 0 {
             return Some(duplicated);
         }
@@ -1145,7 +1153,7 @@ mod tests {
     fn replace_fd_with(source: RawFd, target: RawFd) -> Option<RawFd> {
         let saved = save_fd_if_open(target);
         // SAFETY: arguments satisfy the libc `dup2` contract and any passed pointers remain valid for the call.
-        let r = unsafe { libc::dup2(source, target) };
+        let r = test_ffi!(libc::dup2(source, target));
         assert!(r >= 0, "dup2({source}, {target}) failed");
         saved
     }
@@ -1154,21 +1162,21 @@ mod tests {
         match saved {
             Some(saved_fd) => {
                 // SAFETY: arguments satisfy the libc `dup2` contract and any passed pointers remain valid for the call.
-                let r = unsafe { libc::dup2(saved_fd, target) };
+                let r = test_ffi!(libc::dup2(saved_fd, target));
                 assert!(r >= 0, "failed to restore fd {target}");
                 // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-                unsafe { libc::close(saved_fd) };
+                test_ffi!(libc::close(saved_fd));
             }
             None => {
                 // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-                unsafe { libc::close(target) };
+                test_ffi!(libc::close(target));
             }
         }
     }
 
     fn fd_cloexec_set(fd: RawFd) -> bool {
         // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        let flags = test_ffi!(libc::fcntl(fd, libc::F_GETFD));
         assert!(flags >= 0, "F_GETFD failed for fd {fd}");
         (flags & libc::FD_CLOEXEC) != 0
     }
@@ -1176,7 +1184,7 @@ mod tests {
     fn close_if_not_kept(fd: RawFd, keep_a: RawFd, keep_b: RawFd) {
         if fd != keep_a && fd != keep_b {
             // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-            unsafe { libc::close(fd) };
+            test_ffi!(libc::close(fd));
         }
     }
 
@@ -1248,7 +1256,7 @@ mod tests {
     fn sd_listen_fds_sets_cloexec_and_unsets_environment() {
         // SAFETY: this environment-dependent test target runs with
         // --test-threads=1 and does not spawn environment readers.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         for key in LISTEN_ENV_VARS {
             environment.remove(key);
         }
@@ -1256,9 +1264,9 @@ mod tests {
         let mut pipe_a = [0; 2];
         let mut pipe_b = [0; 2];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert_eq!(unsafe { libc::pipe(pipe_a.as_mut_ptr()) }, 0);
+        assert_eq!(test_ffi!(libc::pipe(pipe_a.as_mut_ptr())), 0);
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert_eq!(unsafe { libc::pipe(pipe_b.as_mut_ptr()) }, 0);
+        assert_eq!(test_ffi!(libc::pipe(pipe_b.as_mut_ptr())), 0);
 
         let saved3 = replace_fd_with(pipe_a[0], SD_LISTEN_FDS_START);
         let saved4 = replace_fd_with(pipe_b[0], SD_LISTEN_FDS_START + 1);
@@ -1274,12 +1282,12 @@ mod tests {
         }
 
         // SAFETY: arguments satisfy the libc `getpid` contract and any passed pointers remain valid for the call.
-        environment.set("LISTEN_PID", unsafe { libc::getpid() }.to_string());
+        environment.set("LISTEN_PID", test_ffi!(libc::getpid()).to_string());
         environment.set("LISTEN_FDS", "2");
         environment.set("LISTEN_FDNAMES", "alpha:beta");
 
         // SAFETY: TestEnvironment upholds the environment mutation contract.
-        let n = unsafe { sd_listen_fds(true) }.unwrap();
+        let n = test_ffi!(sd_listen_fds(true)).unwrap();
         assert_eq!(n, 2);
         assert!(fd_cloexec_set(SD_LISTEN_FDS_START));
         assert!(fd_cloexec_set(SD_LISTEN_FDS_START + 1));
@@ -1295,7 +1303,7 @@ mod tests {
     fn sd_listen_fds_with_names_reads_env_and_sets_cloexec() {
         // SAFETY: this environment-dependent test target runs with
         // --test-threads=1 and does not spawn environment readers.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         for key in LISTEN_ENV_VARS {
             environment.remove(key);
         }
@@ -1303,9 +1311,9 @@ mod tests {
         let mut pipe_a = [0; 2];
         let mut pipe_b = [0; 2];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert_eq!(unsafe { libc::pipe(pipe_a.as_mut_ptr()) }, 0);
+        assert_eq!(test_ffi!(libc::pipe(pipe_a.as_mut_ptr())), 0);
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert_eq!(unsafe { libc::pipe(pipe_b.as_mut_ptr()) }, 0);
+        assert_eq!(test_ffi!(libc::pipe(pipe_b.as_mut_ptr())), 0);
 
         let saved3 = replace_fd_with(pipe_a[0], SD_LISTEN_FDS_START);
         let saved4 = replace_fd_with(pipe_b[0], SD_LISTEN_FDS_START + 1);
@@ -1320,7 +1328,7 @@ mod tests {
         }
 
         // SAFETY: arguments satisfy the libc `getpid` contract and any passed pointers remain valid for the call.
-        environment.set("LISTEN_PID", unsafe { libc::getpid() }.to_string());
+        environment.set("LISTEN_PID", test_ffi!(libc::getpid()).to_string());
         environment.set("LISTEN_FDS", "2");
         environment.set("LISTEN_FDNAMES", "first:second");
 
@@ -1359,17 +1367,17 @@ mod tests {
     fn sd_watchdog_enabled_reads_and_unsets_environment() {
         // SAFETY: this environment-dependent test target runs with
         // --test-threads=1 and does not spawn environment readers.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         for key in WATCHDOG_ENV_VARS {
             environment.remove(key);
         }
 
         environment.set("WATCHDOG_USEC", "777000");
         // SAFETY: arguments satisfy the libc `getpid` contract and any passed pointers remain valid for the call.
-        environment.set("WATCHDOG_PID", unsafe { libc::getpid() }.to_string());
+        environment.set("WATCHDOG_PID", test_ffi!(libc::getpid()).to_string());
 
         // SAFETY: TestEnvironment upholds the environment mutation contract.
-        let enabled = unsafe { sd_watchdog_enabled(true) }.unwrap();
+        let enabled = test_ffi!(sd_watchdog_enabled(true)).unwrap();
         assert_eq!(enabled, Some(777000));
         assert!(env::var("WATCHDOG_USEC").is_err());
         assert!(env::var("WATCHDOG_PID").is_err());
@@ -1379,7 +1387,7 @@ mod tests {
     fn sd_watchdog_enabled_missing_var_returns_none() {
         // SAFETY: this environment-dependent test target runs with
         // --test-threads=1 and does not spawn environment readers.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         for key in WATCHDOG_ENV_VARS {
             environment.remove(key);
         }
@@ -1390,7 +1398,7 @@ mod tests {
     fn sd_notify_missing_socket_returns_zero_like_false() {
         // SAFETY: this environment-dependent test target runs with
         // --test-threads=1 and does not spawn environment readers.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(NOTIFY_ENV_VAR);
         assert!(!sd_notify_preserve_environment("READY=1").unwrap());
     }
@@ -1399,7 +1407,7 @@ mod tests {
     fn sd_notify_sends_to_unix_datagram_socket() {
         // SAFETY: this environment-dependent test target runs with
         // --test-threads=1 and does not spawn environment readers.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(NOTIFY_ENV_VAR);
 
         let socket_path = unique_path("notify.sock");
@@ -1410,7 +1418,7 @@ mod tests {
         );
 
         // SAFETY: TestEnvironment upholds the environment mutation contract.
-        let sent = unsafe { sd_notify(true, "READY=1\nSTATUS=ok") }.unwrap();
+        let sent = test_ffi!(sd_notify(true, "READY=1\nSTATUS=ok")).unwrap();
         assert!(sent);
 
         let mut buf = [0u8; 128];
@@ -1425,7 +1433,7 @@ mod tests {
     fn sd_notifyf_formats_and_sends_message() {
         // SAFETY: this environment-dependent test target runs with
         // --test-threads=1 and does not spawn environment readers.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = test_ffi!(TestEnvironment::lock());
         environment.remove(NOTIFY_ENV_VAR);
 
         let socket_path = unique_path("notifyf.sock");
@@ -1460,7 +1468,7 @@ mod tests {
         let path = unique_path("fifo");
         let c_path = CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        test_ffi!(libc::mkfifo(c_path.as_ptr(), 0o600));
         let file = fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -1485,7 +1493,7 @@ mod tests {
         let fifo_path = unique_path("missing-fifo");
         let fifo_c = CString::new(fifo_path.as_os_str().as_encoded_bytes()).unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe { libc::mkfifo(fifo_c.as_ptr(), 0o600) };
+        test_ffi!(libc::mkfifo(fifo_c.as_ptr(), 0o600));
         let fifo = fs::OpenOptions::new()
             .read(true)
             .write(true)

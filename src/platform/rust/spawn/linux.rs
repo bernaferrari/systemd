@@ -9,6 +9,14 @@
 //! nix/libc entry points are descriptor and process-control syscall wrappers;
 //! identity changes use raw syscalls to avoid glibc's NPTL setxid machinery.
 
+// Centralized unsafe expression boundary for this low-level adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper validates descriptors, pointers, and
+        // ownership before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use super::{
     ProcessIdentity, SpawnConfirmation, SpawnSecurity, SpawnStdio, SpawnedService, parse_command,
 };
@@ -342,7 +350,7 @@ fn validate_stdio_fds(stdio: SpawnStdio) -> Result<(), String> {
             // valid; constructing BorrowedFd before that check would violate
             // its validity contract.
             // SAFETY: F_GETFD accepts the raw integer specifically to validate it.
-            if unsafe { libc::fcntl(fd, libc::F_GETFD) } < 0 {
+            if unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD)) < 0 {
                 return Err(format!(
                     "invalid {label} descriptor {fd}: {}",
                     nix::errno::Errno::last()
@@ -359,7 +367,7 @@ fn validate_stdio_fds(stdio: SpawnStdio) -> Result<(), String> {
         ] {
             // SAFETY: F_GETFD validates this raw descriptor before the
             // child-side protocol uses it after fork.
-            if unsafe { libc::fcntl(fd, libc::F_GETFD) } < 0 {
+            if unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD)) < 0 {
                 return Err(format!(
                     "invalid {label} descriptor {fd}: {}",
                     nix::errno::Errno::last()
@@ -814,7 +822,7 @@ impl PreparedLaunch {
                         format!("failed to retain delegated cgroup root descriptor: {error}")
                     })
                     // SAFETY: F_DUPFD_CLOEXEC returns a new owned descriptor.
-                    .map(|fd| unsafe { OwnedFd::from_raw_fd(fd) })
+                    .map(|fd| unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
             })
             .transpose()?;
         let cgroup_directory_fd = cgroup
@@ -825,7 +833,7 @@ impl PreparedLaunch {
                         format!("failed to retain preopened cgroup directory descriptor: {error}")
                     })
                     // SAFETY: F_DUPFD_CLOEXEC returns a new owned descriptor.
-                    .map(|fd| unsafe { OwnedFd::from_raw_fd(fd) })
+                    .map(|fd| unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
             })
             .transpose()?;
         let cgroup_threaded = cgroup_directory_fd
@@ -841,7 +849,7 @@ impl PreparedLaunch {
                         format!("failed to retain preopened cgroup.procs descriptor: {error}")
                     })
                     // SAFETY: F_DUPFD_CLOEXEC returns a new owned descriptor.
-                    .map(|fd| unsafe { OwnedFd::from_raw_fd(fd) })
+                    .map(|fd| unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
             })
             .transpose()?;
         validate_stdio_fds(stdio)?;
@@ -914,7 +922,7 @@ fn cgroup_is_threaded(directory: BorrowedFd<'_>) -> Result<bool, String> {
         ));
     }
     // SAFETY: openat returned a new descriptor with no existing owner.
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    let fd = unsafe_ffi!(OwnedFd::from_raw_fd(fd));
     let mut contents = [0u8; 64];
     let mut used = 0usize;
     loop {
@@ -938,7 +946,7 @@ fn cgroup_is_threaded(directory: BorrowedFd<'_>) -> Result<bool, String> {
 pub(super) fn child_errno_or_invalid_argument() -> i32 {
     // SAFETY: Linux exposes the calling thread's errno through this pointer.
     // The child reads it immediately after a failed libc operation.
-    let errno = unsafe { *libc::__errno_location() };
+    let errno = unsafe_ffi!(*libc::__errno_location());
     if errno == 0 { libc::EINVAL } else { errno }
 }
 
@@ -955,7 +963,7 @@ pub(super) fn child_report_failure(status_fd: RawFd, stage: ChildSpawnStage, err
 
     // SAFETY: after fork, `_exit` is the only termination primitive that does
     // not run parent-owned Rust destructors or flush parent-owned stdio state.
-    unsafe { libc::_exit(127) }
+    unsafe_ffi!(libc::_exit(127))
 }
 
 fn child_write_all(status_fd: RawFd, bytes: &[u8]) -> Result<(), i32> {
@@ -1031,7 +1039,7 @@ fn child_mark_exec_attempt(status_fd: RawFd) {
 
 fn child_path_exists(path: &CStr) -> bool {
     // SAFETY: `path` is a live, NUL-terminated string prepared before fork.
-    unsafe { libc::access(path.as_ptr(), libc::F_OK) == 0 }
+    unsafe_ffi!(libc::access(path.as_ptr(), libc::F_OK) == 0)
 }
 
 fn child_mount(
@@ -1063,7 +1071,7 @@ fn child_ensure_directory(path: &CStr, mode: libc::mode_t) -> Result<(), i32> {
         return Ok(());
     }
     // SAFETY: `path` remains valid for the duration of mkdir.
-    let result = unsafe { libc::mkdir(path.as_ptr(), mode) };
+    let result = unsafe_ffi!(libc::mkdir(path.as_ptr(), mode));
     if result == 0 || child_errno_or_invalid_argument() == libc::EEXIST {
         Ok(())
     } else {
@@ -1073,7 +1081,7 @@ fn child_ensure_directory(path: &CStr, mode: libc::mode_t) -> Result<(), i32> {
 
 fn child_write_file(path: &CStr, content: &[u8]) -> Result<(), i32> {
     // SAFETY: `path` is NUL terminated; no O_CREAT mode argument is needed.
-    let fd = unsafe { libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CLOEXEC) };
+    let fd = unsafe_ffi!(libc::open(path.as_ptr(), libc::O_WRONLY | libc::O_CLOEXEC));
     if fd < 0 {
         return Err(child_errno_or_invalid_argument());
     }
@@ -1107,7 +1115,7 @@ fn child_mount_tmpfs(path: &CStr, options: &CStr) -> Result<(), i32> {
 fn child_apply_namespace(namespace: &PreparedNamespace) -> Result<(), i32> {
     if namespace.unshare_flags != 0 {
         // SAFETY: the flags are a validated OR of CLONE_NEW* constants.
-        if unsafe { libc::unshare(namespace.unshare_flags) } < 0 {
+        if unsafe_ffi!(libc::unshare(namespace.unshare_flags)) < 0 {
             return Err(child_errno_or_invalid_argument());
         }
     }
@@ -1154,7 +1162,12 @@ fn child_apply_namespace(namespace: &PreparedNamespace) -> Result<(), i32> {
             }
             let mode = libc::S_IFCHR as libc::mode_t | 0o666;
             // SAFETY: the path is prepared and makedev receives bounded u32s.
-            if unsafe { libc::mknod(path.as_ptr(), mode, libc::makedev(*major, *minor)) } < 0 {
+            if unsafe_ffi!(libc::mknod(
+                path.as_ptr(),
+                mode,
+                libc::makedev(*major, *minor)
+            )) < 0
+            {
                 return Err(child_errno_or_invalid_argument());
             }
         }
@@ -1237,7 +1250,7 @@ fn child_set_capability_state(state: PreparedCapabilityState) -> Result<(), i32>
     ];
     // SAFETY: header/data use the Linux capability v3 ABI and remain live for
     // the duration of the capset syscall.
-    let result = unsafe { libc::syscall(libc::SYS_capset, &header, data.as_ptr()) };
+    let result = unsafe_ffi!(libc::syscall(libc::SYS_capset, &header, data.as_ptr()));
     if result == 0 {
         Ok(())
     } else {
@@ -1283,7 +1296,7 @@ fn child_raise_ambient_capabilities(mask: u64) -> Result<(), i32> {
 fn child_apply_capabilities(capabilities: &PreparedCapabilities) -> Result<(), i32> {
     if capabilities.keep_across_uid_change {
         // SAFETY: PR_SET_KEEPCAPS accepts a boolean scalar.
-        if unsafe { libc::prctl(libc::PR_SET_KEEPCAPS, 1, 0, 0, 0) } < 0 {
+        if unsafe_ffi!(libc::prctl(libc::PR_SET_KEEPCAPS, 1, 0, 0, 0)) < 0 {
             return Err(child_errno_or_invalid_argument());
         }
     }
@@ -1293,8 +1306,13 @@ fn child_apply_capabilities(capabilities: &PreparedCapabilities) -> Result<(), i
                 continue;
             }
             // SAFETY: capability comes from the kernel's cap_last_cap bound.
-            if unsafe { libc::prctl(libc::PR_CAPBSET_DROP, capability as libc::c_ulong, 0, 0, 0) }
-                < 0
+            if unsafe_ffi!(libc::prctl(
+                libc::PR_CAPBSET_DROP,
+                capability as libc::c_ulong,
+                0,
+                0,
+                0
+            )) < 0
             {
                 return Err(child_errno_or_invalid_argument());
             }
@@ -1316,7 +1334,7 @@ fn child_reapply_capabilities_after_uid(capabilities: &PreparedCapabilities) -> 
         child_raise_ambient_capabilities(capabilities.ambient)?;
     }
     // SAFETY: PR_SET_KEEPCAPS accepts a boolean scalar.
-    if unsafe { libc::prctl(libc::PR_SET_KEEPCAPS, 0, 0, 0, 0) } < 0 {
+    if unsafe_ffi!(libc::prctl(libc::PR_SET_KEEPCAPS, 0, 0, 0, 0)) < 0 {
         return Err(child_errno_or_invalid_argument());
     }
     Ok(())
@@ -1333,7 +1351,7 @@ fn child_install_seccomp_filter(filter: &BpfProgram) -> Result<(), i32> {
         return Err(libc::EINVAL);
     }
     // SAFETY: PR_SET_NO_NEW_PRIVS accepts a boolean scalar.
-    if unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } < 0 {
+    if unsafe_ffi!(libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) < 0 {
         return Err(child_errno_or_invalid_argument());
     }
     let program = LinuxSockFprog {
@@ -1368,7 +1386,13 @@ fn child_apply_exec_context(context: &PreparedExecContext) -> Result<(), i32> {
     }
     if let Some(nice) = context.nice {
         // SAFETY: raw setpriority targets the calling process and uses scalars.
-        if unsafe { libc::syscall(libc::SYS_setpriority, libc::PRIO_PROCESS, 0, nice) } < 0 {
+        if unsafe_ffi!(libc::syscall(
+            libc::SYS_setpriority,
+            libc::PRIO_PROCESS,
+            0,
+            nice
+        )) < 0
+        {
             return Err(child_errno_or_invalid_argument());
         }
     }
@@ -1380,7 +1404,7 @@ fn child_apply_exec_context(context: &PreparedExecContext) -> Result<(), i32> {
     }
     for (resource, limit) in &context.limits {
         // SAFETY: `limit` remains live throughout setrlimit.
-        if unsafe { libc::setrlimit(*resource, limit) } < 0 {
+        if unsafe_ffi!(libc::setrlimit(*resource, limit)) < 0 {
             return Err(child_errno_or_invalid_argument());
         }
     }
@@ -1400,19 +1424,19 @@ fn child_apply_exec_context(context: &PreparedExecContext) -> Result<(), i32> {
     }
     if let Some(gid) = context.gid {
         // SAFETY: gid was resolved before fork; raw syscall avoids NPTL locks.
-        if unsafe { libc::syscall(libc::SYS_setgid, gid) } < 0 {
+        if unsafe_ffi!(libc::syscall(libc::SYS_setgid, gid)) < 0 {
             return Err(child_errno_or_invalid_argument());
         }
     }
     if let Some(uid) = context.uid {
         // SAFETY: uid was resolved before fork; raw syscall avoids NPTL locks.
-        if unsafe { libc::syscall(libc::SYS_setuid, uid) } < 0 {
+        if unsafe_ffi!(libc::syscall(libc::SYS_setuid, uid)) < 0 {
             return Err(child_errno_or_invalid_argument());
         }
     }
     if let Some(path) = &context.working_directory {
         // SAFETY: path is a live, NUL-terminated C string.
-        if unsafe { libc::syscall(libc::SYS_chdir, path.as_ptr()) } < 0 {
+        if unsafe_ffi!(libc::syscall(libc::SYS_chdir, path.as_ptr())) < 0 {
             return Err(child_errno_or_invalid_argument());
         }
     }
@@ -1426,7 +1450,14 @@ fn child_apply_security(security: &PreparedSecurity) -> Result<(), i32> {
     }
     if let Some(bits) = security.secure_bits {
         // SAFETY: bits is composed exclusively from validated secure-bit masks.
-        if unsafe { libc::prctl(libc::PR_SET_SECUREBITS, bits as libc::c_ulong, 0, 0, 0) } < 0 {
+        if unsafe_ffi!(libc::prctl(
+            libc::PR_SET_SECUREBITS,
+            bits as libc::c_ulong,
+            0,
+            0,
+            0
+        )) < 0
+        {
             return Err(child_errno_or_invalid_argument());
         }
     }
@@ -1436,7 +1467,7 @@ fn child_apply_security(security: &PreparedSecurity) -> Result<(), i32> {
     }
     if security.no_new_privileges {
         // SAFETY: PR_SET_NO_NEW_PRIVS accepts a boolean scalar.
-        if unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } < 0 {
+        if unsafe_ffi!(libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) < 0 {
             return Err(child_errno_or_invalid_argument());
         }
     }
@@ -1741,7 +1772,7 @@ fn spawn_service_inner(
             }
 
             // SAFETY: raw getpid has no preconditions.
-            let child_pid = unsafe { libc::syscall(libc::SYS_getpid) as libc::pid_t };
+            let child_pid = unsafe_ffi!(libc::syscall(libc::SYS_getpid) as libc::pid_t);
             child_scratch.prepare_pid_environment(child_pid);
 
             child_mark_exec_attempt(status_fd);
@@ -1808,7 +1839,11 @@ mod tests {
         // SAFETY: `previous` came from sigaction for SIGPIPE in this process
         // and is passed back unchanged to restore the test process state.
         assert_eq!(
-            unsafe { libc::sigaction(libc::SIGPIPE, previous, std::ptr::null_mut()) },
+            unsafe_ffi!(libc::sigaction(
+                libc::SIGPIPE,
+                previous,
+                std::ptr::null_mut()
+            )),
             0
         );
     }

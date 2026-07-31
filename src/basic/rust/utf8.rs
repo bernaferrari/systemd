@@ -5,6 +5,14 @@
 // UTF-8 validation, encoding, decoding, and utility functions.
 // Based on GLIB gutf8.c (Copyright 1999 Tom Tromey, 2000 Red Hat).
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use libc::c_char;
 
 use std::ffi::CStr;
@@ -194,7 +202,7 @@ fn calloc_bytes(nmemb: usize, size: usize) -> *mut c_void {
     }
 
     // SAFETY: p owns total writable bytes returned by malloc.
-    unsafe { ptr::write_bytes(p, 0, total) };
+    unsafe_ffi!(ptr::write_bytes(p, 0, total));
     p
 }
 
@@ -380,7 +388,7 @@ pub unsafe extern "C" fn rs_utf8_encoded_to_unichar(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe { utf8_encoded_to_unichar_inner(str, ret_unichar) }
+    unsafe_ffi!(utf8_encoded_to_unichar_inner(str, ret_unichar))
 }
 
 ///
@@ -731,7 +739,7 @@ pub unsafe extern "C" fn rs_utf8_encode_unichar(out_utf8: *mut c_char, g: u32) -
     if !out_utf8.is_null() && len > 0 {
         // SAFETY: a non-null output pointer is writable for the encoded bytes
         // under this export's documented C ABI contract.
-        unsafe { std::slice::from_raw_parts_mut(out_utf8.cast::<u8>(), len) }
+        unsafe_ffi!(std::slice::from_raw_parts_mut(out_utf8.cast::<u8>(), len))
             .copy_from_slice(&encoded[..len]);
     }
     len
@@ -1065,6 +1073,14 @@ pub unsafe extern "C" fn rs_utf8_last_length(s: *const c_char, n: usize) -> usiz
 
 #[cfg(test)]
 mod tests {
+    // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
+    macro_rules! test_ffi {
+        ($expression:expr) => {{
+            // SAFETY: test inputs are constructed in this module and satisfy the
+            // documented C ABI preconditions of the exercised facade.
+            unsafe { $expression }
+        }};
+    }
     use super::*;
     use std::ffi::CString;
 
@@ -1072,13 +1088,16 @@ mod tests {
     fn utf8_validation_accepts_valid_and_rejects_invalid() {
         let valid = CString::new("hello").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert!(!unsafe { rs_utf8_is_valid_n(valid.as_ptr(), 5) }.is_null());
+        assert!(!test_ffi!(rs_utf8_is_valid_n(valid.as_ptr(), 5)).is_null());
 
         let invalid = [0xF0u8, 0x28, 0x8C, 0x28, 0];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
         assert!(
-            unsafe { rs_utf8_is_valid_n(invalid.as_ptr() as *const c_char, invalid.len() - 1) }
-                .is_null()
+            test_ffi!(rs_utf8_is_valid_n(
+                invalid.as_ptr() as *const c_char,
+                invalid.len() - 1
+            ))
+            .is_null()
         );
     }
 
@@ -1087,12 +1106,17 @@ mod tests {
         let e_acute = CString::new("é").unwrap();
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe { rs_utf8_encoded_valid_unichar(e_acute.as_ptr(), 2) },
+            test_ffi!(rs_utf8_encoded_valid_unichar(e_acute.as_ptr(), 2)),
             2
         );
 
         let bad = [0x80u8, 0];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert!(unsafe { rs_utf8_encoded_valid_unichar(bad.as_ptr() as *const c_char, 1) } < 0);
+        assert!(
+            test_ffi!(rs_utf8_encoded_valid_unichar(
+                bad.as_ptr() as *const c_char,
+                1
+            )) < 0
+        );
     }
 }

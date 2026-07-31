@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // PORT-SYNC: src/shared/ask-password-api.c, src/shared/ask-password-api.h
 
+// Centralized unsafe expression boundary for this low-level adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper validates descriptors, pointers, and
+        // ownership before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::collections::BTreeSet;
 use std::env;
@@ -280,7 +288,7 @@ fn write_all_fd(fd: RawFd, data: &[u8]) -> io::Result<()> {
 fn read_one_byte(fd: RawFd) -> io::Result<Option<u8>> {
     let mut byte = 0u8;
     // SAFETY: byte points to a valid output buffer.
-    let n = unsafe { libc::read(fd, (&mut byte as *mut u8).cast::<c_void>(), 1) };
+    let n = unsafe_ffi!(libc::read(fd, (&mut byte as *mut u8).cast::<c_void>(), 1));
     if n < 0 {
         let error = io::Error::last_os_error();
         if error.kind() == io::ErrorKind::Interrupted {
@@ -367,7 +375,11 @@ fn poll_readable(fd: RawFd, hup_fd: RawFd, deadline: Option<Instant>) -> AskPass
         }
 
         // SAFETY: pollfds is initialized for the selected nfds entries.
-        let n = unsafe { libc::poll(pollfds.as_mut_ptr(), nfds as libc::nfds_t, timeout) };
+        let n = unsafe_ffi!(libc::poll(
+            pollfds.as_mut_ptr(),
+            nfds as libc::nfds_t,
+            timeout
+        ));
         if n < 0 {
             let error = io::Error::last_os_error();
             if error.kind() == io::ErrorKind::Interrupted {
@@ -413,7 +425,7 @@ pub fn touch_ask_password_directory(flags: AskPasswordFlags) -> AskPasswordResul
         .map_err(|_| AskPasswordError::Io(io::ErrorKind::InvalidInput))?;
 
     // SAFETY: path is a valid NUL-terminated path; NULL means "set to current time".
-    let r = unsafe { libc::utimes(path.as_ptr(), std::ptr::null()) };
+    let r = unsafe_ffi!(libc::utimes(path.as_ptr(), std::ptr::null()));
     if r < 0 {
         return errno_result();
     }
@@ -756,12 +768,12 @@ fn prompt_for_tty(fd: RawFd, message: &str, flags: AskPasswordFlags) {
 fn set_terminal_echo(fd: RawFd, enabled: bool) -> io::Result<Option<libc::termios>> {
     let mut termios = MaybeUninit::<libc::termios>::uninit();
     // SAFETY: tcgetattr initializes termios on success.
-    if unsafe { libc::tcgetattr(fd, termios.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::tcgetattr(fd, termios.as_mut_ptr())) < 0 {
         return Ok(None);
     }
 
     // SAFETY: initialized above.
-    let old = unsafe { termios.assume_init() };
+    let old = unsafe_ffi!(termios.assume_init());
     let mut new = old;
     if enabled {
         new.c_lflag |= libc::ECHO;
@@ -769,7 +781,7 @@ fn set_terminal_echo(fd: RawFd, enabled: bool) -> io::Result<Option<libc::termio
         new.c_lflag &= !libc::ECHO;
     }
     // SAFETY: fd and termios pointer are valid.
-    if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &new) } < 0 {
+    if unsafe_ffi!(libc::tcsetattr(fd, libc::TCSANOW, &new)) < 0 {
         return Err(io::Error::last_os_error());
     }
     Ok(Some(old))
@@ -778,7 +790,7 @@ fn set_terminal_echo(fd: RawFd, enabled: bool) -> io::Result<Option<libc::termio
 fn restore_terminal(fd: RawFd, old: Option<libc::termios>) {
     if let Some(old) = old {
         // SAFETY: fd and previously obtained termios are valid.
-        let _ = unsafe { libc::tcsetattr(fd, libc::TCSANOW, &old) };
+        let _ = unsafe_ffi!(libc::tcsetattr(fd, libc::TCSANOW, &old));
     }
 }
 
@@ -1107,7 +1119,7 @@ struct SignalGuard {
 impl SignalGuard {
     fn new() -> io::Result<Self> {
         // SAFETY: sigset_t is immediately initialized by libc functions below.
-        let mut mask = unsafe { mem::zeroed::<libc::sigset_t>() };
+        let mut mask = unsafe_ffi!(mem::zeroed::<libc::sigset_t>());
         // SAFETY: pointers are valid.
         unsafe {
             libc::sigemptyset(&mut mask);
@@ -1116,21 +1128,25 @@ impl SignalGuard {
         }
 
         // SAFETY: output parameter is valid.
-        let mut oldmask = unsafe { mem::zeroed::<libc::sigset_t>() };
+        let mut oldmask = unsafe_ffi!(mem::zeroed::<libc::sigset_t>());
         // SAFETY: pointers are valid.
-        if unsafe { libc::sigprocmask(libc::SIG_BLOCK, &mask, &mut oldmask) } < 0 {
+        if unsafe_ffi!(libc::sigprocmask(libc::SIG_BLOCK, &mask, &mut oldmask)) < 0 {
             return Err(io::Error::last_os_error());
         }
 
         // SAFETY: signalfd returns a new descriptor on success.
-        let fd = unsafe { libc::signalfd(-1, &mask, libc::SFD_NONBLOCK | libc::SFD_CLOEXEC) };
+        let fd = unsafe_ffi!(libc::signalfd(
+            -1,
+            &mask,
+            libc::SFD_NONBLOCK | libc::SFD_CLOEXEC
+        ));
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
 
         Ok(Self {
             // SAFETY: fd is newly created and owned here.
-            signalfd: unsafe { OwnedFd::from_raw_fd(fd) },
+            signalfd: unsafe_ffi!(OwnedFd::from_raw_fd(fd)),
             oldmask,
         })
     }
@@ -1144,8 +1160,11 @@ impl SignalGuard {
 impl Drop for SignalGuard {
     fn drop(&mut self) {
         // SAFETY: oldmask was returned by sigprocmask above.
-        let _ =
-            unsafe { libc::sigprocmask(libc::SIG_SETMASK, &self.oldmask, std::ptr::null_mut()) };
+        let _ = unsafe_ffi!(libc::sigprocmask(
+            libc::SIG_SETMASK,
+            &self.oldmask,
+            std::ptr::null_mut()
+        ));
     }
 }
 
@@ -1255,7 +1274,7 @@ fn receive_agent_message(socket_fd: RawFd) -> AskPasswordResult<Option<Vec<Strin
         // SAFETY: CMSG_SPACE only computes the aligned ancillary-buffer size for a
         // `ucred` payload; its argument is the exact payload size and no pointer is
         // dereferenced by the calculation.
-        unsafe { libc::CMSG_SPACE(mem::size_of::<crate::ffi::ucred>() as u32) } as usize
+        unsafe_ffi!(libc::CMSG_SPACE(mem::size_of::<crate::ffi::ucred>() as u32)) as usize
     ];
     let mut iov = libc::iovec {
         iov_base: payload.as_mut_ptr().cast::<c_void>(),
@@ -1263,14 +1282,14 @@ fn receive_agent_message(socket_fd: RawFd) -> AskPasswordResult<Option<Vec<Strin
     };
 
     // SAFETY: zeroed msghdr is then fully initialized below.
-    let mut msg: libc::msghdr = unsafe { mem::zeroed() };
+    let mut msg: libc::msghdr = unsafe_ffi!(mem::zeroed());
     msg.msg_iov = &mut iov;
     msg.msg_iovlen = 1;
     msg.msg_control = cred_buf.as_mut_ptr().cast::<c_void>();
     msg.msg_controllen = cred_buf.len() as _;
 
     // SAFETY: recvmsg writes into the provided payload/control buffers.
-    let n = unsafe { libc::recvmsg(socket_fd, &mut msg, 0) };
+    let n = unsafe_ffi!(libc::recvmsg(socket_fd, &mut msg, 0));
     if n < 0 {
         let error = io::Error::last_os_error();
         if matches!(
@@ -1293,19 +1312,19 @@ fn receive_agent_message(socket_fd: RawFd) -> AskPasswordResult<Option<Vec<Strin
 
     let mut uid_ok = false;
     // SAFETY: msg contains control data written by recvmsg.
-    let mut cmsg = unsafe { libc::CMSG_FIRSTHDR(&msg) };
+    let mut cmsg = unsafe_ffi!(libc::CMSG_FIRSTHDR(&msg));
     while !cmsg.is_null() {
         // SAFETY: cmsg points to a cmsghdr inside msg_control.
-        let header = unsafe { &*cmsg };
+        let header = unsafe_ffi!(&*cmsg);
         if header.cmsg_level == libc::SOL_SOCKET && header.cmsg_type == SCM_CREDENTIALS {
             // SAFETY: SCM_CREDENTIALS payload is crate::ffi::ucred.
-            let ucred = unsafe { libc::CMSG_DATA(cmsg).cast::<crate::ffi::ucred>().read() };
+            let ucred = unsafe_ffi!(libc::CMSG_DATA(cmsg).cast::<crate::ffi::ucred>().read());
             // SAFETY: getuid has no preconditions.
-            uid_ok = ucred.uid == unsafe { libc::getuid() } || ucred.uid == 0;
+            uid_ok = ucred.uid == unsafe_ffi!(libc::getuid()) || ucred.uid == 0;
             break;
         }
         // SAFETY: iteration over ancillary data produced by recvmsg.
-        cmsg = unsafe { libc::CMSG_NXTHDR(&msg, cmsg) };
+        cmsg = unsafe_ffi!(libc::CMSG_NXTHDR(&msg, cmsg));
     }
     if !uid_ok {
         return Ok(None);
@@ -1377,7 +1396,11 @@ pub fn ask_password_agent(
         }
 
         // SAFETY: selected pollfd entries are initialized.
-        let n = unsafe { libc::poll(pollfds.as_mut_ptr(), nfds as libc::nfds_t, timeout) };
+        let n = unsafe_ffi!(libc::poll(
+            pollfds.as_mut_ptr(),
+            nfds as libc::nfds_t,
+            timeout
+        ));
         if n < 0 {
             let error = io::Error::last_os_error();
             if error.kind() == io::ErrorKind::Interrupted {
@@ -1449,7 +1472,7 @@ pub fn isatty_safe(fd: RawFd) -> bool {
         return false;
     }
     // SAFETY: isatty only inspects the file descriptor.
-    unsafe { libc::isatty(fd) != 0 }
+    unsafe_ffi!(libc::isatty(fd) != 0)
 }
 
 pub fn ask_password_auto(
@@ -1497,19 +1520,19 @@ mod tests {
     fn make_pipe() -> (OwnedFd, OwnedFd) {
         let mut fds = [0; 2];
         // SAFETY: pipe initializes both file descriptors on success.
-        let rc = unsafe { libc::pipe(fds.as_mut_ptr()) };
+        let rc = unsafe_ffi!(libc::pipe(fds.as_mut_ptr()));
         assert_eq!(rc, 0);
         // SAFETY: fds are freshly created and owned here.
-        let read_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let read_fd = unsafe_ffi!(OwnedFd::from_raw_fd(fds[0]));
         // SAFETY: fds are freshly created and owned here.
-        let write_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        let write_fd = unsafe_ffi!(OwnedFd::from_raw_fd(fds[1]));
         (read_fd, write_fd)
     }
 
     fn with_env_var<T>(key: &str, value: Option<&Path>, f: impl FnOnce() -> T) -> T {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         match value {
             Some(path) => environment.set(key, path),
             None => environment.remove(key),
@@ -1559,7 +1582,7 @@ mod tests {
     fn keyring_timeout_reads_environment() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set("SYSTEMD_ASK_PASSWORD_KEYRING_TIMEOUT_SEC", "5");
         assert_eq!(keyring_cache_timeout(), Duration::from_secs(5));
     }

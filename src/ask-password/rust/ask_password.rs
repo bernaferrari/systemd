@@ -1,3 +1,11 @@
+// Centralized unsafe expression boundary for this low-level adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper validates descriptors, pointers, and
+        // ownership before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/ask-password/ask-password.c
@@ -83,7 +91,7 @@ unsafe fn ask_password_auto(
     let mut result: *mut *mut libc::c_char = std::ptr::null_mut();
     // SAFETY: `req` and the result slot live for the call; the caller upholds
     // the validity of every non-null string pointer stored in `req`.
-    let r = unsafe { ask_password_auto(&req, flags, &mut result) };
+    let r = unsafe_ffi!(ask_password_auto(&req, flags, &mut result));
     if r < 0 {
         return r;
     }

@@ -4,6 +4,14 @@
 //
 // Bitmap functions.
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use libc::c_void;
 use std::slice;
 
@@ -34,7 +42,7 @@ impl CBitmap {
         }
         // SAFETY: the C ABI adapter established the C Bitmap representation
         // invariant for its non-empty word allocation.
-        unsafe { slice::from_raw_parts(self.bitmaps, self.n_bitmaps) }
+        unsafe_ffi!(slice::from_raw_parts(self.bitmaps, self.n_bitmaps))
     }
 
     fn words_mut(&mut self) -> &mut [u64] {
@@ -43,7 +51,7 @@ impl CBitmap {
         }
         // SAFETY: the C ABI adapter established exclusive access to the live
         // C Bitmap word allocation.
-        unsafe { slice::from_raw_parts_mut(self.bitmaps, self.n_bitmaps) }
+        unsafe_ffi!(slice::from_raw_parts_mut(self.bitmaps, self.n_bitmaps))
     }
 
     fn is_set(&self, n: u32) -> bool {
@@ -73,7 +81,7 @@ impl CBitmap {
         };
         // SAFETY: the C ABI adapter guarantees the existing pointer is a
         // libc allocation (or null when empty), so realloc retains ownership.
-        let words = unsafe { libc::realloc(self.bitmaps.cast::<c_void>(), bytes) }.cast::<u64>();
+        let words = unsafe_ffi!(libc::realloc(self.bitmaps.cast::<c_void>(), bytes)).cast::<u64>();
         if words.is_null() {
             return false;
         }
@@ -81,7 +89,7 @@ impl CBitmap {
         let old_len = self.n_bitmaps;
         // SAFETY: realloc returned a live allocation for exactly `new_len`
         // words; only the newly allocated suffix is initialized here.
-        let initialized = unsafe { slice::from_raw_parts_mut(words, new_len) };
+        let initialized = unsafe_ffi!(slice::from_raw_parts_mut(words, new_len));
         initialized[old_len..].fill(0);
         self.bitmaps = words;
         self.n_bitmaps = new_len;
@@ -100,7 +108,7 @@ impl CBitmap {
     fn clear(&mut self) {
         // SAFETY: the C ABI adapter guarantees this pointer has libc
         // allocation ownership or is null.
-        unsafe { libc::free(self.bitmaps.cast::<c_void>()) };
+        unsafe_ffi!(libc::free(self.bitmaps.cast::<c_void>()));
         self.bitmaps = std::ptr::null_mut();
         self.n_bitmaps = 0;
     }
@@ -110,12 +118,12 @@ impl CBitmap {
 // have checked NULL and documented the corresponding C Bitmap contract.
 fn with_c_bitmap<T>(bitmap: *const CBitmap, operation: impl FnOnce(&CBitmap) -> T) -> T {
     // SAFETY: callers are the audited C ABI adapters described above.
-    unsafe { operation(&*bitmap) }
+    unsafe_ffi!(operation(&*bitmap))
 }
 
 fn with_c_bitmap_mut<T>(bitmap: *mut CBitmap, operation: impl FnOnce(&mut CBitmap) -> T) -> T {
     // SAFETY: callers are the audited C ABI adapters with exclusive access.
-    unsafe { operation(&mut *bitmap) }
+    unsafe_ffi!(operation(&mut *bitmap))
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────
@@ -263,7 +271,7 @@ fn iterate_words(words: &[u64], idx: &mut u32) -> Option<u32> {
 /// Allocate a zeroed C-compatible bitmap object.
 fn c_bitmap_new() -> *mut CBitmap {
     // SAFETY: libc allocates suitably aligned storage for a C Bitmap object.
-    unsafe { libc::calloc(1, std::mem::size_of::<CBitmap>()) }.cast::<CBitmap>()
+    unsafe_ffi!(libc::calloc(1, std::mem::size_of::<CBitmap>())).cast::<CBitmap>()
 }
 
 /// Exact C ABI shadow of `bitmap_isset()`.
@@ -338,14 +346,14 @@ pub unsafe extern "C" fn rs_bitmap_copy(b: *mut CBitmap) -> *mut CBitmap {
         }
         let Some(bytes) = source.len().checked_mul(std::mem::size_of::<u64>()) else {
             // SAFETY: the local object has not escaped this function.
-            unsafe { libc::free(copy.cast::<c_void>()) };
+            unsafe_ffi!(libc::free(copy.cast::<c_void>()));
             return std::ptr::null_mut();
         };
         // SAFETY: libc allocates a word array of the checked byte length.
-        let words = unsafe { libc::malloc(bytes) }.cast::<u64>();
+        let words = unsafe_ffi!(libc::malloc(bytes)).cast::<u64>();
         if words.is_null() {
             // SAFETY: the local object has not escaped this function.
-            unsafe { libc::free(copy.cast::<c_void>()) };
+            unsafe_ffi!(libc::free(copy.cast::<c_void>()));
             return std::ptr::null_mut();
         }
         // SAFETY: `words` names a fresh allocation for exactly `source.len()`
@@ -388,7 +396,7 @@ pub unsafe extern "C" fn rs_bitmap_ensure_allocated(b: *mut *mut CBitmap) -> i32
         return -libc::EINVAL;
     }
     // SAFETY: required by this FFI boundary's writable-output contract.
-    if !unsafe { (*b).is_null() } {
+    if !unsafe_ffi!((*b).is_null()) {
         return 0;
     }
     let bitmap = c_bitmap_new();
@@ -396,7 +404,7 @@ pub unsafe extern "C" fn rs_bitmap_ensure_allocated(b: *mut *mut CBitmap) -> i32
         return -libc::ENOMEM;
     }
     // SAFETY: required by this FFI boundary's writable-output contract.
-    unsafe { *b = bitmap };
+    unsafe_ffi!(*b = bitmap);
     0
 }
 
@@ -461,7 +469,7 @@ pub unsafe extern "C" fn rs_bitmap_iterate(
     }
     // SAFETY: required by this FFI boundary's iterator and output pointer
     // contracts.
-    let (iter, output) = unsafe { (&mut *i, &mut *n) };
+    let (iter, output) = unsafe_ffi!((&mut *i, &mut *n));
     let Some(value) = with_c_bitmap(b, |bitmap| iterate_words(bitmap.words(), &mut iter.idx))
     else {
         return false;

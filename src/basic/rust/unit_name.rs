@@ -8,6 +8,14 @@
 //          unit_name_from_path/from_path_instance/to_path (path dependency),
 //          unit_name_mangle_with_suffix (logging, glob, device_path dependencies)
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use libc::c_char;
 
 use std::ffi::{CStr, c_void};
@@ -66,7 +74,7 @@ fn char_in_set(c: u8, set: &[u8]) -> bool {
 
 fn isempty(s: *const c_char) -> bool {
     // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-    s.is_null() || unsafe { *s == 0 }
+    s.is_null() || unsafe_ffi!(*s == 0)
 }
 
 fn hexchar(x: i32) -> u8 {
@@ -106,7 +114,7 @@ fn checked_escape_allocation(length: usize, suffix: usize) -> Option<usize> {
 // SAFETY: `s` must point to a live NUL-terminated C string.
 unsafe fn cstr_bytes<'a>(s: *const c_char) -> &'a [u8] {
     // SAFETY: upheld by the caller; this is the sole raw-string conversion.
-    unsafe { CStr::from_ptr(s) }.to_bytes()
+    unsafe_ffi!(CStr::from_ptr(s)).to_bytes()
 }
 
 /// Copy bytes into a malloc-owned, NUL-terminated C string.
@@ -132,7 +140,7 @@ unsafe fn bytes_to_malloc(bytes: &[u8]) -> *mut c_char {
 // SAFETY: `ret` must be writable for one pointer value.
 unsafe fn write_out(ret: *mut *mut c_char, value: *mut c_char) {
     // SAFETY: upheld by the caller at this FFI adapter boundary.
-    unsafe { *ret = value };
+    unsafe_ffi!(*ret = value);
 }
 
 /// Allocate a NUL-terminated copy of the first `n` bytes of `s`.
@@ -143,7 +151,7 @@ unsafe fn strndup_owned(s: *const c_char, n: usize) -> *mut c_char {
         return ptr::null_mut();
     }
     // SAFETY: the caller guarantees that `s` is a live NUL-terminated string.
-    let len = unsafe { strlen(s) };
+    let len = unsafe_ffi!(strlen(s));
     let copy_len = len.min(n);
     let Some(allocation) = checked_c_allocation(&[copy_len, 1]) else {
         return ptr::null_mut();
@@ -170,16 +178,16 @@ unsafe fn strdup_to(ret: *mut *mut c_char, s: *const c_char) -> i32 {
     }
     if s.is_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { *ret = ptr::null_mut() };
+        unsafe_ffi!(*ret = ptr::null_mut());
         return 0;
     }
     // SAFETY: the caller guarantees that `s` is a live NUL-terminated string.
-    let dup = unsafe { ffi_strdup(s) };
+    let dup = unsafe_ffi!(ffi_strdup(s));
     if dup.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
     // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-    unsafe { *ret = dup };
+    unsafe_ffi!(*ret = dup);
     0
 }
 
@@ -191,7 +199,7 @@ unsafe fn strjoin3(a: *const c_char, b: *const c_char, c: *const c_char) -> *mut
     }
     // SAFETY: the caller guarantees that all three inputs are live
     // NUL-terminated strings.
-    let (la, lb, lc) = unsafe { (strlen(a), strlen(b), strlen(c)) };
+    let (la, lb, lc) = unsafe_ffi!((strlen(a), strlen(b), strlen(c)));
     let Some(allocation) = checked_c_allocation(&[la, lb, lc, 1]) else {
         return ptr::null_mut();
     };
@@ -257,7 +265,7 @@ unsafe fn unit_type_from_string(s: *const c_char) -> i32 {
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: the caller guarantees that `s` is a live NUL-terminated string.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     for &(name, val) in UNIT_TYPE_TABLE.iter() {
         // name includes the NUL terminator; compare without it
         let name_bytes = &name[..name.len() - 1];
@@ -330,7 +338,7 @@ unsafe fn unit_name_is_valid_internal(n: *const c_char, flags: i32) -> bool {
         return false;
     }
     // SAFETY: the caller guarantees a live NUL-terminated string.
-    unit_name_bytes_are_valid(unsafe { CStr::from_ptr(n) }.to_bytes(), flags)
+    unit_name_bytes_are_valid(unsafe_ffi!(CStr::from_ptr(n)).to_bytes(), flags)
 }
 
 // ── FFI exports: validation ──────────────────────────────────────────────
@@ -343,7 +351,7 @@ unsafe fn unit_name_is_valid_internal(n: *const c_char, flags: i32) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_is_valid(n: *const c_char, flags: i32) -> bool {
     // SAFETY: this export forwards its documented pointer contract.
-    unsafe { unit_name_is_valid_internal(n, flags) }
+    unsafe_ffi!(unit_name_is_valid_internal(n, flags))
 }
 
 /// Check if a unit name prefix is valid (contains only allowed characters).
@@ -358,7 +366,7 @@ pub unsafe extern "C" fn rs_unit_prefix_is_valid(p: *const c_char) -> bool {
     }
     // SAFETY: `p` is nonempty and the caller guarantees a live
     // NUL-terminated string.
-    let bytes = unsafe { CStr::from_ptr(p) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(p)).to_bytes();
     bytes.iter().all(|&c| char_in_set(c, VALID_CHARS))
 }
 
@@ -374,7 +382,7 @@ pub unsafe extern "C" fn rs_unit_instance_is_valid(i: *const c_char) -> bool {
     }
     // SAFETY: `i` is nonempty and the caller guarantees a live
     // NUL-terminated string.
-    let bytes = unsafe { CStr::from_ptr(i) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(i)).to_bytes();
     bytes
         .iter()
         .all(|&c| c == b'@' || char_in_set(c, VALID_CHARS))
@@ -391,11 +399,11 @@ pub unsafe extern "C" fn rs_unit_suffix_is_valid(s: *const c_char) -> bool {
         return false;
     }
     // SAFETY: `s` is nonempty and live under the caller's contract.
-    if unsafe { *s } != b'.' as c_char {
+    if unsafe_ffi!(*s) != b'.' as c_char {
         return false;
     }
     // SAFETY: advancing past the first non-NUL byte remains within `s`.
-    unsafe { unit_type_from_string(s.add(1)) >= 0 }
+    unsafe_ffi!(unit_type_from_string(s.add(1)) >= 0)
 }
 
 /// Check if a unit name has a hashed suffix (_<16 hex chars>).
@@ -406,17 +414,17 @@ pub unsafe extern "C" fn rs_unit_suffix_is_valid(s: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_is_hashed(name: *const c_char) -> bool {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { unit_name_is_valid_internal(name, UNIT_NAME_PLAIN) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(name, UNIT_NAME_PLAIN)) {
         return false;
     }
 
     // SAFETY: `name` is a live NUL-terminated string.
-    let s = unsafe { strrchr(name, b'.' as i32) };
+    let s = unsafe_ffi!(strrchr(name, b'.' as i32));
     if s.is_null() {
         return false;
     }
     // SAFETY: `s` was returned for `name`, so both pointers share an allocation.
-    let offset = unsafe { s.offset_from(name) } as usize;
+    let offset = unsafe_ffi!(s.offset_from(name)) as usize;
 
     if offset < UNIT_NAME_HASH_LENGTH_CHARS + 1 {
         return false;
@@ -424,15 +432,15 @@ pub unsafe extern "C" fn rs_unit_name_is_hashed(name: *const c_char) -> bool {
 
     // SAFETY: the preceding length check keeps both derived pointers within
     // the live string.
-    let hash_start = unsafe { name.add(offset - UNIT_NAME_HASH_LENGTH_CHARS) };
+    let hash_start = unsafe_ffi!(name.add(offset - UNIT_NAME_HASH_LENGTH_CHARS));
     // SAFETY: `hash_start` is at least one byte after `name`.
-    if unsafe { *hash_start.sub(1) } != b'_' as c_char {
+    if unsafe_ffi!(*hash_start.sub(1)) != b'_' as c_char {
         return false;
     }
 
     for i in 0..UNIT_NAME_HASH_LENGTH_CHARS {
         // SAFETY: `i` is bounded by the verified hash suffix length.
-        let c = unsafe { *hash_start.add(i) } as u8;
+        let c = unsafe_ffi!(*hash_start.add(i)) as u8;
         if !char_in_set(c, LOWERCASE_HEXDIGITS) {
             return false;
         }
@@ -449,12 +457,12 @@ pub unsafe extern "C" fn rs_unit_name_is_hashed(name: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_slice_name_is_valid(name: *const c_char) -> bool {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { unit_name_is_valid_internal(name, UNIT_NAME_PLAIN) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(name, UNIT_NAME_PLAIN)) {
         return false;
     }
 
     // SAFETY: validation above established a live NUL-terminated string.
-    let name_cstr = unsafe { CStr::from_ptr(name) };
+    let name_cstr = unsafe_ffi!(CStr::from_ptr(name));
     if name_cstr == SPECIAL_ROOT_SLICE {
         return true;
     }
@@ -465,13 +473,13 @@ pub unsafe extern "C" fn rs_slice_name_is_valid(name: *const c_char) -> bool {
     }
 
     // SAFETY: the validated suffix proves the string has at least six bytes.
-    let slice_end = unsafe { name.add(strlen(name) - 6) }; // before ".slice"
+    let slice_end = unsafe_ffi!(name.add(strlen(name) - 6)); // before ".slice"
     let mut p = name;
     let mut has_dash = false;
 
     while p < slice_end {
         // SAFETY: the loop bounds keep `p` within the string prefix.
-        let c = unsafe { *p } as u8;
+        let c = unsafe_ffi!(*p) as u8;
         if c == b'-' {
             if p == name {
                 return false;
@@ -484,7 +492,7 @@ pub unsafe extern "C" fn rs_slice_name_is_valid(name: *const c_char) -> bool {
             has_dash = false;
         }
         // SAFETY: the loop only advances toward the in-allocation `slice_end`.
-        p = unsafe { p.add(1) };
+        p = unsafe_ffi!(p.add(1));
     }
 
     !has_dash
@@ -499,35 +507,35 @@ pub unsafe extern "C" fn rs_slice_name_is_valid(name: *const c_char) -> bool {
 pub unsafe extern "C" fn rs_unit_name_prefix_equal(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: this export forwards its documented input contract to both
     // validation calls.
-    if !unsafe { unit_name_is_valid_internal(a, UNIT_NAME_ANY) }
-        || !unsafe { unit_name_is_valid_internal(b, UNIT_NAME_ANY) }
+    if !unsafe_ffi!(unit_name_is_valid_internal(a, UNIT_NAME_ANY))
+        || !unsafe_ffi!(unit_name_is_valid_internal(b, UNIT_NAME_ANY))
     {
         return false;
     }
 
     // SAFETY: both inputs are validated NUL-terminated strings.
-    let p = unsafe { strchr(a, b'@' as i32) };
+    let p = unsafe_ffi!(strchr(a, b'@' as i32));
     let p = if p.is_null() {
         // SAFETY: `a` is a validated NUL-terminated string.
-        unsafe { strrchr(a, b'.' as i32) }
+        unsafe_ffi!(strrchr(a, b'.' as i32))
     } else {
         p
     };
 
     // SAFETY: `b` is a validated NUL-terminated string.
-    let q = unsafe { strchr(b, b'@' as i32) };
+    let q = unsafe_ffi!(strchr(b, b'@' as i32));
     let q = if q.is_null() {
         // SAFETY: `b` is a validated NUL-terminated string.
-        unsafe { strrchr(b, b'.' as i32) }
+        unsafe_ffi!(strrchr(b, b'.' as i32))
     } else {
         q
     };
 
     // SAFETY: each result pointer came from searching its corresponding input.
-    let (alen, blen) = unsafe { (p.offset_from(a) as usize, q.offset_from(b) as usize) };
+    let (alen, blen) = unsafe_ffi!((p.offset_from(a) as usize, q.offset_from(b) as usize));
 
     // SAFETY: the computed prefix lengths are within their validated strings.
-    unsafe { memcmp_nn(a, alen, b, blen) == 0 }
+    unsafe_ffi!(memcmp_nn(a, alen, b, blen) == 0)
 }
 
 // ── FFI exports: parsing ─────────────────────────────────────────────────
@@ -540,16 +548,16 @@ pub unsafe extern "C" fn rs_unit_name_prefix_equal(a: *const c_char, b: *const c
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_to_prefix(n: *const c_char, ret: *mut *mut c_char) -> i32 {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { unit_name_is_valid_internal(n, UNIT_NAME_ANY) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(n, UNIT_NAME_ANY)) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     let p = {
         // SAFETY: `n` is a validated NUL-terminated string.
-        let at = unsafe { strchr(n, b'@' as i32) };
+        let at = unsafe_ffi!(strchr(n, b'@' as i32));
         if at.is_null() {
             // SAFETY: `n` is a validated NUL-terminated string.
-            unsafe { strrchr(n, b'.' as i32) }
+            unsafe_ffi!(strrchr(n, b'.' as i32))
         } else {
             at
         }
@@ -557,15 +565,15 @@ pub unsafe extern "C" fn rs_unit_name_to_prefix(n: *const c_char, ret: *mut *mut
 
     // SAFETY: `p` came from searching `n`, and the helper receives that
     // in-allocation prefix length.
-    let prefix_len = unsafe { p.offset_from(n) } as usize;
+    let prefix_len = unsafe_ffi!(p.offset_from(n)) as usize;
     // SAFETY: `n` is live and readable for the computed prefix.
-    let s = unsafe { strndup_owned(n, prefix_len) };
+    let s = unsafe_ffi!(strndup_owned(n, prefix_len));
     if s.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = s };
+    unsafe_ffi!(*ret = s);
     0
 }
 
@@ -577,38 +585,38 @@ pub unsafe extern "C" fn rs_unit_name_to_prefix(n: *const c_char, ret: *mut *mut
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_to_instance(n: *const c_char, ret: *mut *mut c_char) -> i32 {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { unit_name_is_valid_internal(n, UNIT_NAME_ANY) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(n, UNIT_NAME_ANY)) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: `n` is a validated NUL-terminated string.
-    let p = unsafe { strchr(n, b'@' as i32) };
+    let p = unsafe_ffi!(strchr(n, b'@' as i32));
     if p.is_null() {
         if !ret.is_null() {
             // SAFETY: non-null `ret` is writable under the caller's contract.
-            unsafe { *ret = ptr::null_mut() };
+            unsafe_ffi!(*ret = ptr::null_mut());
         }
         return UNIT_NAME_PLAIN;
     }
 
     // SAFETY: the match is within `n`, so advancing remains within the string.
-    let p = unsafe { p.add(1) };
+    let p = unsafe_ffi!(p.add(1));
     // SAFETY: `p` is a suffix of the validated NUL-terminated string.
-    let d = unsafe { strrchr(p, b'.' as i32) };
+    let d = unsafe_ffi!(strrchr(p, b'.' as i32));
     if d.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
 
     if !ret.is_null() {
         // SAFETY: `d` was found within the suffix starting at `p`.
-        let ilen = unsafe { d.offset_from(p) } as usize;
+        let ilen = unsafe_ffi!(d.offset_from(p)) as usize;
         // SAFETY: the computed instance prefix is readable.
-        let i = unsafe { strndup_owned(p, ilen) };
+        let i = unsafe_ffi!(strndup_owned(p, ilen));
         if i.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
         // SAFETY: non-null `ret` is writable under the caller's contract.
-        unsafe { *ret = i };
+        unsafe_ffi!(*ret = i);
     }
 
     if d > p {
@@ -629,26 +637,26 @@ pub unsafe extern "C" fn rs_unit_name_to_prefix_and_instance(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { unit_name_is_valid_internal(n, UNIT_NAME_ANY) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(n, UNIT_NAME_ANY)) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: `n` is a validated NUL-terminated string.
-    let d = unsafe { strrchr(n, b'.' as i32) };
+    let d = unsafe_ffi!(strrchr(n, b'.' as i32));
     if d.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: `d` was found within `n`.
-    let prefix_len = unsafe { d.offset_from(n) } as usize;
+    let prefix_len = unsafe_ffi!(d.offset_from(n)) as usize;
     // SAFETY: the computed prefix is readable.
-    let s = unsafe { strndup_owned(n, prefix_len) };
+    let s = unsafe_ffi!(strndup_owned(n, prefix_len));
     if s.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = s };
+    unsafe_ffi!(*ret = s);
     0
 }
 
@@ -660,14 +668,14 @@ pub unsafe extern "C" fn rs_unit_name_to_prefix_and_instance(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_to_type(n: *const c_char) -> i32 {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { unit_name_is_valid_internal(n, UNIT_NAME_ANY) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(n, UNIT_NAME_ANY)) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: validation guarantees a dot in the live input.
-    let e = unsafe { strrchr(n, b'.' as i32) };
+    let e = unsafe_ffi!(strrchr(n, b'.' as i32));
     // SAFETY: advancing past that dot remains in the NUL-terminated string.
-    unsafe { unit_type_from_string(e.add(1)) }
+    unsafe_ffi!(unit_type_from_string(e.add(1)))
 }
 
 // ── FFI exports: building ────────────────────────────────────────────────
@@ -684,18 +692,18 @@ pub unsafe extern "C" fn rs_unit_name_change_suffix(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { unit_name_is_valid_internal(n, UNIT_NAME_ANY) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(n, UNIT_NAME_ANY)) {
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: this export forwards the documented string contract.
-    if !unsafe { rs_unit_suffix_is_valid(suffix) } {
+    if !unsafe_ffi!(rs_unit_suffix_is_valid(suffix)) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: both strings were validated above.
-    let e = unsafe { strrchr(n, b'.' as i32) };
+    let e = unsafe_ffi!(strrchr(n, b'.' as i32));
     // SAFETY: `e` was found within `n`; `suffix` is NUL-terminated.
-    let (a, b) = unsafe { (e.offset_from(n) as usize, strlen(suffix)) };
+    let (a, b) = unsafe_ffi!((e.offset_from(n) as usize, strlen(suffix)));
 
     let Some(allocation) = checked_c_allocation(&[a, b, 1]) else {
         return Errno::ENOMEM.to_neg_errno();
@@ -714,14 +722,14 @@ pub unsafe extern "C" fn rs_unit_name_change_suffix(
     }
 
     // SAFETY: `s` is now a live NUL-terminated string.
-    if !unsafe { unit_name_is_valid_internal(s, UNIT_NAME_ANY) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(s, UNIT_NAME_ANY)) {
         // SAFETY: `s` is the unique allocation obtained above.
-        unsafe { free(s as *mut c_void) };
+        unsafe_ffi!(free(s as *mut c_void));
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = s };
+    unsafe_ffi!(*ret = s);
     0
 }
 
@@ -739,18 +747,18 @@ pub unsafe extern "C" fn rs_unit_name_build(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: `suffix` is non-null and live under the documented contract.
-    if unsafe { *suffix } != b'.' as c_char {
+    if unsafe_ffi!(*suffix) != b'.' as c_char {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: advancing past the non-NUL leading dot remains within `suffix`.
-    let t = unsafe { unit_type_from_string(suffix.add(1)) };
+    let t = unsafe_ffi!(unit_type_from_string(suffix.add(1)));
     if t < 0 {
         return t;
     }
 
     // SAFETY: the pointer contract is identical to this forwarding export.
-    unsafe { rs_unit_name_build_from_type(prefix, instance, t, ret) }
+    unsafe_ffi!(rs_unit_name_build_from_type(prefix, instance, t, ret))
 }
 
 /// Build a unit name from prefix, instance, and suffix. Returns malloc'd string in *ret (caller must free).
@@ -770,7 +778,7 @@ pub unsafe extern "C" fn rs_unit_name_build_from_type(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: this export forwards its documented prefix contract.
-    if !unsafe { rs_unit_prefix_is_valid(prefix) } {
+    if !unsafe_ffi!(rs_unit_prefix_is_valid(prefix)) {
         return Errno::EINVAL.to_neg_errno();
     }
 
@@ -778,12 +786,12 @@ pub unsafe extern "C" fn rs_unit_name_build_from_type(
 
     let s = if !instance.is_null() {
         // SAFETY: non-null `instance` is documented as a live C string.
-        if !unsafe { rs_unit_instance_is_valid(instance) } {
+        if !unsafe_ffi!(rs_unit_instance_is_valid(instance)) {
             return Errno::EINVAL.to_neg_errno();
         }
         // SAFETY: all three pointers name live NUL-terminated strings.
         let (prefix_len, instance_len, ut_len) =
-            unsafe { (strlen(prefix), strlen(instance), strlen(ut)) };
+            unsafe_ffi!((strlen(prefix), strlen(instance), strlen(ut)));
         let Some(total) = checked_c_allocation(&[prefix_len, 1, instance_len, 1, ut_len, 1]) else {
             return Errno::ENOMEM.to_neg_errno();
         };
@@ -803,7 +811,7 @@ pub unsafe extern "C" fn rs_unit_name_build_from_type(
         ptr
     } else {
         // SAFETY: both pointers name live NUL-terminated strings.
-        let (prefix_len, ut_len) = unsafe { (strlen(prefix), strlen(ut)) };
+        let (prefix_len, ut_len) = unsafe_ffi!((strlen(prefix), strlen(ut)));
         let Some(total) = checked_c_allocation(&[prefix_len, 1, ut_len, 1]) else {
             return Errno::ENOMEM.to_neg_errno();
         };
@@ -832,14 +840,14 @@ pub unsafe extern "C" fn rs_unit_name_build_from_type(
     };
 
     // SAFETY: `s` was initialized above as a live NUL-terminated string.
-    if !unsafe { unit_name_is_valid_internal(s, expected) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(s, expected)) {
         // SAFETY: `s` is the unique allocation created above.
-        unsafe { free(s as *mut c_void) };
+        unsafe_ffi!(free(s as *mut c_void));
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = s };
+    unsafe_ffi!(*ret = s);
     0
 }
 
@@ -854,35 +862,35 @@ pub unsafe extern "C" fn rs_slice_build_parent_slice(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { rs_slice_name_is_valid(slice) } {
+    if !unsafe_ffi!(rs_slice_name_is_valid(slice)) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: validation above established a live NUL-terminated string.
-    if unsafe { CStr::from_ptr(slice) } == SPECIAL_ROOT_SLICE {
+    if unsafe_ffi!(CStr::from_ptr(slice)) == SPECIAL_ROOT_SLICE {
         // SAFETY: the caller guarantees that `ret` is writable.
-        unsafe { *ret = ptr::null_mut() };
+        unsafe_ffi!(*ret = ptr::null_mut());
         return 0;
     }
 
     // SAFETY: `slice` is a validated live C string.
-    let s = unsafe { strndup_owned(slice, usize::MAX) };
+    let s = unsafe_ffi!(strndup_owned(slice, usize::MAX));
     if s.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
 
     // SAFETY: `s` is a live NUL-terminated allocation.
-    let dash = unsafe { strrchr(s, b'-' as i32) };
+    let dash = unsafe_ffi!(strrchr(s, b'-' as i32));
     if dash.is_null() {
         // SAFETY: `s` is the unique allocation returned above.
-        unsafe { free(s as *mut c_void) };
+        unsafe_ffi!(free(s as *mut c_void));
         // SAFETY: `ret` is writable and the static C string is live.
-        let result = unsafe { strdup_to(ret, SPECIAL_ROOT_SLICE.as_ptr()) };
+        let result = unsafe_ffi!(strdup_to(ret, SPECIAL_ROOT_SLICE.as_ptr()));
         return if result < 0 { result } else { 1 };
     }
 
     // SAFETY: `dash` was found within `s`.
-    let dash_pos = unsafe { dash.offset_from(s) } as usize;
+    let dash_pos = unsafe_ffi!(dash.offset_from(s)) as usize;
     let suffix = b".slice\0";
     // SAFETY: replacing from the dash with the NUL-terminated `.slice` suffix
     // stays within the original validated `.slice` allocation.
@@ -891,7 +899,7 @@ pub unsafe extern "C" fn rs_slice_build_parent_slice(
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = s };
+    unsafe_ffi!(*ret = s);
     1
 }
 
@@ -907,22 +915,22 @@ pub unsafe extern "C" fn rs_slice_build_subslice(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: this export forwards its documented input contracts.
-    if !unsafe { rs_slice_name_is_valid(slice) } {
+    if !unsafe_ffi!(rs_slice_name_is_valid(slice)) {
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: this export forwards its documented input contracts.
-    if !unsafe { rs_unit_prefix_is_valid(name) } {
+    if !unsafe_ffi!(rs_unit_prefix_is_valid(name)) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: both inputs are validated live C strings.
-    let subslice = if unsafe { CStr::from_ptr(slice) } == SPECIAL_ROOT_SLICE {
+    let subslice = if unsafe_ffi!(CStr::from_ptr(slice)) == SPECIAL_ROOT_SLICE {
         // SAFETY: all three inputs are live NUL-terminated strings.
-        unsafe { strjoin3(name, c".".as_ptr(), c"slice".as_ptr()) }
+        unsafe_ffi!(strjoin3(name, c".".as_ptr(), c"slice".as_ptr()))
     } else {
         // SAFETY: both inputs are validated NUL-terminated strings; the slice
         // validator guarantees the six-byte suffix.
-        let (elen, nlen) = unsafe { (strlen(slice) - 6, strlen(name)) }; // remove ".slice"
+        let (elen, nlen) = unsafe_ffi!((strlen(slice) - 6, strlen(name))); // remove ".slice"
         let Some(total) = checked_c_allocation(&[elen, 1, nlen, 6, 1]) else {
             return Errno::ENOMEM.to_neg_errno();
         };
@@ -951,7 +959,7 @@ pub unsafe extern "C" fn rs_slice_build_subslice(
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = subslice };
+    unsafe_ffi!(*ret = subslice);
     0
 }
 
@@ -1020,12 +1028,12 @@ fn unescape_bytes(input: &[u8]) -> Result<Vec<u8>, i32> {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_escape(f: *const c_char) -> *mut c_char {
     // SAFETY: the caller guarantees that `f` is a live NUL-terminated string.
-    let input = unsafe { cstr_bytes(f) };
+    let input = unsafe_ffi!(cstr_bytes(f));
     if checked_escape_allocation(input.len(), 1).is_none() {
         return ptr::null_mut();
     }
     // SAFETY: the returned allocation follows the documented C ownership rule.
-    unsafe { bytes_to_malloc(&escape_bytes(input)) }
+    unsafe_ffi!(bytes_to_malloc(&escape_bytes(input)))
 }
 
 /// Unescape a unit name back to a path. Returns malloc'd string in *ret (caller must free).
@@ -1036,17 +1044,17 @@ pub unsafe extern "C" fn rs_unit_name_escape(f: *const c_char) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_unescape(f: *const c_char, ret: *mut *mut c_char) -> i32 {
     // SAFETY: the caller guarantees a live NUL-terminated input.
-    let input = unsafe { cstr_bytes(f) };
+    let input = unsafe_ffi!(cstr_bytes(f));
     let Ok(output) = unescape_bytes(input) else {
         return Errno::EINVAL.to_neg_errno();
     };
     // SAFETY: the returned allocation is transferred to the writable output.
-    let result = unsafe { bytes_to_malloc(&output) };
+    let result = unsafe_ffi!(bytes_to_malloc(&output));
     if result.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { write_out(ret, result) };
+    unsafe_ffi!(write_out(ret, result));
     0
 }
 
@@ -1063,15 +1071,18 @@ pub unsafe extern "C" fn rs_unit_name_replace_instance_full(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { unit_name_is_valid_internal(original, UNIT_NAME_INSTANCE | UNIT_NAME_TEMPLATE) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(
+        original,
+        UNIT_NAME_INSTANCE | UNIT_NAME_TEMPLATE
+    )) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: `instance` is a live C string under this export's contract.
-    let instance_valid = unsafe { rs_unit_instance_is_valid(instance) };
+    let instance_valid = unsafe_ffi!(rs_unit_instance_is_valid(instance));
     let glob_valid = accept_glob && {
         // SAFETY: `instance` is a live NUL-terminated string.
-        let bytes = unsafe { CStr::from_ptr(instance) }.to_bytes();
+        let bytes = unsafe_ffi!(CStr::from_ptr(instance)).to_bytes();
         bytes.iter().all(|&c| char_in_set(c, VALID_CHARS_GLOB))
     };
     if !instance_valid && !glob_valid {
@@ -1113,14 +1124,14 @@ pub unsafe extern "C" fn rs_unit_name_replace_instance_full(
     }
 
     // SAFETY: `s` is now a live NUL-terminated string.
-    if !accept_glob && !unsafe { unit_name_is_valid_internal(s, UNIT_NAME_INSTANCE) } {
+    if !accept_glob && !unsafe_ffi!(unit_name_is_valid_internal(s, UNIT_NAME_INSTANCE)) {
         // SAFETY: `s` is the unique allocation obtained above.
-        unsafe { free(s as *mut c_void) };
+        unsafe_ffi!(free(s as *mut c_void));
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = s };
+    unsafe_ffi!(*ret = s);
     0
 }
 
@@ -1132,15 +1143,18 @@ pub unsafe extern "C" fn rs_unit_name_replace_instance_full(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_template(f: *const c_char, ret: *mut *mut c_char) -> i32 {
     // SAFETY: this export forwards its documented input contract.
-    if !unsafe { unit_name_is_valid_internal(f, UNIT_NAME_INSTANCE | UNIT_NAME_TEMPLATE) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(
+        f,
+        UNIT_NAME_INSTANCE | UNIT_NAME_TEMPLATE
+    )) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: `f` was validated above.
-    let (p, e) = unsafe { (strchr(f, b'@' as i32), strrchr(f, b'.' as i32)) };
+    let (p, e) = unsafe_ffi!((strchr(f, b'@' as i32), strrchr(f, b'.' as i32)));
 
     // SAFETY: both search results are within `f`.
-    let (a, elen) = unsafe { (p.offset_from(f) as usize, strlen(e)) };
+    let (a, elen) = unsafe_ffi!((p.offset_from(f) as usize, strlen(e)));
 
     let Some(allocation) = checked_c_allocation(&[a, 1, elen, 1]) else {
         return Errno::ENOMEM.to_neg_errno();
@@ -1158,7 +1172,7 @@ pub unsafe extern "C" fn rs_unit_name_template(f: *const c_char, ret: *mut *mut 
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = s };
+    unsafe_ffi!(*ret = s);
     0
 }
 
@@ -1175,7 +1189,9 @@ pub unsafe fn rs_unit_name_replace_instance(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: this wrapper forwards the same pointer contract unchanged.
-    unsafe { rs_unit_name_replace_instance_full(original, instance, false, ret) }
+    unsafe_ffi!(rs_unit_name_replace_instance_full(
+        original, instance, false, ret
+    ))
 }
 
 fn bytes_are_glob(bytes: &[u8]) -> bool {
@@ -1216,49 +1232,49 @@ unsafe fn unit_name_path_escape_simple(path: *const c_char, ret: *mut *mut c_cha
     let mut simplified: *mut c_char = ptr::null_mut();
     // SAFETY: the caller guarantees that `path` is a live C string; the local
     // output pointer is writable.
-    let r = unsafe { rs_path_simplify_alloc(path, &mut simplified) };
+    let r = unsafe_ffi!(rs_path_simplify_alloc(path, &mut simplified));
     if r < 0 {
         return r;
     }
 
     // SAFETY: `simplified` is the live C string returned above.
-    if unsafe { rs_empty_or_root(simplified) } {
+    if unsafe_ffi!(rs_empty_or_root(simplified)) {
         // SAFETY: the static input is a live C string.
-        let dash = unsafe { ffi_strdup(c"-".as_ptr()) };
+        let dash = unsafe_ffi!(ffi_strdup(c"-".as_ptr()));
         // SAFETY: `simplified` is the unique allocation returned above.
-        unsafe { free(simplified as *mut c_void) };
+        unsafe_ffi!(free(simplified as *mut c_void));
         if dash.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
         // SAFETY: the caller guarantees that `ret` is writable.
-        unsafe { *ret = dash };
+        unsafe_ffi!(*ret = dash);
         return 0;
     }
 
     // SAFETY: `simplified` is a live NUL-terminated string.
-    if !unsafe { rs_path_is_normalized(simplified) } {
+    if !unsafe_ffi!(rs_path_is_normalized(simplified)) {
         // SAFETY: `simplified` is the unique allocation returned above.
-        unsafe { free(simplified as *mut c_void) };
+        unsafe_ffi!(free(simplified as *mut c_void));
         return Errno::EINVAL.to_neg_errno();
     }
 
     let mut start = simplified as *const c_char;
     // SAFETY: `start` traverses the live NUL-terminated `simplified` string.
-    while unsafe { *start } == b'/' as c_char {
+    while unsafe_ffi!(*start) == b'/' as c_char {
         // SAFETY: a non-NUL slash was just observed.
-        start = unsafe { start.add(1) };
+        start = unsafe_ffi!(start.add(1));
     }
 
     // SAFETY: `start` is a suffix of the live C string.
-    let escaped = unsafe { rs_unit_name_escape(start) };
+    let escaped = unsafe_ffi!(rs_unit_name_escape(start));
     // SAFETY: `simplified` is the unique allocation returned above.
-    unsafe { free(simplified as *mut c_void) };
+    unsafe_ffi!(free(simplified as *mut c_void));
     if escaped.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = escaped };
+    unsafe_ffi!(*ret = escaped);
     0
 }
 
@@ -1270,29 +1286,29 @@ unsafe fn unit_name_from_path_simple(
     ret: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: the caller guarantees that `suffix` is a live C string.
-    if !unsafe { rs_unit_suffix_is_valid(suffix) } {
+    if !unsafe_ffi!(rs_unit_suffix_is_valid(suffix)) {
         return Errno::EINVAL.to_neg_errno();
     }
 
     let mut escaped: *mut c_char = ptr::null_mut();
     // SAFETY: the caller's path contract and the local writable output pointer
     // satisfy the helper.
-    let r = unsafe { unit_name_path_escape_simple(path, &mut escaped) };
+    let r = unsafe_ffi!(unit_name_path_escape_simple(path, &mut escaped));
     if r < 0 {
         return r;
     }
 
     // SAFETY: both pointers are live NUL-terminated strings.
-    let (elen, slen) = unsafe { (strlen(escaped), strlen(suffix)) };
+    let (elen, slen) = unsafe_ffi!((strlen(escaped), strlen(suffix)));
     let Some(allocation) = checked_c_allocation(&[elen, slen, 1]) else {
         // SAFETY: `escaped` is the unique allocation returned above.
-        unsafe { free(escaped as *mut c_void) };
+        unsafe_ffi!(free(escaped as *mut c_void));
         return Errno::ENOMEM.to_neg_errno();
     };
     let s = malloc(allocation) as *mut c_char;
     if s.is_null() {
         // SAFETY: `escaped` is the unique allocation returned above.
-        unsafe { free(escaped as *mut c_void) };
+        unsafe_ffi!(free(escaped as *mut c_void));
         return Errno::ENOMEM.to_neg_errno();
     }
 
@@ -1303,17 +1319,17 @@ unsafe fn unit_name_from_path_simple(
         ptr::copy_nonoverlapping(suffix, s.add(elen), slen + 1);
     }
     // SAFETY: `escaped` is the unique allocation returned above.
-    unsafe { free(escaped as *mut c_void) };
+    unsafe_ffi!(free(escaped as *mut c_void));
 
     // SAFETY: `s` is now a live NUL-terminated string.
-    if !unsafe { unit_name_is_valid_internal(s, UNIT_NAME_PLAIN) } {
+    if !unsafe_ffi!(unit_name_is_valid_internal(s, UNIT_NAME_PLAIN)) {
         // SAFETY: `s` is the unique allocation obtained above.
-        unsafe { free(s as *mut c_void) };
+        unsafe_ffi!(free(s as *mut c_void));
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = s };
+    unsafe_ffi!(*ret = s);
     0
 }
 
@@ -1335,67 +1351,75 @@ pub unsafe fn rs_unit_name_mangle_with_suffix(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: `name` is non-null and live under this function's contract.
-    let name_bytes = unsafe { cstr_bytes(name) };
+    let name_bytes = unsafe_ffi!(cstr_bytes(name));
     // SAFETY: the caller guarantees that `suffix` is a live C string.
-    if !unsafe { rs_unit_suffix_is_valid(suffix) } {
+    if !unsafe_ffi!(rs_unit_suffix_is_valid(suffix)) {
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: the suffix validator above established a live C string.
-    let suffix_bytes = unsafe { cstr_bytes(suffix) };
+    let suffix_bytes = unsafe_ffi!(cstr_bytes(suffix));
 
     if unit_name_bytes_are_valid(name_bytes, UNIT_NAME_ANY) {
         // SAFETY: ownership of the C allocation is transferred to the output.
-        let result = unsafe { bytes_to_malloc(name_bytes) };
+        let result = unsafe_ffi!(bytes_to_malloc(name_bytes));
         if result.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
         // SAFETY: `ret` is writable under the documented contract.
-        unsafe { write_out(ret, result) };
+        unsafe_ffi!(write_out(ret, result));
         return 0;
     }
 
     if bytes_are_glob(name_bytes) && bytes_in_charset(name_bytes, VALID_CHARS_GLOB) {
         if (flags & UNIT_NAME_MANGLE_GLOB) != 0 {
             // SAFETY: ownership of the C allocation is transferred to the output.
-            let result = unsafe { bytes_to_malloc(name_bytes) };
+            let result = unsafe_ffi!(bytes_to_malloc(name_bytes));
             if result.is_null() {
                 return Errno::ENOMEM.to_neg_errno();
             }
             // SAFETY: `ret` is writable under the documented contract.
-            unsafe { write_out(ret, result) };
+            unsafe_ffi!(write_out(ret, result));
             return 0;
         }
     }
 
     // SAFETY: `name` is a live NUL-terminated string.
-    if unsafe { rs_path_is_absolute(name) } {
+    if unsafe_ffi!(rs_path_is_absolute(name)) {
         let mut simplified: *mut c_char = ptr::null_mut();
         // SAFETY: `name` is live and the local output pointer is writable.
-        let r = unsafe { rs_path_simplify_alloc(name, &mut simplified) };
+        let r = unsafe_ffi!(rs_path_simplify_alloc(name, &mut simplified));
         if r < 0 {
             return r;
         }
 
         // SAFETY: `simplified` is a live C string returned above.
-        if unsafe { rs_is_device_path(simplified) } {
+        if unsafe_ffi!(rs_is_device_path(simplified)) {
             // SAFETY: inputs are live and `ret` is writable.
-            let rd = unsafe { unit_name_from_path_simple(simplified, c".device".as_ptr(), ret) };
+            let rd = unsafe_ffi!(unit_name_from_path_simple(
+                simplified,
+                c".device".as_ptr(),
+                ret
+            ));
             if rd >= 0 {
                 // SAFETY: `simplified` is the unique allocation returned above.
-                unsafe { free(simplified as *mut c_void) };
+                unsafe_ffi!(free(simplified as *mut c_void));
                 return 1;
             }
             if rd != Errno::EINVAL.to_neg_errno() {
                 // SAFETY: `simplified` is the unique allocation returned above.
-                unsafe { free(simplified as *mut c_void) };
+                unsafe_ffi!(free(simplified as *mut c_void));
                 return rd;
             }
         }
 
         // SAFETY: inputs are live and `ret` is writable.
-        let rm = unsafe { unit_name_from_path_simple(simplified, c".mount".as_ptr(), ret) };
+        let rm = unsafe_ffi!(unit_name_from_path_simple(
+            simplified,
+            c".mount".as_ptr(),
+            ret
+        ));
         // SAFETY: `simplified` is the unique allocation returned above.
-        unsafe { free(simplified as *mut c_void) };
+        unsafe_ffi!(free(simplified as *mut c_void));
         if rm >= 0 {
             return 1;
         }
@@ -1423,12 +1447,12 @@ pub unsafe fn rs_unit_name_mangle_with_suffix(
     }
 
     // SAFETY: ownership of the returned C allocation is transferred to `ret`.
-    let result = unsafe { bytes_to_malloc(&output) };
+    let result = unsafe_ffi!(bytes_to_malloc(&output));
     if result.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { write_out(ret, result) };
+    unsafe_ffi!(write_out(ret, result));
     1
 }
 
@@ -1441,7 +1465,13 @@ pub unsafe fn rs_unit_name_mangle_with_suffix(
 /// C-string inputs must remain NUL-terminated and live for the call.
 pub unsafe fn rs_unit_name_mangle(name: *const c_char, flags: i32, ret: *mut *mut c_char) -> i32 {
     // SAFETY: this wrapper forwards the same pointer contract unchanged.
-    unsafe { rs_unit_name_mangle_with_suffix(name, ptr::null(), flags, c".service".as_ptr(), ret) }
+    unsafe_ffi!(rs_unit_name_mangle_with_suffix(
+        name,
+        ptr::null(),
+        flags,
+        c".service".as_ptr(),
+        ret
+    ))
 }
 
 // ── unit_type_may_alias / unit_type_may_template ────────────────────────
@@ -1480,6 +1510,14 @@ pub(crate) fn unit_type_may_template_raw(t: i32) -> bool {
 
 #[cfg(test)]
 mod tests {
+    // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
+    macro_rules! test_ffi {
+        ($expression:expr) => {{
+            // SAFETY: test inputs are constructed in this module and satisfy the
+            // documented C ABI preconditions of the exercised facade.
+            unsafe { $expression }
+        }};
+    }
     use super::*;
     use std::ffi::CString;
 
@@ -1514,7 +1552,7 @@ mod tests {
     fn test_unit_name_is_valid_plain_service() {
         let name = cstr("foo.service");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_unit_name_is_valid(name, UNIT_NAME_PLAIN) });
+        assert!(test_ffi!(rs_unit_name_is_valid(name, UNIT_NAME_PLAIN)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1545,7 +1583,7 @@ mod tests {
     fn test_unit_name_is_valid_instance() {
         let name = cstr("foo@bar.service");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_unit_name_is_valid(name, UNIT_NAME_INSTANCE) });
+        assert!(test_ffi!(rs_unit_name_is_valid(name, UNIT_NAME_INSTANCE)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1554,7 +1592,7 @@ mod tests {
     fn test_unit_name_is_valid_template() {
         let name = cstr("foo@.service");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_unit_name_is_valid(name, UNIT_NAME_TEMPLATE) });
+        assert!(test_ffi!(rs_unit_name_is_valid(name, UNIT_NAME_TEMPLATE)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1563,7 +1601,7 @@ mod tests {
     fn test_unit_name_is_valid_empty() {
         let name = cstr("");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(!unsafe { rs_unit_name_is_valid(name, UNIT_NAME_PLAIN) });
+        assert!(!test_ffi!(rs_unit_name_is_valid(name, UNIT_NAME_PLAIN)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1572,7 +1610,7 @@ mod tests {
     fn test_unit_name_is_valid_no_suffix() {
         let name = cstr("foo");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(!unsafe { rs_unit_name_is_valid(name, UNIT_NAME_PLAIN) });
+        assert!(!test_ffi!(rs_unit_name_is_valid(name, UNIT_NAME_PLAIN)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1581,7 +1619,7 @@ mod tests {
     fn test_unit_name_is_valid_invalid_suffix() {
         let name = cstr("foo.baz");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(!unsafe { rs_unit_name_is_valid(name, UNIT_NAME_PLAIN) });
+        assert!(!test_ffi!(rs_unit_name_is_valid(name, UNIT_NAME_PLAIN)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1590,7 +1628,7 @@ mod tests {
     fn test_unit_name_is_valid_invalid_chars() {
         let name = cstr("fo o.service");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(!unsafe { rs_unit_name_is_valid(name, UNIT_NAME_PLAIN) });
+        assert!(!test_ffi!(rs_unit_name_is_valid(name, UNIT_NAME_PLAIN)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1599,7 +1637,7 @@ mod tests {
     fn test_unit_name_is_valid_at_start() {
         let name = cstr("@foo.service");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(!unsafe { rs_unit_name_is_valid(name, UNIT_NAME_PLAIN) });
+        assert!(!test_ffi!(rs_unit_name_is_valid(name, UNIT_NAME_PLAIN)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1607,14 +1645,17 @@ mod tests {
     #[test]
     fn test_unit_name_is_valid_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(!unsafe { rs_unit_name_is_valid(ptr::null(), UNIT_NAME_PLAIN) });
+        assert!(!test_ffi!(rs_unit_name_is_valid(
+            ptr::null(),
+            UNIT_NAME_PLAIN
+        )));
     }
 
     #[test]
     fn test_unit_name_is_valid_flags_zero() {
         let name = cstr("foo.service");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(!unsafe { rs_unit_name_is_valid(name, 0) });
+        assert!(!test_ffi!(rs_unit_name_is_valid(name, 0)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1638,7 +1679,7 @@ mod tests {
             let name = cstr(t);
             // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
             assert!(
-                unsafe { rs_unit_name_is_valid(name, UNIT_NAME_PLAIN) },
+                test_ffi!(rs_unit_name_is_valid(name, UNIT_NAME_PLAIN)),
                 "failed for {t}"
             );
             // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
@@ -1652,7 +1693,7 @@ mod tests {
     fn test_unit_name_to_type_service() {
         let name = cstr("foo.service");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert_eq!(unsafe { rs_unit_name_to_type(name) }, UNIT_SERVICE);
+        assert_eq!(test_ffi!(rs_unit_name_to_type(name)), UNIT_SERVICE);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1661,7 +1702,7 @@ mod tests {
     fn test_unit_name_to_type_socket() {
         let name = cstr("foo.socket");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert_eq!(unsafe { rs_unit_name_to_type(name) }, UNIT_SOCKET);
+        assert_eq!(test_ffi!(rs_unit_name_to_type(name)), UNIT_SOCKET);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1670,7 +1711,7 @@ mod tests {
     fn test_unit_name_to_type_mount() {
         let name = cstr("foo.mount");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert_eq!(unsafe { rs_unit_name_to_type(name) }, UNIT_MOUNT);
+        assert_eq!(test_ffi!(rs_unit_name_to_type(name)), UNIT_MOUNT);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1679,7 +1720,7 @@ mod tests {
     fn test_unit_name_to_type_timer() {
         let name = cstr("foo.timer");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert_eq!(unsafe { rs_unit_name_to_type(name) }, UNIT_TIMER);
+        assert_eq!(test_ffi!(rs_unit_name_to_type(name)), UNIT_TIMER);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1688,7 +1729,7 @@ mod tests {
     fn test_unit_name_to_type_slice() {
         let name = cstr("foo.slice");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert_eq!(unsafe { rs_unit_name_to_type(name) }, UNIT_SLICE);
+        assert_eq!(test_ffi!(rs_unit_name_to_type(name)), UNIT_SLICE);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1697,7 +1738,7 @@ mod tests {
     fn test_unit_name_to_type_invalid() {
         let name = cstr("foo.baz");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_unit_name_to_type(name) } < 0);
+        assert!(test_ffi!(rs_unit_name_to_type(name)) < 0);
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1710,7 +1751,7 @@ mod tests {
         let suffix = cstr(".service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_build(prefix, ptr::null(), suffix, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_build(prefix, ptr::null(), suffix, &mut ret));
         assert_eq!(rc, 0);
         assert!(!ret.is_null());
         assert_eq!(from_raw_mut(ret), "foo.service");
@@ -1725,7 +1766,7 @@ mod tests {
         let suffix = cstr(".service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_build(prefix, instance, suffix, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_build(prefix, instance, suffix, &mut ret));
         assert_eq!(rc, 0);
         assert!(!ret.is_null());
         assert_eq!(from_raw_mut(ret), "foo@bar.service");
@@ -1741,7 +1782,7 @@ mod tests {
         let suffix = cstr(".socket");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_build(prefix, instance, suffix, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_build(prefix, instance, suffix, &mut ret));
         assert_eq!(rc, 0);
 
         let built = from_raw_mut(ret);
@@ -1751,12 +1792,12 @@ mod tests {
         let name = cstr(&built);
         let mut parsed_prefix: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc2 = unsafe { rs_unit_name_to_prefix(name, &mut parsed_prefix) };
+        let rc2 = test_ffi!(rs_unit_name_to_prefix(name, &mut parsed_prefix));
         assert_eq!(rc2, 0);
         assert_eq!(from_raw_mut(parsed_prefix), "myapp@worker1");
 
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let type_val = unsafe { rs_unit_name_to_type(name) };
+        let type_val = test_ffi!(rs_unit_name_to_type(name));
         assert_eq!(type_val, UNIT_SOCKET);
 
         reclaim_cstring(prefix);
@@ -1772,7 +1813,7 @@ mod tests {
         let suffix = cstr("no-dot");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_build(prefix, ptr::null(), suffix, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_build(prefix, ptr::null(), suffix, &mut ret));
         assert_eq!(rc, Errno::EINVAL.to_neg_errno());
         reclaim_cstring(prefix);
         reclaim_cstring(suffix);
@@ -1784,7 +1825,7 @@ mod tests {
         let suffix = cstr(".service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_build(prefix, ptr::null(), suffix, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_build(prefix, ptr::null(), suffix, &mut ret));
         assert_eq!(rc, Errno::EINVAL.to_neg_errno());
         reclaim_cstring(prefix);
         reclaim_cstring(suffix);
@@ -1797,7 +1838,7 @@ mod tests {
         let name = cstr("foo.service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_to_prefix(name, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_to_prefix(name, &mut ret));
         assert_eq!(rc, 0);
         assert_eq!(from_raw_mut(ret), "foo");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
@@ -1809,7 +1850,7 @@ mod tests {
         let name = cstr("foo@bar.service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_to_prefix(name, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_to_prefix(name, &mut ret));
         assert_eq!(rc, 0);
         assert_eq!(from_raw_mut(ret), "foo@bar");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
@@ -1823,7 +1864,7 @@ mod tests {
         let name = cstr("foo.service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_to_instance(name, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_to_instance(name, &mut ret));
         assert_eq!(rc, UNIT_NAME_PLAIN);
         assert!(ret.is_null());
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
@@ -1835,7 +1876,7 @@ mod tests {
         let name = cstr("foo@bar.service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_to_instance(name, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_to_instance(name, &mut ret));
         assert_eq!(rc, UNIT_NAME_INSTANCE);
         assert_eq!(from_raw_mut(ret), "bar");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
@@ -1847,7 +1888,7 @@ mod tests {
         let name = cstr("foo@.service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_to_instance(name, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_to_instance(name, &mut ret));
         assert_eq!(rc, UNIT_NAME_TEMPLATE);
         assert_eq!(from_raw_mut(ret), "");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
@@ -1860,7 +1901,7 @@ mod tests {
     fn test_slice_name_is_valid_root() {
         let name = cstr("-.slice");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_slice_name_is_valid(name) });
+        assert!(test_ffi!(rs_slice_name_is_valid(name)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1869,7 +1910,7 @@ mod tests {
     fn test_slice_name_is_valid_nested() {
         let name = cstr("user-1000.slice");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_slice_name_is_valid(name) });
+        assert!(test_ffi!(rs_slice_name_is_valid(name)));
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         reclaim_cstring(name);
     }
@@ -1879,7 +1920,7 @@ mod tests {
         let slice = cstr("foo-bar.slice");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: `slice` is a live NUL-terminated string and `ret` is writable.
-        let rc = unsafe { rs_slice_build_parent_slice(slice, &mut ret) };
+        let rc = test_ffi!(rs_slice_build_parent_slice(slice, &mut ret));
         assert_eq!(rc, 1);
         assert_eq!(from_raw_mut(ret), "foo.slice");
         reclaim_cstring(slice);
@@ -1891,7 +1932,7 @@ mod tests {
         let name = cstr("user");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_slice_build_subslice(slice, name, &mut ret) };
+        let rc = test_ffi!(rs_slice_build_subslice(slice, name, &mut ret));
         assert_eq!(rc, 0);
         assert_eq!(from_raw_mut(ret), "user.slice");
         reclaim_cstring(slice);
@@ -1905,7 +1946,7 @@ mod tests {
         let name = cstr("1000");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_slice_build_subslice(slice, name, &mut ret) };
+        let rc = test_ffi!(rs_slice_build_subslice(slice, name, &mut ret));
         assert_eq!(rc, 0);
         assert_eq!(from_raw_mut(ret), "user-1000.slice");
         reclaim_cstring(slice);
@@ -1919,7 +1960,7 @@ mod tests {
     fn test_unit_name_escape() {
         let input = cstr("/foo/bar-baz");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_unit_name_escape(input) };
+        let result = test_ffi!(rs_unit_name_escape(input));
         assert!(!result.is_null());
         assert_eq!(from_raw_mut(result), "-foo-bar\\x2dbaz");
         reclaim_cstring(input);
@@ -1930,7 +1971,7 @@ mod tests {
         let input = cstr("-foo-bar\\x2dbaz");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_unescape(input, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_unescape(input, &mut ret));
         assert_eq!(rc, 0);
         assert_eq!(from_raw_mut(ret), "/foo/bar-baz");
         reclaim_cstring(input);
@@ -1943,7 +1984,7 @@ mod tests {
         let a = cstr("foo@bar.service");
         let b = cstr("foo@baz.service");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_unit_name_prefix_equal(a, b) });
+        assert!(test_ffi!(rs_unit_name_prefix_equal(a, b)));
         reclaim_cstring(a);
         reclaim_cstring(b);
     }
@@ -1953,7 +1994,7 @@ mod tests {
         let a = cstr("foo@bar.service");
         let b = cstr("baz@bar.service");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(!unsafe { rs_unit_name_prefix_equal(a, b) });
+        assert!(!test_ffi!(rs_unit_name_prefix_equal(a, b)));
         reclaim_cstring(a);
         reclaim_cstring(b);
     }
@@ -1966,7 +2007,7 @@ mod tests {
         let instance = cstr("bar");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_replace_instance(original, instance, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_replace_instance(original, instance, &mut ret));
         assert_eq!(rc, 0);
         assert_eq!(from_raw_mut(ret), "foo@bar.service");
         reclaim_cstring(original);
@@ -1990,7 +2031,7 @@ mod tests {
             let repl_c = cstr(repl);
             let mut out: *mut c_char = ptr::null_mut();
             // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-            let rc = unsafe { rs_unit_name_replace_instance(pattern_c, repl_c, &mut out) };
+            let rc = test_ffi!(rs_unit_name_replace_instance(pattern_c, repl_c, &mut out));
             assert_eq!(rc, expected_rc, "{pattern} -> {repl}");
             match expected {
                 Some(value) => assert_eq!(from_raw_mut(out), value),
@@ -2014,7 +2055,7 @@ mod tests {
         for (name, flags) in positive {
             let name_c = cstr(name);
             // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-            assert!(unsafe { rs_unit_name_is_valid(name_c, flags) }, "{name}");
+            assert!(test_ffi!(rs_unit_name_is_valid(name_c, flags)), "{name}");
             reclaim_cstring(name_c);
         }
 
@@ -2030,7 +2071,7 @@ mod tests {
             let name_c = cstr(name);
             // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
             assert!(
-                !unsafe { rs_unit_name_is_valid(name_c, UNIT_NAME_ANY) },
+                !test_ffi!(rs_unit_name_is_valid(name_c, UNIT_NAME_ANY)),
                 "{name}"
             );
             reclaim_cstring(name_c);
@@ -2068,7 +2109,7 @@ mod tests {
                 (if allow_glob { UNIT_NAME_MANGLE_GLOB } else { 0 }) | UNIT_NAME_MANGLE_WARN;
             let mut out: *mut c_char = ptr::null_mut();
             // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-            let rc = unsafe { rs_unit_name_mangle(input_c, flags, &mut out) };
+            let rc = test_ffi!(rs_unit_name_mangle(input_c, flags, &mut out));
             assert_eq!(rc, expected_rc, "input={input}");
             match expected_value {
                 Some(value) => {
@@ -2078,7 +2119,7 @@ mod tests {
                     let rendered_c = cstr(&rendered);
                     let mut second: *mut c_char = ptr::null_mut();
                     // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-                    let rc2 = unsafe { rs_unit_name_mangle(rendered_c, flags, &mut second) };
+                    let rc2 = test_ffi!(rs_unit_name_mangle(rendered_c, flags, &mut second));
                     assert_eq!(rc2, 0, "idempotency for {input}");
                     assert_eq!(from_raw_mut(second), rendered);
                     reclaim_cstring(rendered_c);
@@ -2096,7 +2137,7 @@ mod tests {
         let input = cstr("foo@bar.service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_template(input, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_template(input, &mut ret));
         assert_eq!(rc, 0);
         assert_eq!(from_raw_mut(ret), "foo@.service");
         reclaim_cstring(input);
@@ -2110,7 +2151,7 @@ mod tests {
         let suffix = cstr(".socket");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_change_suffix(name, suffix, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_change_suffix(name, suffix, &mut ret));
         assert_eq!(rc, 0);
         assert_eq!(from_raw_mut(ret), "foo.socket");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
@@ -2125,7 +2166,7 @@ mod tests {
         let name = cstr("foo@bar.service");
         let mut ret: *mut c_char = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let rc = unsafe { rs_unit_name_to_prefix_and_instance(name, &mut ret) };
+        let rc = test_ffi!(rs_unit_name_to_prefix_and_instance(name, &mut ret));
         assert_eq!(rc, 0);
         assert_eq!(from_raw_mut(ret), "foo@bar");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.

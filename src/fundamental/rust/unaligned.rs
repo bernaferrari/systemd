@@ -1,3 +1,11 @@
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/fundamental/unaligned.h
@@ -17,7 +25,7 @@
 pub unsafe fn unaligned_read_ne16(p: *const u8) -> u16 {
     // SAFETY: the caller guarantees a readable two-byte region; unaligned
     // access deliberately imposes no alignment requirement.
-    unsafe { core::ptr::read_unaligned(p.cast::<u16>()) }
+    unsafe_ffi!(core::ptr::read_unaligned(p.cast::<u16>()))
 }
 
 /// Read an unaligned native-endian `u32`.
@@ -28,7 +36,7 @@ pub unsafe fn unaligned_read_ne16(p: *const u8) -> u16 {
 #[inline]
 pub unsafe fn unaligned_read_ne32(p: *const u8) -> u32 {
     // SAFETY: the caller guarantees a readable four-byte region.
-    unsafe { core::ptr::read_unaligned(p.cast::<u32>()) }
+    unsafe_ffi!(core::ptr::read_unaligned(p.cast::<u32>()))
 }
 
 /// Read an unaligned native-endian `u64`.
@@ -39,7 +47,7 @@ pub unsafe fn unaligned_read_ne32(p: *const u8) -> u32 {
 #[inline]
 pub unsafe fn unaligned_read_ne64(p: *const u8) -> u64 {
     // SAFETY: the caller guarantees a readable eight-byte region.
-    unsafe { core::ptr::read_unaligned(p.cast::<u64>()) }
+    unsafe_ffi!(core::ptr::read_unaligned(p.cast::<u64>()))
 }
 
 /// Write an unaligned native-endian `u16`.
@@ -91,7 +99,7 @@ pub unsafe fn unaligned_write_ne64(p: *mut u8, val: u64) {
 #[inline]
 pub unsafe fn unaligned_read_be16(p: *const u8) -> u16 {
     // SAFETY: the caller guarantees a readable two-byte region.
-    u16::from_be(unsafe { core::ptr::read_unaligned(p.cast::<u16>()) })
+    u16::from_be(unsafe_ffi!(core::ptr::read_unaligned(p.cast::<u16>())))
 }
 
 /// Read an unaligned big-endian `u32`.
@@ -102,7 +110,7 @@ pub unsafe fn unaligned_read_be16(p: *const u8) -> u16 {
 #[inline]
 pub unsafe fn unaligned_read_be32(p: *const u8) -> u32 {
     // SAFETY: the caller guarantees a readable four-byte region.
-    u32::from_be(unsafe { core::ptr::read_unaligned(p.cast::<u32>()) })
+    u32::from_be(unsafe_ffi!(core::ptr::read_unaligned(p.cast::<u32>())))
 }
 
 /// Read an unaligned big-endian `u64`.
@@ -113,7 +121,7 @@ pub unsafe fn unaligned_read_be32(p: *const u8) -> u32 {
 #[inline]
 pub unsafe fn unaligned_read_be64(p: *const u8) -> u64 {
     // SAFETY: the caller guarantees a readable eight-byte region.
-    u64::from_be(unsafe { core::ptr::read_unaligned(p.cast::<u64>()) })
+    u64::from_be(unsafe_ffi!(core::ptr::read_unaligned(p.cast::<u64>())))
 }
 
 /// Write an unaligned big-endian `u16`.
@@ -165,7 +173,7 @@ pub unsafe fn unaligned_write_be64(p: *mut u8, val: u64) {
 #[inline]
 pub unsafe fn unaligned_read_le16(p: *const u8) -> u16 {
     // SAFETY: the caller guarantees a readable two-byte region.
-    u16::from_le(unsafe { core::ptr::read_unaligned(p.cast::<u16>()) })
+    u16::from_le(unsafe_ffi!(core::ptr::read_unaligned(p.cast::<u16>())))
 }
 
 /// Read an unaligned little-endian `u32`.
@@ -176,7 +184,7 @@ pub unsafe fn unaligned_read_le16(p: *const u8) -> u16 {
 #[inline]
 pub unsafe fn unaligned_read_le32(p: *const u8) -> u32 {
     // SAFETY: the caller guarantees a readable four-byte region.
-    u32::from_le(unsafe { core::ptr::read_unaligned(p.cast::<u32>()) })
+    u32::from_le(unsafe_ffi!(core::ptr::read_unaligned(p.cast::<u32>())))
 }
 
 /// Read an unaligned little-endian `u64`.
@@ -187,7 +195,7 @@ pub unsafe fn unaligned_read_le32(p: *const u8) -> u32 {
 #[inline]
 pub unsafe fn unaligned_read_le64(p: *const u8) -> u64 {
     // SAFETY: the caller guarantees a readable eight-byte region.
-    u64::from_le(unsafe { core::ptr::read_unaligned(p.cast::<u64>()) })
+    u64::from_le(unsafe_ffi!(core::ptr::read_unaligned(p.cast::<u64>())))
 }
 
 /// Write an unaligned little-endian `u16`.

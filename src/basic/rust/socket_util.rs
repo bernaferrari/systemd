@@ -2,6 +2,14 @@
 //
 // PORT-SYNC: scope=basic.socket-util; authority=src/basic/socket-util.c,src/basic/socket-util.h,src/basic/parse-util.c,src/basic/parse-util.h
 
+// Centralized unsafe expression boundary for this C-ABI adapter.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
+        // ownership, and lifetime contract before evaluating this expression.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, CString};
 use std::mem::{offset_of, size_of, zeroed};
 use std::ptr;
@@ -192,11 +200,11 @@ pub unsafe extern "C" fn rs_ifname_valid_full(p: *const c_char, flags: i32) -> b
         return false;
     }
     // SAFETY: required by this FFI boundary's C-string contract.
-    let bytes = unsafe { CStr::from_ptr(p) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(p)).to_bytes();
     let mut ifindex = 0;
     // SAFETY: `p` is a live C string and `ifindex` is writable local storage.
     let parsed_ifindex =
-        unsafe { crate::parse_util::rs_safe_atoi(p, &mut ifindex) } == 0 && ifindex > 0;
+        unsafe_ffi!(crate::parse_util::rs_safe_atoi(p, &mut ifindex)) == 0 && ifindex > 0;
     ifname_valid_full_bytes(bytes, flags as u32, parsed_ifindex)
 }
 
@@ -208,7 +216,7 @@ pub unsafe extern "C" fn rs_ifname_valid_full(p: *const c_char, flags: i32) -> b
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ifname_valid(p: *const c_char) -> bool {
     // SAFETY: this wrapper forwards the documented C-string contract unchanged.
-    unsafe { rs_ifname_valid_full(p, 0) }
+    unsafe_ffi!(rs_ifname_valid_full(p, 0))
 }
 
 pub fn vsock_parse_port(s: &str) -> Result<u32, i32> {
@@ -217,7 +225,7 @@ pub fn vsock_parse_port(s: &str) -> Result<u32, i32> {
     // SAFETY: `s` owns a live NUL-terminated buffer and `port` is writable
     // local storage. Sharing the ABI implementation keeps this safe facade
     // aligned with C's base-zero numeric grammar and range errors.
-    let r = unsafe { rs_vsock_parse_port(s.as_ptr(), &mut port) };
+    let r = unsafe_ffi!(rs_vsock_parse_port(s.as_ptr(), &mut port));
     if r < 0 { Err(r) } else { Ok(port) }
 }
 
@@ -226,7 +234,7 @@ pub fn vsock_parse_cid(s: &str) -> Result<u32, i32> {
     let mut cid = 0;
     // SAFETY: `s` owns a live NUL-terminated buffer and `cid` is writable
     // local storage. This also preserves C's `any` and `-1` aliases.
-    let r = unsafe { rs_vsock_parse_cid(s.as_ptr(), &mut cid) };
+    let r = unsafe_ffi!(rs_vsock_parse_cid(s.as_ptr(), &mut cid));
     if r < 0 { Err(r) } else { Ok(cid) }
 }
 
@@ -248,7 +256,7 @@ pub unsafe extern "C" fn rs_vsock_parse_port(s: *const c_char, ret: *mut u32) ->
     // SAFETY: `s` is a live C string under this export's contract and `port`
     // is a writable local. This reuses the C-authoritative `safe_atou()`
     // grammar, including whitespace, sign, base-prefix, and errno behavior.
-    let r = unsafe { crate::parse_util::rs_safe_atou(s, &mut port) };
+    let r = unsafe_ffi!(crate::parse_util::rs_safe_atou(s, &mut port));
     if r < 0 {
         return r;
     }
@@ -257,7 +265,7 @@ pub unsafe extern "C" fn rs_vsock_parse_port(s: *const c_char, ret: *mut u32) ->
     }
 
     // SAFETY: the non-null `ret` pointer is writable by this export's contract.
-    unsafe { *ret = port };
+    unsafe_ffi!(*ret = port);
     0
 }
 
@@ -276,7 +284,7 @@ pub unsafe extern "C" fn rs_vsock_parse_cid(s: *const c_char, ret: *mut u32) -> 
     }
 
     // SAFETY: `s` is a live C string under this export's contract.
-    let value = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let value = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let cid = match value {
         b"hypervisor" => Some(VMADDR_CID_HYPERVISOR),
         b"local" => Some(VMADDR_CID_LOCAL),
@@ -286,13 +294,13 @@ pub unsafe extern "C" fn rs_vsock_parse_cid(s: *const c_char, ret: *mut u32) -> 
     };
     if let Some(cid) = cid {
         // SAFETY: the non-null `ret` pointer is writable by this export's contract.
-        unsafe { *ret = cid };
+        unsafe_ffi!(*ret = cid);
         return 0;
     }
 
     // SAFETY: `s` is a live C string and `ret` is writable by this export's
     // contract. The numeric branch is exactly the C `safe_atou()` call.
-    unsafe { crate::parse_util::rs_safe_atou(s, ret) }
+    unsafe_ffi!(crate::parse_util::rs_safe_atou(s, ret))
 }
 
 pub fn sockaddr_port(sa: &SocketAddress) -> Result<u32, i32> {
@@ -687,7 +695,7 @@ fn sockaddr_len_from_ref(sa: CSockaddrRef<'_>) -> usize {
 #[inline]
 unsafe fn c_socket_address_family(a: *const CSocketAddress) -> c_int {
     // SAFETY: all callers validate the C SocketAddress pointer before this read.
-    unsafe { (*a).sockaddr.sa.sa_family as c_int }
+    unsafe_ffi!((*a).sockaddr.sa.sa_family as c_int)
 }
 
 fn socket_type_is(value: c_int, permitted: &[c_int]) -> bool {
@@ -705,12 +713,12 @@ pub unsafe extern "C" fn rs_sockaddr_port(sa: *const c_void, ret_port: *mut u32)
     }
 
     // SAFETY: non-null `sa` meets this export's readable sockaddr contract.
-    let port = match sockaddr_port_from_ref(unsafe { sockaddr_ref(&*sa.cast()) }) {
+    let port = match sockaddr_port_from_ref(unsafe_ffi!(sockaddr_ref(&*sa.cast()))) {
         Ok(port) => port,
         Err(error) => return error,
     };
     // SAFETY: ensured non-null above and required writable by this export.
-    unsafe { *ret_port = port };
+    unsafe_ffi!(*ret_port = port);
     0
 }
 
@@ -724,7 +732,7 @@ pub unsafe extern "C" fn rs_sockaddr_in_addr(sa: *const c_void) -> *const c_void
         return ptr::null();
     }
     // SAFETY: non-null `sa` meets this export's readable sockaddr contract.
-    sockaddr_in_addr_ptr_from_ref(unsafe { sockaddr_ref(&*sa.cast()) })
+    sockaddr_in_addr_ptr_from_ref(unsafe_ffi!(sockaddr_ref(&*sa.cast())))
 }
 
 /// # Safety
@@ -789,9 +797,9 @@ pub unsafe extern "C" fn rs_sockaddr_equal(a: *const c_void, b: *const c_void) -
         return false;
     }
     // SAFETY: both non-null pointers meet this export's readable union contract.
-    let a = unsafe { sockaddr_ref(&*a.cast()) };
+    let a = unsafe_ffi!(sockaddr_ref(&*a.cast()));
     // SAFETY: `b` has the same readable union contract as `a`.
-    let b = unsafe { sockaddr_ref(&*b.cast()) };
+    let b = unsafe_ffi!(sockaddr_ref(&*b.cast()));
     sockaddr_equal_from_ref(a, b)
 }
 
@@ -804,7 +812,7 @@ pub unsafe extern "C" fn rs_sockaddr_ll_len(sa: *const c_void) -> usize {
         return 0;
     }
     // SAFETY: non-null `sa` meets this export's readable sockaddr contract.
-    sockaddr_ll_len_from_ref(unsafe { sockaddr_ref(&*sa.cast()) })
+    sockaddr_ll_len_from_ref(unsafe_ffi!(sockaddr_ref(&*sa.cast())))
 }
 
 /// # Safety
@@ -816,7 +824,7 @@ pub unsafe extern "C" fn rs_sockaddr_un_len(sa: *const c_void) -> usize {
         return 0;
     }
     // SAFETY: non-null `sa` meets this export's readable sockaddr contract.
-    sockaddr_un_len_from_ref(unsafe { sockaddr_ref(&*sa.cast()) })
+    sockaddr_un_len_from_ref(unsafe_ffi!(sockaddr_ref(&*sa.cast())))
 }
 
 /// # Safety
@@ -828,7 +836,7 @@ pub unsafe extern "C" fn rs_sockaddr_len(sa: *const c_void) -> usize {
         return 0;
     }
     // SAFETY: non-null `sa` meets this export's readable union contract.
-    sockaddr_len_from_ref(unsafe { sockaddr_ref(&*sa.cast()) })
+    sockaddr_len_from_ref(unsafe_ffi!(sockaddr_ref(&*sa.cast())))
 }
 
 /// Construct an AF_UNIX socket address using systemd's `@name` convention for
@@ -854,7 +862,7 @@ pub fn sockaddr_un_from_path_bytes(path: &[u8]) -> Result<(libc::sockaddr_un, us
     }
 
     // SAFETY: zero is a valid bit pattern for the C socket structure.
-    let mut un: libc::sockaddr_un = unsafe { zeroed() };
+    let mut un: libc::sockaddr_un = unsafe_ffi!(zeroed());
     let capacity = un.sun_path.len();
     if bytes.len() + 1 > capacity {
         return Err(if first == b'@' {
@@ -887,7 +895,7 @@ unsafe fn sockaddr_un_from_path(path: *const c_char) -> Result<(libc::sockaddr_u
         return Err(Errno::EINVAL.to_neg_errno());
     }
     // SAFETY: required by this helper's C-string contract.
-    sockaddr_un_from_path_bytes(unsafe { CStr::from_ptr(path) }.to_bytes())
+    sockaddr_un_from_path_bytes(unsafe_ffi!(CStr::from_ptr(path)).to_bytes())
 }
 
 /// # Safety
@@ -900,10 +908,10 @@ pub unsafe extern "C" fn rs_sockaddr_un_set_path(ret: *mut c_void, path: *const 
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: `path` meets this export's readable C-string contract.
-    match unsafe { sockaddr_un_from_path(path) } {
+    match unsafe_ffi!(sockaddr_un_from_path(path)) {
         Ok((un, size)) => {
             // SAFETY: the output contract provides a properly aligned full struct.
-            unsafe { ptr::write(ret.cast::<libc::sockaddr_un>(), un) };
+            unsafe_ffi!(ptr::write(ret.cast::<libc::sockaddr_un>(), un));
             size as i32
         }
         Err(error) => error,
@@ -914,13 +922,13 @@ pub unsafe extern "C" fn rs_sockaddr_un_set_path(ret: *mut c_void, path: *const 
 /// `a` must point to a readable, correctly laid-out C `SocketAddress`.
 unsafe fn socket_address_verify_c(a: *const CSocketAddress, strict: bool) -> i32 {
     // SAFETY: this helper's contract guarantees a readable CSocketAddress.
-    let family = unsafe { c_socket_address_family(a) };
+    let family = unsafe_ffi!(c_socket_address_family(a));
     // SAFETY: callers provide a readable full C SocketAddress.
-    let address = unsafe { &*a };
+    let address = unsafe_ffi!(&*a);
     match family {
         libc::AF_INET => {
             // SAFETY: the inspected family selects this C union member.
-            let in_ = unsafe { address.sockaddr.in_ };
+            let in_ = unsafe_ffi!(address.sockaddr.in_);
             if address.size as usize != size_of::<libc::sockaddr_in>()
                 || in_.sin_port == 0
                 || !socket_type_is(address.type_, &[0, libc::SOCK_STREAM, libc::SOCK_DGRAM])
@@ -932,7 +940,7 @@ unsafe fn socket_address_verify_c(a: *const CSocketAddress, strict: bool) -> i32
         }
         libc::AF_INET6 => {
             // SAFETY: the inspected family selects this C union member.
-            let in6 = unsafe { address.sockaddr.in6 };
+            let in6 = unsafe_ffi!(address.sockaddr.in6);
             if address.size as usize != size_of::<libc::sockaddr_in6>()
                 || in6.sin6_port == 0
                 || !socket_type_is(address.type_, &[0, libc::SOCK_STREAM, libc::SOCK_DGRAM])
@@ -944,7 +952,7 @@ unsafe fn socket_address_verify_c(a: *const CSocketAddress, strict: bool) -> i32
         }
         libc::AF_UNIX => {
             // SAFETY: the inspected family selects this C union member.
-            let un = unsafe { address.sockaddr.un };
+            let un = unsafe_ffi!(address.sockaddr.un);
             let offset = offset_of!(libc::sockaddr_un, sun_path);
             if (address.size as usize) < offset
                 || (address.size as usize) > size_of::<libc::sockaddr_un>() + usize::from(!strict)
@@ -1000,7 +1008,7 @@ pub unsafe extern "C" fn rs_socket_address_verify(a: *const c_void, strict: bool
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: non-null `a` meets this export's readable CSocketAddress contract.
-    unsafe { socket_address_verify_c(a.cast(), strict) }
+    unsafe_ffi!(socket_address_verify_c(a.cast(), strict))
 }
 
 /// # Safety
@@ -1011,7 +1019,7 @@ pub unsafe extern "C" fn rs_socket_address_can_accept(a: *const c_void) -> bool 
         return false;
     }
     // SAFETY: non-null C SocketAddress is readable by this export's contract.
-    let a = unsafe { &*a.cast::<CSocketAddress>() };
+    let a = unsafe_ffi!(&*a.cast::<CSocketAddress>());
     matches!(a.type_, libc::SOCK_STREAM | libc::SOCK_SEQPACKET)
 }
 
@@ -1021,11 +1029,11 @@ pub unsafe extern "C" fn rs_socket_address_can_accept(a: *const c_void) -> bool 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_socket_address_get_path(a: *const c_void) -> *const c_char {
     // SAFETY: a non-null `a` meets this export's readable CSocketAddress contract.
-    if a.is_null() || unsafe { c_socket_address_family(a.cast()) } != libc::AF_UNIX {
+    if a.is_null() || unsafe_ffi!(c_socket_address_family(a.cast())) != libc::AF_UNIX {
         return ptr::null();
     }
     // SAFETY: family selected the Unix member in valid C SocketAddress storage.
-    let un = unsafe { &(*a.cast::<CSocketAddress>()).sockaddr.un };
+    let un = unsafe_ffi!(&(*a.cast::<CSocketAddress>()).sockaddr.un);
     if un.sun_path[0] == 0 {
         ptr::null()
     } else {
@@ -1055,18 +1063,18 @@ pub unsafe extern "C" fn rs_socket_address_parse_unix(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: this export carries the C-string validity requirement.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     if !matches!(bytes.first(), Some(b'/' | b'@')) {
         return -libc::EPROTO;
     }
     // SAFETY: `s` meets this export's readable C-string contract.
-    let (un, size) = match unsafe { sockaddr_un_from_path(s) } {
+    let (un, size) = match unsafe_ffi!(sockaddr_un_from_path(s)) {
         Ok(value) => value,
         Err(error) => return error,
     };
     let address = socket_address_from_un(un, size);
     // SAFETY: output contract supplies complete writable C SocketAddress storage.
-    unsafe { ptr::write(ret_address.cast::<CSocketAddress>(), address) };
+    unsafe_ffi!(ptr::write(ret_address.cast::<CSocketAddress>(), address));
     0
 }
 
@@ -1083,7 +1091,7 @@ pub unsafe extern "C" fn rs_socket_address_parse_vsock(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: this export carries the C-string validity requirement.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let (type_, remainder) = if let Some(rest) = bytes.strip_prefix(b"vsock:") {
         (0, rest)
     } else if let Some(rest) = bytes.strip_prefix(b"vsock-dgram:") {
@@ -1100,17 +1108,17 @@ pub unsafe extern "C" fn rs_socket_address_parse_vsock(
     };
     let mut port = 0;
     // SAFETY: separator is in the original NUL-terminated string, so this points at a C substring.
-    let port_ptr = unsafe { s.add(bytes.len() - remainder.len() + separator + 1) };
-    let r = unsafe { rs_vsock_parse_port(port_ptr, &mut port) };
+    let port_ptr = unsafe_ffi!(s.add(bytes.len() - remainder.len() + separator + 1));
+    let r = unsafe_ffi!(rs_vsock_parse_port(port_ptr, &mut port));
     if r < 0 {
         return r;
     }
     // C allocates this substring even when it is empty. Keep that allocation
     // and its ENOMEM edge case observable at the ABI boundary.
     // SAFETY: the prefix offset is within the same validated NUL-terminated string.
-    let cid_start = unsafe { s.add(bytes.len() - remainder.len()) };
+    let cid_start = unsafe_ffi!(s.add(bytes.len() - remainder.len()));
     // SAFETY: `cid_start` has at least `separator` readable bytes before the terminator.
-    let cid_string = unsafe { libc::strndup(cid_start, separator) };
+    let cid_string = unsafe_ffi!(libc::strndup(cid_start, separator));
     if cid_string.is_null() {
         return -libc::ENOMEM;
     }
@@ -1119,16 +1127,16 @@ pub unsafe extern "C" fn rs_socket_address_parse_vsock(
     } else {
         let mut value = 0;
         // SAFETY: strndup returned a NUL-terminated CID substring and `value` is local writable storage.
-        let r = unsafe { rs_vsock_parse_cid(cid_string, &mut value) };
+        let r = unsafe_ffi!(rs_vsock_parse_cid(cid_string, &mut value));
         if r < 0 {
             // SAFETY: `strndup()` returned this allocation exactly once above.
-            unsafe { libc::free(cid_string.cast()) };
+            unsafe_ffi!(libc::free(cid_string.cast()));
             return r;
         }
         value
     };
     // SAFETY: `strndup()` returned this allocation exactly once above.
-    unsafe { libc::free(cid_string.cast()) };
+    unsafe_ffi!(libc::free(cid_string.cast()));
     let address = CSocketAddress {
         sockaddr: CSockaddrUnion {
             vm: CSockaddrVm {
@@ -1145,7 +1153,7 @@ pub unsafe extern "C" fn rs_socket_address_parse_vsock(
         protocol: 0,
     };
     // SAFETY: output contract supplies complete writable C SocketAddress storage.
-    unsafe { ptr::write(ret_address.cast::<CSocketAddress>(), address) };
+    unsafe_ffi!(ptr::write(ret_address.cast::<CSocketAddress>(), address));
     0
 }
 
@@ -1159,15 +1167,15 @@ pub unsafe extern "C" fn rs_socket_address_equal_unix(a: *const c_char, b: *cons
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: zero is valid before the parse functions initialize each aggregate.
-    let mut left: CSocketAddress = unsafe { zeroed() };
+    let mut left: CSocketAddress = unsafe_ffi!(zeroed());
     // SAFETY: zero is valid before the parse functions initialize each aggregate.
-    let mut right: CSocketAddress = unsafe { zeroed() };
-    let r = unsafe { rs_socket_address_parse_unix((&raw mut left).cast(), a) };
+    let mut right: CSocketAddress = unsafe_ffi!(zeroed());
+    let r = unsafe_ffi!(rs_socket_address_parse_unix((&raw mut left).cast(), a));
     if r < 0 {
         return r;
     }
     // SAFETY: `right` is writable local CSocketAddress storage and `b` is a valid C string.
-    let r = unsafe { rs_socket_address_parse_unix((&raw mut right).cast(), b) };
+    let r = unsafe_ffi!(rs_socket_address_parse_unix((&raw mut right).cast(), b));
     if r < 0 {
         return r;
     }
