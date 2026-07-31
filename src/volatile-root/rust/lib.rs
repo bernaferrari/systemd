@@ -175,16 +175,16 @@ pub fn build_overlay_options(lower_dir: &str, upper_dir: &str, work_dir: &str) -
     )
 }
 
-/// Shell-escape characters that are special for overlayfs options (comma and colon).
+/// Escape an overlay lowerdir with C's `shell_escape(path, ",:")` rules.
+///
+/// Besides the option separators themselves, `shell_escape()` always escapes
+/// a literal backslash.  That is essential here: a backslash preceding a
+/// comma or colon is parsed by overlayfs as an escape sequence, so merely
+/// escaping the separators would change the lowerdir for valid pathnames
+/// containing a backslash.  Delegate to the shared Rust port of the C helper
+/// rather than carrying a subtly incomplete local variant.
 pub fn shell_escape(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    for c in s.chars() {
-        if c == ',' || c == ':' {
-            result.push('\\');
-        }
-        result.push(c);
-    }
-    result
+    systemd_basic_rs::escape::shell_escape(s, ",:")
 }
 
 // ── Overlay transition ────────────────────────────────────────────────────
@@ -978,6 +978,8 @@ impl BackingDeviceLinkBackend for LinuxBackingDeviceLinkBackend {
 
 mod orchestration;
 
+#[cfg(target_os = "linux")]
+pub use orchestration::LinuxVolatileRootRunBackend;
 pub use orchestration::{
     VolatileRootDiagnostic, VolatileRootRunBackend, VolatileRootRunOutcome, run_volatile_root_with,
 };
@@ -1262,6 +1264,13 @@ mod tests {
         assert_eq!(shell_escape("/path,with,commas"), "/path\\,with\\,commas");
         assert_eq!(shell_escape("/path:with:colons"), "/path\\:with\\:colons");
         assert_eq!(shell_escape("/mix:ed,path"), "/mix\\:ed\\,path");
+        // `shell_escape(path, ",:")` escapes backslashes independently of
+        // the supplied bad-character set. This prevents a pathname's own
+        // backslash from being consumed while overlayfs parses a later separator.
+        assert_eq!(
+            shell_escape(r"/path\name,with:separators"),
+            r"/path\\name\,with\:separators"
+        );
     }
 
     #[test]
@@ -1608,6 +1617,24 @@ mod tests {
                 OverlayCall::Unmount(OVERLAY_SYSROOT_DIR.into()),
                 OverlayCall::Remove(OVERLAY_SYSROOT_DIR.into()),
             ]
+        );
+    }
+
+    #[test]
+    fn overlay_transition_preserves_backslashes_in_lowerdir() {
+        let mut backend = FakeOverlayBackend::default();
+        make_overlay_with(r"/sysroot\old:one,two", &mut backend).unwrap();
+
+        assert!(
+            backend.calls.contains(&OverlayCall::MountOverlay(
+                r"/sysroot\old:one,two".into(),
+                concat!(
+                    r"lowerdir=/sysroot\\old\:one\,two,",
+                    "upperdir=/run/systemd/overlay-sysroot/upper,",
+                    "workdir=/run/systemd/overlay-sysroot/work"
+                )
+                .into(),
+            ))
         );
     }
 

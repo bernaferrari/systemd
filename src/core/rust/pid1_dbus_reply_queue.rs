@@ -35,6 +35,17 @@ pub enum PrivateBusReplyTracking {
     NoReplyExpected,
 }
 
+/// A reply-correlation slot reserved before manager work is submitted.
+///
+/// The reservation owns capacity already obtained from the pending queue and
+/// therefore lets the transport commit a receiver without an allocation after
+/// the command has been accepted. It is intentionally opaque: only the queue
+/// that created it may commit or cancel the slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrivateBusReplyReservation {
+    reply_serial: u32,
+}
+
 /// Bounded polling progress from [`PrivateBusReplyQueue::poll_completed`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PrivateBusReplyPollOutcome {
@@ -66,6 +77,13 @@ pub enum PrivateBusReplyQueueError {
     /// reached its bounded pending-reply limit. The slot is terminal and must
     /// be closed, because dropping the new receiver would lose its response.
     PendingReplyLimitReached { capacity: usize },
+    /// A caller attempted to hold more than one in-flight reservation for a
+    /// queue. The wire dispatcher is single-turn, so this indicates a broken
+    /// ownership protocol rather than peer backpressure.
+    ReplyReservationInProgress { reply_serial: u32 },
+    /// A reservation token no longer belongs to this queue. This is terminal
+    /// because the caller can no longer prove reply correlation ownership.
+    ReplyReservationNotFound { reply_serial: u32 },
     /// Retaining an already accepted manager reply required an allocation
     /// that failed. The receiver cannot be returned to the caller, so this is
     /// terminal and the wire slot must be closed.
@@ -119,6 +137,7 @@ pub struct PrivateBusReplyQueue {
     pending: VecDeque<PendingReply>,
     outbound: VecDeque<OutboundFrame>,
     outbound_bytes: usize,
+    reserved_reply: Option<u32>,
     next_outgoing_serial: u32,
     terminal: bool,
 }
@@ -149,6 +168,7 @@ impl PrivateBusReplyQueue {
             pending: VecDeque::new(),
             outbound: VecDeque::new(),
             outbound_bytes: 0,
+            reserved_reply: None,
             next_outgoing_serial: 1,
             terminal: false,
         })
@@ -178,7 +198,9 @@ impl PrivateBusReplyQueue {
     /// already knows it cannot retain a correlation slot for. Calls with
     /// `NO_REPLY_EXPECTED` do not need a slot.
     pub fn can_track_reply(&self) -> bool {
-        !self.terminal && self.pending.len() < self.max_pending.get()
+        !self.terminal
+            && self.reserved_reply.is_none()
+            && self.pending.len() < self.max_pending.get()
     }
 
     /// Whether `reply_serial` can be reserved for a newly accepted call.
@@ -189,6 +211,77 @@ impl PrivateBusReplyQueue {
     /// that its one-shot reply cannot be delivered.
     pub fn can_track_reply_serial(&self, reply_serial: u32) -> bool {
         reply_serial != 0 && self.can_track_reply() && !self.reply_serial_is_reserved(reply_serial)
+    }
+
+    /// Reserve one reply-correlation slot before submitting manager work.
+    ///
+    /// `pending.try_reserve(1)` happens here, before the command sender can
+    /// accept the operation. The subsequent [`Self::commit_reply`] therefore
+    /// only moves an already-owned receiver into the queue and cannot fail due
+    /// to allocation.
+    pub fn reserve_reply(
+        &mut self,
+        reply_serial: u32,
+    ) -> Result<PrivateBusReplyReservation, PrivateBusReplyQueueError> {
+        if self.terminal {
+            return Err(PrivateBusReplyQueueError::TerminalFailure);
+        }
+        if reply_serial == 0 {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::InvalidReplySerial);
+        }
+        if self.reserved_reply.is_some() {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::ReplyReservationInProgress { reply_serial });
+        }
+        if self.reply_serial_is_reserved(reply_serial) {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::DuplicateReplySerial { reply_serial });
+        }
+        if !self.can_track_reply() {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::PendingReplyLimitReached {
+                capacity: self.max_pending.get(),
+            });
+        }
+        self.pending.try_reserve(1).map_err(|_| {
+            self.terminal = true;
+            PrivateBusReplyQueueError::PendingAllocationFailed
+        })?;
+        self.reserved_reply = Some(reply_serial);
+        Ok(PrivateBusReplyReservation { reply_serial })
+    }
+
+    /// Commit a previously reserved correlation slot after manager submission.
+    pub fn commit_reply(
+        &mut self,
+        reservation: PrivateBusReplyReservation,
+        endian: Endian,
+        receiver: Pid1CommandReplyReceiver,
+    ) -> Result<PrivateBusReplyTracking, PrivateBusReplyQueueError> {
+        if self.terminal {
+            return Err(PrivateBusReplyQueueError::TerminalFailure);
+        }
+        if self.reserved_reply != Some(reservation.reply_serial) {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::ReplyReservationNotFound {
+                reply_serial: reservation.reply_serial,
+            });
+        }
+        self.reserved_reply = None;
+        self.pending.push_back(PendingReply {
+            endian,
+            reply_serial: reservation.reply_serial,
+            receiver,
+        });
+        Ok(PrivateBusReplyTracking::Queued)
+    }
+
+    /// Cancel a reservation when manager submission was rejected.
+    pub fn cancel_reply(&mut self, reservation: PrivateBusReplyReservation) {
+        if self.reserved_reply == Some(reservation.reply_serial) {
+            self.reserved_reply = None;
+        }
     }
 
     pub fn outbound_frame_count(&self) -> usize {
@@ -231,6 +324,10 @@ impl PrivateBusReplyQueue {
         if no_reply_expected {
             drop(receiver);
             return Ok(PrivateBusReplyTracking::NoReplyExpected);
+        }
+        if let Some(reply_serial) = self.reserved_reply {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::ReplyReservationInProgress { reply_serial });
         }
         if reply_serial == 0 {
             self.terminal = true;
@@ -383,13 +480,16 @@ impl PrivateBusReplyQueue {
         self.pending.clear();
         self.outbound.clear();
         self.outbound_bytes = 0;
+        self.reserved_reply = None;
         self.terminal = false;
     }
 
     fn reply_serial_is_reserved(&self, reply_serial: u32) -> bool {
-        self.pending
-            .iter()
-            .any(|pending| pending.reply_serial == reply_serial)
+        self.reserved_reply == Some(reply_serial)
+            || self
+                .pending
+                .iter()
+                .any(|pending| pending.reply_serial == reply_serial)
             || self
                 .outbound
                 .iter()
@@ -513,6 +613,31 @@ mod tests {
 
         let receiver = receiver_from_closed_channel();
         queue.track(Endian::Little, 22, false, receiver).unwrap();
+        assert_eq!(queue.pending_reply_count(), 1);
+    }
+
+    #[test]
+    fn reservation_commits_a_reply_without_post_submit_capacity_work() {
+        let mut queue = queue(1, FRAME_CAPACITY);
+        let reservation = queue.reserve_reply(17).unwrap();
+        assert!(!queue.can_track_reply());
+        assert_eq!(
+            queue.commit_reply(reservation, Endian::Little, receiver_from_closed_channel()),
+            Ok(PrivateBusReplyTracking::Queued)
+        );
+        assert_eq!(queue.pending_reply_count(), 1);
+        assert!(!queue.is_terminal());
+    }
+
+    #[test]
+    fn rejected_submission_can_cancel_a_reply_reservation() {
+        let mut queue = queue(1, FRAME_CAPACITY);
+        let reservation = queue.reserve_reply(17).unwrap();
+        queue.cancel_reply(reservation);
+        assert!(queue.can_track_reply());
+        queue
+            .track(Endian::Little, 17, false, receiver_from_closed_channel())
+            .unwrap();
         assert_eq!(queue.pending_reply_count(), 1);
     }
 

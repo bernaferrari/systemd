@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 //! Same-thread ownership boundary for PID 1's private D-Bus transport.
+// PORT-SYNC: src/core/dbus.c (the `bus_on_connection()` private-bus lifecycle).
 //!
 //! [`PrivateBusEventSourceOwner`] owns a listener plus streams which are still
 //! authenticating or waiting for handoff. This type adds the next ownership
@@ -10,12 +11,11 @@
 //! connection cap applies continuously while a stream moves from accept,
 //! through authentication and handoff, into the future D-Bus wire dispatcher.
 //!
-//! There is deliberately no message decoding, manager callback, pathname
-//! binding, or production PID 1 wiring here. A later wire implementation must
-//! operate on the explicit slot APIs and close a slot through
-//! `close_wire_slot()`; it must not take a stream out of this owner and evade
-//! the global admission limit. This remains deliberately disconnected from
-//! both `/run/systemd/private` and PID 1's live event loop.
+//! A slot can perform one bounded decode/command/reply handoff through
+//! [`PrivateBusWireSlot::dispatch_one`]. It remains deliberately disconnected
+//! from pathname binding and the production PID 1 loop: a future lifecycle
+//! owner must still provide socket I/O, event-source registration, complete
+//! D-Bus error/vtable semantics, and teardown around that checked turn.
 
 #[cfg(target_os = "linux")]
 mod imp {
@@ -25,6 +25,8 @@ mod imp {
 
     use systemd_event_loop_rs::loop_::EventLoop;
 
+    use crate::pid1_bus_source::Pid1BusSendError;
+    use crate::pid1_dbus_command_adapter::{Pid1DbusCommandAdapter, Pid1DbusCommandAdapterError};
     use crate::pid1_dbus_event_source::{
         PrivateBusDispatchOutcome, PrivateBusEventSourceError, PrivateBusEventSourceOwner,
     };
@@ -33,6 +35,7 @@ mod imp {
     };
     use crate::pid1_dbus_reply_queue::{
         PrivateBusReplyPollOutcome, PrivateBusReplyQueue, PrivateBusReplyQueueError,
+        PrivateBusReplyTracking,
     };
     use crate::pid1_dbus_wire::{
         MethodCall, PrivateBusWireAccumulator, PrivateBusWireAccumulatorError,
@@ -108,7 +111,48 @@ mod imp {
         /// An event-source invariant was violated: only a completed D-Bus
         /// authentication handoff may be promoted to a wire slot.
         UnauthenticatedHandoff,
+        /// The slot has failed closed and must be detached before any more
+        /// protocol state is accessed.
+        Terminal,
         Input(PrivateBusWireAccumulatorError),
+        Reply(PrivateBusReplyQueueError),
+    }
+
+    /// One bounded private-bus wire-dispatch result.
+    ///
+    /// A successful submission owns either a pending reply receiver or the
+    /// explicit `NO_REPLY_EXPECTED` disposition. `RejectedNoReply` is limited
+    /// to invalid/unavailable calls which explicitly requested no reply; no
+    /// manager command was accepted in that case.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum PrivateBusWireDispatchOutcome {
+        /// The first buffered frame is incomplete, so no manager work was
+        /// submitted and the caller may wait for a later readable event.
+        NoMessage,
+        /// Exactly one validated manager command was submitted.
+        Submitted { reply: PrivateBusReplyTracking },
+        /// An invalid or unavailable no-reply call was discarded. Its error
+        /// is retained for logging/metrics, but the peer requested that no
+        /// protocol response be sent.
+        RejectedNoReply { cause: Pid1DbusCommandAdapterError },
+    }
+
+    /// Failure in a dispatch turn which cannot safely be represented by the
+    /// current deliberately narrow reply surface.
+    ///
+    /// The slot marks itself terminal before returning any of these errors.
+    /// A future complete D-Bus server may replace selected cases with a
+    /// protocol error frame, but it must never submit a reply-producing
+    /// command until it can retain the response correlation.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum PrivateBusWireDispatchError {
+        Terminal,
+        Input(PrivateBusWireAccumulatorError),
+        Adapter(Pid1DbusCommandAdapterError),
+        ReplyReservation {
+            reply_serial: u32,
+            cause: PrivateBusReplyQueueError,
+        },
         Reply(PrivateBusReplyQueueError),
     }
 
@@ -136,6 +180,7 @@ mod imp {
         connection: AdmittedPrivateBusConnection,
         input: PrivateBusWireAccumulator,
         replies: PrivateBusReplyQueue,
+        dispatch_terminal: bool,
     }
 
     impl PrivateBusWireSlot {
@@ -159,6 +204,7 @@ mod imp {
                 connection,
                 input,
                 replies,
+                dispatch_terminal: false,
             })
         }
 
@@ -176,7 +222,7 @@ mod imp {
         /// Borrow only the still-owned socket connection for a future
         /// nonblocking I/O callback. The slot's identity, input, and replies
         /// remain retained by this transport.
-        pub fn connection_mut(&mut self) -> &mut AdmittedPrivateBusConnection {
+        pub(crate) fn connection_mut(&mut self) -> &mut AdmittedPrivateBusConnection {
             &mut self.connection
         }
 
@@ -184,7 +230,7 @@ mod imp {
             &self.input
         }
 
-        pub fn input_mut(&mut self) -> &mut PrivateBusWireAccumulator {
+        pub(crate) fn input_mut(&mut self) -> &mut PrivateBusWireAccumulator {
             &mut self.input
         }
 
@@ -192,18 +238,24 @@ mod imp {
             &self.replies
         }
 
-        pub fn replies_mut(&mut self) -> &mut PrivateBusReplyQueue {
+        pub(crate) fn replies_mut(&mut self) -> &mut PrivateBusReplyQueue {
             &mut self.replies
         }
 
         /// Return the exact number of input bytes a callback may retain now.
         /// A zero result is input backpressure, not EOF.
         pub fn read_budget(&self) -> Result<usize, PrivateBusWireSlotError> {
+            if self.is_terminal() {
+                return Err(PrivateBusWireSlotError::Terminal);
+            }
             self.input.read_budget().map_err(Into::into)
         }
 
         /// Retain one checked bounded read from this peer.
         pub fn receive(&mut self, input: &[u8]) -> Result<(), PrivateBusWireSlotError> {
+            if self.is_terminal() {
+                return Err(PrivateBusWireSlotError::Terminal);
+            }
             self.input.receive(input).map_err(Into::into)
         }
 
@@ -212,7 +264,109 @@ mod imp {
         pub fn take_next_method_call(
             &mut self,
         ) -> Result<Option<MethodCall>, PrivateBusWireSlotError> {
+            if self.is_terminal() {
+                return Err(PrivateBusWireSlotError::Terminal);
+            }
             self.input.take_next_method_call().map_err(Into::into)
+        }
+
+        /// Decode and submit at most one complete request from this slot.
+        ///
+        /// The command's identity comes only from the peer credentials
+        /// retained with the accepted socket. For reply-producing calls, the
+        /// bounded correlation slot is checked *before* submitting manager
+        /// work. If any later boundary fails, this connection becomes
+        /// terminal rather than accepting a command whose result could not be
+        /// delivered safely. Callers must close it through
+        /// [`PrivateBusTransportOwner::close_wire_slot`].
+        ///
+        /// This does not read or write a socket. A future event-loop owner
+        /// performs bounded I/O, invokes this turn from readable readiness,
+        /// polls replies, and writes current reply frames separately.
+        pub fn dispatch_one(
+            &mut self,
+            adapter: &Pid1DbusCommandAdapter,
+        ) -> Result<PrivateBusWireDispatchOutcome, PrivateBusWireDispatchError> {
+            if self.is_terminal() {
+                return Err(PrivateBusWireDispatchError::Terminal);
+            }
+
+            let call = match self.input.take_next_method_call() {
+                Ok(Some(call)) => call,
+                Ok(None) => return Ok(PrivateBusWireDispatchOutcome::NoMessage),
+                Err(error) => {
+                    return self.dispatch_failure(PrivateBusWireDispatchError::Input(error));
+                }
+            };
+            let no_reply_expected = call.no_reply_expected();
+            let command = match Pid1DbusCommandAdapter::command_for(&call) {
+                Ok(command) => command,
+                Err(cause) if no_reply_expected => {
+                    return Ok(PrivateBusWireDispatchOutcome::RejectedNoReply { cause });
+                }
+                Err(cause) => {
+                    return self.dispatch_failure(PrivateBusWireDispatchError::Adapter(cause));
+                }
+            };
+
+            let reservation = if no_reply_expected {
+                None
+            } else {
+                Some(self.replies.reserve_reply(call.serial).map_err(|cause| {
+                    PrivateBusWireDispatchError::ReplyReservation {
+                        reply_serial: call.serial,
+                        cause,
+                    }
+                })?)
+            };
+
+            let receiver = match adapter.try_send_command(
+                crate::pid1_manager_commands::SenderIdentity::from_authenticated_peer(
+                    self.connection.peer(),
+                ),
+                command,
+            ) {
+                Ok(receiver) => receiver,
+                Err(cause) if no_reply_expected => {
+                    // A bounded inbox-full rejection is safe to discard for
+                    // a no-reply call. Wake accounting failure or a closed
+                    // manager, however, means this slot can no longer trust
+                    // the command handoff lifecycle and must be detached.
+                    let terminal = matches!(
+                        &cause,
+                        Pid1DbusCommandAdapterError::Ingress(
+                            Pid1BusSendError::Wake(_)
+                                | Pid1BusSendError::Command(
+                                    crate::pid1_manager_commands::Pid1CommandError::InboxClosed,
+                                ),
+                        )
+                    );
+                    if terminal {
+                        return self.dispatch_failure(PrivateBusWireDispatchError::Adapter(cause));
+                    }
+                    return Ok(PrivateBusWireDispatchOutcome::RejectedNoReply { cause });
+                }
+                Err(cause) => {
+                    if let Some(reservation) = reservation {
+                        self.replies.cancel_reply(reservation);
+                    }
+                    return self.dispatch_failure(PrivateBusWireDispatchError::Adapter(cause));
+                }
+            };
+
+            let reply = match reservation {
+                Some(reservation) => self
+                    .replies
+                    .commit_reply(reservation, call.endian, receiver),
+                None => {
+                    drop(receiver);
+                    Ok(PrivateBusReplyTracking::NoReplyExpected)
+                }
+            };
+            match reply {
+                Ok(reply) => Ok(PrivateBusWireDispatchOutcome::Submitted { reply }),
+                Err(error) => self.dispatch_failure(PrivateBusWireDispatchError::Reply(error)),
+            }
         }
 
         /// Poll a bounded number of accepted manager operations and enqueue
@@ -221,6 +375,9 @@ mod imp {
             &mut self,
             budget: NonZeroUsize,
         ) -> Result<PrivateBusReplyPollOutcome, PrivateBusWireSlotError> {
+            if self.is_terminal() {
+                return Err(PrivateBusWireSlotError::Terminal);
+            }
             self.replies.poll_completed(budget).map_err(Into::into)
         }
 
@@ -228,6 +385,9 @@ mod imp {
         /// may attempt. The callback must report its exact successful count
         /// through [`Self::acknowledge_reply_written`].
         pub fn current_reply_frame(&self) -> Option<&[u8]> {
+            if self.is_terminal() {
+                return None;
+            }
             self.replies.current_frame()
         }
 
@@ -235,18 +395,44 @@ mod imp {
             &mut self,
             written: usize,
         ) -> Result<bool, PrivateBusWireSlotError> {
+            if self.is_terminal() {
+                return Err(PrivateBusWireSlotError::Terminal);
+            }
             self.replies
                 .acknowledge_written(written)
                 .map_err(Into::into)
         }
 
         pub fn readiness(&self) -> Result<PrivateBusWireSlotReadiness, PrivateBusWireSlotError> {
+            if self.is_terminal() {
+                return Ok(PrivateBusWireSlotReadiness {
+                    read_budget: 0,
+                    reply_write_pending: false,
+                    can_track_reply: false,
+                    terminal: true,
+                });
+            }
             Ok(PrivateBusWireSlotReadiness {
                 read_budget: self.read_budget()?,
                 reply_write_pending: self.current_reply_frame().is_some(),
                 can_track_reply: self.replies.can_track_reply(),
-                terminal: self.replies.is_terminal(),
+                terminal: self.is_terminal(),
             })
+        }
+
+        /// A terminal slot must only be detached. This includes reply-queue
+        /// terminal state and failures detected during a checked dispatch
+        /// turn before a protocol error surface is available.
+        pub const fn is_terminal(&self) -> bool {
+            self.dispatch_terminal || self.replies.is_terminal()
+        }
+
+        fn dispatch_failure<T>(
+            &mut self,
+            error: PrivateBusWireDispatchError,
+        ) -> Result<T, PrivateBusWireDispatchError> {
+            self.dispatch_terminal = true;
+            Err(error)
         }
 
         /// Explicit disconnect/reexec/reload teardown. Dropping pending
@@ -256,6 +442,7 @@ mod imp {
             self.replies.clear();
             self.input = PrivateBusWireAccumulator::new(self.input.capacity())
                 .expect("an existing accumulator capacity remains valid");
+            self.dispatch_terminal = false;
         }
     }
 
@@ -263,6 +450,7 @@ mod imp {
     pub enum PrivateBusTransportError {
         EventSource(PrivateBusEventSourceError),
         WireSlot(PrivateBusWireSlotError),
+        WireDispatch(PrivateBusWireDispatchError),
         UnknownWireSlot(PrivateBusConnectionId),
         InconsistentOwnership,
     }
@@ -276,6 +464,12 @@ mod imp {
     impl From<PrivateBusWireSlotError> for PrivateBusTransportError {
         fn from(error: PrivateBusWireSlotError) -> Self {
             Self::WireSlot(error)
+        }
+    }
+
+    impl From<PrivateBusWireDispatchError> for PrivateBusTransportError {
+        fn from(error: PrivateBusWireDispatchError) -> Self {
+            Self::WireDispatch(error)
         }
     }
 
@@ -345,7 +539,7 @@ mod imp {
         ///
         /// The stream stays owned by this transport while borrowed, retaining
         /// both its kernel-derived identity and its place in the global cap.
-        pub fn wire_connection_mut(
+        pub(crate) fn wire_connection_mut(
             &mut self,
             id: PrivateBusConnectionId,
         ) -> Option<&mut AdmittedPrivateBusConnection> {
@@ -361,7 +555,7 @@ mod imp {
             self.wire_slots.get(&id)
         }
 
-        pub fn wire_slot_mut(
+        pub(crate) fn wire_slot_mut(
             &mut self,
             id: PrivateBusConnectionId,
         ) -> Option<&mut PrivateBusWireSlot> {
@@ -392,6 +586,22 @@ mod imp {
                 .get_mut(&id)
                 .ok_or(PrivateBusTransportError::UnknownWireSlot(id))?
                 .poll_replies(budget)
+                .map_err(Into::into)
+        }
+
+        /// Run one bounded decode/command/reply ownership turn for a retained
+        /// slot. Socket I/O stays outside this method, but successful manager
+        /// commands are already wake-aware through `adapter` and their reply
+        /// receivers are retained by the same slot that owns the peer.
+        pub fn dispatch_wire_slot_once(
+            &mut self,
+            id: PrivateBusConnectionId,
+            adapter: &Pid1DbusCommandAdapter,
+        ) -> Result<PrivateBusWireDispatchOutcome, PrivateBusTransportError> {
+            self.wire_slots
+                .get_mut(&id)
+                .ok_or(PrivateBusTransportError::UnknownWireSlot(id))?
+                .dispatch_one(adapter)
                 .map_err(Into::into)
         }
 
@@ -524,11 +734,29 @@ mod imp {
         use nix::unistd::geteuid;
 
         use super::*;
+        use crate::pid1_bus_source::pid1_bus_command_channel;
+        use crate::pid1_dbus_command_adapter::Pid1DbusCommandAdapter;
         use crate::pid1_dbus_wire::Endian;
         use crate::pid1_manager_commands::{
-            AuthenticatedPeer, DenyAllPid1CommandAuthorizer, Pid1ManagerCommand, SenderIdentity,
-            pid1_manager_command_channel,
+            AuthenticatedPeer, DenyAllPid1CommandAuthorizer, Pid1CommandAuthorizer,
+            Pid1CommandError, Pid1ManagerCommand, SenderIdentity, pid1_manager_command_channel,
         };
+
+        #[derive(Default)]
+        struct CaptureAuthorizer {
+            sender: Option<SenderIdentity>,
+        }
+
+        impl Pid1CommandAuthorizer for CaptureAuthorizer {
+            fn authorize(
+                &mut self,
+                sender: SenderIdentity,
+                _command: &Pid1ManagerCommand,
+            ) -> Result<(), Pid1CommandError> {
+                self.sender = Some(sender);
+                Err(Pid1CommandError::Unauthorized)
+            }
+        }
 
         fn socket_path(name: &str) -> PathBuf {
             let stamp = SystemTime::now()
@@ -577,6 +805,61 @@ mod imp {
             PrivateBusWireSlotConfig::new(input_capacity, NonZeroUsize::new(2).unwrap(), 512, 1024)
         }
 
+        fn push_padding(bytes: &mut Vec<u8>, alignment: usize) {
+            let padding = (alignment - bytes.len() % alignment) % alignment;
+            bytes.resize(bytes.len() + padding, 0);
+        }
+
+        fn push_text(bytes: &mut Vec<u8>, value: &str, signature: bool) {
+            if signature {
+                bytes.push(u8::try_from(value.len()).unwrap());
+            } else {
+                push_padding(bytes, 4);
+                bytes.extend_from_slice(&u32::try_from(value.len()).unwrap().to_le_bytes());
+            }
+            bytes.extend_from_slice(value.as_bytes());
+            bytes.push(0);
+        }
+
+        fn push_header(fields: &mut Vec<u8>, code: u8, kind: u8, value: &str) {
+            push_padding(fields, 8);
+            fields.extend_from_slice(&[code, 1, kind, 0]);
+            push_text(fields, value, kind == b'g');
+        }
+
+        fn manager_call_with_flags(
+            serial: u32,
+            flags: u8,
+            member: &str,
+            values: &[&str],
+        ) -> Vec<u8> {
+            let mut fields = Vec::new();
+            push_header(&mut fields, 1, b'o', "/org/freedesktop/systemd1");
+            push_header(&mut fields, 2, b's', "org.freedesktop.systemd1.Manager");
+            push_header(&mut fields, 3, b's', member);
+            let signature = "s".repeat(values.len());
+            if !signature.is_empty() {
+                push_header(&mut fields, 8, b'g', &signature);
+            }
+
+            let mut body = Vec::new();
+            for value in values {
+                push_text(&mut body, value, false);
+            }
+            let mut output = vec![b'l', 1, flags, 1];
+            output.extend_from_slice(&u32::try_from(body.len()).unwrap().to_le_bytes());
+            output.extend_from_slice(&serial.to_le_bytes());
+            output.extend_from_slice(&u32::try_from(fields.len()).unwrap().to_le_bytes());
+            output.extend_from_slice(&fields);
+            push_padding(&mut output, 8);
+            output.extend_from_slice(&body);
+            output
+        }
+
+        fn manager_call(serial: u32, member: &str, values: &[&str]) -> Vec<u8> {
+            manager_call_with_flags(serial, 0, member, values)
+        }
+
         fn external_token() -> Vec<u8> {
             geteuid()
                 .as_raw()
@@ -594,6 +877,15 @@ mod imp {
             event_loop: &mut EventLoop,
             client: &mut UnixStream,
         ) {
+            authenticate_to_handoff_with_initial(owner, event_loop, client, b"wire");
+        }
+
+        fn authenticate_to_handoff_with_initial(
+            owner: &mut PrivateBusTransportOwner,
+            event_loop: &mut EventLoop,
+            client: &mut UnixStream,
+            initial_wire_bytes: &[u8],
+        ) {
             event_loop.run_once(0).unwrap();
             assert_eq!(dispatch(owner, event_loop).accepted, 1);
 
@@ -608,12 +900,283 @@ mod imp {
 
             let mut response = b"DATA ".to_vec();
             response.extend_from_slice(&external_token());
-            response.extend_from_slice(b"\r\nBEGIN\r\nwire");
+            response.extend_from_slice(b"\r\nBEGIN\r\n");
+            response.extend_from_slice(initial_wire_bytes);
             client.write_all(&response).unwrap();
             event_loop.run_once(0).unwrap();
             dispatch(owner, event_loop);
             event_loop.run_once(0).unwrap();
             assert_eq!(dispatch(owner, event_loop).authenticated, 1);
+        }
+
+        #[test]
+        fn one_wire_turn_preserves_kernel_identity_wakes_pid1_and_queues_its_reply() {
+            let call = manager_call(17, "LoadUnit", &["missing.service"]);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "dispatch-one", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let expected_sender = SenderIdentity::from_authenticated_peer(
+                owner.wire_slot(wire_id).unwrap().connection().peer(),
+            );
+            let (command_sender, mut inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert_eq!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::Submitted {
+                    reply: PrivateBusReplyTracking::Queued,
+                })
+            );
+            assert_eq!(
+                owner
+                    .wire_slot(wire_id)
+                    .unwrap()
+                    .replies()
+                    .pending_reply_count(),
+                1
+            );
+
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            let mut runtime = crate::runtime_manager::RuntimeManager::new();
+            let mut authorizer = CaptureAuthorizer::default();
+            assert_eq!(
+                inbox
+                    .dispatch_pending(&mut runtime, &mut authorizer, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .dispatched,
+                1
+            );
+            assert_eq!(authorizer.sender, Some(expected_sender));
+            assert_eq!(
+                owner
+                    .poll_wire_slot_replies(wire_id, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .enqueued,
+                1
+            );
+            assert!(
+                owner
+                    .wire_slot(wire_id)
+                    .unwrap()
+                    .current_reply_frame()
+                    .is_some()
+            );
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn incomplete_first_frame_is_retained_without_submitting_or_waking_pid1() {
+            let call = manager_call(17, "LoadUnit", &["missing.service"]);
+            let incomplete = &call[..call.len() - 1];
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "dispatch-incomplete", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(
+                &mut owner,
+                &mut event_loop,
+                &mut client,
+                incomplete,
+            );
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert_eq!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::NoMessage)
+            );
+            assert_eq!(
+                owner.wire_slot(wire_id).unwrap().input().buffered(),
+                incomplete
+            );
+            assert_eq!(owner.wire_slot_readiness(wire_id).unwrap().read_budget, 1);
+
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(false));
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn invalid_no_reply_call_does_not_wake_pid1_or_poison_the_slot() {
+            let call = manager_call_with_flags(17, 1, "NotImplemented", &[]);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "dispatch-no-reply", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert!(matches!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::RejectedNoReply {
+                    cause: Pid1DbusCommandAdapterError::UnsupportedMember { .. }
+                })
+            ));
+            assert!(!owner.wire_slot(wire_id).unwrap().is_terminal());
+
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(false));
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn closed_manager_terminalizes_a_no_reply_handoff() {
+            let call = manager_call_with_flags(17, 1, "LoadUnit", &["missing.service"]);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "dispatch-closed-inbox", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            drop(inbox);
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert!(matches!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Err(PrivateBusTransportError::WireDispatch(
+                    PrivateBusWireDispatchError::Adapter(Pid1DbusCommandAdapterError::Ingress(
+                        Pid1BusSendError::Command(Pid1CommandError::InboxClosed)
+                    ))
+                ))
+            ));
+            assert!(owner.wire_slot(wire_id).unwrap().is_terminal());
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn reply_reservation_is_checked_before_a_second_manager_command_is_accepted() {
+            let first = manager_call(17, "LoadUnit", &["first.service"]);
+            let second = manager_call(18, "LoadUnit", &["second.service"]);
+            let mut calls = first;
+            calls.extend_from_slice(&second);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "dispatch-reply-bound", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &calls);
+            let wire_id = owner
+                .promote_authenticated_to_wire(PrivateBusWireSlotConfig::new(
+                    calls.len(),
+                    NonZeroUsize::new(1).unwrap(),
+                    512,
+                    1024,
+                ))
+                .unwrap()
+                .unwrap();
+            let (command_sender, mut inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(2).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert!(matches!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::Submitted {
+                    reply: PrivateBusReplyTracking::Queued,
+                })
+            ));
+            assert_eq!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Err(PrivateBusTransportError::WireDispatch(
+                    PrivateBusWireDispatchError::ReplyReservation {
+                        reply_serial: 18,
+                        cause: crate::pid1_dbus_reply_queue::PrivateBusReplyQueueError::PendingReplyLimitReached {
+                            capacity: 1,
+                        },
+                    }
+                ))
+            );
+            assert!(owner.wire_slot(wire_id).unwrap().is_terminal());
+
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            let mut runtime = crate::runtime_manager::RuntimeManager::new();
+            let mut authorizer = DenyAllPid1CommandAuthorizer;
+            assert_eq!(
+                inbox
+                    .dispatch_pending(&mut runtime, &mut authorizer, NonZeroUsize::new(2).unwrap())
+                    .unwrap()
+                    .dispatched,
+                1
+            );
+
+            assert!(owner.close_wire_slot(wire_id));
+            assert_eq!(owner.retained_connection_count(), 0);
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn reply_expected_wire_validation_error_is_terminal_without_waking_pid1() {
+            let call = manager_call(17, "NotImplemented", &[]);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "dispatch-invalid", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert!(matches!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Err(PrivateBusTransportError::WireDispatch(
+                    PrivateBusWireDispatchError::Adapter(
+                        Pid1DbusCommandAdapterError::UnsupportedMember { .. }
+                    )
+                ))
+            ));
+            assert!(owner.wire_slot(wire_id).unwrap().is_terminal());
+            assert_eq!(
+                owner.wire_slot_mut(wire_id).unwrap().receive(&[]),
+                Err(PrivateBusWireSlotError::Terminal)
+            );
+            assert_eq!(
+                owner.wire_slot(wire_id).unwrap().readiness().unwrap(),
+                PrivateBusWireSlotReadiness {
+                    read_budget: 0,
+                    reply_write_pending: false,
+                    can_track_reply: false,
+                    terminal: true,
+                }
+            );
+
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(false));
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
         }
 
         #[test]

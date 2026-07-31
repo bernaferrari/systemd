@@ -10,6 +10,11 @@ use crate::{
     BackingDevice, SysrootState, VOLATILE_ROOT_LINK, VolatileMode, VolatileRootArgs,
     mode_requires_root_transition, validate_path,
 };
+#[cfg(target_os = "linux")]
+use crate::{
+    BackingDeviceLinkBackend, LinuxBackingDeviceLinkBackend, LinuxOverlayTransitionBackend,
+    LinuxVolatileTransitionBackend, inspect_sysroot, make_overlay_with, make_volatile_with,
+};
 
 /// A diagnostic emitted by the ordered, active-mode portion of C's `run()`.
 ///
@@ -70,6 +75,76 @@ pub trait VolatileRootRunBackend {
     fn make_overlay(&mut self, path: &str) -> io::Result<()>;
     /// Report a non-fatal C diagnostic.
     fn report(&mut self, diagnostic: VolatileRootDiagnostic);
+}
+
+/// Linux composition of the isolated C-compatible volatile-root operations.
+///
+/// This joins the already-audited preflight, backing-device, overlay, and
+/// fully-volatile backends at the same boundary as C's `run()`, while retaining
+/// diagnostics for its caller. It deliberately has no logging policy and is
+/// not wired into `main.rs`: invoking it changes a mount namespace and needs
+/// an installed-initrd namespace test before it can become the executable's
+/// production path.
+///
+/// Keeping the composition available now is still useful: namespace-scoped
+/// tests can exercise the complete ordering through one concrete backend,
+/// rather than independently testing pieces that a later integration might
+/// accidentally sequence differently.
+#[cfg(target_os = "linux")]
+#[derive(Debug, Default)]
+pub struct LinuxVolatileRootRunBackend {
+    diagnostics: Vec<VolatileRootDiagnostic>,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxVolatileRootRunBackend {
+    /// Construct a backend with no retained diagnostics.
+    pub const fn new() -> Self {
+        Self {
+            diagnostics: Vec::new(),
+        }
+    }
+
+    /// Diagnostics emitted by the most recent operations, in C ordering.
+    pub fn diagnostics(&self) -> &[VolatileRootDiagnostic] {
+        &self.diagnostics
+    }
+
+    /// Take accumulated non-fatal diagnostics without losing their ordering.
+    pub fn take_diagnostics(&mut self) -> Vec<VolatileRootDiagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl VolatileRootRunBackend for LinuxVolatileRootRunBackend {
+    fn inspect_sysroot(&mut self, path: &str) -> io::Result<SysrootState> {
+        inspect_sysroot(path)
+    }
+
+    fn backing_device(&mut self, path: &str) -> io::Result<Option<BackingDevice>> {
+        let mut backend = LinuxBackingDeviceLinkBackend;
+        backend.backing_device(path)
+    }
+
+    fn create_backing_device_link(&mut self, target: &str, link: &str) -> io::Result<()> {
+        let mut backend = LinuxBackingDeviceLinkBackend;
+        backend.create_symlink(target, link)
+    }
+
+    fn make_volatile(&mut self, path: &str) -> io::Result<()> {
+        let mut backend = LinuxVolatileTransitionBackend;
+        make_volatile_with(path, &mut backend)
+    }
+
+    fn make_overlay(&mut self, path: &str) -> io::Result<()> {
+        let mut backend = LinuxOverlayTransitionBackend;
+        make_overlay_with(path, &mut backend)
+    }
+
+    fn report(&mut self, diagnostic: VolatileRootDiagnostic) {
+        self.diagnostics.push(diagnostic);
+    }
 }
 
 /// Execute the complete mode-specific ordering of C's `run()` through an
@@ -239,6 +314,20 @@ mod tests {
             assert!(backend.calls.is_empty());
             assert!(backend.diagnostics.is_empty());
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_backend_retains_nonfatal_diagnostics_without_mounting() {
+        let mut backend = LinuxVolatileRootRunBackend::new();
+        let diagnostic = VolatileRootDiagnostic::AlreadyTemporary {
+            path: "/sysroot".into(),
+        };
+
+        backend.report(diagnostic.clone());
+        assert_eq!(backend.diagnostics(), std::slice::from_ref(&diagnostic));
+        assert_eq!(backend.take_diagnostics(), vec![diagnostic]);
+        assert!(backend.diagnostics().is_empty());
     }
 
     #[test]

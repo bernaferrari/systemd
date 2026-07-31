@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 //! Disconnected mapping from the checked private D-Bus wire format to PID 1 commands.
+// PORT-SYNC: src/core/dbus.c (the direct private-bus manager method dispatch).
 //!
 //! This adapter supports only `LoadUnit`, `StartUnit`, `StopUnit`,
 //! `ReloadUnit`, and `RestartUnit` at the manager object path.
@@ -134,6 +135,22 @@ impl Pid1DbusCommandAdapter {
         call: &MethodCall,
     ) -> Result<Pid1CommandReplyReceiver, Pid1DbusCommandAdapterError> {
         let command = Self::command_for(call)?;
+        self.try_send_command(sender, command)
+    }
+
+    /// Enqueue a command which has already passed [`Self::command_for`].
+    ///
+    /// This is the narrow handoff used by a wire-slot dispatcher: it first
+    /// validates the decoded call and reserves reply correlation, then submits
+    /// this semantic command without decoding the same peer-controlled body a
+    /// second time. This method is not an authorization bypass: the manager
+    /// inbox still authorizes the supplied kernel-derived identity when it
+    /// owns and executes the command.
+    pub(crate) fn try_send_command(
+        &self,
+        sender: SenderIdentity,
+        command: Pid1ManagerCommand,
+    ) -> Result<Pid1CommandReplyReceiver, Pid1DbusCommandAdapterError> {
         self.command_sender
             .try_send(sender, command)
             .map_err(Into::into)
