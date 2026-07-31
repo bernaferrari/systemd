@@ -47,13 +47,7 @@ macro_rules! string_table {
         #[doc = "C ABI facade. Returns a borrowed static string or NULL for an unknown value."]
         #[unsafe(no_mangle)]
         ///
-        /// # Safety
-        /// Every non-null input pointer must be valid and properly aligned for all
-        /// reads performed by this call, and every non-null output pointer must be
-        /// valid and properly aligned for all writes. Pointer ranges must not alias
-        /// in ways forbidden by the operation's documented ownership contract.
-        /// C-string inputs must remain NUL-terminated and live for the call.
-        pub unsafe extern "C" fn $to_fn(v: i32) -> *const c_char {
+        pub extern "C" fn $to_fn(v: i32) -> *const c_char {
             table_core::to_cstr($table, v).map_or(std::ptr::null(), |name| name.as_ptr())
         }
 
@@ -607,13 +601,7 @@ macro_rules! string_table_boolean {
         #[doc = "C ABI facade. Returns a borrowed static string or NULL for an unknown value."]
         #[unsafe(no_mangle)]
         ///
-        /// # Safety
-        /// Every non-null input pointer must be valid and properly aligned for all
-        /// reads performed by this call, and every non-null output pointer must be
-        /// valid and properly aligned for all writes. Pointer ranges must not alias
-        /// in ways forbidden by the operation's documented ownership contract.
-        /// C-string inputs must remain NUL-terminated and live for the call.
-        pub unsafe extern "C" fn $to_fn(v: i32) -> *const c_char {
+        pub extern "C" fn $to_fn(v: i32) -> *const c_char {
             table_core::to_cstr($table, v).map_or(std::ptr::null(), |name| name.as_ptr())
         }
 
@@ -787,29 +775,34 @@ use crate::ffi::malloc;
 #[allow(unused_imports)]
 use libc::snprintf;
 
-/// Duplicate a NUL-terminated C string (caller frees with libc free).
-// SAFETY: `s` must be null or readable through its terminating NUL; the caller
-// owns the returned allocation and must release it with the matching C allocator.
+/// Copy bytes into a NUL-terminated C-allocator string.
+fn c_string_copy(bytes: &[u8]) -> Option<*mut c_char> {
+    let size = bytes.len().checked_add(1)?;
+    let dst = malloc(size) as *mut c_char;
+    if dst.is_null() {
+        return None;
+    }
+    // SAFETY: dst owns `size` bytes, including the terminator slot.
+    unsafe {
+        let output = std::slice::from_raw_parts_mut(dst.cast::<u8>(), size);
+        output[..bytes.len()].copy_from_slice(bytes);
+        output[bytes.len()] = 0;
+    }
+    Some(dst)
+}
+
+/// Duplicate a caller-owned C string with libc allocation ownership.
+///
+/// # Safety
+/// `s` must be null or readable through its terminating NUL.
 unsafe fn rust_strdup(s: *const c_char) -> *mut c_char {
     if s.is_null() {
         return std::ptr::null_mut();
     }
-    let mut len: usize = 0;
-    // SAFETY: the caller guarantees s is readable through its terminating NUL.
-    while unsafe { *s.add(len) } != 0 {
-        len += 1;
-    }
-    let dst = malloc(len + 1) as *mut c_char;
-    if dst.is_null() {
-        return std::ptr::null_mut();
-    }
-    let mut i: usize = 0;
-    while i <= len {
-        // SAFETY: i includes the terminating NUL and stays within both ranges.
-        unsafe { *dst.add(i) = *s.add(i) };
-        i += 1;
-    }
-    dst
+    // SAFETY: the helper contract provides a live C string for the borrowed input.
+    unsafe { input_bytes(s) }
+        .and_then(c_string_copy)
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// Parse the full `safe_atou()` grammar from a NUL-terminated C string.
@@ -855,19 +848,17 @@ macro_rules! string_table_fallback {
                 return Errno::ERANGE.to_neg_errno(); // -ERANGE
             }
             // Check table
-            let mut found: *const c_char = std::ptr::null();
+            let mut found: Option<&[u8]> = None;
             for &(idx, name) in $table {
                 if idx == v {
-                    found = static_cstr_ptr(name);
+                    found = Some(static_cstr(name).to_bytes());
                     break;
                 }
             }
-            if !found.is_null() {
-                // SAFETY: `found` points into validated static table storage.
-                let dup = unsafe { rust_strdup(found) };
-                if dup.is_null() {
+            if let Some(found) = found {
+                let Some(dup) = c_string_copy(found) else {
                     return Errno::ENOMEM.to_neg_errno(); // -ENOMEM
-                }
+                };
                 // SAFETY: `ret` was checked non-null above.
                 unsafe { *ret = dup };
                 return 0;
@@ -988,11 +979,9 @@ pub unsafe extern "C" fn rs_wol_options_to_string_alloc(opts: u32, ret: *mut *mu
 
     if count == 0 {
         // No bits set → "off"
-        // SAFETY: the source is immutable static NUL-terminated storage.
-        let s = unsafe { rust_strdup(static_cstr_ptr(b"off\0")) };
-        if s.is_null() {
+        let Some(s) = c_string_copy(b"off") else {
             return Errno::ENOMEM.to_neg_errno();
-        }
+        };
         // SAFETY: ret is non-null and writable by the caller contract.
         unsafe { *ret = s };
         return 1;
