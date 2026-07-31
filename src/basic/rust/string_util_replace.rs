@@ -13,7 +13,7 @@ use std::ffi::CStr;
 
 use libc::c_char;
 
-use crate::ffi::{SIZE_MAX, malloc};
+use crate::ffi::SIZE_MAX;
 use crate::string_util::owned::{alloc_c_string_from_bytes, alloc_empty_c_string};
 
 /// # Safety
@@ -91,14 +91,16 @@ pub unsafe fn rs_streq_skip_trailing_chars(
 /// # Safety
 /// `a` and `accept` must be readable NUL-terminated strings when non-null.
 pub unsafe fn rs_strdupspn(a: *const c_char, accept: *const c_char) -> *mut c_char {
-    // SAFETY: each non-null input is readable by the function contract.
-    if a.is_null() || unsafe { *a } == 0 || accept.is_null() || unsafe { *accept } == 0 {
+    if a.is_null() || accept.is_null() {
         return alloc_empty_c_string();
     }
     // SAFETY: both inputs are readable C strings by the function contract.
     let bytes = unsafe { CStr::from_ptr(a) }.to_bytes();
     // SAFETY: both inputs are readable C strings by the function contract.
     let accept = unsafe { CStr::from_ptr(accept) }.to_bytes();
+    if bytes.is_empty() || accept.is_empty() {
+        return alloc_empty_c_string();
+    }
     let length = bytes
         .iter()
         .take_while(|byte| accept.contains(byte))
@@ -109,22 +111,27 @@ pub unsafe fn rs_strdupspn(a: *const c_char, accept: *const c_char) -> *mut c_ch
 /// # Safety
 /// `a` and `reject` must be readable NUL-terminated strings when non-null.
 pub unsafe fn rs_strdupcspn(a: *const c_char, reject: *const c_char) -> *mut c_char {
-    // SAFETY: non-null `a` is readable by the function contract.
-    if a.is_null() || unsafe { *a } == 0 {
+    if a.is_null() {
         return alloc_empty_c_string();
     }
     // SAFETY: non-null `a` is a readable C string by the function contract.
     let bytes = unsafe { CStr::from_ptr(a) }.to_bytes();
-    // SAFETY: non-null `reject` is readable by the function contract.
-    let length = if reject.is_null() || unsafe { *reject } == 0 {
+    if bytes.is_empty() {
+        return alloc_empty_c_string();
+    }
+    let length = if reject.is_null() {
         bytes.len()
     } else {
         // SAFETY: non-null `reject` is a readable C string by the contract.
         let reject = unsafe { CStr::from_ptr(reject) }.to_bytes();
-        bytes
-            .iter()
-            .take_while(|byte| !reject.contains(byte))
-            .count()
+        if reject.is_empty() {
+            bytes.len()
+        } else {
+            bytes
+                .iter()
+                .take_while(|byte| !reject.contains(byte))
+                .count()
+        }
     };
     alloc_c_string_from_bytes(&bytes[..length])
 }
