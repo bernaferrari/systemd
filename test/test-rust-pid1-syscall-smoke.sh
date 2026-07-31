@@ -62,9 +62,12 @@ trace_dir="$tmpdir/trace"
 mkdir -p "$trace_dir"
 pid1_log="$tmpdir/pid1.log"
 
-cargo_target_dir="$tmpdir/cargo-target"
-run env CARGO_TARGET_DIR="$cargo_target_dir" \
-    cargo build --locked --manifest-path src/core/rust/Cargo.toml --bin systemd
+# Reuse Cargo's regular target directory unless a caller supplies an isolated
+# one. The syscall trace is a runtime check; requiring a second complete Rust
+# build makes it unusable in the small Linux VM intended to run it.
+cargo_target_dir="${CARGO_TARGET_DIR:-target}"
+export CARGO_TARGET_DIR="$cargo_target_dir"
+run cargo build --locked --manifest-path src/core/rust/Cargo.toml --bin systemd
 systemd_bin="$cargo_target_dir/debug/systemd"
 if [[ ! -x "$systemd_bin" ]]; then
     echo "FAIL: Cargo did not produce the expected PID1 binary at $systemd_bin." >&2

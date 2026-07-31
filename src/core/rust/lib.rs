@@ -57,6 +57,7 @@ pub mod ffi;
 pub mod fuzz_execute_serialize;
 pub mod fuzz_manager_serialize;
 pub mod fuzz_unit_file;
+pub mod generator_runtime;
 pub mod generator_setup;
 pub mod ima_setup;
 pub mod import_creds;

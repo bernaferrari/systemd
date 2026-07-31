@@ -435,9 +435,17 @@ fn dispatch(
         Pid1ManagerCommand::RestartUnit { name, mode } => runtime
             .restart_unit_async(&name, mode)
             .map(|id| Pid1ManagerReply::JobQueued { id }),
-        Pid1ManagerCommand::ResetFailed { name } => runtime
-            .reset_failed(&name)
-            .map(|()| Pid1ManagerReply::Completed),
+        Pid1ManagerCommand::ResetFailed { name } => {
+            // `ResetFailedUnit` follows C's non-loading lookup path: an
+            // unknown unit is a typed NoSuchUnit error rather than a generic
+            // manager failure. Do not turn this into `LoadUnit`; an unloaded
+            // unit cannot have retained failed state to clear.
+            return match runtime.reset_failed(&name) {
+                Ok(()) => Ok(Pid1CommandEffect::Reply(Pid1ManagerReply::Completed)),
+                Err(Errno::ENOENT) => Err(Pid1CommandError::NoSuchUnit { name }),
+                Err(error) => Err(Pid1CommandError::Runtime(error)),
+            };
+        }
         Pid1ManagerCommand::ResetAllFailed => runtime
             .reset_all_failed()
             .map(|()| Pid1ManagerReply::Completed),
@@ -522,7 +530,7 @@ mod tests {
             1,
         );
         assert_eq!(authorizer.calls, 1);
-        // A missing unit would yield Runtime(ENOENT) if dispatch reached the
+        // A missing unit would yield NoSuchUnit if dispatch reached the
         // manager. Unauthorized proves the authorizer ran first.
         assert_eq!(reply.try_recv(), Ok(Err(Pid1CommandError::Unauthorized)));
     }
@@ -606,7 +614,31 @@ mod tests {
         );
         assert_eq!(
             later_reply.try_recv(),
-            Ok(Err(Pid1CommandError::Runtime(Errno::ENOENT)))
+            Ok(Err(Pid1CommandError::NoSuchUnit {
+                name: "missing.service".into(),
+            }))
+        );
+    }
+
+    #[test]
+    fn named_reset_failed_uses_the_non_loading_no_such_unit_error() {
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender.try_send(sender_identity(), reset_failed()).unwrap();
+        let mut runtime = RuntimeManager::new();
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(
+            reply.try_recv(),
+            Ok(Err(Pid1CommandError::NoSuchUnit {
+                name: "missing.service".into(),
+            }))
         );
     }
 

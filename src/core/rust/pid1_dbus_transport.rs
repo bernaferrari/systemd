@@ -1641,6 +1641,71 @@ mod imp {
         }
 
         #[test]
+        fn reset_failed_unit_wire_call_resets_the_named_failed_unit() {
+            let call = manager_call(35, "ResetFailedUnit", &["example.service"]);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "reset-named-failed", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, mut inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert!(matches!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::Submitted {
+                    reply: PrivateBusReplyTracking::Queued,
+                })
+            ));
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            let mut runtime = crate::runtime_manager::RuntimeManager::new();
+            runtime.inject_test_unit(
+                "example.service",
+                "Example Service",
+                crate::unit::ActiveState::Failed,
+                "failed",
+            );
+            assert_eq!(
+                inbox
+                    .dispatch_pending(
+                        &mut runtime,
+                        &mut AllowAuthorizer,
+                        NonZeroUsize::new(1).unwrap(),
+                    )
+                    .unwrap()
+                    .dispatched,
+                1
+            );
+            assert_eq!(
+                runtime.get_unit("example.service").unwrap().active_state,
+                crate::unit::ActiveState::Inactive
+            );
+            assert_eq!(
+                owner
+                    .poll_wire_slot_replies(wire_id, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .enqueued,
+                1
+            );
+            let frame = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap();
+            assert_eq!(frame[1], 2, "ResetFailedUnit must return, not error");
+            assert_eq!(u32::from_le_bytes(frame[4..8].try_into().unwrap()), 0);
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
         fn introspect_wire_call_returns_bounded_shadow_xml() {
             let call = introspect_call(31);
             let mut event_loop = EventLoop::new().unwrap();

@@ -6,7 +6,8 @@
 //! This adapter handles the standard connection-local `Peer.Ping` and
 //! `Peer.GetMachineId`, supports `Introspectable.Introspect`, and only `GetUnit`, `GetUnitByPID`,
 //! `GetUnitByInvocationID`, `LoadUnit`, `StartUnit`, `StopUnit`,
-//! `ReloadUnit`, `RestartUnit`, and `ResetFailed` at the manager object path.
+//! `ReloadUnit`, `RestartUnit`, `ResetFailedUnit`, and `ResetFailed` at the
+//! manager object path.
 //! It deliberately has no socket, reply, event-loop, or authorization policy:
 //! callers must supply the `SenderIdentity` derived from the connection's
 //! kernel credentials, and command dispatch still invokes its authorizer.
@@ -194,6 +195,9 @@ impl Pid1DbusCommandAdapter {
                 let (name, mode) = decode_unit_and_mode(call)?;
                 Ok(Pid1ManagerCommand::RestartUnit { name, mode })
             }
+            "ResetFailedUnit" => Ok(Pid1ManagerCommand::ResetFailed {
+                name: decode_one_string(call)?,
+            }),
             "ResetFailed" => {
                 decode_no_args(call)?;
                 Ok(Pid1ManagerCommand::ResetAllFailed)
@@ -532,6 +536,12 @@ mod tests {
             })
         );
         assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&call("ResetFailedUnit", "s", &["a.service"])),
+            Ok(Pid1ManagerCommand::ResetFailed {
+                name: "a.service".into(),
+            })
+        );
+        assert_eq!(
             Pid1DbusCommandAdapter::command_for(&call("ResetFailed", "", &[])),
             Ok(Pid1ManagerCommand::ResetAllFailed)
         );
@@ -624,6 +634,10 @@ mod tests {
         ));
         assert!(matches!(
             Pid1DbusCommandAdapter::command_for(&call("ResetFailed", "s", &["unexpected"])),
+            Err(Pid1DbusCommandAdapterError::WrongSignature { .. })
+        ));
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&call("ResetFailedUnit", "", &[])),
             Err(Pid1DbusCommandAdapterError::WrongSignature { .. })
         ));
         let mut introspect_with_body = call("Introspect", "s", &["unexpected"]);

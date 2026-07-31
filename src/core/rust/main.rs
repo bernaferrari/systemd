@@ -341,6 +341,29 @@ fn mount_setup() -> std::io::Result<()> {
     Ok(())
 }
 
+/// Establish the process-wide invariants C sets before any PID 1 setup.
+///
+/// Neither the caller's working directory nor its file-creation mask is a
+/// safe input to an init process. In particular, retaining a directory on a
+/// mount that will later be unmounted prevents orderly shutdown, and a
+/// restrictive inherited umask can make manager-owned runtime state
+/// inaccessible to the units that need it. Do this before the test-mode
+/// shortcut too: C applies these invariants before deciding whether to build
+/// a normal boot transaction.
+#[cfg(target_os = "linux")]
+fn prepare_pid1_process_environment() -> std::io::Result<()> {
+    use nix::sys::stat::{Mode, umask};
+
+    std::env::set_current_dir("/")?;
+    umask(Mode::empty());
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn prepare_pid1_process_environment() -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Return the cgroup root that C's `manager_setup_cgroup()` derives for PID1.
 ///
 /// `cg_pid_get_path()` has already validated the unified cgroup path before
@@ -1151,6 +1174,10 @@ fn main() {
 
     let manager_cgroup_root = if is_pid1 {
         boot_log("running as PID 1, starting early boot sequence");
+
+        if let Err(error) = prepare_pid1_process_environment() {
+            fail_closed("PID 1 process environment setup", error);
+        }
 
         if options.action == CliAction::Test {
             boot_log("PID 1 test mode enabled; skipping mount/cgroup/hostname setup");

@@ -68,7 +68,7 @@
     "src/basic/rust/dns_label.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 102
+      "unsafe_sites": 100
     },
     "src/basic/rust/env_util.rs": {
       "missing_safety": 0,
@@ -168,7 +168,7 @@
     "src/basic/rust/in_addr_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 145
+      "unsafe_sites": 144
     },
     "src/basic/rust/iovec_util.rs": {
       "missing_safety": 0,
@@ -183,7 +183,7 @@
     "src/basic/rust/memory_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 23
+      "unsafe_sites": 22
     },
     "src/basic/rust/mempool.rs": {
       "missing_safety": 0,
@@ -208,7 +208,7 @@
     "src/basic/rust/netdev_str_tables.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 44
+      "unsafe_sites": 43
     },
     "src/basic/rust/netdev_str_tables/core.rs": {
       "missing_safety": 0,
@@ -223,12 +223,12 @@
     "src/basic/rust/netdev_str_tables/tests.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 23
+      "unsafe_sites": 21
     },
     "src/basic/rust/netdev_str_tables/tpm_bpf_wifi.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 20
+      "unsafe_sites": 19
     },
     "src/basic/rust/nsflags.rs": {
       "missing_safety": 0,
@@ -248,7 +248,7 @@
     "src/basic/rust/path_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 110
+      "unsafe_sites": 107
     },
     "src/basic/rust/path_util/byte_abi.rs": {
       "missing_safety": 0,
@@ -333,7 +333,7 @@
     "src/basic/rust/socket_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 100
+      "unsafe_sites": 98
     },
     "src/basic/rust/sort_util.rs": {
       "missing_safety": 0,
@@ -398,7 +398,7 @@
     "src/basic/rust/string_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 135
+      "unsafe_sites": 133
     },
     "src/basic/rust/string_util_escape.rs": {
       "missing_safety": 0,
@@ -408,7 +408,7 @@
     "src/basic/rust/string_util_ffi.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 82
+      "unsafe_sites": 80
     },
     "src/basic/rust/string_util_json.rs": {
       "missing_safety": 0,
@@ -418,12 +418,12 @@
     "src/basic/rust/string_util_lines.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 46
+      "unsafe_sites": 43
     },
     "src/basic/rust/string_util_owned.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 37
+      "unsafe_sites": 35
     },
     "src/basic/rust/string_util_replace.rs": {
       "missing_safety": 0,
@@ -438,7 +438,7 @@
     "src/basic/rust/strv.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 307
+      "unsafe_sites": 302
     },
     "src/basic/rust/strv/allocating_transforms.rs": {
       "missing_safety": 0,
@@ -483,7 +483,7 @@
     "src/basic/rust/time_util/tests.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 167
+      "unsafe_sites": 142
     },
     "src/basic/rust/udev_util.rs": {
       "missing_safety": 0,
@@ -503,7 +503,7 @@
     "src/basic/rust/unit_name.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 307
+      "unsafe_sites": 290
     },
     "src/basic/rust/user_util.rs": {
       "missing_safety": 0,
@@ -513,7 +513,7 @@
     "src/basic/rust/utf8.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 50
+      "unsafe_sites": 49
     },
     "src/basic/rust/virt.rs": {
       "missing_safety": 0,
@@ -529,6 +529,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 18
+    },
+    "src/core/rust/generator_runtime.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
     },
     "src/core/rust/main.rs": {
       "missing_safety": 0,
@@ -598,7 +603,7 @@
     "src/fundamental/rust/memory_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 7
+      "unsafe_sites": 6
     },
     "src/fundamental/rust/unaligned.rs": {
       "missing_safety": 0,
@@ -715,15 +720,15 @@
       "missing_safety_sites": [],
       "unsafe_sites": 41
     },
-    "src/platform/rust/spawn/linux_idle.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 9
-    },
     "src/platform/rust/spawn/linux_cgroup.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
+    },
+    "src/platform/rust/spawn/linux_idle.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 9
     },
     "src/platform/rust/spawn/linux_process.rs": {
       "missing_safety": 0,
@@ -825,11 +830,6 @@
       "missing_safety_sites": [],
       "unsafe_sites": 11
     },
-    "src/shared/rust/device_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
     "src/shared/rust/env_file_label.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
@@ -843,7 +843,7 @@
     "src/shared/rust/fdset.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 24
+      "unsafe_sites": 23
     },
     "src/shared/rust/ffi.rs": {
       "missing_safety": 0,
@@ -893,12 +893,12 @@
     "src/shared/rust/loop_util/device.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 6
+      "unsafe_sites": 5
     },
     "src/shared/rust/loop_util/linux.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 23
+      "unsafe_sites": 21
     },
     "src/shared/rust/loop_util/tests.rs": {
       "missing_safety": 0,
@@ -983,7 +983,7 @@
     "src/shared/rust/quota_util.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 8
+      "unsafe_sites": 7
     },
     "src/shared/rust/reboot_util.rs": {
       "missing_safety": 0,
@@ -1128,7 +1128,7 @@
   },
   "totals": {
     "missing_safety": 0,
-    "unsafe_sites": 4966
+    "unsafe_sites": 4974
   },
   "version": 2,
   "window": 3
