@@ -16,20 +16,15 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use nix::unistd::{SysconfVar, read as nix_read, sysconf, write as nix_write};
-
-const RESOLVE_NO_MAGICLINKS: u64 = 0x02;
-const RESOLVE_NO_SYMLINKS: u64 = 0x04;
-const RESOLVE_BENEATH: u64 = 0x08;
+use nix::fcntl::{OFlag, open as nix_open, openat as nix_openat, openat2 as nix_openat2};
+use nix::sys::inotify::{InitFlags, Inotify};
+use nix::sys::stat::{Mode, mkdirat as nix_mkdirat};
+use nix::unistd::{
+    SysconfVar, UnlinkatFlags, read as nix_read, sysconf, unlinkat as nix_unlinkat,
+    write as nix_write,
+};
 
 static OPENAT2_AVAILABLE: AtomicBool = AtomicBool::new(true);
-
-#[repr(C)]
-struct OpenHow {
-    flags: u64,
-    mode: u64,
-    resolve: u64,
-}
 
 #[derive(Debug)]
 pub(super) struct CgroupDirectory(OwnedFd);
@@ -369,10 +364,9 @@ pub(super) struct InotifyEvent {
 }
 
 pub(super) fn inotify_init_nonblocking() -> io::Result<OwnedFd> {
-    // SAFETY: `inotify_init1()` takes only validated flag bits and returns a new
-    // owned descriptor on success.
-    let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
-    owned_fd_or_errno(fd)
+    Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC)
+        .map(Into::into)
+        .map_err(nix_error_to_io)
 }
 
 pub(super) fn inotify_add_watch_fd(
@@ -419,12 +413,32 @@ pub(super) fn read_inotify_events(
             ));
         }
 
-        // SAFETY: the bounds check above covers the complete fixed header.
-        // Kernel event records need not be naturally aligned in a byte buffer.
-        let event = unsafe {
-            std::ptr::read_unaligned(buffer.as_ptr().add(offset).cast::<libc::inotify_event>())
-        };
-        let record_size = header_size.checked_add(event.len as usize).ok_or_else(|| {
+        // Linux's inotify ABI stores these fields as four-byte native-endian
+        // values at fixed offsets. Decode them from the byte buffer directly;
+        // this avoids creating an unaligned Rust view of kernel memory.
+        const FIELD_SIZE: usize = std::mem::size_of::<u32>();
+        if header_size < FIELD_SIZE * 4 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unsupported inotify event header layout",
+            ));
+        }
+        let wd = i32::from_ne_bytes(
+            buffer[offset..offset + FIELD_SIZE]
+                .try_into()
+                .expect("inotify event header bounds checked"),
+        );
+        let mask = u32::from_ne_bytes(
+            buffer[offset + FIELD_SIZE..offset + FIELD_SIZE * 2]
+                .try_into()
+                .expect("inotify event header bounds checked"),
+        );
+        let event_len = u32::from_ne_bytes(
+            buffer[offset + FIELD_SIZE * 3..offset + FIELD_SIZE * 4]
+                .try_into()
+                .expect("inotify event header bounds checked"),
+        );
+        let record_size = header_size.checked_add(event_len as usize).ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidData, "inotify event length overflow")
         })?;
         if record_size > size - offset {
@@ -434,8 +448,8 @@ pub(super) fn read_inotify_events(
             ));
         }
         events.push(InotifyEvent {
-            watch_descriptor: event.wd,
-            mask: event.mask,
+            watch_descriptor: wd,
+            mask,
         });
         offset += record_size;
     }
@@ -456,17 +470,12 @@ fn component_cstr(component: &OsStr) -> io::Result<CString> {
 }
 
 fn open_root(path: &Path) -> io::Result<OwnedFd> {
-    let path = CString::new(path.as_os_str().as_bytes())
-        .map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
-    // SAFETY: `path` is NUL-terminated. The kernel creates a new descriptor;
-    // `O_NOFOLLOW|O_DIRECTORY` rejects a symlink or non-directory root.
-    let fd = unsafe {
-        libc::open(
-            path.as_ptr(),
-            libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-        )
-    };
-    owned_fd_or_errno(fd)
+    nix_open(
+        path,
+        OFlag::O_PATH | OFlag::O_DIRECTORY | OFlag::O_CLOEXEC | OFlag::O_NOFOLLOW,
+        Mode::empty(),
+    )
+    .map_err(nix_error_to_io)
 }
 
 fn open_component(
@@ -475,73 +484,47 @@ fn open_component(
     flags: libc::c_int,
     mode: libc::mode_t,
 ) -> io::Result<OwnedFd> {
-    let flags = flags | libc::O_CLOEXEC | libc::O_NOFOLLOW;
+    let flags = OFlag::from_bits(flags | libc::O_CLOEXEC | libc::O_NOFOLLOW)
+        .ok_or_else(|| io::Error::from_raw_os_error(libc::EINVAL))?;
+    let mode = Mode::from_bits_truncate(mode);
     if OPENAT2_AVAILABLE.load(Ordering::Relaxed) {
-        let how = OpenHow {
-            flags: flags as u64,
-            mode: mode as u64,
-            resolve: RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_SYMLINKS,
-        };
-        // SAFETY: `component` and `how` remain live for the syscall; `how` has
-        // the Linux `open_how` layout and the size passed is exact.
-        let result = unsafe {
-            libc::syscall(
-                libc::SYS_openat2,
-                parent.as_raw_fd(),
-                component.as_ptr(),
-                &how,
-                std::mem::size_of::<OpenHow>(),
-            )
-        };
-        if result >= 0 {
-            // SAFETY: successful `openat2()` returns one newly owned fd.
-            return Ok(unsafe { OwnedFd::from_raw_fd(result as i32) });
-        }
-
-        let error = io::Error::last_os_error();
-        match error.raw_os_error() {
-            Some(libc::ENOSYS) => {
+        let how = nix::fcntl::OpenHow::new().flags(flags).mode(mode).resolve(
+            nix::fcntl::ResolveFlag::RESOLVE_BENEATH
+                | nix::fcntl::ResolveFlag::RESOLVE_NO_MAGICLINKS
+                | nix::fcntl::ResolveFlag::RESOLVE_NO_SYMLINKS,
+        );
+        match nix_openat2(parent, component, how) {
+            Ok(fd) => return Ok(fd),
+            Err(nix::errno::Errno::ENOSYS) => {
                 OPENAT2_AVAILABLE.store(false, Ordering::Relaxed);
             }
             // Match current C chase_openat2(): seccomp may report EPERM and
             // RESOLVE_BENEATH can transiently report EAGAIN during renames.
-            Some(libc::EPERM | libc::EAGAIN) => {}
-            _ => return Err(error),
+            Err(nix::errno::Errno::EPERM | nix::errno::Errno::EAGAIN) => {}
+            Err(error) => return Err(nix_error_to_io(error)),
         }
     }
 
     // `component_cstr()` rejects separators and dot components. Combined with
     // this already-open parent and O_NOFOLLOW, openat() is a confined fallback
     // rather than a pathname re-resolution from the host root.
-    // SAFETY: pointers and the borrowed parent remain valid for the call.
-    let fd = unsafe { libc::openat(parent.as_raw_fd(), component.as_ptr(), flags, mode) };
-    owned_fd_or_errno(fd)
+    nix_openat(parent, component, flags, mode).map_err(nix_error_to_io)
 }
 
 fn mkdirat_if_missing(parent: BorrowedFd<'_>, component: &CStr) -> io::Result<()> {
-    // SAFETY: `component` is a validated NUL-terminated single path component
-    // and the borrowed parent descriptor remains live for the call.
-    let result = unsafe { libc::mkdirat(parent.as_raw_fd(), component.as_ptr(), 0o755) };
-    if result == 0 {
-        return Ok(());
-    }
-    let error = io::Error::last_os_error();
-    if error.raw_os_error() == Some(libc::EEXIST) {
-        Ok(())
-    } else {
-        Err(error)
+    match nix_mkdirat(parent, component, Mode::from_bits_truncate(0o755)) {
+        Ok(()) | Err(nix::errno::Errno::EEXIST) => Ok(()),
+        Err(error) => Err(nix_error_to_io(error)),
     }
 }
 
 fn unlinkat(parent: BorrowedFd<'_>, component: &CStr, flags: libc::c_int) -> io::Result<()> {
-    // SAFETY: `component` is a validated NUL-terminated single path component
-    // and `flags` is either zero or AT_REMOVEDIR.
-    let result = unsafe { libc::unlinkat(parent.as_raw_fd(), component.as_ptr(), flags) };
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
+    let flags = match flags {
+        0 => UnlinkatFlags::NoRemoveDir,
+        libc::AT_REMOVEDIR => UnlinkatFlags::RemoveDir,
+        _ => return Err(io::Error::from_raw_os_error(libc::EINVAL)),
+    };
+    nix_unlinkat(parent, component, flags).map_err(nix_error_to_io)
 }
 
 fn duplicate_fd(fd: BorrowedFd<'_>) -> io::Result<OwnedFd> {
@@ -575,4 +558,8 @@ fn owned_fd_or_errno(fd: libc::c_int) -> io::Result<OwnedFd> {
         // SAFETY: callers pass only fresh descriptors returned by Linux.
         Ok(unsafe { OwnedFd::from_raw_fd(fd) })
     }
+}
+
+fn nix_error_to_io(error: nix::errno::Errno) -> io::Error {
+    io::Error::from_raw_os_error(error as i32)
 }
