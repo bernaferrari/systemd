@@ -23,8 +23,6 @@ use systemd_core_rs::pid1_manager_runtime::{
 };
 use systemd_core_rs::pid1_socket_sources::SocketSourceOwner;
 use systemd_core_rs::runtime_manager::RuntimeManager;
-#[cfg(test)]
-use systemd_core_rs::runtime_manager::default_target_name;
 use systemd_core_rs::transaction::JobMode;
 use systemd_core_rs::unit::ActiveState;
 
@@ -999,7 +997,12 @@ mod tests {
     #[test]
     fn pid1_default_target_prefers_default_target() {
         assert_eq!(
-            default_target_name(false, false, true, FALLBACK_DEFAULT_TARGET),
+            systemd_core_rs::runtime_manager::default_target_name(
+                false,
+                false,
+                true,
+                FALLBACK_DEFAULT_TARGET,
+            ),
             "default.target"
         );
     }
@@ -1007,7 +1010,12 @@ mod tests {
     #[test]
     fn pid1_default_target_uses_the_configured_host_fallback() {
         assert_eq!(
-            default_target_name(false, false, false, FALLBACK_DEFAULT_TARGET),
+            systemd_core_rs::runtime_manager::default_target_name(
+                false,
+                false,
+                false,
+                FALLBACK_DEFAULT_TARGET,
+            ),
             FALLBACK_DEFAULT_TARGET
         );
     }
@@ -1015,15 +1023,30 @@ mod tests {
     #[test]
     fn initrd_prefers_initrd_target_and_only_falls_back_to_default_target() {
         assert_eq!(
-            default_target_name(true, true, true, FALLBACK_DEFAULT_TARGET),
+            systemd_core_rs::runtime_manager::default_target_name(
+                true,
+                true,
+                true,
+                FALLBACK_DEFAULT_TARGET,
+            ),
             "initrd.target"
         );
         assert_eq!(
-            default_target_name(true, false, true, FALLBACK_DEFAULT_TARGET),
+            systemd_core_rs::runtime_manager::default_target_name(
+                true,
+                false,
+                true,
+                FALLBACK_DEFAULT_TARGET,
+            ),
             "default.target"
         );
         assert_eq!(
-            default_target_name(true, false, false, FALLBACK_DEFAULT_TARGET),
+            systemd_core_rs::runtime_manager::default_target_name(
+                true,
+                false,
+                false,
+                FALLBACK_DEFAULT_TARGET,
+            ),
             "default.target"
         );
     }
