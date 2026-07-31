@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 /* Cross-domain regression coverage for the runtime manager remains test-only. */
+#[cfg(target_os = "linux")]
+use super::notify_runtime::AuthenticatedNotifyDispatch;
 use super::service_shutdown::{ServiceTimeoutAction, service_timeout_action};
 use super::service_test_events::ServiceTestEvent;
 use super::unit_file::*;
@@ -8,7 +10,9 @@ use super::unit_load::*;
 use super::unit_specifier::*;
 use super::*;
 use crate::job_tables::{JobResult as CanonicalJobResult, JobState as CanonicalJobState};
-use crate::service::NotifyAccess;
+#[cfg(target_os = "linux")]
+use crate::pid1_notify_source::{AuthenticatedNotifyDatagram, NotifyPeerCredentials};
+use crate::service::{NotifyAccess, PidRef};
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use crate::unit::OomPolicy;
 use std::os::fd::AsRawFd;
@@ -63,6 +67,153 @@ fn insert_fsm_service(
     configure(&mut info);
     mgr.unit_files.insert(name.to_string(), info);
     mgr.services.get_mut(name).unwrap().service_type = service_type;
+}
+
+#[cfg(target_os = "linux")]
+fn authenticated_notify(pid: u32, text: &str) -> crate::pid1_notify_source::ParsedNotifyDatagram {
+    AuthenticatedNotifyDatagram {
+        peer: NotifyPeerCredentials {
+            pid,
+            uid: 1000,
+            gid: 1000,
+        },
+        text: text.to_owned(),
+    }
+    .parse()
+}
+
+#[cfg(target_os = "linux")]
+fn authorize_notify_main_pid(mgr: &mut RuntimeManager, name: &str, pid: u32) {
+    mgr.inject_test_main_pid(name, pid);
+    let service = mgr.services.get_mut(name).unwrap();
+    service.notify_access = NotifyAccess::Main;
+    service.main_pid = Some(PidRef {
+        pid: pid as i32,
+        start_time: None,
+        is_self: false,
+        is_child: Some(true),
+    });
+    service.main_pid_known = true;
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn authenticated_notify_ready_advances_only_an_authorized_notify_service() {
+    let mut mgr = new_test_runtime_manager();
+    insert_fsm_service(
+        &mut mgr,
+        "ready.service",
+        ServiceState::Start,
+        ServiceType::Notify,
+        |_| {},
+    );
+    authorize_notify_main_pid(&mut mgr, "ready.service", 41_101);
+
+    let outcome = mgr.dispatch_authenticated_notify(authenticated_notify(
+        41_101,
+        "READY=1\nSTATUS=ready\nMAINPID=999\nFDSTORE=1\nFDNAME=kept",
+    ));
+    assert!(matches!(
+        outcome,
+        AuthenticatedNotifyDispatch::Applied {
+            entered_start_post: true,
+            main_pid_ignored: true,
+            fd_store_ignored: true,
+            status_observed: true,
+            ..
+        }
+    ));
+    assert_eq!(
+        mgr.services
+            .get("ready.service")
+            .map(|service| service.state),
+        Some(ServiceState::Running)
+    );
+
+    let outcome = mgr.dispatch_authenticated_notify(authenticated_notify(41_102, "READY=1"));
+    assert_eq!(
+        outcome,
+        AuthenticatedNotifyDispatch::IgnoredUnknownSender { pid: 41_102 }
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn authenticated_notify_honors_reload_freshness_and_watchdog_ownership() {
+    let mut mgr = new_test_runtime_manager();
+    insert_fsm_service(
+        &mut mgr,
+        "reload.service",
+        ServiceState::ReloadSignal,
+        ServiceType::NotifyReload,
+        |_| {},
+    );
+    authorize_notify_main_pid(&mut mgr, "reload.service", 41_102);
+    mgr.services
+        .get_mut("reload.service")
+        .unwrap()
+        .reload_begin_usec = 77;
+
+    let stale = mgr.dispatch_authenticated_notify(authenticated_notify(
+        41_102,
+        "RELOADING=1\nMONOTONIC_USEC=76",
+    ));
+    assert!(matches!(stale, AuthenticatedNotifyDispatch::Applied { .. }));
+    assert_eq!(
+        mgr.services
+            .get("reload.service")
+            .map(|service| service.state),
+        Some(ServiceState::ReloadSignal)
+    );
+
+    let fresh = mgr.dispatch_authenticated_notify(authenticated_notify(
+        41_102,
+        "RELOADING=1\nMONOTONIC_USEC=77",
+    ));
+    assert!(matches!(fresh, AuthenticatedNotifyDispatch::Applied { .. }));
+    assert_eq!(
+        mgr.services
+            .get("reload.service")
+            .map(|service| service.state),
+        Some(ServiceState::ReloadNotify)
+    );
+
+    mgr.set_service_state("reload.service", ServiceState::Running);
+    mgr.services
+        .get_mut("reload.service")
+        .unwrap()
+        .watchdog_usec = 1_000_000;
+    let ping = mgr.dispatch_authenticated_notify(authenticated_notify(41_102, "WATCHDOG=1"));
+    assert!(matches!(
+        ping,
+        AuthenticatedNotifyDispatch::Applied {
+            watchdog_reset: true,
+            ..
+        }
+    ));
+    assert!(
+        mgr.service_watchdog_deadlines
+            .contains_key("reload.service")
+    );
+
+    let stopping = mgr.dispatch_authenticated_notify(authenticated_notify(41_102, "STOPPING=1"));
+    assert!(matches!(
+        stopping,
+        AuthenticatedNotifyDispatch::Applied {
+            entered_stop_by_notify: true,
+            ..
+        }
+    ));
+    assert_eq!(
+        mgr.services
+            .get("reload.service")
+            .map(|service| service.state),
+        Some(ServiceState::StopSigterm)
+    );
+    assert!(
+        !mgr.service_watchdog_deadlines
+            .contains_key("reload.service")
+    );
 }
 
 #[test]

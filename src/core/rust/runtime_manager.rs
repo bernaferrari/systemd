@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
@@ -36,7 +35,6 @@ use crate::unit::{
     unit_set_default_slice,
 };
 use systemd_platform_rs::spawn::{self, ChildState, ProcessTracker};
-
 pub type Result<T> = std::result::Result<T, Errno>;
 
 /// A duplicated view of the manager-wide cgroup inotify instance.
@@ -70,6 +68,7 @@ mod cgroup_runtime;
 mod handoff;
 mod job_runtime;
 mod linux_cgroup;
+mod notify_runtime;
 mod service_jobs;
 mod service_machine;
 mod service_readiness;

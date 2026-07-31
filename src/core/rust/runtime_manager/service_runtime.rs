@@ -1282,7 +1282,7 @@ impl RuntimeManager {
         );
     }
 
-    fn enter_reload_post(&mut self, name: &str) {
+    pub(super) fn enter_reload_post(&mut self, name: &str) {
         let Some(info) = self.unit_files.get(name).cloned() else {
             return;
         };

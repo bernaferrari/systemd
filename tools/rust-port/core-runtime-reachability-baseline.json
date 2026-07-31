@@ -437,6 +437,12 @@
         "src/core/rust/path_tables.rs"
       ]
     },
+    "pid1_api_bus_name_owner": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/pid1_api_bus_name_owner.rs"
+      ]
+    },
     "pid1_bus_source": {
       "classification": "runtime-reachable",
       "source_files": [
@@ -546,7 +552,7 @@
       ]
     },
     "pid1_notify_source": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_notify_source.rs"
       ]
@@ -570,6 +576,7 @@
         "src/core/rust/runtime_manager/cgroup_runtime.rs",
         "src/core/rust/runtime_manager/job_runtime.rs",
         "src/core/rust/runtime_manager/linux_cgroup.rs",
+        "src/core/rust/runtime_manager/notify_runtime.rs",
         "src/core/rust/runtime_manager/service_jobs.rs",
         "src/core/rust/runtime_manager/service_machine.rs",
         "src/core/rust/runtime_manager/service_readiness.rs",

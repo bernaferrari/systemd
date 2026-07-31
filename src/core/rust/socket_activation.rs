@@ -11,7 +11,9 @@
 use std::collections::HashMap;
 use std::net::TcpListener;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd};
+use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::os::unix::net::UnixListener;
+use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +93,29 @@ struct ActivatedListener {
     // The manager is the sole long-lived owner. Event callbacks retain a `Weak` through a
     // `ListenerDescriptor`, never an integer copied from this descriptor.
     fd: Arc<OwnedFd>,
+    cleanup: Option<UnixSocketCleanup>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UnixSocketCleanup {
+    path: PathBuf,
+    device: u64,
+    inode: u64,
+}
+
+impl UnixSocketCleanup {
+    fn remove_if_owned(&self) {
+        let Ok(metadata) = std::fs::symlink_metadata(&self.path) else {
+            return;
+        };
+        if !metadata.file_type().is_socket()
+            || metadata.dev() != self.device
+            || metadata.ino() != self.inode
+        {
+            return;
+        }
+        let _ = std::fs::remove_file(&self.path);
+    }
 }
 
 pub struct ActivatedSocket {
@@ -201,7 +226,7 @@ impl SocketActivationManager {
         }
     }
 
-    fn bind_stream(listen_stream: &str) -> Result<ActivatedListener, String> {
+    fn bind_stream(listen_stream: &str, remove_on_stop: bool) -> Result<ActivatedListener, String> {
         let listen_path = listen_stream.trim();
         if listen_path.is_empty() {
             return Err(
@@ -211,14 +236,31 @@ impl SocketActivationManager {
 
         let address = SocketAddress::Stream(listen_path.to_string());
         if listen_path.starts_with('/') {
-            // Do not unlink an existing path here. Safe replacement/removal of AF_UNIX endpoints
-            // is a socket-unit lifecycle operation governed by RemoveOnStop=, ownership checks,
-            // and filesystem labels; this low-level owner must fail closed instead.
+            // Do not unlink an existing path here. When RemoveOnStop= is
+            // explicit, retain the created inode identity below so teardown
+            // can fail closed if a foreign replacement wins the pathname race.
             let listener = UnixListener::bind(listen_path)
                 .map_err(|error| format!("bind {listen_path} failed: {error}"))?;
+            let cleanup = if remove_on_stop {
+                let metadata = match std::fs::symlink_metadata(listen_path) {
+                    Ok(metadata) => metadata,
+                    Err(error) => {
+                        drop(listener);
+                        return Err(format!("stat {listen_path} failed: {error}"));
+                    }
+                };
+                Some(UnixSocketCleanup {
+                    path: PathBuf::from(listen_path),
+                    device: metadata.dev(),
+                    inode: metadata.ino(),
+                })
+            } else {
+                None
+            };
             Ok(ActivatedListener {
                 address,
                 fd: Arc::new(listener.into()),
+                cleanup,
             })
         } else {
             let listener = TcpListener::bind(listen_path)
@@ -226,6 +268,7 @@ impl SocketActivationManager {
             Ok(ActivatedListener {
                 address,
                 fd: Arc::new(listener.into()),
+                cleanup: None,
             })
         }
     }
@@ -241,6 +284,19 @@ impl SocketActivationManager {
         unit_name: &str,
         listen_streams: &[String],
         fd_name: Option<&str>,
+    ) -> Result<(), String> {
+        self.register_listen_streams_with_options(unit_name, listen_streams, fd_name, false)
+    }
+
+    /// Register listeners while retaining explicit socket-unit cleanup policy.
+    /// Filesystem sockets are removed only when `remove_on_stop` is true and
+    /// the path still names the inode created by this manager instance.
+    pub fn register_listen_streams_with_options(
+        &mut self,
+        unit_name: &str,
+        listen_streams: &[String],
+        fd_name: Option<&str>,
+        remove_on_stop: bool,
     ) -> Result<(), String> {
         if unit_name.is_empty() {
             return Err("socket unit name may not be empty".into());
@@ -263,11 +319,21 @@ impl SocketActivationManager {
                 "{unit_name}: cannot change FileDescriptorName= while listeners are active"
             ));
         }
+        if let Some(existing) = self.sockets.get(unit_name)
+            && existing
+                .listeners
+                .iter()
+                .any(|listener| listener.cleanup.is_some() != remove_on_stop)
+        {
+            return Err(format!(
+                "{unit_name}: cannot change RemoveOnStop= while listeners are active"
+            ));
+        }
 
         // Bind first, then mutate. `new_listeners` owns all work until this operation commits.
         let mut new_listeners = Vec::with_capacity(listen_streams.len());
         for listen_stream in listen_streams {
-            new_listeners.push(Self::bind_stream(listen_stream)?);
+            new_listeners.push(Self::bind_stream(listen_stream, remove_on_stop)?);
         }
 
         match self.sockets.get_mut(unit_name) {
@@ -292,7 +358,14 @@ impl SocketActivationManager {
         // Removing the entry drops every owned listener exactly once. Event-loop integrations
         // must remove their sources before this call; queued callbacks hold Weak descriptors and
         // therefore become no-ops if they still run.
-        self.sockets.remove(unit_name);
+        let Some(socket) = self.sockets.remove(unit_name) else {
+            return;
+        };
+        for listener in socket.listeners {
+            if let Some(cleanup) = listener.cleanup {
+                cleanup.remove_if_owned();
+            }
+        }
     }
 
     pub fn associated_service(&self, socket_name: &str) -> String {
@@ -356,6 +429,17 @@ impl Default for SocketActivationManager {
 mod tests {
     use super::*;
 
+    fn unix_socket_path(label: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock must be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "systemd-rust-socket-{label}-{}-{stamp}.sock",
+            std::process::id()
+        ))
+    }
+
     #[test]
     fn unregister_socket_invalidates_borrowed_listener_handle() {
         let mut manager = SocketActivationManager::new();
@@ -397,6 +481,58 @@ mod tests {
                 ("LISTEN_FDNAMES".to_string(), "api:api".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn remove_on_stop_unlinks_only_the_socket_inode_owned_by_this_manager() {
+        let path = unix_socket_path("cleanup");
+        let mut manager = SocketActivationManager::new();
+        manager
+            .register_listen_streams_with_options(
+                "listener.socket",
+                &[path.display().to_string()],
+                None,
+                true,
+            )
+            .unwrap();
+        assert!(path.exists());
+
+        manager.unregister_socket("listener.socket");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn default_socket_stop_preserves_filesystem_endpoint() {
+        let path = unix_socket_path("preserve");
+        let mut manager = SocketActivationManager::new();
+        manager
+            .register_listen_streams("listener.socket", &[path.display().to_string()], None)
+            .unwrap();
+        manager.unregister_socket("listener.socket");
+        assert!(path.exists());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn remove_on_stop_does_not_delete_a_replaced_socket_path() {
+        let path = unix_socket_path("replacement");
+        let mut manager = SocketActivationManager::new();
+        manager
+            .register_listen_streams_with_options(
+                "listener.socket",
+                &[path.display().to_string()],
+                None,
+                true,
+            )
+            .unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let replacement = UnixListener::bind(&path).unwrap();
+
+        manager.unregister_socket("listener.socket");
+        assert!(path.exists());
+
+        drop(replacement);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

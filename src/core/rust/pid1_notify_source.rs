@@ -3,12 +3,11 @@
 
 //! Bounded, credential-authenticated ingress for `sd_notify()` datagrams.
 //!
-//! This deliberately stops before service state mutation. C's full notify
-//! handler routes an authenticated `PidRef` to all matching units, checks each
-//! unit's `NotifyAccess=`, processes FDSTORE and barrier descriptors, and then
-//! invokes the service state machine. Until those pieces share one manager
-//! owner, this source may only hand an authenticated, bounded datagram to that
-//! owner. In particular, it must not make `Type=notify` startable by itself.
+//! The source itself never mutates services: it hands a typed, authenticated,
+//! bounded datagram to the manager-owned dispatch boundary. C's remaining
+//! `PidRef` routing, FDSTORE/barrier descriptors, and status publication still
+//! need their full ownership contracts. In particular, this module alone must
+//! not make `Type=notify` startable in production.
 
 #[cfg(target_os = "linux")]
 mod imp {
@@ -50,6 +49,148 @@ mod imp {
     pub struct AuthenticatedNotifyDatagram {
         pub peer: NotifyPeerCredentials,
         pub text: String,
+    }
+
+    /// The lifecycle field selected with service.c's precedence: STOPPING
+    /// wins over READY, which wins over RELOADING. The parser retains the
+    /// individual reload bit too, because a combined READY=1/RELOADING=1 is a
+    /// distinct notify-reload protocol transition.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum NotifyLifecycle {
+        None,
+        Ready,
+        Reloading,
+        Stopping,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum NotifyWatchdog {
+        None,
+        Ping,
+        Trigger,
+        Invalid,
+    }
+
+    /// `MAINPID=` is parsed but never acted on at this ingress boundary. A
+    /// future owner must acquire a pidfd and prove cgroup membership before
+    /// changing the service's main process.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum NotifyMainPid {
+        Absent,
+        Requested(u32),
+        Invalid,
+    }
+
+    /// FD store requests are visible to the manager so they cannot be
+    /// silently mistaken for ordinary state updates. The source rejects all
+    /// SCM_RIGHTS today, and the dispatcher reports these requests as
+    /// unsupported until an owned FD-store implementation exists.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum NotifyFdStoreRequest {
+        None,
+        Store { name: Option<String> },
+        Remove { name: Option<String> },
+    }
+
+    /// Typed, bounded view of one authenticated notification. Unknown keys
+    /// are intentionally ignored like C's service notification handler.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ParsedNotifyDatagram {
+        pub peer: NotifyPeerCredentials,
+        pub lifecycle: NotifyLifecycle,
+        /// True whenever any `RELOADING=1` tag was present, including a
+        /// combined READY=1/RELOADING=1 notification.
+        pub reloading: bool,
+        /// First `STATUS=` value, including an explicitly empty value.
+        pub status: Option<String>,
+        pub watchdog: NotifyWatchdog,
+        pub main_pid: NotifyMainPid,
+        pub fd_store: NotifyFdStoreRequest,
+        /// The first `MONOTONIC_USEC=` field when it is syntactically valid,
+        /// as consumed by C's notify-reload freshness check. A malformed
+        /// first field intentionally makes later duplicates unusable.
+        pub monotonic_usec: Option<u64>,
+    }
+
+    impl AuthenticatedNotifyDatagram {
+        /// Parse the bounded text using the exact first-field/any-flag shape
+        /// of `strv_find_startswith()` and `strv_contains()` in service.c.
+        /// No service state is changed here.
+        pub fn parse(self) -> ParsedNotifyDatagram {
+            let mut ready = false;
+            let mut reloading = false;
+            let mut stopping = false;
+            let mut status = None;
+            let mut watchdog = None;
+            let mut main_pid = None;
+            let mut fd_store = false;
+            let mut fd_store_remove = false;
+            let mut fd_name = None;
+            let mut monotonic_usec = None;
+            let mut monotonic_seen = false;
+
+            for line in self.text.split('\n') {
+                let Some((key, value)) = line.split_once('=') else {
+                    continue;
+                };
+                match key {
+                    "READY" if value == "1" => ready = true,
+                    "RELOADING" if value == "1" => reloading = true,
+                    "STOPPING" if value == "1" => stopping = true,
+                    "STATUS" if status.is_none() => status = Some(value.to_owned()),
+                    "WATCHDOG" if watchdog.is_none() => {
+                        watchdog = Some(match value {
+                            "1" => NotifyWatchdog::Ping,
+                            "trigger" => NotifyWatchdog::Trigger,
+                            _ => NotifyWatchdog::Invalid,
+                        })
+                    }
+                    "MAINPID" if main_pid.is_none() => {
+                        main_pid = Some(match value.parse::<i32>() {
+                            Ok(pid) if pid > 0 => NotifyMainPid::Requested(pid as u32),
+                            _ => NotifyMainPid::Invalid,
+                        });
+                    }
+                    "FDSTORE" if value == "1" => fd_store = true,
+                    "FDSTOREREMOVE" if value == "1" => fd_store_remove = true,
+                    "FDNAME" if fd_name.is_none() => fd_name = Some(value.to_owned()),
+                    "MONOTONIC_USEC" if !monotonic_seen => {
+                        monotonic_seen = true;
+                        monotonic_usec = value.parse::<u64>().ok();
+                    }
+                    _ => {}
+                }
+            }
+
+            let lifecycle = if stopping {
+                NotifyLifecycle::Stopping
+            } else if ready {
+                NotifyLifecycle::Ready
+            } else if reloading {
+                NotifyLifecycle::Reloading
+            } else {
+                NotifyLifecycle::None
+            };
+            // service.c gives FDSTOREREMOVE=1 precedence over FDSTORE=1.
+            let fd_store = if fd_store_remove {
+                NotifyFdStoreRequest::Remove { name: fd_name }
+            } else if fd_store {
+                NotifyFdStoreRequest::Store { name: fd_name }
+            } else {
+                NotifyFdStoreRequest::None
+            };
+
+            ParsedNotifyDatagram {
+                peer: self.peer,
+                lifecycle,
+                reloading,
+                status,
+                watchdog: watchdog.unwrap_or(NotifyWatchdog::None),
+                main_pid: main_pid.unwrap_or(NotifyMainPid::Absent),
+                fd_store,
+                monotonic_usec,
+            }
+        }
     }
 
     /// Errors that make a notification inadmissible. Callers should drop one
@@ -314,6 +455,73 @@ mod imp {
                 io::ErrorKind::AlreadyExists
             );
             std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn parser_preserves_c_lifecycle_precedence_and_first_value_rules() {
+            let parsed = AuthenticatedNotifyDatagram {
+                peer: NotifyPeerCredentials {
+                    pid: 42,
+                    uid: 1000,
+                    gid: 1000,
+                },
+                text: concat!(
+                    "RELOADING=1\nREADY=1\nSTOPPING=1\n",
+                    "STATUS=first\nSTATUS=second\n",
+                    "WATCHDOG=trigger\nWATCHDOG=1\n",
+                    "MAINPID=123\nMAINPID=456\n",
+                    "FDSTORE=1\nFDSTOREREMOVE=1\nFDNAME=kept\n",
+                    "MONOTONIC_USEC=77\nMONOTONIC_USEC=88"
+                )
+                .to_owned(),
+            }
+            .parse();
+
+            assert_eq!(parsed.lifecycle, NotifyLifecycle::Stopping);
+            assert!(parsed.reloading);
+            assert_eq!(parsed.status.as_deref(), Some("first"));
+            assert_eq!(parsed.watchdog, NotifyWatchdog::Trigger);
+            assert_eq!(parsed.main_pid, NotifyMainPid::Requested(123));
+            assert_eq!(parsed.monotonic_usec, Some(77));
+            assert_eq!(
+                parsed.fd_store,
+                NotifyFdStoreRequest::Remove {
+                    name: Some("kept".to_owned())
+                }
+            );
+        }
+
+        #[test]
+        fn parser_records_invalid_control_values_without_promoting_them() {
+            let parsed = AuthenticatedNotifyDatagram {
+                peer: NotifyPeerCredentials {
+                    pid: 42,
+                    uid: 1000,
+                    gid: 1000,
+                },
+                text: "WATCHDOG=bad\nMAINPID=0\nMONOTONIC_USEC=not-a-number".to_owned(),
+            }
+            .parse();
+
+            assert_eq!(parsed.lifecycle, NotifyLifecycle::None);
+            assert_eq!(parsed.watchdog, NotifyWatchdog::Invalid);
+            assert_eq!(parsed.main_pid, NotifyMainPid::Invalid);
+            assert_eq!(parsed.monotonic_usec, None);
+        }
+
+        #[test]
+        fn parser_rejects_a_later_monotonic_value_after_an_invalid_first_field() {
+            let parsed = AuthenticatedNotifyDatagram {
+                peer: NotifyPeerCredentials {
+                    pid: 42,
+                    uid: 1000,
+                    gid: 1000,
+                },
+                text: "RELOADING=1\nMONOTONIC_USEC=bad\nMONOTONIC_USEC=77".to_owned(),
+            }
+            .parse();
+
+            assert_eq!(parsed.monotonic_usec, None);
         }
     }
 }

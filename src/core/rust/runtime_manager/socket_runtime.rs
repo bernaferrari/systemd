@@ -59,19 +59,6 @@ impl RuntimeManager {
             self.fail_socket_start(unit_name, "no ListenStream= endpoint is configured");
             return;
         }
-        if info
-            .socket
-            .listen_stream
-            .iter()
-            .any(|endpoint| endpoint.trim_start().starts_with('/'))
-        {
-            self.fail_socket_start(
-                unit_name,
-                "filesystem AF_UNIX lifecycle is not implemented safely",
-            );
-            return;
-        }
-
         let service_name = info
             .socket
             .service
@@ -108,10 +95,11 @@ impl RuntimeManager {
         }
 
         if self.socket_mgr.get(unit_name).is_none()
-            && let Err(error) = self.socket_mgr.register_listen_streams(
+            && let Err(error) = self.socket_mgr.register_listen_streams_with_options(
                 unit_name,
                 &info.socket.listen_stream,
                 info.socket.file_descriptor_name.as_deref(),
+                info.socket.remove_on_stop.unwrap_or(false),
             )
         {
             self.fail_socket_start(unit_name, &error);
