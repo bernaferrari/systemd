@@ -443,6 +443,12 @@
         "src/core/rust/pid1_bus_source.rs"
       ]
     },
+    "pid1_dbus_auth": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/pid1_dbus_auth.rs"
+      ]
+    },
     "pid1_dbus_wire": {
       "classification": "compiled-but-disconnected",
       "source_files": [

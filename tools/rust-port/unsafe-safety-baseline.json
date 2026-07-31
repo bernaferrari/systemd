@@ -1114,6 +1114,11 @@
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
+    },
+    "src/volatile-root/rust/lib.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
     }
   },
   "totals": {

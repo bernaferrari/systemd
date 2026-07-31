@@ -1160,6 +1160,7 @@ name = "systemd-volatile-root-rs"
 version = "0.0.1"
 dependencies = [
  "libc",
+ "systemd-basic-rs",
  "systemd-platform-rs",
  "systemd-shared-rs",
 ]

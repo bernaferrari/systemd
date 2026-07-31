@@ -13,6 +13,8 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
+#[cfg(target_os = "linux")]
+use std::ffi::CString;
 use std::io;
 #[cfg(target_os = "linux")]
 use std::os::fd::AsRawFd;
@@ -20,6 +22,9 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 #[cfg(target_os = "linux")]
 use std::path::Path;
+
+#[cfg(target_os = "linux")]
+use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
 
 /// Mode value for a persistent root.
 pub const VOLATILE_NO: i32 = 0;
@@ -549,6 +554,112 @@ pub fn device_link_content(major: u32, minor: u32) -> String {
     format!("/dev/block/{}:{}", major, minor)
 }
 
+// ── Backing-device link ───────────────────────────────────────────────────
+
+/// The major/minor pair of the original root's backing block device.
+///
+/// This deliberately does not retain a `dev_t`: the only observable form in
+/// `volatile-root.c` is the canonical `/dev/block/MAJOR:MINOR` symlink target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BackingDevice {
+    pub major: u32,
+    pub minor: u32,
+}
+
+impl BackingDevice {
+    /// Return the canonical device-node path used by C's
+    /// `device_path_make_major_minor(S_IFBLK, ...)` call.
+    pub fn link_content(self) -> String {
+        device_link_content(self.major, self.minor)
+    }
+}
+
+/// Operations in C's backing-device recording block in `run()`.
+///
+/// `backing_device()` must retain the authoritative `get_block_device_harder()`
+/// policy: it follows the device-mapper origin and declines filesystems that
+/// do not have exactly one backing block device. A `None` result is C's zero
+/// return and is not an error.
+pub trait BackingDeviceLinkBackend {
+    fn backing_device(&mut self, path: &str) -> io::Result<Option<BackingDevice>>;
+    fn create_symlink(&mut self, target: &str, link: &str) -> io::Result<()>;
+}
+
+/// Record the block device obscured by the upcoming root transition.
+///
+/// This matches the error split in C: discovery failures abort before any
+/// transition, a filesystem without one backing block device produces no
+/// link, and failure to create the informational link is non-fatal. The C
+/// caller logs the latter as a warning; this small transaction deliberately
+/// returns success so its caller can preserve that warning-only behavior.
+///
+/// The executable must not invoke this separately from a complete root mount
+/// transition. Creating the link and then failing closed would leave an
+/// observable false claim about the active root.
+pub fn record_backing_device_link_with(
+    path: &str,
+    backend: &mut impl BackingDeviceLinkBackend,
+) -> io::Result<()> {
+    let Some(device) = backend.backing_device(path)? else {
+        return Ok(());
+    };
+
+    let _ = backend.create_symlink(&device.link_content(), VOLATILE_ROOT_LINK);
+    Ok(())
+}
+
+/// Linux implementation which delegates backing-device discovery to the C
+/// helper, retaining its device-mapper and Btrfs single-device semantics.
+///
+/// Like the overlay backend, this is intentionally not wired into `main`.
+/// It becomes usable only as part of the full, ordered transition.
+#[cfg(target_os = "linux")]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LinuxBackingDeviceLinkBackend;
+
+#[cfg(target_os = "linux")]
+// SAFETY: this declaration mirrors `get_block_device_harder(const char*,
+// dev_t*)`: the C helper only reads the live NUL-terminated path and writes
+// one correctly aligned `dev_t` to the exclusive output pointer. The symbol
+// is linked from systemd's existing block-device utility and is used only by
+// the isolated, non-production backend below.
+// SAFETY: see the ABI and pointer invariants documented above.
+unsafe extern "C" {
+    #[link_name = "get_block_device_harder"]
+    fn c_get_block_device_harder(path: *const libc::c_char, ret: *mut libc::dev_t) -> libc::c_int;
+}
+
+#[cfg(target_os = "linux")]
+impl BackingDeviceLinkBackend for LinuxBackingDeviceLinkBackend {
+    fn backing_device(&mut self, path: &str) -> io::Result<Option<BackingDevice>> {
+        let path = CString::new(path)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"))?;
+        let mut device: libc::dev_t = 0;
+
+        // SAFETY: `path` is NUL-terminated and remains live for the call;
+        // `device` is a unique, correctly aligned output location.
+        let result = unsafe { c_get_block_device_harder(path.as_ptr(), &mut device) };
+        if result < 0 {
+            return Err(io::Error::from_raw_os_error(-result));
+        }
+        if result == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(BackingDevice {
+            // Use systemd's target-authoritative Linux `dev_t` codec rather
+            // than open-coding glibc's bit layout or relying on libc helpers
+            // that are not available on every supported target.
+            major: devnum_major(device as u64),
+            minor: devnum_minor(device as u64),
+        }))
+    }
+
+    fn create_symlink(&mut self, target: &str, link: &str) -> io::Result<()> {
+        std::os::unix::fs::symlink(target, link)
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -570,6 +681,39 @@ mod tests {
         calls: Vec<OverlayCall>,
         fail_on: Option<&'static str>,
         cleanup_fails: bool,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum BackingDeviceCall {
+        Discover(String),
+        Symlink(String, String),
+    }
+
+    #[derive(Default)]
+    struct FakeBackingDeviceBackend {
+        calls: Vec<BackingDeviceCall>,
+        device: Option<BackingDevice>,
+        discovery_error: Option<i32>,
+        symlink_error: Option<i32>,
+    }
+
+    impl BackingDeviceLinkBackend for FakeBackingDeviceBackend {
+        fn backing_device(&mut self, path: &str) -> io::Result<Option<BackingDevice>> {
+            self.calls.push(BackingDeviceCall::Discover(path.into()));
+            match self.discovery_error {
+                Some(errno) => Err(io::Error::from_raw_os_error(errno)),
+                None => Ok(self.device),
+            }
+        }
+
+        fn create_symlink(&mut self, target: &str, link: &str) -> io::Result<()> {
+            self.calls
+                .push(BackingDeviceCall::Symlink(target.into(), link.into()));
+            match self.symlink_error {
+                Some(errno) => Err(io::Error::from_raw_os_error(errno)),
+                None => Ok(()),
+            }
+        }
     }
 
     impl FakeOverlayBackend {
@@ -730,6 +874,72 @@ mod tests {
     fn test_device_link_content() {
         assert_eq!(device_link_content(8, 0), "/dev/block/8:0");
         assert_eq!(device_link_content(259, 1), "/dev/block/259:1");
+    }
+
+    #[test]
+    fn backing_device_link_matches_c_success_order_and_target() {
+        let mut backend = FakeBackingDeviceBackend {
+            device: Some(BackingDevice {
+                major: 259,
+                minor: 1,
+            }),
+            ..FakeBackingDeviceBackend::default()
+        };
+
+        record_backing_device_link_with("/sysroot", &mut backend).unwrap();
+
+        assert_eq!(
+            backend.calls,
+            vec![
+                BackingDeviceCall::Discover("/sysroot".into()),
+                BackingDeviceCall::Symlink("/dev/block/259:1".into(), VOLATILE_ROOT_LINK.into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn backing_device_link_skips_link_without_a_single_backing_device() {
+        let mut backend = FakeBackingDeviceBackend::default();
+
+        record_backing_device_link_with("/sysroot", &mut backend).unwrap();
+
+        assert_eq!(
+            backend.calls,
+            vec![BackingDeviceCall::Discover("/sysroot".into())]
+        );
+    }
+
+    #[test]
+    fn backing_device_link_propagates_discovery_failure_before_side_effects() {
+        let mut backend = FakeBackingDeviceBackend {
+            discovery_error: Some(libc::EUCLEAN),
+            ..FakeBackingDeviceBackend::default()
+        };
+
+        let error = record_backing_device_link_with("/sysroot", &mut backend).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EUCLEAN));
+        assert_eq!(
+            backend.calls,
+            vec![BackingDeviceCall::Discover("/sysroot".into())]
+        );
+    }
+
+    #[test]
+    fn backing_device_link_ignores_symlink_failure_like_c() {
+        let mut backend = FakeBackingDeviceBackend {
+            device: Some(BackingDevice { major: 8, minor: 2 }),
+            symlink_error: Some(libc::EEXIST),
+            ..FakeBackingDeviceBackend::default()
+        };
+
+        record_backing_device_link_with("/sysroot", &mut backend).unwrap();
+        assert_eq!(
+            backend.calls,
+            vec![
+                BackingDeviceCall::Discover("/sysroot".into()),
+                BackingDeviceCall::Symlink("/dev/block/8:2".into(), VOLATILE_ROOT_LINK.into()),
+            ]
+        );
     }
 
     #[test]

@@ -166,29 +166,46 @@ pub fn manager_serialize(state: &ManagerScalarState, switching_root: bool) -> Re
 pub fn manager_deserialize(state: &mut ManagerScalarState, input: &str) -> Result<()> {
     for line in input.lines().filter(|line| !line.trim().is_empty()) {
         if let Some(value) = line.strip_prefix("last-transaction-id=") {
-            let parsed = parse_u64(value)?;
-            state.last_transaction_id = state.last_transaction_id.max(parsed);
+            // manager-serialize.c deliberately treats a stale or malformed
+            // record as non-fatal during reexec. A newer manager may have
+            // emitted an item this build does not know yet, and losing the
+            // whole recovery to one scalar field is worse than retaining the
+            // previous value.
+            if let Ok(parsed) = parse_u64(value) {
+                state.last_transaction_id = state.last_transaction_id.max(parsed);
+            }
         } else if let Some(value) = line.strip_prefix("current-job-id=") {
-            let parsed = parse_u32(value)?;
-            state.current_job_id = state.current_job_id.max(parsed);
+            if let Ok(parsed) = parse_u32(value) {
+                state.current_job_id = state.current_job_id.max(parsed);
+            }
         } else if let Some(value) = line.strip_prefix("n-installed-jobs=") {
-            state.n_installed_jobs = state.n_installed_jobs.saturating_add(parse_u32(value)?);
+            if let Ok(parsed) = parse_u32(value) {
+                state.n_installed_jobs = state.n_installed_jobs.saturating_add(parsed);
+            }
         } else if let Some(value) = line.strip_prefix("n-failed-jobs=") {
-            state.n_failed_jobs = state.n_failed_jobs.saturating_add(parse_u32(value)?);
+            if let Ok(parsed) = parse_u32(value) {
+                state.n_failed_jobs = state.n_failed_jobs.saturating_add(parsed);
+            }
         } else if let Some(value) = line.strip_prefix("taint-logged=") {
-            state.taint_logged |= parse_boolean(value)?;
+            if let Ok(parsed) = parse_boolean(value) {
+                state.taint_logged |= parsed;
+            }
         } else if let Some(value) = line.strip_prefix("service-watchdogs=") {
-            state.service_watchdogs = parse_boolean(value)?;
+            if let Ok(parsed) = parse_boolean(value) {
+                state.service_watchdogs = parsed;
+            }
         } else if let Some(value) = line.strip_prefix("env=") {
             state.client_environment.push(value.to_string());
         } else if let Some(value) = line.strip_prefix("notify-socket=") {
             state.notify_socket = Some(value.to_string());
         } else if let Some(value) = line.strip_prefix("destroy-ipc-uid=") {
-            manager_deserialize_uid_refs_one_internal(&mut state.uid_refs, value)?;
+            let _ = manager_deserialize_uid_refs_one_internal(&mut state.uid_refs, value);
         } else if let Some(value) = line.strip_prefix("destroy-ipc-gid=") {
-            manager_deserialize_uid_refs_one_internal(&mut state.gid_refs, value)?;
+            let _ = manager_deserialize_uid_refs_one_internal(&mut state.gid_refs, value);
         } else {
-            return Err(ManagerSerializeError::InvalidLine(line.to_string()));
+            // Keep forward compatibility with the C serializer. Unknown
+            // records are logged there and ignored, rather than aborting an
+            // otherwise recoverable manager handoff.
         }
     }
 
@@ -357,20 +374,40 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_rejects_unknown_lines() {
-        let mut state = ManagerScalarState::default();
-        assert!(matches!(
-            manager_deserialize(&mut state, "mystery=value\n"),
-            Err(ManagerSerializeError::InvalidLine(_))
-        ));
+    fn deserialize_ignores_unknown_lines_for_forward_compatible_reexec() {
+        let mut state = ManagerScalarState {
+            current_job_id: 7,
+            ..ManagerScalarState::default()
+        };
+        manager_deserialize(&mut state, "mystery=value\ncurrent-job-id=9\n").unwrap();
+        assert_eq!(state.current_job_id, 9);
     }
 
     #[test]
-    fn deserialize_rejects_invalid_numbers() {
-        let mut state = ManagerScalarState::default();
-        assert!(matches!(
-            manager_deserialize(&mut state, "current-job-id=nope\n"),
-            Err(ManagerSerializeError::InvalidNumber(_))
-        ));
+    fn deserialize_ignores_malformed_records_without_clobbering_state() {
+        let mut state = ManagerScalarState {
+            last_transaction_id: 10,
+            current_job_id: 7,
+            n_installed_jobs: 3,
+            n_failed_jobs: 2,
+            taint_logged: true,
+            service_watchdogs: true,
+            ..ManagerScalarState::default()
+        };
+
+        manager_deserialize(
+            &mut state,
+            "last-transaction-id=nope\ncurrent-job-id=bad\nn-installed-jobs=oops\nn-failed-jobs=no\ntaint-logged=maybe\nservice-watchdogs=unknown\ndestroy-ipc-uid=not-a-uid\ndestroy-ipc-gid=also-bad\n",
+        )
+        .unwrap();
+
+        assert_eq!(state.last_transaction_id, 10);
+        assert_eq!(state.current_job_id, 7);
+        assert_eq!(state.n_installed_jobs, 3);
+        assert_eq!(state.n_failed_jobs, 2);
+        assert!(state.taint_logged);
+        assert!(state.service_watchdogs);
+        assert!(state.uid_refs.is_empty());
+        assert!(state.gid_refs.is_empty());
     }
 }

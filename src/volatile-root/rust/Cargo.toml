@@ -14,6 +14,7 @@ version = "0.0.1"
 edition = "2024"
 
 [dependencies]
+systemd-basic-rs = { path = "../../basic/rust" }
 systemd-shared-rs = { path = "../../shared/rust" }
 systemd-platform-rs = { path = "../../platform/rust" }
 libc = { workspace = true }
