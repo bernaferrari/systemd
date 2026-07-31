@@ -17,7 +17,9 @@
 use std::ffi::CString;
 use std::io;
 #[cfg(target_os = "linux")]
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+#[cfg(target_os = "linux")]
+use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
@@ -309,11 +311,9 @@ pub trait VolatileTransitionBackend {
 /// successful `MS_MOVE` that is normally a harmless no-op because the mount
 /// now resides at `path`.
 ///
-/// No Linux implementation is exposed yet. It would need safe equivalents of
-/// `chase(..., CHASE_PREFIX_ROOT)`, `bind_remount_recursive()`, and
-/// `umount_recursive()` together, so wiring a partial implementation into
-/// the executable would be less safe than retaining its current fail-closed
-/// boundary.
+/// The Linux backend below provides each operation but is not wired into the
+/// executable: installed use still needs the complete `run()` orchestration
+/// (including the backing-device link) and a validated initrd namespace boot.
 pub fn make_volatile_with(
     path: &str,
     backend: &mut impl VolatileTransitionBackend,
@@ -351,6 +351,331 @@ pub fn make_volatile_with(
     let _ = backend.remove_staging(staging);
 
     result
+}
+
+/// Linux mount-attribute ABI, stable since Linux 5.12.
+///
+/// `libc` intentionally does not expose this tiny UAPI structure on every
+/// supported target. Its four `u64` fields are the kernel ABI from
+/// `linux/mount.h`; keeping it local confines the unavoidable raw syscall to
+/// the one operation for which the existing mount facade has no safe wrapper.
+#[cfg(target_os = "linux")]
+#[repr(C)]
+struct MountAttr {
+    attr_set: u64,
+    attr_clr: u64,
+    propagation: u64,
+    userns_fd: u64,
+}
+
+/// Linux implementation of the complete isolated `make_volatile()` backend.
+///
+/// This deliberately relies on kernel-enforced `RESOLVE_IN_ROOT` and
+/// recursive `mount_setattr()`. On kernels or seccomp profiles without either
+/// facility it returns `EOPNOTSUPP` before the affected operation, rather
+/// than approximating C's root-bounded chase or recursive read-only remount
+/// with a host-path walk. The enclosing transaction then preserves C's first
+/// error and cleanup ordering.
+///
+/// The type is available for namespace-scoped integration tests and future
+/// orchestration, but `main.rs` remains fail-closed until the whole C `run()`
+/// sequence and an installed-initrd test prove the production boundary.
+#[cfg(target_os = "linux")]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LinuxVolatileTransitionBackend;
+
+#[cfg(target_os = "linux")]
+impl VolatileTransitionBackend for LinuxVolatileTransitionBackend {
+    fn chase_usr_beneath_root(&mut self, root: &Path) -> io::Result<std::path::PathBuf> {
+        chase_usr_beneath_root(root)
+    }
+
+    fn mkdir_p(&mut self, path: &Path, mode: u32) -> io::Result<()> {
+        let path = path.to_str().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "staging path is not UTF-8")
+        })?;
+        systemd_platform_rs::fs::mkdir_p(path, mode)
+    }
+
+    fn mount_tmpfs(&mut self, target: &Path, options: &str) -> io::Result<()> {
+        systemd_shared_rs::mount_util::mount_nofollow_verbose_path(
+            Path::new("tmpfs"),
+            target,
+            Some("tmpfs"),
+            systemd_shared_rs::mount_util::MS_STRICTATIME,
+            Some(options),
+        )
+    }
+
+    fn mkdir(&mut self, path: &Path, mode: u32) -> io::Result<()> {
+        use std::os::unix::fs::DirBuilderExt;
+
+        let mut builder = std::fs::DirBuilder::new();
+        builder.mode(mode).create(path)
+    }
+
+    fn bind_mount_recursive(&mut self, source: &Path, target: &Path) -> io::Result<()> {
+        systemd_shared_rs::mount_util::mount_nofollow_verbose_path(
+            source,
+            target,
+            None,
+            systemd_shared_rs::mount_util::MS_BIND | systemd_shared_rs::mount_util::MS_REC,
+            None,
+        )
+    }
+
+    fn remount_bind_recursive_read_only(&mut self, target: &Path) -> io::Result<()> {
+        set_mount_tree_read_only(target)
+    }
+
+    fn unmount_recursive(&mut self, target: &Path) -> io::Result<()> {
+        unmount_tree_nofollow(target)
+    }
+
+    fn make_mount_tree_slave_recursive(&mut self) -> io::Result<()> {
+        // For a propagation change the source and filesystem type are ignored
+        // by the kernel. The platform facade supplies a null source for its
+        // empty-string form, matching C's `mount(NULL, "/", ...)`.
+        systemd_platform_rs::mount::mount(
+            "",
+            "/",
+            "",
+            systemd_platform_rs::mount::MountFlags::MS_SLAVE
+                | systemd_platform_rs::mount::MountFlags::MS_REC,
+            "",
+        )
+    }
+
+    fn move_mount_nofollow(&mut self, source: &Path, target: &Path) -> io::Result<()> {
+        systemd_shared_rs::mount_util::mount_nofollow_verbose_path(
+            source,
+            target,
+            None,
+            systemd_shared_rs::mount_util::MS_MOVE,
+            None,
+        )
+    }
+
+    fn remove_staging(&mut self, path: &Path) -> io::Result<()> {
+        std::fs::remove_dir(path)
+    }
+}
+
+/// Resolve `/usr` beneath an alternate root exactly through the kernel's
+/// `RESOLVE_IN_ROOT|RESOLVE_NO_MAGICLINKS` semantics. Absolute symlink targets
+/// are interpreted relative to `root`, and no traversal can escape it through
+/// ordinary or procfs magic links.
+#[cfg(target_os = "linux")]
+fn chase_usr_beneath_root(root: &Path) -> io::Result<std::path::PathBuf> {
+    // Match C's `path_simplify()` here, rather than `canonicalize()`: C opens
+    // the supplied root (following a root symlink as normal) but retains its
+    // lexical spelling for the returned source path. Resolving root symlinks
+    // in user space would add a race and needlessly change that contract.
+    let root = simplify_absolute_path(root)?;
+    let root_c = CString::new(root.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "root contains NUL"))?;
+
+    // SAFETY: root_c is NUL-terminated and retained for the call. No creation
+    // flags are passed, and a successful call returns a fresh descriptor.
+    let root_fd = unsafe {
+        libc::open(
+            root_c.as_ptr(),
+            libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    };
+    if root_fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `open()` above returned a fresh descriptor with exclusive
+    // ownership, which is held until the `openat2()` resolution completes.
+    let root_fd = unsafe { OwnedFd::from_raw_fd(root_fd) };
+
+    let usr = c"usr";
+    // SAFETY: `open_how` consists only of integer fields for which zero is a
+    // valid initial value. All fields relevant to this syscall are assigned
+    // immediately below before its address is passed to the kernel.
+    let mut how: libc::open_how = unsafe { std::mem::zeroed() };
+    how.flags = (libc::O_PATH | libc::O_CLOEXEC) as u64;
+    how.resolve = libc::RESOLVE_IN_ROOT | libc::RESOLVE_NO_MAGICLINKS;
+    // SAFETY: root_fd is live, `usr` is a static NUL-terminated relative
+    // pathname, and `how` is fully initialized with the UAPI's exact size.
+    let fd = unsafe {
+        libc::syscall(
+            libc::SYS_openat2,
+            root_fd.as_raw_fd(),
+            usr.as_ptr(),
+            &how,
+            std::mem::size_of::<libc::open_how>(),
+        )
+    };
+    if fd < 0 {
+        let error = io::Error::last_os_error();
+        return match error.raw_os_error() {
+            // C has a libmount/chase fallback. This staged native backend
+            // refuses rather than let a host-path fallback misinterpret an
+            // absolute symlink inside the old root.
+            Some(libc::ENOSYS | libc::EPERM | libc::EAGAIN) => {
+                Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+            }
+            _ => Err(error),
+        };
+    }
+    // SAFETY: successful `openat2()` returns one fresh descriptor.
+    let fd = unsafe { OwnedFd::from_raw_fd(fd as i32) };
+    let resolved = std::fs::read_link(format!("/proc/self/fd/{}", fd.as_raw_fd()))?;
+
+    Ok(resolved)
+}
+
+/// Lexically normalize the absolute root spelling without resolving symlinks.
+#[cfg(target_os = "linux")]
+fn simplify_absolute_path(path: &Path) -> io::Result<std::path::PathBuf> {
+    use std::path::Component;
+
+    if !path.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "root path is not absolute",
+        ));
+    }
+
+    let mut simplified = std::path::PathBuf::from("/");
+    for component in path.components() {
+        match component {
+            Component::RootDir | Component::CurDir => {}
+            Component::ParentDir => {
+                simplified.pop();
+            }
+            Component::Normal(component) => simplified.push(component),
+            Component::Prefix(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "root path has an unsupported prefix",
+                ));
+            }
+        }
+    }
+    Ok(simplified)
+}
+
+/// Apply a read-only attribute recursively with the same subtree scope as
+/// C's modern `bind_remount_recursive()` fast path.
+#[cfg(target_os = "linux")]
+fn set_mount_tree_read_only(target: &Path) -> io::Result<()> {
+    let target = CString::new(target.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "target contains NUL"))?;
+    let attribute = MountAttr {
+        attr_set: libc::MOUNT_ATTR_RDONLY,
+        attr_clr: 0,
+        propagation: 0,
+        userns_fd: 0,
+    };
+
+    // SAFETY: target is retained and NUL-terminated; `attribute` exactly
+    // matches Linux `struct mount_attr` and stays valid for the syscall. No
+    // pointer is retained by the kernel after this synchronous operation.
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_mount_setattr,
+            libc::AT_FDCWD,
+            target.as_ptr(),
+            (libc::AT_SYMLINK_NOFOLLOW | libc::AT_RECURSIVE) as libc::c_uint,
+            &attribute,
+            std::mem::size_of::<MountAttr>(),
+        )
+    };
+    if result < 0 {
+        let error = io::Error::last_os_error();
+        return match error.raw_os_error() {
+            // Do not replace C's careful classic remount fallback with a
+            // weaker flag-clobbering loop. The caller cleans up and remains
+            // fail-closed until that fallback is ported.
+            Some(libc::ENOSYS | libc::EPERM | libc::EINVAL) => {
+                Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+            }
+            _ => Err(error),
+        };
+    }
+    Ok(())
+}
+
+/// C-compatible, best-effort recursive unmount using a pinned mountinfo
+/// snapshot. Entries are processed in reverse mountinfo order, which removes
+/// nested and stacked mounts before their parent. Individual unmount failures
+/// are ignored exactly as `umount_recursive_full()` does; failure to obtain or
+/// parse mountinfo remains fatal.
+#[cfg(target_os = "linux")]
+fn unmount_tree_nofollow(prefix: &Path) -> io::Result<()> {
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo")?;
+    let mut targets = mount_targets_beneath(&mountinfo, prefix)?;
+    targets.reverse();
+    for target in targets {
+        let _ = systemd_shared_rs::mount_util::umount_verbose_path(
+            &target,
+            systemd_shared_rs::mount_util::UMOUNT_NOFOLLOW,
+        );
+    }
+    Ok(())
+}
+
+/// Extract mount targets that are `prefix` or descendants, decoding the
+/// octal quoting used by `/proc/*/mountinfo` before byte-wise path matching.
+#[cfg(target_os = "linux")]
+fn mount_targets_beneath(mountinfo: &str, prefix: &Path) -> io::Result<Vec<std::path::PathBuf>> {
+    let prefix = prefix.as_os_str().as_bytes();
+    let mut targets = Vec::new();
+
+    for line in mountinfo.lines() {
+        let mount_point = line.split_ascii_whitespace().nth(4).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "truncated mountinfo entry")
+        })?;
+        let mount_point = unescape_mountinfo_path(mount_point)?;
+        if path_is_prefix(prefix, &mount_point) {
+            use std::os::unix::ffi::OsStringExt;
+            targets.push(std::path::PathBuf::from(std::ffi::OsString::from_vec(
+                mount_point,
+            )));
+        }
+    }
+    Ok(targets)
+}
+
+#[cfg(target_os = "linux")]
+fn path_is_prefix(prefix: &[u8], path: &[u8]) -> bool {
+    prefix == b"/"
+        || path == prefix
+        || path
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.first() == Some(&b'/'))
+}
+
+#[cfg(target_os = "linux")]
+fn unescape_mountinfo_path(path: &str) -> io::Result<Vec<u8>> {
+    let bytes = path.as_bytes();
+    let mut unescaped = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'\\' {
+            let Some(octal) = bytes.get(index + 1..index + 4) else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "truncated mountinfo escape",
+                ));
+            };
+            if !octal.iter().all(u8::is_ascii_digit) || octal.iter().any(|byte| *byte > b'7') {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid mountinfo escape",
+                ));
+            }
+            unescaped.push((octal[0] - b'0') * 64 + (octal[1] - b'0') * 8 + octal[2] - b'0');
+            index += 4;
+        } else {
+            unescaped.push(bytes[index]);
+            index += 1;
+        }
+    }
+    Ok(unescaped)
 }
 
 // ── Argument parsing ──────────────────────────────────────────────────────
@@ -1471,5 +1796,100 @@ mod tests {
         assert_eq!(parse_filesystem_type(mountinfo, 37), Some("tmpfs"));
         assert_eq!(parse_filesystem_type(mountinfo, 29), Some("sysfs"));
         assert_eq!(parse_filesystem_type(mountinfo, 999), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mountinfo_subtree_parser_preserves_byte_paths_and_component_boundaries() {
+        let mountinfo = "\
+40 23 0:35 / /sysroot rw - ext4 /dev/vda rw
+41 40 0:36 / /sysroot/usr rw - ext4 /dev/vdb rw
+42 40 0:37 / /sysroot-space\\040name rw - ext4 /dev/vdc rw
+43 23 0:38 / /sysrooted rw - ext4 /dev/vdd rw
+";
+        let targets = mount_targets_beneath(mountinfo, Path::new("/sysroot")).unwrap();
+        assert_eq!(
+            targets,
+            vec![
+                std::path::PathBuf::from("/sysroot"),
+                std::path::PathBuf::from("/sysroot/usr"),
+            ]
+        );
+
+        let spaced = mount_targets_beneath(mountinfo, Path::new("/sysroot-space name")).unwrap();
+        assert_eq!(
+            spaced,
+            vec![std::path::PathBuf::from("/sysroot-space name")]
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mountinfo_parser_rejects_invalid_octal_escaping() {
+        let error = mount_targets_beneath(
+            "40 23 0:35 / /sysroot\\08x rw - ext4 /dev/vda rw\n",
+            Path::new("/sysroot"),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn root_bounded_usr_chase_interprets_absolute_symlinks_inside_old_root() {
+        use std::os::unix::fs::symlink;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "systemd-volatile-root-chase-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(root.join("real")).unwrap();
+        symlink("/real", root.join("usr")).unwrap();
+
+        let resolved = chase_usr_beneath_root(&root).unwrap();
+        assert_eq!(resolved, root.join("real"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn root_bounded_usr_chase_does_not_reinterpret_missing_old_root_usr_as_host_usr() {
+        use std::os::unix::fs::symlink;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "systemd-volatile-root-host-escape-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        symlink("/usr", root.join("usr")).unwrap();
+
+        let result = chase_usr_beneath_root(&root);
+        std::fs::remove_dir_all(root).unwrap();
+        let error = result.unwrap_err();
+        // `RESOLVE_IN_ROOT` turns the absolute target back into the old
+        // root, so `/usr -> /usr` is a loop. Crucially, it never resolves to
+        // the host's existing `/usr`.
+        assert_eq!(error.raw_os_error(), Some(libc::ELOOP));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn root_simplification_matches_c_without_resolving_symlinks() {
+        assert_eq!(
+            simplify_absolute_path(Path::new("/sysroot/./nested/../")).unwrap(),
+            Path::new("/sysroot")
+        );
+        assert_eq!(
+            simplify_absolute_path(Path::new("/../../sysroot")).unwrap(),
+            Path::new("/sysroot")
+        );
+        assert!(simplify_absolute_path(Path::new("relative")).is_err());
     }
 }

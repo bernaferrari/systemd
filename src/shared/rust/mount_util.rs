@@ -7,6 +7,8 @@ use std::ffi::CString;
 use std::io;
 #[cfg(target_os = "linux")]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+#[cfg(target_os = "linux")]
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
@@ -735,11 +737,35 @@ pub fn mount_verbose_full(
     options: Option<&str>,
     follow_symlink: bool,
 ) -> io::Result<()> {
+    mount_verbose_full_path(
+        Path::new(what),
+        Path::new(where_),
+        fstype,
+        flags,
+        options,
+        follow_symlink,
+    )
+}
+
+/// Path-oriented form of [`mount_verbose_full`].
+///
+/// Linux mount paths are byte strings, not necessarily UTF-8. Keeping this
+/// small boundary byte-preserving avoids making callers either lossy or
+/// needlessly unable to operate on a valid mount with a non-UTF-8 name.
+#[cfg(target_os = "linux")]
+pub fn mount_verbose_full_path(
+    what: &Path,
+    where_: &Path,
+    fstype: Option<&str>,
+    flags: u64,
+    options: Option<&str>,
+    follow_symlink: bool,
+) -> io::Result<()> {
     // Match mount_verbose_full(): mount-related options become flags and only
     // filesystem-specific options are passed to mount(2).
     let (flags, remaining_options) = mount_option_mangle(options, flags);
-    let c_what = to_cstring(what)?;
-    let c_where = to_cstring(where_)?;
+    let c_what = path_to_cstring(what)?;
+    let c_where = path_to_cstring(where_)?;
     let c_fstype = fstype.map(to_cstring).transpose()?;
     let c_options = remaining_options.as_deref().map(to_cstring).transpose()?;
 
@@ -774,6 +800,12 @@ pub fn mount_verbose_full(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn path_to_cstring(path: &Path) -> io::Result<CString> {
+    CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"))
+}
+
 /// Mount a filesystem, following symlinks in the target path.
 #[cfg(target_os = "linux")]
 pub fn mount_follow_verbose(
@@ -801,12 +833,31 @@ pub fn mount_nofollow_verbose(
     mount_verbose_full(what, where_, fstype, flags, options, false)
 }
 
+/// Mount a filesystem without following the final target symlink, preserving
+/// the byte spelling of source and target paths.
+#[cfg(target_os = "linux")]
+pub fn mount_nofollow_verbose_path(
+    what: &Path,
+    where_: &Path,
+    fstype: Option<&str>,
+    flags: u64,
+    options: Option<&str>,
+) -> io::Result<()> {
+    mount_verbose_full_path(what, where_, fstype, flags, options, false)
+}
+
 /// Unmount a filesystem.
 ///
 /// Wraps the `umount2(2)` syscall.
 #[cfg(target_os = "linux")]
 pub fn umount_verbose(where_: &str, flags: i32) -> io::Result<()> {
-    let c_where = to_cstring(where_)?;
+    umount_verbose_path(Path::new(where_), flags)
+}
+
+/// Unmount a filesystem while preserving a potentially non-UTF-8 path.
+#[cfg(target_os = "linux")]
+pub fn umount_verbose_path(where_: &Path, flags: i32) -> io::Result<()> {
+    let c_where = path_to_cstring(where_)?;
 
     // SAFETY: c_where is a valid null-terminated string.
     let ret = unsafe { libc::umount2(c_where.as_ptr(), flags) };

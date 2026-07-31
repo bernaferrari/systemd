@@ -2,27 +2,37 @@
 
 //! Safe, same-thread admission stage for PID 1's private D-Bus socket.
 //!
-//! This module deliberately starts with an already-bound [`UnixListener`].
-//! Creating and replacing `/run/systemd/private` has pathname, umask, and
-//! ownership requirements which belong to a later production integration
-//! stage. Here, accepting a stream, obtaining its Linux `SO_PEERCRED`, applying
-//! the C manager's uid gate, and retaining bounded connection ownership form
-//! one reviewable unit.
+//! This module can either adopt an already-bound [`UnixListener`] or create the
+//! pathname listener used by the C manager. Path creation is still deliberately
+//! separate from live PID 1 integration: the constructor replaces a stale
+//! pathname, binds with mode 0700, requests the largest Linux listen backlog,
+//! and leaves the pathname behind when the listener is closed, matching
+//! `bus_init_private()`/`bus_done_private()`.
 //!
 //! This is not a complete D-Bus server. Admitted connections still need
-//! nonblocking authentication and wire event sources, reply routing, vtables,
-//! disconnect handling, and lifecycle integration before the private manager
-//! API can be advertised.
+//! authentication/wire event-source orchestration, message decoding, reply
+//! routing, vtables, disconnect handling, and manager lifecycle integration
+//! before the private manager API can be advertised.
 
 #[cfg(target_os = "linux")]
 mod imp {
     use std::collections::BTreeMap;
+    use std::fs::Metadata;
     use std::io::{self, Read, Write};
-    use std::os::fd::{AsFd, BorrowedFd};
+    use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
     use std::os::unix::net::{UnixListener, UnixStream};
+    use std::path::{Path, PathBuf};
     use std::rc::Rc;
+    use std::sync::{Mutex, MutexGuard};
 
-    use nix::sys::socket::{getsockopt, sockopt};
+    use nix::fcntl::AT_FDCWD;
+    use nix::sys::socket::{
+        AddressFamily, Backlog, SockFlag, SockType, UnixAddr, bind, getsockopt, listen, socket,
+        sockopt,
+    };
+    use nix::sys::stat::{Mode, UtimensatFlags, umask, utimensat};
+    use nix::sys::time::TimeSpec;
 
     use crate::pid1_dbus_auth::{
         AuthenticatedPrivateBusStream, PrivateBusServerAuth, ServerAuthError, ServerAuthProgress,
@@ -31,6 +41,9 @@ mod imp {
 
     /// Matches `CONNECTIONS_MAX` in `src/core/dbus.c`.
     pub const PRIVATE_BUS_CONNECTIONS_MAX: usize = 4096;
+    pub const SYSTEM_PRIVATE_BUS_PATH: &str = "/run/systemd/private";
+
+    static UMASK_LOCK: Mutex<()> = Mutex::new(());
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub struct PrivateBusConnectionId(u64);
@@ -43,6 +56,16 @@ mod imp {
         Authentication(ServerAuthError),
         ConnectionLimit,
         ConnectionIdExhausted,
+    }
+
+    #[derive(Debug)]
+    pub enum PrivateBusBindError {
+        InvalidAddress(nix::errno::Errno),
+        Socket(nix::errno::Errno),
+        Bind(nix::errno::Errno),
+        PathMetadata(io::Error),
+        Listen(nix::errno::Errno),
+        Adoption(PrivateBusAcceptError),
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,7 +225,170 @@ mod imp {
         same_thread: Rc<()>,
     }
 
+    /// Restores the process umask even if binding unwinds.
+    ///
+    /// `umask()` is process-global, hence constructors in this module serialize
+    /// their short bind section. Live PID 1 calls this before worker threads are
+    /// started, just like C's `WITH_UMASK(0077)` section.
+    struct ScopedUmask {
+        previous: Mode,
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl ScopedUmask {
+        fn private_socket() -> Self {
+            let lock = UMASK_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let previous = umask(Mode::from_bits_truncate(0o077));
+            Self {
+                previous,
+                _lock: lock,
+            }
+        }
+    }
+
+    impl Drop for ScopedUmask {
+        fn drop(&mut self) {
+            umask(self.previous);
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct PathIdentity {
+        device: u64,
+        inode: u64,
+    }
+
+    impl PathIdentity {
+        fn from_metadata(metadata: &Metadata) -> Self {
+            Self {
+                device: metadata.dev(),
+                inode: metadata.ino(),
+            }
+        }
+    }
+
+    /// Removes a pathname only while it still names the socket created by this
+    /// constructor. This is armed during fallible post-bind setup and disarmed
+    /// after ownership reaches [`PrivateBusListener`].
+    struct BoundPathRollback {
+        path: PathBuf,
+        identity: PathIdentity,
+        armed: bool,
+    }
+
+    impl BoundPathRollback {
+        fn capture(path: &Path) -> io::Result<Self> {
+            let metadata = std::fs::symlink_metadata(path)?;
+            if !metadata.file_type().is_socket() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "bound private bus path is not a socket",
+                ));
+            }
+
+            Ok(Self {
+                path: path.to_owned(),
+                identity: PathIdentity::from_metadata(&metadata),
+                armed: true,
+            })
+        }
+
+        fn disarm(&mut self) {
+            self.armed = false;
+        }
+    }
+
+    impl Drop for BoundPathRollback {
+        fn drop(&mut self) {
+            if !self.armed {
+                return;
+            }
+
+            let Ok(metadata) = std::fs::symlink_metadata(&self.path) else {
+                return;
+            };
+            if metadata.file_type().is_socket()
+                && PathIdentity::from_metadata(&metadata) == self.identity
+            {
+                let _ = std::fs::remove_file(&self.path);
+            }
+        }
+    }
+
     impl PrivateBusListener {
+        /// Create the system manager's private listener at
+        /// `/run/systemd/private`.
+        ///
+        /// The caller remains responsible for enforcing the C manager's
+        /// system-manager/PID-1 eligibility check.
+        pub fn bind_system_private(
+            manager_effective_uid: u32,
+        ) -> Result<Self, PrivateBusBindError> {
+            Self::bind_path(Path::new(SYSTEM_PRIVATE_BUS_PATH), manager_effective_uid)
+        }
+
+        /// Replace a stale filesystem node and create a private D-Bus listener.
+        ///
+        /// This mirrors the pathname lifecycle in `bus_init_private()`:
+        ///
+        /// * validate the `sockaddr_un` path before removing anything;
+        /// * ignore stale-path unlink errors and let `bind()` report conflicts;
+        /// * create the descriptor atomically nonblocking and close-on-exec;
+        /// * bind under umask 0077, yielding socket mode 0700;
+        /// * request Linux's largest supported listen backlog; and
+        /// * touch the socket after listening for inotify waiters.
+        ///
+        /// If a post-bind step fails, rollback removes only the same socket
+        /// inode. A successful listener deliberately leaves its path behind
+        /// when dropped, matching `bus_done_private()`; the next initialization
+        /// replaces that stale node.
+        pub fn bind_path(
+            path: &Path,
+            manager_effective_uid: u32,
+        ) -> Result<Self, PrivateBusBindError> {
+            let address = UnixAddr::new(path).map_err(PrivateBusBindError::InvalidAddress)?;
+
+            // C ignores unlink errors here. A remaining directory or
+            // permission failure is diagnosed precisely by bind().
+            let _ = std::fs::remove_file(path);
+
+            let fd = socket(
+                AddressFamily::Unix,
+                SockType::Stream,
+                SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
+                None,
+            )
+            .map_err(PrivateBusBindError::Socket)?;
+
+            {
+                let _umask = ScopedUmask::private_socket();
+                bind(fd.as_raw_fd(), &address).map_err(PrivateBusBindError::Bind)?;
+            }
+
+            let mut rollback =
+                BoundPathRollback::capture(path).map_err(PrivateBusBindError::PathMetadata)?;
+            listen(&fd, Backlog::MAXALLOWABLE).map_err(PrivateBusBindError::Listen)?;
+
+            // Generate a second inotify event for consumers that started
+            // waiting between bind() and listen(), as the C implementation
+            // does. Failure is intentionally non-fatal.
+            let _ = utimensat(
+                AT_FDCWD,
+                path,
+                &TimeSpec::UTIME_NOW,
+                &TimeSpec::UTIME_NOW,
+                UtimensatFlags::FollowSymlink,
+            );
+
+            let listener = UnixListener::from(fd);
+            let result = Self::from_bound_listener(listener, manager_effective_uid)
+                .map_err(PrivateBusBindError::Adoption)?;
+            rollback.disarm();
+            Ok(result)
+        }
+
         /// Adopt an already-bound listener without changing its filesystem
         /// pathname. The descriptor is made nonblocking before it can be
         /// exposed to an event loop.
@@ -329,11 +515,14 @@ mod imp {
 
     #[cfg(test)]
     mod tests {
+        use std::fs::File;
         use std::io::{Read, Write};
+        use std::os::unix::fs::{FileTypeExt, PermissionsExt};
         use std::os::unix::net::UnixStream;
         use std::path::PathBuf;
         use std::time::{SystemTime, UNIX_EPOCH};
 
+        use nix::fcntl::{FcntlArg, FdFlag, OFlag, fcntl};
         use nix::unistd::{getegid, geteuid, getpid};
 
         use super::*;
@@ -359,6 +548,96 @@ mod imp {
             )
             .unwrap();
             (path, listener)
+        }
+
+        #[test]
+        fn path_constructor_sets_private_mode_and_atomic_descriptor_flags() {
+            let path = socket_path("bind-flags");
+            let listener =
+                PrivateBusListener::bind_path(&path, geteuid().as_raw()).expect("bind listener");
+
+            let metadata = std::fs::symlink_metadata(&path).unwrap();
+            assert!(metadata.file_type().is_socket());
+            assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+
+            let status = fcntl(listener.listener_fd(), FcntlArg::F_GETFL).unwrap();
+            assert!(OFlag::from_bits_truncate(status).contains(OFlag::O_NONBLOCK));
+            let descriptor = fcntl(listener.listener_fd(), FcntlArg::F_GETFD).unwrap();
+            assert!(FdFlag::from_bits_truncate(descriptor).contains(FdFlag::FD_CLOEXEC));
+
+            drop(listener);
+            // `bus_done_private()` closes the descriptor but leaves the stale
+            // pathname for the next initialization to replace.
+            assert!(std::fs::symlink_metadata(&path).is_ok());
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn path_constructor_replaces_stale_file_and_live_listener_path() {
+            let path = socket_path("rebind");
+            std::fs::write(&path, b"stale").unwrap();
+            let mut old =
+                PrivateBusListener::bind_path(&path, geteuid().as_raw()).expect("first bind");
+            let mut replacement =
+                PrivateBusListener::bind_path(&path, geteuid().as_raw()).expect("replacement bind");
+
+            let client = UnixStream::connect(&path).unwrap();
+            let id = replacement.accept_one([0x31; 16]).unwrap();
+            assert!(replacement.connection(id).is_some());
+            assert!(matches!(
+                old.accept_one([0x32; 16]),
+                Err(PrivateBusAcceptError::Io(error))
+                    if error.kind() == io::ErrorKind::WouldBlock
+            ));
+
+            drop((client, old, replacement));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn invalid_socket_address_does_not_remove_the_existing_path() {
+            let directory = socket_path("long-address");
+            std::fs::create_dir(&directory).unwrap();
+            let path = directory.join("x".repeat(100));
+            std::fs::write(&path, b"keep").unwrap();
+
+            assert!(matches!(
+                PrivateBusListener::bind_path(&path, geteuid().as_raw()),
+                Err(PrivateBusBindError::InvalidAddress(_))
+            ));
+            assert_eq!(std::fs::read(&path).unwrap(), b"keep");
+
+            std::fs::remove_file(path).unwrap();
+            std::fs::remove_dir(directory).unwrap();
+        }
+
+        #[test]
+        fn armed_rollback_removes_only_the_socket_it_captured() {
+            let path = socket_path("rollback-own");
+            let socket = UnixListener::bind(&path).unwrap();
+            let rollback = BoundPathRollback::capture(&path).unwrap();
+            drop(rollback);
+            assert!(matches!(
+                std::fs::symlink_metadata(&path),
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+            ));
+            drop(socket);
+
+            let replacement_path = socket_path("rollback-replacement");
+            let socket = UnixListener::bind(&replacement_path).unwrap();
+            let rollback = BoundPathRollback::capture(&replacement_path).unwrap();
+            std::fs::remove_file(&replacement_path).unwrap();
+            let replacement = File::create(&replacement_path).unwrap();
+            drop(rollback);
+            assert!(
+                std::fs::symlink_metadata(&replacement_path)
+                    .unwrap()
+                    .file_type()
+                    .is_file()
+            );
+
+            drop((replacement, socket));
+            std::fs::remove_file(replacement_path).unwrap();
         }
 
         #[test]

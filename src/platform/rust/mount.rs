@@ -13,6 +13,7 @@ bitflags::bitflags! {
         const MS_NOSYMFOLLOW = 8388608;
         const MS_REMOUNT    = 32;
         const MS_BIND       = 4096;
+        const MS_REC        = 16384;
         const MS_PRIVATE    = 262144;
         const MS_SLAVE      = 524288;
         const MS_SHARED     = 1 << 20;
