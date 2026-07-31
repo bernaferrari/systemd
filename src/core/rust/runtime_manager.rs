@@ -1885,7 +1885,25 @@ impl RuntimeManager {
             eprintln!("systemd: socket activation: {socket_unit} is not listening");
             return Err(Errno::ENOTCONN);
         }
+        // `Socket.Service=` is parsed as a service-only reference. Keep the public activation
+        // boundary defensive as callers and tests can still construct UnitFileInfo directly.
+        if !service_name.ends_with(".service") {
+            eprintln!(
+                "systemd: socket activation: {socket_unit} is associated with non-service unit {service_name}"
+            );
+            return Err(Errno::EINVAL);
+        }
         self.load_unit(&service_name)?;
+        if self
+            .units
+            .get(&service_name)
+            .is_none_or(|unit| unit.unit_type != UnitType::Service)
+        {
+            eprintln!(
+                "systemd: socket activation: {socket_unit} associated unit {service_name} did not load as a service"
+            );
+            return Err(Errno::EINVAL);
+        }
         self.service_activation_sockets
             .entry(service_name.clone())
             .or_default()

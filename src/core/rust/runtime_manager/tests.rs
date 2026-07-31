@@ -718,6 +718,71 @@ fn test_parse_socket_service_override() {
 }
 
 #[test]
+fn test_parse_socket_service_override_ignores_non_service_unit_like_c() {
+    let _test_lock = test_env_lock();
+    let dir = test_temp_dir("test-systemd-socket-invalid-service");
+    fs::create_dir_all(&dir).unwrap();
+    let socket_path = dir.join("override.socket");
+    fs::write(
+        &socket_path,
+        "[Socket]\nService=first.service\nService=bar.target\n",
+    )
+    .unwrap();
+
+    let info = parse_unit_file(&socket_path).unwrap().unwrap();
+    assert_eq!(info.service_override.as_deref(), Some("first.service"));
+    assert_eq!(info.socket.service.as_deref(), Some("first.service"));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_socket_runtime_rejects_programmatic_non_service_association_before_listening() {
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    let socket_name = "guarded.socket";
+
+    let mut unit = Unit::new(mgr.manager_record.clone(), UnitType::Socket);
+    unit.id = Some(socket_name.to_string());
+    unit.load_state = LoadState::Loaded;
+    mgr.units.insert(socket_name.to_string(), unit);
+
+    let mut info = UnitFileInfo::new(socket_name, PathBuf::from(socket_name));
+    info.socket.listen_stream.push("127.0.0.1:0".to_string());
+    // UnitFileInfo is public, so the runtime must not rely only on parser validation.
+    info.socket.service = Some("wrong.target".to_string());
+    mgr.unit_files.insert(socket_name.to_string(), info);
+
+    assert!(mgr.execute_socket_job(socket_name, TxJobType::Start));
+    assert_eq!(
+        mgr.units.get(socket_name).map(|unit| unit.active_state),
+        Some(ActiveState::Failed)
+    );
+    assert!(mgr.socket_mgr.get(socket_name).is_none());
+    assert!(mgr.service_activation_sockets.is_empty());
+}
+
+#[test]
+fn test_socket_activation_rejects_programmatic_non_service_association() {
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    let socket_name = "activation-guard.socket";
+    mgr.socket_mgr
+        .register_socket(socket_name, "127.0.0.1:0")
+        .unwrap();
+
+    let mut info = UnitFileInfo::new(socket_name, PathBuf::from(socket_name));
+    info.socket.service = Some("wrong.target".to_string());
+    mgr.unit_files.insert(socket_name.to_string(), info);
+
+    assert_eq!(
+        mgr.spawn_service_for_socket(socket_name),
+        Err(Errno::EINVAL)
+    );
+    assert!(mgr.service_activation_sockets.is_empty());
+}
+
+#[test]
 fn test_parse_socket_directives_comprehensive() {
     let _test_lock = test_env_lock();
     let dir = test_temp_dir("test-systemd-socket-directives-comprehensive");

@@ -950,8 +950,17 @@ pub(super) fn parse_unit_content_into(
                     info.socket.bind_to_device = parse_optional_string(value);
                 }
                 ("socket", "Service") => {
-                    info.service_override = parse_optional_string(value);
-                    info.socket.service = parse_optional_string(value);
+                    // C's config_parse_socket_service() accepts only service units.  Keeping an
+                    // arbitrary unit name here used to let the bounded activation layer bind a
+                    // listener and later attempt to start, for example, a target. Treat an
+                    // invalid value exactly like C's ignored directive: crucially, leave an
+                    // earlier valid Service= directive intact rather than resetting it.
+                    if let Some(service) =
+                        parse_optional_string(value).filter(|service| service.ends_with(".service"))
+                    {
+                        info.service_override = Some(service.clone());
+                        info.socket.service = Some(service);
+                    }
                 }
                 ("socket", "RemoveOnStop") => {
                     info.socket.remove_on_stop = parse_optional_bool(value);

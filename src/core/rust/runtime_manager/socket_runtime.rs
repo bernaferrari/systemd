@@ -78,10 +78,31 @@ impl RuntimeManager {
             .clone()
             .or_else(|| info.service_override.clone())
             .unwrap_or_else(|| self.socket_mgr.associated_service(unit_name));
+        // The parser mirrors C and rejects invalid Socket.Service= values, but retain this
+        // boundary check for programmatic UnitFileInfo construction.  Do it before binding so a
+        // malformed association cannot make a live listener visible.
+        if !service_name.ends_with(".service") {
+            self.fail_socket_start(
+                unit_name,
+                &format!("associated unit {service_name} is not a service"),
+            );
+            return;
+        }
         if self.load_unit(&service_name).is_err() {
             self.fail_socket_start(
                 unit_name,
                 &format!("associated service {service_name} could not be loaded"),
+            );
+            return;
+        }
+        if self
+            .units
+            .get(&service_name)
+            .is_none_or(|unit| unit.unit_type != UnitType::Service)
+        {
+            self.fail_socket_start(
+                unit_name,
+                &format!("associated unit {service_name} did not load as a service"),
             );
             return;
         }

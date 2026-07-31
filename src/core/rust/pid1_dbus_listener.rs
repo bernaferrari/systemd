@@ -17,14 +17,16 @@
 #[cfg(target_os = "linux")]
 mod imp {
     use std::collections::BTreeMap;
-    use std::io;
+    use std::io::{self, Read, Write};
     use std::os::fd::{AsFd, BorrowedFd};
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::rc::Rc;
 
     use nix::sys::socket::{getsockopt, sockopt};
 
-    use crate::pid1_dbus_auth::{PrivateBusServerAuth, ServerAuthError};
+    use crate::pid1_dbus_auth::{
+        AuthenticatedPrivateBusStream, PrivateBusServerAuth, ServerAuthError, ServerAuthProgress,
+    };
     use crate::pid1_manager_commands::AuthenticatedPeer;
 
     /// Matches `CONNECTIONS_MAX` in `src/core/dbus.c`.
@@ -43,15 +45,33 @@ mod imp {
         ConnectionIdExhausted,
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PrivateBusAuthIoProgress {
+        NeedsRead,
+        NeedsWrite,
+        Authenticated,
+        PeerClosed,
+    }
+
+    #[derive(Debug)]
+    pub enum PrivateBusAuthIoError {
+        Io(io::Error),
+        Authentication(ServerAuthError),
+        IncompleteHandoff,
+    }
+
     /// One accepted stream whose identity came only from Linux `SO_PEERCRED`.
     #[derive(Debug)]
     pub struct AdmittedPrivateBusConnection {
         stream: UnixStream,
         peer: AuthenticatedPeer,
-        auth: PrivateBusServerAuth,
+        auth: Option<PrivateBusServerAuth>,
+        authenticated: Option<AuthenticatedPrivateBusStream>,
     }
 
     impl AdmittedPrivateBusConnection {
+        const AUTH_READ_CHUNK: usize = 8 * 1024;
+
         pub const fn peer(&self) -> AuthenticatedPeer {
             self.peer
         }
@@ -60,12 +80,111 @@ mod imp {
             &self.stream
         }
 
-        pub fn auth(&self) -> &PrivateBusServerAuth {
-            &self.auth
+        pub fn auth(&self) -> Option<&PrivateBusServerAuth> {
+            self.auth.as_ref()
         }
 
-        pub fn auth_mut(&mut self) -> &mut PrivateBusServerAuth {
-            &mut self.auth
+        pub fn authenticated(&self) -> Option<&AuthenticatedPrivateBusStream> {
+            self.authenticated.as_ref()
+        }
+
+        /// Perform at most one successful socket read or write for the D-Bus
+        /// authentication phase.
+        ///
+        /// This is deliberately an event-loop adapter, not a blocking helper:
+        /// `WouldBlock` is converted to the current read/write interest,
+        /// partial writes are retained by [`PrivateBusServerAuth`], and each
+        /// read is capped by both a small stack buffer and the 64 KiB
+        /// authentication limit. On successful `BEGIN`, kernel-derived sender
+        /// identity and pipelined binary bytes are moved together into
+        /// [`AuthenticatedPrivateBusStream`].
+        pub fn drive_authentication(
+            &mut self,
+        ) -> Result<PrivateBusAuthIoProgress, PrivateBusAuthIoError> {
+            let Some(auth) = self.auth.as_mut() else {
+                return if self.authenticated.is_some() {
+                    Ok(PrivateBusAuthIoProgress::Authenticated)
+                } else {
+                    Err(PrivateBusAuthIoError::IncompleteHandoff)
+                };
+            };
+
+            if !auth.pending_output().is_empty() {
+                let mut stream = &self.stream;
+                match stream.write(auth.pending_output()) {
+                    Ok(0) => return Ok(PrivateBusAuthIoProgress::PeerClosed),
+                    Ok(written) => {
+                        auth.consume_output(written)
+                            .map_err(PrivateBusAuthIoError::Authentication)?;
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        return Ok(PrivateBusAuthIoProgress::NeedsWrite);
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                        return Ok(PrivateBusAuthIoProgress::NeedsWrite);
+                    }
+                    Err(error) => return Err(PrivateBusAuthIoError::Io(error)),
+                }
+            } else {
+                let capacity = auth.remaining_input_capacity();
+                if capacity == 0 {
+                    return Err(PrivateBusAuthIoError::Authentication(
+                        ServerAuthError::InputTooLarge,
+                    ));
+                }
+
+                let mut bytes = [0_u8; Self::AUTH_READ_CHUNK];
+                let mut stream = &self.stream;
+                match stream.read(&mut bytes[..capacity.min(Self::AUTH_READ_CHUNK)]) {
+                    Ok(0) => return Ok(PrivateBusAuthIoProgress::PeerClosed),
+                    Ok(read) => {
+                        auth.receive(&bytes[..read])
+                            .map_err(PrivateBusAuthIoError::Authentication)?;
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        return Ok(PrivateBusAuthIoProgress::NeedsRead);
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                        return Ok(PrivateBusAuthIoProgress::NeedsRead);
+                    }
+                    Err(error) => return Err(PrivateBusAuthIoError::Io(error)),
+                }
+            }
+
+            self.finish_authentication()
+        }
+
+        fn finish_authentication(
+            &mut self,
+        ) -> Result<PrivateBusAuthIoProgress, PrivateBusAuthIoError> {
+            let Some(auth) = self.auth.as_ref() else {
+                return Ok(PrivateBusAuthIoProgress::Authenticated);
+            };
+            if auth.progress() != ServerAuthProgress::Authenticated {
+                return Ok(if auth.pending_output().is_empty() {
+                    PrivateBusAuthIoProgress::NeedsRead
+                } else {
+                    PrivateBusAuthIoProgress::NeedsWrite
+                });
+            }
+            if !auth.pending_output().is_empty() {
+                return Ok(PrivateBusAuthIoProgress::NeedsWrite);
+            }
+
+            let auth = self
+                .auth
+                .take()
+                .ok_or(PrivateBusAuthIoError::IncompleteHandoff)?;
+            match auth.into_authenticated() {
+                Ok(authenticated) => {
+                    self.authenticated = Some(authenticated);
+                    Ok(PrivateBusAuthIoProgress::Authenticated)
+                }
+                Err(auth) => {
+                    self.auth = Some(auth);
+                    Err(PrivateBusAuthIoError::IncompleteHandoff)
+                }
+            }
         }
     }
 
@@ -183,7 +302,12 @@ mod imp {
                 .next_connection_id
                 .checked_add(1)
                 .ok_or(PrivateBusAcceptError::ConnectionIdExhausted)?;
-            let connection = AdmittedPrivateBusConnection { stream, peer, auth };
+            let connection = AdmittedPrivateBusConnection {
+                stream,
+                peer,
+                auth: Some(auth),
+                authenticated: None,
+            };
             debug_assert!(self.connections.insert(id, connection).is_none());
             Ok(id)
         }
@@ -205,6 +329,7 @@ mod imp {
 
     #[cfg(test)]
     mod tests {
+        use std::io::{Read, Write};
         use std::os::unix::net::UnixStream;
         use std::path::PathBuf;
         use std::time::{SystemTime, UNIX_EPOCH};
@@ -247,7 +372,8 @@ mod imp {
             assert_eq!(connection.peer().uid(), geteuid().as_raw());
             assert_eq!(connection.peer().gid(), getegid().as_raw());
             assert!(connection.stream().peer_addr().is_ok());
-            assert_eq!(connection.auth().pending_output(), b"");
+            assert_eq!(connection.auth().unwrap().pending_output(), b"");
+            assert!(connection.authenticated().is_none());
 
             drop(client);
             drop(listener);
@@ -288,6 +414,111 @@ mod imp {
             assert_eq!(listener.connection_count(), 0);
 
             drop(client);
+            drop(listener);
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn nonblocking_auth_driver_preserves_identity_and_pipelined_wire_bytes() {
+            let (path, mut listener) = listener_with_limit("auth-driver", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            let id = listener.accept_one([0x5a; 16]).unwrap();
+
+            assert_eq!(
+                listener
+                    .connection_mut(id)
+                    .unwrap()
+                    .drive_authentication()
+                    .unwrap(),
+                PrivateBusAuthIoProgress::NeedsRead
+            );
+
+            client.write_all(b"\0AUTH EXTERNAL\r\n").unwrap();
+            assert_eq!(
+                listener
+                    .connection_mut(id)
+                    .unwrap()
+                    .drive_authentication()
+                    .unwrap(),
+                PrivateBusAuthIoProgress::NeedsWrite
+            );
+            assert_eq!(
+                listener
+                    .connection_mut(id)
+                    .unwrap()
+                    .drive_authentication()
+                    .unwrap(),
+                PrivateBusAuthIoProgress::NeedsRead
+            );
+            let mut challenge = [0_u8; 6];
+            client.read_exact(&mut challenge).unwrap();
+            assert_eq!(&challenge, b"DATA\r\n");
+
+            let token = geteuid()
+                .as_raw()
+                .to_string()
+                .into_bytes()
+                .into_iter()
+                .flat_map(|byte| {
+                    const HEX: &[u8; 16] = b"0123456789abcdef";
+                    [HEX[usize::from(byte >> 4)], HEX[usize::from(byte & 0xf)]]
+                })
+                .collect::<Vec<_>>();
+            let mut reply = b"DATA ".to_vec();
+            reply.extend_from_slice(&token);
+            reply.extend_from_slice(b"\r\nBEGIN\r\nbinary");
+            client.write_all(&reply).unwrap();
+
+            assert_eq!(
+                listener
+                    .connection_mut(id)
+                    .unwrap()
+                    .drive_authentication()
+                    .unwrap(),
+                PrivateBusAuthIoProgress::NeedsWrite
+            );
+            assert_eq!(
+                listener
+                    .connection_mut(id)
+                    .unwrap()
+                    .drive_authentication()
+                    .unwrap(),
+                PrivateBusAuthIoProgress::Authenticated
+            );
+
+            let mut ok = [0_u8; 37];
+            client.read_exact(&mut ok).unwrap();
+            assert_eq!(&ok[..3], b"OK ");
+            assert_eq!(&ok[35..], b"\r\n");
+
+            let connection = listener.connection(id).unwrap();
+            assert!(connection.auth().is_none());
+            let authenticated = connection.authenticated().unwrap();
+            assert_eq!(authenticated.sender().peer(), connection.peer());
+            assert_eq!(authenticated.buffered(), b"binary");
+
+            drop(client);
+            drop(listener);
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn auth_driver_reports_peer_close_without_losing_connection_ownership() {
+            let (path, mut listener) = listener_with_limit("auth-eof", 1);
+            let client = UnixStream::connect(&path).unwrap();
+            let id = listener.accept_one([0x5a; 16]).unwrap();
+            drop(client);
+
+            assert_eq!(
+                listener
+                    .connection_mut(id)
+                    .unwrap()
+                    .drive_authentication()
+                    .unwrap(),
+                PrivateBusAuthIoProgress::PeerClosed
+            );
+            assert!(listener.connection(id).is_some());
+
             drop(listener);
             std::fs::remove_file(path).unwrap();
         }
