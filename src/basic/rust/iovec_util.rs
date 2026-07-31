@@ -19,6 +19,13 @@ pub struct IoVec {
     pub iov_len: usize,
 }
 
+/// `malloc(3)` has no pointer or lifetime preconditions; allocation ownership
+/// is transferred to the caller of the C ABI wrapper that receives its result.
+fn c_malloc(size: usize) -> *mut c_void {
+    // SAFETY: malloc accepts every usize byte count.
+    unsafe { libc::malloc(size) }
+}
+
 /// A Rust-owned byte vector with safe iovec-style operations.
 ///
 /// This type deliberately does not expose a freely copyable raw `IoVec`:
@@ -147,14 +154,13 @@ fn memcmp_bytes(a: &[u8], b: &[u8]) -> i32 {
 
 /// Free the owned C allocation described by an iovec and clear the descriptor.
 ///
-/// # Safety
-/// If non-null, `iovec.iov_base` must be uniquely owned and have originated
-/// from the C allocator, so that passing it to `free(3)` exactly once is
-/// valid. Callers must not retain aliases to the allocation after this call.
-unsafe fn free_iov_base(iovec: &mut IoVec) {
+/// This module-private core is called only after its C ABI adapters establish
+/// that any non-null payload is uniquely C-allocator-owned. It releases that
+/// payload exactly once and always restores the canonical empty descriptor.
+fn free_iov_base(iovec: &mut IoVec) {
     if !iovec.iov_base.is_null() {
-        // SAFETY: owned iovec payloads follow the C API contract and are
-        // allocated by malloc/calloc/strdup or `rs_iovec_memdup`.
+        // SAFETY: callers are the reviewed C ABI ownership adapters; their
+        // contract guarantees malloc/calloc/strdup-style provenance here.
         unsafe { libc::free(iovec.iov_base) };
     }
     iovec.iov_base = ptr::null_mut();
@@ -176,9 +182,9 @@ pub unsafe extern "C" fn rs_iovec_alloc(n: usize, ret: *mut IoVec) -> i32 {
         return -libc::EINVAL;
     }
 
-    // SAFETY: malloc accepts every usize byte count. Allocating one byte for
-    // an empty payload preserves the non-null C API contract.
-    let allocation = unsafe { libc::malloc(n.max(1)) };
+    // Allocating one byte for an empty payload preserves the non-null C API
+    // contract.
+    let allocation = c_malloc(n.max(1));
     if allocation.is_null() {
         return -libc::ENOMEM;
     }
@@ -247,8 +253,7 @@ pub unsafe extern "C" fn rs_iovec_is_valid(iovec: *const IoVec) -> bool {
 pub unsafe extern "C" fn rs_iovec_done(iovec: *mut IoVec) {
     // SAFETY: required by this C ABI entry point's contract.
     if let Some(iovec) = unsafe { iovec.as_mut() } {
-        // SAFETY: required by this C ABI entry point's contract.
-        unsafe { free_iov_base(iovec) };
+        free_iov_base(iovec);
     }
 }
 
@@ -266,8 +271,7 @@ pub unsafe extern "C" fn rs_iovec_done_many_and_free(iovec: *mut IoVec, n: usize
 
     // SAFETY: required by this C ABI entry point's contract.
     for entry in unsafe { slice::from_raw_parts_mut(iovec, n) } {
-        // SAFETY: each entry's ownership is covered by the C ABI contract.
-        unsafe { free_iov_base(entry) };
+        free_iov_base(entry);
     }
 
     // SAFETY: the public C API takes ownership of an array allocated by the C
@@ -374,40 +378,37 @@ pub unsafe extern "C" fn rs_iovec_memdup(source: *const IoVec, ret: *mut IoVec) 
         return ptr::null_mut();
     }
 
-    if source.is_null() {
-        // SAFETY: required by this C ABI entry point's contract. This write
-        // happens only after every read through `source` is complete.
-        unsafe { ret.write(IoVec::default()) };
+    // Capture the descriptor before borrowing the output. This preserves the
+    // C API's `source == ret` behavior while allowing the final publication to
+    // use an ordinary mutable Rust reference.
+    let source = if source.is_null() {
+        None
+    } else {
+        // SAFETY: required by this C ABI entry point's contract.
+        Some(unsafe { *source })
+    };
+    // SAFETY: `ret` was checked non-null above and remains writable under the
+    // entry-point contract after all aliased source reads have completed.
+    let output = unsafe { &mut *ret };
+    let Some(source) = source.filter(|source| source.iov_len > 0 && !source.iov_base.is_null())
+    else {
+        *output = IoVec::default();
         return ret;
-    }
+    };
 
-    // SAFETY: required by this C ABI entry point's contract. Keep these raw
-    // values rather than borrowing `ret`, because `source` may alias it.
-    let (source_base, source_length) = unsafe { ((*source).iov_base, (*source).iov_len) };
-    if source_length == 0 || source_base.is_null() {
-        // SAFETY: all reads through a potentially aliased `source` completed
-        // above, so writing the result now matches C's source==ret behavior.
-        unsafe { ret.write(IoVec::default()) };
-        return ret;
-    }
-
-    // SAFETY: the non-zero byte count is supplied directly to the C allocator
-    // so the returned buffer can be released by either Rust or C callers.
-    let copy = unsafe { libc::malloc(source_length) }.cast::<u8>();
+    // The non-zero byte count is supplied directly to the C allocator so the
+    // returned buffer can be released by either Rust or C callers.
+    let copy = c_malloc(source.iov_len).cast::<u8>();
     if copy.is_null() {
         return ptr::null_mut();
     }
 
     // SAFETY: the source and destination ranges are valid and non-overlapping
     // by this C ABI entry point's contract and the fresh allocation above.
-    unsafe { ptr::copy_nonoverlapping(source_base.cast::<u8>(), copy, source_length) };
-    // SAFETY: all reads through a potentially aliased `source` completed
-    // before this write, and `ret` is writable by the C ABI contract.
-    unsafe {
-        ret.write(IoVec {
-            iov_base: copy.cast::<c_void>(),
-            iov_len: source_length,
-        })
+    unsafe { ptr::copy_nonoverlapping(source.iov_base.cast::<u8>(), copy, source.iov_len) };
+    *output = IoVec {
+        iov_base: copy.cast::<c_void>(),
+        iov_len: source.iov_len,
     };
     ret
 }
@@ -440,11 +441,12 @@ pub unsafe extern "C" fn rs_iovec_done_and_memdup(iovec: *mut IoVec, source: *co
         return -libc::ENOMEM;
     }
 
-    // SAFETY: required by this C ABI entry point's ownership contract.
-    unsafe { free_iov_base(&mut *iovec) };
-    // SAFETY: the destination is writable and no references to its previous
-    // payload remain in this function.
-    unsafe { iovec.write(copy) };
+    // SAFETY: required by this C ABI entry point's ownership contract; the
+    // earlier helper calls have finished reading `source` before this mutable
+    // destination borrow.
+    let iovec = unsafe { iovec.as_mut().unwrap_unchecked() };
+    free_iov_base(iovec);
+    *iovec = copy;
     1
 }
 
@@ -454,8 +456,7 @@ mod tests {
     use std::ffi::CString;
 
     fn alloc_test_bytes(bytes: &[u8]) -> *mut c_void {
-        // SAFETY: malloc is called with a finite allocation size.
-        let ptr = unsafe { libc::malloc(bytes.len().max(1)) }.cast::<u8>();
+        let ptr = c_malloc(bytes.len().max(1)).cast::<u8>();
         assert!(!ptr.is_null());
         // SAFETY: ptr owns at least bytes.len() bytes and the source slice is disjoint.
         unsafe { ptr.copy_from_nonoverlapping(bytes.as_ptr(), bytes.len()) };
@@ -468,8 +469,7 @@ mod tests {
             .max(1)
             .checked_mul(std::mem::size_of::<IoVec>())
             .unwrap();
-        // SAFETY: malloc is called with the checked byte size for the array.
-        let ptr = unsafe { libc::malloc(bytes) }.cast::<IoVec>();
+        let ptr = c_malloc(bytes).cast::<IoVec>();
         assert!(!ptr.is_null());
         // SAFETY: ptr owns storage for entries.len() IoVec values and the source is disjoint.
         unsafe { ptr.copy_from_nonoverlapping(entries.as_ptr(), entries.len()) };

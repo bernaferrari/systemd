@@ -2679,11 +2679,17 @@ def strv_extend_and_filter_boundary_is_reviewed() -> bool:
         and "fn cstr_has_prefix(entry: &CStr, prefix: &[u8]) -> bool" in source_text
         and "entry.to_bytes().starts_with(prefix)" in source_text
         and "return unsafe { rs_strv_copy_n(l, SIZE_MAX) };" in source_text
-        and "let copied = calloc(slots" in source_text
-        and "free((*copied.add(index)).cast::<c_void>());" in source_text
+        and (
+            "let copied = calloc(slots" in source_text
+            or "CStrvAllocation::malloc(slots)" in source_text
+        )
+        and (
+            "free((*copied.add(index)).cast::<c_void>());" in source_text
+            or "copied.free_entries_and_storage();" in source_text
+        )
         and "fn strv_contains_cstr(l: *const *mut c_char, needle: &CStr) -> bool" in source_text
         and "p >= SIZE_MAX - q" in source_text
-        and "reallocarray(" in source_text
+        and ("reallocarray(" in source_text or "destination.grow_for(slots)" in source_text)
         and "for index in 0..added" in source_text
         and "*extended.add(p) = std::ptr::null_mut();" in source_text
         and '#include "rust/strv.h"' in test

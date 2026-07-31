@@ -229,6 +229,30 @@ impl IfAddrMsg {
             ifa_index: ifindex,
         }
     }
+
+    fn to_bytes(self) -> [u8; 8] {
+        [
+            self.ifa_family,
+            self.ifa_prefixlen,
+            self.ifa_flags,
+            self.ifa_scope,
+            self.ifa_index.to_ne_bytes()[0],
+            self.ifa_index.to_ne_bytes()[1],
+            self.ifa_index.to_ne_bytes()[2],
+            self.ifa_index.to_ne_bytes()[3],
+        ]
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let index = i32::from_ne_bytes(bytes.get(4..8)?.try_into().ok()?);
+        Some(Self {
+            ifa_family: *bytes.first()?,
+            ifa_prefixlen: *bytes.get(1)?,
+            ifa_flags: *bytes.get(2)?,
+            ifa_scope: *bytes.get(3)?,
+            ifa_index: index,
+        })
+    }
 }
 
 /// rtnetlink attribute header (4 bytes).
@@ -246,6 +270,22 @@ impl RtAttr {
             rta_len: mem::size_of::<Self>() as u16 + data_len,
             rta_type: attr_type,
         }
+    }
+
+    fn to_bytes(self) -> [u8; 4] {
+        [
+            self.rta_len.to_ne_bytes()[0],
+            self.rta_len.to_ne_bytes()[1],
+            self.rta_type.to_ne_bytes()[0],
+            self.rta_type.to_ne_bytes()[1],
+        ]
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        Some(Self {
+            rta_len: u16::from_ne_bytes(bytes.get(0..2)?.try_into().ok()?),
+            rta_type: u16::from_ne_bytes(bytes.get(2..4)?.try_into().ok()?),
+        })
     }
 }
 
@@ -266,19 +306,13 @@ fn open_rtnetlink() -> Result<i32> {
 /// Returns the kernel error code from the ACK (0 on success).
 fn rtnl_call(fd: i32, msg_type: u16, flags: u16, payload: &[u8]) -> Result<i32> {
     let hdr = NlMsgHdr::new(msg_type, flags, 1, 0, payload.len() as u32);
-    // SAFETY: `hdr` is a live repr(C) header, and the byte slice covers exactly its size.
-    let hdr_bytes = unsafe {
-        std::slice::from_raw_parts(
-            &hdr as *const NlMsgHdr as *const u8,
-            mem::size_of::<NlMsgHdr>(),
-        )
-    };
+    let hdr_bytes = hdr.to_bytes();
 
     let kernel_addr = SockAddrNl::new(0, 0);
 
     // Send header + payload
     let mut buf = Vec::with_capacity(hdr_bytes.len() + payload.len());
-    buf.extend_from_slice(hdr_bytes);
+    buf.extend_from_slice(&hdr_bytes);
     buf.extend_from_slice(payload);
     netlink_send(fd, &buf, &kernel_addr).map_err(LoopbackSetupError::NetlinkSend)?;
 
@@ -289,9 +323,8 @@ fn rtnl_call(fd: i32, msg_type: u16, flags: u16, payload: &[u8]) -> Result<i32> 
         return Err(LoopbackSetupError::TruncatedMessage);
     }
 
-    // SAFETY: the preceding length check guarantees a complete header; unaligned access handles netlink alignment.
-    let resp_hdr: NlMsgHdr =
-        unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };
+    let resp_hdr =
+        NlMsgHdr::from_bytes(&recv_buf[..n]).ok_or(LoopbackSetupError::TruncatedMessage)?;
 
     match resp_hdr.type_ {
         NLMSG_ERROR => {
@@ -453,17 +486,11 @@ fn check_loopback(fd: i32) -> Result<bool> {
         0,
         payload.len() as u32,
     );
-    // SAFETY: `hdr` is a live repr(C) header, and the byte slice covers exactly its size.
-    let hdr_bytes = unsafe {
-        std::slice::from_raw_parts(
-            &hdr as *const NlMsgHdr as *const u8,
-            mem::size_of::<NlMsgHdr>(),
-        )
-    };
+    let hdr_bytes = hdr.to_bytes();
 
     let kernel_addr = SockAddrNl::new(0, 0);
     let mut buf = Vec::with_capacity(hdr_bytes.len() + payload.len());
-    buf.extend_from_slice(hdr_bytes);
+    buf.extend_from_slice(&hdr_bytes);
     buf.extend_from_slice(&payload);
     netlink_send(fd, &buf, &kernel_addr).map_err(LoopbackSetupError::NetlinkSend)?;
 
@@ -474,9 +501,8 @@ fn check_loopback(fd: i32) -> Result<bool> {
         return Err(LoopbackSetupError::TruncatedMessage);
     }
 
-    // SAFETY: the preceding length check guarantees a complete header; unaligned access handles netlink alignment.
-    let resp_hdr: NlMsgHdr =
-        unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };
+    let resp_hdr =
+        NlMsgHdr::from_bytes(&recv_buf[..n]).ok_or(LoopbackSetupError::TruncatedMessage)?;
 
     // Check for error in ACK
     if resp_hdr.type_ == NLMSG_ERROR {
@@ -497,15 +523,9 @@ fn check_loopback(fd: i32) -> Result<bool> {
 
     // Re-issue without ACK to get actual interface data
     let hdr2 = NlMsgHdr::new(RTM_GETLINK, NLM_F_REQUEST, 2, 0, payload.len() as u32);
-    // SAFETY: `hdr2` is a live repr(C) header, and the byte slice covers exactly its size.
-    let hdr2_bytes = unsafe {
-        std::slice::from_raw_parts(
-            &hdr2 as *const NlMsgHdr as *const u8,
-            mem::size_of::<NlMsgHdr>(),
-        )
-    };
+    let hdr2_bytes = hdr2.to_bytes();
     let mut buf2 = Vec::with_capacity(hdr2_bytes.len() + payload.len());
-    buf2.extend_from_slice(hdr2_bytes);
+    buf2.extend_from_slice(&hdr2_bytes);
     buf2.extend_from_slice(&payload);
     netlink_send(fd, &buf2, &kernel_addr).map_err(LoopbackSetupError::NetlinkSend)?;
 
@@ -514,9 +534,8 @@ fn check_loopback(fd: i32) -> Result<bool> {
         return Err(LoopbackSetupError::TruncatedMessage);
     }
 
-    // SAFETY: the preceding length check guarantees a complete header; unaligned access handles netlink alignment.
-    let resp_hdr2: NlMsgHdr =
-        unsafe { std::ptr::read_unaligned(recv_buf.as_ptr() as *const NlMsgHdr) };
+    let resp_hdr2 =
+        NlMsgHdr::from_bytes(&recv_buf[..n2]).ok_or(LoopbackSetupError::TruncatedMessage)?;
     if resp_hdr2.type_ != RTM_GETLINK {
         return Err(LoopbackSetupError::UnexpectedMessage(resp_hdr2.type_));
     }

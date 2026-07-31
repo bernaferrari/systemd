@@ -11,17 +11,59 @@ use libc::c_char;
 
 use crate::path_util::rs_filename_part_is_valid;
 
+/// Calls `operation` with the byte contents of two valid C strings.
+///
+/// The raw pointers never escape this adapter, so callers can keep scanning
+/// logic byte-oriented after validating the FFI boundary once. When requested,
+/// null pointers are represented as empty byte strings.
+fn with_c_string_pair<T>(
+    left: *const c_char,
+    right: *const c_char,
+    nulls_are_empty: bool,
+    operation: impl FnOnce(&[u8], &[u8]) -> T,
+) -> Option<T> {
+    if !nulls_are_empty && (left.is_null() || right.is_null()) {
+        return None;
+    }
+
+    // SAFETY: callers use this adapter only under their C-string contracts.
+    let left = if left.is_null() {
+        &[]
+    } else {
+        // SAFETY: the non-null pointer is covered by this adapter's C-string contract.
+        unsafe { CStr::from_ptr(left) }.to_bytes()
+    };
+    // SAFETY: callers use this adapter only under their C-string contracts.
+    let right = if right.is_null() {
+        &[]
+    } else {
+        // SAFETY: the non-null pointer is covered by this adapter's C-string contract.
+        unsafe { CStr::from_ptr(right) }.to_bytes()
+    };
+    Some(operation(left, right))
+}
+
+fn strrstr_offset(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(haystack.len());
+    }
+
+    let mut last = None;
+    for offset in 0..=haystack.len().saturating_sub(needle.len()) {
+        if haystack[offset..].starts_with(needle) {
+            last = Some(offset);
+        }
+    }
+    last
+}
+
 /// # Safety
 /// `s` and `charset` must designate readable NUL-terminated byte strings.
 pub unsafe fn rs_in_charset(s: *const c_char, charset: *const c_char) -> bool {
-    if s.is_null() || charset.is_null() {
-        return false;
-    }
-    // SAFETY: both pointers are valid C strings by the function contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
-    // SAFETY: both pointers are valid C strings by the function contract.
-    let charset = unsafe { CStr::from_ptr(charset) }.to_bytes();
-    bytes.iter().all(|byte| charset.contains(byte))
+    with_c_string_pair(s, charset, false, |bytes, charset| {
+        bytes.iter().all(|byte| charset.contains(byte))
+    })
+    .unwrap_or(false)
 }
 
 /// Rust representation of `char_is_cc()`'s explicitly unsigned comparison.
@@ -44,17 +86,17 @@ pub unsafe fn rs_strshorten(s: *mut c_char, l: usize) -> *mut c_char {
         return s;
     }
 
-    for index in 0..=l {
-        // SAFETY: the caller guarantees that each byte through the first NUL,
-        // or all `l + 1` bytes when no NUL occurs, is readable.
-        if unsafe { *s.add(index) } == 0 {
+    // SAFETY: the caller guarantees that the bounded byte range is readable,
+    // and that its last byte is writable if no earlier NUL is found.
+    unsafe {
+        if std::slice::from_raw_parts(s.cast_const(), l + 1).contains(&0) {
             return s;
         }
-    }
 
-    // SAFETY: no earlier NUL was found, so the contract guarantees byte `l`
-    // is writable. This is exactly the byte C's `strshorten()` overwrites.
-    unsafe { *s.add(l) = 0 };
+        // No earlier NUL was found, so the contract guarantees byte `l` is
+        // writable. This is exactly the byte C's `strshorten()` overwrites.
+        *s.add(l) = 0;
+    }
     s
 }
 
@@ -62,49 +104,27 @@ pub unsafe fn rs_strshorten(s: *mut c_char, l: usize) -> *mut c_char {
 /// `haystack` and `needle` must be readable NUL-terminated byte strings when
 /// non-null. The returned pointer aliases `haystack`.
 pub unsafe fn rs_strrstr_internal(haystack: *const c_char, needle: *const c_char) -> *mut c_char {
-    if haystack.is_null() || needle.is_null() {
+    let Some(offset) = with_c_string_pair(haystack, needle, false, strrstr_offset).flatten() else {
         return std::ptr::null_mut();
-    }
-    // SAFETY: both pointers are valid C strings by the function contract.
-    let haystack_bytes = unsafe { CStr::from_ptr(haystack) }.to_bytes();
-    // SAFETY: both pointers are valid C strings by the function contract.
-    let needle_bytes = unsafe { CStr::from_ptr(needle) }.to_bytes();
-    if needle_bytes.is_empty() {
-        // SAFETY: the NUL terminator lies immediately after `haystack_bytes`.
-        return unsafe { (haystack as *mut c_char).add(haystack_bytes.len()) };
-    }
+    };
 
-    let mut last = std::ptr::null_mut();
-    for offset in 0..=haystack_bytes.len().saturating_sub(needle_bytes.len()) {
-        if haystack_bytes[offset..].starts_with(needle_bytes) {
-            // SAFETY: `offset` indexes a byte in (or the terminator after)
-            // the validated `haystack` C string.
-            last = unsafe { (haystack as *mut c_char).add(offset) };
-        }
-    }
-    last
+    // `offset` indexes a byte in (or the terminator after) the validated
+    // `haystack` C string. `wrapping_add()` preserves that pointer value
+    // without creating a second raw-pointer operation at the ABI boundary.
+    (haystack as *mut c_char).wrapping_add(offset)
 }
 
 /// # Safety
 /// `x` and `y` must be null or readable NUL-terminated byte strings.
 pub unsafe fn rs_strlevenshtein(x: *const c_char, y: *const c_char) -> isize {
+    // Null inputs deliberately scan as empty strings, matching the C API.
+    with_c_string_pair(x, y, true, levenshtein_bytes)
+        .expect("nulls_are_empty makes the C-string adapter infallible")
+}
+
+fn levenshtein_bytes(xb: &[u8], yb: &[u8]) -> isize {
     const E2BIG: isize = 7;
     const ENOMEM: isize = 12;
-    if x.is_null() && y.is_null() {
-        return 0;
-    }
-    let xb = if x.is_null() {
-        &[]
-    } else {
-        // SAFETY: non-null `x` is a readable C string by the function contract.
-        unsafe { CStr::from_ptr(x) }.to_bytes()
-    };
-    let yb = if y.is_null() {
-        &[]
-    } else {
-        // SAFETY: non-null `y` is a readable C string by the function contract.
-        unsafe { CStr::from_ptr(y) }.to_bytes()
-    };
     if xb == yb {
         return 0;
     }
@@ -176,15 +196,20 @@ pub unsafe fn rs_version_is_valid(s: *const c_char, flags: i32) -> bool {
     if s.is_null() {
         return false;
     }
-    // SAFETY: non-null `s` is a readable NUL-terminated string by contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
-    if bytes.is_empty() && flags & VERSION_ALLOW_EMPTY == 0 {
+    // SAFETY: non-null `s` is a readable NUL-terminated string by contract
+    // and satisfies `rs_filename_part_is_valid()`'s C-string requirement.
+    let Some(bytes) = (unsafe {
+        let bytes = CStr::from_ptr(s).to_bytes();
+        if bytes.is_empty() && flags & VERSION_ALLOW_EMPTY == 0 {
+            None
+        } else if !rs_filename_part_is_valid(s) {
+            None
+        } else {
+            Some(bytes)
+        }
+    }) else {
         return false;
-    }
-    // SAFETY: non-null `s` satisfies the callee's C-string contract.
-    if !unsafe { rs_filename_part_is_valid(s) } {
-        return false;
-    }
+    };
 
     bytes.iter().all(|byte| {
         byte.is_ascii_alphanumeric()
