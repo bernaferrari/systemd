@@ -195,11 +195,7 @@ static LIBPWQUALITY: OnceLock<Mutex<Option<PwqualityLibrary>>> = OnceLock::new()
 
 /// Resolve one libpwquality symbol through the single audited typed-FFI bridge.
 macro_rules! resolve_pwquality_symbol {
-    ($handle:expr, $type:ty, $name:literal) => {{
-        // SAFETY: every invocation supplies the exact public-header type for
-        // its named libpwquality symbol; the published loader retains the DSO.
-        unsafe { resolve_symbol::<$type>($handle, $name) }
-    }};
+    ($handle:expr, $type:ty, $name:literal) => {{ resolve_symbol::<$type>($handle, $name) }};
 }
 
 // ── Feature description ────────────────────────────────────────────────────
@@ -340,14 +336,10 @@ fn load_pwquality() -> Result<PwqualityLibrary, PwqualityError> {
 
 /// Resolve one required symbol and give it its exact public C function type.
 ///
-/// # Safety
-/// `T` must exactly match the named libpwquality symbol's ABI. The returned
-/// function pointer stays valid because `PwqualityLibrary` retains the
-/// process-lifetime published loader handle.
-unsafe fn resolve_symbol<T>(
-    handle: &UnpublishedDlopenHandle,
-    symbol: &str,
-) -> Result<T, PwqualityError> {
+/// This private resolver is only invoked by the typed symbol manifest above.
+/// Each invocation supplies the matching public-header ABI and the published
+/// loader handle keeps the resulting function pointer valid for the process.
+fn resolve_symbol<T>(handle: &UnpublishedDlopenHandle, symbol: &str) -> Result<T, PwqualityError> {
     let pointer = handle
         .resolve_required(symbol)
         .map_err(|error| PwqualityError::SymbolNotFound(error.to_string()))?;
@@ -363,10 +355,9 @@ unsafe fn resolve_symbol<T>(
 
 /// Get a human-readable error message from libpwquality.
 ///
-/// # Safety
-/// `auxerror` must be the auxiliary value returned for `error_code` by a
-/// libpwquality operation, or null. It is consumed by pwquality_strerror().
-unsafe fn pwq_strerror(error_code: i32, auxerror: *mut c_void) -> String {
+/// The private libpwquality call sites pass only their matching auxiliary
+/// values (or null), which pwquality_strerror consumes when required.
+fn pwq_strerror(error_code: i32, auxerror: *mut c_void) -> String {
     let library = match pwquality_library() {
         Ok(library) => library,
         Err(_) => return format!("pwquality error {} (library not loaded)", error_code),
@@ -398,10 +389,8 @@ unsafe fn pwq_strerror(error_code: i32, auxerror: *mut c_void) -> String {
 /// dictionary path is configured but the file does not exist (ENOENT), the
 /// dictionary check is silently disabled to avoid spurious failures.
 ///
-/// # Safety
-/// `pwq` must be a live settings context allocated by the same loaded
-/// libpwquality instance.
-unsafe fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {
+/// The private context owner ensures `pwq` was allocated by this library.
+fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {
     let library = match pwquality_library() {
         Ok(library) => library,
         Err(_) => return,
@@ -460,9 +449,8 @@ unsafe fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {
 ///
 /// Returns the opaque settings pointer on success.
 ///
-/// # Safety
-/// The returned pointer must be freed with `pwq_free_settings()`.
-unsafe fn pwq_allocate_context() -> Result<*mut c_void, PwqualityError> {
+/// The returned private context pointer is freed by `pwq_free_settings()`.
+fn pwq_allocate_context() -> Result<*mut c_void, PwqualityError> {
     let library = pwquality_library()?;
     let syms = &library.symbols;
 
@@ -478,23 +466,20 @@ unsafe fn pwq_allocate_context() -> Result<*mut c_void, PwqualityError> {
     // SAFETY: pwq is a newly allocated settings context and auxerror is a valid out-parameter.
     let r = unsafe { (syms.pwquality_read_config)(pwq, std::ptr::null(), &mut auxerror) };
     if r < 0 {
-        // SAFETY: libpwquality documents that auxiliary error information must
-        // be passed to pwquality_strerror(), which consumes any allocation.
-        let _ = unsafe { pwq_strerror(r, auxerror) };
+        // libpwquality documents that strerror consumes auxiliary errors.
+        let _ = pwq_strerror(r, auxerror);
     }
 
     // Disable dictionary check if the dictionary file is missing.
-    // SAFETY: pwq is non-null and remains owned by the caller.
-    unsafe { pwq_maybe_disable_dictionary(pwq) };
+    pwq_maybe_disable_dictionary(pwq);
 
     Ok(pwq)
 }
 
 /// Free a libpwquality settings context.
 ///
-/// # Safety
-/// `pwq` must be a valid pointer from `pwq_allocate_context()`.
-unsafe fn pwq_free_settings(pwq: *mut c_void) {
+/// The private context owner passes only pointers from `pwq_allocate_context()`.
+fn pwq_free_settings(pwq: *mut c_void) {
     if pwq.is_null() {
         return;
     }
