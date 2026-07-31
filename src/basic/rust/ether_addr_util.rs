@@ -13,6 +13,8 @@ use crate::ffi::Errno;
 pub const HW_ADDR_MAX_SIZE: usize = 32;
 pub const ETH_ALEN: usize = 6;
 pub const INFINIBAND_ALEN: usize = 20;
+const HW_ADDR_TO_STRING_MAX: usize = 3 * HW_ADDR_MAX_SIZE;
+const ETHER_ADDR_TO_STRING_MAX: usize = 3 * ETH_ALEN;
 
 /// C ABI mirror of `struct hw_addr_data` used solely by the Rust shadow ABI.
 #[repr(C)]
@@ -25,6 +27,38 @@ pub struct RsHwAddrData {
 #[repr(C)]
 pub struct RsEtherAddr {
     pub octet: [u8; ETH_ALEN],
+}
+
+impl RsHwAddrData {
+    fn bytes(&self) -> Option<&[u8]> {
+        self.bytes.get(..self.length)
+    }
+
+    fn set_bytes(&mut self, bytes: &[u8]) {
+        self.length = bytes.len();
+        self.bytes[..bytes.len()].copy_from_slice(bytes);
+    }
+
+    fn compare(&self, other: &Self) -> Option<i32> {
+        let left = self.bytes()?;
+        let right = other.bytes()?;
+        Some(compare_bytes(left, right))
+    }
+
+    fn is_null(&self) -> bool {
+        self.bytes()
+            .is_some_and(|bytes| bytes.is_empty() || bytes.iter().all(|byte| *byte == 0))
+    }
+}
+
+impl RsEtherAddr {
+    fn as_ether_addr(&self) -> EtherAddr {
+        EtherAddr(self.octet)
+    }
+
+    fn set_ether_addr(&mut self, addr: EtherAddr) {
+        self.octet = addr.0;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,6 +180,48 @@ fn hex_value(byte: u8) -> Option<u8> {
         b'A'..=b'F' => Some(byte - b'A' + 10),
         _ => None,
     }
+}
+
+fn compare_bytes(left: &[u8], right: &[u8]) -> i32 {
+    // This preserves the ordering contract of the C `libc::memcmp` calls
+    // without handing byte-array access to a foreign function.
+    match left.cmp(right) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    }
+}
+
+fn write_hex_bytes(bytes: &[u8], separator: Option<u8>, buffer: &mut [c_char]) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    let mut cursor = 0;
+    for (index, byte) in bytes.iter().enumerate() {
+        buffer[cursor] = HEX[(byte >> 4) as usize] as c_char;
+        cursor += 1;
+        buffer[cursor] = HEX[(byte & 0x0f) as usize] as c_char;
+        cursor += 1;
+        if separator.is_some() && index + 1 < bytes.len() {
+            buffer[cursor] = separator.unwrap() as c_char;
+            cursor += 1;
+        }
+    }
+    buffer[cursor] = 0;
+}
+
+fn hw_addr_to_string_bytes(bytes: &[u8], flags: u32, buffer: &mut [c_char; HW_ADDR_TO_STRING_MAX]) {
+    write_hex_bytes(
+        bytes,
+        (flags & 1 == 0).then_some(b':'),
+        buffer.as_mut_slice(),
+    );
+}
+
+fn ether_addr_to_string_bytes(
+    bytes: &[u8; ETH_ALEN],
+    buffer: &mut [c_char; ETHER_ADDR_TO_STRING_MAX],
+) {
+    write_hex_bytes(bytes, Some(b':'), buffer.as_mut_slice());
 }
 
 fn parse_field(field: &str, field_size: usize) -> Result<Vec<u8>, AddressError> {
@@ -283,32 +359,13 @@ pub unsafe extern "C" fn rs_hw_addr_to_string_full(
 ) -> *mut c_char {
     // SAFETY: guaranteed by this FFI function's documented contract.
     let addr = unsafe { &*addr };
-    if addr.length > HW_ADDR_MAX_SIZE {
+    let Some(bytes) = addr.bytes() else {
         return ptr::null_mut();
-    }
-
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let no_colon = flags & 1 != 0;
-    let mut cursor = 0usize;
-    for byte in &addr.bytes[..addr.length] {
-        // SAFETY: the documented fixed-size output buffer covers every byte written.
-        unsafe {
-            *buffer.add(cursor) = HEX[(byte >> 4) as usize] as c_char;
-            cursor += 1;
-            *buffer.add(cursor) = HEX[(byte & 0x0f) as usize] as c_char;
-            cursor += 1;
-            if !no_colon {
-                *buffer.add(cursor) = b':' as c_char;
-                cursor += 1;
-            }
-        }
-    }
-    if addr.length > 0 && !no_colon {
-        cursor -= 1;
-    }
-    // SAFETY: `cursor` is within the documented fixed-size output buffer.
-    unsafe { *buffer.add(cursor) = 0 };
-    buffer
+    };
+    // SAFETY: the public FFI contract guarantees this fixed-size writable buffer.
+    let buffer = unsafe { &mut *buffer.cast::<[c_char; HW_ADDR_TO_STRING_MAX]>() };
+    hw_addr_to_string_bytes(bytes, flags, buffer);
+    buffer.as_mut_ptr()
 }
 
 /// # Safety
@@ -327,11 +384,9 @@ pub unsafe extern "C" fn rs_hw_addr_set(
     }
     // SAFETY: `addr` is writable by the documented FFI contract.
     let addr = unsafe { &mut *addr };
-    addr.length = length;
-    if length > 0 {
-        // SAFETY: both source and the fixed destination range have `length` bytes.
-        unsafe { ptr::copy_nonoverlapping(bytes, addr.bytes.as_mut_ptr(), length) };
-    }
+    // SAFETY: the public FFI contract guarantees `length` readable source bytes.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, length) };
+    addr.set_bytes(bytes);
     addr as *mut RsHwAddrData
 }
 
@@ -345,17 +400,7 @@ pub unsafe extern "C" fn rs_hw_addr_compare(a: *const RsHwAddrData, b: *const Rs
     let a = unsafe { &*a };
     // SAFETY: both pointers are readable by the documented FFI contract.
     let b = unsafe { &*b };
-    if a.length > HW_ADDR_MAX_SIZE || b.length > HW_ADDR_MAX_SIZE {
-        return 0;
-    }
-    match a.length.cmp(&b.length) {
-        Ordering::Less => -1,
-        Ordering::Greater => 1,
-        Ordering::Equal => {
-            // SAFETY: both arrays are live for the validated `length` range.
-            unsafe { libc::memcmp(a.bytes.as_ptr().cast(), b.bytes.as_ptr().cast(), a.length) }
-        }
-    }
+    a.compare(b).unwrap_or(0)
 }
 
 /// # Safety
@@ -366,9 +411,7 @@ pub unsafe extern "C" fn rs_hw_addr_compare(a: *const RsHwAddrData, b: *const Rs
 pub unsafe extern "C" fn rs_hw_addr_is_null(addr: *const RsHwAddrData) -> bool {
     // SAFETY: `addr` is readable by the documented FFI contract.
     let addr = unsafe { &*addr };
-    addr.length == 0
-        || (addr.length <= HW_ADDR_MAX_SIZE
-            && addr.bytes[..addr.length].iter().all(|byte| *byte == 0))
+    addr.is_null()
 }
 
 /// # Safety
@@ -382,21 +425,10 @@ pub unsafe extern "C" fn rs_ether_addr_to_string(
 ) -> *mut c_char {
     // SAFETY: `addr` is readable by the documented FFI contract.
     let addr = unsafe { &*addr };
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    for (index, byte) in addr.octet.iter().enumerate() {
-        let cursor = index * 3;
-        // SAFETY: the documented 18-byte buffer covers the formatted address.
-        unsafe {
-            *buffer.add(cursor) = HEX[(byte >> 4) as usize] as c_char;
-            *buffer.add(cursor + 1) = HEX[(byte & 0x0f) as usize] as c_char;
-            if index + 1 < ETH_ALEN {
-                *buffer.add(cursor + 2) = b':' as c_char;
-            }
-        }
-    }
-    // SAFETY: byte 17 is the terminator slot in the documented 18-byte buffer.
-    unsafe { *buffer.add(17) = 0 };
-    buffer
+    // SAFETY: the public FFI contract guarantees this fixed-size writable buffer.
+    let buffer = unsafe { &mut *buffer.cast::<[c_char; ETHER_ADDR_TO_STRING_MAX]>() };
+    ether_addr_to_string_bytes(&addr.octet, buffer);
+    buffer.as_mut_ptr()
 }
 
 /// # Safety
@@ -411,8 +443,7 @@ pub unsafe extern "C" fn rs_ether_addr_compare(
     let a = unsafe { &*a };
     // SAFETY: both pointers are readable by the documented FFI contract.
     let b = unsafe { &*b };
-    // SAFETY: both fixed arrays are live for `ETH_ALEN` bytes.
-    unsafe { libc::memcmp(a.octet.as_ptr().cast(), b.octet.as_ptr().cast(), ETH_ALEN) }
+    compare_bytes(&a.octet, &b.octet)
 }
 
 /// # Safety
@@ -421,7 +452,7 @@ pub unsafe extern "C" fn rs_ether_addr_compare(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_broadcast(addr: *const RsEtherAddr) -> bool {
     // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).octet.iter().all(|byte| *byte == 0xff) }
+    unsafe { (&*addr).as_ether_addr().is_broadcast() }
 }
 
 /// # Safety
@@ -430,7 +461,7 @@ pub unsafe extern "C" fn rs_ether_addr_is_broadcast(addr: *const RsEtherAddr) ->
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_equal(a: *const RsEtherAddr, b: *const RsEtherAddr) -> bool {
     // SAFETY: both pointers are readable by the documented FFI contract.
-    unsafe { (&*a).octet == (&*b).octet }
+    unsafe { (&*a).as_ether_addr() == (&*b).as_ether_addr() }
 }
 
 /// # Safety
@@ -439,7 +470,7 @@ pub unsafe extern "C" fn rs_ether_addr_equal(a: *const RsEtherAddr, b: *const Rs
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_null(addr: *const RsEtherAddr) -> bool {
     // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).octet.iter().all(|byte| *byte == 0) }
+    unsafe { (&*addr).as_ether_addr().is_null() }
 }
 
 /// # Safety
@@ -448,7 +479,7 @@ pub unsafe extern "C" fn rs_ether_addr_is_null(addr: *const RsEtherAddr) -> bool
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_multicast(addr: *const RsEtherAddr) -> bool {
     // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).octet[0] & 1 != 0 }
+    unsafe { (&*addr).as_ether_addr().is_multicast() }
 }
 
 /// # Safety
@@ -456,8 +487,8 @@ pub unsafe extern "C" fn rs_ether_addr_is_multicast(addr: *const RsEtherAddr) ->
 /// `addr` must designate a live `RsEtherAddr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_unicast(addr: *const RsEtherAddr) -> bool {
-    // SAFETY: this forwards the identical pointer contract to the predicate above.
-    !unsafe { rs_ether_addr_is_multicast(addr) }
+    // SAFETY: `addr` is readable by the documented FFI contract.
+    unsafe { (&*addr).as_ether_addr().is_unicast() }
 }
 
 /// # Safety
@@ -466,7 +497,7 @@ pub unsafe extern "C" fn rs_ether_addr_is_unicast(addr: *const RsEtherAddr) -> b
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_local(addr: *const RsEtherAddr) -> bool {
     // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).octet[0] & 2 != 0 }
+    unsafe { (&*addr).as_ether_addr().is_local() }
 }
 
 /// # Safety
@@ -474,8 +505,8 @@ pub unsafe extern "C" fn rs_ether_addr_is_local(addr: *const RsEtherAddr) -> boo
 /// `addr` must designate a live `RsEtherAddr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_global(addr: *const RsEtherAddr) -> bool {
-    // SAFETY: this forwards the identical pointer contract to the predicate above.
-    !unsafe { rs_ether_addr_is_local(addr) }
+    // SAFETY: `addr` is readable by the documented FFI contract.
+    unsafe { (&*addr).as_ether_addr().is_global() }
 }
 
 /// # Safety
@@ -485,8 +516,9 @@ pub unsafe extern "C" fn rs_ether_addr_is_global(addr: *const RsEtherAddr) -> bo
 pub unsafe extern "C" fn rs_ether_addr_mark_random(addr: *mut RsEtherAddr) {
     // SAFETY: `addr` is writable by the documented FFI contract.
     let addr = unsafe { &mut *addr };
-    addr.octet[0] &= 0xfe;
-    addr.octet[0] |= 0x02;
+    let mut ether = addr.as_ether_addr();
+    ether.mark_random();
+    addr.set_ether_addr(ether);
 }
 
 /// # Safety
@@ -508,9 +540,8 @@ pub unsafe extern "C" fn rs_parse_hw_addr_full(
     };
     // SAFETY: `ret` is writable by the documented FFI contract.
     let ret = unsafe { &mut *ret };
-    ret.length = parsed.len();
     ret.bytes.fill(0);
-    ret.bytes[..ret.length].copy_from_slice(parsed.as_bytes());
+    ret.set_bytes(parsed.as_bytes());
     0
 }
 
@@ -528,7 +559,7 @@ pub unsafe extern "C" fn rs_parse_ether_addr(s: *const c_char, ret: *mut RsEther
         return Errno::EINVAL.to_neg_errno();
     };
     // SAFETY: `ret` is writable by the documented FFI contract.
-    unsafe { (*ret).octet = parsed.0 };
+    unsafe { (&mut *ret).set_ether_addr(parsed) };
     0
 }
 
