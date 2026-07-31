@@ -837,6 +837,67 @@ fn base64_encode_with_breaks_into(
     Ok(())
 }
 
+/// A libc allocation used for one codec result.
+///
+/// Codec cores only receive its checked mutable byte slice; ABI adapters decide
+/// whether to transfer the original libc allocation to C or erase and release
+/// it on an error/no-output path.
+struct CodecAllocation {
+    ptr: *mut u8,
+    len: usize,
+}
+
+impl CodecAllocation {
+    fn allocate(len: usize) -> Option<Self> {
+        debug_assert!(len > 0);
+        // SAFETY: callers pass a non-zero length computed with checked arithmetic.
+        let ptr = unsafe { libc::malloc(len) }.cast::<u8>();
+        (!ptr.is_null()).then_some(Self { ptr, len })
+    }
+
+    fn bytes_mut(&mut self, content_len: usize) -> &mut [u8] {
+        debug_assert!(content_len <= self.len);
+        // SAFETY: this allocation is uniquely owned and live for self.len bytes.
+        unsafe { std::slice::from_raw_parts_mut(self.ptr, content_len) }
+    }
+
+    fn terminate(&mut self, index: usize) {
+        debug_assert!(index < self.len);
+        // SAFETY: index is within this uniquely owned allocation.
+        unsafe { *self.ptr.add(index) = 0 };
+    }
+
+    fn into_raw(mut self) -> *mut u8 {
+        let ptr = self.ptr;
+        self.ptr = std::ptr::null_mut();
+        ptr
+    }
+
+    fn erase_and_free(mut self, wipe_len: usize, secure: bool) {
+        debug_assert!(wipe_len <= self.len);
+        if secure {
+            // SAFETY: the requested prefix lies within this live allocation.
+            unsafe {
+                for offset in 0..wipe_len {
+                    std::ptr::write_volatile(self.ptr.add(offset), 0);
+                }
+            }
+        }
+        // SAFETY: this allocation has not escaped and uses libc ownership.
+        unsafe { libc::free(self.ptr.cast::<c_void>()) };
+        self.ptr = std::ptr::null_mut();
+    }
+}
+
+impl Drop for CodecAllocation {
+    fn drop(&mut self) {
+        if !self.ptr.is_null() {
+            // SAFETY: unconsumed codec allocations are always libc-owned.
+            unsafe { libc::free(self.ptr.cast::<c_void>()) };
+        }
+    }
+}
+
 /// Borrow an explicit byte range, or the C string selected by the `SIZE_MAX`
 /// sentinel used by the C codec APIs.
 ///
@@ -860,21 +921,6 @@ unsafe fn codec_input_bytes<'a>(p: *const c_void, l: usize) -> Result<&'a [u8], 
     Ok(unsafe { std::slice::from_raw_parts(p.cast::<u8>(), l) })
 }
 
-/// Erase the requested allocation prefix before returning it to libc.
-///
-/// # Safety
-/// `allocation` must be live for `wipe_len` bytes and must not have escaped.
-unsafe fn codec_free(allocation: *mut u8, wipe_len: usize, secure: bool) {
-    if secure {
-        for offset in 0..wipe_len {
-            // SAFETY: the helper's contract guarantees every byte in this range is live.
-            unsafe { std::ptr::write_volatile(allocation.add(offset), 0) };
-        }
-    }
-    // SAFETY: the helper's contract guarantees libc allocated and still owns this pointer.
-    unsafe { libc::free(allocation.cast::<c_void>()) };
-}
-
 /// Hex-encode an explicit byte range with C-allocator-owned output.
 ///
 /// # Safety
@@ -895,21 +941,18 @@ pub unsafe extern "C" fn rs_hexmem(p: *const c_void, l: usize) -> *mut c_char {
         Some(length) => length,
         None => return std::ptr::null_mut(),
     };
-    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
-    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
-    if allocation.is_null() {
+    let Some(mut allocation) = CodecAllocation::allocate(allocation_len) else {
         return std::ptr::null_mut();
+    };
+    for (byte, pair) in input
+        .iter()
+        .zip(allocation.bytes_mut(output_len).chunks_exact_mut(2))
+    {
+        pair[0] = hexchar((byte >> 4).into()) as u8;
+        pair[1] = hexchar((byte & 15).into()) as u8;
     }
-    // SAFETY: the allocation is live for the encoded bytes plus a terminator.
-    unsafe {
-        let output = std::slice::from_raw_parts_mut(allocation, output_len);
-        for (byte, pair) in input.iter().zip(output.chunks_exact_mut(2)) {
-            pair[0] = hexchar((byte >> 4).into()) as u8;
-            pair[1] = hexchar((byte & 15).into()) as u8;
-        }
-        *allocation.add(output_len) = 0;
-    }
-    allocation.cast::<c_char>()
+    allocation.terminate(output_len);
+    allocation.into_raw().cast::<c_char>()
 }
 
 /// Decode a hexadecimal byte range with C-allocator-owned output.
@@ -939,38 +982,28 @@ pub unsafe extern "C" fn rs_unhexmem_full(
         Some(length) => length,
         None => return Errno::ENOMEM.to_neg_errno(),
     };
-    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
-    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
-    if allocation.is_null() {
+    let Some(mut allocation) = CodecAllocation::allocate(allocation_len) else {
         return Errno::ENOMEM.to_neg_errno();
-    }
-    // SAFETY: the allocation is live for the decoder's advertised capacity.
-    let result = unsafe {
-        unhex_decode_into(
-            input,
-            std::slice::from_raw_parts_mut(allocation, decoded_capacity),
-        )
     };
+    let result = unhex_decode_into(input, allocation.bytes_mut(decoded_capacity));
     let decoded_len = match result {
         Ok(length) => length,
         Err(error) => {
-            // SAFETY: this local allocation has not escaped.
-            unsafe { codec_free(allocation, allocation_len, secure) };
+            allocation.erase_and_free(allocation_len, secure);
             return error;
         }
     };
-    // SAFETY: the C allocation includes one terminator byte past decoded output.
-    unsafe { *allocation.add(decoded_len) = 0 };
+    allocation.terminate(decoded_len);
     if !ret_size.is_null() {
         // SAFETY: required by this FFI boundary's output-pointer contract.
         unsafe { *ret_size = decoded_len };
     }
     if !ret_data.is_null() {
+        let allocation = allocation.into_raw();
         // SAFETY: required by this FFI boundary's output-pointer contract.
         unsafe { *ret_data = allocation.cast::<c_void>() };
     } else {
-        // SAFETY: ownership remains local when no data output is requested.
-        unsafe { codec_free(allocation, allocation_len, secure) };
+        allocation.erase_and_free(allocation_len, secure);
     }
     0
 }
@@ -995,21 +1028,12 @@ pub unsafe extern "C" fn rs_base32hexmem(p: *const c_void, l: usize, padding: bo
         Some(length) => length,
         None => return std::ptr::null_mut(),
     };
-    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
-    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
-    if allocation.is_null() {
+    let Some(mut allocation) = CodecAllocation::allocate(allocation_len) else {
         return std::ptr::null_mut();
-    }
-    // SAFETY: the allocation is live for the encoded bytes plus a terminator.
-    unsafe {
-        base32_encode_into(
-            input,
-            std::slice::from_raw_parts_mut(allocation, output_len),
-            padding,
-        );
-        *allocation.add(output_len) = 0;
-    }
-    allocation.cast::<c_char>()
+    };
+    base32_encode_into(input, allocation.bytes_mut(output_len), padding);
+    allocation.terminate(output_len);
+    allocation.into_raw().cast::<c_char>()
 }
 
 /// Decode a base32hex byte range with C-allocator-owned output.
@@ -1073,28 +1097,23 @@ pub unsafe extern "C" fn rs_unbase32hexmem(
     let Some(allocation_len) = decoded_capacity.checked_add(1) else {
         return Errno::ENOMEM.to_neg_errno();
     };
-    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
-    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
-    if allocation.is_null() {
+    let Some(mut allocation) = CodecAllocation::allocate(allocation_len) else {
         return Errno::ENOMEM.to_neg_errno();
-    }
-    // SAFETY: the allocation is live for the decoder's advertised capacity.
-    let decoded_len = match unsafe {
-        unbase32_decode_into(
-            &input[..encoded_len],
-            std::slice::from_raw_parts_mut(allocation, decoded_capacity),
-        )
-    } {
+    };
+    let decoded_len = match unbase32_decode_into(
+        &input[..encoded_len],
+        allocation.bytes_mut(decoded_capacity),
+    ) {
         Ok(length) => length,
         Err(error) => {
-            // SAFETY: this local allocation has not escaped.
-            unsafe { codec_free(allocation, allocation_len, false) };
+            allocation.erase_and_free(allocation_len, false);
             return error;
         }
     };
-    // SAFETY: the allocation includes one terminator byte past decoded output.
+    allocation.terminate(decoded_len);
+    let allocation = allocation.into_raw();
+    // SAFETY: mem and len satisfy this FFI boundary's output-pointer contract.
     unsafe {
-        *allocation.add(decoded_len) = 0;
         *mem = allocation.cast::<c_void>();
         *len = decoded_len;
     }
@@ -1128,30 +1147,19 @@ pub unsafe extern "C" fn rs_base64mem_full(
     let Some(allocation_len) = output_len.checked_add(1) else {
         return Errno::ENOMEM.to_neg_errno() as isize;
     };
-    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
-    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
-    if allocation.is_null() {
+    let Some(mut allocation) = CodecAllocation::allocate(allocation_len) else {
         return Errno::ENOMEM.to_neg_errno() as isize;
-    }
-    // SAFETY: the allocation is live for the encoder's exact output capacity.
-    let result = unsafe {
-        base64_encode_with_breaks_into(
-            input,
-            std::slice::from_raw_parts_mut(allocation, output_len),
-            line_break,
-        )
     };
+    let result =
+        base64_encode_with_breaks_into(input, allocation.bytes_mut(output_len), line_break);
     if let Err(error) = result {
-        // SAFETY: this local allocation has not escaped.
-        unsafe { codec_free(allocation, allocation_len, false) };
+        allocation.erase_and_free(allocation_len, false);
         return error as isize;
     }
-    // SAFETY: the allocation includes one terminator byte past encoded output,
-    // and `ret` satisfies this FFI boundary's output-pointer contract.
-    unsafe {
-        *allocation.add(output_len) = 0;
-        *ret = allocation.cast::<c_char>();
-    }
+    allocation.terminate(output_len);
+    let allocation = allocation.into_raw();
+    // SAFETY: ret satisfies this FFI boundary's output-pointer contract.
+    unsafe { *ret = allocation.cast::<c_char>() };
     output_len as isize
 }
 
@@ -1188,37 +1196,27 @@ pub unsafe extern "C" fn rs_unbase64mem_full(
     let Some(allocation_len) = decoded_capacity.checked_add(1) else {
         return Errno::ENOMEM.to_neg_errno();
     };
-    // SAFETY: `allocation_len` is non-zero and uses checked arithmetic.
-    let allocation = unsafe { libc::malloc(allocation_len) }.cast::<u8>();
-    if allocation.is_null() {
+    let Some(mut allocation) = CodecAllocation::allocate(allocation_len) else {
         return Errno::ENOMEM.to_neg_errno();
-    }
-    // SAFETY: the allocation is live for the decoder's advertised capacity.
-    let decoded_len = match unsafe {
-        unbase64_decode_into(
-            input,
-            std::slice::from_raw_parts_mut(allocation, decoded_capacity),
-        )
-    } {
+    };
+    let decoded_len = match unbase64_decode_into(input, allocation.bytes_mut(decoded_capacity)) {
         Ok(length) => length,
         Err(error) => {
-            // SAFETY: C erases only the decoded-capacity prefix for this API.
-            unsafe { codec_free(allocation, decoded_capacity, secure) };
+            allocation.erase_and_free(decoded_capacity, secure);
             return error;
         }
     };
-    // SAFETY: the allocation includes one terminator byte past decoded output.
-    unsafe { *allocation.add(decoded_len) = 0 };
+    allocation.terminate(decoded_len);
     if !ret_size.is_null() {
         // SAFETY: required by this FFI boundary's output-pointer contract.
         unsafe { *ret_size = decoded_len };
     }
     if !ret_data.is_null() {
+        let allocation = allocation.into_raw();
         // SAFETY: required by this FFI boundary's output-pointer contract.
         unsafe { *ret_data = allocation.cast::<c_void>() };
     } else {
-        // SAFETY: ownership remains local when no data output is requested.
-        unsafe { codec_free(allocation, decoded_capacity, secure) };
+        allocation.erase_and_free(decoded_capacity, secure);
     }
     0
 }
