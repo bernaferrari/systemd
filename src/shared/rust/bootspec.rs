@@ -27,6 +27,11 @@ pub const EFI_LINUX_DIR: &str = "/EFI/Linux/";
 pub const LOADER_ADDONS_DIR: &str = "/loader/addons/";
 pub const LOADER_CONF_PATH: &str = "/loader/loader.conf";
 
+#[inline]
+const fn is_systemd_whitespace(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\r')
+}
+
 /// Known loader.conf keys that are valid but not parsed in userspace.
 const LOADER_CONF_SKIP_KEYS: &[&str] = &[
     "timeout",
@@ -402,7 +407,7 @@ pub fn parse_path_one(field: &str, p: &str) -> BootResult<Option<String>> {
 /// Parse multiple whitespace-separated paths and return all valid normalized paths.
 pub fn parse_path_many(field: &str, p: &str) -> BootResult<Vec<String>> {
     let mut result = Vec::new();
-    for token in p.split_whitespace() {
+    for token in p.split(is_systemd_whitespace) {
         if token.is_empty() {
             continue;
         }
@@ -573,14 +578,14 @@ pub struct ConfigLine {
 /// Parse a single line from a Type #1 boot entry config file.
 /// Returns None for comments, blank lines, or lines with no field.
 pub fn parse_config_line(line: &str) -> Option<ConfigLine> {
-    let trimmed = line.trim();
+    let trimmed = line.trim_matches(is_systemd_whitespace);
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return None;
     }
 
-    let mut parts = trimmed.splitn(2, |c: char| c.is_whitespace());
+    let mut parts = trimmed.splitn(2, is_systemd_whitespace);
     let field = parts.next()?.to_owned();
-    let value = parts.next()?.trim().to_owned();
+    let value = parts.next()?.trim_matches(is_systemd_whitespace).to_owned();
 
     if field.is_empty() {
         return None;
@@ -660,7 +665,12 @@ pub fn boot_entry_load_type1(
             }
             "uki-url" => entry.uki_url = Some(config.value),
             "profile" => {
-                if let Ok(p) = config.value.parse::<u32>() {
+                if let Ok(p) = config
+                    .value
+                    .strip_prefix('+')
+                    .unwrap_or(&config.value)
+                    .parse::<u32>()
+                {
                     entry.profile = p;
                 }
             }
@@ -1398,11 +1408,28 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_config_line_uses_c_whitespace_grammar() {
+        for separator in [' ', '\t', '\n', '\r'] {
+            assert_eq!(
+                parse_config_line(&format!("title{separator}Fedora")),
+                Some(ConfigLine {
+                    field: "title".into(),
+                    value: "Fedora".into(),
+                })
+            );
+        }
+        for separator in ['\u{b}', '\u{c}', '\u{a0}'] {
+            assert!(parse_config_line(&format!("title{separator}Fedora")).is_none());
+        }
+    }
+
+    #[test]
     fn test_boot_entry_load_type1_basic() {
         let lines = [
             "title Fedora Linux 40",
             "version 40.1",
             "machine-id 1234567890abcdef",
+            "profile +7",
             "options root=/dev/sda1",
             "linux /vmlinuz",
             "initrd /initramfs",
@@ -1424,6 +1451,7 @@ mod tests {
         assert_eq!(entry.title.as_deref(), Some("Fedora Linux 40"));
         assert_eq!(entry.version.as_deref(), Some("40.1"));
         assert_eq!(entry.machine_id.as_deref(), Some("1234567890abcdef"));
+        assert_eq!(entry.profile, 7);
         assert_eq!(entry.options, vec!["root=/dev/sda1"]);
         assert_eq!(entry.kernel.as_deref(), Some("/vmlinuz"));
         assert_eq!(entry.initrd, vec!["/initramfs"]);
