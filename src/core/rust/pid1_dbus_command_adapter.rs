@@ -13,13 +13,14 @@
 //! kernel credentials, and command dispatch still invokes its authorizer.
 //! In particular, the D-Bus `sender` header is never consulted as identity.
 //!
-//! `ReloadUnit` has an `ss` D-Bus signature, but the existing typed command
-//! intentionally has no job mode because its runtime operation always uses
-//! `replace`. Therefore this adapter accepts `ReloadUnit` only with the
-//! explicit `replace` mode instead of silently changing the request. The
-//! public manager's no-argument `ResetFailed` method is deliberately mapped
-//! to a distinct all-units command rather than being misrepresented as a
-//! named reset.
+//! `GetJob` is an observation-only lookup matching the public manager vtable;
+//! it never creates a job. `ReloadUnit` has an `ss` D-Bus signature, but the
+//! existing typed command intentionally has no job mode because its runtime
+//! operation always uses `replace`. Therefore this adapter accepts
+//! `ReloadUnit` only with the explicit `replace` mode instead of silently
+//! changing the request. The public manager's no-argument `ResetFailed`
+//! method is deliberately mapped to a distinct all-units command rather than
+//! being misrepresented as a named reset.
 
 use crate::pid1_bus_source::{Pid1BusCommandSender, Pid1BusSendError};
 use crate::pid1_dbus_wire::{MethodCall, WireError};
@@ -169,6 +170,9 @@ impl Pid1DbusCommandAdapter {
             }),
             "GetUnitByInvocationID" => Ok(Pid1ManagerCommand::GetUnitByInvocationId {
                 invocation_id: decode_invocation_id(call)?,
+            }),
+            "GetJob" => Ok(Pid1ManagerCommand::GetJob {
+                id: decode_one_u32(call)?,
             }),
             "LoadUnit" => Ok(Pid1ManagerCommand::LoadUnit {
                 name: decode_one_string(call)?,
@@ -495,6 +499,10 @@ mod tests {
             })
         );
         assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&pid_call("GetJob", 27)),
+            Ok(Pid1ManagerCommand::GetJob { id: 27 })
+        );
+        assert_eq!(
             Pid1DbusCommandAdapter::command_for(&call("LoadUnit", "s", &["a.service"])),
             Ok(Pid1ManagerCommand::LoadUnit {
                 name: "a.service".into()
@@ -638,6 +646,10 @@ mod tests {
         ));
         assert!(matches!(
             Pid1DbusCommandAdapter::command_for(&call("ResetFailedUnit", "", &[])),
+            Err(Pid1DbusCommandAdapterError::WrongSignature { .. })
+        ));
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&call("GetJob", "s", &["27"])),
             Err(Pid1DbusCommandAdapterError::WrongSignature { .. })
         ));
         let mut introspect_with_body = call("Introspect", "s", &["unexpected"]);

@@ -62,7 +62,7 @@ fn dispatch(
 }
 
 fn wire_slot_config(input_capacity: usize) -> PrivateBusWireSlotConfig {
-    PrivateBusWireSlotConfig::new(input_capacity, NonZeroUsize::new(2).unwrap(), 1024, 2048)
+    PrivateBusWireSlotConfig::new(input_capacity, NonZeroUsize::new(2).unwrap(), 2048, 2048)
 }
 
 fn push_padding(bytes: &mut Vec<u8>, alignment: usize) {

@@ -79,7 +79,10 @@ mod unit_load;
 mod unit_specifier;
 
 use cgroup_runtime::RealizedUnitCgroup;
-pub use handoff::{HandoffAssessment, HandoffPurpose, PrepareHandoffError};
+pub use handoff::{
+    HANDOFF_IMAGE_VERSION, HandoffAssessment, HandoffImageCoverage, HandoffImageError,
+    HandoffPrecommitImage, HandoffPurpose, PrepareHandoffError,
+};
 use linux_cgroup::CgroupRoot;
 #[cfg(target_os = "linux")]
 pub use notify_runtime::NotifyDispatchBatch;

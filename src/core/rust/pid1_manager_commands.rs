@@ -92,6 +92,11 @@ pub enum Pid1ManagerCommand {
     GetUnitByInvocationId {
         invocation_id: [u8; 16],
     },
+    /// Return the object path for an already-installed job. This is an
+    /// observation-only lookup and must not create or otherwise alter a job.
+    GetJob {
+        id: u32,
+    },
     LoadUnit {
         name: String,
     },
@@ -142,6 +147,7 @@ pub enum Pid1ManagerCommand {
 pub enum Pid1ManagerReply {
     IntrospectionXml,
     UnitLoaded { path: String },
+    JobFound { path: String },
     JobQueued { id: u32 },
     Completed,
 }
@@ -166,6 +172,9 @@ pub enum Pid1CommandError {
     /// C reports this as `NoSuchUnit` with a caller-specific diagnostic.
     NoUnitForCallerPid {
         pid: u32,
+    },
+    NoSuchJob {
+        id: u32,
     },
     Runtime(Errno),
     InboxFull,
@@ -418,6 +427,15 @@ fn dispatch(
             return Ok(Pid1CommandEffect::Reply(Pid1ManagerReply::UnitLoaded {
                 path,
             }));
+        }
+        Pid1ManagerCommand::GetJob { id } => {
+            return match crate::dbus_manager::manager_get_job_path(runtime, id) {
+                Ok(path) => Ok(Pid1CommandEffect::Reply(Pid1ManagerReply::JobFound {
+                    path,
+                })),
+                Err(Errno::ENOENT) => Err(Pid1CommandError::NoSuchJob { id }),
+                Err(error) => Err(Pid1CommandError::Runtime(error)),
+            };
         }
         Pid1ManagerCommand::LoadUnit { name } => runtime.load_unit(&name).and_then(|()| {
             crate::dbus_manager::manager_get_unit_path(runtime, &name)
@@ -931,5 +949,46 @@ mod tests {
             }))
         );
         assert_eq!(runtime.unit_count(), 0);
+    }
+
+    #[test]
+    fn get_job_observes_only_installed_jobs_and_preserves_no_such_job() {
+        use crate::job_tables::{JobState, JobType};
+
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(2).unwrap());
+        let existing = sender
+            .try_send(sender_identity(), Pid1ManagerCommand::GetJob { id: 27 })
+            .unwrap();
+        let missing = sender
+            .try_send(sender_identity(), Pid1ManagerCommand::GetJob { id: 28 })
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+        runtime.inject_test_unit(
+            "example.service",
+            "Example Service",
+            crate::unit::ActiveState::Active,
+            "running",
+        );
+        runtime.inject_test_installed_job(27, "example.service", JobType::Start, JobState::Running);
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(2).unwrap(),
+            ),
+            2,
+        );
+        assert_eq!(
+            existing.try_recv(),
+            Ok(Ok(Pid1ManagerReply::JobFound {
+                path: "/org/freedesktop/systemd1/job/27".into(),
+            }))
+        );
+        assert_eq!(
+            missing.try_recv(),
+            Ok(Err(Pid1CommandError::NoSuchJob { id: 28 }))
+        );
+        assert_eq!(runtime.installed_jobs().len(), 1);
     }
 }

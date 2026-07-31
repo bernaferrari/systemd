@@ -15,7 +15,7 @@
 use crate::pid1_lifecycle::{OuterLoopExit, outer_loop_exit};
 use crate::pid1_manager_commands::PendingObjectiveRequest;
 use crate::runtime_manager::{
-    HandoffAssessment, HandoffPurpose, PrepareHandoffError, RuntimeManager,
+    HandoffImageError, HandoffPrecommitImage, HandoffPurpose, PrepareHandoffError, RuntimeManager,
 };
 
 pub struct ManagerLoopExit {
@@ -56,7 +56,13 @@ impl ManagerLoopExit {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReloadPreparationError {
     RuntimeStateNotTransferable(PrepareHandoffError),
-    VersionedAdopterUnavailable(HandoffAssessment),
+    /// Descriptor ownership has been duplicated and a versioned precommit
+    /// image round-tripped, but the image advertises incomplete state
+    /// coverage. The transaction was rolled back before returning this error.
+    VersionedAdopterUnavailable {
+        image: HandoffPrecommitImage,
+        encoded_size: usize,
+    },
 }
 
 impl std::fmt::Display for ReloadPreparationError {
@@ -66,12 +72,15 @@ impl std::fmt::Display for ReloadPreparationError {
                 formatter,
                 "manager state cannot enter a live handoff: {error}"
             ),
-            Self::VersionedAdopterUnavailable(assessment) => write!(
+            Self::VersionedAdopterUnavailable {
+                image,
+                encoded_size,
+            } => write!(
                 formatter,
-                "manager reload assessed {} units, {} jobs, and {} descriptor roles, but has no versioned state/descriptor adopter",
-                assessment.unit_count(),
-                assessment.job_count(),
-                assessment.descriptor_count(),
+                "manager reload prepared a {encoded_size}-byte versioned image for {} units, {} jobs, and {} descriptor roles, but complete manager-state adoption is unavailable",
+                image.assessment().unit_count(),
+                image.assessment().job_count(),
+                image.descriptor_count(),
             ),
         }
     }
@@ -99,13 +108,74 @@ fn prepare_reload(
     runtime: RuntimeManager,
     pending_reply: Option<PendingObjectiveRequest>,
 ) -> ReloadPreparationResult {
-    // This only validates process-local state and borrowed descriptor roles.
-    // It does not duplicate descriptors or serialize anything. No manager
-    // state or descriptor ownership has changed, and there is still no point
-    // of no return until a versioned adopter can consume the complete image.
-    let error = match runtime.assess_live_handoff(HandoffPurpose::ReloadInProcess) {
-        Ok(assessment) => ReloadPreparationError::VersionedAdopterUnavailable(assessment),
-        Err(error) => ReloadPreparationError::RuntimeStateNotTransferable(error),
+    // Match C's duplicate/serialize-before-commit shape, but stop before its
+    // destructive re-enumeration phase. The prepared owner contains both the
+    // exact live manager and CLOEXEC duplicates. Every failure rolls that
+    // owner back; no descriptor flag or manager field is mutated.
+    let (runtime, error) = match runtime.prepare_live_handoff(HandoffPurpose::ReloadInProcess) {
+        Ok(prepared) => {
+            let encoded = match prepared.image().encode() {
+                Ok(encoded) => encoded,
+                Err(error) => {
+                    return ReloadPreparationResult::FailedBeforePointOfNoReturn {
+                        runtime: prepared.rollback(),
+                        error: ReloadPreparationError::RuntimeStateNotTransferable(
+                            PrepareHandoffError::HandoffImage(error),
+                        ),
+                        pending_reply,
+                    };
+                }
+            };
+            let decoded = match HandoffPrecommitImage::decode(&encoded) {
+                Ok(decoded) => decoded,
+                Err(error) => {
+                    return ReloadPreparationResult::FailedBeforePointOfNoReturn {
+                        runtime: prepared.rollback(),
+                        error: ReloadPreparationError::RuntimeStateNotTransferable(
+                            PrepareHandoffError::HandoffImage(error),
+                        ),
+                        pending_reply,
+                    };
+                }
+            };
+            let descriptor_count = prepared.descriptor_count();
+            if decoded != *prepared.image() {
+                return ReloadPreparationResult::FailedBeforePointOfNoReturn {
+                    runtime: prepared.rollback(),
+                    error: ReloadPreparationError::RuntimeStateNotTransferable(
+                        PrepareHandoffError::HandoffImage(HandoffImageError::RoundTripMismatch),
+                    ),
+                    pending_reply,
+                };
+            }
+            match decoded.validate_for_adoption(HandoffPurpose::ReloadInProcess, descriptor_count) {
+                Err(HandoffImageError::IncompleteStateCoverage) | Ok(()) => {}
+                Err(error) => {
+                    return ReloadPreparationResult::FailedBeforePointOfNoReturn {
+                        runtime: prepared.rollback(),
+                        error: ReloadPreparationError::RuntimeStateNotTransferable(
+                            PrepareHandoffError::HandoffImage(error),
+                        ),
+                        pending_reply,
+                    };
+                }
+            }
+            let encoded_size = encoded.len();
+            (
+                prepared.rollback(),
+                ReloadPreparationError::VersionedAdopterUnavailable {
+                    image: decoded,
+                    encoded_size,
+                },
+            )
+        }
+        Err(rejected) => {
+            let (runtime, error) = rejected.into_parts();
+            (
+                runtime,
+                ReloadPreparationError::RuntimeStateNotTransferable(error),
+            )
+        }
     };
     ReloadPreparationResult::FailedBeforePointOfNoReturn {
         runtime,
@@ -150,11 +220,20 @@ mod tests {
             panic!("reload must remain recoverable before the point of no return");
         };
 
-        let ReloadPreparationError::VersionedAdopterUnavailable(assessment) = error else {
+        let ReloadPreparationError::VersionedAdopterUnavailable {
+            image,
+            encoded_size,
+        } = error
+        else {
             panic!("quiescent manager must reach the adopter boundary");
         };
-        assert_eq!(assessment.purpose(), HandoffPurpose::ReloadInProcess);
-        assert!(assessment.descriptor_count() >= 1);
+        assert_eq!(image.purpose(), HandoffPurpose::ReloadInProcess);
+        assert!(image.descriptor_count() >= 1);
+        assert!(encoded_size > 0);
+        assert_eq!(
+            image.validate_for_adoption(HandoffPurpose::ReloadInProcess, image.descriptor_count()),
+            Err(HandoffImageError::IncompleteStateCoverage)
+        );
         assert_eq!(
             runtime
                 .get_unit("preserved.target")

@@ -515,6 +515,7 @@ mod imp {
                         ..
                     }
                     | crate::pid1_manager_commands::Pid1CommandError::NoUnitForCallerPid { .. }
+                    | crate::pid1_manager_commands::Pid1CommandError::NoSuchJob { .. }
                     | crate::pid1_manager_commands::Pid1CommandError::Runtime(_),
                 ),
             ) => Pid1DbusProtocolError::Failed,
@@ -940,10 +941,12 @@ mod imp {
         }
 
         fn wire_slot_config(input_capacity: usize) -> PrivateBusWireSlotConfig {
-            // The bounded Introspect reply is currently ~750 bytes. Keep the
-            // fixture above that protocol minimum while preserving a small,
-            // deterministic cap for malformed/oversized-frame tests below.
-            PrivateBusWireSlotConfig::new(input_capacity, NonZeroUsize::new(2).unwrap(), 1024, 2048)
+            // The checked Introspect reply includes every method in the
+            // currently advertised shadow interface and is just under 2 KiB
+            // on the wire. Keep the fixture above that protocol minimum while
+            // preserving a small, deterministic cap for malformed/oversized-
+            // frame tests below.
+            PrivateBusWireSlotConfig::new(input_capacity, NonZeroUsize::new(2).unwrap(), 2048, 2048)
         }
 
         fn push_padding(bytes: &mut Vec<u8>, alignment: usize) {

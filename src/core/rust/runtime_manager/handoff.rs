@@ -4,13 +4,13 @@
 
 //! Duplicate-before-commit inventory for live manager handoff.
 //!
-//! This module intentionally has no serializer, adopter, or commit operation.
-//! Production code can only assess process-local state and descriptor roles
-//! through a shared borrow. Test-only preparation retains the exact
-//! `RuntimeManager` and duplicates transferable kernel capabilities to prove
-//! rollback ownership. Any validation or duplication failure returns that
-//! original owner unchanged. A future versioned adopter must exist before a
-//! point-of-no-return API can be added.
+//! This module intentionally has no complete manager-state serializer,
+//! adopter, or commit operation. Production preparation retains the exact
+//! `RuntimeManager`, duplicates transferable kernel capabilities, and emits a
+//! versioned precommit image whose header declares descriptor-only coverage.
+//! Any validation, duplication, or encoding failure returns the original
+//! owner unchanged. A future complete state image and adopter must exist
+//! before a point-of-no-return API can be added.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -18,6 +18,11 @@ use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 
 use super::RuntimeManager;
 use super::cgroup_runtime::BorrowedCgroupFds;
+
+mod image;
+pub use image::{
+    HANDOFF_IMAGE_VERSION, HandoffImageCoverage, HandoffImageError, HandoffPrecommitImage,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandoffPurpose {
@@ -91,6 +96,7 @@ pub enum PrepareHandoffError {
         role: String,
         raw_os_error: Option<i32>,
     },
+    HandoffImage(HandoffImageError),
 }
 
 impl std::fmt::Display for PrepareHandoffError {
@@ -155,6 +161,9 @@ impl std::fmt::Display for PrepareHandoffError {
                     write!(formatter, ": errno {errno}")?;
                 }
                 Ok(())
+            }
+            Self::HandoffImage(error) => {
+                write!(formatter, "handoff image contract failed: {error}")
             }
         }
     }
@@ -244,12 +253,21 @@ impl DescriptorBundle {
 pub(crate) struct PreparedLiveHandoff {
     original: RuntimeManager,
     inventory: HandoffAssessment,
-    _descriptors: DescriptorBundle,
+    image: HandoffPrecommitImage,
+    descriptors: DescriptorBundle,
 }
 
 impl PreparedLiveHandoff {
     pub(crate) fn inventory(&self) -> &HandoffAssessment {
         &self.inventory
+    }
+
+    pub(crate) fn image(&self) -> &HandoffPrecommitImage {
+        &self.image
+    }
+
+    pub(crate) fn descriptor_count(&self) -> usize {
+        self.descriptors.0.len()
     }
 
     pub(crate) fn rollback(self) -> RuntimeManager {
@@ -648,7 +666,6 @@ impl RuntimeManager {
         })
     }
 
-    #[cfg(test)]
     pub(crate) fn prepare_live_handoff(
         self,
         purpose: HandoffPurpose,
@@ -656,7 +673,6 @@ impl RuntimeManager {
         self.prepare_live_handoff_with(purpose, |_, descriptor| descriptor.try_clone_to_owned())
     }
 
-    #[cfg(test)]
     fn prepare_live_handoff_with<F>(
         self,
         purpose: HandoffPurpose,
@@ -675,10 +691,18 @@ impl RuntimeManager {
             Err(error) => return Err(reject(self, error)),
         };
         debug_assert_eq!(inventory.descriptor_count, descriptors.0.len());
+        let image = match HandoffPrecommitImage::from_runtime_roles(
+            inventory.clone(),
+            descriptors.0.keys(),
+        ) {
+            Ok(image) => image,
+            Err(error) => return Err(reject(self, PrepareHandoffError::HandoffImage(error))),
+        };
         Ok(PreparedLiveHandoff {
             original: self,
             inventory,
-            _descriptors: descriptors,
+            image,
+            descriptors,
         })
     }
 }

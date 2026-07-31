@@ -23,6 +23,7 @@ const ERROR_DISCONNECTED: &str = "org.freedesktop.DBus.Error.Disconnected";
 const ERROR_NO_SUCH_UNIT: &str = "org.freedesktop.systemd1.NoSuchUnit";
 const ERROR_NO_UNIT_FOR_PID: &str = "org.freedesktop.systemd1.NoUnitForPID";
 const ERROR_NO_UNIT_FOR_INVOCATION_ID: &str = "org.freedesktop.systemd1.NoUnitForInvocationID";
+const ERROR_NO_SUCH_JOB: &str = "org.freedesktop.systemd1.NoSuchJob";
 
 const MESSAGE_ACCESS_DENIED: &str = "Permission denied.";
 const MESSAGE_RUNTIME_FAILED: &str = "PID 1 manager command failed.";
@@ -38,18 +39,23 @@ const MESSAGE_INBOX_CLOSED: &str = "PID 1 command inbox is closed.";
 const PID1_SHADOW_INTROSPECTION_XML: &str = concat!(
     "<node>",
     "<interface name=\"org.freedesktop.DBus.Introspectable\">",
-    "<method name=\"Introspect\"/>",
+    "<method name=\"Introspect\"><arg type=\"s\" name=\"xml_data\" direction=\"out\"/></method>",
     "</interface>",
     "<interface name=\"org.freedesktop.DBus.Peer\">",
     "<method name=\"Ping\"/>",
     "<method name=\"GetMachineId\"><arg type=\"s\" name=\"machine_uuid\" direction=\"out\"/></method>",
     "</interface>",
     "<interface name=\"org.freedesktop.systemd1.Manager\">",
-    "<method name=\"GetUnit\"/><method name=\"GetUnitByPID\"/>",
-    "<method name=\"GetUnitByInvocationID\"/><method name=\"LoadUnit\"/>",
-    "<method name=\"StartUnit\"/><method name=\"StopUnit\"/>",
-    "<method name=\"ReloadUnit\"/><method name=\"RestartUnit\"/>",
-    "<method name=\"ResetFailedUnit\"/>",
+    "<method name=\"GetUnit\"><arg type=\"s\" name=\"name\" direction=\"in\"/><arg type=\"o\" name=\"unit\" direction=\"out\"/></method>",
+    "<method name=\"GetUnitByPID\"><arg type=\"u\" name=\"pid\" direction=\"in\"/><arg type=\"o\" name=\"unit\" direction=\"out\"/></method>",
+    "<method name=\"GetUnitByInvocationID\"><arg type=\"ay\" name=\"invocation_id\" direction=\"in\"/><arg type=\"o\" name=\"unit\" direction=\"out\"/></method>",
+    "<method name=\"LoadUnit\"><arg type=\"s\" name=\"name\" direction=\"in\"/><arg type=\"o\" name=\"unit\" direction=\"out\"/></method>",
+    "<method name=\"StartUnit\"><arg type=\"s\" name=\"name\" direction=\"in\"/><arg type=\"s\" name=\"mode\" direction=\"in\"/><arg type=\"o\" name=\"job\" direction=\"out\"/></method>",
+    "<method name=\"StopUnit\"><arg type=\"s\" name=\"name\" direction=\"in\"/><arg type=\"s\" name=\"mode\" direction=\"in\"/><arg type=\"o\" name=\"job\" direction=\"out\"/></method>",
+    "<method name=\"ReloadUnit\"><arg type=\"s\" name=\"name\" direction=\"in\"/><arg type=\"s\" name=\"mode\" direction=\"in\"/><arg type=\"o\" name=\"job\" direction=\"out\"/></method>",
+    "<method name=\"RestartUnit\"><arg type=\"s\" name=\"name\" direction=\"in\"/><arg type=\"s\" name=\"mode\" direction=\"in\"/><arg type=\"o\" name=\"job\" direction=\"out\"/></method>",
+    "<method name=\"GetJob\"><arg type=\"u\" name=\"id\" direction=\"in\"/><arg type=\"o\" name=\"job\" direction=\"out\"/></method>",
+    "<method name=\"ResetFailedUnit\"><arg type=\"s\" name=\"name\" direction=\"in\"/></method>",
     "<method name=\"ResetFailed\"/>",
     "</interface>",
     "</node>"
@@ -133,6 +139,9 @@ impl Pid1DbusReplyAdapter {
             Ok(Pid1ManagerReply::UnitLoaded { path }) => {
                 encode_text_reply(endian, serial, reply_serial, b'o', &path)
             }
+            Ok(Pid1ManagerReply::JobFound { path }) => {
+                encode_text_reply(endian, serial, reply_serial, b'o', &path)
+            }
             Ok(Pid1ManagerReply::JobQueued { id }) => {
                 let path = format!("{JOB_PATH_PREFIX}{id}");
                 encode_text_reply(endian, serial, reply_serial, b'o', &path)
@@ -169,6 +178,10 @@ impl Pid1DbusReplyAdapter {
             Err(Pid1CommandError::NoUnitForCallerPid { pid }) => {
                 let message = format!("Client {pid} not member of any unit.");
                 encode_error_reply(endian, serial, reply_serial, ERROR_NO_SUCH_UNIT, &message)
+            }
+            Err(Pid1CommandError::NoSuchJob { id }) => {
+                let message = format!("Job {id} does not exist.");
+                encode_error_reply(endian, serial, reply_serial, ERROR_NO_SUCH_JOB, &message)
             }
             Err(error) => {
                 let (name, message) = error_details(error);
@@ -238,6 +251,7 @@ fn error_details(error: Pid1CommandError) -> (&'static str, &'static str) {
         Pid1CommandError::NoUnitForCallerPid { .. } => {
             unreachable!("handled with its caller PID")
         }
+        Pid1CommandError::NoSuchJob { .. } => unreachable!("handled with its job ID"),
         Pid1CommandError::Runtime(_) => (ERROR_FAILED, MESSAGE_RUNTIME_FAILED),
         Pid1CommandError::InboxFull => (ERROR_LIMITS_EXCEEDED, MESSAGE_INBOX_FULL),
         Pid1CommandError::InboxClosed => (ERROR_DISCONNECTED, MESSAGE_INBOX_CLOSED),
@@ -282,7 +296,9 @@ mod tests {
     use super::*;
     use crate::ffi::Errno;
 
-    const CAPACITY: usize = 1024;
+    // Keep this above the complete checked shadow introspection document while
+    // remaining far below the production test transport's 16 KiB frame cap.
+    const CAPACITY: usize = 4096;
 
     fn u32_at(endian: Endian, bytes: &[u8], offset: usize) -> u32 {
         let bytes: [u8; 4] = bytes[offset..offset + 4].try_into().unwrap();
@@ -336,8 +352,18 @@ mod tests {
         );
         assert!(
             introspection
-                .windows(b"<method name=\"ResetFailedUnit\"/>".len())
-                .any(|window| window == b"<method name=\"ResetFailedUnit\"/>")
+                .windows(b"<method name=\"ResetFailedUnit\">".len())
+                .any(|window| window == b"<method name=\"ResetFailedUnit\">")
+        );
+        assert!(
+            introspection
+                .windows(b"<method name=\"GetJob\">".len())
+                .any(|window| window == b"<method name=\"GetJob\">")
+        );
+        assert!(
+            introspection
+                .windows(b"<arg type=\"u\" name=\"id\" direction=\"in\"/>".len())
+                .any(|window| window == b"<arg type=\"u\" name=\"id\" direction=\"in\"/>")
         );
         assert!(
             introspection
@@ -373,6 +399,23 @@ mod tests {
         assert_correlation(&queued, Endian::Big, 2);
         assert!(
             queued
+                .windows(b"/org/freedesktop/systemd1/job/27".len())
+                .any(|window| window == b"/org/freedesktop/systemd1/job/27")
+        );
+
+        let found = adapter
+            .encode(
+                Endian::Little,
+                73,
+                41,
+                Ok(Pid1ManagerReply::JobFound {
+                    path: "/org/freedesktop/systemd1/job/27".into(),
+                }),
+            )
+            .unwrap();
+        assert_correlation(&found, Endian::Little, 2);
+        assert!(
+            found
                 .windows(b"/org/freedesktop/systemd1/job/27".len())
                 .any(|window| window == b"/org/freedesktop/systemd1/job/27")
         );
@@ -421,6 +464,11 @@ mod tests {
                 Pid1CommandError::NoUnitForCallerPid { pid: 4242 },
                 ERROR_NO_SUCH_UNIT,
                 "Client 4242 not member of any unit.",
+            ),
+            (
+                Pid1CommandError::NoSuchJob { id: 27 },
+                ERROR_NO_SUCH_JOB,
+                "Job 27 does not exist.",
             ),
             (
                 Pid1CommandError::InboxFull,

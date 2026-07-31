@@ -9,11 +9,12 @@
 //! manager environment; unit generators then receive the resulting generated
 //! environment and write the three generated-unit trees that unit loading
 //! consumes. This module makes that dependency data-visible. The environment
-//! executor now parses and feeds forward C's `gather_environment` protocol,
-//! but `main` remains deliberately unwired until the manager startup owner can
-//! install the returned transient environment at C's exact lifecycle point.
-//! Running only the second half would still be less faithful than leaving the
-//! C production path selected.
+//! executor parses and feeds forward C's `gather_environment` protocol. The
+//! startup owner below publishes the resulting system-manager environment
+//! before unit loading, which is necessary while the experimental Rust manager
+//! still uses the process environment for `ConditionEnvironment=` and service
+//! launch inheritance. This does *not* select Rust as the installed PID 1:
+//! Meson/C ABI selection and several manager contracts remain incomplete.
 
 use crate::generator_runtime::{
     EnvironmentGeneratorExecutionReport, GeneratorExecutionError, GeneratorExecutionOptions,
@@ -25,6 +26,7 @@ use crate::generator_setup::{
     LookupPaths, build_generator_environment,
 };
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 const SYSTEM_GENERATOR_PATHS: &[&str] = &[
@@ -151,18 +153,33 @@ impl Pid1GeneratorStartupPlan {
         initial_environment: BTreeMap<String, String>,
         facts: GeneratorEnvironmentFacts,
     ) -> Result<Self, Pid1GeneratorPlanError> {
+        Self::new_with_path_environment(
+            root,
+            initial_environment.clone(),
+            &initial_environment,
+            facts,
+        )
+    }
+
+    /// Build a plan with the separation C maintains between manager state and
+    /// startup configuration. The system manager's transient environment is
+    /// deliberately clean, whereas the generator-path override variables are
+    /// read while lookup paths are initialized from the startup environment.
+    pub fn new_with_path_environment(
+        root: &Path,
+        initial_environment: BTreeMap<String, String>,
+        path_environment: &BTreeMap<String, String>,
+        facts: GeneratorEnvironmentFacts,
+    ) -> Result<Self, Pid1GeneratorPlanError> {
         if facts.scope != GeneratorRuntimeScope::System {
             return Err(Pid1GeneratorPlanError::NonSystemScope);
         }
         Ok(Self {
             environment_generator_paths: system_generator_paths(
                 Pid1GeneratorKind::Environment,
-                &initial_environment,
+                path_environment,
             ),
-            unit_generator_paths: system_generator_paths(
-                Pid1GeneratorKind::Unit,
-                &initial_environment,
-            ),
+            unit_generator_paths: system_generator_paths(Pid1GeneratorKind::Unit, path_environment),
             lookup_paths: system_generator_lookup_paths(root),
             facts,
             initial_environment,
@@ -232,6 +249,144 @@ impl Pid1GeneratorStartupPlan {
             &self.unit_generator_paths,
             &options,
         )
+    }
+
+    /// Execute C's generator ordering and publish the resulting manager
+    /// environment before Rust constructs its runtime manager.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure no other thread can read or mutate the process
+    /// environment for the duration of this call. Rust 2024 correctly marks
+    /// that operation unsafe. PID 1 calls this from its single-threaded early
+    /// startup sequence, before it creates the runtime manager, event loop, or
+    /// any service child. Calling it later would race `Command` and unit
+    /// condition environment capture.
+    pub unsafe fn execute_and_publish(
+        &self,
+    ) -> Result<Pid1GeneratorStartupReport, Pid1GeneratorStartupError> {
+        // SAFETY: upheld by this function's documented caller contract.
+        unsafe { publish_transient_environment(&self.initial_environment) };
+        let environment = self
+            .run_environment_generators()
+            .map_err(Pid1GeneratorStartupError::Environment)?;
+        // SAFETY: the same single-threaded startup contract still applies;
+        // environment-generator reader threads have been joined before their
+        // report is returned.
+        unsafe { publish_transient_environment(&environment.transient_environment) };
+        let unit = self
+            .run_unit_generators(environment.transient_environment.clone())
+            .map_err(Pid1GeneratorStartupError::Unit)?;
+        Ok(Pid1GeneratorStartupReport { environment, unit })
+    }
+}
+
+/// Generator-stage outcome retained for PID 1 logging and diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pid1GeneratorStartupReport {
+    pub environment: EnvironmentGeneratorExecutionReport,
+    pub unit: GeneratorRunOutcome<GeneratorExecutionReport>,
+}
+
+/// Startup-stage error preserving whether the environment or unit batch
+/// failed. C fails `manager_startup()` at the same boundary.
+#[derive(Debug)]
+pub enum Pid1GeneratorStartupError {
+    Environment(GeneratorExecutionError),
+    Unit(GeneratorRunError<GeneratorExecutionError>),
+}
+
+impl std::fmt::Display for Pid1GeneratorStartupError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Environment(error) => write!(formatter, "environment generators: {error}"),
+            // `GeneratorRunError` deliberately retains setup/discovery data
+            // and has no lossy Display implementation. PID 1's fatal log may
+            // therefore use its complete debug representation.
+            Self::Unit(error) => write!(formatter, "unit generators: {error:?}"),
+        }
+    }
+}
+
+impl std::error::Error for Pid1GeneratorStartupError {}
+
+const DEFAULT_PATH_FULL_SBIN: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin";
+const DEFAULT_PATH_LOCAL_SBIN: &str = "/usr/local/sbin:/usr/local/bin:/usr/bin";
+const DEFAULT_PATH_WITHOUT_SBIN: &str = "/usr/local/bin:/usr/bin";
+
+#[cfg(unix)]
+fn files_are_same(path_a: &Path, path_b: &Path) -> Option<bool> {
+    use std::os::unix::fs::MetadataExt;
+
+    let a = std::fs::metadata(path_a).ok()?;
+    let b = std::fs::metadata(path_b).ok()?;
+    Some(a.dev() == b.dev() && a.ino() == b.ino())
+}
+
+#[cfg(not(unix))]
+fn files_are_same(_path_a: &Path, _path_b: &Path) -> Option<bool> {
+    None
+}
+
+/// Mirror C's `default_PATH()` split-/usr choice. Metadata failures take the
+/// conservative full-sbin path, just as C's `dir_is_split()` does.
+pub fn system_manager_default_path() -> &'static str {
+    match files_are_same(Path::new("/usr/sbin"), Path::new("/usr/bin")) {
+        Some(false) | None => DEFAULT_PATH_FULL_SBIN,
+        Some(true) => {
+            match files_are_same(Path::new("/usr/local/sbin"), Path::new("/usr/local/bin")) {
+                Some(true) => DEFAULT_PATH_WITHOUT_SBIN,
+                Some(false) | None => DEFAULT_PATH_LOCAL_SBIN,
+            }
+        }
+    }
+}
+
+/// C's clean initial system-manager environment: a default `PATH` plus
+/// locale assignments from `locale_setup()`. It intentionally does not copy
+/// the caller's ambient environment.
+pub fn system_manager_initial_environment() -> BTreeMap<String, String> {
+    let mut environment = BTreeMap::from([(
+        "PATH".to_string(),
+        system_manager_default_path().to_string(),
+    )]);
+    if let Ok(assignments) = systemd_shared_rs::locale_setup::locale_setup() {
+        for assignment in assignments {
+            if let Some((name, value)) = assignment.split_once('=') {
+                environment.insert(name.to_string(), value.to_string());
+            }
+        }
+    }
+    environment
+}
+
+/// Snapshot the UTF-8 startup settings used by C lookup-path initialization.
+/// Invalid Unicode cannot represent a `SYSTEMD_*_PATH` setting in C either,
+/// and is consequently excluded from the typed map.
+pub fn startup_path_environment() -> BTreeMap<String, String> {
+    std::env::vars().collect()
+}
+
+/// Replace the process environment with PID 1's transient environment.
+///
+/// Rust's runtime manager currently reads process environment for unit
+/// conditions and child execution. Keeping this boundary explicit prevents
+/// accidental ambient inheritance and gives a future owned manager
+/// environment one narrowly scoped replacement point.
+///
+/// # Safety
+///
+/// No other thread may access the process environment while this runs.
+pub unsafe fn publish_transient_environment(environment: &BTreeMap<String, String>) {
+    let inherited_names: Vec<OsString> = std::env::vars_os().map(|(name, _)| name).collect();
+    for name in inherited_names {
+        // SAFETY: upheld by the function's caller contract.
+        unsafe { std::env::remove_var(name) };
+    }
+    for (name, value) in environment {
+        // SAFETY: upheld by the function's caller contract. Generator output
+        // has already passed the environment-name/value validator.
+        unsafe { std::env::set_var(name, value) };
     }
 }
 
@@ -318,6 +473,42 @@ mod tests {
             plan.lookup_paths.generator,
             Some(PathBuf::from("/root-for-test/run/systemd/generator"))
         );
+    }
+
+    #[test]
+    fn lookup_path_overrides_do_not_leak_into_clean_system_manager_environment() {
+        let initial = BTreeMap::from([("PATH".to_string(), "/clean/path".to_string())]);
+        let path_environment = BTreeMap::from([(
+            "SYSTEMD_GENERATOR_PATH".to_string(),
+            "/configured/generators".to_string(),
+        )]);
+        let plan = Pid1GeneratorStartupPlan::new_with_path_environment(
+            Path::new("/"),
+            initial.clone(),
+            &path_environment,
+            facts(),
+        )
+        .unwrap();
+
+        assert_eq!(plan.initial_environment(), &initial);
+        assert_eq!(
+            plan.unit_generator_paths,
+            vec![PathBuf::from("/configured/generators")]
+        );
+        assert!(
+            !plan
+                .initial_environment()
+                .contains_key("SYSTEMD_GENERATOR_PATH")
+        );
+    }
+
+    #[test]
+    fn clean_system_environment_always_has_a_c_default_path() {
+        let environment = system_manager_initial_environment();
+        assert!(matches!(
+            environment.get("PATH").map(String::as_str),
+            Some(DEFAULT_PATH_FULL_SBIN | DEFAULT_PATH_LOCAL_SBIN | DEFAULT_PATH_WITHOUT_SBIN)
+        ));
     }
 
     #[test]

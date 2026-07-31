@@ -312,13 +312,13 @@
       ]
     },
     "generator_runtime": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/generator_runtime.rs"
       ]
     },
     "generator_setup": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/generator_setup.rs"
       ]
@@ -534,7 +534,7 @@
       ]
     },
     "pid1_generator_lifecycle": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_generator_lifecycle.rs"
       ]
@@ -586,6 +586,7 @@
       "source_files": [
         "src/core/rust/runtime_manager/bound_liveness.rs",
         "src/core/rust/runtime_manager/cgroup_runtime.rs",
+        "src/core/rust/runtime_manager/handoff/image.rs",
         "src/core/rust/runtime_manager/handoff.rs",
         "src/core/rust/runtime_manager/job_runtime.rs",
         "src/core/rust/runtime_manager/linux_cgroup.rs",

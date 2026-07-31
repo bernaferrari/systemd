@@ -3,6 +3,7 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::ffi::OsString;
 use std::io::Write;
 use std::num::NonZeroUsize;
 #[cfg(target_os = "linux")]
@@ -13,6 +14,7 @@ use std::time::Duration;
 use systemd_basic_rs::extract_word::{
     EXTRACT_RELAX, EXTRACT_RETAIN_ESCAPE, EXTRACT_UNQUOTE, extract_first_word,
 };
+use systemd_core_rs::generator_setup::{GeneratorEnvironmentFacts, GeneratorRuntimeScope};
 use systemd_core_rs::pid1_bus_source::{
     Pid1BusCommandInbox, Pid1BusCommandSender, pid1_bus_command_channel,
 };
@@ -23,6 +25,9 @@ use systemd_core_rs::pid1_dbus_server::PrivateBusServerTurnBudget;
 #[cfg(target_os = "linux")]
 use systemd_core_rs::pid1_dbus_transport::PrivateBusWireSlotConfig;
 use systemd_core_rs::pid1_exec_sources::ExecStatusSourceOwner;
+use systemd_core_rs::pid1_generator_lifecycle::{
+    Pid1GeneratorStartupPlan, startup_path_environment, system_manager_initial_environment,
+};
 #[cfg(target_os = "linux")]
 use systemd_core_rs::pid1_idle_pipe_source::IdlePipeSourceOwner;
 use systemd_core_rs::pid1_lifecycle::{
@@ -253,6 +258,102 @@ fn in_initrd() -> bool {
     std::path::Path::new("/etc/initrd-release").exists()
 }
 
+/// Match `log_execution_mode()`'s first-boot decision before generator
+/// execution. This intentionally uses the captured initrd state: publishing
+/// PID 1's clean transient environment removes an inherited
+/// `SYSTEMD_IN_INITRD` override before the manager is constructed.
+fn detect_first_boot(in_initrd: bool) -> bool {
+    if in_initrd {
+        return false;
+    }
+
+    if let Ok(cmdline) = std::fs::read_to_string("/proc/cmdline") {
+        for word in cmdline.split_ascii_whitespace() {
+            if let Some(value) = word.strip_prefix("systemd.condition_first_boot=")
+                && let Some(value) = systemd_basic_rs::string_table::parse_boolean(value)
+            {
+                return value;
+            }
+        }
+    }
+
+    match std::fs::read_to_string("/etc/machine-id") {
+        Ok(machine_id) => machine_id.trim() == "uninitialized",
+        // C treats a missing or unreadable machine ID as first boot.
+        Err(_) => true,
+    }
+}
+
+/// Translate Rust target architecture spelling to the public spelling used by
+/// `architecture_to_string(uname_architecture())`. A future full PID 1 port
+/// should replace this target-based subset with the shared uname/personality
+/// detector; unknown targets retain their compiler spelling rather than
+/// inventing an incorrect architecture name.
+fn generator_architecture() -> String {
+    match std::env::consts::ARCH {
+        "x86_64" => "x86-64",
+        "x86" | "i686" => "x86",
+        "aarch64" => "arm64",
+        "arm" => "arm",
+        "powerpc64" => "ppc64",
+        "powerpc64le" => "ppc64-le",
+        architecture => architecture,
+    }
+    .to_string()
+}
+
+fn pid1_generator_facts(in_initrd: bool, first_boot: bool) -> GeneratorEnvironmentFacts {
+    GeneratorEnvironmentFacts {
+        scope: GeneratorRuntimeScope::System,
+        in_initrd,
+        soft_reboots_count: 0,
+        first_boot: Some(first_boot),
+        // C's virtualization probes are advisory: failures omit these
+        // variables. Do the same until their complete safe Rust detector is
+        // shared with PID 1; never substitute a partial heuristic here.
+        virtualization: None,
+        confidential_virtualization: None,
+        architecture: generator_architecture(),
+    }
+}
+
+/// Run both generator classes at the exact point before Rust creates its
+/// manager. The lifecycle owner publishes the clean system-manager
+/// environment before executing environment generators, then the accumulated
+/// map before unit generators and unit loading.
+fn run_pid1_generators(in_initrd: bool, first_boot: bool) {
+    let path_environment = startup_path_environment();
+    let plan = Pid1GeneratorStartupPlan::new_with_path_environment(
+        Path::new("/"),
+        system_manager_initial_environment(),
+        &path_environment,
+        pid1_generator_facts(in_initrd, first_boot),
+    )
+    .unwrap_or_else(|error| fail_closed("PID 1 generator startup plan", error));
+
+    // SAFETY: main invokes this before RuntimeManager, the event loop, or
+    // service children exist. The executor joins its temporary stdout reader
+    // before publication, so no concurrent process-environment access exists.
+    let report = unsafe { plan.execute_and_publish() }
+        .unwrap_or_else(|error| fail_closed("PID 1 generator startup", error));
+    if report.environment.children.iter().any(|child| {
+        !matches!(
+            child.status,
+            systemd_core_rs::generator_runtime::GeneratorChildStatus::Exited(0)
+        )
+    }) {
+        boot_log(
+            "one or more environment generators failed; continuing as C's IGNORE_ERRORS policy requires",
+        );
+    }
+    if !report.environment.diagnostics.is_empty() {
+        boot_log(&format!(
+            "ignored {} malformed environment-generator records",
+            report.environment.diagnostics.len()
+        ));
+    }
+}
+
 fn kernel_cmdline_override_target_from(cmdline: &str, in_initrd: bool) -> Option<String> {
     let mut remaining = cmdline;
     let mut selected = None;
@@ -284,17 +385,19 @@ fn kernel_cmdline_override_target(in_initrd: bool) -> Option<String> {
     kernel_cmdline_override_target_from(&cmdline, in_initrd)
 }
 
-fn configure_unit_search_paths() {
-    if std::env::var_os("SYSTEMD_UNIT_PATH").is_none() {
-        // SAFETY: main() invokes this during single-threaded PID 1 startup,
-        // before RuntimeManager or the event loop can create concurrent work.
-        unsafe {
-            std::env::set_var(
-                "SYSTEMD_UNIT_PATH",
-                "/etc/systemd/system.control:/run/systemd/system.control:/run/systemd/transient:/run/systemd/generator.early:/etc/systemd/system:/etc/systemd/system.attached:/run/systemd/system:/run/systemd/system.attached:/run/systemd/generator:/usr/local/lib/systemd/system:/usr/lib/systemd/system:/run/systemd/generator.late",
-            );
-        }
-    }
+fn configure_unit_search_paths_from_startup_environment(startup_value: Option<OsString>) {
+    let value = startup_value.unwrap_or_else(|| {
+        OsString::from(
+            "/etc/systemd/system.control:/run/systemd/system.control:/run/systemd/transient:/run/systemd/generator.early:/etc/systemd/system:/etc/systemd/system.attached:/run/systemd/system:/run/systemd/system.attached:/run/systemd/generator:/usr/local/lib/systemd/system:/usr/lib/systemd/system:/run/systemd/generator.late",
+        )
+    });
+    // `lookup_paths_init()` consumes its override before C runs environment
+    // generators. Preserve that ordering: a generator assignment to
+    // SYSTEMD_UNIT_PATH changes the manager environment but cannot rewrite
+    // the already selected lookup paths.
+    // SAFETY: main invokes this during single-threaded PID 1 startup, before
+    // RuntimeManager or the event loop can create concurrent work.
+    unsafe { std::env::set_var("SYSTEMD_UNIT_PATH", value) };
 }
 
 #[cfg(target_os = "linux")]
@@ -1172,6 +1275,11 @@ fn main() {
         std::process::exit(CLI_ERROR_EXIT_STATUS);
     }
 
+    let mut pid1_boot_facts = None;
+    // C freezes lookup paths before environment generators can mutate the
+    // manager environment. Capture this once while the original startup
+    // environment is still available.
+    let startup_unit_path = std::env::var_os("SYSTEMD_UNIT_PATH");
     let manager_cgroup_root = if is_pid1 {
         boot_log("running as PID 1, starting early boot sequence");
 
@@ -1181,7 +1289,7 @@ fn main() {
 
         if options.action == CliAction::Test {
             boot_log("PID 1 test mode enabled; skipping mount/cgroup/hostname setup");
-            boot_log("step 4/8: signal setup");
+            boot_log("step 4/9: signal setup");
             if let Err(e) = signal_setup() {
                 fail_closed("signal setup", e);
             }
@@ -1189,32 +1297,40 @@ fn main() {
             return;
         }
 
-        boot_log("step 1/8: mount setup");
+        boot_log("step 1/9: mount setup");
         if let Err(e) = mount_setup() {
             fail_closed("mount setup", e);
         }
 
-        boot_log("step 2/8: cgroup setup");
+        boot_log("step 2/9: cgroup setup");
         let cgroup_root = cgroup_setup().unwrap_or_else(|error| fail_closed("cgroup setup", error));
 
-        boot_log("step 3/8: apply hostname");
+        boot_log("step 3/9: apply hostname");
         match apply_hostname_from_etc() {
             Ok(Some(hostname)) => boot_log(&format!("hostname set from /etc/hostname: {hostname}")),
             Ok(None) => boot_log("hostname unchanged (no /etc/hostname entry)"),
             Err(e) => boot_log(&format!("hostname setup skipped due to error: {e}")),
         }
 
-        boot_log("step 4/8: signal setup");
+        boot_log("step 4/9: signal setup");
         if let Err(e) = signal_setup() {
             fail_closed("signal setup", e);
         }
+        let in_initrd = in_initrd();
+        let first_boot = detect_first_boot(in_initrd);
+        pid1_boot_facts = Some((in_initrd, first_boot));
         Some(cgroup_root)
     } else {
         None
     };
 
-    boot_log("step 5/8: configure unit search paths and initialize manager");
-    configure_unit_search_paths();
+    if let Some((in_initrd, first_boot)) = pid1_boot_facts {
+        boot_log("step 5/9: run environment and unit generators");
+        run_pid1_generators(in_initrd, first_boot);
+    }
+
+    boot_log("step 6/9: configure unit search paths and initialize manager");
+    configure_unit_search_paths_from_startup_environment(startup_unit_path);
     let mut runtime = manager_cgroup_root
         .map(RuntimeManager::new_at_cgroup_root)
         .unwrap_or_else(RuntimeManager::new);
@@ -1249,8 +1365,9 @@ fn main() {
     let notify_source: Option<Pid1NotifySource> = None;
 
     if is_pid1 {
-        boot_log("step 6/8: select boot target");
-        let in_initrd = in_initrd();
+        boot_log("step 7/9: select boot target");
+        let (in_initrd, _) =
+            pid1_boot_facts.expect("PID 1 boot facts were captured before generators");
         let cmdline_target = kernel_cmdline_override_target(in_initrd);
         if cmdline_target.is_some() {
             boot_log(&format!(
@@ -1259,7 +1376,7 @@ fn main() {
             ));
         }
 
-        boot_log("step 7/8: start selected target");
+        boot_log("step 8/9: start selected target");
         let start_result = if let Some(selected) = cmdline_target {
             runtime
                 .start_boot_target(&selected)
@@ -1291,7 +1408,7 @@ fn main() {
         eprintln!("systemd: target startup failed: {:?}", e);
     }
 
-    boot_log("step 8/8: enter event loop");
+    boot_log("step 9/9: enter event loop");
     boot_log(&format!(
         "{} units loaded, {} active",
         runtime.unit_count(),

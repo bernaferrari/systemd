@@ -283,12 +283,22 @@ def main() -> int:
     if not re.search(r"runtime\s*\.\s*cgroup_root\s*\.\s*handoff_fd", handoff):
         return fail("handoff inventory no longer borrows the manager root capability")
     if "runtime.prepare_live_handoff" in pid1_manager:
-        return fail("live reload performs unusable handoff preparation/descriptor duplication")
-    required_handoff_boundary = (
-        "runtime.assess_live_handoff(HandoffPurpose::ReloadInProcess)",
-        "ReloadPreparationResult::FailedBeforePointOfNoReturn",
-        "ReloadPreparationError::VersionedAdopterUnavailable",
-    )
+        # Production may duplicate capabilities only as a rollback-safe
+        # precommit transaction. It must still round-trip the bounded image,
+        # reject incomplete coverage, and return the original owner unchanged.
+        required_handoff_boundary = (
+            "prepared.rollback()",
+            "HandoffPrecommitImage::decode",
+            "validate_for_adoption(HandoffPurpose::ReloadInProcess",
+            "ReloadPreparationResult::FailedBeforePointOfNoReturn",
+            "ReloadPreparationError::VersionedAdopterUnavailable",
+        )
+    else:
+        required_handoff_boundary = (
+            "runtime.assess_live_handoff(HandoffPurpose::ReloadInProcess)",
+            "ReloadPreparationResult::FailedBeforePointOfNoReturn",
+            "ReloadPreparationError::VersionedAdopterUnavailable",
+        )
     missing = [token for token in required_handoff_boundary if token not in pid1_manager]
     if missing:
         return fail(f"reload/handoff fail-early boundary lost: {missing}")

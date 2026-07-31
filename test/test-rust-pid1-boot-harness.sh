@@ -113,11 +113,13 @@ fi
 
 for marker in \
     "systemd: running as PID 1, starting early boot sequence" \
-    "systemd: step 1/8: mount setup" \
-    "systemd: step 2/8: cgroup setup" \
-    "systemd: step 4/8: signal setup" \
+    "systemd: step 1/9: mount setup" \
+    "systemd: step 2/9: cgroup setup" \
+    "systemd: step 4/9: signal setup" \
+    "systemd: step 5/9: run environment and unit generators" \
+    "systemd: step 6/9: configure unit search paths and initialize manager" \
     "systemd: selected boot target: default.target" \
-    "systemd: step 8/8: enter event loop" \
+    "systemd: step 9/9: enter event loop" \
     "systemd: entering event loop"; do
     if ! grep -Fq "$marker" "$boot_log"; then
         echo "FAIL: normal Rust PID 1 boot harness log is missing: $marker" >&2
