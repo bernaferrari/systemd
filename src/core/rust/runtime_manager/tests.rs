@@ -473,6 +473,70 @@ fn test_load_unit_rejects_syntax_errors_in_fragments_and_dropins() {
 }
 
 #[test]
+fn test_scan_unit_directories_rebuilds_inventory_transactionally() {
+    let high = test_temp_dir("scan-units-high");
+    let low = test_temp_dir("scan-units-low");
+    fs::create_dir_all(&high).unwrap();
+    fs::create_dir_all(&low).unwrap();
+
+    fs::write(
+        high.join("duplicate.service"),
+        "[Unit]\nDescription=High priority\n",
+    )
+    .unwrap();
+    fs::write(
+        low.join("duplicate.service"),
+        "[Unit]\nDescription=Low priority\n",
+    )
+    .unwrap();
+    fs::write(
+        high.join("stale.service"),
+        "[Unit]\nDescription=Present initially\n",
+    )
+    .unwrap();
+    let search_paths = [high.clone(), low.clone()];
+    let mut manager = new_test_runtime_manager();
+    manager.unit_files = scan_unit_directories(&search_paths).unwrap();
+    assert_eq!(
+        manager
+            .unit_files
+            .get("duplicate.service")
+            .and_then(|info| info.description.as_deref()),
+        Some("High priority")
+    );
+    assert!(manager.unit_files.contains_key("stale.service"));
+
+    fs::remove_file(high.join("stale.service")).unwrap();
+    fs::write(high.join("broken.service"), "[Unit\nDescription=broken\n").unwrap();
+    assert!(matches!(
+        scan_unit_directories(&search_paths),
+        Err(Errno::ENOEXEC)
+    ));
+    // A failed refresh leaves the previous, internally consistent snapshot
+    // untouched so callers can report the parse error without losing state.
+    assert!(manager.unit_files.contains_key("stale.service"));
+    assert!(!manager.unit_files.contains_key("broken.service"));
+
+    fs::write(
+        high.join("broken.service"),
+        "[Unit]\nDescription=Now valid\n",
+    )
+    .unwrap();
+    manager.unit_files = scan_unit_directories(&search_paths).unwrap();
+    assert!(!manager.unit_files.contains_key("stale.service"));
+    assert_eq!(
+        manager
+            .unit_files
+            .get("broken.service")
+            .and_then(|info| info.description.as_deref()),
+        Some("Now valid")
+    );
+
+    let _ = fs::remove_dir_all(&high);
+    let _ = fs::remove_dir_all(&low);
+}
+
+#[test]
 fn test_parse_repeated_unit_lists_and_reset() {
     let _test_lock = test_env_lock();
     let dir = test_temp_dir("test-systemd-unit-lists");

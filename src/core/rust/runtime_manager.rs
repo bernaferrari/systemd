@@ -102,10 +102,11 @@ pub use unit_file::{
     UnitConditionExpression, UnitFileInfo,
 };
 use unit_file::{
-    apply_cgroup_config, apply_exec_context_config, apply_kill_config, parse_unit_file,
-    unit_search_paths,
+    apply_cgroup_config, apply_exec_context_config, apply_kill_config, unit_search_paths,
 };
-use unit_load::{load_default_target_candidate, load_unit_file_with_dropins};
+use unit_load::{
+    load_default_target_candidate, load_unit_file_with_dropins, scan_unit_directories,
+};
 
 const DYNAMIC_UID_MIN: u32 = 61184;
 const DYNAMIC_UID_MAX: u32 = 65519;
@@ -1105,22 +1106,11 @@ impl RuntimeManager {
         }
     }
 
+    /// Rebuild the fragment inventory with first-search-path-wins precedence;
+    /// failed scans publish nothing, so deleted fragments cannot be retained.
+    /// Loaded [`Unit`] objects remain unchanged until reload preflight.
     pub fn scan_unit_dirs(&mut self) -> Result<()> {
-        for search_path in unit_search_paths() {
-            let Ok(entries) = fs::read_dir(&search_path) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                match parse_unit_file(&path) {
-                    Ok(Some(info)) => {
-                        self.unit_files.entry(info.name.clone()).or_insert(info);
-                    }
-                    Ok(None) => {}
-                    Err(_) => return Err(Errno::ENOEXEC),
-                }
-            }
-        }
+        self.unit_files = scan_unit_directories(&unit_search_paths())?;
         Ok(())
     }
 

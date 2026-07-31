@@ -4,7 +4,7 @@
  * Own fragment and drop-in lookup plus condition evaluation. This module consumes decoded
  * UnitFileInfo values and never mutates RuntimeManager.
  */
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,6 +15,7 @@ use std::os::unix::fs::MetadataExt;
 use super::Result as RuntimeResult;
 use super::unit_file::{
     UnitConditionConfig, UnitConditionExpression, UnitFileInfo, parse_unit_content_into,
+    parse_unit_file,
 };
 use super::unit_specifier::template_unit_name;
 use crate::ffi::Errno;
@@ -23,6 +24,30 @@ use systemd_shared_rs::condition::{
     condition_test_list as shared_condition_test_list,
 };
 use systemd_shared_rs::unit_file::UnitFileParseError;
+
+/// Scan ordered unit directories without mutating an existing inventory.
+/// The first definition wins, and callers publish the returned map only after
+/// the complete scan succeeds.
+pub(super) fn scan_unit_directories(
+    search_paths: &[PathBuf],
+) -> RuntimeResult<HashMap<String, UnitFileInfo>> {
+    let mut scanned = HashMap::new();
+    for search_path in search_paths {
+        let Ok(entries) = fs::read_dir(search_path) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            match parse_unit_file(&entry.path()) {
+                Ok(Some(info)) => {
+                    scanned.entry(info.name.clone()).or_insert(info);
+                }
+                Ok(None) => {}
+                Err(_) => return Err(Errno::ENOEXEC),
+            }
+        }
+    }
+    Ok(scanned)
+}
 
 /// Load C's implicit boot-target candidate without enumerating the complete
 /// unit search path first. Only a missing primary target permits fallback;
