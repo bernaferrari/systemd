@@ -35,18 +35,19 @@ macro_rules! forward_core_ffi {
     }};
 }
 
-/// Borrow a valid optional C string for an ABI call without transferring
-/// ownership. The caller proves the non-null C-string contract.
+/// Borrow an optional C string as bytes without transferring ownership.
 ///
-/// # Safety
-/// A non-null `value` must point to a live NUL-terminated C string for the
-/// returned borrow's lifetime.
-unsafe fn c_string_bytes<'a>(value: *const c_char) -> Option<&'a [u8]> {
-    if value.is_null() {
-        return None;
-    }
-    // SAFETY: the ABI caller guarantees a readable NUL-terminated C string.
-    Some(unsafe { CStr::from_ptr(value) }.to_bytes())
+/// Callers use this only from an ABI adapter whose contract guarantees that a
+/// non-null pointer is a live NUL-terminated string for the borrow's use.
+macro_rules! optional_c_string_bytes {
+    ($value:expr) => {{
+        if $value.is_null() {
+            None
+        } else {
+            // SAFETY: upheld by the invoking C ABI adapter's C-string contract.
+            Some(unsafe { CStr::from_ptr($value) }.to_bytes())
+        }
+    }};
 }
 
 #[inline]
@@ -139,7 +140,7 @@ pub unsafe extern "C" fn rs_strcaseeq_ptr(a: *const c_char, b: *const c_char) ->
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strlen_ptr(s: *const c_char) -> usize {
     // SAFETY: established by this entry point's C-string contract.
-    unsafe { c_string_bytes(s) }.map_or(0, <[u8]>::len)
+    optional_c_string_bytes!(s).map_or(0, <[u8]>::len)
 }
 
 /// C ABI for fundamental `isempty()`.
