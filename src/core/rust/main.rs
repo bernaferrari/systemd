@@ -12,6 +12,8 @@ use systemd_basic_rs::extract_word::{
 };
 use systemd_core_rs::pid1_bus_source::{Pid1BusCommandInbox, pid1_bus_command_channel};
 use systemd_core_rs::pid1_exec_sources::ExecStatusSourceOwner;
+#[cfg(target_os = "linux")]
+use systemd_core_rs::pid1_idle_pipe_source::IdlePipeSourceOwner;
 use systemd_core_rs::pid1_lifecycle::{
     OuterLoopExit, SignalAction, SignalRecord, SpecialTargetMode, decode_system_signal,
     outer_loop_exit,
@@ -679,8 +681,16 @@ fn run_event_loop(
     eprintln!("systemd: entering event loop");
     let mut socket_sources = SocketSourceOwner::new();
     let mut exec_status_sources = ExecStatusSourceOwner::new();
+    #[cfg(target_os = "linux")]
+    let mut idle_pipe_source = IdlePipeSourceOwner::new();
 
     loop {
+        // This is the Rust manager-loop equivalent of the idle-pipe close in
+        // C's manager_check_finished(): it runs only from the outer manager
+        // turn, after job dispatch/reaping, never from an arbitrary nested
+        // transaction submission.
+        #[cfg(target_os = "linux")]
+        runtime.borrow_mut().close_idle_pipe_when_manager_idle();
         let listeners = runtime.borrow().get_socket_listeners();
         if let Err(error) = socket_sources.reconcile(&mut event_loop, listeners) {
             fail_closed("socket event-source reconciliation", error);
@@ -688,6 +698,16 @@ fn run_event_loop(
         let exec_statuses = runtime.borrow().pending_exec_statuses();
         if let Err(error) = exec_status_sources.reconcile(&mut event_loop, exec_statuses) {
             fail_closed("exec-status event-source reconciliation", error);
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let idle_pipe = runtime
+                .borrow()
+                .idle_pipe_alert_descriptor()
+                .unwrap_or_else(|error| fail_closed("idle-pipe descriptor snapshot", error));
+            if let Err(error) = idle_pipe_source.reconcile(&mut event_loop, idle_pipe) {
+                fail_closed("idle-pipe event-source reconciliation", error);
+            }
         }
 
         // Reap children and update service states on SIGCHLD events as well as periodically
@@ -712,6 +732,25 @@ fn run_event_loop(
             .service_event_timeout(Duration::from_secs(5));
         match event_loop.run_once(epoll_timeout_ms(service_timeout)) {
             Ok(_) => {
+                #[cfg(target_os = "linux")]
+                {
+                    let idle_alert = idle_pipe_source
+                        .take_alert()
+                        .unwrap_or_else(|error| fail_closed("idle-pipe alert inbox", error));
+                    if idle_alert {
+                        // `manager_dispatch_idle_pipe_fd()` acknowledges the
+                        // child's bounded wait by closing both pipe pairs. The
+                        // following reconciliation removes the stale epoll clone.
+                        // C additionally suppresses manager status output while
+                        // an on-console unit owns the TTY. Rust PID 1 has not yet
+                        // implemented C's n_on_console/status-printing ownership,
+                        // so there is no live status route to suppress here; this
+                        // keeps the descriptor/startup ordering faithful without
+                        // pretending that console-arbitration parity exists.
+                        runtime.borrow_mut().close_idle_pipe();
+                        continue;
+                    }
+                }
                 let record = signal_inbox.borrow_mut().pop_front();
                 if let Some(record) = record {
                     let action = decode_system_signal(record, realtime_min);

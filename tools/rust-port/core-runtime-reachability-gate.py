@@ -239,7 +239,6 @@ def reject_unsupported_constructs(code: str, source_name: str) -> None:
     if INCLUDE_RE.search(code):
         raise ValueError(f"{source_name}: include! requires parser support")
 
-    aliases = set(CRATE_ALIAS_RE.findall(code))
     for match in ATTRIBUTED_ITEM_RE.finditer(code):
         attrs = match.group("attrs")
         if not re.search(r"#\s*\[\s*cfg(?:_attr)?\b", attrs):
@@ -255,20 +254,15 @@ def reject_unsupported_constructs(code: str, source_name: str) -> None:
             if item.rstrip().endswith("{"):
                 continue
             raise ValueError(f"{source_name}: cfg-controlled module requires parser support")
-        imported_root = re.match(
-            r"\s*(?:pub(?:\([^)]*\))?\s+)?use\s+(?:::)?([A-Za-z_][A-Za-z0-9_]*)",
-            item,
-        )
-        if (
-            imported_root
-            and (
-                imported_root.group(1) in {"crate", "systemd_core_rs"}
-                or imported_root.group(1) in aliases
-                or item.lstrip().startswith("pub ")
-            )
-        ) or re.match(r"\s*extern\s+crate\s+(?:crate|systemd_core_rs)\b", item):
+        # `use` items do not add a source-tree edge: the reference scanner
+        # below already traverses crate/systemd_core_rs paths in their
+        # containing file, including when the import is cfg-controlled. Keep
+        # rejecting cfg-gated `extern crate` declarations because those can
+        # alter the crate namespace in a way this lexical inventory cannot
+        # model safely.
+        if re.match(r"\s*extern\s+crate\s+(?:crate|systemd_core_rs)\b", item):
             raise ValueError(
-                f"{source_name}: cfg-controlled crate import requires parser support"
+                f"{source_name}: cfg-controlled extern crate requires parser support"
             )
 
     for match in MACRO_RULES_RE.finditer(code):
@@ -851,7 +845,6 @@ def parser_self_check() -> None:
     unsupported = {
         "include": 'include!("wiring.rs");',
         "cfg module": "#[cfg(any())]\nmod dormant;",
-        "cfg import": "#[cfg(any())]\nuse crate::alpha;",
         "macro module": "macro_rules! wire {\n() => {\nmod generated;\n}\n}",
         "macro invocation module": "cfg_if! { if #[cfg(any())] { mod generated; } }",
         "nested module": "mod outer {\nmod inner;\n}",
@@ -863,6 +856,10 @@ def parser_self_check() -> None:
             pass
         else:
             raise ValueError(f"{description} fail-closed self-check failed")
+
+    # A cfg-gated `use` remains visible to the conservative reference scan;
+    # it does not require resolving a target-specific external module file.
+    runtime_code("#[cfg(any())]\nuse crate::alpha;", "<self-check cfg import>")
 
     # Inline cfg modules do not add an external source-tree edge; their
     # references remain in the containing file and are safe for the Linux

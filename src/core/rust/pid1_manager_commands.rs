@@ -104,7 +104,7 @@ pub enum Pid1ManagerCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pid1ManagerReply {
-    UnitLoaded,
+    UnitLoaded { path: String },
     JobQueued { id: u32 },
     Completed,
 }
@@ -168,6 +168,37 @@ impl Pid1CommandAuthorizer for DenyAllPid1CommandAuthorizer {
         _command: &Pid1ManagerCommand,
     ) -> Result<(), Pid1CommandError> {
         Err(Pid1CommandError::Unauthorized)
+    }
+}
+
+/// Authorization policy for the direct private manager socket.
+///
+/// C accepts that socket only from uid 0 or the manager's own effective uid.
+/// The transport must still construct [`SenderIdentity`] from `SO_PEERCRED`;
+/// payload data is never authoritative.
+#[derive(Debug, Clone, Copy)]
+pub struct PrivateBusPid1CommandAuthorizer {
+    manager_uid: u32,
+}
+
+impl PrivateBusPid1CommandAuthorizer {
+    pub const fn new(manager_uid: u32) -> Self {
+        Self { manager_uid }
+    }
+}
+
+impl Pid1CommandAuthorizer for PrivateBusPid1CommandAuthorizer {
+    fn authorize(
+        &mut self,
+        sender: SenderIdentity,
+        _command: &Pid1ManagerCommand,
+    ) -> Result<(), Pid1CommandError> {
+        let uid = sender.peer().uid();
+        if uid == 0 || uid == self.manager_uid {
+            Ok(())
+        } else {
+            Err(Pid1CommandError::Unauthorized)
+        }
     }
 }
 
@@ -289,9 +320,10 @@ fn dispatch(
     command: Pid1ManagerCommand,
 ) -> Result<Pid1CommandEffect, Pid1CommandError> {
     let reply = match command {
-        Pid1ManagerCommand::LoadUnit { name } => runtime
-            .load_unit(&name)
-            .map(|()| Pid1ManagerReply::UnitLoaded),
+        Pid1ManagerCommand::LoadUnit { name } => runtime.load_unit(&name).and_then(|()| {
+            crate::dbus_manager::manager_get_unit_path(runtime, &name)
+                .map(|path| Pid1ManagerReply::UnitLoaded { path })
+        }),
         Pid1ManagerCommand::StartUnit { name, mode } => runtime
             .start_unit_async(&name, mode)
             .map(|id| Pid1ManagerReply::JobQueued { id }),

@@ -238,6 +238,94 @@ pub struct PendingExecStatusDescriptor {
     owner: Weak<RefCell<spawn::ExecStatusHandle>>,
 }
 
+/// A duplicated, manager-owned view of the alert side of a `Type=idle` gate.
+///
+/// The event-loop owner keeps this duplicate only for epoll registration. The
+/// runtime remains the authority which acknowledges an alert by closing all
+/// four pipe ends.
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
+pub struct IdlePipeAlertDescriptor {
+    generation: u64,
+    fd: OwnedFd,
+}
+
+#[cfg(target_os = "linux")]
+impl IdlePipeAlertDescriptor {
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub(crate) fn into_fd(self) -> OwnedFd {
+        self.fd
+    }
+}
+
+/// The exact four-descriptor protocol allocated by C's
+/// `manager_allocate_idle_pipe()`. The manager owns every endpoint until it
+/// acknowledges either boot completion or a child timeout alert.
+#[cfg(target_os = "linux")]
+struct IdlePipeGate {
+    child_wait: Option<OwnedFd>,
+    manager_release: Option<OwnedFd>,
+    manager_alert: Option<OwnedFd>,
+    child_alert: Option<OwnedFd>,
+    generation: u64,
+}
+
+#[cfg(target_os = "linux")]
+impl IdlePipeGate {
+    fn new(generation: u64) -> Result<Self> {
+        use nix::fcntl::OFlag;
+        use nix::unistd::pipe2;
+
+        let flags = OFlag::O_NONBLOCK | OFlag::O_CLOEXEC;
+        let (child_wait, manager_release) = pipe2(flags).map_err(|_| Errno::EIO)?;
+        let (manager_alert, child_alert) = pipe2(flags).map_err(|_| Errno::EIO)?;
+        Ok(Self {
+            child_wait: Some(child_wait),
+            manager_release: Some(manager_release),
+            manager_alert: Some(manager_alert),
+            child_alert: Some(child_alert),
+            generation,
+        })
+    }
+
+    fn spawn_idle_pipe(&self) -> Option<spawn::IdlePipe> {
+        Some(spawn::IdlePipe {
+            child_wait_fd: self.child_wait.as_ref()?.as_raw_fd(),
+            manager_release_fd: self.manager_release.as_ref()?.as_raw_fd(),
+            manager_alert_fd: self.manager_alert.as_ref()?.as_raw_fd(),
+            child_alert_fd: self.child_alert.as_ref()?.as_raw_fd(),
+        })
+    }
+
+    fn alert_descriptor(&self) -> std::io::Result<Option<IdlePipeAlertDescriptor>> {
+        self.manager_alert
+            .as_ref()
+            .map(|fd| {
+                fd.as_fd()
+                    .try_clone_to_owned()
+                    .map(|fd| IdlePipeAlertDescriptor {
+                        generation: self.generation,
+                        fd,
+                    })
+            })
+            .transpose()
+    }
+
+    /// Closing all four endpoints is the acknowledgement received by every
+    /// idle child waiting on the first pipe. This mirrors
+    /// `manager_close_idle_pipe()` rather than retaining one end accidentally
+    /// and preventing POLLHUP forever.
+    fn close(&mut self) {
+        self.child_wait = None;
+        self.manager_release = None;
+        self.manager_alert = None;
+        self.child_alert = None;
+    }
+}
+
 #[cfg(target_os = "linux")]
 impl PendingExecStatusDescriptor {
     pub const fn pid(&self) -> u32 {
@@ -400,6 +488,14 @@ pub struct RuntimeManager {
             spawn::SpawnConfirmation,
         ),
     >,
+    /// Lazily allocated only while a `Type=idle` child needs the manager's
+    /// pipe protocol. It is never a process-global sleep or a unit-name
+    /// callback; the child and epoll source communicate solely through these
+    /// inherited descriptors.
+    #[cfg(target_os = "linux")]
+    idle_pipe_gate: Option<IdlePipeGate>,
+    #[cfg(target_os = "linux")]
+    idle_pipe_generation: u64,
     /// Auto-restart is a manager event, never a blocking sleep in PID 1.
     /// A service remains in `AutoRestartQueued` until this deadline is due.
     service_restart_deadlines: HashMap<String, Instant>,
@@ -488,6 +584,10 @@ impl RuntimeManager {
             service_restart_after_stop: BTreeSet::new(),
             #[cfg(target_os = "linux")]
             pending_exec_confirmations: HashMap::new(),
+            #[cfg(target_os = "linux")]
+            idle_pipe_gate: None,
+            #[cfg(target_os = "linux")]
+            idle_pipe_generation: 0,
             service_restart_deadlines: HashMap::new(),
             service_runtime_deadlines: HashMap::new(),
             service_watchdog_deadlines: HashMap::new(),
@@ -517,6 +617,60 @@ impl RuntimeManager {
         &self,
     ) -> Option<Rc<systemd_platform_rs::time::BoottimeTimerFd>> {
         self.bound_stop_retry_timer.clone()
+    }
+
+    /// Allocate C's manager-owned `Type=idle` pipes on the first idle spawn
+    /// of a gate and return their borrowed child view. Allocation happens
+    /// before fork; the post-fork launcher only closes, polls, writes, and
+    /// execs through these descriptors.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn idle_pipe_for_spawn(&mut self) -> Result<spawn::IdlePipe> {
+        if self.idle_pipe_gate.is_none() {
+            self.idle_pipe_generation = self.idle_pipe_generation.wrapping_add(1);
+            self.idle_pipe_gate = Some(IdlePipeGate::new(self.idle_pipe_generation)?);
+        }
+        self.idle_pipe_gate
+            .as_ref()
+            .and_then(IdlePipeGate::spawn_idle_pipe)
+            .ok_or(Errno::EIO)
+    }
+
+    /// Clone the current alert reader for one epoll registration. A clone,
+    /// rather than a raw FD number, lets the source owner remove stale gates
+    /// without descriptor-reuse confusion.
+    #[cfg(target_os = "linux")]
+    pub fn idle_pipe_alert_descriptor(&self) -> Result<Option<IdlePipeAlertDescriptor>> {
+        let Some(gate) = self.idle_pipe_gate.as_ref() else {
+            return Ok(None);
+        };
+        gate.alert_descriptor().map_err(|_| Errno::EIO)
+    }
+
+    /// Acknowledge an idle child's timeout alert or normal boot completion.
+    /// This is intentionally idempotent: a queued epoll alert after the first
+    /// close is inert, just like C disabling the event source before closing
+    /// the descriptor pairs.
+    #[cfg(target_os = "linux")]
+    pub fn close_idle_pipe(&mut self) {
+        if let Some(gate) = self.idle_pipe_gate.as_mut() {
+            gate.close();
+        }
+        self.idle_pipe_gate = None;
+    }
+
+    /// Equivalent to the idle-pipe portion of C's `manager_check_finished()`.
+    /// PID 1 calls this only from its manager-loop turn, after the canonical
+    /// job tables have drained; ordinary transaction submission must not
+    /// release idle children merely because one nested dispatch returned.
+    #[cfg(target_os = "linux")]
+    pub fn close_idle_pipe_when_manager_idle(&mut self) {
+        if self.installed_jobs.is_empty()
+            && self.job_run_queue.is_empty()
+            && self.job_redispatch_queue.is_empty()
+            && !self.job_run_queue_dispatching
+        {
+            self.close_idle_pipe();
+        }
     }
 
     #[cfg(test)]

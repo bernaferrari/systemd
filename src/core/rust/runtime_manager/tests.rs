@@ -2900,6 +2900,25 @@ fn test_boot_target_retries_replace_when_isolation_is_refused() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn test_idle_pipe_gate_keeps_all_endpoints_until_manager_acknowledges() {
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    let pipe = mgr.idle_pipe_for_spawn().unwrap();
+    assert!(pipe.child_wait_fd >= 0);
+    assert!(pipe.manager_release_fd >= 0);
+    assert!(pipe.manager_alert_fd >= 0);
+    assert!(pipe.child_alert_fd >= 0);
+    assert_ne!(pipe.child_wait_fd, pipe.manager_release_fd);
+    assert_ne!(pipe.manager_alert_fd, pipe.child_alert_fd);
+
+    let descriptor = mgr.idle_pipe_alert_descriptor().unwrap().unwrap();
+    assert!(descriptor.generation() > 0);
+    mgr.close_idle_pipe();
+    assert!(mgr.idle_pipe_alert_descriptor().unwrap().is_none());
+}
+
 #[test]
 fn test_reset_failed_clears_failed_state() {
     let _test_lock = test_env_lock();
@@ -3116,7 +3135,7 @@ fn test_notify_service_fails_closed_without_authenticated_transport() {
 }
 
 #[test]
-fn test_idle_service_fails_closed_without_manager_idle_gate() {
+fn test_idle_service_launch_failure_remains_a_service_failure() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.

@@ -927,7 +927,20 @@ impl RuntimeManager {
             .map(|service| service.service_type)
             .unwrap_or_else(|| infer_service_type(&info));
         let role = pid_role_for_command(cursor.phase, service_type);
-        let prepared_stdio = self.prepare_service_stdio(name, &info);
+        let mut prepared_stdio = self.prepare_service_stdio(name, &info);
+        #[cfg(target_os = "linux")]
+        if service_type == ServiceType::Idle {
+            match self.idle_pipe_for_spawn() {
+                Ok(idle_pipe) => prepared_stdio.stdio.idle_pipe = Some(idle_pipe),
+                Err(error) => {
+                    eprintln!(
+                        "systemd: failed to allocate Type=idle manager pipes for {name}: {error:?}"
+                    );
+                    self.handle_phase_spawn_failure(name, cursor.phase);
+                    return false;
+                }
+            }
+        }
         if let Some(service) = self.services.get_mut(name) {
             service.stdin_fd = prepared_stdio
                 .stdio
@@ -1365,14 +1378,20 @@ impl RuntimeManager {
         // and prevents a start failure from looking like Dead→Dead.
         self.set_service_state(unit_name, ServiceState::Condition);
 
-        // These types require manager-owned transports/gates which the Rust
-        // PID 1 does not yet provide. Starting them and accepting a public
-        // name-only callback would falsely claim readiness. Keep the reason
-        // explicit: it is operationally important that a unit is rejected for
-        // missing architecture, not diagnosed as an application crash.
+        // These types require manager-owned transports/gates. Linux Type=idle
+        // uses the real pipe gate below; the remaining unimplemented
+        // transports must reject starts rather than accepting a public
+        // name-only callback and falsely claiming readiness.
         let readiness_rejection = match service_type {
             ServiceType::Idle => {
-                Some("Type=idle requires the manager idle gate, which is not implemented")
+                #[cfg(target_os = "linux")]
+                {
+                    None
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    Some("Type=idle requires the Linux manager idle gate")
+                }
             }
             ServiceType::Notify | ServiceType::NotifyReload => Some(
                 "Type=notify requires an authenticated sd_notify transport, which is not implemented",

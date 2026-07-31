@@ -44,6 +44,12 @@ pub const VOLATILE_SYSROOT_DIR: &str = "/run/systemd/volatile-sysroot";
 /// Overlay sysroot staging directory.
 pub const OVERLAY_SYSROOT_DIR: &str = "/run/systemd/overlay-sysroot";
 
+/// Writable overlay upper directory inside the staging tmpfs.
+pub const OVERLAY_UPPER_DIR: &str = "/run/systemd/overlay-sysroot/upper";
+
+/// Overlay work directory inside the staging tmpfs.
+pub const OVERLAY_WORK_DIR: &str = "/run/systemd/overlay-sysroot/work";
+
 /// Symlink recording the original backing device.
 pub const VOLATILE_ROOT_LINK: &str = "/run/systemd/volatile-root";
 
@@ -151,6 +157,110 @@ pub fn shell_escape(s: &str) -> String {
         result.push(c);
     }
     result
+}
+
+// ── Overlay transition ────────────────────────────────────────────────────
+
+/// Side effects needed by `make_overlay_with()`.
+///
+/// Keeping these operations behind one narrow interface makes the cleanup
+/// contract testable at every failure point. The production implementation
+/// delegates to already-audited safe platform/shared facades; callers never
+/// handle raw mount pointers or file descriptors.
+pub trait OverlayTransitionBackend {
+    fn mkdir_p(&mut self, path: &str, mode: u32) -> io::Result<()>;
+    fn mount_tmpfs(&mut self, target: &str, options: &str) -> io::Result<()>;
+    fn mkdir(&mut self, path: &str, mode: u32) -> io::Result<()>;
+    fn mount_overlay(&mut self, target: &str, options: &str) -> io::Result<()>;
+    fn unmount_staging(&mut self, target: &str) -> io::Result<()>;
+    fn remove_staging(&mut self, path: &str) -> io::Result<()>;
+}
+
+/// Perform C's complete `make_overlay()` staging sequence.
+///
+/// The returned error is always the first operational error. Cleanup errors
+/// are deliberately ignored, matching the C authority. Once tmpfs mounting
+/// succeeds, unmount is attempted on every exit; the staging directory is
+/// removed after both success and failure.
+pub fn make_overlay_with(
+    path: &str,
+    backend: &mut impl OverlayTransitionBackend,
+) -> io::Result<()> {
+    validate_path(path).map_err(|errno| io::Error::from_raw_os_error(-errno))?;
+    backend.mkdir_p(OVERLAY_SYSROOT_DIR, 0o700)?;
+
+    let mut tmpfs_mounted = false;
+    let result = (|| {
+        backend.mount_tmpfs(OVERLAY_SYSROOT_DIR, TMPFS_OPTIONS)?;
+        tmpfs_mounted = true;
+
+        backend.mkdir(OVERLAY_UPPER_DIR, 0o755)?;
+        backend.mkdir(OVERLAY_WORK_DIR, 0o755)?;
+
+        let options = build_overlay_options(path, OVERLAY_UPPER_DIR, OVERLAY_WORK_DIR);
+        backend.mount_overlay(path, &options)
+    })();
+
+    if tmpfs_mounted {
+        let _ = backend.unmount_staging(OVERLAY_SYSROOT_DIR);
+    }
+    let _ = backend.remove_staging(OVERLAY_SYSROOT_DIR);
+
+    result
+}
+
+/// Linux implementation of the already isolated overlay transition.
+///
+/// This is intentionally not invoked by the executable yet: C records the
+/// originating block device before entering `make_overlay()`, and the Rust
+/// port must not omit that observable precondition.
+#[cfg(target_os = "linux")]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LinuxOverlayTransitionBackend;
+
+#[cfg(target_os = "linux")]
+impl OverlayTransitionBackend for LinuxOverlayTransitionBackend {
+    fn mkdir_p(&mut self, path: &str, mode: u32) -> io::Result<()> {
+        systemd_platform_rs::fs::mkdir_p(path, mode)
+    }
+
+    fn mount_tmpfs(&mut self, target: &str, options: &str) -> io::Result<()> {
+        systemd_shared_rs::mount_util::mount_nofollow_verbose(
+            "tmpfs",
+            target,
+            Some("tmpfs"),
+            systemd_shared_rs::mount_util::MS_STRICTATIME,
+            Some(options),
+        )
+    }
+
+    fn mkdir(&mut self, path: &str, mode: u32) -> io::Result<()> {
+        use std::os::unix::fs::DirBuilderExt;
+
+        let mut builder = std::fs::DirBuilder::new();
+        builder.mode(mode).create(path)
+    }
+
+    fn mount_overlay(&mut self, target: &str, options: &str) -> io::Result<()> {
+        systemd_shared_rs::mount_util::mount_nofollow_verbose(
+            "overlay",
+            target,
+            Some("overlay"),
+            0,
+            Some(options),
+        )
+    }
+
+    fn unmount_staging(&mut self, target: &str) -> io::Result<()> {
+        systemd_shared_rs::mount_util::umount_verbose(
+            target,
+            systemd_shared_rs::mount_util::UMOUNT_NOFOLLOW,
+        )
+    }
+
+    fn remove_staging(&mut self, path: &str) -> io::Result<()> {
+        std::fs::remove_dir(path)
+    }
 }
 
 // ── Argument parsing ──────────────────────────────────────────────────────
@@ -445,6 +555,80 @@ pub fn device_link_content(major: u32, minor: u32) -> String {
 mod tests {
     use super::*;
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum OverlayCall {
+        MkdirP(String, u32),
+        MountTmpfs(String, String),
+        Mkdir(String, u32),
+        MountOverlay(String, String),
+        Unmount(String),
+        Remove(String),
+    }
+
+    #[derive(Default)]
+    struct FakeOverlayBackend {
+        calls: Vec<OverlayCall>,
+        fail_on: Option<&'static str>,
+        cleanup_fails: bool,
+    }
+
+    impl FakeOverlayBackend {
+        fn operation(&self, name: &'static str) -> io::Result<()> {
+            if self.fail_on == Some(name) {
+                Err(io::Error::from_raw_os_error(libc::EIO))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl OverlayTransitionBackend for FakeOverlayBackend {
+        fn mkdir_p(&mut self, path: &str, mode: u32) -> io::Result<()> {
+            self.calls.push(OverlayCall::MkdirP(path.into(), mode));
+            self.operation("mkdir_p")
+        }
+
+        fn mount_tmpfs(&mut self, target: &str, options: &str) -> io::Result<()> {
+            self.calls
+                .push(OverlayCall::MountTmpfs(target.into(), options.into()));
+            self.operation("mount_tmpfs")
+        }
+
+        fn mkdir(&mut self, path: &str, mode: u32) -> io::Result<()> {
+            self.calls.push(OverlayCall::Mkdir(path.into(), mode));
+            let operation = if path == OVERLAY_UPPER_DIR {
+                "mkdir_upper"
+            } else {
+                "mkdir_work"
+            };
+            self.operation(operation)
+        }
+
+        fn mount_overlay(&mut self, target: &str, options: &str) -> io::Result<()> {
+            self.calls
+                .push(OverlayCall::MountOverlay(target.into(), options.into()));
+            self.operation("mount_overlay")
+        }
+
+        fn unmount_staging(&mut self, target: &str) -> io::Result<()> {
+            self.calls.push(OverlayCall::Unmount(target.into()));
+            if self.cleanup_fails {
+                Err(io::Error::from_raw_os_error(libc::EBUSY))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn remove_staging(&mut self, path: &str) -> io::Result<()> {
+            self.calls.push(OverlayCall::Remove(path.into()));
+            if self.cleanup_fails {
+                Err(io::Error::from_raw_os_error(libc::ENOTEMPTY))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
     #[test]
     fn test_volatile_mode_from_raw() {
         assert_eq!(VolatileMode::from_raw(VOLATILE_NO), Ok(VolatileMode::No));
@@ -619,6 +803,114 @@ mod tests {
     #[test]
     fn tmpfs_limits_match_the_c_rootfs_policy() {
         assert_eq!(TMPFS_OPTIONS, "mode=0755,size=25%,nr_inodes=1m");
+    }
+
+    #[test]
+    fn overlay_transition_matches_c_success_order_and_options() {
+        let mut backend = FakeOverlayBackend::default();
+        make_overlay_with("/sysroot:one,two", &mut backend).unwrap();
+
+        assert_eq!(
+            backend.calls,
+            vec![
+                OverlayCall::MkdirP(OVERLAY_SYSROOT_DIR.into(), 0o700),
+                OverlayCall::MountTmpfs(OVERLAY_SYSROOT_DIR.into(), TMPFS_OPTIONS.into()),
+                OverlayCall::Mkdir(OVERLAY_UPPER_DIR.into(), 0o755),
+                OverlayCall::Mkdir(OVERLAY_WORK_DIR.into(), 0o755),
+                OverlayCall::MountOverlay(
+                    "/sysroot:one,two".into(),
+                    concat!(
+                        "lowerdir=/sysroot\\:one\\,two,",
+                        "upperdir=/run/systemd/overlay-sysroot/upper,",
+                        "workdir=/run/systemd/overlay-sysroot/work"
+                    )
+                    .into(),
+                ),
+                OverlayCall::Unmount(OVERLAY_SYSROOT_DIR.into()),
+                OverlayCall::Remove(OVERLAY_SYSROOT_DIR.into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn overlay_transition_cleans_up_every_post_mount_failure() {
+        for failing_operation in ["mkdir_upper", "mkdir_work", "mount_overlay"] {
+            let mut backend = FakeOverlayBackend {
+                fail_on: Some(failing_operation),
+                ..FakeOverlayBackend::default()
+            };
+
+            let error = make_overlay_with("/sysroot", &mut backend).unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(libc::EIO));
+            assert!(
+                backend.calls.ends_with(&[
+                    OverlayCall::Unmount(OVERLAY_SYSROOT_DIR.into()),
+                    OverlayCall::Remove(OVERLAY_SYSROOT_DIR.into()),
+                ]),
+                "missing cleanup after {failing_operation}: {:?}",
+                backend.calls
+            );
+        }
+    }
+
+    #[test]
+    fn overlay_transition_does_not_unmount_after_tmpfs_mount_failure() {
+        let mut backend = FakeOverlayBackend {
+            fail_on: Some("mount_tmpfs"),
+            ..FakeOverlayBackend::default()
+        };
+
+        let error = make_overlay_with("/sysroot", &mut backend).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        assert_eq!(
+            backend.calls,
+            vec![
+                OverlayCall::MkdirP(OVERLAY_SYSROOT_DIR.into(), 0o700),
+                OverlayCall::MountTmpfs(OVERLAY_SYSROOT_DIR.into(), TMPFS_OPTIONS.into()),
+                OverlayCall::Remove(OVERLAY_SYSROOT_DIR.into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn overlay_transition_returns_immediately_after_mkdir_p_failure() {
+        let mut backend = FakeOverlayBackend {
+            fail_on: Some("mkdir_p"),
+            ..FakeOverlayBackend::default()
+        };
+
+        let error = make_overlay_with("/sysroot", &mut backend).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        assert_eq!(
+            backend.calls,
+            vec![OverlayCall::MkdirP(OVERLAY_SYSROOT_DIR.into(), 0o700)]
+        );
+    }
+
+    #[test]
+    fn overlay_transition_rejects_invalid_target_before_side_effects() {
+        let mut backend = FakeOverlayBackend::default();
+        let error = make_overlay_with("/./", &mut backend).unwrap_err();
+
+        assert_eq!(error.raw_os_error(), Some(libc::EINVAL));
+        assert!(backend.calls.is_empty());
+    }
+
+    #[test]
+    fn overlay_transition_cleanup_errors_do_not_replace_primary_result() {
+        let mut success_backend = FakeOverlayBackend {
+            cleanup_fails: true,
+            ..FakeOverlayBackend::default()
+        };
+        make_overlay_with("/sysroot", &mut success_backend).unwrap();
+
+        let mut failed_backend = FakeOverlayBackend {
+            fail_on: Some("mount_overlay"),
+            cleanup_fails: true,
+            ..FakeOverlayBackend::default()
+        };
+        let error = make_overlay_with("/sysroot", &mut failed_backend).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
     }
 
     #[test]

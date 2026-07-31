@@ -153,7 +153,7 @@
       ]
     },
     "dbus_manager": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/dbus_manager/authorization.rs",
         "src/core/rust/dbus_manager/model.rs",
@@ -222,7 +222,7 @@
       ]
     },
     "dbus_util": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/dbus_util.rs"
       ]
@@ -443,10 +443,22 @@
         "src/core/rust/pid1_bus_source.rs"
       ]
     },
+    "pid1_dbus_wire": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/pid1_dbus_wire.rs"
+      ]
+    },
     "pid1_exec_sources": {
       "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_exec_sources.rs"
+      ]
+    },
+    "pid1_idle_pipe_source": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/pid1_idle_pipe_source.rs"
       ]
     },
     "pid1_lifecycle": {

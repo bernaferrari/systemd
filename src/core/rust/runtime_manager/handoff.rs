@@ -66,6 +66,7 @@ pub enum PrepareHandoffError {
     ServiceSequenceHasLiveProcessState,
     ServiceDeadlineUsesProcessLocalTime,
     PendingExecStatusParser,
+    IdlePipeGateNeedsHandoff,
     UntypedServiceDescriptor {
         unit: String,
         field: &'static str,
@@ -111,6 +112,9 @@ impl std::fmt::Display for PrepareHandoffError {
             Self::PendingExecStatusParser => {
                 formatter.write_str("an exec-status pipe retains partial parser state")
             }
+            Self::IdlePipeGateNeedsHandoff => formatter.write_str(
+                "a Type=idle pipe gate has live manager-owned descriptors without a handoff format",
+            ),
             Self::UntypedServiceDescriptor { unit, field, value } => write!(
                 formatter,
                 "{unit} retains untyped descriptor {field}={value}"
@@ -252,6 +256,10 @@ fn validate_preflight(runtime: &RuntimeManager) -> Result<(), PrepareHandoffErro
         service_restart_after_stop,
         #[cfg(target_os = "linux")]
         pending_exec_confirmations,
+        #[cfg(target_os = "linux")]
+        idle_pipe_gate,
+        #[cfg(target_os = "linux")]
+        idle_pipe_generation,
         service_restart_deadlines,
         service_runtime_deadlines,
         service_watchdog_deadlines,
@@ -292,7 +300,11 @@ fn validate_preflight(runtime: &RuntimeManager) -> Result<(), PrepareHandoffErro
     );
     let _duplicated_root_capability_owner = cgroup_root;
     #[cfg(target_os = "linux")]
-    let _retained_linux_capability_owners = (bound_stop_retry_timer, cgroup_inotify_fd);
+    let _retained_linux_capability_owners = (
+        bound_stop_retry_timer,
+        cgroup_inotify_fd,
+        idle_pipe_generation,
+    );
 
     if *job_run_queue_dispatching || *bound_stop_queue_dispatching || *bound_replace_dispatching {
         return Err(PrepareHandoffError::DispatchInProgress);
@@ -334,6 +346,10 @@ fn validate_preflight(runtime: &RuntimeManager) -> Result<(), PrepareHandoffErro
     #[cfg(target_os = "linux")]
     if !pending_exec_confirmations.is_empty() {
         return Err(PrepareHandoffError::PendingExecStatusParser);
+    }
+    #[cfg(target_os = "linux")]
+    if idle_pipe_gate.is_some() {
+        return Err(PrepareHandoffError::IdlePipeGateNeedsHandoff);
     }
 
     for (unit, service) in services {

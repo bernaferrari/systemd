@@ -154,6 +154,25 @@ pub struct SpawnStdio {
     pub stdin_fd: Option<i32>,
     pub stdout_fd: Option<i32>,
     pub stderr_fd: Option<i32>,
+    /// The four manager-owned descriptors used by C's `Type=idle` protocol.
+    /// They remain borrowed by the manager; the post-fork child closes the
+    /// two manager ends before waiting on `child_wait_fd` for HUP.
+    pub idle_pipe: Option<IdlePipe>,
+}
+
+/// Borrowed descriptors for the `Type=idle` pipe protocol from
+/// `manager_allocate_idle_pipe()` / `do_idle_pipe_dance()`.
+///
+/// The manager owns all four descriptors for the lifetime of one gate. The
+/// child inherits them across fork, closes the manager ends, waits for the
+/// release writer to close, and uses the alert writer after the initial
+/// bounded wait. None may survive exec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdlePipe {
+    pub child_wait_fd: i32,
+    pub manager_release_fd: i32,
+    pub manager_alert_fd: i32,
+    pub child_alert_fd: i32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
