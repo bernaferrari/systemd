@@ -552,6 +552,10 @@ fn test_parse_exec_context_directives_shared_and_apply_to_unit() {
     apply_exec_context_config(&mut unit, &ctx);
     let unit_exec = unit.exec_context.as_ref().unwrap();
     assert_eq!(unit_exec.nice, 7);
+    assert_eq!(unit_exec.tty_path.as_deref(), Some("/dev/console"));
+    assert!(unit_exec.tty_reset);
+    assert!(!unit_exec.tty_vhangup);
+    assert!(unit_exec.tty_vt_disallocate);
     assert_eq!(
         unit_exec.environment.get("FOO").map(String::as_str),
         Some("bar")

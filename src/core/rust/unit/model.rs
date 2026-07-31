@@ -296,6 +296,13 @@ pub struct ExecContext {
     pub nice: i32,
     pub log_level_max: i32,
     pub environment: BTreeMap<String, String>,
+    /// The represented subset of C's terminal settings. These fields are
+    /// enough for the generic `unit_needs_console()` fallback; service stdio
+    /// routing remains owned by `runtime_manager::service_runtime`.
+    pub tty_path: Option<String>,
+    pub tty_reset: bool,
+    pub tty_vhangup: bool,
+    pub tty_vt_disallocate: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

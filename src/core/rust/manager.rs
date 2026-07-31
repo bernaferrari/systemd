@@ -25,6 +25,147 @@ pub enum ShowStatus {
     Temporary,
     Off,
     On,
+    Error,
+}
+
+/// C's `StatusType`, in severity order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum StatusType {
+    Ephemeral,
+    Normal,
+    Notice,
+    Emergency,
+}
+
+/// The subset of C manager states accepted by `manager_should_show_status()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManagerPhase {
+    Initializing,
+    Starting,
+    Running,
+    Degraded,
+    Maintenance,
+    Stopping,
+}
+
+impl ManagerPhase {
+    const fn permits_status_output(self) -> bool {
+        matches!(self, Self::Initializing | Self::Starting | Self::Stopping)
+    }
+}
+
+/// Pure console-ownership and manager-status policy.
+///
+/// This deliberately has no terminal file descriptors and does not write to
+/// `/dev/console`; PID 1 does not yet have the corresponding live status
+/// output path. It captures the C decision layer so `Type=idle` timeout
+/// behaviour is testable without claiming that a model counter arbitrates a
+/// real TTY.
+///
+/// `on_console` corresponds to C's `n_on_console`, while
+/// `suppress_console_output` corresponds to `no_console_output`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleStatusState {
+    pub is_system_manager: bool,
+    pub phase: ManagerPhase,
+    pub show_status: ShowStatus,
+    pub password_query_active: bool,
+    on_console: u32,
+    suppress_console_output: bool,
+}
+
+impl Default for ConsoleStatusState {
+    fn default() -> Self {
+        Self {
+            is_system_manager: true,
+            phase: ManagerPhase::Initializing,
+            show_status: ShowStatus::Auto,
+            password_query_active: false,
+            on_console: 0,
+            suppress_console_output: false,
+        }
+    }
+}
+
+impl ConsoleStatusState {
+    pub const fn on_console(&self) -> u32 {
+        self.on_console
+    }
+
+    pub const fn suppresses_console_output(&self) -> bool {
+        self.suppress_console_output
+    }
+
+    /// Mirrors `manager_ref_console()`. The checked counter makes overflow a
+    /// visible integration failure instead of silently reviving output.
+    pub fn acquire_console(&mut self) -> std::result::Result<(), ConsoleStatusError> {
+        self.on_console = self
+            .on_console
+            .checked_add(1)
+            .ok_or(ConsoleStatusError::CounterOverflow)?;
+        Ok(())
+    }
+
+    /// Mirrors `manager_unref_console()`. Releasing without a matching
+    /// acquire is rejected rather than allowing an ownership underflow.
+    pub fn release_console(&mut self) -> std::result::Result<(), ConsoleStatusError> {
+        self.on_console = self
+            .on_console
+            .checked_sub(1)
+            .ok_or(ConsoleStatusError::CounterUnderflow)?;
+        if self.on_console == 0 {
+            self.suppress_console_output = false;
+        }
+        Ok(())
+    }
+
+    /// Mirrors the policy portion of `manager_dispatch_idle_pipe_fd()`.
+    /// The caller remains responsible for acknowledging the pipe and closing
+    /// its descriptors after this decision.
+    pub fn idle_child_timed_out(&mut self) {
+        self.suppress_console_output = self.on_console > 0;
+    }
+
+    /// Mirrors the shutdown-start reset in `job_commit_and_error()`.
+    pub fn begin_shutdown(&mut self) {
+        self.suppress_console_output = false;
+    }
+
+    /// Mirrors `manager_should_show_status()` plus its caller's ephemeral
+    /// console-ownership check. `None` represents C's post-shutdown `m ==
+    /// NULL` convention, which intentionally lets the message through.
+    pub fn should_emit(&self, status_type: StatusType, manager_present: bool) -> bool {
+        if !manager_present {
+            return true;
+        }
+
+        if !self.is_system_manager
+            || self.suppress_console_output
+            || !self.phase.permits_status_output()
+        {
+            return false;
+        }
+
+        if status_type < StatusType::Emergency && self.password_query_active {
+            return false;
+        }
+
+        if status_type >= StatusType::Notice && self.show_status != ShowStatus::Off {
+            return true;
+        }
+
+        if !matches!(self.show_status, ShowStatus::Temporary | ShowStatus::On) {
+            return false;
+        }
+
+        !(status_type == StatusType::Ephemeral && self.on_console > 0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConsoleStatusError {
+    CounterOverflow,
+    CounterUnderflow,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1154,5 +1295,86 @@ mod tests {
         let mut manager = ManagerRecord::default();
         manager_set_watchdog(&mut manager, 123);
         assert_eq!(manager_get_watchdog(&manager), 123);
+    }
+
+    #[test]
+    fn idle_timeout_only_suppresses_when_console_is_owned() {
+        let mut state = ConsoleStatusState {
+            show_status: ShowStatus::On,
+            phase: ManagerPhase::Starting,
+            ..ConsoleStatusState::default()
+        };
+        state.idle_child_timed_out();
+        assert!(!state.suppresses_console_output());
+
+        state.acquire_console().unwrap();
+        state.idle_child_timed_out();
+        assert!(state.suppresses_console_output());
+        assert!(!state.should_emit(StatusType::Emergency, true));
+
+        state.release_console().unwrap();
+        assert!(!state.suppresses_console_output());
+        assert!(state.should_emit(StatusType::Normal, true));
+    }
+
+    #[test]
+    fn ephemeral_status_never_interleaves_with_live_console_owner() {
+        let mut state = ConsoleStatusState {
+            show_status: ShowStatus::On,
+            phase: ManagerPhase::Starting,
+            ..ConsoleStatusState::default()
+        };
+        state.acquire_console().unwrap();
+        assert!(!state.should_emit(StatusType::Ephemeral, true));
+        assert!(state.should_emit(StatusType::Normal, true));
+    }
+
+    #[test]
+    fn notice_and_emergency_follow_c_show_status_exception() {
+        let state = ConsoleStatusState {
+            show_status: ShowStatus::Error,
+            phase: ManagerPhase::Stopping,
+            ..ConsoleStatusState::default()
+        };
+        assert!(!state.should_emit(StatusType::Normal, true));
+        assert!(state.should_emit(StatusType::Notice, true));
+        assert!(state.should_emit(StatusType::Emergency, true));
+    }
+
+    #[test]
+    fn password_prompt_suppresses_everything_but_emergency() {
+        let state = ConsoleStatusState {
+            show_status: ShowStatus::On,
+            phase: ManagerPhase::Starting,
+            password_query_active: true,
+            ..ConsoleStatusState::default()
+        };
+        assert!(!state.should_emit(StatusType::Notice, true));
+        assert!(state.should_emit(StatusType::Emergency, true));
+    }
+
+    #[test]
+    fn manager_absent_preserves_post_shutdown_output() {
+        let state = ConsoleStatusState {
+            is_system_manager: false,
+            phase: ManagerPhase::Running,
+            show_status: ShowStatus::Off,
+            ..ConsoleStatusState::default()
+        };
+        assert!(state.should_emit(StatusType::Ephemeral, false));
+    }
+
+    #[test]
+    fn release_is_checked_and_shutdown_resets_suppression() {
+        let mut state = ConsoleStatusState::default();
+        assert_eq!(
+            state.release_console(),
+            Err(ConsoleStatusError::CounterUnderflow)
+        );
+        state.acquire_console().unwrap();
+        state.idle_child_timed_out();
+        assert!(state.suppresses_console_output());
+        state.begin_shutdown();
+        assert!(!state.suppresses_console_output());
     }
 }

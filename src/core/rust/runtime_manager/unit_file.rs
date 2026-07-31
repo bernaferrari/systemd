@@ -1917,6 +1917,23 @@ pub(super) fn apply_exec_context_config(unit: &mut Unit, config: &ExecContextCon
         ctx.nice = nice;
     }
 
+    // These are the console-touching parts of C's ExecContext.  They are
+    // applied to the shared unit model so `unit_needs_console()` can make the
+    // same conservative ownership decision even before a live manager-side
+    // console counter is wired up.
+    if let Some(tty_path) = &config.tty_path {
+        ctx.tty_path = Some(tty_path.clone());
+    }
+    if let Some(tty_reset) = config.tty_reset {
+        ctx.tty_reset = tty_reset;
+    }
+    if let Some(tty_vhangup) = config.tty_vhangup {
+        ctx.tty_vhangup = tty_vhangup;
+    }
+    if let Some(tty_vt_disallocate) = config.tty_vt_disallocate {
+        ctx.tty_vt_disallocate = tty_vt_disallocate;
+    }
+
     for item in &config.environment {
         if let Some((k, v)) = item.split_once('=') {
             ctx.environment.insert(k.to_string(), v.to_string());

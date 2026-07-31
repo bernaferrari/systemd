@@ -583,10 +583,13 @@ pub fn tty_may_match_dev_console(tty: Option<&str>) -> bool {
     tty.is_none() || tty == Some("/dev/console")
 }
 pub fn exec_context_may_touch_tty(context: &ExecContext) -> bool {
-    exec_context_tty_path(context).is_some()
+    // Keep this predicate in lockstep with C's `exec_context_may_touch_tty()`
+    // for the fields represented by this Rust model. A configured tty path
+    // alone does not imply that the unit will touch it.
+    context.tty_reset || context.tty_vhangup || context.tty_vt_disallocate
 }
 pub fn exec_context_may_touch_console(context: &ExecContext) -> bool {
-    tty_may_match_dev_console(exec_context_tty_path(context))
+    exec_context_may_touch_tty(context) && tty_may_match_dev_console(exec_context_tty_path(context))
 }
 pub fn exec_context_shall_ansi_seq_reset(context: &ExecContext) -> bool {
     context.tty_reset
@@ -693,6 +696,26 @@ mod tests {
             exec_context_apply_tty_size(&context, true, true, None).unwrap(),
             Some((24, 80))
         );
+    }
+
+    #[test]
+    fn console_touch_requires_an_actual_tty_operation() {
+        let default_context = ExecContext::default();
+        assert!(!exec_context_may_touch_tty(&default_context));
+        assert!(!exec_context_may_touch_console(&default_context));
+
+        let reset_console = ExecContext {
+            tty_reset: true,
+            ..ExecContext::default()
+        };
+        assert!(exec_context_may_touch_console(&reset_console));
+
+        let reset_other_tty = ExecContext {
+            tty_reset: true,
+            tty_path: Some("/dev/ttyS0".into()),
+            ..ExecContext::default()
+        };
+        assert!(!exec_context_may_touch_console(&reset_other_tty));
     }
 
     #[test]

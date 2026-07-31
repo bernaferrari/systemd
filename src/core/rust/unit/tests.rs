@@ -16,7 +16,7 @@ mod tests {
         unit_can_freeze, unit_compare_priority, unit_export_state_files, unit_freezer_action,
         unit_freezer_complete, unit_has_dependency, unit_has_name, unit_invocation_log_field,
         unit_log_field, unit_mount_dependency_type_from_string,
-        unit_mount_dependency_type_to_string, unit_new_for_name,
+        unit_mount_dependency_type_to_string, unit_needs_console, unit_new_for_name,
         unit_remove_from_stop_notify_queue, unit_start, unit_stop, unit_test_start_limit,
         unit_unlink_state_files,
     };
@@ -34,6 +34,19 @@ mod tests {
     fn creates_unit_with_primary_name() {
         let unit = sample_unit();
         assert_eq!(unit.id.as_deref(), Some("demo.service"));
+    }
+
+    #[test]
+    fn console_need_follows_active_state_and_exec_context() {
+        let mut unit = sample_unit();
+        unit.active_state = ActiveState::Active;
+        assert!(!unit_needs_console(&unit));
+
+        unit.exec_context.as_mut().unwrap().tty_reset = true;
+        assert!(unit_needs_console(&unit));
+
+        unit.active_state = ActiveState::Inactive;
+        assert!(!unit_needs_console(&unit));
     }
 
     #[test]

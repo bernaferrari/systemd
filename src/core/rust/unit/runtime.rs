@@ -245,7 +245,22 @@ pub fn unit_warn_leftover_processes(unit: &mut Unit, start: bool) -> Result<()> 
 }
 
 pub fn unit_needs_console(unit: &Unit) -> bool {
-    unit.debug_invocation
+    !unit.active_state.is_inactive_or_failed()
+        && unit
+            .exec_context
+            .as_ref()
+            .is_some_and(unit_exec_context_may_touch_console)
+}
+
+/// Generic fallback for C's `unit_needs_console()`, restricted to the
+/// terminal-affecting fields represented by the compact unit `ExecContext`.
+/// A configured path by itself does not make a unit an owner.
+fn unit_exec_context_may_touch_console(context: &ExecContext) -> bool {
+    (context.tty_reset || context.tty_vhangup || context.tty_vt_disallocate)
+        && context
+            .tty_path
+            .as_deref()
+            .is_none_or(|path| path == "/dev/console")
 }
 
 pub fn unit_pid_attachable(unit: &Unit, pid: PidRef) -> Result<()> {

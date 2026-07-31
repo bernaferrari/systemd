@@ -1867,7 +1867,7 @@ tier = 1
 symbols = 0
 sync_status = "needs_review"
 last_reviewed_upstream_blobs = { "src/core/manager.c" = "e82ba36fd50e0960a0ba68a6e6c19bef6b16e104", "src/core/manager.h" = "453ae74668ee4353e0490ef70eb8ef81b826e922" }
-last_reviewed_rust_blobs = { "src/core/rust/manager.rs" = "c3aa659eb273b20885f782de9707c546738ec606" }
+last_reviewed_rust_blobs = { "src/core/rust/manager.rs" = "7299d1cc63dc3c379f95bb8dbaaa8fd57145098c" }
 notes = "Disconnected scalar helpers and source-inventory stubs only. manager_dispatch_dbus_queue() is intentionally a no-op because the Rust shadow has no live Manager, API-bus ownership, D-Bus/Varlink queues, reexec subscription state, or sd-event loop; it must not be treated as implementing api_bus_ready dispatch ordering."
 
 [mount_tables]
