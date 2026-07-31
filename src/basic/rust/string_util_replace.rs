@@ -10,6 +10,7 @@
 // the lower `owned` domain or the explicitly documented malloc site.
 
 use std::ffi::CStr;
+use std::ptr;
 
 use libc::c_char;
 

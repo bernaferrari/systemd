@@ -117,12 +117,10 @@ pub unsafe extern "C" fn rs_cunescape_one(
     if p.is_null() || ret.is_null() || eight_bit.is_null() {
         return EINVAL;
     }
-    let input = if length == usize::MAX {
-        // SAFETY: the entry point guarantees that p is a readable C string.
-        unsafe { CStr::from_ptr(p) }.to_bytes()
-    } else {
-        // SAFETY: the entry point guarantees exactly `length` readable bytes.
-        unsafe { std::slice::from_raw_parts(p.cast::<u8>(), length) }
+    // SAFETY: `p` passed the non-null check and this export carries the same
+    // sentinel/explicit-length input contract as the shared adapter.
+    let Some(input) = (unsafe { cescape_input(p, length) }) else {
+        return EINVAL;
     };
     let result = match cunescape_one(input, accept_nul) {
         Ok(result) => result,

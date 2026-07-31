@@ -8,9 +8,20 @@ use std::ffi::{CStr, c_void};
 
 use libc::c_char;
 
-use crate::ffi::{Errno, SIZE_MAX, calloc, free, reallocarray, strdup};
+use crate::ffi::{Errno, SIZE_MAX, free, strdup};
 
-use super::{rs_strv_copy_n, rs_strv_length, strv_iter};
+use super::{CStrvAllocation, StrvSlot, rs_strv_copy_n, rs_strv_length, strv_iter};
+
+/// Borrow a NULL-terminated C string vector for one local iteration.
+///
+/// Each invoking ABI adapter documents that the vector and entries are live
+/// and readable through the final NULL pointer for the iterator's lifetime.
+macro_rules! borrowed_strv {
+    ($vector:expr) => {{
+        // SAFETY: upheld by the invoking C ABI adapter's strv contract.
+        unsafe { strv_iter(($vector).cast::<*const c_char>()) }
+    }};
+}
 
 /// Safe byte-prefix policy shared by the `strv_filter_prefix()` ABI shell.
 #[inline]
@@ -52,7 +63,7 @@ pub unsafe extern "C" fn rs_strv_filter_prefix(
     let prefix = prefix.to_bytes();
     let mut count = 0usize;
     // SAFETY: the entry-point contract guarantees the NULL-terminated vector.
-    for entry in unsafe { strv_iter(l.cast::<*const c_char>()) } {
+    for entry in borrowed_strv!(l) {
         if cstr_has_prefix(entry, prefix) {
             let Some(next) = count.checked_add(1) else {
                 return std::ptr::null_mut();
@@ -66,39 +77,27 @@ pub unsafe extern "C" fn rs_strv_filter_prefix(
     let Some(slots) = count.checked_add(1) else {
         return std::ptr::null_mut();
     };
-    let copied = calloc(slots, std::mem::size_of::<*mut c_char>()).cast::<*mut c_char>();
-    if copied.is_null() {
+    let Some(mut copied) = CStrvAllocation::malloc(slots) else {
         return std::ptr::null_mut();
-    }
+    };
 
-    let mut copied_count = 0usize;
     // SAFETY: the same input-vector contract applies to this second borrowed
-    // pass. `copied` has `slots` zeroed writable entries.
-    for entry in unsafe { strv_iter(l.cast::<*const c_char>()) } {
+    // pass. `copied` has a reserved NULL terminator slot.
+    for entry in borrowed_strv!(l) {
         if !cstr_has_prefix(entry, prefix) {
             continue;
         }
         // SAFETY: entry is a valid C string borrowed from the input vector.
         let duplicate = unsafe { strdup(entry.as_ptr()) };
         if duplicate.is_null() {
-            // SAFETY: every earlier slot is a C allocation owned by this new
-            // result; freeing them leaves the input and caller state untouched.
-            unsafe {
-                for index in 0..copied_count {
-                    free((*copied.add(index)).cast::<c_void>());
-                }
-                free(copied.cast::<c_void>());
-            }
+            // The allocation owns every prior duplicate and rolls them back
+            // before freeing its C-allocator backing storage.
+            copied.free_entries_and_storage();
             return std::ptr::null_mut();
         }
-        // SAFETY: copied_count remains below count, hence below `slots - 1`.
-        unsafe { *copied.add(copied_count) = duplicate };
-        copied_count += 1;
+        copied.push(duplicate);
     }
-    // SAFETY: `copied_count <= count`, so this is the reserved sentinel slot
-    // in the `count + 1` element zeroed allocation.
-    unsafe { *copied.add(copied_count) = std::ptr::null_mut() };
-    copied
+    copied.into_raw()
 }
 
 /// Return whether a C strv currently contains `needle`, using only safe CStr
@@ -109,7 +108,7 @@ fn strv_contains_cstr(l: *const *mut c_char, needle: &CStr) -> bool {
     }
     // SAFETY: callers provide a live NULL-terminated C string vector for this
     // short-lived borrow. The iterator never owns or mutates either vector.
-    unsafe { strv_iter(l.cast::<*const c_char>()) }.any(|entry| entry == needle)
+    borrowed_strv!(l).any(|entry| entry == needle)
 }
 
 /// C ABI mirror of `strv_extend_strv()` from `strv.c`.
@@ -139,37 +138,25 @@ pub unsafe extern "C" fn rs_strv_extend_strv(
     if q == 0 {
         return 0;
     }
-    // SAFETY: `*a` is either null or a valid vector per the entry contract.
-    let p = unsafe { rs_strv_length(*a) };
+    // SAFETY: `a` was checked above, and its entry-point contract guarantees
+    // that `*a` is null or a caller-owned NULL-terminated C vector.
+    let mut destination = unsafe { StrvSlot::from_raw(a) };
+    let p = destination.len();
     if p >= SIZE_MAX - q {
         return Errno::ENOMEM.to_neg_errno();
     }
     let slots = p + q + 1;
-    // SAFETY: `*a` is C-allocator storage or null and `slots` cannot overflow
-    // due to the preceding C-equivalent guard. The source vector is disjoint
-    // from this allocation by the entry-point contract.
-    let extended = unsafe {
-        reallocarray(
-            (*a).cast::<c_void>(),
-            crate::basic_validators::rs_GREEDY_ALLOC_ROUND_UP(slots),
-            std::mem::size_of::<*mut c_char>(),
-        )
-    }
-    .cast::<*mut c_char>();
-    if extended.is_null() {
+    let Some(extended) = destination.grow_for(slots) else {
         return Errno::ENOMEM.to_neg_errno();
-    }
+    };
     // Publish the possibly moved allocation before copying, exactly like C.
     // SAFETY: extended has room for the prefix plus the terminating sentinel.
-    unsafe {
-        *extended.add(p) = std::ptr::null_mut();
-        *a = extended;
-    }
+    unsafe { *extended.add(p) = std::ptr::null_mut() };
 
     let mut added = 0usize;
     // SAFETY: b remains a readable borrowed vector for this call because the
     // contract excludes aliasing with the realloc'ed destination storage.
-    for entry in unsafe { strv_iter(b.cast::<*const c_char>()) } {
+    for entry in borrowed_strv!(b) {
         if filter_duplicates && strv_contains_cstr(extended.cast::<*mut c_char>(), entry) {
             continue;
         }
