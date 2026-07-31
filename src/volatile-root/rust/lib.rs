@@ -28,9 +28,13 @@ use std::path::Path;
 use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
 
 #[cfg(target_os = "linux")]
+mod linux_mount;
+#[cfg(target_os = "linux")]
 mod linux_transition_requirement;
 #[cfg(target_os = "linux")]
 mod linux_unmount;
+#[cfg(target_os = "linux")]
+use linux_mount::set_mount_tree_read_only;
 #[cfg(target_os = "linux")]
 pub use linux_transition_requirement::{
     LinuxVolatileTransitionFallbackRequired, LinuxVolatileTransitionRequirement,
@@ -371,21 +375,6 @@ pub fn make_volatile_with(
     result
 }
 
-/// Linux mount-attribute ABI, stable since Linux 5.12.
-///
-/// `libc` intentionally does not expose this tiny UAPI structure on every
-/// supported target. Its four `u64` fields are the kernel ABI from
-/// `linux/mount.h`; keeping it local confines the unavoidable raw syscall to
-/// the one operation for which the existing mount facade has no safe wrapper.
-#[cfg(target_os = "linux")]
-#[repr(C)]
-struct MountAttr {
-    attr_set: u64,
-    attr_clr: u64,
-    propagation: u64,
-    userns_fd: u64,
-}
-
 /// Linux implementation of the complete isolated `make_volatile()` backend.
 ///
 /// This deliberately relies on kernel-enforced `RESOLVE_IN_ROOT` and
@@ -591,53 +580,6 @@ fn simplify_absolute_path(path: &Path) -> io::Result<std::path::PathBuf> {
         }
     }
     Ok(simplified)
-}
-
-/// Apply a read-only attribute recursively with the same subtree scope as
-/// C's modern `bind_remount_recursive()` fast path.
-#[cfg(target_os = "linux")]
-fn set_mount_tree_read_only(target: &Path) -> io::Result<()> {
-    let target = CString::new(target.as_os_str().as_bytes())
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "target contains NUL"))?;
-    let attribute = MountAttr {
-        attr_set: libc::MOUNT_ATTR_RDONLY,
-        attr_clr: 0,
-        propagation: 0,
-        userns_fd: 0,
-    };
-
-    // SAFETY: target is retained and NUL-terminated; `attribute` exactly
-    // matches Linux `struct mount_attr` and stays valid for the syscall. No
-    // pointer is retained by the kernel after this synchronous operation.
-    let result = unsafe {
-        libc::syscall(
-            libc::SYS_mount_setattr,
-            libc::AT_FDCWD,
-            target.as_ptr(),
-            (libc::AT_SYMLINK_NOFOLLOW | libc::AT_RECURSIVE) as libc::c_uint,
-            &attribute,
-            std::mem::size_of::<MountAttr>(),
-        )
-    };
-    if result < 0 {
-        let error = io::Error::last_os_error();
-        return match error.raw_os_error() {
-            // C deliberately falls back to the classic recursive remount
-            // implementation for these cases. In particular EINVAL can mean
-            // that `target` is not itself a mount point, a case the classic
-            // path handles by first making it one. Do not replace that code
-            // with a flag-clobbering loop: return an inspectable, fail-closed
-            // boundary instead.
-            Some(errno @ (libc::ENOSYS | libc::EOPNOTSUPP | libc::EPERM | libc::EINVAL)) => {
-                Err(fallback_required_error(
-                    LinuxVolatileTransitionRequirement::RecursiveReadOnlyRemount,
-                    errno,
-                ))
-            }
-            _ => Err(error),
-        };
-    }
-    Ok(())
 }
 
 // ── Argument parsing ──────────────────────────────────────────────────────
@@ -1045,6 +987,8 @@ pub use orchestration::{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::linux_transition_requirement::mount_setattr_is_unsupported;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum OverlayCall {
@@ -1956,6 +1900,47 @@ mod tests {
         );
         assert_eq!(requirement.source_errno(), libc::EINVAL);
         assert_eq!(requirement.requirement().syscall_name(), "mount_setattr");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mount_setattr_fallback_boundary_caches_only_unsupported_syscalls() {
+        // `bind_remount_recursive()` retries its modern shortcut after
+        // namespace-specific failures, but permanently bypasses it when the
+        // kernel says the operation does not exist. Keep this test pure so it
+        // cannot mutate the process-wide production capability cache shared
+        // by parallel tests.
+        assert!(mount_setattr_is_unsupported(libc::ENOSYS));
+        assert!(mount_setattr_is_unsupported(libc::EOPNOTSUPP));
+        assert!(mount_setattr_is_unsupported(libc::ENOTTY));
+        assert!(mount_setattr_is_unsupported(libc::EAFNOSUPPORT));
+        assert!(mount_setattr_is_unsupported(libc::EPFNOSUPPORT));
+        assert!(mount_setattr_is_unsupported(libc::EPROTONOSUPPORT));
+        assert!(mount_setattr_is_unsupported(libc::ESOCKTNOSUPPORT));
+        assert!(mount_setattr_is_unsupported(libc::ENOPROTOOPT));
+        assert!(!mount_setattr_is_unsupported(libc::EPERM));
+        assert!(!mount_setattr_is_unsupported(libc::EINVAL));
+        assert!(!mount_setattr_is_unsupported(libc::EBUSY));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn unexpected_mount_setattr_failures_remain_typed_fallbacks() {
+        // Even errors that do not mean missing kernel support trigger C's
+        // classic remount walk. The public error keeps that distinction so a
+        // future production caller cannot mistake it for a final transition
+        // failure and silently lose C's compatibility behavior.
+        let error = fallback_required_error(
+            LinuxVolatileTransitionRequirement::RecursiveReadOnlyRemount,
+            libc::EBUSY,
+        );
+
+        let requirement = linux_volatile_transition_requirement(&error).unwrap();
+        assert_eq!(
+            requirement.requirement(),
+            LinuxVolatileTransitionRequirement::RecursiveReadOnlyRemount
+        );
+        assert_eq!(requirement.source_errno(), libc::EBUSY);
     }
 
     #[cfg(target_os = "linux")]

@@ -17,11 +17,9 @@
 //! in the current named-unit command seam, so it is decoded and rejected with
 //! a typed error rather than being misrepresented as a named reset.
 
+use crate::pid1_bus_source::{Pid1BusCommandSender, Pid1BusSendError};
 use crate::pid1_dbus_wire::{MethodCall, WireError};
-use crate::pid1_manager_commands::{
-    Pid1CommandError, Pid1CommandReplyReceiver, Pid1CommandSender, Pid1ManagerCommand,
-    SenderIdentity,
-};
+use crate::pid1_manager_commands::{Pid1CommandReplyReceiver, Pid1ManagerCommand, SenderIdentity};
 use crate::transaction::JobMode;
 
 pub const PID1_MANAGER_PATH: &str = "/org/freedesktop/systemd1";
@@ -55,26 +53,29 @@ pub enum Pid1DbusCommandAdapterError {
         member: String,
         mode: String,
     },
-    Command(Pid1CommandError),
+    Ingress(Pid1BusSendError),
 }
 
-impl From<Pid1CommandError> for Pid1DbusCommandAdapterError {
-    fn from(error: Pid1CommandError) -> Self {
-        Self::Command(error)
+impl From<Pid1BusSendError> for Pid1DbusCommandAdapterError {
+    fn from(error: Pid1BusSendError) -> Self {
+        Self::Ingress(error)
     }
 }
 
 /// Convert checked manager method calls and enqueue the resulting semantic command.
 ///
 /// Constructing this adapter does not grant authority. It only retains the
-/// bounded [`Pid1CommandSender`] supplied by the PID 1 command owner.
+/// bounded, event-loop-waking [`Pid1BusCommandSender`] supplied by the PID 1
+/// command owner. Using the wake-aware sender is required: the PID 1 loop
+/// registers its eventfd, so a plain channel enqueue would otherwise leave
+/// valid work sleeping until an unrelated timer or signal.
 #[derive(Clone)]
 pub struct Pid1DbusCommandAdapter {
-    command_sender: Pid1CommandSender,
+    command_sender: Pid1BusCommandSender,
 }
 
 impl Pid1DbusCommandAdapter {
-    pub const fn new(command_sender: Pid1CommandSender) -> Self {
+    pub const fn new(command_sender: Pid1BusCommandSender) -> Self {
         Self { command_sender }
     }
 
@@ -234,9 +235,10 @@ mod tests {
     use std::num::NonZeroUsize;
 
     use super::*;
+    use crate::pid1_bus_source::pid1_bus_command_channel;
     use crate::pid1_dbus_wire::{Endian, decode_method_call};
     use crate::pid1_manager_commands::{
-        AuthenticatedPeer, Pid1CommandAuthorizer, Pid1CommandError, pid1_manager_command_channel,
+        AuthenticatedPeer, Pid1CommandAuthorizer, Pid1CommandError,
     };
     use crate::runtime_manager::RuntimeManager;
 
@@ -388,7 +390,7 @@ mod tests {
     #[test]
     fn sending_preserves_the_kernel_identity_not_the_wire_sender() {
         let (command_sender, mut inbox) =
-            pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+            pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
         let adapter = Pid1DbusCommandAdapter::new(command_sender);
         let identity = SenderIdentity::from_authenticated_peer(
             AuthenticatedPeer::from_kernel_peer_credentials(42, 1000, 1001),
@@ -398,13 +400,90 @@ mod tests {
         let reply = adapter.try_send(identity, &wire_call).unwrap();
         let mut authorizer = CaptureAuthorizer::default();
         let mut runtime = RuntimeManager::new();
+
+        #[cfg(target_os = "linux")]
+        {
+            use systemd_event_loop_rs::loop_::EventLoop;
+
+            let mut event_loop = EventLoop::new().unwrap();
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            assert_eq!(
+                inbox
+                    .dispatch_pending(&mut runtime, &mut authorizer, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .dispatched,
+                1
+            );
+            assert_eq!(event_loop.run_once(0), Ok(false));
+        }
+
+        #[cfg(not(target_os = "linux"))]
         assert_eq!(
             inbox
                 .dispatch_pending(&mut runtime, &mut authorizer, NonZeroUsize::new(1).unwrap())
+                .unwrap()
                 .dispatched,
             1
         );
         assert_eq!(authorizer.sender, Some(identity));
         assert_eq!(reply.try_recv(), Ok(Err(Pid1CommandError::Unauthorized)));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rejected_wire_call_does_not_make_the_pid1_event_loop_runnable() {
+        use systemd_event_loop_rs::loop_::EventLoop;
+
+        let (command_sender, inbox) =
+            pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+        let adapter = Pid1DbusCommandAdapter::new(command_sender);
+        let mut wrong_path = call("LoadUnit", "s", &["a.service"]);
+        wrong_path.path = "/wrong".into();
+        assert!(matches!(
+            adapter.try_send(
+                SenderIdentity::from_authenticated_peer(
+                    AuthenticatedPeer::from_kernel_peer_credentials(1, 0, 0),
+                ),
+                &wrong_path,
+            ),
+            Err(Pid1DbusCommandAdapterError::WrongPath { .. })
+        ));
+
+        let mut event_loop = EventLoop::new().unwrap();
+        inbox.register(&mut event_loop).unwrap();
+        assert_eq!(event_loop.run_once(0), Ok(false));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn full_inbox_rejection_rolls_back_the_adapter_wake_token() {
+        use systemd_event_loop_rs::loop_::EventLoop;
+
+        let (command_sender, mut inbox) =
+            pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+        let adapter = Pid1DbusCommandAdapter::new(command_sender);
+        let identity = SenderIdentity::from_authenticated_peer(
+            AuthenticatedPeer::from_kernel_peer_credentials(1, 0, 0),
+        );
+        let first = adapter.try_send(identity, &call("LoadUnit", "s", &["one.service"]));
+        assert!(first.is_ok());
+        assert!(matches!(
+            adapter.try_send(identity, &call("LoadUnit", "s", &["two.service"])),
+            Err(Pid1DbusCommandAdapterError::Ingress(
+                Pid1BusSendError::Command(Pid1CommandError::InboxFull)
+            ))
+        ));
+
+        let mut event_loop = EventLoop::new().unwrap();
+        inbox.register(&mut event_loop).unwrap();
+        assert_eq!(event_loop.run_once(0), Ok(true));
+
+        let mut runtime = RuntimeManager::new();
+        let mut authorizer = CaptureAuthorizer::default();
+        let _ = inbox
+            .dispatch_pending(&mut runtime, &mut authorizer, NonZeroUsize::new(1).unwrap())
+            .unwrap();
+        assert_eq!(event_loop.run_once(0), Ok(false));
     }
 }

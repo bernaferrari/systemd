@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+// PORT-SYNC: src/volatile-root/volatile-root.c
 
 //! Linux recursive no-follow unmount support for the volatile-root transition.
 //!

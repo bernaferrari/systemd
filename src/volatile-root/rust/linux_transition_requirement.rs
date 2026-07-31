@@ -105,10 +105,32 @@ pub(crate) fn fallback_required_error(
 /// rename/mount-lock race respectively.
 static OPENAT2_AVAILABLE: AtomicBool = AtomicBool::new(true);
 
+/// C's `bind_remount_recursive()` similarly stops attempting its
+/// `mount_setattr()` shortcut after the kernel reports that the syscall is
+/// unsupported. Other errors must *not* be cached: C immediately falls back
+/// to its classic per-mount implementation because it can make progress even
+/// when the atomic syscall cannot.
+static MOUNT_SETATTR_AVAILABLE: AtomicBool = AtomicBool::new(true);
+
 pub(crate) fn openat2_available() -> bool {
     OPENAT2_AVAILABLE.load(Ordering::Relaxed)
 }
 
 pub(crate) fn mark_openat2_unavailable() {
     OPENAT2_AVAILABLE.store(false, Ordering::Relaxed);
+}
+
+pub(crate) fn mount_setattr_available() -> bool {
+    MOUNT_SETATTR_AVAILABLE.load(Ordering::Relaxed)
+}
+
+pub(crate) fn mark_mount_setattr_unavailable() {
+    MOUNT_SETATTR_AVAILABLE.store(false, Ordering::Relaxed);
+}
+
+/// Whether the errno denotes a permanently unavailable `mount_setattr()`
+/// fast path. Reuse the Rust port of `ERRNO_IS_NOT_SUPPORTED()` rather than
+/// duplicating its wider, target-aware errno family here.
+pub(crate) fn mount_setattr_is_unsupported(errno: i32) -> bool {
+    systemd_basic_rs::errno_classify::errno_is_not_supported(errno.into())
 }

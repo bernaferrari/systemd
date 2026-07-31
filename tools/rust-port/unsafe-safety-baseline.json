@@ -1118,7 +1118,12 @@
     "src/volatile-root/rust/lib.rs": {
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 8
+      "unsafe_sites": 7
+    },
+    "src/volatile-root/rust/linux_mount.rs": {
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
     }
   },
   "totals": {
