@@ -62,7 +62,7 @@ tier = 1
 symbols = 18
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/hexdecoct.c" = "bbe624cc4f2ed9edb72ff364123372ad8e1992d3", "src/basic/hexdecoct.h" = "ed3c9dc39d8ecdcc4a5f3d0d0a0af3c5f30cec2e" }
-last_reviewed_rust_blobs = { "src/basic/rust/hexdecoct.rs" = "cd3963b27cdae61d68b841fef398b252850d8b7d", "src/basic/rust/hexdecoct.h" = "3e8148f327859e62b6b33d0c972136b82333c5da" }
+last_reviewed_rust_blobs = { "src/basic/rust/hexdecoct.rs" = "f7659bf3ec8b1e5e6c7be954a4391790b82df6bb", "src/basic/rust/hexdecoct.h" = "3e8148f327859e62b6b33d0c972136b82333c5da" }
 notes = "Reviewed static codec ABI slice 2026-07-30; no build/tests/VM. Eighteen facades preserve scalar masking/decoding plus reviewed libc allocation, pointer/length, padding, C WHITESPACE (space/tab/LF/CR) decoding, exact-range base32 decoding, line wrapping, secure-wipe, and success-only output publication. FILE* diagnostics remain C-only. C remains production authority; runtime parity remains P2."
 
 [sort-util]
@@ -112,7 +112,7 @@ tier = 1
 symbols = 19
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/utf8.c" = "0fccc4711cb9eb8e3817eff421e41b2f2f951be3", "src/basic/utf8.h" = "fde72a0d5422c9800125484ac619decf7ac93ffb", "src/basic/gunicode.c" = "7c33a7c87251a5fdac6bcc5ed90d7ea4a7d094b7", "src/basic/gunicode.h" = "9bba03ba30b9a120ec9b7dddea6959a356482654" }
-last_reviewed_rust_blobs = { "src/basic/rust/utf8.rs" = "d3f81d28998628429a46e7e7de524e3252fbbfc9", "src/basic/rust/utf8.h" = "fc2ba0b4f1c054aabef5cfb54d07bd69c75bb3a9" }
+last_reviewed_rust_blobs = { "src/basic/rust/utf8.rs" = "c6951267ad240f607e4805eb6691169696e6519b", "src/basic/rust/utf8.h" = "fc2ba0b4f1c054aabef5cfb54d07bd69c75bb3a9" }
 notes = "Reviewed static UTF-8 ABI slice 2026-07-29; no build/tests/VM. Nineteen C facades preserve raw byte traversal, C allocator ownership, UTF-16 little-endian layout, output publication, invalid-byte escaping, and the exact gunicode width table. Remaining C APIs and all runtime parity are unclaimed; C remains production authority."
 
 [string-table]
@@ -191,7 +191,7 @@ tier = 2
 symbols = 16
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/time-util.c" = "44c53067411741027580f465c9873e673db03028", "src/basic/time-util.h" = "3b341911a364c7901dda704467af8426621edc09" }
-last_reviewed_rust_blobs = { "src/basic/rust/time_util.rs" = "093b3e7708263912c2a760990b8452257a239406", "src/basic/rust/time_util/arithmetic.rs" = "2fdc47042ea8b0d259412ee6ca4041255bdba5c4", "src/basic/rust/time_util/conversion.rs" = "009ccd51ea6ffad5b68c4a9c10a378e123ee936c", "src/basic/rust/time_util/formatting.rs" = "9c185ef363e09f144c3befb16e9aabacd559f3e7", "src/basic/rust/time_util/parsing.rs" = "d30b96d627d690724ae9c9ca807d5d07fc0a41ea", "src/basic/rust/time_util/tests.rs" = "0f7285dc215ad8ea7860ce32faba7bb7684ae5b5", "src/basic/rust/time_util/types.rs" = "4435e137117480d65bece8965a267b77da3fd6d8", "src/basic/rust/time_util.h" = "56680ad07ec9167195d38fa8297a4c0d107477a2" }
+last_reviewed_rust_blobs = { "src/basic/rust/time_util.rs" = "093b3e7708263912c2a760990b8452257a239406", "src/basic/rust/time_util/arithmetic.rs" = "2fdc47042ea8b0d259412ee6ca4041255bdba5c4", "src/basic/rust/time_util/conversion.rs" = "009ccd51ea6ffad5b68c4a9c10a378e123ee936c", "src/basic/rust/time_util/formatting.rs" = "18956ea1e25d8c93945df7d7861913eba96acb59", "src/basic/rust/time_util/parsing.rs" = "cac42bac22b3e3ee1180b2480964a298790ed58a", "src/basic/rust/time_util/tests.rs" = "0f7285dc215ad8ea7860ce32faba7bb7684ae5b5", "src/basic/rust/time_util/types.rs" = "4435e137117480d65bece8965a267b77da3fd6d8", "src/basic/rust/time_util.h" = "56680ad07ec9167195d38fa8297a4c0d107477a2" }
 notes = "Reviewed static time-utility directory slice 2026-07-29; no build/tests/VM. One scoped owner retains the shared C ABI header while 16 contract-backed facades cover clock conversion, duration parsing, timestamp styles, timezone offsets, and bounded timespan formatting. The remaining arithmetic shadow facades are catalog-reviewed but not yet behavior-contract-backed. C-only clock acquisition, timestamp constructors, calendar/timezone state, parse_nsec, sleep, and runtime differential execution remain P2."
 
 [extract-word]
@@ -244,7 +244,7 @@ tier = 3
 symbols = 54
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/strv.c" = "eb3cd8d4b213f16d1d770b32d2c1f60b63acefd6", "src/basic/strv.h" = "2a0c2730d1ac46f2548996f04d15f7b120124795", "src/fundamental/strv.h" = "0ede9c3b796a1cac05e018c25fb9a94915531b8d" }
-last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "34d353de57695355934225807b1f46a5598726d2", "src/basic/rust/strv/allocating_transforms.rs" = "0b0903050580da0f587d8e683ae96e3a754197d4", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "4ba2e30788318fccc50a66bfaab84fc2ea7af19f" }
+last_reviewed_rust_blobs = { "src/basic/rust/strv.rs" = "0bc53be17eee35eab0257e1f10346bf7537f5c6a", "src/basic/rust/strv/allocating_transforms.rs" = "dc082cc8d486c8544947c9a661eeb2f6911439dc", "src/basic/rust/strv/matching_escape.rs" = "d562ad5c91422d6dea8a187a2264670400e03087", "src/basic/rust/strv.h" = "4ba2e30788318fccc50a66bfaab84fc2ea7af19f" }
 notes = "Reviewed static behavior slice 2026-07-29; no build/tests/VM. Scope basic.strv owns the decomposed Rust leaves (strv.rs plus allocating_transforms/matching_escape) and rust/strv.h. Twenty-nine machine-checked surfaces cover 54 dual-compared ABI symbols across registered strv fixtures, including the function-shaped consuming replacement macro. The two private closest-match components are exported for Rust decomposition but remain C-static helpers, with indirect C/R fixture coverage through strv_find_closest. Borrowed-interior, borrowed-alias, libc-owned return, negative-errno, nullable, and boolean behaviors remain separate. Explicit exclusions cover free/print I/O, hashmap/set helpers, variadic constructors, and unreviewed helpers. Partial provenance with static-only evidence; runtime parity unclaimed."
 
 
@@ -348,7 +348,7 @@ tier = 1
 symbols = 67
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/stat-util.c" = "72307fa7217822d3f930744bb3454d7bdf47f13a", "src/basic/stat-util.h" = "aa1c21ed90a91e0c03c2c4de833b29c5c4d67efa", "src/basic/siphash24.c" = "b73ede34c8bc43c04697adb23f84db94473ab43a", "src/basic/siphash24.h" = "6da73fedaa41c21ed516779b978019ab6f9fcd33", "src/basic/chattr-util.c" = "26779305cbbbedf132ed0eeaa701487addb8f7a7", "src/basic/chattr-util.h" = "543843db2c2a4e3f3b9c689f2ba86882ca221bd5", "src/basic/chase.c" = "23a523798eb2b9a1310fff5252491d49bb01f8d5", "src/basic/chase.h" = "3d7e9f3f6b5f78bd887f5fd98ac5342000e205b1", "src/basic/dirent-util.h" = "44e751ba41438c7eccbccf0519534e1fcac24df9", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5", "src/basic/filesystem-sets.py" = "be08664aef65a08b2bb972d7853a27987492f7b6", "src/basic/filesystems.c" = "5a41252e096d218a0d2ab798d0907ae995c1186c", "src/basic/filesystems.h" = "eed3982afd5eb5d501bea2b22d1475e8b0a25627", "src/basic/fs-util.c" = "76c55e30b6a86d04a28f1042f1c68e867d6b80d4", "src/basic/fs-util.h" = "bc33f2f8e95d51311d07d4950ffded5586a554db", "src/basic/mountpoint-util.c" = "f84fb04a6746029b20569d2584f9b4e3e6b71364", "src/basic/mountpoint-util.h" = "563685e7153e16cd65d794c78464f1fe69c7c1b3", "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/include/uapi/linux/magic.h" = "4f2da935a76ccae6e1c3310b2fae5379186548b8", "src/basic/time-util.c" = "44c53067411741027580f465c9873e673db03028", "src/shared/btrfs-util.c" = "780c1be349675afc7f681824dbe1c31d146753c1", "src/shared/btrfs-util.h" = "be5e0b59d31e8221c11a3b142ce716c6cbff7130" }
-last_reviewed_rust_blobs = { "src/basic/rust/stat_util.rs" = "5d917fdbff58ca2b101d2ac8f5e833baccb6f297", "src/basic/rust/stat_util.h" = "0d78cbfeebfd4fa278277fe8a59832fd4afb9d04", "src/basic/rust/stat_util/descriptor.rs" = "5a1005288f8f04d244ef60fa24eafafe221eada6", "src/basic/rust/stat_util/filesystem.rs" = "ae2967dfd6e0ed6141011f2fc5f83e5b9ba347bd", "src/basic/rust/stat_util/hash.rs" = "b8120cc84ee304ec701f82af7cadb2e708225563", "src/basic/rust/stat_util/inode.rs" = "61723d212320f5320d732116f8054ec580929318", "src/basic/rust/stat_util/inode_same.rs" = "cfe3225c251ad0307fa095f900ddd21ad1abcdb7", "src/basic/rust/stat_util/moderate.rs" = "a2f0eb66f98484316e5a0f10e8176661d13647a5", "src/basic/rust/stat_util/verification.rs" = "82c658f9152f571734916a1d2a827cc4ed3bae93", "src/basic/rust/stat_util/xstatx.rs" = "d48f75ef546162e300a408f0c20eaacf7664227a" }
+last_reviewed_rust_blobs = { "src/basic/rust/stat_util.rs" = "8c322707f24149be73846e19c2ee422c51153625", "src/basic/rust/stat_util.h" = "0d78cbfeebfd4fa278277fe8a59832fd4afb9d04", "src/basic/rust/stat_util/descriptor.rs" = "5a1005288f8f04d244ef60fa24eafafe221eada6", "src/basic/rust/stat_util/filesystem.rs" = "c19a376582be132febec7e1c471959fc773014fb", "src/basic/rust/stat_util/hash.rs" = "b8120cc84ee304ec701f82af7cadb2e708225563", "src/basic/rust/stat_util/inode.rs" = "61723d212320f5320d732116f8054ec580929318", "src/basic/rust/stat_util/inode_same.rs" = "cfe3225c251ad0307fa095f900ddd21ad1abcdb7", "src/basic/rust/stat_util/moderate.rs" = "a2f0eb66f98484316e5a0f10e8176661d13647a5", "src/basic/rust/stat_util/verification.rs" = "99affd88d707ae2f3459fadc8ab872de9fdd1d31", "src/basic/rust/stat_util/xstatx.rs" = "d48f75ef546162e300a408f0c20eaacf7664227a" }
 notes = "Reviewed behavior slice 2026-07-30; the Rust static library and the C/R `test-stat-util-rust` fixture passed on Ubuntu 24.04 aarch64. Scope basic.stat-util owns the decomposed stat_util facade while c_paths retains the transitive behavior dependencies used or independently mirrored by its leaves, so filesystem-set, mountpoint, chase/fd/path, SipHash, chattr, and btrfs changes invalidate stale anchors. The new C-only fstype_is_fuse() classifier is used by switch-root's departing-filesystem sync path; inode_same.rs neither calls nor mirrors it, so the 67-symbol stat-util contract and its fixture need no behavioral change. c_provenance_edges records the ten direct leaf authorities and fourteen reasoned transitive closure paths. Nineteen machine-checked surfaces cover all 67 public stat-util function APIs (including header inlines and inode_type string-table lookup) with exact ABI, symbol-specific output metadata, and static fixture markers. inode_hash_ops and inode_unmodified_hash_ops remain excluded; rs_inode_type_can_chattr and rs_btrfs_might_be_subvol stay outside the 67-symbol contract slice. Broader runtime/kernel differential execution remains unclaimed."
 
 [socket-util]
@@ -370,7 +370,7 @@ tier = 3
 symbols = 19
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/socket-util.c" = "79eabcf32077895d7ef592a5c0fc6d458522ab48", "src/basic/socket-util.h" = "81e5bf1d4b5c95a57f3da57b3d9d6015a9a74a7b", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
-last_reviewed_rust_blobs = { "src/basic/rust/socket_util.rs" = "2c05dac70df37b3be5d468cc09c8bf5cdc24e147", "src/basic/rust/socket_util.h" = "a3d64d37adebc83702db79881fe3adbe91e25bdc" }
+last_reviewed_rust_blobs = { "src/basic/rust/socket_util.rs" = "f38e73ba45a156e0d6ecfbc114936c7c5d448fb7", "src/basic/rust/socket_util.h" = "a3d64d37adebc83702db79881fe3adbe91e25bdc" }
 notes = "Reviewed static socket ABI slice 2026-07-29; no build/tests/VM. Nineteen C facades preserve byte-oriented name predicates, VSOCK numeric and named-CID parsing, C sockaddr union and SocketAddress layout, AF-specific lengths, Unix path ownership, strict verification, and success-only output publication. The reviewed safe byte-address constructor now lets Rust notification senders retain C's exact filesystem and abstract AF_UNIX address semantics instead of duplicating raw sockaddr assembly. Invalid outer pointers and impossible asserted layouts fail closed by explicit policy. C remains production authority; runtime parity remains P2."
 
 [percent-util]
@@ -482,7 +482,7 @@ tier = 2
 symbols = 7
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/devnum-util.c" = "e7d7b652281aefe052efe762f7fb9dec911c0a4e", "src/basic/devnum-util.h" = "a23dfcacb484807a7c783c65a450d5c933a56939" }
-last_reviewed_rust_blobs = { "src/basic/rust/devnum_util.rs" = "5cfe37a16f5b02532cd195567917b0af8bdbb99e", "src/basic/rust/devnum_util.h" = "9e57d9e55a146e6ffef62a2280d090f36a7995e9" }
+last_reviewed_rust_blobs = { "src/basic/rust/devnum_util.rs" = "11e30527f6b9752a25cc375605783e7fb239fc12", "src/basic/rust/devnum_util.h" = "9e57d9e55a146e6ffef62a2280d090f36a7995e9" }
 notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. The machine-checked contract covers five non-inline operations plus the two inline predicates, with exact ABI, byte grammar, errno, libc allocation, ownership, and success-only output publication evidence. device_path_make_canonical remains explicitly excluded, so this is partial reviewed provenance rather than synced or runtime parity."
 
 [hostname-util]
@@ -520,7 +520,7 @@ tier = 2
 symbols = 10
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/hostname-util.c" = "ea49676ea304e57aa5188cf6d43bacf844f245de", "src/basic/hostname-util.h" = "3eb676064a97b520d31be687536d941e59db2365", "src/basic/user-util.c" = "fe4c0e6a36858f6b915705f50219a00c104a50f1", "src/basic/user-util.h" = "8355548b00ca3cd41ad52990f7f66f0807e47bc0", "src/basic/string-util.c" = "9de61aafe88b5cf3b2fb61eb1ae96c6e875cb7aa", "src/basic/string-util.h" = "74d6ca16826ab8b709b284fb4cd4c86c94988f99", "src/basic/utf8.c" = "0fccc4711cb9eb8e3817eff421e41b2f2f951be3", "src/basic/utf8.h" = "fde72a0d5422c9800125484ac619decf7ac93ffb" }
-last_reviewed_rust_blobs = { "src/basic/rust/hostname_util.rs" = "905357f0532627d5e738fbb93a4d544393875646", "src/basic/rust/hostname_util.h" = "632a835b49d5b2ec6e180a7a83d52163be55e747" }
+last_reviewed_rust_blobs = { "src/basic/rust/hostname_util.rs" = "1578f1a8a34e9596f7a59dcd15700aa0a3e580ab", "src/basic/rust/hostname_util.h" = "632a835b49d5b2ec6e180a7a83d52163be55e747" }
 notes = "Reviewed static hostname ABI slice 2026-07-29; C/R Meson shadow test passed in the Ubuntu Lima guest. Ten facades preserve raw-byte LDH validation, trailing-dot policy, in-place cleanup aliasing, ASCII-only synthetic classifiers, libc-owned split outputs with success-only publication, and relaxed user/machine-spec behavior. Environment/file hostname getters and unrelated hostname utilities remain excluded. C remains production authority; broader runtime parity remains P2."
 
 [ether-addr-util]
@@ -546,7 +546,7 @@ tier = 2
 symbols = 16
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/ether-addr-util.c" = "4ea4be594e10ed4ff82e867e0e1dcf26ff07184e", "src/basic/ether-addr-util.h" = "d97748f115e6df46b0dfbb8d5b2325db90d07cbd" }
-last_reviewed_rust_blobs = { "src/basic/rust/ether_addr_util.rs" = "1f54e74a8abb2932d01bfb539cdfd00ac364ad30", "src/basic/rust/ether_addr_util.h" = "34ccd3d52a2fa6584b6ae2c9d16cebd3c2dc4b7e" }
+last_reviewed_rust_blobs = { "src/basic/rust/ether_addr_util.rs" = "d1431d1c7085fa24d18b5e6aae2ec9deea42b143", "src/basic/rust/ether_addr_util.h" = "34ccd3d52a2fa6584b6ae2c9d16cebd3c2dc4b7e" }
 notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. Sixteen fixed-layout and parser facades are split into 12 machine-checked contracts covering repr(C) ABI, opaque bytes, caller storage, error publication, and no allocator crossing. Six C callables and the hash-op variables remain outside the slice, so provenance is partial and runtime evidence is unclaimed."
 
 [ratelimit]
@@ -624,7 +624,7 @@ tier = 1
 symbols = 37
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/path-util.c" = "b41029b157cf913757b20c4dbc1518cf700360af", "src/basic/path-util.h" = "786590621365c28b1f006cb940813786201fee44", "src/basic/fd-util.c" = "c6e78c59b6954074d3e553f90f4752b327b1a4ff", "src/basic/fd-util.h" = "999b49ab0328b866e6d1c499ff295cc46db858c5" }
-last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "0a9fab28346052849a10d31c730fe587e56ae81c", "src/basic/rust/path_util/byte_abi.rs" = "83c0f116dd7825b4f9e4ef9c521c8fddbeab65fb", "src/basic/rust/path_util.h" = "6c203f60db89a99ba099093e068ad1899b726743" }
+last_reviewed_rust_blobs = { "src/basic/rust/path_util.rs" = "edd26827e9f34d8e3b5e46ceb0ce60e5fb1e88c3", "src/basic/rust/path_util/byte_abi.rs" = "28ba0e248c312e805670145800a438acd1267807", "src/basic/rust/path_util.h" = "6c203f60db89a99ba099093e068ad1899b726743" }
 notes = "Reviewed static behavior slice 2026-07-29; the focused path-util-extra C/R Meson shadow passed in the Ubuntu Lima guest, including exact O_DIRECTORY propagation. Thirty-seven pure path byte, predicate, validation, and allocation facades are covered by machine-checked contracts with exact ABI, opaque C-string bytes, borrowed-interior offsets, allocator ownership, and success-only publication. Filesystem I/O APIs, remaining validators, and skip_dev_prefix remain excluded. Partial provenance; broader runtime parity remains P2."
 
 [bus-label]
@@ -704,7 +704,7 @@ tier = 1
 symbols = 12
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/iovec-util.c" = "0be326a18364e75ed4e1e919a360b1f0cb9c8a5b", "src/basic/iovec-util.h" = "ab6178d653a884d0848ec928bb8c2911c4ed805c", "src/fundamental/iovec-util.h" = "7d8f65db43d2ba81fa9f5b4b0e00336af040a20b" }
-last_reviewed_rust_blobs = { "src/basic/rust/iovec_util.rs" = "46d5bfb73f504e3c54e9940f1bfa6727d40a5e70", "src/basic/rust/iovec_util.h" = "1e8f097b202d4169632a022787bfac20a68cec0d" }
+last_reviewed_rust_blobs = { "src/basic/rust/iovec_util.rs" = "367a39f50726a085121990c90ce73f64fa60a081", "src/basic/rust/iovec_util.h" = "1e8f097b202d4169632a022787bfac20a68cec0d" }
 notes = "Reviewed static behavior slice 2026-07-27; no build/tests/VM. Twelve selected allocation, release, erase, increment, borrowed-string, comparison, and copy/aliasing facades are covered by eleven machine-checked contracts. The exact basic and fundamental C headers are authority; eight public C callables remain excluded. This is partial provenance with static-only evidence, not runtime parity."
 
 [device-nodes]
@@ -758,7 +758,7 @@ tier = 1
 symbols = 8
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/iovec-wrapper.c" = "da217170c573c8b83f4259b83004ad40245ab69f", "src/basic/iovec-wrapper.h" = "7f9863aaf98596aec3f24334c9cf40a1e2c3d95a", "src/basic/iovec-util.c" = "0be326a18364e75ed4e1e919a360b1f0cb9c8a5b", "src/basic/iovec-util.h" = "ab6178d653a884d0848ec928bb8c2911c4ed805c", "src/basic/alloc-util.c" = "70ecf33ecda068b264ac047faee0b5880a4f097e", "src/basic/alloc-util.h" = "8505205ce3cac33fddb80114357cce8c77044f5e" }
-last_reviewed_rust_blobs = { "src/basic/rust/iovec_wrapper.rs" = "58d8334f470d508d7f35502adfe9e0719f3b8c6a", "src/basic/rust/iovec_wrapper.h" = "82df85ea21c4d805b23a223467990aed3df989b8" }
+last_reviewed_rust_blobs = { "src/basic/rust/iovec_wrapper.rs" = "45b0c36cea9e0f5d5999867a6d16696371c22bb7", "src/basic/rust/iovec_wrapper.h" = "82df85ea21c4d805b23a223467990aed3df989b8" }
 notes = "Reviewed static iovec-wrapper ABI slice 2026-07-30; no build/tests/VM. Eight facades preserve repr(C) wrapper cleanup, borrowed put, provenance-correct rebase, and size/query behavior. The stale rs_iovw_new declaration was removed because no C authority exists. The alloc-util malloc_sizeof_safe() fortify compiler barrier is C-only: this facade never uses usable-size allocation, so it requires no Rust behavior change. C remains production authority; runtime parity remains P2."
 
 [alloc-util]
@@ -805,7 +805,7 @@ tier = 2
 symbols = 9
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/basic/prioq.c" = "94ee528556a696fd6f0b036e704158c48862842e", "src/basic/prioq.h" = "97b4f40b4ac00473a8f66a434469e981c475ef86" }
-last_reviewed_rust_blobs = { "src/basic/rust/prioq.rs" = "5d1b6eda9abff4d5aa09a4d7cf6e3db743d329be", "src/basic/rust/prioq.h" = "8b0c6b7843c463acadd3729ae045c45545bef98b" }
+last_reviewed_rust_blobs = { "src/basic/rust/prioq.rs" = "d4409f1013cc157683e26bd8a8dd7dfe054176cf", "src/basic/rust/prioq.h" = "8b0c6b7843c463acadd3729ae045c45545bef98b" }
 notes = "Reviewed static priority-queue ABI slice 2026-07-29; no build/tests/VM. Nine facades use a libc-owned opaque Rust handle, borrowed C data, synchronous C comparison callbacks, and C-managed tracked indices. C remains production authority; runtime parity remains P2."
 
 [signal-util]
@@ -1043,7 +1043,7 @@ tier = 2
 symbols = 11
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/bitmap.c" = "7c985a0956f93247b5f813699221792f0be38ea8", "src/shared/bitmap.h" = "a12451ca0e7c5d4d4147c59bea208798231447a8", "src/basic/iterator.h" = "be9e1a9b6bd1777f87474b41d941ce709500052d" }
-last_reviewed_rust_blobs = { "src/basic/rust/bitmap.rs" = "025b355722436b92a86a752651e806ea71680742", "src/basic/rust/bitmap.h" = "24472b290cdfc7ea6623de24516c171120b846a1" }
+last_reviewed_rust_blobs = { "src/basic/rust/bitmap.rs" = "98fbf644f6a98ede11cb3c9b0a4429e0ce5d9cce", "src/basic/rust/bitmap.h" = "24472b290cdfc7ea6623de24516c171120b846a1" }
 notes = "Reviewed static bitmap ABI slice 2026-07-29; no build/tests/VM. Eleven facades use a dedicated libc-owned repr(C) Bitmap and iterator prefix rather than exposing the Vec-based Rust model. C remains production authority; runtime parity remains P2."
 
 [capability_util]
@@ -1139,7 +1139,7 @@ tier = 2
 symbols = 30
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/dns-domain.c" = "c90da5fc465f2d94981700e10a8df365ea6420e9", "src/shared/dns-domain.h" = "aabfaa502957546c53d1682c456e6400f6d101db", "src/basic/parse-util.c" = "f882124a0e63643c74879eb3e7b5561677eeef66", "src/basic/parse-util.h" = "a7cd9a62ef69065c694544e8661860eb6c0a5890" }
-last_reviewed_rust_blobs = { "src/basic/rust/dns_label.rs" = "443f3a3a186ed63d2861a19ba2936d817f09a16f", "src/shared/rust/dns_label.h" = "e30ff73171cb75a8284858ec7aff1b3e3707b15a" }
+last_reviewed_rust_blobs = { "src/basic/rust/dns_label.rs" = "c2609ded2ce5e06b8ea5883d14924838a70880f8", "src/shared/rust/dns_label.h" = "e30ff73171cb75a8284858ec7aff1b3e3707b15a" }
 notes = "Reviewed static DNS label/name ABI slice 2026-07-29; the C/R Meson shadow passed in the Ubuntu Lima guest. Thirty facades preserve C label escaping, DNS name traversal and comparison, wire/address conversion, transforms, DNS-SD composition, libc ownership, and success-only output publication. Reverse IPv4 octets delegate to the reviewed safe_atou8 parser; invalid required outer pointers fail closed by explicit policy. C remains production authority; broader runtime parity remains P2."
 
 [dns_type_predicates]
@@ -1349,7 +1349,7 @@ tier = 1
 symbols = 17
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/image-policy.c" = "622b5c2aa14b32b3ab875d0b50b2472309413b61", "src/shared/image-policy.h" = "ae0d2f360bdc297959cc4dc0a3fd6581aab1973d" }
-last_reviewed_rust_blobs = { "src/basic/rust/image_policy_util.rs" = "6a21cb5922c9c26ed1d212a4aadd9e6454831b7e", "src/basic/rust/image_policy_util.h" = "6615bdba4a2ef9110ad629530d428e7dfc94ae17" }
+last_reviewed_rust_blobs = { "src/basic/rust/image_policy_util.rs" = "15b93657949ad0c70f0380d6d50f8bb0d5966b88", "src/basic/rust/image_policy_util.h" = "6615bdba4a2ef9110ad629530d428e7dfc94ae17" }
 notes = "Reviewed static image-policy ABI slice 2026-07-29; no build/tests/VM. Seventeen facades preserve scalar/C-string flag behavior, C-layout flexible-array policy ownership, strict byte grammar, formatting, composition, lookup, equivalence, and filesystem-type selection. The native Vec model remains Rust-only behind explicit C-layout conversion; C remains production authority and runtime parity remains P2."
 
 [import_util]
@@ -1523,7 +1523,7 @@ tier = 2
 symbols = 7
 sync_status = "partial"
 last_reviewed_upstream_blobs = { "src/shared/pe-binary.c" = "fc6576a875770ecc877cd5102f1dce4724403598", "src/shared/pe-binary.h" = "4b5dc243fe77f7a4505d306ecde7b5133f082ccb" }
-last_reviewed_rust_blobs = { "src/basic/rust/pe_binary.rs" = "72453927e74fa8af4251d43ab121994c62cc6b8c", "src/basic/rust/pe_binary.h" = "b7f3b21e23401613061ca5270da20e87e675ffe0" }
+last_reviewed_rust_blobs = { "src/basic/rust/pe_binary.rs" = "873d45a7c2e96ca72a8ecc6d7aaa7ca5cab20e61", "src/basic/rust/pe_binary.h" = "b7f3b21e23401613061ca5270da20e87e675ffe0" }
 notes = "Reviewed static PE binary inspection slice 2026-07-29; no build/tests/VM. Seven borrowed packed-header/section facades cover classification, lookup, and data-directory inspection. File I/O, allocation, hashing, and checksums remain C-only. C remains production authority; runtime parity remains P2."
 
 [procfs_util]

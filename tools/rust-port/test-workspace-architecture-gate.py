@@ -286,6 +286,29 @@ max_lines = 2000
             ],
         )
 
+    def test_decomposed_file_may_leave_only_an_immutable_baseline_entry(self) -> None:
+        source = self.root / "src/example/rust/large.rs"
+        source.write_text("line\n" * 1999, encoding="utf-8")
+        policy = self.root / "large-files.toml"
+        policy.write_text(
+            """
+[policy]
+max_lines = 2000
+""",
+            encoding="utf-8",
+        )
+        baseline = self.root / "baseline.toml"
+        baseline.write_text(
+            """
+[files."src/example/rust/large.rs"]
+max_lines = 2000
+""",
+            encoding="utf-8",
+        )
+        failures: list[str] = []
+        GATE.validate_large_rust_files(self.root, policy, failures, baseline)
+        self.assertEqual(failures, [])
+
     def test_chronological_module_name_is_rejected(self) -> None:
         chronological = self.root / "src/example/rust/shared_validators4.rs"
         chronological.write_text("// batch four\n", encoding="utf-8")

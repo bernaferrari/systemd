@@ -10,11 +10,11 @@
 max_lines = 2000
 
 [files."src/basic/rust/strv.rs"]
-max_lines = 2476
+max_lines = 2549
 baseline_max_lines = 2401
 issue = "systemd-cpuw"
 reason = "Move the remaining vector mutation, splitting, and C ownership facades behind cohesive safe-core submodules."
-growth_reason = "The audited C-compatible ownership and ABI facades now exceed the prior measured cap; keep this one-time bound while the tracked split remains deferred."
+growth_reason = "The safe C-compatible ownership facades gained bounded adapters during the unsafe-site reduction; retain this one-time cap while the tracked split remains deferred."
 
 [files."src/basic/rust/parse_util.rs"]
 max_lines = 2169
@@ -30,26 +30,15 @@ issue = "systemd-cpuw"
 reason = "Partition DNS label codecs, escaping, and wire-format validation around one byte-oriented core."
 growth_reason = "The current audited wire-format and C ABI coverage exceeds the prior measured cap; keep this one-time bound while the tracked split remains deferred."
 
-[files."src/basic/rust/path_util.rs"]
-max_lines = 2074
-baseline_max_lines = 2048
-issue = "systemd-cpuw"
-reason = "Complete the ongoing extraction of byte-path algorithms and isolate filesystem-touching operations from pure normalization."
-growth_reason = "The current audited C-compatible path helpers exceed the prior measured cap; keep this one-time bound while the tracked split remains deferred."
-
 [files."src/basic/rust/in_addr_util.rs"]
-max_lines = 2127
-baseline_max_lines = 2111
+max_lines = 2111
 issue = "systemd-cpuw"
 reason = "Split address parsing, prefix arithmetic, formatting, and C ABI adaptation while retaining one representation policy."
-growth_reason = "The current audited address ABI helpers exceed the prior measured cap; keep this one-time bound while the tracked split remains deferred."
 
 [files."src/basic/rust/unit_name.rs"]
-max_lines = 2226
-baseline_max_lines = 2200
+max_lines = 2200
 issue = "systemd-cpuw"
 reason = "Separate unit-name grammar, escaping, template manipulation, and C allocation facades into bounded modules."
-growth_reason = "The current audited grammar and C allocation facades exceed the prior measured cap; keep this one-time bound while the tracked split remains deferred."
 
 [files."src/platform/rust/spawn/linux.rs"]
 max_lines = 2100

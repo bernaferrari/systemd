@@ -566,10 +566,15 @@ def validate_large_rust_files(
         failures.append(
             f"{policy_path.relative_to(root)}: stale large-file debt entry {relative_text}"
         )
+    # The baseline is immutable historical authority.  Once a file is
+    # decomposed below the production-size threshold, its current debt entry
+    # should be removed while the old cap remains in the baseline for audit
+    # history.  Only still-over-threshold files need a matching current entry.
     for relative_text in sorted(set(baseline) - set(allowed)):
-        failures.append(
-            f"{baseline_path.relative_to(root)}: baseline entry lacks a current debt entry {relative_text}"
-        )
+        if relative_text in observed:
+            failures.append(
+                f"{baseline_path.relative_to(root)}: baseline entry lacks a current debt entry {relative_text}"
+            )
 
     return max_lines, len(observed)
 
