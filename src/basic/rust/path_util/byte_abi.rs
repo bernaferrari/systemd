@@ -469,22 +469,46 @@ fn filename_compare_bytes(a: Option<&[u8]>, b: Option<&[u8]>) -> i32 {
     }
 }
 
-/// # Safety
-/// `path` must be null or point to a live NUL-terminated byte string.
-unsafe fn bytes_or_none<'a>(path: *const c_char) -> Option<&'a [u8]> {
-    if path.is_null() {
-        None
+fn strv_item_matches_path(path: &[u8], item: &[u8], strip_prefixes: bool) -> bool {
+    let item = if strip_prefixes {
+        item.strip_prefix(b"-")
+            .or_else(|| item.strip_prefix(b"+"))
+            .unwrap_or(item)
     } else {
-        // SAFETY: callers uphold the C-string input contract.
-        Some(unsafe { CStr::from_ptr(path) }.to_bytes())
-    }
+        item
+    };
+    path_compare_bytes(Some(item), Some(path)) == 0
 }
 
+/// Canonical C-string adapter for required borrowed path inputs.
+///
 /// # Safety
-/// `path` must point to a live NUL-terminated byte string.
-unsafe fn bytes<'a>(path: *const c_char) -> &'a [u8] {
-    // SAFETY: callers uphold the nonnull C-string input contract.
+/// `path` must be a live NUL-terminated byte string for the returned borrow.
+unsafe fn path_bytes_unchecked<'a>(path: *const c_char) -> &'a [u8] {
+    // SAFETY: upheld by this helper's contract.
     unsafe { CStr::from_ptr(path) }.to_bytes()
+}
+
+/// Every invocation is at an `extern "C"` boundary whose documented contract
+/// guarantees that a non-null argument remains a valid NUL-terminated string
+/// for the returned borrow's use. Keeping the conversion here ensures the
+/// path algorithms below receive only safe byte slices.
+macro_rules! path_bytes {
+    ($path:expr) => {{
+        // SAFETY: callers check nullability before invoking this adapter; the
+        // enclosing C ABI contract guarantees NUL-terminated readable storage.
+        unsafe { path_bytes_unchecked($path) }
+    }};
+}
+
+macro_rules! path_bytes_or_none {
+    ($path:expr) => {{
+        if $path.is_null() {
+            None
+        } else {
+            Some(path_bytes!($path))
+        }
+    }};
 }
 
 fn malloc_bytes(value: &[u8]) -> Result<*mut c_char, i32> {
@@ -518,7 +542,7 @@ pub unsafe extern "C" fn rs_path_find_first_component(
     }
     // SAFETY: guaranteed by the entry-point contract.
     let input = unsafe { *p };
-    let Some(path) = (unsafe { bytes_or_none(input) }) else {
+    let Some(path) = path_bytes_or_none!(input) else {
         if !ret.is_null() {
             // SAFETY: guaranteed by the entry-point contract.
             unsafe { *ret = ptr::null() };
@@ -563,7 +587,7 @@ pub unsafe extern "C" fn rs_path_find_last_component(
     ret: *mut *const c_char,
 ) -> i32 {
     // SAFETY: upheld by this entry point's C-string contract.
-    let Some(path_bytes) = (unsafe { bytes_or_none(path) }) else {
+    let Some(path_bytes) = path_bytes_or_none!(path) else {
         // SAFETY: guaranteed by the entry-point contract.
         unsafe {
             if !next.is_null() {
@@ -625,7 +649,7 @@ pub unsafe extern "C" fn rs_path_find_last_component(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_last_path_component(path: *const c_char) -> *const c_char {
     // SAFETY: upheld by this entry point's C-string contract.
-    let Some(path_bytes) = (unsafe { bytes_or_none(path) }) else {
+    let Some(path_bytes) = path_bytes_or_none!(path) else {
         return ptr::null();
     };
     // SAFETY: the safe core returns an in-bounds or one-past offset.
@@ -639,7 +663,7 @@ pub unsafe extern "C" fn rs_last_path_component(path: *const c_char) -> *const c
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_compare(a: *const c_char, b: *const c_char) -> i32 {
     // SAFETY: upheld by this entry point's C-string contracts.
-    path_compare_bytes(unsafe { bytes_or_none(a) }, unsafe { bytes_or_none(b) })
+    path_compare_bytes(path_bytes_or_none!(a), path_bytes_or_none!(b))
 }
 
 /// C ABI mirror of `path_startswith_full()`.
@@ -657,7 +681,7 @@ pub unsafe extern "C" fn rs_path_startswith_full(
         return ptr::null_mut();
     }
     // SAFETY: both pointers passed the null checks and satisfy the entry contract.
-    let offset = path_startswith_offset(unsafe { bytes(path) }, unsafe { bytes(prefix) }, flags);
+    let offset = path_startswith_offset(path_bytes!(path), path_bytes!(prefix), flags);
     offset.map_or(ptr::null_mut(), |offset| {
         // SAFETY: the safe core returns an in-bounds or one-past offset.
         unsafe { path.add(offset).cast_mut() }
@@ -689,7 +713,7 @@ pub unsafe extern "C" fn rs_path_simplify_full(path: *mut c_char, flags: c_uint)
         return path;
     }
     // SAFETY: `path` passed the null check and satisfies the entry contract.
-    let original = unsafe { bytes(path) };
+    let original = path_bytes!(path);
     let simplified = simplify_bytes(original, flags);
     debug_assert!(simplified.len() <= original.len());
     // SAFETY: simplification never grows beyond the original writable extent.
@@ -721,7 +745,7 @@ pub unsafe extern "C" fn rs_path_simplify_alloc(path: *const c_char, ret: *mut *
         return -libc::EINVAL;
     }
     // SAFETY: upheld by this entry point's C-string contract.
-    let Some(path) = (unsafe { bytes_or_none(path) }) else {
+    let Some(path) = path_bytes_or_none!(path) else {
         // SAFETY: guaranteed by the entry-point contract.
         unsafe { *ret = ptr::null_mut() };
         return 0;
@@ -750,7 +774,7 @@ pub unsafe extern "C" fn rs_path_make_relative(
         return -libc::EINVAL;
     }
     // SAFETY: both pointers passed the null checks and satisfy the entry contract.
-    let value = match make_relative_bytes(unsafe { bytes(from) }, unsafe { bytes(to) }) {
+    let value = match make_relative_bytes(path_bytes!(from), path_bytes!(to)) {
         Ok(value) => value,
         Err(error) => return error,
     };
@@ -770,7 +794,7 @@ pub unsafe extern "C" fn rs_path_make_relative(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_equal(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: upheld by this entry point's C-string contracts.
-    path_compare_bytes(unsafe { bytes_or_none(a) }, unsafe { bytes_or_none(b) }) == 0
+    path_compare_bytes(path_bytes_or_none!(a), path_bytes_or_none!(b)) == 0
 }
 
 /// C ABI mirror of `path_is_valid()`.
@@ -780,7 +804,7 @@ pub unsafe extern "C" fn rs_path_equal(a: *const c_char, b: *const c_char) -> bo
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_is_valid(path: *const c_char) -> bool {
     // SAFETY: upheld by this entry point's C-string contract.
-    unsafe { bytes_or_none(path) }.is_some_and(|path| path_is_valid_bytes(path, true))
+    path_bytes_or_none!(path).is_some_and(|path| path_is_valid_bytes(path, true))
 }
 
 /// C ABI mirror of `path_is_safe()`.
@@ -790,7 +814,7 @@ pub unsafe extern "C" fn rs_path_is_valid(path: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_is_safe(path: *const c_char) -> bool {
     // SAFETY: upheld by this entry point's C-string contract.
-    unsafe { bytes_or_none(path) }.is_some_and(|path| path_is_valid_bytes(path, false))
+    path_bytes_or_none!(path).is_some_and(|path| path_is_valid_bytes(path, false))
 }
 
 /// C ABI mirror of `filename_or_absolute_path_is_valid()`.
@@ -800,7 +824,7 @@ pub unsafe extern "C" fn rs_path_is_safe(path: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_filename_or_absolute_path_is_valid(path: *const c_char) -> bool {
     // SAFETY: upheld by this entry point's C-string contract.
-    unsafe { bytes_or_none(path) }.is_some_and(|path| {
+    path_bytes_or_none!(path).is_some_and(|path| {
         if path.starts_with(b"/") {
             path_is_valid_bytes(path, true)
         } else {
@@ -823,7 +847,7 @@ pub unsafe extern "C" fn rs_path_startswith_strv(
         return ptr::null_mut();
     }
     // SAFETY: `path` passed the null check and satisfies the entry contract.
-    let path_bytes = unsafe { bytes(path) };
+    let path_bytes = path_bytes!(path);
     let mut index = 0;
     loop {
         // SAFETY: guaranteed by the null-terminated strv contract.
@@ -832,7 +856,7 @@ pub unsafe extern "C" fn rs_path_startswith_strv(
             return ptr::null_mut();
         }
         // SAFETY: strv entries are live C strings by the entry contract.
-        if let Some(offset) = path_startswith_offset(path_bytes, unsafe { bytes(prefix) }, 0) {
+        if let Some(offset) = path_startswith_offset(path_bytes, path_bytes!(prefix), 0) {
             // SAFETY: the safe core returns an in-bounds or one-past offset.
             return unsafe { path.add(offset).cast_mut() };
         }
@@ -853,15 +877,9 @@ unsafe fn strv_contains(strv: *const *mut c_char, path: &[u8], strip_prefixes: b
         if item.is_null() {
             return false;
         }
-        // SAFETY: strv entries are live C strings by this helper's contract.
-        let mut item = unsafe { bytes(item) };
-        if strip_prefixes && item.first() == Some(&b'-') {
-            item = &item[1..];
-        }
-        if strip_prefixes && item.first() == Some(&b'+') {
-            item = &item[1..];
-        }
-        if path_compare_bytes(Some(item), Some(path)) == 0 {
+        // `strv_item_matches_path` owns the byte-prefix policy; this pointer
+        // adapter only borrows the current C-string item.
+        if strv_item_matches_path(path, path_bytes!(item), strip_prefixes) {
             return true;
         }
         index += 1;
@@ -882,7 +900,9 @@ pub unsafe extern "C" fn rs_path_strv_contains(
         return false;
     }
     // SAFETY: the entry contract covers both the C string and strv.
-    unsafe { strv_contains(strv, bytes(path), false) }
+    let path = path_bytes!(path);
+    // SAFETY: the entry contract covers the null-terminated string vector.
+    unsafe { strv_contains(strv, path, false) }
 }
 
 /// C ABI mirror of `prefixed_path_strv_contains()`.
@@ -899,7 +919,9 @@ pub unsafe extern "C" fn rs_prefixed_path_strv_contains(
         return false;
     }
     // SAFETY: the entry contract covers both the C string and strv.
-    unsafe { strv_contains(strv, bytes(path), true) }
+    let path = path_bytes!(path);
+    // SAFETY: the entry contract covers the null-terminated string vector.
+    unsafe { strv_contains(strv, path, true) }
 }
 
 /// C ABI mirror of `path_split_prefix_filename()`.
@@ -914,7 +936,7 @@ pub unsafe extern "C" fn rs_path_split_prefix_filename(
     ret_filename: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: upheld by this entry point's C-string contract.
-    let Some(path) = (unsafe { bytes_or_none(path) }) else {
+    let Some(path) = path_bytes_or_none!(path) else {
         return -libc::EINVAL;
     };
     let (directory, filename, trailing_slash) =
@@ -990,7 +1012,7 @@ pub unsafe extern "C" fn rs_path_extract_directory(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_compare_filename(a: *const c_char, b: *const c_char) -> i32 {
     // SAFETY: upheld by this entry point's C-string contracts.
-    filename_compare_bytes(unsafe { bytes_or_none(a) }, unsafe { bytes_or_none(b) })
+    filename_compare_bytes(path_bytes_or_none!(a), path_bytes_or_none!(b))
 }
 
 /// C ABI mirror of `path_equal_filename()`.
@@ -1000,7 +1022,7 @@ pub unsafe extern "C" fn rs_path_compare_filename(a: *const c_char, b: *const c_
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_path_equal_filename(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: upheld by this entry point's C-string contracts.
-    filename_compare_bytes(unsafe { bytes_or_none(a) }, unsafe { bytes_or_none(b) }) == 0
+    filename_compare_bytes(path_bytes_or_none!(a), path_bytes_or_none!(b)) == 0
 }
 
 #[cfg(test)]
@@ -1039,5 +1061,13 @@ mod tests {
         assert_eq!(dir.unwrap(), b"/a");
         assert_eq!(filename.unwrap(), b"\xff");
         assert!(trailing);
+    }
+
+    #[test]
+    fn strv_item_core_strips_at_most_one_control_prefix() {
+        assert!(strv_item_matches_path(b"/a/\xff", b"-/a/\xff", true));
+        assert!(strv_item_matches_path(b"/a/\xff", b"+/a/\xff", true));
+        assert!(!strv_item_matches_path(b"/a", b"+-/a", true));
+        assert!(!strv_item_matches_path(b"/a", b"-/a", false));
     }
 }
