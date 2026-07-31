@@ -87,6 +87,7 @@ pub mod pid1_dbus_reply_adapter;
 pub mod pid1_dbus_reply_queue;
 pub mod pid1_dbus_transport;
 pub mod pid1_dbus_wire;
+pub mod pid1_dbus_wire_source;
 pub mod pid1_exec_sources;
 pub mod pid1_idle_pipe_source;
 pub mod pid1_lifecycle;

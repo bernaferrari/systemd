@@ -132,6 +132,7 @@ mod imp {
     /// while the accumulator and reply queue retain the associated protocol
     /// state and its resource bounds.
     pub struct PrivateBusWireSlot {
+        id: PrivateBusConnectionId,
         connection: AdmittedPrivateBusConnection,
         input: PrivateBusWireAccumulator,
         replies: PrivateBusReplyQueue,
@@ -139,6 +140,7 @@ mod imp {
 
     impl PrivateBusWireSlot {
         fn from_authenticated(
+            id: PrivateBusConnectionId,
             connection: AdmittedPrivateBusConnection,
             config: PrivateBusWireSlotConfig,
         ) -> Result<Self, PrivateBusWireSlotError> {
@@ -153,10 +155,18 @@ mod imp {
                 config.reply_outbound_capacity,
             )?;
             Ok(Self {
+                id,
                 connection,
                 input,
                 replies,
             })
+        }
+
+        /// The transport-assigned identity which stays bound to this slot for
+        /// its entire authenticated wire lifetime. Event-source ownership must
+        /// use this exact value; callers may not supply an unrelated key.
+        pub const fn id(&self) -> PrivateBusConnectionId {
+            self.id
         }
 
         pub fn connection(&self) -> &AdmittedPrivateBusConnection {
@@ -447,7 +457,7 @@ mod imp {
                     Err(PrivateBusTransportError::InconsistentOwnership)
                 }
                 std::collections::btree_map::Entry::Vacant(entry) => {
-                    let slot = PrivateBusWireSlot::from_authenticated(connection, config)?;
+                    let slot = PrivateBusWireSlot::from_authenticated(id, connection, config)?;
                     entry.insert(slot);
                     Ok(Some(id))
                 }
