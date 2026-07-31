@@ -158,6 +158,25 @@ pub unsafe fn rs_string_replace_char(
     string
 }
 
+fn repeated_bytes(bytes: &[u8], n: usize) -> Option<Vec<u8>> {
+    let Some(allocation_size) = bytes
+        .len()
+        .checked_mul(n)
+        .and_then(|total| total.checked_add(1))
+    else {
+        return None;
+    };
+    let output_len = allocation_size - 1;
+    let mut output = Vec::new();
+    if output.try_reserve_exact(output_len).is_err() {
+        return None;
+    }
+    for _ in 0..n {
+        output.extend_from_slice(bytes);
+    }
+    Some(output)
+}
+
 /// # Safety
 /// `s` must be a readable NUL-terminated string when non-null.
 pub unsafe fn rs_strrep(s: *const c_char, n: usize) -> *mut c_char {
@@ -166,29 +185,10 @@ pub unsafe fn rs_strrep(s: *const c_char, n: usize) -> *mut c_char {
     }
     // SAFETY: non-null `s` is a readable C string by the function contract.
     let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
-    let Some(allocation_size) = bytes
-        .len()
-        .checked_mul(n)
-        .and_then(|total| total.checked_add(1))
-    else {
+    let Some(output) = repeated_bytes(bytes, n) else {
         return std::ptr::null_mut();
     };
-    let output = malloc(allocation_size).cast::<c_char>();
-    if output.is_null() {
-        return std::ptr::null_mut();
-    }
-    let mut cursor = output.cast::<u8>();
-    for _ in 0..n {
-        // SAFETY: each iteration writes one disjoint bytes.len() region and
-        // the total allocation size was computed above.
-        unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), cursor, bytes.len());
-            cursor = cursor.add(bytes.len());
-        }
-    }
-    // SAFETY: the allocation reserved one trailing byte.
-    unsafe { *cursor = 0 };
-    output
+    alloc_c_string_from_bytes(&output)
 }
 
 fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
@@ -208,6 +208,44 @@ fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
     count
 }
 
+fn replaced_bytes(text: &[u8], old: &[u8], new: &[u8]) -> Option<Vec<u8>> {
+    if old.is_empty() {
+        let mut copy = Vec::new();
+        if copy.try_reserve_exact(text.len()).is_err() {
+            return None;
+        }
+        copy.extend_from_slice(text);
+        return Some(copy);
+    }
+
+    let count = count_occurrences(text, old);
+    let output_len = count
+        .checked_mul(old.len())
+        .and_then(|removed| text.len().checked_sub(removed))
+        .and_then(|base| {
+            count
+                .checked_mul(new.len())
+                .and_then(|added| base.checked_add(added))
+        })?;
+    let mut output = Vec::new();
+    if output.try_reserve_exact(output_len).is_err() {
+        return None;
+    }
+
+    let mut remaining = text;
+    while let Some(index) = remaining
+        .windows(old.len())
+        .position(|window| window == old)
+    {
+        output.extend_from_slice(&remaining[..index]);
+        output.extend_from_slice(new);
+        remaining = &remaining[index + old.len()..];
+    }
+    output.extend_from_slice(remaining);
+    debug_assert_eq!(output.len(), output_len);
+    Some(output)
+}
+
 /// # Safety
 /// All non-null arguments must be readable NUL-terminated strings.
 pub unsafe fn rs_strreplace(
@@ -224,81 +262,8 @@ pub unsafe fn rs_strreplace(
     let old = unsafe { CStr::from_ptr(old_string) }.to_bytes();
     // SAFETY: all three inputs are readable C strings by the function contract.
     let new = unsafe { CStr::from_ptr(new_string) }.to_bytes();
-    if old.is_empty() {
-        return alloc_c_string_from_bytes(text);
-    }
-    let count = count_occurrences(text, old);
-    let Some(output_len) = count
-        .checked_mul(old.len())
-        .and_then(|removed| text.len().checked_sub(removed))
-        .and_then(|base| {
-            count
-                .checked_mul(new.len())
-                .and_then(|added| base.checked_add(added))
-        })
-    else {
+    let Some(output) = replaced_bytes(text, old, new) else {
         return std::ptr::null_mut();
     };
-
-    let Some(allocation_size) = output_len.checked_add(1) else {
-        return std::ptr::null_mut();
-    };
-    let output = malloc(allocation_size).cast::<u8>();
-    if output.is_null() {
-        return std::ptr::null_mut();
-    }
-
-    let mut read = 0usize;
-    let mut written = 0usize;
-    while read < text.len() {
-        let Some(remaining) = text.get(read..) else {
-            // This is unreachable while `read < text.len()`, but keep the C
-            // boundary fail-closed if the loop is changed later.
-            // SAFETY: `output` is the unique allocation created above.
-            unsafe { crate::ffi::free(output.cast()) };
-            return std::ptr::null_mut();
-        };
-        if remaining.starts_with(old) {
-            let Some(next_written) = written.checked_add(new.len()) else {
-                // SAFETY: `output` is the unique allocation created above.
-                unsafe { crate::ffi::free(output.cast()) };
-                return std::ptr::null_mut();
-            };
-            if next_written > output_len {
-                // SAFETY: `output` is the unique allocation created above.
-                unsafe { crate::ffi::free(output.cast()) };
-                return std::ptr::null_mut();
-            }
-            if !new.is_empty() {
-                // SAFETY: the checked output range is within the fresh
-                // allocation and cannot overlap the caller-owned input.
-                unsafe {
-                    std::ptr::copy_nonoverlapping(new.as_ptr(), output.add(written), new.len())
-                };
-            }
-            written = next_written;
-            read += old.len();
-        } else {
-            if written >= output_len {
-                // SAFETY: `output` is the unique allocation created above.
-                unsafe { crate::ffi::free(output.cast()) };
-                return std::ptr::null_mut();
-            }
-            // SAFETY: `read < text.len()` and `written < output_len` prove
-            // both the source read and destination write are in bounds.
-            unsafe {
-                *output.add(written) = *text.as_ptr().add(read);
-            }
-            read += 1;
-            written += 1;
-        }
-    }
-    if written != output_len {
-        // SAFETY: `output` is the unique allocation created above.
-        unsafe { crate::ffi::free(output.cast()) };
-        return std::ptr::null_mut();
-    }
-    // SAFETY: the allocation reserves exactly one byte after `output_len`.
-    unsafe { *output.add(output_len) = 0 };
-    output.cast::<c_char>()
+    alloc_c_string_from_bytes(&output)
 }
