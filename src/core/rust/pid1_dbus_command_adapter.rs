@@ -3,7 +3,8 @@
 //! Disconnected mapping from the checked private D-Bus wire format to PID 1 commands.
 // PORT-SYNC: src/core/dbus.c (the direct private-bus manager method dispatch).
 //!
-//! This adapter supports only `GetUnit`, `LoadUnit`, `StartUnit`, `StopUnit`,
+//! This adapter supports the standard `Introspectable.Introspect` request and
+//! only `GetUnit`, `GetUnitByPID`, `LoadUnit`, `StartUnit`, `StopUnit`,
 //! `ReloadUnit`, and `RestartUnit` at the manager object path.
 //! It deliberately has no socket, reply, event-loop, or authorization policy:
 //! callers must supply the `SenderIdentity` derived from the connection's
@@ -25,6 +26,7 @@ use crate::transaction::JobMode;
 
 pub const PID1_MANAGER_PATH: &str = "/org/freedesktop/systemd1";
 pub const PID1_MANAGER_INTERFACE: &str = "org.freedesktop.systemd1.Manager";
+pub const DBUS_INTROSPECTABLE_INTERFACE: &str = "org.freedesktop.DBus.Introspectable";
 
 /// Typed validation and bounded-ingress failures for [`Pid1DbusCommandAdapter`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,11 +86,28 @@ impl Pid1DbusCommandAdapter {
     pub fn command_for(
         call: &MethodCall,
     ) -> Result<Pid1ManagerCommand, Pid1DbusCommandAdapterError> {
-        validate_endpoint(call)?;
+        validate_path(call)?;
+
+        if call.interface.as_deref() == Some(DBUS_INTROSPECTABLE_INTERFACE) {
+            return match call.member.as_str() {
+                "Introspect" => {
+                    decode_no_args(call)?;
+                    Ok(Pid1ManagerCommand::Introspect)
+                }
+                _ => Err(Pid1DbusCommandAdapterError::UnsupportedMember {
+                    member: call.member.clone(),
+                }),
+            };
+        }
+
+        validate_manager_interface(call)?;
 
         match call.member.as_str() {
             "GetUnit" => Ok(Pid1ManagerCommand::GetUnit {
                 name: decode_one_string(call)?,
+            }),
+            "GetUnitByPID" => Ok(Pid1ManagerCommand::GetUnitByPid {
+                pid: decode_one_u32(call)?,
             }),
             "LoadUnit" => Ok(Pid1ManagerCommand::LoadUnit {
                 name: decode_one_string(call)?,
@@ -160,12 +179,16 @@ impl Pid1DbusCommandAdapter {
     }
 }
 
-fn validate_endpoint(call: &MethodCall) -> Result<(), Pid1DbusCommandAdapterError> {
+fn validate_path(call: &MethodCall) -> Result<(), Pid1DbusCommandAdapterError> {
     if call.path != PID1_MANAGER_PATH {
         return Err(Pid1DbusCommandAdapterError::WrongPath {
             actual: call.path.clone(),
         });
     }
+    Ok(())
+}
+
+fn validate_manager_interface(call: &MethodCall) -> Result<(), Pid1DbusCommandAdapterError> {
     if call.interface.as_deref() != Some(PID1_MANAGER_INTERFACE) {
         return Err(Pid1DbusCommandAdapterError::WrongInterface {
             actual: call.interface.clone(),
@@ -177,6 +200,15 @@ fn validate_endpoint(call: &MethodCall) -> Result<(), Pid1DbusCommandAdapterErro
 fn decode_one_string(call: &MethodCall) -> Result<String, Pid1DbusCommandAdapterError> {
     require_signature(call, "s")?;
     call.decode_one_string()
+        .map_err(|cause| Pid1DbusCommandAdapterError::InvalidPayload {
+            member: call.member.clone(),
+            cause,
+        })
+}
+
+fn decode_one_u32(call: &MethodCall) -> Result<u32, Pid1DbusCommandAdapterError> {
+    require_signature(call, "u")?;
+    call.decode_one_u32()
         .map_err(|cause| Pid1DbusCommandAdapterError::InvalidPayload {
             member: call.member.clone(),
             cause,
@@ -310,13 +342,47 @@ mod tests {
         decode_method_call(&bytes).unwrap().unwrap().0
     }
 
+    fn pid_call(member: &str, pid: u32) -> MethodCall {
+        let endian = Endian::Little;
+        let mut fields = Vec::new();
+        push_header(endian, &mut fields, 1, b'o', PID1_MANAGER_PATH);
+        push_header(endian, &mut fields, 2, b's', PID1_MANAGER_INTERFACE);
+        push_header(endian, &mut fields, 3, b's', member);
+        push_header(endian, &mut fields, 8, b'g', "u");
+        let body = pid.to_le_bytes();
+        let mut bytes = vec![b'l', 1, 0, 1];
+        bytes.extend_from_slice(&(u32::try_from(body.len()).unwrap()).to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&(u32::try_from(fields.len()).unwrap()).to_le_bytes());
+        bytes.extend_from_slice(&fields);
+        push_padding(&mut bytes, 8);
+        bytes.extend_from_slice(&body);
+        decode_method_call(&bytes).unwrap().unwrap().0
+    }
+
     #[test]
     fn maps_the_bounded_manager_method_subset() {
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&call("Introspect", "", &[])),
+            Err(Pid1DbusCommandAdapterError::UnsupportedMember {
+                member: "Introspect".into(),
+            })
+        );
+        let mut introspect = call("Introspect", "", &[]);
+        introspect.interface = Some(DBUS_INTROSPECTABLE_INTERFACE.into());
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&introspect),
+            Ok(Pid1ManagerCommand::Introspect)
+        );
         assert_eq!(
             Pid1DbusCommandAdapter::command_for(&call("GetUnit", "s", &["a.service"])),
             Ok(Pid1ManagerCommand::GetUnit {
                 name: "a.service".into()
             })
+        );
+        assert_eq!(
+            Pid1DbusCommandAdapter::command_for(&pid_call("GetUnitByPID", 42)),
+            Ok(Pid1ManagerCommand::GetUnitByPid { pid: 42 })
         );
         assert_eq!(
             Pid1DbusCommandAdapter::command_for(&call("LoadUnit", "s", &["a.service"])),
@@ -394,6 +460,12 @@ mod tests {
         assert!(matches!(
             Pid1DbusCommandAdapter::command_for(&call("ResetFailed", "", &[])),
             Err(Pid1DbusCommandAdapterError::UnsupportedMember { .. })
+        ));
+        let mut introspect_with_body = call("Introspect", "s", &["unexpected"]);
+        introspect_with_body.interface = Some(DBUS_INTROSPECTABLE_INTERFACE.into());
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&introspect_with_body),
+            Err(Pid1DbusCommandAdapterError::WrongSignature { .. })
         ));
     }
 

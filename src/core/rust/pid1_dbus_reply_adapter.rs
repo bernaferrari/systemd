@@ -21,11 +21,31 @@ const ERROR_FAILED: &str = "org.freedesktop.DBus.Error.Failed";
 const ERROR_LIMITS_EXCEEDED: &str = "org.freedesktop.DBus.Error.LimitsExceeded";
 const ERROR_DISCONNECTED: &str = "org.freedesktop.DBus.Error.Disconnected";
 const ERROR_NO_SUCH_UNIT: &str = "org.freedesktop.systemd1.NoSuchUnit";
+const ERROR_NO_UNIT_FOR_PID: &str = "org.freedesktop.systemd1.NoUnitForPID";
 
 const MESSAGE_ACCESS_DENIED: &str = "Permission denied.";
 const MESSAGE_RUNTIME_FAILED: &str = "PID 1 manager command failed.";
 const MESSAGE_INBOX_FULL: &str = "PID 1 command inbox is full.";
 const MESSAGE_INBOX_CLOSED: &str = "PID 1 command inbox is closed.";
+
+/// The bounded developer-shadow interface exposed by `Introspect`.
+///
+/// This is deliberately not a copy of the production C vtable: it advertises
+/// only a bounded subset of the disconnected Rust private-bus seam. In
+/// particular, it must not grow a `Properties` declaration before a checked
+/// property-value/result encoder exists.
+const PID1_SHADOW_INTROSPECTION_XML: &str = concat!(
+    "<node>",
+    "<interface name=\"org.freedesktop.DBus.Introspectable\">",
+    "<method name=\"Introspect\"/>",
+    "</interface>",
+    "<interface name=\"org.freedesktop.systemd1.Manager\">",
+    "<method name=\"GetUnit\"/><method name=\"LoadUnit\"/>",
+    "<method name=\"StartUnit\"/><method name=\"StopUnit\"/>",
+    "<method name=\"ReloadUnit\"/><method name=\"RestartUnit\"/>",
+    "</interface>",
+    "</node>"
+);
 
 /// A checked D-Bus error generated before a manager command is accepted.
 ///
@@ -95,6 +115,13 @@ impl Pid1DbusReplyAdapter {
         result: Pid1CommandResult,
     ) -> Result<Vec<u8>, Pid1DbusReplyAdapterError> {
         let frame = match result {
+            Ok(Pid1ManagerReply::IntrospectionXml) => encode_text_reply(
+                endian,
+                serial,
+                reply_serial,
+                b's',
+                PID1_SHADOW_INTROSPECTION_XML,
+            ),
             Ok(Pid1ManagerReply::UnitLoaded { path }) => {
                 encode_text_reply(endian, serial, reply_serial, b'o', &path)
             }
@@ -106,6 +133,16 @@ impl Pid1DbusReplyAdapter {
             Err(Pid1CommandError::NoSuchUnit { name }) => {
                 let message = format!("Unit {name} not loaded.");
                 encode_error_reply(endian, serial, reply_serial, ERROR_NO_SUCH_UNIT, &message)
+            }
+            Err(Pid1CommandError::NoUnitForPid { pid }) => {
+                let message = format!("PID {pid} does not belong to any loaded unit.");
+                encode_error_reply(
+                    endian,
+                    serial,
+                    reply_serial,
+                    ERROR_NO_UNIT_FOR_PID,
+                    &message,
+                )
             }
             Err(error) => {
                 let (name, message) = error_details(error);
@@ -148,6 +185,7 @@ fn error_details(error: Pid1CommandError) -> (&'static str, &'static str) {
     match error {
         Pid1CommandError::Unauthorized => (ERROR_ACCESS_DENIED, MESSAGE_ACCESS_DENIED),
         Pid1CommandError::NoSuchUnit { .. } => unreachable!("handled with its unit name"),
+        Pid1CommandError::NoUnitForPid { .. } => unreachable!("handled with its PID"),
         Pid1CommandError::Runtime(_) => (ERROR_FAILED, MESSAGE_RUNTIME_FAILED),
         Pid1CommandError::InboxFull => (ERROR_LIMITS_EXCEEDED, MESSAGE_INBOX_FULL),
         Pid1CommandError::InboxClosed => (ERROR_DISCONNECTED, MESSAGE_INBOX_CLOSED),
@@ -220,6 +258,30 @@ mod tests {
     #[test]
     fn maps_each_manager_reply_with_the_callers_correlation() {
         let adapter = Pid1DbusReplyAdapter::new(CAPACITY).unwrap();
+        let introspection = adapter
+            .encode(
+                Endian::Little,
+                73,
+                41,
+                Ok(Pid1ManagerReply::IntrospectionXml),
+            )
+            .unwrap();
+        assert_correlation(&introspection, Endian::Little, 2);
+        assert!(
+            introspection
+                .windows(b"s\0".len())
+                .any(|window| window == b"s\0")
+        );
+        assert!(
+            introspection
+                .windows(b"org.freedesktop.DBus.Introspectable".len())
+                .any(|window| window == b"org.freedesktop.DBus.Introspectable")
+        );
+        assert!(
+            introspection
+                .windows(b"org.freedesktop.DBus.Properties".len())
+                .all(|window| window != b"org.freedesktop.DBus.Properties")
+        );
         let loaded = adapter
             .encode(
                 Endian::Little,
@@ -280,6 +342,11 @@ mod tests {
                 },
                 ERROR_NO_SUCH_UNIT,
                 "Unit missing.service not loaded.",
+            ),
+            (
+                Pid1CommandError::NoUnitForPid { pid: 4242 },
+                ERROR_NO_UNIT_FOR_PID,
+                "PID 4242 does not belong to any loaded unit.",
             ),
             (
                 Pid1CommandError::InboxFull,

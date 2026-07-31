@@ -39,6 +39,26 @@ use systemd_platform_rs::spawn::{self, ChildState, ProcessTracker};
 
 pub type Result<T> = std::result::Result<T, Errno>;
 
+/// A duplicated view of the manager-wide cgroup inotify instance.
+///
+/// `RuntimeManager` remains the authoritative owner. PID 1's event-source
+/// layer owns this duplicate until it has removed the corresponding epoll
+/// registration, preventing raw-fd reuse during cgroup teardown.
+#[cfg(target_os = "linux")]
+pub struct CgroupEventDescriptor(OwnedFd);
+
+#[cfg(target_os = "linux")]
+impl CgroupEventDescriptor {
+    #[cfg(test)]
+    pub(crate) fn from_fd(fd: OwnedFd) -> Self {
+        Self(fd)
+    }
+
+    pub(crate) fn into_fd(self) -> OwnedFd {
+        self.0
+    }
+}
+
 /*
  * Keep the manager as the owner of units, jobs, aliases, and transactions. Unit-file decoding,
  * service process transitions, and cgroup filesystem side effects live behind focused submodules
@@ -547,6 +567,17 @@ impl RuntimeManager {
         Self::new_with_cgroup_root(PathBuf::from(CGROUP_V2_ROOT))
     }
 
+    /// Construct the manager beneath an already selected cgroup hierarchy.
+    ///
+    /// PID 1 must not rediscover this as the global cgroup mount after
+    /// `manager_setup_cgroup()` has placed it in a delegated subtree. The
+    /// retained [`CgroupRoot`] is an `O_PATH` descriptor capability, so this
+    /// also keeps the selected cgroupfs mount pinned for the manager's
+    /// lifetime instead of trusting the path after startup.
+    pub fn new_at_cgroup_root(cgroup_root: PathBuf) -> Self {
+        Self::new_with_cgroup_root(cgroup_root)
+    }
+
     fn new_with_cgroup_root(cgroup_root: PathBuf) -> Self {
         #[cfg(target_os = "linux")]
         let bound_stop_retry_timer = match systemd_platform_rs::time::BoottimeTimerFd::new() {
@@ -618,6 +649,29 @@ impl RuntimeManager {
         &self,
     ) -> Option<Rc<systemd_platform_rs::time::BoottimeTimerFd>> {
         self.bound_stop_retry_timer.clone()
+    }
+
+    /// Snapshot the manager-wide cgroup notification capability for epoll.
+    ///
+    /// The inotify instance is allocated lazily with the first realized unit
+    /// cgroup. Duplicating it preserves the shared kernel event queue while
+    /// giving the event-source owner an independent, CLOEXEC lifetime.
+    #[cfg(target_os = "linux")]
+    pub fn cgroup_event_descriptor(&self) -> std::io::Result<Option<CgroupEventDescriptor>> {
+        self.cgroup_inotify_fd
+            .as_ref()
+            .map(|fd| fd.as_fd().try_clone_to_owned().map(CgroupEventDescriptor))
+            .transpose()
+    }
+
+    /// Drain kernel cgroup notifications from the manager thread.
+    ///
+    /// Event-loop callbacks only set a bounded readiness bit. Dispatch stays
+    /// here so cgroup-empty state transitions run after SIGCHLD metadata has
+    /// been collected, matching C's deferred cgroup-empty ordering.
+    #[cfg(target_os = "linux")]
+    pub fn dispatch_cgroup_events(&mut self) {
+        self.process_cgroup_events();
     }
 
     /// Allocate C's manager-owned `Type=idle` pipes on the first idle spawn

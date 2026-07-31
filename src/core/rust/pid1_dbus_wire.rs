@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+// PORT-SYNC: src/core/dbus.c (checked D-Bus wire scalar decoding).
 
 //! Checked D-Bus wire subset used by PID 1's direct private connection.
 //!
@@ -333,6 +334,19 @@ impl MethodCall {
             return Err(WireError::InvalidBody);
         }
         Ok(value)
+    }
+
+    /// Decode one D-Bus unsigned 32-bit scalar (`u`). The body of a scalar
+    /// starts at an 8-byte aligned message offset, so its required 4-byte
+    /// alignment is already satisfied by the checked frame decoder.
+    pub fn decode_one_u32(&self) -> Result<u32, WireError> {
+        if self.signature != "u" {
+            return Err(WireError::InvalidSignature);
+        }
+        if self.body.len() != 4 {
+            return Err(WireError::InvalidBody);
+        }
+        self.endian.read_u32(&self.body)
     }
 
     pub fn decode_two_strings(&self) -> Result<(String, String), WireError> {

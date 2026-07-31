@@ -1882,7 +1882,6 @@ impl RuntimeManager {
     pub fn reap_children(&mut self) -> Vec<String> {
         let mut restart_queue: Vec<(String, Duration)> = Vec::new();
         let mut changed_units: BTreeSet<String> = BTreeSet::new();
-        self.process_cgroup_events();
         self.process_due_bound_stop_retries();
         for unit in self.process_due_service_restarts() {
             changed_units.insert(unit);
@@ -1908,7 +1907,6 @@ impl RuntimeManager {
         for unit in self.process_due_service_restarts() {
             changed_units.insert(unit);
         }
-        self.process_cgroup_events();
         changed_units.into_iter().collect()
     }
 

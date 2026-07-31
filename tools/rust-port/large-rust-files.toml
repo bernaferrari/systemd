@@ -55,3 +55,13 @@ growth_reason = "The current audited grammar and C allocation facades exceed the
 max_lines = 2100
 issue = "systemd-cpuw"
 reason = "Split pre-fork preparation, post-fork descriptor setup, and exec-status handling without widening the async-signal-safe child boundary."
+
+[files."src/core/rust/pid1_dbus_transport.rs"]
+max_lines = 2166
+issue = "systemd-cpuw"
+reason = "Extract authenticated wire framing, connection ownership, and manager-turn orchestration into bounded transport modules while retaining one checked correlation policy."
+
+[files."src/core/rust/runtime_manager.rs"]
+max_lines = 2004
+issue = "systemd-cpuw"
+reason = "Continue extracting RuntimeManager construction and event-source capability handoffs into focused lifecycle modules without duplicating manager state."

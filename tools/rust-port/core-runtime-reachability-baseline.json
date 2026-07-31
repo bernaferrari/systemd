@@ -443,6 +443,12 @@
         "src/core/rust/pid1_bus_source.rs"
       ]
     },
+    "pid1_cgroup_source": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/pid1_cgroup_source.rs"
+      ]
+    },
     "pid1_dbus_auth": {
       "classification": "runtime-reachable",
       "source_files": [

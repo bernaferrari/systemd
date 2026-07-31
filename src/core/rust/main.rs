@@ -17,6 +17,8 @@ use systemd_core_rs::pid1_bus_source::{
     Pid1BusCommandInbox, Pid1BusCommandSender, pid1_bus_command_channel,
 };
 #[cfg(target_os = "linux")]
+use systemd_core_rs::pid1_cgroup_source::CgroupSourceOwner;
+#[cfg(target_os = "linux")]
 use systemd_core_rs::pid1_dbus_server::PrivateBusServerTurnBudget;
 #[cfg(target_os = "linux")]
 use systemd_core_rs::pid1_dbus_transport::PrivateBusWireSlotConfig;
@@ -394,6 +396,17 @@ fn manager_cgroup_root_from_pid_path(pid_path: &str) -> String {
     root.trim_end_matches('/').to_owned()
 }
 
+/// Turn the kernel's hierarchy-relative cgroup path into the physical
+/// cgroupfs directory retained by [`RuntimeManager`].  Keep this conversion
+/// separate from the cgroup operations above: the platform cgroup helpers
+/// deliberately take hierarchy-relative paths, whereas the manager's
+/// descriptor-confined cgroup implementation starts from an already-open
+/// filesystem directory.
+#[cfg(target_os = "linux")]
+fn manager_cgroup_root_directory(cgroup_root: &str) -> PathBuf {
+    Path::new("/sys/fs/cgroup").join(cgroup_root.trim_start_matches('/'))
+}
+
 /// Join C's manager cgroup root with its special init scope name.
 fn init_scope_path(cgroup_root: &str) -> String {
     if cgroup_root.is_empty() {
@@ -437,25 +450,25 @@ fn bootstrap_cgroup_v2_at_root_for_pid(cgroup_root: &str, pid: i32) -> std::io::
     Ok(())
 }
 
-fn bootstrap_cgroup_v2_for_pid(pid: i32) -> std::io::Result<()> {
+fn bootstrap_cgroup_v2_for_pid(pid: i32) -> std::io::Result<String> {
     use systemd_platform_rs::cgroup;
 
     let pid_path = cgroup::cg_pid_get_path(pid)?;
     let cgroup_root = manager_cgroup_root_from_pid_path(&pid_path);
-    bootstrap_cgroup_v2_at_root_for_pid(&cgroup_root, pid)
+    bootstrap_cgroup_v2_at_root_for_pid(&cgroup_root, pid)?;
+    Ok(cgroup_root)
 }
 
 #[cfg(target_os = "linux")]
-fn cgroup_setup() -> std::io::Result<()> {
+fn cgroup_setup() -> std::io::Result<PathBuf> {
     let pid = std::process::id() as i32;
-    bootstrap_cgroup_v2_for_pid(pid)?;
-
-    Ok(())
+    let cgroup_root = bootstrap_cgroup_v2_for_pid(pid)?;
+    Ok(manager_cgroup_root_directory(&cgroup_root))
 }
 
 #[cfg(not(target_os = "linux"))]
-fn cgroup_setup() -> std::io::Result<()> {
-    Ok(())
+fn cgroup_setup() -> std::io::Result<PathBuf> {
+    Ok(PathBuf::from("/sys/fs/cgroup"))
 }
 
 #[cfg(target_os = "linux")]
@@ -848,6 +861,7 @@ fn run_event_loop(
     let mut exec_status_sources = ExecStatusSourceOwner::new();
     #[cfg(target_os = "linux")]
     let mut idle_pipe_source = IdlePipeSourceOwner::new();
+    let mut cgroup_source = CgroupSourceOwner::new();
 
     loop {
         // This is the Rust manager-loop equivalent of the idle-pipe close in
@@ -863,6 +877,13 @@ fn run_event_loop(
         let exec_statuses = runtime.borrow().pending_exec_statuses();
         if let Err(error) = exec_status_sources.reconcile(&mut event_loop, exec_statuses) {
             fail_closed("exec-status event-source reconciliation", error);
+        }
+        let cgroup_descriptor = runtime
+            .borrow()
+            .cgroup_event_descriptor()
+            .unwrap_or_else(|error| fail_closed("cgroup event descriptor snapshot", error));
+        if let Err(error) = cgroup_source.reconcile(&mut event_loop, cgroup_descriptor) {
+            fail_closed("cgroup event-source reconciliation", error);
         }
         #[cfg(target_os = "linux")]
         {
@@ -924,6 +945,16 @@ fn run_event_loop(
                         apply_signal_action(&mut guard, action)
                     };
                     if let Some(exit) = exit {
+                        cgroup_source
+                            .unregister(&mut event_loop)
+                            .unwrap_or_else(|error| {
+                                fail_closed("cgroup event-source teardown", error)
+                            });
+                        if let Some(private_bus) = private_bus.as_mut() {
+                            private_bus
+                                .unregister(&mut event_loop)
+                                .unwrap_or_else(|error| fail_closed("private-bus teardown", error));
+                        }
                         return ManagerLoopExit::from_signal(
                             exit,
                             reclaim_event_loop_runtime(runtime),
@@ -937,6 +968,15 @@ fn run_event_loop(
                 // PID 1 sources still make progress under a fork storm.
                 if drain_exec_status_inbox(&runtime, &exec_status_sources) {
                     continue;
+                }
+                let cgroup_ready = cgroup_source
+                    .take_ready()
+                    .unwrap_or_else(|error| fail_closed("cgroup event inbox", error));
+                if cgroup_ready {
+                    // This runs after signal dispatch/reaping in the manager
+                    // turn. The callback itself never borrows RuntimeManager,
+                    // preserving C's deferred cgroup-empty ordering.
+                    runtime.borrow_mut().dispatch_cgroup_events();
                 }
                 let socket_unit = match socket_sources.pop_activation() {
                     Ok(socket_unit) => socket_unit,
@@ -995,6 +1035,14 @@ fn run_event_loop(
                         })
                 };
                 if let Some(request) = command_outcome.objective {
+                    cgroup_source
+                        .unregister(&mut event_loop)
+                        .unwrap_or_else(|error| fail_closed("cgroup event-source teardown", error));
+                    if let Some(private_bus) = private_bus.as_mut() {
+                        private_bus
+                            .unregister(&mut event_loop)
+                            .unwrap_or_else(|error| fail_closed("private-bus teardown", error));
+                    }
                     return ManagerLoopExit::from_command(
                         reclaim_event_loop_runtime(runtime),
                         request,
@@ -1059,7 +1107,7 @@ fn main() {
         std::process::exit(CLI_ERROR_EXIT_STATUS);
     }
 
-    if is_pid1 {
+    let manager_cgroup_root = if is_pid1 {
         boot_log("running as PID 1, starting early boot sequence");
 
         if options.action == CliAction::Test {
@@ -1078,9 +1126,7 @@ fn main() {
         }
 
         boot_log("step 2/8: cgroup setup");
-        if let Err(e) = cgroup_setup() {
-            fail_closed("cgroup setup", e);
-        }
+        let cgroup_root = cgroup_setup().unwrap_or_else(|error| fail_closed("cgroup setup", error));
 
         boot_log("step 3/8: apply hostname");
         match apply_hostname_from_etc() {
@@ -1093,11 +1139,16 @@ fn main() {
         if let Err(e) = signal_setup() {
             fail_closed("signal setup", e);
         }
-    }
+        Some(cgroup_root)
+    } else {
+        None
+    };
 
     boot_log("step 5/8: configure unit search paths and initialize manager");
     configure_unit_search_paths();
-    let mut runtime = RuntimeManager::new();
+    let mut runtime = manager_cgroup_root
+        .map(RuntimeManager::new_at_cgroup_root)
+        .unwrap_or_else(RuntimeManager::new);
 
     if is_pid1 {
         boot_log("step 6/8: select boot target");

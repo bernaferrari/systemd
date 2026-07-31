@@ -71,10 +71,19 @@ impl SenderIdentity {
 /// the single owner receives only semantic manager operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pid1ManagerCommand {
+    /// Return the bounded developer-shadow interface description. This does
+    /// not inspect or mutate the runtime manager.
+    Introspect,
     /// Return the object path for an already-loaded unit. Unlike `LoadUnit`,
     /// this does not read unit files or otherwise mutate manager state.
     GetUnit {
         name: String,
+    },
+    /// Return the object path for a PID belonging to an already-loaded unit.
+    /// PID zero is resolved to the authenticated caller's PID, matching the
+    /// C manager method; no unit is loaded while performing the lookup.
+    GetUnitByPid {
+        pid: u32,
     },
     LoadUnit {
         name: String,
@@ -110,6 +119,7 @@ pub enum Pid1ManagerCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pid1ManagerReply {
+    IntrospectionXml,
     UnitLoaded { path: String },
     JobQueued { id: u32 },
     Completed,
@@ -122,6 +132,9 @@ pub enum Pid1CommandError {
     /// `org.freedesktop.systemd1.NoSuchUnit` rather than loading the name.
     NoSuchUnit {
         name: String,
+    },
+    NoUnitForPid {
+        pid: u32,
     },
     Runtime(Errno),
     InboxFull,
@@ -299,7 +312,7 @@ impl Pid1CommandInbox {
 
             let result = authorizer
                 .authorize(queued.sender, &queued.command)
-                .and_then(|()| dispatch(runtime, queued.command));
+                .and_then(|()| dispatch(runtime, queued.sender, queued.command));
             dispatched += 1;
             match result {
                 Ok(Pid1CommandEffect::Reply(reply)) => {
@@ -328,15 +341,27 @@ impl Pid1CommandInbox {
 
 fn dispatch(
     runtime: &mut RuntimeManager,
+    sender: SenderIdentity,
     command: Pid1ManagerCommand,
 ) -> Result<Pid1CommandEffect, Pid1CommandError> {
     let reply = match command {
+        Pid1ManagerCommand::Introspect => Ok(Pid1ManagerReply::IntrospectionXml),
         Pid1ManagerCommand::GetUnit { name } => {
             return match crate::dbus_manager::manager_get_unit_path(runtime, &name) {
                 Ok(path) => Ok(Pid1CommandEffect::Reply(Pid1ManagerReply::UnitLoaded {
                     path,
                 })),
                 Err(Errno::ENOENT) => Err(Pid1CommandError::NoSuchUnit { name }),
+                Err(error) => Err(Pid1CommandError::Runtime(error)),
+            };
+        }
+        Pid1ManagerCommand::GetUnitByPid { pid } => {
+            let pid = if pid == 0 { sender.peer().pid() } else { pid };
+            return match crate::dbus_manager::manager_get_unit_path_by_pid(runtime, pid) {
+                Ok(path) => Ok(Pid1CommandEffect::Reply(Pid1ManagerReply::UnitLoaded {
+                    path,
+                })),
+                Err(Errno::ENOENT) => Err(Pid1CommandError::NoUnitForPid { pid }),
                 Err(error) => Err(Pid1CommandError::Runtime(error)),
             };
         }
@@ -628,6 +653,73 @@ mod tests {
             Ok(Err(Pid1CommandError::NoSuchUnit {
                 name: "missing.target".into(),
             }))
+        );
+        assert_eq!(runtime.unit_count(), 0);
+    }
+
+    #[test]
+    fn get_unit_by_pid_resolves_loaded_unit_and_pid_zero_from_sender() {
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(2).unwrap());
+        let explicit = sender
+            .try_send(
+                sender_identity(),
+                Pid1ManagerCommand::GetUnitByPid { pid: 4242 },
+            )
+            .unwrap();
+        let caller = sender
+            .try_send(
+                SenderIdentity::from_authenticated_peer(
+                    AuthenticatedPeer::from_kernel_peer_credentials(4242, 1000, 1000),
+                ),
+                Pid1ManagerCommand::GetUnitByPid { pid: 0 },
+            )
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+        runtime.inject_test_unit(
+            "example.service",
+            "Example Service",
+            crate::unit::ActiveState::Active,
+            "running",
+        );
+        runtime.inject_test_main_pid("example.service", 4242);
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(2).unwrap(),
+            ),
+            2,
+        );
+        let expected = Pid1ManagerReply::UnitLoaded {
+            path: "/org/freedesktop/systemd1/unit/example_2eservice".into(),
+        };
+        assert_eq!(explicit.try_recv(), Ok(Ok(expected.clone())));
+        assert_eq!(caller.try_recv(), Ok(Ok(expected)));
+    }
+
+    #[test]
+    fn get_unit_by_pid_missing_returns_c_error_shape_without_loading() {
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender
+            .try_send(
+                sender_identity(),
+                Pid1ManagerCommand::GetUnitByPid { pid: 4242 },
+            )
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(
+            reply.try_recv(),
+            Ok(Err(Pid1CommandError::NoUnitForPid { pid: 4242 }))
         );
         assert_eq!(runtime.unit_count(), 0);
     }

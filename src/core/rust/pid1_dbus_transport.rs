@@ -631,6 +631,7 @@ mod imp {
                 | Pid1BusSendError::Command(
                     crate::pid1_manager_commands::Pid1CommandError::Unauthorized
                     | crate::pid1_manager_commands::Pid1CommandError::NoSuchUnit { .. }
+                    | crate::pid1_manager_commands::Pid1CommandError::NoUnitForPid { .. }
                     | crate::pid1_manager_commands::Pid1CommandError::Runtime(_),
                 ),
             ) => Pid1DbusProtocolError::Failed,
@@ -1078,15 +1079,16 @@ mod imp {
             push_text(fields, value, kind == b'g');
         }
 
-        fn manager_call_with_flags(
+        fn interface_call_with_flags(
             serial: u32,
             flags: u8,
+            interface: &str,
             member: &str,
             values: &[&str],
         ) -> Vec<u8> {
             let mut fields = Vec::new();
             push_header(&mut fields, 1, b'o', "/org/freedesktop/systemd1");
-            push_header(&mut fields, 2, b's', "org.freedesktop.systemd1.Manager");
+            push_header(&mut fields, 2, b's', interface);
             push_header(&mut fields, 3, b's', member);
             let signature = "s".repeat(values.len());
             if !signature.is_empty() {
@@ -1107,8 +1109,50 @@ mod imp {
             output
         }
 
+        fn manager_call_with_flags(
+            serial: u32,
+            flags: u8,
+            member: &str,
+            values: &[&str],
+        ) -> Vec<u8> {
+            interface_call_with_flags(
+                serial,
+                flags,
+                "org.freedesktop.systemd1.Manager",
+                member,
+                values,
+            )
+        }
+
         fn manager_call(serial: u32, member: &str, values: &[&str]) -> Vec<u8> {
             manager_call_with_flags(serial, 0, member, values)
+        }
+
+        fn manager_pid_call(serial: u32, pid: u32) -> Vec<u8> {
+            let mut fields = Vec::new();
+            push_header(&mut fields, 1, b'o', "/org/freedesktop/systemd1");
+            push_header(&mut fields, 2, b's', "org.freedesktop.systemd1.Manager");
+            push_header(&mut fields, 3, b's', "GetUnitByPID");
+            push_header(&mut fields, 8, b'g', "u");
+            let body = pid.to_le_bytes();
+            let mut output = vec![b'l', 1, 0, 1];
+            output.extend_from_slice(&(body.len() as u32).to_le_bytes());
+            output.extend_from_slice(&serial.to_le_bytes());
+            output.extend_from_slice(&(fields.len() as u32).to_le_bytes());
+            output.extend_from_slice(&fields);
+            push_padding(&mut output, 8);
+            output.extend_from_slice(&body);
+            output
+        }
+
+        fn introspect_call(serial: u32) -> Vec<u8> {
+            interface_call_with_flags(
+                serial,
+                0,
+                "org.freedesktop.DBus.Introspectable",
+                "Introspect",
+                &[],
+            )
         }
 
         fn external_token() -> Vec<u8> {
@@ -1385,6 +1429,135 @@ mod imp {
                 frame
                     .windows(b"Unit missing.target not loaded.".len())
                     .any(|window| window == b"Unit missing.target not loaded.")
+            );
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn get_unit_by_pid_wire_call_returns_loaded_unit_path() {
+            let call = manager_pid_call(32, 4242);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "get-unit-by-pid", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, mut inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert!(matches!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::Submitted { .. })
+            ));
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            let mut runtime = crate::runtime_manager::RuntimeManager::new();
+            runtime.inject_test_unit(
+                "example.service",
+                "Example Service",
+                crate::unit::ActiveState::Active,
+                "running",
+            );
+            runtime.inject_test_main_pid("example.service", 4242);
+            assert_eq!(
+                inbox
+                    .dispatch_pending(
+                        &mut runtime,
+                        &mut AllowAuthorizer,
+                        NonZeroUsize::new(1).unwrap(),
+                    )
+                    .unwrap()
+                    .dispatched,
+                1
+            );
+            assert_eq!(
+                owner
+                    .poll_wire_slot_replies(wire_id, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .enqueued,
+                1
+            );
+            let frame = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap();
+            assert_eq!(frame[1], 2, "GetUnitByPID must return, not error");
+            assert!(
+                frame
+                    .windows(b"/org/freedesktop/systemd1/unit/example_2eservice".len())
+                    .any(|window| window == b"/org/freedesktop/systemd1/unit/example_2eservice")
+            );
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn introspect_wire_call_returns_bounded_shadow_xml() {
+            let call = introspect_call(31);
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "introspect", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, &call);
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(call.len()))
+                .unwrap()
+                .unwrap();
+            let (command_sender, mut inbox) =
+                pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
+            let adapter = Pid1DbusCommandAdapter::new(command_sender);
+
+            assert!(matches!(
+                owner.dispatch_wire_slot_once(wire_id, &adapter),
+                Ok(PrivateBusWireDispatchOutcome::Submitted {
+                    reply: PrivateBusReplyTracking::Queued,
+                })
+            ));
+            inbox.register(&mut event_loop).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            let mut runtime = crate::runtime_manager::RuntimeManager::new();
+            assert_eq!(
+                inbox
+                    .dispatch_pending(
+                        &mut runtime,
+                        &mut AllowAuthorizer,
+                        NonZeroUsize::new(1).unwrap(),
+                    )
+                    .unwrap()
+                    .dispatched,
+                1
+            );
+            assert_eq!(
+                owner
+                    .poll_wire_slot_replies(wire_id, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .enqueued,
+                1
+            );
+            let frame = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap();
+            assert_eq!(frame[1], 2, "Introspect must return, not error");
+            assert!(frame.windows(b"s\0".len()).any(|window| window == b"s\0"));
+            assert!(
+                frame
+                    .windows(b"org.freedesktop.DBus.Introspectable".len())
+                    .any(|window| window == b"org.freedesktop.DBus.Introspectable")
+            );
+            assert!(
+                frame
+                    .windows(b"org.freedesktop.DBus.Properties".len())
+                    .all(|window| window != b"org.freedesktop.DBus.Properties")
             );
 
             owner.unregister(&mut event_loop).unwrap();

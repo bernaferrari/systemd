@@ -79,6 +79,7 @@ pub mod namespace_tables;
 pub mod path;
 pub mod path_tables;
 pub mod pid1_bus_source;
+pub mod pid1_cgroup_source;
 pub mod pid1_dbus_auth;
 pub mod pid1_dbus_command_adapter;
 pub mod pid1_dbus_event_source;
