@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""Keep the experimental Rust PID1's shipped-runtime boundary explicit.
+"""Keep the experimental Rust PID1 developer artifact's boundary explicit.
 
 This is a conservative lexical reachability inventory, not a compiler or
-parity claim. It starts at the authoritative Meson-selected PID1 Cargo binary,
-follows crate-level Rust paths, and records which ``src/core/rust/lib.rs``
-modules can be reached. Every other declared module remains compiled into the
-library but disconnected from PID1.
+behavior/parity/ownership claim. It starts at the Meson-selected, non-installed
+PID1 Cargo binary, follows crate-level Rust paths, and records which
+``src/core/rust/lib.rs`` modules can be reached. Every other declared module
+remains compiled into the library but disconnected from PID1. Do not add an
+otherwise unused import merely to change this inventory: reclassification is
+only meaningful when the binary actually delegates the corresponding runtime
+responsibility.
 """
 
 from __future__ import annotations
@@ -243,6 +246,14 @@ def reject_unsupported_constructs(code: str, source_name: str) -> None:
             continue
         item = match.group("item")
         if re.match(r"\s*(?:pub(?:\([^)]*\))?\s+)?mod\b", item):
+            # Inline modules are part of the containing source file. Their
+            # bodies remain visible to the reference scanner, so a target
+            # predicate such as `#[cfg(target_os = "linux")] mod imp { … }`
+            # can be traversed conservatively for the Linux PID1 inventory.
+            # External `mod name;` declarations still require resolving a
+            # target-specific source tree and remain fail-closed here.
+            if item.rstrip().endswith("{"):
+                continue
             raise ValueError(f"{source_name}: cfg-controlled module requires parser support")
         imported_root = re.match(
             r"\s*(?:pub(?:\([^)]*\))?\s+)?use\s+(?:::)?([A-Za-z_][A-Za-z0-9_]*)",
@@ -852,6 +863,14 @@ def parser_self_check() -> None:
             pass
         else:
             raise ValueError(f"{description} fail-closed self-check failed")
+
+    # Inline cfg modules do not add an external source-tree edge; their
+    # references remain in the containing file and are safe for the Linux
+    # reachability inventory to scan conservatively.
+    runtime_code(
+        '#[cfg(target_os = "linux")]\nmod inline { use crate::alpha; }',
+        "<self-check cfg inline module>",
+    )
 
 
 def main() -> int:

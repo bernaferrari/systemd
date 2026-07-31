@@ -32,6 +32,7 @@ RETAINED_PRODUCTION_SOURCES = {
     Path("src/random-seed/meson.build"): {"random-seed-tool.c"},
     Path("src/resolve/meson.build"): {"resolved.c"},
     Path("src/udev/meson.build"): {"udevd.c"},
+    Path("src/volatile-root/meson.build"): {"volatile-root.c"},
 }
 
 RUST_BUILD_TOKEN = re.compile(

@@ -437,6 +437,12 @@
         "src/core/rust/path_tables.rs"
       ]
     },
+    "pid1_bus_source": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/pid1_bus_source.rs"
+      ]
+    },
     "pid1_exec_sources": {
       "classification": "runtime-reachable",
       "source_files": [

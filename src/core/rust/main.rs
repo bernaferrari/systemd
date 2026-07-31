@@ -10,14 +10,13 @@ use std::time::Duration;
 use systemd_basic_rs::extract_word::{
     EXTRACT_RELAX, EXTRACT_RETAIN_ESCAPE, EXTRACT_UNQUOTE, extract_first_word,
 };
+use systemd_core_rs::pid1_bus_source::{Pid1BusCommandInbox, pid1_bus_command_channel};
 use systemd_core_rs::pid1_exec_sources::ExecStatusSourceOwner;
 use systemd_core_rs::pid1_lifecycle::{
     OuterLoopExit, SignalAction, SignalRecord, SpecialTargetMode, decode_system_signal,
     outer_loop_exit,
 };
-use systemd_core_rs::pid1_manager_commands::{
-    DenyAllPid1CommandAuthorizer, Pid1CommandError, Pid1CommandInbox, pid1_manager_command_channel,
-};
+use systemd_core_rs::pid1_manager_commands::{DenyAllPid1CommandAuthorizer, Pid1CommandError};
 use systemd_core_rs::pid1_manager_runtime::{
     ManagerLoopExit, OuterLifecycleDisposition, ReloadPreparationResult, prepare_outer_lifecycle,
 };
@@ -451,9 +450,10 @@ fn complete_outer_lifecycle(exit: ManagerLoopExit) -> ! {
 fn drive_manager_lifecycle(mut runtime: RuntimeManager) -> ! {
     // The channel owner outlives each event-loop invocation. A recoverable
     // reload must preserve commands queued behind the lifecycle request.
-    let (_command_sender, mut command_inbox) = pid1_manager_command_channel(
+    let (_command_sender, mut command_inbox) = pid1_bus_command_channel(
         NonZeroUsize::new(64).expect("constant command inbox capacity is nonzero"),
-    );
+    )
+    .unwrap_or_else(|error| fail_closed("manager bus command wake setup", error));
     let mut command_authorizer = DenyAllPid1CommandAuthorizer;
 
     loop {
@@ -561,7 +561,7 @@ mod lifecycle_ownership_tests {
 #[cfg(target_os = "linux")]
 fn run_event_loop(
     runtime: RuntimeManager,
-    command_inbox: &mut Pid1CommandInbox,
+    command_inbox: &mut Pid1BusCommandInbox,
     command_authorizer: &mut DenyAllPid1CommandAuthorizer,
 ) -> ManagerLoopExit {
     use nix::sys::epoll::EpollFlags;
@@ -577,6 +577,9 @@ fn run_event_loop(
         Ok(el) => el,
         Err(error) => fail_closed("event-loop setup", error),
     };
+    if let Err(error) = command_inbox.register(&mut event_loop) {
+        fail_closed("manager bus command wake registration", error);
+    }
 
     let signal_mask = match systemd_platform_rs::signal::manager_signal_mask() {
         Ok(mask) => mask,
@@ -587,11 +590,6 @@ fn run_event_loop(
         Err(error) => fail_closed("manager realtime-signal setup", error),
     };
     let signal_inbox = Rc::new(RefCell::new(VecDeque::<SignalRecord>::new()));
-    // A future authenticated server transport receives the outer driver's
-    // sender. Until that exists, the ingress remains private and deny-all.
-    // TODO(systemd-dgn7.1): Register an eventfd/pipe-backed wake source before
-    // giving this sender to a transport; polling the inbox after unrelated
-    // epoll activity would add up to the normal event-loop timeout.
     // Keep the sole owning descriptor alive for the whole event loop. The callback only borrows
     // it through this shared owner; it must never recreate an owner from the raw descriptor.
     let signalfd = Rc::new(match SignalFd::from_mask(&signal_mask) {
@@ -749,11 +747,15 @@ fn run_event_loop(
                         runtime.borrow_mut().fail_socket_activation(&socket_unit);
                     }
                 }
-                let command_outcome = command_inbox.dispatch_pending(
-                    &mut runtime.borrow_mut(),
-                    command_authorizer,
-                    NonZeroUsize::new(32).expect("constant command dispatch budget is nonzero"),
-                );
+                let command_outcome = command_inbox
+                    .dispatch_pending(
+                        &mut runtime.borrow_mut(),
+                        command_authorizer,
+                        NonZeroUsize::new(32).expect("constant command dispatch budget is nonzero"),
+                    )
+                    .unwrap_or_else(|error| {
+                        fail_closed("manager bus command wake accounting", error)
+                    });
                 if let Some(request) = command_outcome.objective {
                     return ManagerLoopExit::from_command(
                         reclaim_event_loop_runtime(runtime),
@@ -772,7 +774,7 @@ fn run_event_loop(
 #[cfg(not(target_os = "linux"))]
 fn run_event_loop(
     mut runtime: RuntimeManager,
-    _command_inbox: &mut Pid1CommandInbox,
+    _command_inbox: &mut Pid1BusCommandInbox,
     _command_authorizer: &mut DenyAllPid1CommandAuthorizer,
 ) -> ManagerLoopExit {
     eprintln!("systemd: running in non-Linux test mode, polling loop");
@@ -865,7 +867,7 @@ fn main() {
         boot_log("step 7/8: start selected target");
         let start_result = if let Some(selected) = cmdline_target {
             runtime
-                .start_named_target(&selected)
+                .start_boot_target(&selected)
                 .map(|()| selected.to_string())
         } else {
             runtime.start_default_target(in_initrd, FALLBACK_DEFAULT_TARGET)
@@ -881,7 +883,7 @@ fn main() {
                 boot_log(&format!(
                     "target startup failed: {e:?}; falling back to rescue.target"
                 ));
-                if let Err(rescue_error) = runtime.start_named_target("rescue.target") {
+                if let Err(rescue_error) = runtime.start_boot_target("rescue.target") {
                     fail_closed("rescue target startup", rescue_error);
                 }
             }

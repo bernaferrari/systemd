@@ -1408,13 +1408,43 @@ impl RuntimeManager {
             fallback_default_target,
         );
 
-        self.start_named_target(target)?;
+        self.start_boot_target(target)?;
         Ok(target.to_string())
     }
 
+    /// Queue the initial boot target with the same isolation policy as
+    /// `do_queue_default_job()` in `src/core/main.c`.
+    ///
+    /// The normal path is `JOB_ISOLATE`. C retries exactly once with
+    /// `JOB_REPLACE` when isolation is refused, for example when a selected
+    /// target has no `AllowIsolate=yes`.  Keep that exception here rather than
+    /// weakening every named-target start to replacement semantics.
+    pub fn start_boot_target(&mut self, target: &str) -> Result<()> {
+        match self.start_named_target_with_mode(target, JobMode::Isolate) {
+            Err(Errno::EPERM) => self.start_named_target_with_mode(target, JobMode::Replace),
+            result => result,
+        }
+    }
+
     pub fn start_named_target(&mut self, target: &str) -> Result<()> {
+        self.start_named_target_with_mode(target, JobMode::Replace)
+    }
+
+    fn start_named_target_with_mode(&mut self, target: &str, mode: JobMode) -> Result<()> {
         self.load_unit_recursive(target, &mut BTreeSet::new())?;
         let target = self.canonical_unit_name(target);
+        // `manager_add_job(..., JOB_ISOLATE, ...)` rejects targets that do
+        // not opt into isolation.  `start_boot_target()` owns C's explicit
+        // EPERM-to-REPLACE compatibility retry; do not accidentally isolate
+        // through a target that was never allowed to do so.
+        if mode == JobMode::Isolate
+            && !self
+                .units
+                .get(&target)
+                .is_some_and(|unit| unit.markers.contains(&UnitMarker::AllowIsolate))
+        {
+            return Err(Errno::EPERM);
+        }
         let target_dependency_names: BTreeSet<String> = self
             .units
             .get(&target)
@@ -1447,7 +1477,7 @@ impl RuntimeManager {
         }
 
         let applied = self
-            .build_transaction(&target, TxJobType::Start, JobMode::Replace)
+            .build_transaction(&target, TxJobType::Start, mode)
             .map_err(|error| {
                 eprintln!("systemd: cannot queue target {target}: {error}");
                 error.errno_value()

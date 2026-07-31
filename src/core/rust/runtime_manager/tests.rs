@@ -2858,6 +2858,49 @@ fn test_isolate_stops_other_active_units() {
 }
 
 #[test]
+fn test_boot_target_isolates_when_allowed() {
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    mgr.inject_test_unit("boot.target", "Boot", ActiveState::Inactive, "dead");
+    mgr.units
+        .get_mut("boot.target")
+        .unwrap()
+        .markers
+        .insert(UnitMarker::AllowIsolate);
+    mgr.inject_test_unit("other.target", "Other", ActiveState::Active, "active");
+    mgr.start_boot_target("boot.target").unwrap();
+
+    assert_eq!(
+        mgr.get_unit("boot.target").map(|unit| unit.active_state),
+        Some(ActiveState::Active)
+    );
+    assert_eq!(
+        mgr.get_unit("other.target").map(|unit| unit.active_state),
+        Some(ActiveState::Inactive)
+    );
+}
+
+#[test]
+fn test_boot_target_retries_replace_when_isolation_is_refused() {
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    mgr.inject_test_unit("boot.target", "Boot", ActiveState::Inactive, "dead");
+    mgr.inject_test_unit("other.target", "Other", ActiveState::Active, "active");
+    mgr.start_boot_target("boot.target").unwrap();
+
+    assert_eq!(
+        mgr.get_unit("boot.target").map(|unit| unit.active_state),
+        Some(ActiveState::Active)
+    );
+    // The retry is JOB_REPLACE, not a partial or failed isolate; existing
+    // unrelated jobs/units therefore remain active.
+    assert_eq!(
+        mgr.get_unit("other.target").map(|unit| unit.active_state),
+        Some(ActiveState::Active)
+    );
+}
+
+#[test]
 fn test_reset_failed_clears_failed_state() {
     let _test_lock = test_env_lock();
     let mut mgr = new_test_runtime_manager();
