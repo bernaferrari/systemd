@@ -57,19 +57,18 @@ impl ProcFdDir {
     fn next(&mut self) -> io::Result<Option<&libc::dirent>> {
         Errno::clear();
         // SAFETY: `self.0` is exclusively borrowed for this call. A non-null
-        // result is valid until the next directory operation on this stream.
-        let entry = unsafe { libc::readdir(self.0.as_ptr()) };
-        if entry.is_null() {
-            return match Errno::last_raw() {
-                0 => Ok(None),
-                _ => Err(io::Error::last_os_error()),
-            };
+        // result is valid until the next directory operation on this stream;
+        // the returned reference is consumed before the next call.
+        unsafe {
+            let entry = libc::readdir(self.0.as_ptr());
+            if entry.is_null() {
+                return match Errno::last_raw() {
+                    0 => Ok(None),
+                    _ => Err(io::Error::last_os_error()),
+                };
+            }
+            Ok(Some(&*entry))
         }
-
-        // SAFETY: `readdir` returned a non-null entry associated with the
-        // still-live directory stream. The reference is consumed before the
-        // next call that could overwrite its storage.
-        Ok(Some(unsafe { &*entry }))
     }
 }
 

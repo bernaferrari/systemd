@@ -212,6 +212,27 @@ fn inode_type_can_hardlink(m: libc::mode_t) -> bool {
     )
 }
 
+// These private adapters are reached only from the documented C ABI exports
+// below. They centralize nullable native-struct borrowing before the safe
+// verification cores inspect the target libc layouts.
+fn with_stat<T>(
+    st: *const libc::stat,
+    fallback: T,
+    verification: impl FnOnce(&libc::stat) -> T,
+) -> T {
+    // SAFETY: callers are the audited C ABI adapters with nullable live stat pointers.
+    unsafe { st.as_ref().map_or(fallback, verification) }
+}
+
+fn with_statx<T>(
+    stx: *const libc::statx,
+    fallback: T,
+    verification: impl FnOnce(&libc::statx) -> T,
+) -> T {
+    // SAFETY: callers are the audited C ABI adapters with nullable live statx pointers.
+    unsafe { stx.as_ref().map_or(fallback, verification) }
+}
+
 /// C ABI mirror of `stat_verify_regular()`.
 ///
 /// # Safety
@@ -219,11 +240,7 @@ fn inode_type_can_hardlink(m: libc::mode_t) -> bool {
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_verify_regular(st: *const libc::stat) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    stat_verify_regular(st)
+    with_stat(st, -libc::EINVAL, stat_verify_regular)
 }
 
 /// C ABI mirror of `statx_verify_regular()`.
@@ -233,11 +250,7 @@ pub unsafe extern "C" fn rs_stat_verify_regular(st: *const libc::stat) -> libc::
 /// `stx` must be null or point to a live native `struct statx` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_statx_verify_regular(stx: *const libc::statx) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native statx.
-    let Some(stx) = (unsafe { stx.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    statx_verify_regular(stx)
+    with_statx(stx, -libc::EINVAL, statx_verify_regular)
 }
 
 /// C ABI mirror of `stat_verify_directory()`.
@@ -247,11 +260,7 @@ pub unsafe extern "C" fn rs_statx_verify_regular(stx: *const libc::statx) -> lib
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_verify_directory(st: *const libc::stat) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    stat_verify_directory(st)
+    with_stat(st, -libc::EINVAL, stat_verify_directory)
 }
 
 /// C ABI mirror of `statx_verify_directory()`.
@@ -261,11 +270,7 @@ pub unsafe extern "C" fn rs_stat_verify_directory(st: *const libc::stat) -> libc
 /// `stx` must be null or point to a live native `struct statx` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_statx_verify_directory(stx: *const libc::statx) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native statx.
-    let Some(stx) = (unsafe { stx.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    statx_verify_directory(stx)
+    with_statx(stx, -libc::EINVAL, statx_verify_directory)
 }
 
 /// C ABI mirror of `stat_verify_symlink()`.
@@ -275,11 +280,7 @@ pub unsafe extern "C" fn rs_statx_verify_directory(stx: *const libc::statx) -> l
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_verify_symlink(st: *const libc::stat) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    stat_verify_symlink(st)
+    with_stat(st, -libc::EINVAL, stat_verify_symlink)
 }
 
 /// C ABI mirror of `stat_verify_socket()`.
@@ -289,11 +290,7 @@ pub unsafe extern "C" fn rs_stat_verify_symlink(st: *const libc::stat) -> libc::
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_verify_socket(st: *const libc::stat) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    stat_verify_socket(st)
+    with_stat(st, -libc::EINVAL, stat_verify_socket)
 }
 
 /// C ABI mirror of `statx_verify_socket()`.
@@ -303,11 +300,7 @@ pub unsafe extern "C" fn rs_stat_verify_socket(st: *const libc::stat) -> libc::c
 /// `stx` must be null or point to a live native `struct statx` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_statx_verify_socket(stx: *const libc::statx) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native statx.
-    let Some(stx) = (unsafe { stx.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    statx_verify_socket(stx)
+    with_statx(stx, -libc::EINVAL, statx_verify_socket)
 }
 
 /// C ABI mirror of `stat_verify_linked()`.
@@ -317,11 +310,7 @@ pub unsafe extern "C" fn rs_statx_verify_socket(stx: *const libc::statx) -> libc
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_verify_linked(st: *const libc::stat) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    stat_verify_linked(st)
+    with_stat(st, -libc::EINVAL, stat_verify_linked)
 }
 
 /// C ABI mirror of `stat_verify_block()`.
@@ -331,11 +320,7 @@ pub unsafe extern "C" fn rs_stat_verify_linked(st: *const libc::stat) -> libc::c
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_verify_block(st: *const libc::stat) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    stat_verify_block(st)
+    with_stat(st, -libc::EINVAL, stat_verify_block)
 }
 
 /// C ABI mirror of `stat_verify_char()`.
@@ -345,11 +330,7 @@ pub unsafe extern "C" fn rs_stat_verify_block(st: *const libc::stat) -> libc::c_
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_verify_char(st: *const libc::stat) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    stat_verify_char(st)
+    with_stat(st, -libc::EINVAL, stat_verify_char)
 }
 
 /// C ABI mirror of `stat_verify_regular_or_block()`.
@@ -359,11 +340,7 @@ pub unsafe extern "C" fn rs_stat_verify_char(st: *const libc::stat) -> libc::c_i
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_verify_regular_or_block(st: *const libc::stat) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    stat_verify_regular_or_block(st)
+    with_stat(st, -libc::EINVAL, stat_verify_regular_or_block)
 }
 
 /// C ABI mirror of `stat_verify_device_node()`.
@@ -373,11 +350,7 @@ pub unsafe extern "C" fn rs_stat_verify_regular_or_block(st: *const libc::stat) 
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_verify_device_node(st: *const libc::stat) -> libc::c_int {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return -libc::EINVAL;
-    };
-    stat_verify_device_node(st)
+    with_stat(st, -libc::EINVAL, stat_verify_device_node)
 }
 
 /// C ABI mirror of `stat_may_be_dev_null()`.
@@ -387,11 +360,7 @@ pub unsafe extern "C" fn rs_stat_verify_device_node(st: *const libc::stat) -> li
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_may_be_dev_null(st: *mut libc::stat) -> bool {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return false;
-    };
-    stat_may_be_dev_null(st)
+    with_stat(st.cast_const(), false, stat_may_be_dev_null)
 }
 
 /// C ABI mirror of `stat_is_empty()`.
@@ -401,11 +370,7 @@ pub unsafe extern "C" fn rs_stat_may_be_dev_null(st: *mut libc::stat) -> bool {
 /// `st` must be null or point to a live native `struct stat` for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_is_empty(st: *mut libc::stat) -> bool {
-    // SAFETY: the entry-point contract permits null or a live native stat.
-    let Some(st) = (unsafe { st.as_ref() }) else {
-        return false;
-    };
-    stat_is_empty(st)
+    with_stat(st.cast_const(), false, stat_is_empty)
 }
 
 /// C ABI mirror of `inode_type_can_hardlink()`.

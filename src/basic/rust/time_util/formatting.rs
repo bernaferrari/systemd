@@ -4,7 +4,7 @@
 //
 // String-table, timezone-offset, and timespan formatting helpers.
 
-use std::ffi::c_long;
+use std::ffi::{CStr, c_long};
 
 use libc::c_char;
 
@@ -21,26 +21,18 @@ use super::types::{
 
 const TIMESTAMP_STYLE_NAMES: [&[u8]; 5] = [b"pretty\0", b"us\0", b"utc\0", b"us+utc\0", b"unix\0"];
 
-// SAFETY: Each non-null pointer must address a readable, NUL-terminated C
-// string; both byte walks stop at those terminators without writing memory.
-unsafe fn streq_ptr(a: *const c_char, b: *const c_char) -> bool {
-    if a.is_null() && b.is_null() {
-        return true;
+fn timestamp_style_from_bytes(bytes: &[u8]) -> Option<i32> {
+    if let Some((index, _)) = TIMESTAMP_STYLE_NAMES
+        .iter()
+        .enumerate()
+        .find(|(_, name)| bytes == &name[..name.len() - 1])
+    {
+        return Some(index as i32);
     }
-    if a.is_null() || b.is_null() {
-        return false;
-    }
-    let mut i: usize = 0;
-    loop {
-        // SAFETY: the caller guarantees both strings are readable through their NUL bytes.
-        let (a_byte, b_byte) = unsafe { (*a.add(i), *b.add(i)) };
-        if a_byte != b_byte {
-            return false;
-        }
-        if a_byte == 0 {
-            return true;
-        }
-        i += 1;
+    match bytes {
+        b"\xc2\xb5s" | b"\xce\xbcs" => Some(1),
+        b"\xc2\xb5s+utc" | b"\xce\xbcs+utc" => Some(3),
+        _ => None,
     }
 }
 
@@ -69,35 +61,9 @@ pub unsafe extern "C" fn rs_timestamp_style_from_string(s: *const c_char) -> i32
     if s.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
-    for (idx, name) in TIMESTAMP_STYLE_NAMES.iter().enumerate() {
-        // SAFETY: the caller guarantees s is a live C string; name is static and NUL-terminated.
-        if unsafe { streq_ptr(s, name.as_ptr() as *const c_char) } {
-            return idx as i32;
-        }
-    }
-    // SAFETY: s is caller-validated and both comparison literals are NUL-terminated.
-    if unsafe { streq_ptr(s, [0xC2u8, 0xB5, b's', 0].as_ptr() as *const c_char) }
-        // SAFETY: same inputs as the preceding comparison.
-        || unsafe { streq_ptr(s, [0xCEu8, 0xBC, b's', 0].as_ptr() as *const c_char) }
-    {
-        return 1;
-    }
-    // SAFETY: s is caller-validated and both comparison literals are NUL-terminated.
-    if unsafe {
-        streq_ptr(
-            s,
-            [0xC2u8, 0xB5, b's', b'+', b'u', b't', b'c', 0].as_ptr() as *const c_char,
-        )
-        // SAFETY: same inputs as the preceding comparison.
-    } || unsafe {
-        streq_ptr(
-            s,
-            [0xCEu8, 0xBC, b's', b'+', b'u', b't', b'c', 0].as_ptr() as *const c_char,
-        )
-    } {
-        return 3;
-    }
-    Errno::EINVAL.to_neg_errno()
+    // SAFETY: `s` is a readable NUL-terminated C string by this ABI contract.
+    timestamp_style_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes())
+        .unwrap_or_else(|| Errno::EINVAL.to_neg_errno())
 }
 
 // ── parse_gmtoff ────────────────────────────────────────────────────────────
@@ -122,107 +88,48 @@ pub unsafe extern "C" fn rs_parse_gmtoff(t: *const c_char, ret: *mut c_long) -> 
         return Errno::EINVAL.to_neg_errno();
     }
 
-    let mut pos: usize = 0;
-
-    // Expect leading + or -
-    // SAFETY: the caller guarantees t is readable through its NUL terminator.
-    let positive = match unsafe { *t.add(pos) } as u8 {
-        b'+' => {
-            pos += 1;
-            true
-        }
-        b'-' => {
-            pos += 1;
-            false
-        }
-        _ => return Errno::EINVAL.to_neg_errno(),
+    // SAFETY: `t` is a readable NUL-terminated C string by this ABI contract.
+    let gmtoff = match parse_gmtoff_bytes(unsafe { CStr::from_ptr(t) }.to_bytes()) {
+        Ok(gmtoff) => gmtoff,
+        Err(errno) => return errno.to_neg_errno(),
     };
-
-    // Parse first two digits (hours * 10)
-    // SAFETY: t remains within the validated C string.
-    let d0 = undecchar(unsafe { *t.add(pos) });
-    if d0 < 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-    let mut u: u64 = (d0 as u64) * 10 * USEC_PER_HOUR;
-    pos += 1;
-
-    // SAFETY: t remains within the validated C string.
-    let d1 = undecchar(unsafe { *t.add(pos) });
-    if d1 < 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-    u += (d1 as u64) * USEC_PER_HOUR;
-    pos += 1;
-
-    // End of string → 2-digit case (e.g. "+09")
-    // SAFETY: t remains within the validated C string.
-    if unsafe { *t.add(pos) } == 0 {
-        // SAFETY: ret has the optional writable-output contract of this function.
-        return unsafe { finish_gmtoff(u, positive, ret) };
-    }
-
-    // Optional colon
-    // SAFETY: t remains within the validated C string.
-    if (unsafe { *t.add(pos) } as u8) == b':' {
-        pos += 1;
-    }
-
-    // Parse third digit (tens of minutes)
-    // SAFETY: t remains within the validated C string.
-    let d2 = undecchar(unsafe { *t.add(pos) });
-    if d2 < 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-    if (d2 as u64) >= 6 {
-        return Errno::EINVAL.to_neg_errno(); // minutes >= 60
-    }
-    u += (d2 as u64) * 10 * USEC_PER_MINUTE;
-    pos += 1;
-
-    // Parse fourth digit (units of minutes)
-    // SAFETY: t remains within the validated C string.
-    let d3 = undecchar(unsafe { *t.add(pos) });
-    if d3 < 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-    u += (d3 as u64) * USEC_PER_MINUTE;
-    pos += 1;
-
-    // SAFETY: t remains within the validated C string.
-    if unsafe { *t.add(pos) } != 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-
-    // SAFETY: ret has the optional writable-output contract of this function.
-    unsafe { finish_gmtoff(u, positive, ret) }
-}
-
-// SAFETY: ret is either null or the writable c_long output promised by
-// rs_parse_gmtoff; this helper writes it only after all scalar validation.
-unsafe fn finish_gmtoff(u: u64, positive: bool, ret: *mut c_long) -> i32 {
-    if u > USEC_PER_DAY {
-        return Errno::EINVAL.to_neg_errno();
-    }
-
     if !ret.is_null() {
-        let gmtoff = (u / USEC_PER_SEC) as c_long;
-        // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = if positive { gmtoff } else { -gmtoff } };
+        // SAFETY: the ABI contract makes a non-null `ret` writable.
+        unsafe { *ret = gmtoff };
     }
-
     0
 }
 
-// SAFETY: This consumes only its scalar argument and dereferences no pointer;
-// its unsafe signature keeps the C-string parser helpers uniform.
-fn undecchar(c: c_char) -> i32 {
-    let b = c as u8;
-    if b >= b'0' && b <= b'9' {
-        (b - b'0') as i32
-    } else {
-        -1
+fn parse_gmtoff_bytes(text: &[u8]) -> Result<c_long, Errno> {
+    let (&sign, digits) = text.split_first().ok_or(Errno::EINVAL)?;
+    let positive = match sign {
+        b'+' => true,
+        b'-' => false,
+        _ => return Err(Errno::EINVAL),
+    };
+    let (hours, minutes) = match digits {
+        [h0, h1] => (decimal_pair(*h0, *h1)?, 0),
+        [h0, h1, m0, m1] => (decimal_pair(*h0, *h1)?, decimal_pair(*m0, *m1)?),
+        [h0, h1, b':', m0, m1] => (decimal_pair(*h0, *h1)?, decimal_pair(*m0, *m1)?),
+        _ => return Err(Errno::EINVAL),
+    };
+    if minutes >= 60 {
+        return Err(Errno::EINVAL);
     }
+    let usec = hours as u64 * USEC_PER_HOUR + minutes as u64 * USEC_PER_MINUTE;
+    if usec > USEC_PER_DAY {
+        return Err(Errno::EINVAL);
+    }
+    let seconds = (usec / USEC_PER_SEC) as c_long;
+    Ok(if positive { seconds } else { -seconds })
+}
+
+fn decimal_pair(tens: u8, units: u8) -> Result<u8, Errno> {
+    let digit = |byte: u8| match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        _ => Err(Errno::EINVAL),
+    };
+    Ok(digit(tens)? * 10 + digit(units)?)
 }
 
 // ── format_timespan ──────────────────────────────────────────────────────────
@@ -323,6 +230,35 @@ fn format_timespan_segment(
     used + copied
 }
 
+/// Caller-contract-validated C output buffer. Formatting builds every segment
+/// with safe slices and uses this single adapter to publish bounded bytes.
+struct CBuffer {
+    ptr: *mut c_char,
+    len: usize,
+}
+
+impl CBuffer {
+    fn from_contract(ptr: *mut c_char, len: usize) -> Self {
+        Self { ptr, len }
+    }
+
+    fn write(&self, offset: usize, bytes: &[u8]) {
+        if offset >= self.len {
+            return;
+        }
+        let count = bytes.len().min(self.len.saturating_sub(offset));
+        // SAFETY: callers establish `ptr` as writable for `len` bytes; the
+        // checked count keeps the destination within that range.
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr().cast::<c_char>(),
+                self.ptr.add(offset),
+                count,
+            )
+        };
+    }
+}
+
 /// Shadow of C format_timespan()
 /// Formats a timespan into a human-readable string. Writes into caller-provided buffer.
 // SAFETY: A non-null buf must designate l bytes of writable storage, exclusive
@@ -345,27 +281,20 @@ pub unsafe extern "C" fn rs_format_timespan(
         return std::ptr::null_mut();
     }
 
+    let output = CBuffer::from_contract(buf, l);
     if t == USEC_INFINITY {
         let bytes = b"infinity";
         let copy_len = bytes.len().min(l - 1);
-        // SAFETY: buf is writable for l bytes; copy_len <= l-1 and bytes is disjoint.
-        unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, buf, copy_len);
-            *buf.add(copy_len) = 0;
-        }
+        output.write(0, &bytes[..copy_len]);
+        output.write(copy_len, b"\0");
         return buf;
     }
 
     if t == 0 {
         if l > 1 {
-            // SAFETY: l > 1 guarantees both output bytes are writable.
-            unsafe {
-                *buf = b'0' as c_char;
-                *buf.add(1) = 0;
-            }
+            output.write(0, b"0\0");
         } else {
-            // SAFETY: l == 1 and buf is writable for that byte.
-            unsafe { *buf = 0 };
+            output.write(0, b"\0");
         }
         return buf;
     }
@@ -373,8 +302,7 @@ pub unsafe extern "C" fn rs_format_timespan(
     let mut remaining = t;
     let mut used = 0usize;
     let mut something = false;
-    // SAFETY: l > 0 and buf is writable.
-    unsafe { *buf = 0 };
+    output.write(0, b"\0");
     for entry in TIMESPAN_TABLE {
         if remaining == 0 {
             break;
@@ -415,14 +343,9 @@ pub unsafe extern "C" fn rs_format_timespan(
         let segment_len =
             format_timespan_segment(&mut segment, something, value, fractional, entry.suffix);
         let copied = segment_len.min(l - used - 1);
-        // SAFETY: the capacity check bounds this disjoint copy and the segment
-        // length is bounded by the fixed local buffer.
-        unsafe {
-            std::ptr::copy_nonoverlapping(segment.as_ptr().cast::<c_char>(), buf.add(used), copied)
-        };
+        output.write(used, &segment[..copied]);
         used += copied;
-        // SAFETY: one byte was reserved for the terminating NUL.
-        unsafe { *buf.add(used) = 0 };
+        output.write(used, b"\0");
 
         if fractional.is_none() {
             remaining = remainder;
@@ -432,3 +355,5 @@ pub unsafe extern "C" fn rs_format_timespan(
 
     buf
 }
+
+// /// Safe internal implementation helpers are deliberately allocation-free.
