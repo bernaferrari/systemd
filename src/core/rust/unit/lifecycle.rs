@@ -170,11 +170,34 @@ pub fn unit_load_fragment_and_dropin(unit: &mut Unit, fragment_required: bool) -
     Ok(())
 }
 
-pub fn unit_add_default_target_dependency(unit: &mut Unit, target: &str) -> Result<()> {
-    if !unit.default_dependencies {
+/// Add the implicit ordering edge used when a target Wants=/Requires= a unit.
+///
+/// This is deliberately `(unit, target)`: C's `unit_add_default_target_dependency()`
+/// adds `target After unit`, not `unit After target`. Reversing those operands
+/// manufactures a cycle whenever the target already has an explicit
+/// `After=unit` relationship.
+pub fn unit_add_default_target_dependency(unit: &Unit, target: &mut Unit) -> Result<()> {
+    if target.unit_type != UnitType::Target
+        || unit.load_state != LoadState::Loaded
+        || target.load_state != LoadState::Loaded
+        || !unit.default_dependencies
+        || !target.default_dependencies
+    {
         return Ok(());
     }
-    unit_add_dependency_by_name(unit, DependencyKind::After, target, true, 0)
+
+    let Some(unit_name) = unit.id.as_deref() else {
+        return Ok(());
+    };
+    if target
+        .dependencies
+        .get(&DependencyKind::Before)
+        .is_some_and(|dependencies| dependencies.contains(unit_name))
+    {
+        return Ok(());
+    }
+
+    unit_add_dependency_by_name(target, DependencyKind::After, unit_name, true, 0)
 }
 
 pub fn unit_load(unit: &mut Unit) -> Result<()> {

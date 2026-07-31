@@ -11,13 +11,14 @@ mod tests {
         activation_details_deserialize, activation_details_new, activation_details_serialize,
         collect_mode_from_string, collect_mode_to_string, oom_policy_from_string,
         oom_policy_to_string, port_status, setenv_unit_path, unit_acquire_invocation_id,
-        unit_active_state, unit_add_alias, unit_add_mounts_for, unit_add_to_load_queue,
-        unit_add_to_stop_notify_queue, unit_add_two_dependencies_by_name, unit_can_freeze,
-        unit_compare_priority, unit_export_state_files, unit_freezer_action, unit_freezer_complete,
-        unit_has_dependency, unit_has_name, unit_invocation_log_field, unit_log_field,
-        unit_mount_dependency_type_from_string, unit_mount_dependency_type_to_string,
-        unit_new_for_name, unit_remove_from_stop_notify_queue, unit_start, unit_stop,
-        unit_test_start_limit, unit_unlink_state_files,
+        unit_active_state, unit_add_alias, unit_add_default_target_dependency, unit_add_mounts_for,
+        unit_add_to_load_queue, unit_add_to_stop_notify_queue, unit_add_two_dependencies_by_name,
+        unit_can_freeze, unit_compare_priority, unit_export_state_files, unit_freezer_action,
+        unit_freezer_complete, unit_has_dependency, unit_has_name, unit_invocation_log_field,
+        unit_log_field, unit_mount_dependency_type_from_string,
+        unit_mount_dependency_type_to_string, unit_new_for_name,
+        unit_remove_from_stop_notify_queue, unit_start, unit_stop, unit_test_start_limit,
+        unit_unlink_state_files,
     };
     use systemd_shared_rs::tests::TestEnvironment;
 
@@ -73,6 +74,52 @@ mod tests {
             &unit,
             DependencyKind::After,
             "network.target"
+        ));
+    }
+
+    #[test]
+    fn default_target_dependency_orders_the_target_after_its_dependency() {
+        let mut unit =
+            unit_new_for_name(sample_manager(), UnitType::Service, "demo.service").unwrap();
+        let mut target =
+            unit_new_for_name(sample_manager(), UnitType::Target, "default.target").unwrap();
+        unit.load_state = crate::unit::LoadState::Loaded;
+        target.load_state = crate::unit::LoadState::Loaded;
+
+        unit_add_default_target_dependency(&unit, &mut target).unwrap();
+
+        assert!(unit_has_dependency(
+            &target,
+            DependencyKind::After,
+            "demo.service"
+        ));
+        assert!(!unit_has_dependency(
+            &unit,
+            DependencyKind::After,
+            "default.target"
+        ));
+    }
+
+    #[test]
+    fn default_target_dependency_does_not_create_an_explicit_before_cycle() {
+        let mut unit =
+            unit_new_for_name(sample_manager(), UnitType::Service, "demo.service").unwrap();
+        let mut target =
+            unit_new_for_name(sample_manager(), UnitType::Target, "default.target").unwrap();
+        unit.load_state = crate::unit::LoadState::Loaded;
+        target.load_state = crate::unit::LoadState::Loaded;
+        target
+            .dependencies
+            .entry(DependencyKind::Before)
+            .or_default()
+            .insert("demo.service".into());
+
+        unit_add_default_target_dependency(&unit, &mut target).unwrap();
+
+        assert!(!unit_has_dependency(
+            &target,
+            DependencyKind::After,
+            "demo.service"
         ));
     }
 

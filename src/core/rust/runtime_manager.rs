@@ -903,7 +903,7 @@ impl RuntimeManager {
 
         let applied = self
             .build_transaction(&name, transaction_kind, mode)
-            .map_err(|_| Errno::EEXIST)?;
+            .map_err(|error| error.errno_value())?;
         let anchor_job = applied.anchor_job;
         let installed = self.execute_transaction(&applied)?;
         installed.get(&anchor_job).copied().ok_or(Errno::EIO)
@@ -1414,13 +1414,44 @@ impl RuntimeManager {
 
     pub fn start_named_target(&mut self, target: &str) -> Result<()> {
         self.load_unit_recursive(target, &mut BTreeSet::new())?;
-        for unit in self.units.values_mut() {
-            let _ = unit_add_default_target_dependency(unit, target);
+        let target = self.canonical_unit_name(target);
+        let target_dependency_names: BTreeSet<String> = self
+            .units
+            .get(&target)
+            .ok_or(Errno::ENOENT)?
+            .dependencies
+            .iter()
+            .filter(|(kind, _)| {
+                matches!(
+                    kind,
+                    DependencyKind::Requires
+                        | DependencyKind::Requisite
+                        | DependencyKind::Wants
+                        | DependencyKind::BindsTo
+                        | DependencyKind::Upholds
+                        | DependencyKind::PartOf
+                )
+            })
+            .flat_map(|(_, dependencies)| dependencies.iter().cloned())
+            .collect();
+        let candidates: Vec<Unit> = target_dependency_names
+            .iter()
+            .filter_map(|name| {
+                let canonical = self.canonical_unit_name(name);
+                self.units.get(&canonical).cloned()
+            })
+            .collect();
+        let target_unit = self.units.get_mut(&target).ok_or(Errno::ENOENT)?;
+        for unit in &candidates {
+            unit_add_default_target_dependency(unit, target_unit).map_err(|_| Errno::EIO)?;
         }
 
         let applied = self
-            .build_transaction(target, TxJobType::Start, JobMode::Replace)
-            .map_err(|_e| Errno::EIO)?;
+            .build_transaction(&target, TxJobType::Start, JobMode::Replace)
+            .map_err(|error| {
+                eprintln!("systemd: cannot queue target {target}: {error}");
+                error.errno_value()
+            })?;
         let n = applied.jobs.len();
         self.execute_transaction(&applied)?;
         eprintln!("systemd: started {n} jobs for {target}");
@@ -1446,7 +1477,7 @@ impl RuntimeManager {
         let name = self.canonical_unit_name(name);
         match self.build_transaction(&name, TxJobType::Start, mode) {
             Ok(applied) => self.execute_transaction(&applied).map(|_| ()),
-            Err(_e) => Err(Errno::EEXIST),
+            Err(error) => Err(error.errno_value()),
         }
     }
 
@@ -1458,7 +1489,7 @@ impl RuntimeManager {
         let name = self.canonical_unit_name(name);
         match self.build_transaction(&name, TxJobType::Stop, mode) {
             Ok(applied) => self.execute_transaction(&applied).map(|_| ()),
-            Err(_) => Err(Errno::EEXIST),
+            Err(error) => Err(error.errno_value()),
         }
     }
 
@@ -1470,7 +1501,7 @@ impl RuntimeManager {
         let name = self.canonical_unit_name(name);
         match self.build_transaction(&name, TxJobType::Restart, mode) {
             Ok(applied) => self.execute_transaction(&applied).map(|_| ()),
-            Err(_) => Err(Errno::EEXIST),
+            Err(error) => Err(error.errno_value()),
         }
     }
 
@@ -1478,7 +1509,7 @@ impl RuntimeManager {
         let name = self.canonical_unit_name(name);
         match self.build_transaction(&name, TxJobType::Reload, JobMode::Replace) {
             Ok(applied) => self.execute_transaction(&applied).map(|_| ()),
-            Err(_) => Err(Errno::EEXIST),
+            Err(error) => Err(error.errno_value()),
         }
     }
 
@@ -1533,7 +1564,7 @@ impl RuntimeManager {
                 }
                 Ok(())
             }
-            Err(_) => Err(Errno::EEXIST),
+            Err(error) => Err(error.errno_value()),
         }
     }
 

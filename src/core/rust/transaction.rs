@@ -96,25 +96,54 @@ pub enum TransactionError {
     UnsatisfiedDependency(String, String),
     InvalidMode(String),
     DuplicateAnchor,
-    CyclicOrder,
+    CyclicOrder(Vec<String>),
     ConflictingJobs(String),
     Destructive(String),
 }
 
 impl TransactionError {
-    pub const fn errno(&self) -> i32 {
+    pub const fn errno_value(&self) -> Errno {
         match self {
-            Self::MissingUnit(_) | Self::UnsatisfiedDependency(_, _) => {
-                Errno::ENOENT.to_neg_errno()
-            }
-            Self::InvalidMode(_) => Errno::EINVAL.to_neg_errno(),
+            Self::MissingUnit(_) | Self::UnsatisfiedDependency(_, _) => Errno::ENOENT,
+            Self::InvalidMode(_) => Errno::EINVAL,
             Self::DuplicateAnchor | Self::ConflictingJobs(_) | Self::Destructive(_) => {
-                Errno::EEXIST.to_neg_errno()
+                Errno::EEXIST
             }
-            Self::CyclicOrder => Errno::EDEADLK.to_neg_errno(),
+            Self::CyclicOrder(_) => Errno::EDEADLK,
+        }
+    }
+
+    pub const fn errno(&self) -> i32 {
+        self.errno_value().to_neg_errno()
+    }
+}
+
+impl std::fmt::Display for TransactionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingUnit(unit) => write!(formatter, "unit {unit} is missing"),
+            Self::UnsatisfiedDependency(unit, dependency) => write!(
+                formatter,
+                "unit {unit} has an unsatisfied dependency on {dependency}"
+            ),
+            Self::InvalidMode(reason) => write!(formatter, "invalid transaction mode: {reason}"),
+            Self::DuplicateAnchor => formatter.write_str("transaction has no unique anchor job"),
+            Self::CyclicOrder(path) => write!(
+                formatter,
+                "transaction contains an unfixable ordering cycle: {}",
+                path.join(" -> ")
+            ),
+            Self::ConflictingJobs(jobs) => {
+                write!(formatter, "transaction contains conflicting jobs: {jobs}")
+            }
+            Self::Destructive(job) => {
+                write!(formatter, "transaction would destructively replace {job}")
+            }
         }
     }
 }
+
+impl std::error::Error for TransactionError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transaction {
@@ -553,7 +582,7 @@ impl Transaction {
 
     fn verify_order(&mut self) -> Result<(), TransactionError> {
         loop {
-            let mut visiting = BTreeSet::new();
+            let mut visiting = Vec::new();
             let mut visited = BTreeSet::new();
             let mut cycle = None;
 
@@ -581,7 +610,12 @@ impl Transaction {
                 continue;
             }
 
-            return Err(TransactionError::CyclicOrder);
+            let path = cycle_jobs
+                .iter()
+                .filter_map(|job_id| self.jobs.get(job_id))
+                .map(|job| format!("{}/{:?}", job.unit, job.job_type))
+                .collect();
+            return Err(TransactionError::CyclicOrder(path));
         }
     }
 
@@ -899,28 +933,29 @@ fn transaction_job_compare(a: &Job, b: &Job, relation: OrderingRelation) -> i32 
 fn dfs_cycle(
     transaction: &Transaction,
     job_id: usize,
-    visiting: &mut BTreeSet<usize>,
+    visiting: &mut Vec<usize>,
     visited: &mut BTreeSet<usize>,
     cycle: &mut Option<Vec<usize>>,
 ) -> bool {
     if visited.contains(&job_id) {
         return false;
     }
-    if !visiting.insert(job_id) {
-        *cycle = Some(vec![job_id]);
+    if let Some(cycle_start) = visiting.iter().position(|candidate| *candidate == job_id) {
+        let mut path = visiting[cycle_start..].to_vec();
+        path.push(job_id);
+        *cycle = Some(path);
         return true;
     }
+    visiting.push(job_id);
 
     for next_id in transaction.ordering_successors(job_id) {
         if dfs_cycle(transaction, next_id, visiting, visited, cycle) {
-            if let Some(path) = cycle.as_mut() {
-                path.push(job_id);
-            }
             return true;
         }
     }
 
-    visiting.remove(&job_id);
+    let popped = visiting.pop();
+    debug_assert_eq!(popped, Some(job_id));
     visited.insert(job_id);
     false
 }
@@ -1129,7 +1164,12 @@ mod tests {
             .add_job_and_dependencies(JobType::Start, "a.service", None, false, false, false)
             .unwrap();
         let err = transaction.activate(JobMode::Replace).unwrap_err();
-        assert_eq!(err, TransactionError::CyclicOrder);
+        let TransactionError::CyclicOrder(path) = err else {
+            panic!("ordering cycle must be reported with its job path");
+        };
+        assert_eq!(path.first(), path.last());
+        assert!(path.iter().any(|job| job == "a.service/Start"));
+        assert!(path.iter().any(|job| job == "b.service/Start"));
     }
 
     #[test]
@@ -1839,6 +1879,55 @@ mod tests {
             .unwrap();
 
         let err = transaction.activate(JobMode::Replace).unwrap_err();
-        assert_eq!(err, TransactionError::CyclicOrder);
+        let TransactionError::CyclicOrder(path) = err else {
+            panic!("ordering cycle must be reported with its job path");
+        };
+        assert_eq!(path.first(), path.last());
+        assert!(path.iter().any(|job| job == "a.service/Start"));
+        assert!(path.iter().any(|job| job == "b.service/Start"));
+    }
+
+    #[test]
+    fn transaction_errors_preserve_errno_class_and_context() {
+        let cases = [
+            (
+                TransactionError::MissingUnit("missing.service".into()),
+                Errno::ENOENT,
+                "unit missing.service is missing",
+            ),
+            (
+                TransactionError::UnsatisfiedDependency(
+                    "main.service".into(),
+                    "required.service".into(),
+                ),
+                Errno::ENOENT,
+                "unit main.service has an unsatisfied dependency on required.service",
+            ),
+            (
+                TransactionError::InvalidMode("start required".into()),
+                Errno::EINVAL,
+                "invalid transaction mode: start required",
+            ),
+            (
+                TransactionError::CyclicOrder(vec![
+                    "a.service/Start".into(),
+                    "b.service/Start".into(),
+                    "a.service/Start".into(),
+                ]),
+                Errno::EDEADLK,
+                "transaction contains an unfixable ordering cycle: a.service/Start -> b.service/Start -> a.service/Start",
+            ),
+            (
+                TransactionError::ConflictingJobs("a.service <-> b.service".into()),
+                Errno::EEXIST,
+                "transaction contains conflicting jobs: a.service <-> b.service",
+            ),
+        ];
+
+        for (error, expected_errno, expected_message) in cases {
+            assert_eq!(error.errno_value(), expected_errno);
+            assert_eq!(error.errno(), expected_errno.to_neg_errno());
+            assert_eq!(error.to_string(), expected_message);
+        }
     }
 }

@@ -537,13 +537,11 @@ fn close_fd(fd: RawFd) {
     }
 }
 
-/// Close a single fd asynchronously (best-effort, like C's `asynchronous_close()`).
+/// Close a single fd asynchronously, preserving `async.c`'s shared
+/// descriptor-table semantics. Errors are deliberately ignored like C's
+/// `(void) asynchronous_close(fd)` cleanup path.
 fn async_close_fd(fd: RawFd) {
-    // On Linux, a simple close() is the pragmatic default.
-    // A full async close would use a threadpool or MSG_OOB trick,
-    // which is out of scope for this pure-Rust rewrite.
-    // SAFETY: see `close_fd`; asynchronous-close fallback is best effort.
-    let _ = unsafe { libc::close(fd) };
+    let _ = crate::r#async::asynchronous_close(fd);
 }
 
 /// Get the fd flags via `fcntl(F_GETFD)`.

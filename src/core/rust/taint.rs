@@ -170,10 +170,11 @@ mod tests {
     }
 
     #[test]
-    fn kernel_release_comparison_keeps_c_prerelease_ordering() {
-        for release in ["6.8~rc1", "6.8-rc1"] {
-            assert!(kernel_release_older_than(release, "6.8"), "{release}");
-        }
+    fn kernel_release_comparison_matches_c_release_ordering() {
+        assert!(kernel_release_older_than("6.8~rc1", "6.8"));
+        // In systemd's version ordering, '-' introduces a release segment;
+        // unlike '~', it is newer than the bare version.
+        assert!(!kernel_release_older_than("6.8-rc1", "6.8"));
     }
 
     #[test]

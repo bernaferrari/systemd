@@ -170,9 +170,10 @@ impl CloseResult {
 
 /// Close a file descriptor asynchronously via a child process.
 ///
-/// Forks a lightweight child that calls `close()` on the given fd.  The
-/// parent never blocks on the close syscall — if the fork fails, a
-/// synchronous close is performed as a local fallback.
+/// On Linux this creates a minimal `clone(2)` child with `CLONE_FILES`, so
+/// the close is performed against the caller's descriptor table. The parent
+/// never blocks on the close syscall — if the clone fails, a synchronous
+/// close is performed as a local fallback.
 ///
 /// When the calling process is a subreaper (PID 1 or has
 /// `PR_SET_CHILD_SUBREAPER`), a single fork suffices.  Otherwise a
@@ -189,7 +190,7 @@ pub fn asynchronous_close(fd: RawFd) -> Result<CloseResult, AsyncError> {
 
     let need_double_fork = !is_reaper_process().unwrap_or(false);
 
-    match fork_close_child(fd, need_double_fork) {
+    match close_in_shared_fd_table(fd, need_double_fork) {
         Ok(()) => Ok(CloseResult {
             fd,
             handed_off: true,
@@ -371,85 +372,145 @@ fn child_exit(code: i32) -> ! {
 }
 
 /// Check whether the current process is a subreaper (PID 1 or has
-/// `PR_SET_CHILD_SUBREAPER` enabled).
-///
-/// Returns `None` if the check cannot be performed (e.g. `/proc` is
-/// unavailable).
+/// `PR_SET_CHILD_SUBREAPER` enabled). This is the same kernel query used by
+/// C's `is_reaper_process()`, rather than an unreliable `/proc` heuristic.
+#[cfg(target_os = "linux")]
 fn is_reaper_process() -> Option<bool> {
     // Fast path: PID 1 is always a reaper.
-    let pid = std::process::id();
-    if pid == 1 {
+    if std::process::id() == 1 {
         return Some(true);
     }
 
-    // Try reading /proc/self/status for the `is_child_subreaper` field.
-    // If we can't read it, return None (the C code logs a debug message
-    // and assumes not-a-reaper).
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|contents| {
-            for line in contents.lines() {
-                if let Some(value) = line.strip_prefix("is_child_subreaper:") {
-                    return Some(value.trim() == "1");
-                }
-            }
-            None
-        })
+    let mut subreaper: libc::c_int = 0;
+    // SAFETY: `subreaper` is a live, writable `int`; `prctl` retains no
+    // pointer and all remaining arguments are scalar zeroes.
+    let r = unsafe { libc::prctl(libc::PR_GET_CHILD_SUBREAPER, &mut subreaper, 0, 0, 0) };
+    (r >= 0).then_some(subreaper != 0)
 }
 
-/// Fork a child that will close `fd`.  If `need_double_fork` is `true`,
-/// a double-fork is performed so the final child is reparented to PID 1.
-///
-fn fork_close_child(fd: RawFd, need_double_fork: bool) -> Result<(), io::Error> {
-    // SAFETY: fork() has no pointer preconditions; the child path only calls
-    // async-signal-safe functions before _exit().
-    let pid = unsafe { libc::fork() };
+#[cfg(not(target_os = "linux"))]
+fn is_reaper_process() -> Option<bool> {
+    (std::process::id() == 1).then_some(true)
+}
+
+/// A clone stack has explicit 16-byte alignment, required by the Linux ABI on
+/// the supported systemd architectures. Both stacks are allocated before the
+/// first clone: no allocator or Rust runtime code is entered in a clone child.
+#[cfg(target_os = "linux")]
+const CLOSE_CLONE_STACK_SIZE: usize = 64 * 1024;
+
+#[cfg(target_os = "linux")]
+#[repr(align(16))]
+struct CloseCloneStack([u8; CLOSE_CLONE_STACK_SIZE]);
+
+#[cfg(target_os = "linux")]
+struct CloseCloneRequest {
+    fd: RawFd,
+    nested_stack_top: *mut libc::c_void,
+}
+
+/// This runs only in the minimal clone child. It must not allocate, panic, or
+/// run Rust destructors: the clone process may inherit locked allocator state.
+#[cfg(target_os = "linux")]
+extern "C" fn close_clone_child(argument: *mut libc::c_void) -> libc::c_int {
+    // SAFETY: `argument` points to the live request prepared by the parent;
+    // clone keeps its COW copy and nested stack mapped through this callback.
+    let request = unsafe { &mut *(argument.cast::<CloseCloneRequest>()) };
+
+    if !request.nested_stack_top.is_null() {
+        let nested_stack_top =
+            std::mem::replace(&mut request.nested_stack_top, std::ptr::null_mut());
+        // The request's nested-stack slot was cleared before the clone, so
+        // the grandchild performs the close rather than recursively cloning.
+        // SAFETY: both the callback and stack pointer were prepared before
+        // cloning. `CLONE_FILES` is essential: this child must close the
+        // original process's descriptor table, exactly like async.c.
+        let nested = unsafe {
+            libc::clone(
+                close_clone_child,
+                nested_stack_top,
+                libc::SIGCHLD | libc::CLONE_FILES,
+                argument,
+            )
+        };
+        if nested >= 0 {
+            return 0;
+        }
+    }
+
+    // SAFETY: `close` accepts an integer descriptor; errors are intentionally
+    // ignored just like C's close callback.
+    let _ = unsafe { libc::close(request.fd) };
+    0
+}
+
+#[cfg(target_os = "linux")]
+fn clone_stack_top(stack: &mut CloseCloneStack) -> *mut libc::c_void {
+    // SAFETY: the one-past-end pointer is the stack top expected by glibc's
+    // clone wrapper. The stack object remains live until clone has returned.
+    unsafe {
+        stack
+            .0
+            .as_mut_ptr()
+            .add(CLOSE_CLONE_STACK_SIZE)
+            .cast::<libc::c_void>()
+    }
+}
+
+/// Create the C `clone_with_nested_stack()` equivalent used by
+/// `asynchronous_close()`. When the caller is not a reaper, the first clone
+/// has no exit signal and is reaped with `__WCLONE`; it creates the detached
+/// SIGCHLD grandchild that owns the eventual close.
+#[cfg(target_os = "linux")]
+fn close_in_shared_fd_table(fd: RawFd, need_double_fork: bool) -> Result<(), io::Error> {
+    let mut outer_stack = Box::new(CloseCloneStack([0; CLOSE_CLONE_STACK_SIZE]));
+    let mut nested_stack =
+        need_double_fork.then(|| Box::new(CloseCloneStack([0; CLOSE_CLONE_STACK_SIZE])));
+    let nested_stack_top = nested_stack
+        .as_deref_mut()
+        .map(clone_stack_top)
+        .unwrap_or(std::ptr::null_mut());
+    let mut request = CloseCloneRequest {
+        fd,
+        nested_stack_top,
+    };
+    let flags = libc::CLONE_FILES | if need_double_fork { 0 } else { libc::SIGCHLD };
+
+    // SAFETY: callback, aligned stack, and request all remain live for this
+    // synchronous clone call. The child callback performs only async-signal-
+    // safe operations and does not retain the parent's pointers after exit.
+    let pid = unsafe {
+        libc::clone(
+            close_clone_child,
+            clone_stack_top(&mut outer_stack),
+            flags,
+            (&mut request as *mut CloseCloneRequest).cast::<libc::c_void>(),
+        )
+    };
     if pid < 0 {
         return Err(io::Error::last_os_error());
     }
 
-    if pid == 0 {
-        // Child.
-        if need_double_fork {
-            // Double-fork: the inner child will be reparented to PID 1.
-            // SAFETY: as above, the nested child only closes an fd and calls _exit().
-            let inner = unsafe { libc::fork() };
-            if inner < 0 {
-                // Fork failed — fall back to closing directly.
-                // SAFETY: close() accepts any descriptor value and reports invalid values via errno.
-                unsafe { libc::close(fd) };
-                child_exit(1);
-            }
-            if inner == 0 {
-                // Grandchild — perform the close.
-                // SAFETY: close() accepts any descriptor value and reports invalid values via errno.
-                unsafe { libc::close(fd) };
-                child_exit(0);
-            }
-            // Intermediate child exits immediately.
-            child_exit(0);
-        }
-
-        // Single child — close the fd.
-        // SAFETY: close() accepts any descriptor value and reports invalid values via errno.
-        unsafe { libc::close(fd) };
-        child_exit(0);
-    }
-
-    // Parent: if double-forked, reap the intermediate child.
     if need_double_fork {
-        reap_child(pid);
+        reap_clone_child(pid);
     }
-
     Ok(())
 }
 
+/// Non-Linux targets cannot provide the Linux `CLONE_FILES` contract. Signal
+/// the public wrapper to use its synchronous fallback rather than spawning a
+/// fork child that would only close a private descriptor-table copy.
+#[cfg(not(target_os = "linux"))]
+fn close_in_shared_fd_table(_fd: RawFd, _need_double_fork: bool) -> Result<(), io::Error> {
+    Err(io::Error::from_raw_os_error(libc::ENOSYS))
+}
+
 /// Reap a child process, retrying on `EINTR`.
-fn reap_child(pid: libc::pid_t) {
+fn reap_child_with_options(pid: libc::pid_t, options: libc::c_int) {
     let mut status: i32 = 0;
     loop {
         // SAFETY: pid is a valid child pid we just forked.
-        let ret = unsafe { libc::waitpid(pid, &mut status, 0) };
+        let ret = unsafe { libc::waitpid(pid, &mut status, options) };
         if ret >= 0 {
             break;
         }
@@ -460,12 +521,33 @@ fn reap_child(pid: libc::pid_t) {
     }
 }
 
+/// Reap an ordinary SIGCHLD child, retrying on `EINTR`.
+fn reap_child(pid: libc::pid_t) {
+    reap_child_with_options(pid, 0);
+}
+
+/// Reap a clone child created with exit signal 0. Normal `waitpid` does not
+/// select it; Linux requires `__WCLONE`, precisely as `async.c` does.
+#[cfg(target_os = "linux")]
+fn reap_clone_child(pid: libc::pid_t) {
+    // `__WCLONE` selects children created without SIGCHLD.
+    reap_child_with_options(pid, libc::__WCLONE);
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::error::Error;
+    #[cfg(target_os = "linux")]
+    use std::mem::ManuallyDrop;
+    #[cfg(target_os = "linux")]
+    use std::os::fd::AsRawFd;
+    #[cfg(target_os = "linux")]
+    use std::os::unix::net::UnixStream;
+    #[cfg(target_os = "linux")]
+    use std::time::{Duration, Instant};
 
     // ── Encoding / decoding ─────────────────────────────────────────────
 
@@ -695,6 +777,39 @@ mod tests {
         let result = asynchronous_close(99999).unwrap();
         assert_eq!(result.fd, 99999);
         assert!(result.handed_off);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_asynchronous_close_invalidates_callers_fd_table() {
+        let (read_end, write_end) = UnixStream::pair().unwrap();
+        // Keep the Rust handle from dropping after its fd is asynchronously
+        // consumed. `fcntl` below borrows it only to query the same raw fd.
+        let read_end = ManuallyDrop::new(read_end);
+        let fd = (&*read_end).as_raw_fd();
+
+        let result = asynchronous_close(fd).unwrap();
+        assert_eq!(result.fd, fd);
+
+        // The close may be performed by the detached grandchild after this
+        // function returns. Poll only the scalar F_GETFD operation until the
+        // shared descriptor table reports EBADF.
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if matches!(
+                nix::fcntl::fcntl(&*read_end, nix::fcntl::FcntlArg::F_GETFD),
+                Err(nix::errno::Errno::EBADF)
+            ) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "asynchronous_close() left the caller's fd {fd} open"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        drop(write_end);
     }
 
     #[test]

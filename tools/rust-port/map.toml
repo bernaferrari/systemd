@@ -2678,12 +2678,12 @@ notes = "Fail-closed executable boundary only. Help and version work, but record
 
 [volatile_root_runtime]
 c_file = "src/volatile-root/volatile-root.c"
-rust_file = "src/volatile-root/rust/main.rs"
+rust_paths = ["src/volatile-root/rust/main.rs", "src/volatile-root/rust/lib.rs"]
 status = "in-progress"
 tier = 1
 symbols = 0
 sync_status = "needs_review"
-notes = "Fail-closed executable boundary only. Help and version work, but operational requests refuse before mount or filesystem side effects because kernel-command-line resolution, sysroot/backing-device validation, the staged mount transition, and cleanup ordering are not implemented."
+notes = "Safe argument and direct /proc/cmdline parity is implemented: current C enum/string-table values, optional-value kernel-command-line precedence, positional path validation, and the inactive no/state success path. The complete proc_cmdline_strv container/secure-environment source selection and yes/overlay sysroot/backing-device validation, staged mount transition, and cleanup ordering remain unimplemented; yes/overlay fail closed before mount or filesystem side effects."
 
 [journal_field_validation]
 c_file = "src/libsystemd/sd-journal/journal-file.c"

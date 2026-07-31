@@ -13,10 +13,17 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
+/// Mode value for a persistent root.
+pub const VOLATILE_NO: i32 = 0;
 /// Mode value for fully volatile root (tmpfs mount).
-pub const VOLATILE_YES: i32 = 0;
+pub const VOLATILE_YES: i32 = 1;
+/// Mode value for a persistent /usr with volatile state directories.
+///
+/// `systemd-volatile-root` itself deliberately does not act on this mode;
+/// fstab-generator owns the corresponding `/var` and `/home` setup.
+pub const VOLATILE_STATE: i32 = 2;
 /// Mode value for overlayfs volatile root.
-pub const VOLATILE_OVERLAY: i32 = 1;
+pub const VOLATILE_OVERLAY: i32 = 3;
 /// Sentinel for invalid/unset volatile mode.
 pub const VOLATILE_MODE_INVALID: i32 = -1;
 
@@ -40,10 +47,12 @@ pub const TMPFS_OPTIONS: &str = "mode=0755";
 /// Volatile mode determines how the root filesystem is made volatile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VolatileMode {
-    /// No volatile mode set — do nothing
-    None,
+    /// Persistent root — do nothing.
+    No,
     /// Fully volatile — mount a tmpfs, bind-mount /usr read-only
     Yes,
+    /// Only state directories are volatile. This tool does nothing.
+    State,
     /// Overlay — mount an overlayfs on top of the existing root
     Overlay,
 }
@@ -52,9 +61,11 @@ impl VolatileMode {
     /// Parse from a raw integer value as used in the C code.
     pub fn from_raw(v: i32) -> Result<Self, i32> {
         match v {
+            VOLATILE_NO => Ok(Self::No),
             VOLATILE_YES => Ok(Self::Yes),
+            VOLATILE_STATE => Ok(Self::State),
             VOLATILE_OVERLAY => Ok(Self::Overlay),
-            VOLATILE_MODE_INVALID => Ok(Self::None),
+            VOLATILE_MODE_INVALID => Err(-libc::EINVAL),
             _ => Err(-libc::EINVAL),
         }
     }
@@ -62,8 +73,9 @@ impl VolatileMode {
     /// Convert to the raw integer value.
     pub fn to_raw(self) -> i32 {
         match self {
-            Self::None => VOLATILE_MODE_INVALID,
+            Self::No => VOLATILE_NO,
             Self::Yes => VOLATILE_YES,
+            Self::State => VOLATILE_STATE,
             Self::Overlay => VOLATILE_OVERLAY,
         }
     }
@@ -71,9 +83,10 @@ impl VolatileMode {
     /// Parse from a string argument.
     pub fn from_str_arg(s: &str) -> Result<Self, i32> {
         match s {
-            "yes" | "state" => Ok(Self::Yes),
+            "yes" | "true" | "on" | "1" => Ok(Self::Yes),
+            "state" => Ok(Self::State),
             "overlay" => Ok(Self::Overlay),
-            "no" => Ok(Self::None),
+            "no" | "false" | "off" | "0" => Ok(Self::No),
             _ => Err(-libc::EINVAL),
         }
     }
@@ -134,7 +147,7 @@ pub struct VolatileRootArgs {
 impl Default for VolatileRootArgs {
     fn default() -> Self {
         Self {
-            mode: VolatileMode::None,
+            mode: VolatileMode::No,
             path: DEFAULT_SYSROOT.to_string(),
         }
     }
@@ -166,6 +179,126 @@ pub fn parse_args(args: &[&str]) -> Result<VolatileRootArgs, i32> {
     Ok(result)
 }
 
+/// Parse the command-line spelling used by `proc_cmdline_get_key()` for the
+/// `systemd.volatile` setting.
+///
+/// The C helper scans every matching word and therefore uses the final
+/// `key=value` occurrence. A later bare key only marks the option present; it
+/// does not discard an already collected value. Keeping that slightly unusual
+/// rule matters for the optional-value API used by `query_volatile_mode()`.
+pub fn mode_from_cmdline(cmdline: &str) -> Result<Option<VolatileMode>, i32> {
+    let mut found = false;
+    let mut value = None;
+
+    for word in split_cmdline_words(cmdline) {
+        let Some(suffix) = word.strip_prefix("systemd.volatile") else {
+            continue;
+        };
+
+        if suffix.is_empty() {
+            found = true;
+        } else if let Some(raw_value) = suffix.strip_prefix('=') {
+            found = true;
+            value = Some(raw_value.to_owned());
+        }
+    }
+
+    if !found {
+        return Ok(None);
+    }
+
+    match value {
+        Some(value) => VolatileMode::from_str_arg(&value).map(Some),
+        None => Ok(Some(VolatileMode::Yes)),
+    }
+}
+
+/// Resolve the effective mode with the same precedence as the C tool.
+///
+/// Kernel command line settings always win. The positional mode argument is
+/// considered only when the setting is absent. Path validation intentionally
+/// happens before the caller decides whether the resolved mode is active,
+/// matching `run()` in `volatile-root.c`.
+pub fn resolve_args_from_cmdline(args: &[&str], cmdline: &str) -> Result<VolatileRootArgs, i32> {
+    if args.len() > 3 {
+        return Err(-libc::EINVAL);
+    }
+
+    let path = if let Some(path) = args.get(2) {
+        validate_path(path)?;
+        (*path).to_owned()
+    } else {
+        DEFAULT_SYSROOT.to_owned()
+    };
+
+    let mode = match mode_from_cmdline(cmdline)? {
+        Some(mode) => mode,
+        None => match args.get(1) {
+            Some(mode) => VolatileMode::from_str_arg(mode)?,
+            None => VolatileMode::No,
+        },
+    };
+
+    Ok(VolatileRootArgs { mode, path })
+}
+
+/// Return `true` exactly for the modes that perform a root mount transition.
+pub const fn mode_requires_root_transition(mode: VolatileMode) -> bool {
+    matches!(mode, VolatileMode::Yes | VolatileMode::Overlay)
+}
+
+/// Split `/proc/cmdline` into words with the quoting semantics needed by the
+/// `systemd.volatile` lookup. This is deliberately small, but supports both
+/// quote styles and retained backslash escapes so quoted values remain one
+/// argument without accidentally accepting an escaped mode spelling.
+fn split_cmdline_words(cmdline: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut escaped = false;
+
+    for character in cmdline.chars() {
+        if escaped {
+            current.push(character);
+            escaped = false;
+            continue;
+        }
+
+        if character == '\\' {
+            // `proc_cmdline_strv()` uses EXTRACT_RETAIN_ESCAPE. Preserve the
+            // slash while still preventing an escaped quote from closing this
+            // word.
+            current.push(character);
+            escaped = true;
+            continue;
+        }
+
+        if let Some(active_quote) = quote {
+            if character == active_quote {
+                quote = None;
+            } else {
+                current.push(character);
+            }
+            continue;
+        }
+
+        if matches!(character, '\'' | '"') {
+            quote = Some(character);
+        } else if character.is_ascii_whitespace() {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+        } else {
+            current.push(character);
+        }
+    }
+
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
 // ── Device symlink path ───────────────────────────────────────────────────
 
 /// Generate the device node symlink path for recording the original backing device.
@@ -181,35 +314,40 @@ mod tests {
 
     #[test]
     fn test_volatile_mode_from_raw() {
+        assert_eq!(VolatileMode::from_raw(VOLATILE_NO), Ok(VolatileMode::No));
         assert_eq!(VolatileMode::from_raw(VOLATILE_YES), Ok(VolatileMode::Yes));
+        assert_eq!(
+            VolatileMode::from_raw(VOLATILE_STATE),
+            Ok(VolatileMode::State)
+        );
         assert_eq!(
             VolatileMode::from_raw(VOLATILE_OVERLAY),
             Ok(VolatileMode::Overlay)
         );
-        assert_eq!(
-            VolatileMode::from_raw(VOLATILE_MODE_INVALID),
-            Ok(VolatileMode::None)
-        );
+        assert!(VolatileMode::from_raw(VOLATILE_MODE_INVALID).is_err());
         assert!(VolatileMode::from_raw(99).is_err());
     }
 
     #[test]
     fn test_volatile_mode_from_str_arg() {
         assert_eq!(VolatileMode::from_str_arg("yes"), Ok(VolatileMode::Yes));
-        assert_eq!(VolatileMode::from_str_arg("state"), Ok(VolatileMode::Yes));
+        assert_eq!(VolatileMode::from_str_arg("state"), Ok(VolatileMode::State));
         assert_eq!(
             VolatileMode::from_str_arg("overlay"),
             Ok(VolatileMode::Overlay)
         );
-        assert_eq!(VolatileMode::from_str_arg("no"), Ok(VolatileMode::None));
+        assert_eq!(VolatileMode::from_str_arg("no"), Ok(VolatileMode::No));
+        assert_eq!(VolatileMode::from_str_arg("true"), Ok(VolatileMode::Yes));
+        assert_eq!(VolatileMode::from_str_arg("off"), Ok(VolatileMode::No));
         assert!(VolatileMode::from_str_arg("invalid").is_err());
     }
 
     #[test]
     fn test_volatile_mode_to_raw() {
         assert_eq!(VolatileMode::Yes.to_raw(), VOLATILE_YES);
+        assert_eq!(VolatileMode::State.to_raw(), VOLATILE_STATE);
         assert_eq!(VolatileMode::Overlay.to_raw(), VOLATILE_OVERLAY);
-        assert_eq!(VolatileMode::None.to_raw(), VOLATILE_MODE_INVALID);
+        assert_eq!(VolatileMode::No.to_raw(), VOLATILE_NO);
     }
 
     #[test]
@@ -238,7 +376,7 @@ mod tests {
     #[test]
     fn test_parse_args_defaults() {
         let args = parse_args(&["prog"]).unwrap();
-        assert_eq!(args.mode, VolatileMode::None);
+        assert_eq!(args.mode, VolatileMode::No);
         assert_eq!(args.path, DEFAULT_SYSROOT);
     }
 
@@ -272,5 +410,73 @@ mod tests {
     fn test_device_link_content() {
         assert_eq!(device_link_content(8, 0), "/dev/block/8:0");
         assert_eq!(device_link_content(259, 1), "/dev/block/259:1");
+    }
+
+    #[test]
+    fn cmdline_mode_uses_last_value() {
+        assert_eq!(
+            mode_from_cmdline("systemd.volatile=no systemd.volatile=overlay").unwrap(),
+            Some(VolatileMode::Overlay)
+        );
+    }
+
+    #[test]
+    fn bare_cmdline_key_enables_volatile_mode() {
+        assert_eq!(
+            mode_from_cmdline("quiet systemd.volatile").unwrap(),
+            Some(VolatileMode::Yes)
+        );
+    }
+
+    #[test]
+    fn bare_key_does_not_discard_an_earlier_value() {
+        assert_eq!(
+            mode_from_cmdline("systemd.volatile=overlay systemd.volatile").unwrap(),
+            Some(VolatileMode::Overlay)
+        );
+    }
+
+    #[test]
+    fn cmdline_mode_ignores_key_prefixes() {
+        assert_eq!(
+            mode_from_cmdline("systemd.volatile-mode=yes").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn cmdline_mode_accepts_an_unquoted_value_inside_quotes() {
+        assert_eq!(
+            mode_from_cmdline("systemd.volatile=\"overlay\"").unwrap(),
+            Some(VolatileMode::Overlay)
+        );
+    }
+
+    #[test]
+    fn escaped_cmdline_mode_is_not_silently_unescaped() {
+        assert!(mode_from_cmdline(r"systemd.volatile=over\\lay").is_err());
+    }
+
+    #[test]
+    fn cmdline_value_beats_invalid_positional_mode() {
+        let args =
+            resolve_args_from_cmdline(&["prog", "not-a-mode", "/sysroot"], "systemd.volatile=no")
+                .unwrap();
+        assert_eq!(args.mode, VolatileMode::No);
+    }
+
+    #[test]
+    fn path_is_validated_even_when_cmdline_mode_is_inactive() {
+        assert!(
+            resolve_args_from_cmdline(&["prog", "yes", "relative"], "systemd.volatile=no").is_err()
+        );
+    }
+
+    #[test]
+    fn only_yes_and_overlay_change_the_root() {
+        assert!(!mode_requires_root_transition(VolatileMode::No));
+        assert!(!mode_requires_root_transition(VolatileMode::State));
+        assert!(mode_requires_root_transition(VolatileMode::Yes));
+        assert!(mode_requires_root_transition(VolatileMode::Overlay));
     }
 }
