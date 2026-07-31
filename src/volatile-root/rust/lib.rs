@@ -20,7 +20,6 @@ use std::io;
 use std::os::fd::AsRawFd;
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::OpenOptionsExt;
-#[cfg(target_os = "linux")]
 use std::path::Path;
 
 #[cfg(target_os = "linux")]
@@ -266,6 +265,92 @@ impl OverlayTransitionBackend for LinuxOverlayTransitionBackend {
     fn remove_staging(&mut self, path: &str) -> io::Result<()> {
         std::fs::remove_dir(path)
     }
+}
+
+// ── Fully volatile-root transition ───────────────────────────────────────
+
+/// Side effects needed by C's `make_volatile()` transaction.
+///
+/// The first operation is deliberately a root-bounded resolution of `/usr`,
+/// equivalent to `chase("/usr", root, CHASE_PREFIX_ROOT, …)`. In particular,
+/// an implementation must resolve symlinks *below* `root` and must never let
+/// a symlink in the old root escape to the caller's `/usr`. It returns the
+/// resolved old-root `/usr` path, which is then the sole bind-mount source.
+///
+/// The remaining operations model C's exact ordering. Keeping the complete
+/// mutating sequence behind this narrow trait lets tests inject every failure
+/// without changing a mount namespace. It also prevents a future production
+/// implementation from accidentally omitting the recursive, no-follow
+/// helpers that make this transition safe.
+pub trait VolatileTransitionBackend {
+    /// Resolve `/usr` below the supplied old-root directory.
+    fn chase_usr_beneath_root(&mut self, root: &Path) -> io::Result<std::path::PathBuf>;
+    fn mkdir_p(&mut self, path: &Path, mode: u32) -> io::Result<()>;
+    fn mount_tmpfs(&mut self, target: &Path, options: &str) -> io::Result<()>;
+    fn mkdir(&mut self, path: &Path, mode: u32) -> io::Result<()>;
+    fn bind_mount_recursive(&mut self, source: &Path, target: &Path) -> io::Result<()>;
+    fn remount_bind_recursive_read_only(&mut self, target: &Path) -> io::Result<()>;
+    fn unmount_recursive(&mut self, target: &Path) -> io::Result<()>;
+    /// Make the current mount tree slave recursively.
+    ///
+    /// This is warning-only in C. The transaction continues if it fails.
+    fn make_mount_tree_slave_recursive(&mut self) -> io::Result<()>;
+    fn move_mount_nofollow(&mut self, source: &Path, target: &Path) -> io::Result<()>;
+    fn remove_staging(&mut self, path: &Path) -> io::Result<()>;
+}
+
+/// Perform the complete ordered `make_volatile()` transaction through a
+/// backend.
+///
+/// This mirrors `volatile-root.c` including its two non-obvious cleanup
+/// rules: cleanup errors never replace the first operational error, and the
+/// `MS_SLAVE|MS_REC` propagation change is warning-only. The moved staging
+/// mount is still unmounted by name during cleanup, as in C; after a
+/// successful `MS_MOVE` that is normally a harmless no-op because the mount
+/// now resides at `path`.
+///
+/// No Linux implementation is exposed yet. It would need safe equivalents of
+/// `chase(..., CHASE_PREFIX_ROOT)`, `bind_remount_recursive()`, and
+/// `umount_recursive()` together, so wiring a partial implementation into
+/// the executable would be less safe than retaining its current fail-closed
+/// boundary.
+pub fn make_volatile_with(
+    path: &str,
+    backend: &mut impl VolatileTransitionBackend,
+) -> io::Result<()> {
+    validate_path(path).map_err(|errno| io::Error::from_raw_os_error(-errno))?;
+
+    let root = Path::new(path);
+    let staging = Path::new(VOLATILE_SYSROOT_DIR);
+    let staging_usr = Path::new("/run/systemd/volatile-sysroot/usr");
+
+    // C performs this before creating the staging directory, so a failed
+    // root-bounded chase must leave the namespace and filesystem untouched.
+    let old_usr = backend.chase_usr_beneath_root(root)?;
+    backend.mkdir_p(staging, 0o700)?;
+
+    let mut tmpfs_mounted = false;
+    let result = (|| {
+        backend.mount_tmpfs(staging, TMPFS_OPTIONS)?;
+        tmpfs_mounted = true;
+
+        backend.mkdir(staging_usr, 0o755)?;
+        backend.bind_mount_recursive(&old_usr, staging_usr)?;
+        backend.remount_bind_recursive_read_only(staging_usr)?;
+        backend.unmount_recursive(root)?;
+
+        // C logs this error but deliberately continues the root replacement.
+        let _ = backend.make_mount_tree_slave_recursive();
+
+        backend.move_mount_nofollow(staging, root)
+    })();
+
+    if tmpfs_mounted {
+        let _ = backend.unmount_recursive(staging);
+    }
+    let _ = backend.remove_staging(staging);
+
+    result
 }
 
 // ── Argument parsing ──────────────────────────────────────────────────────
@@ -676,9 +761,30 @@ mod tests {
         Remove(String),
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum VolatileCall {
+        ChaseUsr(String),
+        MkdirP(String, u32),
+        MountTmpfs(String, String),
+        Mkdir(String, u32),
+        BindRecursive(String, String),
+        RemountReadOnly(String),
+        UnmountRecursive(String),
+        MakeMountTreeSlave,
+        MoveMount(String, String),
+        Remove(String),
+    }
+
     #[derive(Default)]
     struct FakeOverlayBackend {
         calls: Vec<OverlayCall>,
+        fail_on: Option<&'static str>,
+        cleanup_fails: bool,
+    }
+
+    #[derive(Default)]
+    struct FakeVolatileBackend {
+        calls: Vec<VolatileCall>,
         fail_on: Option<&'static str>,
         cleanup_fails: bool,
     }
@@ -720,6 +826,94 @@ mod tests {
         fn operation(&self, name: &'static str) -> io::Result<()> {
             if self.fail_on == Some(name) {
                 Err(io::Error::from_raw_os_error(libc::EIO))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl FakeVolatileBackend {
+        fn operation(&self, name: &'static str) -> io::Result<()> {
+            if self.fail_on == Some(name) {
+                Err(io::Error::from_raw_os_error(libc::EIO))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl VolatileTransitionBackend for FakeVolatileBackend {
+        fn chase_usr_beneath_root(&mut self, root: &Path) -> io::Result<std::path::PathBuf> {
+            self.calls
+                .push(VolatileCall::ChaseUsr(root.display().to_string()));
+            self.operation("chase")?;
+            Ok(root.join("usr"))
+        }
+
+        fn mkdir_p(&mut self, path: &Path, mode: u32) -> io::Result<()> {
+            self.calls
+                .push(VolatileCall::MkdirP(path.display().to_string(), mode));
+            self.operation("mkdir_p")
+        }
+
+        fn mount_tmpfs(&mut self, target: &Path, options: &str) -> io::Result<()> {
+            self.calls.push(VolatileCall::MountTmpfs(
+                target.display().to_string(),
+                options.into(),
+            ));
+            self.operation("mount_tmpfs")
+        }
+
+        fn mkdir(&mut self, path: &Path, mode: u32) -> io::Result<()> {
+            self.calls
+                .push(VolatileCall::Mkdir(path.display().to_string(), mode));
+            self.operation("mkdir_usr")
+        }
+
+        fn bind_mount_recursive(&mut self, source: &Path, target: &Path) -> io::Result<()> {
+            self.calls.push(VolatileCall::BindRecursive(
+                source.display().to_string(),
+                target.display().to_string(),
+            ));
+            self.operation("bind")
+        }
+
+        fn remount_bind_recursive_read_only(&mut self, target: &Path) -> io::Result<()> {
+            self.calls
+                .push(VolatileCall::RemountReadOnly(target.display().to_string()));
+            self.operation("remount_read_only")
+        }
+
+        fn unmount_recursive(&mut self, target: &Path) -> io::Result<()> {
+            self.calls
+                .push(VolatileCall::UnmountRecursive(target.display().to_string()));
+            if target == Path::new(VOLATILE_SYSROOT_DIR) {
+                if self.cleanup_fails || self.fail_on == Some("cleanup_unmount") {
+                    return Err(io::Error::from_raw_os_error(libc::EBUSY));
+                }
+                return Ok(());
+            }
+            self.operation("unmount_root")
+        }
+
+        fn make_mount_tree_slave_recursive(&mut self) -> io::Result<()> {
+            self.calls.push(VolatileCall::MakeMountTreeSlave);
+            self.operation("make_slave")
+        }
+
+        fn move_mount_nofollow(&mut self, source: &Path, target: &Path) -> io::Result<()> {
+            self.calls.push(VolatileCall::MoveMount(
+                source.display().to_string(),
+                target.display().to_string(),
+            ));
+            self.operation("move")
+        }
+
+        fn remove_staging(&mut self, path: &Path) -> io::Result<()> {
+            self.calls
+                .push(VolatileCall::Remove(path.display().to_string()));
+            if self.cleanup_fails || self.fail_on == Some("remove") {
+                Err(io::Error::from_raw_os_error(libc::ENOTEMPTY))
             } else {
                 Ok(())
             }
@@ -1013,6 +1207,142 @@ mod tests {
     #[test]
     fn tmpfs_limits_match_the_c_rootfs_policy() {
         assert_eq!(TMPFS_OPTIONS, "mode=0755,size=25%,nr_inodes=1m");
+    }
+
+    #[test]
+    fn volatile_transition_matches_c_success_order() {
+        let mut backend = FakeVolatileBackend::default();
+        make_volatile_with("/sysroot", &mut backend).unwrap();
+
+        assert_eq!(
+            backend.calls,
+            vec![
+                VolatileCall::ChaseUsr("/sysroot".into()),
+                VolatileCall::MkdirP(VOLATILE_SYSROOT_DIR.into(), 0o700),
+                VolatileCall::MountTmpfs(VOLATILE_SYSROOT_DIR.into(), TMPFS_OPTIONS.into()),
+                VolatileCall::Mkdir("/run/systemd/volatile-sysroot/usr".into(), 0o755),
+                VolatileCall::BindRecursive(
+                    "/sysroot/usr".into(),
+                    "/run/systemd/volatile-sysroot/usr".into(),
+                ),
+                VolatileCall::RemountReadOnly("/run/systemd/volatile-sysroot/usr".into()),
+                VolatileCall::UnmountRecursive("/sysroot".into()),
+                VolatileCall::MakeMountTreeSlave,
+                VolatileCall::MoveMount(VOLATILE_SYSROOT_DIR.into(), "/sysroot".into()),
+                VolatileCall::UnmountRecursive(VOLATILE_SYSROOT_DIR.into()),
+                VolatileCall::Remove(VOLATILE_SYSROOT_DIR.into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn volatile_transition_chase_and_pre_mount_failures_do_not_modify_staging() {
+        let mut chase_failure = FakeVolatileBackend {
+            fail_on: Some("chase"),
+            ..FakeVolatileBackend::default()
+        };
+        let error = make_volatile_with("/sysroot", &mut chase_failure).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        assert_eq!(
+            chase_failure.calls,
+            vec![VolatileCall::ChaseUsr("/sysroot".into())]
+        );
+
+        let mut mkdir_failure = FakeVolatileBackend {
+            fail_on: Some("mkdir_p"),
+            ..FakeVolatileBackend::default()
+        };
+        let error = make_volatile_with("/sysroot", &mut mkdir_failure).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        assert_eq!(
+            mkdir_failure.calls,
+            vec![
+                VolatileCall::ChaseUsr("/sysroot".into()),
+                VolatileCall::MkdirP(VOLATILE_SYSROOT_DIR.into(), 0o700),
+            ]
+        );
+    }
+
+    #[test]
+    fn volatile_transition_cleans_up_after_every_post_mount_failure() {
+        for failing_operation in [
+            "mkdir_usr",
+            "bind",
+            "remount_read_only",
+            "unmount_root",
+            "move",
+        ] {
+            let mut backend = FakeVolatileBackend {
+                fail_on: Some(failing_operation),
+                ..FakeVolatileBackend::default()
+            };
+
+            let error = make_volatile_with("/sysroot", &mut backend).unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(libc::EIO));
+            assert!(
+                backend.calls.ends_with(&[
+                    VolatileCall::UnmountRecursive(VOLATILE_SYSROOT_DIR.into()),
+                    VolatileCall::Remove(VOLATILE_SYSROOT_DIR.into()),
+                ]),
+                "missing cleanup after {failing_operation}: {:?}",
+                backend.calls
+            );
+        }
+    }
+
+    #[test]
+    fn volatile_transition_removes_staging_without_unmount_after_tmpfs_failure() {
+        let mut backend = FakeVolatileBackend {
+            fail_on: Some("mount_tmpfs"),
+            ..FakeVolatileBackend::default()
+        };
+
+        let error = make_volatile_with("/sysroot", &mut backend).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        assert_eq!(
+            backend.calls,
+            vec![
+                VolatileCall::ChaseUsr("/sysroot".into()),
+                VolatileCall::MkdirP(VOLATILE_SYSROOT_DIR.into(), 0o700),
+                VolatileCall::MountTmpfs(VOLATILE_SYSROOT_DIR.into(), TMPFS_OPTIONS.into()),
+                VolatileCall::Remove(VOLATILE_SYSROOT_DIR.into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn volatile_transition_ignores_slave_and_cleanup_failures_like_c() {
+        let mut slave_failure = FakeVolatileBackend {
+            fail_on: Some("make_slave"),
+            ..FakeVolatileBackend::default()
+        };
+        make_volatile_with("/sysroot", &mut slave_failure).unwrap();
+        assert!(slave_failure.calls.contains(&VolatileCall::MoveMount(
+            VOLATILE_SYSROOT_DIR.into(),
+            "/sysroot".into()
+        )));
+
+        let mut success_cleanup_failure = FakeVolatileBackend {
+            cleanup_fails: true,
+            ..FakeVolatileBackend::default()
+        };
+        make_volatile_with("/sysroot", &mut success_cleanup_failure).unwrap();
+
+        let mut operation_and_cleanup_failure = FakeVolatileBackend {
+            fail_on: Some("move"),
+            cleanup_fails: true,
+            ..FakeVolatileBackend::default()
+        };
+        let error = make_volatile_with("/sysroot", &mut operation_and_cleanup_failure).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+    }
+
+    #[test]
+    fn volatile_transition_rejects_invalid_target_before_side_effects() {
+        let mut backend = FakeVolatileBackend::default();
+        let error = make_volatile_with("/./", &mut backend).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EINVAL));
+        assert!(backend.calls.is_empty());
     }
 
     #[test]

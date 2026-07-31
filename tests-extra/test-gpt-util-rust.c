@@ -7,6 +7,7 @@
 
 /* C headers */
 #include "gpt.h"
+#include "strv.h"
 #include "string-util.h"
 #include "vlan-util.h"
 

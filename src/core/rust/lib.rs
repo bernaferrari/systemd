@@ -80,6 +80,7 @@ pub mod path;
 pub mod path_tables;
 pub mod pid1_bus_source;
 pub mod pid1_dbus_auth;
+pub mod pid1_dbus_listener;
 pub mod pid1_dbus_wire;
 pub mod pid1_exec_sources;
 pub mod pid1_idle_pipe_source;

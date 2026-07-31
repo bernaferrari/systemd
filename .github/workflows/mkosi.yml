@@ -176,6 +176,10 @@ jobs:
           # Rust shadow artifacts are covered by rust-ci.yml. The production C
           # package matrix must not implicitly require Cargo in every distro
           # tools tree while Rust PID1 remains developer-only and non-installed.
+          # Export the same choice through mkosi's package-build environment;
+          # distro packaging re-runs Meson with --auto-features=enabled and
+          # otherwise re-enables the Rust shadow target inside the image.
+          echo 'MESON_OPTIONS=-D rust=disabled' >> "$GITHUB_ENV"
           sudo mkosi box -- \
             meson setup \
             --buildtype=debugoptimized \
