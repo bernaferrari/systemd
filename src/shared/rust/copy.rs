@@ -24,6 +24,17 @@ const COPY_BUFFER_SIZE: usize = 64 * 1024;
 /// Maximum recursion depth for directory tree copies.
 const COPY_DEPTH_MAX: u32 = 2048;
 
+/// Read complete file metadata through one initialized syscall adapter.
+fn fstat_fd(fd: i32) -> std::io::Result<libc::stat> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat` provides complete writable storage and libc validates fd.
+    if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: a successful fstat initializes every field of libc::stat.
+    Ok(unsafe { stat.assume_init() })
+}
+
 // ── Copy flags ────────────────────────────────────────────────────────────
 
 bitflags::bitflags! {
@@ -105,12 +116,9 @@ pub enum PipeKind {
 /// Check whether the given raw file descriptor refers to a pipe and whether
 /// O_NONBLOCK is set.
 pub fn fd_is_nonblock_pipe(fd: i32) -> PipeKind {
-    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: `st` is valid writable storage and `fd` is passed through to libc for validation.
-    if unsafe { libc::fstat(fd, &mut st) } < 0 {
+    let Ok(st) = fstat_fd(fd) else {
         return PipeKind::NotPipe;
-    }
+    };
     if (st.st_mode & libc::S_IFMT) != libc::S_IFIFO {
         return PipeKind::NotPipe;
     }
@@ -574,12 +582,7 @@ fn copy_tree_inner(
 
 /// Copy access mode (permission bits) from `src_fd` to `dst_fd`.
 pub fn copy_access(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
-    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: `st` is valid writable storage and `src_fd` is passed through to libc for validation.
-    if unsafe { libc::fstat(src_fd, &mut st) } < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
+    let st = fstat_fd(src_fd)?;
     // SAFETY: `dst_fd` is passed through to libc for validation and the mode is an integer.
     if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {
         Err(std::io::Error::last_os_error())
@@ -590,12 +593,7 @@ pub fn copy_access(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
 
 /// Copy ownership (uid/gid) from `src_fd` to `dst_fd`.
 pub fn copy_owner(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
-    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: `st` is valid writable storage and `src_fd` is passed through to libc for validation.
-    if unsafe { libc::fstat(src_fd, &mut st) } < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
+    let st = fstat_fd(src_fd)?;
     // SAFETY: `dst_fd` is passed through to libc for validation and uid/gid are integers.
     if unsafe { libc::fchown(dst_fd, st.st_uid, st.st_gid) } < 0 {
         Err(std::io::Error::last_os_error())
@@ -606,12 +604,7 @@ pub fn copy_owner(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
 
 /// Copy both mode and ownership from `src_fd` to `dst_fd`.
 pub fn copy_rights(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
-    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: `st` is valid writable storage and `src_fd` is passed through to libc for validation.
-    if unsafe { libc::fstat(src_fd, &mut st) } < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
+    let st = fstat_fd(src_fd)?;
     // fchmod first – fchown may clear setuid/setgid bits.
     // SAFETY: `dst_fd` is passed through to libc for validation and the mode is an integer.
     if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {
@@ -627,12 +620,7 @@ pub fn copy_rights(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
 
 /// Copy timestamps (atime + mtime) from `src_fd` to `dst_fd`.
 pub fn copy_times(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
-    // SAFETY: `libc::stat` is plain data whose all-zero representation is valid initial storage.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: `st` is valid writable storage and `src_fd` is passed through to libc for validation.
-    if unsafe { libc::fstat(src_fd, &mut st) } < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
+    let st = fstat_fd(src_fd)?;
     let times = [
         libc::timespec {
             tv_sec: st.st_atime,
