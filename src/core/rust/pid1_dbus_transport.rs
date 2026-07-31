@@ -28,7 +28,9 @@ mod imp {
     use systemd_event_loop_rs::loop_::EventLoop;
 
     use crate::pid1_bus_source::Pid1BusSendError;
-    use crate::pid1_dbus_command_adapter::{Pid1DbusCommandAdapter, Pid1DbusCommandAdapterError};
+    use crate::pid1_dbus_command_adapter::{
+        Pid1DbusCommandAdapter, Pid1DbusCommandAdapterError, Pid1DbusLocalReply, Pid1DbusRequest,
+    };
     use crate::pid1_dbus_event_source::{
         PrivateBusDispatchOutcome, PrivateBusEventSourceError, PrivateBusEventSourceOwner,
     };
@@ -39,6 +41,9 @@ mod imp {
     use crate::pid1_dbus_reply_queue::{
         PrivateBusReplyPollOutcome, PrivateBusReplyQueue, PrivateBusReplyQueueError,
         PrivateBusReplyTracking,
+    };
+    use crate::pid1_dbus_transport_types::{
+        PrivateBusWireDispatchError, PrivateBusWireDispatchOutcome,
     };
     use crate::pid1_dbus_wire::{
         MethodCall, PrivateBusWireAccumulator, PrivateBusWireAccumulatorError,
@@ -142,48 +147,6 @@ mod imp {
         WouldBlock,
         Written { bytes: usize, frame_complete: bool },
         PeerClosed,
-    }
-
-    /// One bounded private-bus wire-dispatch result.
-    ///
-    /// A successful submission owns either a pending reply receiver or the
-    /// explicit `NO_REPLY_EXPECTED` disposition. `RejectedNoReply` is limited
-    /// to invalid/unavailable calls which explicitly requested no reply; no
-    /// manager command was accepted in that case.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum PrivateBusWireDispatchOutcome {
-        /// The first buffered frame is incomplete, so no manager work was
-        /// submitted and the caller may wait for a later readable event.
-        NoMessage,
-        /// Exactly one validated manager command was submitted.
-        Submitted { reply: PrivateBusReplyTracking },
-        /// An invalid or unavailable no-reply call was discarded. Its error
-        /// is retained for logging/metrics, but the peer requested that no
-        /// protocol response be sent.
-        RejectedNoReply { cause: Pid1DbusCommandAdapterError },
-        /// A decoded request was rejected before manager work was accepted,
-        /// and a bounded typed D-Bus error frame was retained for this peer.
-        /// This is intentionally not a claim of full sd-bus/vtable parity.
-        RejectedWithError { error: Pid1DbusProtocolError },
-    }
-
-    /// Failure in a dispatch turn which cannot safely be represented by the
-    /// current deliberately narrow reply surface.
-    ///
-    /// The slot marks itself terminal before returning any of these errors.
-    /// A future complete D-Bus server may replace selected cases with a
-    /// protocol error frame, but it must never submit a reply-producing
-    /// command until it can retain the response correlation.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum PrivateBusWireDispatchError {
-        Terminal,
-        Input(PrivateBusWireAccumulatorError),
-        Adapter(Pid1DbusCommandAdapterError),
-        ReplyReservation {
-            reply_serial: u32,
-            cause: PrivateBusReplyQueueError,
-        },
-        Reply(PrivateBusReplyQueueError),
     }
 
     impl From<PrivateBusWireAccumulatorError> for PrivateBusWireSlotError {
@@ -373,8 +336,8 @@ mod imp {
                 }
             };
             let no_reply_expected = call.no_reply_expected();
-            let command = match Pid1DbusCommandAdapter::command_for(&call) {
-                Ok(command) => command,
+            let request = match Pid1DbusCommandAdapter::request_for(&call) {
+                Ok(request) => request,
                 Err(cause) if no_reply_expected => {
                     return Ok(PrivateBusWireDispatchOutcome::RejectedNoReply { cause });
                 }
@@ -387,6 +350,23 @@ mod imp {
                         .map_err(PrivateBusWireDispatchError::Reply)
                         .or_else(|error| self.dispatch_failure(error));
                 }
+            };
+
+            if let Pid1DbusRequest::Local(local_reply) = request {
+                let reply = match local_reply {
+                    Pid1DbusLocalReply::Empty => {
+                        crate::pid1_manager_commands::Pid1ManagerReply::Completed
+                    }
+                };
+                return self
+                    .replies
+                    .enqueue_local_reply(call.endian, call.serial, no_reply_expected, reply)
+                    .map(|reply| PrivateBusWireDispatchOutcome::HandledLocally { reply })
+                    .map_err(PrivateBusWireDispatchError::Reply)
+                    .or_else(|error| self.dispatch_failure(error));
+            }
+            let Pid1DbusRequest::Manager(command) = request else {
+                unreachable!("local requests return before manager dispatch")
             };
 
             let reservation = if no_reply_expected {
@@ -2257,5 +2237,12 @@ mod imp {
     }
 }
 
+pub use crate::pid1_dbus_transport_types::{
+    PrivateBusWireDispatchError, PrivateBusWireDispatchOutcome,
+};
 #[cfg(target_os = "linux")]
 pub use imp::*;
+
+#[cfg(test)]
+#[path = "pid1_dbus_transport_tests.rs"]
+mod transport_tests;

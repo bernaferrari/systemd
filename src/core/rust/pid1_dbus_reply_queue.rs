@@ -25,7 +25,7 @@ use crate::pid1_dbus_reply_adapter::{
     Pid1DbusProtocolError, Pid1DbusReplyAdapter, Pid1DbusReplyAdapterError,
 };
 use crate::pid1_dbus_wire::{Endian, MethodCall};
-use crate::pid1_manager_commands::Pid1CommandReplyReceiver;
+use crate::pid1_manager_commands::{Pid1CommandReplyReceiver, Pid1ManagerReply};
 
 /// Result of handing one manager reply receiver to a connection queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -359,6 +359,66 @@ impl PrivateBusReplyQueue {
         });
         self.take_outgoing_serial();
         Ok(())
+    }
+
+    /// Retain a completed transport-local reply without involving the manager.
+    ///
+    /// Standard peer methods are handled by sd-bus itself in C. Their Rust
+    /// equivalents still use this queue so duplicate call serials, total
+    /// outbound bytes, short writes, and teardown have exactly one owner.
+    pub fn enqueue_local_reply(
+        &mut self,
+        endian: Endian,
+        reply_serial: u32,
+        no_reply_expected: bool,
+        reply: Pid1ManagerReply,
+    ) -> Result<PrivateBusReplyTracking, PrivateBusReplyQueueError> {
+        if self.terminal {
+            return Err(PrivateBusReplyQueueError::TerminalFailure);
+        }
+        if no_reply_expected {
+            return Ok(PrivateBusReplyTracking::NoReplyExpected);
+        }
+        if reply_serial == 0 {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::InvalidReplySerial);
+        }
+        if let Some(reserved_reply) = self.reserved_reply {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::ReplyReservationInProgress {
+                reply_serial: reserved_reply,
+            });
+        }
+        if self.reply_serial_is_reserved(reply_serial) {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::DuplicateReplySerial { reply_serial });
+        }
+
+        let serial = self.next_outgoing_serial;
+        let bytes = self
+            .adapter
+            .encode(endian, serial, reply_serial, Ok(reply))
+            .map_err(PrivateBusReplyQueueError::ReplyEncoding)?;
+        let available = self.outbound_capacity - self.outbound_bytes;
+        if bytes.len() > available {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::OutboundCapacityExceeded {
+                required: bytes.len(),
+                available,
+            });
+        }
+        if self.outbound.try_reserve(1).is_err() {
+            self.terminal = true;
+            return Err(PrivateBusReplyQueueError::OutboundAllocationFailed);
+        }
+        self.outbound_bytes += bytes.len();
+        self.outbound.push_back(OutboundFrame {
+            reply_serial,
+            bytes,
+            offset: 0,
+        });
+        self.take_outgoing_serial();
+        Ok(PrivateBusReplyTracking::Queued)
     }
 
     /// Retain a reply receiver using correlation from one decoded call.
@@ -784,6 +844,36 @@ mod tests {
         queue
             .enqueue_protocol_error(Endian::Little, 19, Pid1DbusProtocolError::InvalidArgs)
             .unwrap();
+    }
+
+    #[test]
+    fn local_empty_reply_is_bounded_correlated_and_honors_no_reply() {
+        let mut queue = queue(1, FRAME_CAPACITY);
+        assert_eq!(
+            queue.enqueue_local_reply(Endian::Little, 23, false, Pid1ManagerReply::Completed,),
+            Ok(PrivateBusReplyTracking::Queued)
+        );
+        assert_eq!(queue.pending_reply_count(), 0);
+        let frame = queue.current_frame().unwrap();
+        assert_eq!(frame[0], b'l');
+        assert_eq!(frame[1], 2);
+        assert_eq!(u32::from_le_bytes(frame[4..8].try_into().unwrap()), 0);
+        assert!(
+            frame
+                .windows(4)
+                .any(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()) == 23)
+        );
+        assert_eq!(
+            queue.enqueue_local_reply(Endian::Little, 23, false, Pid1ManagerReply::Completed,),
+            Err(PrivateBusReplyQueueError::DuplicateReplySerial { reply_serial: 23 })
+        );
+
+        queue.clear();
+        assert_eq!(
+            queue.enqueue_local_reply(Endian::Little, 23, true, Pid1ManagerReply::Completed,),
+            Ok(PrivateBusReplyTracking::NoReplyExpected)
+        );
+        assert_eq!(queue.outbound_frame_count(), 0);
     }
 
     #[test]

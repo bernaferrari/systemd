@@ -1207,15 +1207,39 @@ pub(crate) fn default_unit_search_paths() -> Vec<PathBuf> {
     UNIT_SEARCH_PATHS.iter().map(PathBuf::from).collect()
 }
 
+/// Parse `SYSTEMD_UNIT_PATH` using the same empty-component and trailing-colon
+/// rules as systemd's `get_paths_from_environ()`. Keeping this pure makes the
+/// contract testable without mutating the process environment.
+pub(super) fn parse_unit_search_path(path: &str) -> Option<Vec<PathBuf>> {
+    let append_default_paths = path.ends_with(':');
+    let parsed: Vec<PathBuf> = path
+        .split(':')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .collect();
+    if parsed.is_empty() {
+        return None;
+    }
+    Some(if append_default_paths {
+        parsed
+            .into_iter()
+            .chain(default_unit_search_paths())
+            .collect()
+    } else {
+        parsed
+    })
+}
+
 pub(super) fn unit_search_paths() -> Vec<PathBuf> {
     if let Ok(path) = env::var("SYSTEMD_UNIT_PATH") {
-        let parsed: Vec<PathBuf> = path
-            .split(':')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(PathBuf::from)
-            .collect();
-        if !parsed.is_empty() {
+        // PORT-SYNC: src/libsystemd/sd-path/path-lookup.c
+        // `get_paths_from_environ()` in C treats a trailing colon as an
+        // explicit request to append the built-in system search path.  This
+        // matters during early boot: an initrd or a test harness can inject
+        // one high-priority unit directory without accidentally hiding the
+        // vendor units that supply the selected boot target.
+        if let Some(parsed) = parse_unit_search_path(&path) {
             return parsed;
         }
     }

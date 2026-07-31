@@ -497,6 +497,12 @@
         "src/core/rust/pid1_dbus_transport.rs"
       ]
     },
+    "pid1_dbus_transport_types": {
+      "classification": "runtime-reachable",
+      "source_files": [
+        "src/core/rust/pid1_dbus_transport_types.rs"
+      ]
+    },
     "pid1_dbus_wire": {
       "classification": "runtime-reachable",
       "source_files": [
@@ -537,6 +543,12 @@
       "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_manager_runtime.rs"
+      ]
+    },
+    "pid1_notify_source": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/pid1_notify_source.rs"
       ]
     },
     "pid1_private_bus_runtime": {

@@ -1779,6 +1779,14 @@ fn test_systemd_unit_path_override() {
 }
 
 #[test]
+fn test_systemd_unit_path_trailing_colon_appends_c_default_search_paths() {
+    let paths = parse_unit_search_path("/tmp/early-units:").expect("non-empty path");
+    let mut expected = vec![PathBuf::from("/tmp/early-units")];
+    expected.extend(default_unit_search_paths());
+    assert_eq!(paths, expected);
+}
+
+#[test]
 fn test_start_unit_async_finishes_without_live_job() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1

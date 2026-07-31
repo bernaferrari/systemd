@@ -3,8 +3,9 @@
 //! Disconnected mapping from the checked private D-Bus wire format to PID 1 commands.
 // PORT-SYNC: src/core/dbus.c (the direct private-bus manager method dispatch).
 //!
-//! This adapter supports the standard `Introspectable.Introspect` request and
-//! only `GetUnit`, `GetUnitByPID`, `GetUnitByInvocationID`, `LoadUnit`, `StartUnit`, `StopUnit`,
+//! This adapter handles the standard connection-local `Peer.Ping`, supports
+//! `Introspectable.Introspect`, and only `GetUnit`, `GetUnitByPID`,
+//! `GetUnitByInvocationID`, `LoadUnit`, `StartUnit`, `StopUnit`,
 //! `ReloadUnit`, and `RestartUnit` at the manager object path.
 //! It deliberately has no socket, reply, event-loop, or authorization policy:
 //! callers must supply the `SenderIdentity` derived from the connection's
@@ -27,6 +28,24 @@ use crate::transaction::JobMode;
 pub const PID1_MANAGER_PATH: &str = "/org/freedesktop/systemd1";
 pub const PID1_MANAGER_INTERFACE: &str = "org.freedesktop.systemd1.Manager";
 pub const DBUS_INTROSPECTABLE_INTERFACE: &str = "org.freedesktop.DBus.Introspectable";
+pub const DBUS_PEER_INTERFACE: &str = "org.freedesktop.DBus.Peer";
+
+/// Replies owned entirely by one authenticated D-Bus connection.
+///
+/// sd-bus handles the standard peer interface before vtable dispatch. Keeping
+/// these replies distinct from [`Pid1ManagerCommand`] prevents protocol-local
+/// work from consuming manager-inbox capacity or borrowing `RuntimeManager`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pid1DbusLocalReply {
+    Empty,
+}
+
+/// The checked destination of one decoded private-bus call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pid1DbusRequest {
+    Local(Pid1DbusLocalReply),
+    Manager(Pid1ManagerCommand),
+}
 
 /// Typed validation and bounded-ingress failures for [`Pid1DbusCommandAdapter`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,6 +99,30 @@ pub struct Pid1DbusCommandAdapter {
 impl Pid1DbusCommandAdapter {
     pub const fn new(command_sender: Pid1BusCommandSender) -> Self {
         Self { command_sender }
+    }
+
+    /// Classify a decoded call before it crosses the manager-command seam.
+    ///
+    /// C's sd-bus transport consumes `org.freedesktop.DBus.Peer` itself. The
+    /// Rust transport does the same for the implemented `Ping` method, on any
+    /// object path, and leaves manager methods on the existing authenticated,
+    /// wake-aware command path. `GetMachineId` remains unadvertised until its
+    /// fallible machine-ID lookup has a correlation-preserving local error
+    /// path.
+    pub fn request_for(call: &MethodCall) -> Result<Pid1DbusRequest, Pid1DbusCommandAdapterError> {
+        if call.interface.as_deref() == Some(DBUS_PEER_INTERFACE) {
+            return match call.member.as_str() {
+                "Ping" => {
+                    decode_no_args(call)?;
+                    Ok(Pid1DbusRequest::Local(Pid1DbusLocalReply::Empty))
+                }
+                _ => Err(Pid1DbusCommandAdapterError::UnsupportedMember {
+                    member: call.member.clone(),
+                }),
+            };
+        }
+
+        Self::command_for(call).map(Pid1DbusRequest::Manager)
     }
 
     /// Validate and translate one already-decoded D-Bus method call.
@@ -468,6 +511,37 @@ mod tests {
             Ok(Pid1ManagerCommand::RestartUnit {
                 name: "a.service".into(),
                 mode: JobMode::RestartDependencies
+            })
+        );
+    }
+
+    #[test]
+    fn classifies_peer_ping_as_connection_local_on_any_object_path() {
+        let mut ping = call("Ping", "", &[]);
+        ping.interface = Some(DBUS_PEER_INTERFACE.into());
+        ping.path = "/arbitrary/peer/object".into();
+        assert_eq!(
+            Pid1DbusCommandAdapter::request_for(&ping),
+            Ok(Pid1DbusRequest::Local(Pid1DbusLocalReply::Empty))
+        );
+
+        let mut invalid = ping.clone();
+        invalid.signature = "s".into();
+        assert!(matches!(
+            Pid1DbusCommandAdapter::request_for(&invalid),
+            Err(Pid1DbusCommandAdapterError::WrongSignature {
+                member,
+                expected: "",
+                actual,
+            }) if member == "Ping" && actual == "s"
+        ));
+
+        let mut get_machine_id = ping;
+        get_machine_id.member = "GetMachineId".into();
+        assert_eq!(
+            Pid1DbusCommandAdapter::request_for(&get_machine_id),
+            Err(Pid1DbusCommandAdapterError::UnsupportedMember {
+                member: "GetMachineId".into(),
             })
         );
     }

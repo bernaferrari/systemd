@@ -33,9 +33,10 @@ mod imp {
         PrivateBusBindError, PrivateBusConnectionId, PrivateBusListener,
     };
     use crate::pid1_dbus_transport::{
-        PrivateBusTransportError, PrivateBusTransportOwner, PrivateBusWireDispatchOutcome,
-        PrivateBusWireReadOutcome, PrivateBusWireSlotConfig, PrivateBusWireWriteOutcome,
+        PrivateBusTransportError, PrivateBusTransportOwner, PrivateBusWireReadOutcome,
+        PrivateBusWireSlotConfig, PrivateBusWireWriteOutcome,
     };
+    use crate::pid1_dbus_transport_types::PrivateBusWireDispatchOutcome;
     use crate::pid1_dbus_wire_source::{
         PrivateBusWireInterest, PrivateBusWireSourceError, PrivateBusWireSourceOwner,
     };
@@ -57,6 +58,7 @@ mod imp {
         pub bytes_read: usize,
         pub bytes_written: usize,
         pub commands_submitted: usize,
+        pub local_replies_enqueued: usize,
         pub no_reply_rejections: usize,
         pub protocol_error_replies: usize,
         pub replies_inspected: usize,
@@ -251,6 +253,13 @@ mod imp {
                             Ok(PrivateBusWireDispatchOutcome::NoMessage) => {}
                             Ok(PrivateBusWireDispatchOutcome::Submitted { .. }) => {
                                 outcome.commands_submitted += 1;
+                            }
+                            Ok(PrivateBusWireDispatchOutcome::HandledLocally { reply }) => {
+                                if reply
+                                    == crate::pid1_dbus_reply_queue::PrivateBusReplyTracking::Queued
+                                {
+                                    outcome.local_replies_enqueued += 1;
+                                }
                             }
                             Ok(PrivateBusWireDispatchOutcome::RejectedNoReply { .. }) => {
                                 outcome.no_reply_rejections += 1;
