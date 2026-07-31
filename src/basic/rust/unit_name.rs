@@ -102,6 +102,39 @@ fn checked_escape_allocation(length: usize, suffix: usize) -> Option<usize> {
     length.checked_mul(4)?.checked_add(suffix)
 }
 
+/// Borrow the bytes of a C string at the FFI boundary.
+// SAFETY: `s` must point to a live NUL-terminated C string.
+unsafe fn cstr_bytes<'a>(s: *const c_char) -> &'a [u8] {
+    // SAFETY: upheld by the caller; this is the sole raw-string conversion.
+    unsafe { CStr::from_ptr(s) }.to_bytes()
+}
+
+/// Copy bytes into a malloc-owned, NUL-terminated C string.
+// SAFETY: the returned pointer must be released with the C allocator.
+unsafe fn bytes_to_malloc(bytes: &[u8]) -> *mut c_char {
+    let Some(allocation) = checked_c_allocation(&[bytes.len(), 1]) else {
+        return ptr::null_mut();
+    };
+    let output = malloc(allocation) as *mut c_char;
+    if output.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: the fresh allocation has room for `bytes` and its terminator.
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr(), output as *mut u8, bytes.len());
+        *output.add(bytes.len()) = 0;
+    }
+    output
+}
+
+/// Store a C allocation into an FFI output parameter.
+// SAFETY: `ret` must be writable for one pointer value.
+unsafe fn write_out(ret: *mut *mut c_char, value: *mut c_char) {
+    // SAFETY: upheld by the caller at this FFI adapter boundary.
+    unsafe { *ret = value };
+}
+
 /// Allocate a NUL-terminated copy of the first `n` bytes of `s`.
 /// Returns null on OOM or null input. Caller must free.
 // SAFETY: when non-null, `s` must point to a live NUL-terminated C string.
@@ -924,56 +957,60 @@ pub unsafe extern "C" fn rs_slice_build_subslice(
 
 // ── FFI exports: escape/unescape ─────────────────────────────────────────
 
-// SAFETY: `t` must point to at least four writable bytes.
-unsafe fn do_escape_char(c: u8, t: *mut u8) -> *mut u8 {
-    // SAFETY: the caller reserves four writable bytes at `t`.
-    unsafe {
-        *t = b'\\';
-        *t.add(1) = b'x';
-        *t.add(2) = hexchar((c >> 4) as i32);
-        *t.add(3) = hexchar(c as i32);
-        t.add(4)
-    }
+fn escape_byte(c: u8, output: &mut Vec<u8>) {
+    output.extend([b'\\', b'x', hexchar((c >> 4) as i32), hexchar(c as i32)]);
 }
 
-// SAFETY: `f` must be a live NUL-terminated C string, and `t` must have four
-// writable bytes for each input byte that can be escaped.
-unsafe fn do_escape(f: *const c_char, t: *mut u8) -> *mut u8 {
-    let mut ft = f;
-    let mut tt = t;
-
-    // SAFETY: the caller supplies a live NUL-terminated input.
-    if unsafe { *ft } == b'.' as c_char {
-        // SAFETY: `tt` has four output bytes per remaining input byte.
-        tt = unsafe { do_escape_char(*ft as u8, tt) };
-        // SAFETY: the byte inspected above was non-NUL.
-        ft = unsafe { ft.add(1) };
-    }
-
-    // SAFETY: each iteration stays within the live NUL-terminated input.
-    while unsafe { *ft } != 0 {
-        // SAFETY: `ft` points at the current live input byte.
-        let c = unsafe { *ft } as u8;
-        if c == b'/' {
-            // SAFETY: at least one output byte remains for this input byte.
-            unsafe { *tt = b'-' };
-            // SAFETY: advancing remains within the reserved output range.
-            tt = unsafe { tt.add(1) };
-        } else if c == b'-' || c == b'\\' || !char_in_set(c, VALID_CHARS) {
-            // SAFETY: four output bytes are reserved per input byte.
-            tt = unsafe { do_escape_char(c, tt) };
+/// Escape an arbitrary byte sequence using the unit-name escaping rules.
+fn escape_bytes(input: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(input.len().saturating_mul(4));
+    for (index, &byte) in input.iter().enumerate() {
+        if byte == b'/' {
+            output.push(b'-');
+        } else if (index == 0 && byte == b'.')
+            || byte == b'-'
+            || byte == b'\\'
+            || !char_in_set(byte, VALID_CHARS)
+        {
+            escape_byte(byte, &mut output);
         } else {
-            // SAFETY: at least one output byte remains for this input byte.
-            unsafe { *tt = c };
-            // SAFETY: advancing remains within the reserved output range.
-            tt = unsafe { tt.add(1) };
+            output.push(byte);
         }
-        // SAFETY: the current byte was non-NUL, so advancing remains in the
-        // NUL-terminated input.
-        ft = unsafe { ft.add(1) };
     }
+    output
+}
 
-    tt
+/// Unescape unit-name bytes. This intentionally permits an embedded NUL: the
+/// C ABI returns it in a malloc buffer, where it terminates the visible string.
+fn unescape_bytes(input: &[u8]) -> Result<Vec<u8>, i32> {
+    let mut output = Vec::with_capacity(input.len());
+    let mut index = 0;
+    while index < input.len() {
+        match input[index] {
+            b'-' => output.push(b'/'),
+            b'\\' => {
+                if input.get(index + 1) != Some(&b'x') {
+                    return Err(Errno::EINVAL.to_neg_errno());
+                }
+                let high = input
+                    .get(index + 2)
+                    .copied()
+                    .map_or(-1, |c| unhexchar(c as c_char));
+                let low = input
+                    .get(index + 3)
+                    .copied()
+                    .map_or(-1, |c| unhexchar(c as c_char));
+                if high < 0 || low < 0 {
+                    return Err(Errno::EINVAL.to_neg_errno());
+                }
+                output.push(((high << 4) | low) as u8);
+                index += 3;
+            }
+            byte => output.push(byte),
+        }
+        index += 1;
+    }
+    Ok(output)
 }
 
 /// Escape a path for use as a unit name. Returns malloc'd string (caller must free), or NULL on OOM.
@@ -983,21 +1020,12 @@ unsafe fn do_escape(f: *const c_char, t: *mut u8) -> *mut u8 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_escape(f: *const c_char) -> *mut c_char {
     // SAFETY: the caller guarantees that `f` is a live NUL-terminated string.
-    let len = unsafe { strlen(f) };
-    let Some(allocation) = checked_escape_allocation(len, 1) else {
-        return ptr::null_mut();
-    };
-    let r = malloc(allocation) as *mut c_char;
-    if r.is_null() {
+    let input = unsafe { cstr_bytes(f) };
+    if checked_escape_allocation(input.len(), 1).is_none() {
         return ptr::null_mut();
     }
-
-    // SAFETY: the allocation reserves four bytes per input byte plus the NUL.
-    let t = unsafe { do_escape(f, r as *mut u8) };
-    // SAFETY: `do_escape` returns the first uninitialized byte in that range.
-    unsafe { *t = 0 };
-
-    r
+    // SAFETY: the returned allocation follows the documented C ownership rule.
+    unsafe { bytes_to_malloc(&escape_bytes(input)) }
 }
 
 /// Unescape a unit name back to a path. Returns malloc'd string in *ret (caller must free).
@@ -1008,70 +1036,17 @@ pub unsafe extern "C" fn rs_unit_name_escape(f: *const c_char) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unit_name_unescape(f: *const c_char, ret: *mut *mut c_char) -> i32 {
     // SAFETY: the caller guarantees a live NUL-terminated input.
-    let r = unsafe { strndup_owned(f, usize::MAX) };
-    if r.is_null() {
+    let input = unsafe { cstr_bytes(f) };
+    let Ok(output) = unescape_bytes(input) else {
+        return Errno::EINVAL.to_neg_errno();
+    };
+    // SAFETY: the returned allocation is transferred to the writable output.
+    let result = unsafe { bytes_to_malloc(&output) };
+    if result.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
-
-    let mut ft = f;
-    let mut t = r;
-
-    // SAFETY: each iteration stays within the live input and the duplicate
-    // output allocation.
-    while unsafe { *ft } != 0 {
-        // SAFETY: `ft` points at the current live input byte.
-        if unsafe { *ft } == b'-' as c_char {
-            // SAFETY: `t` stays within the duplicate allocation.
-            unsafe { *t = b'/' as c_char };
-            // SAFETY: one output byte was initialized.
-            t = unsafe { t.add(1) };
-        // SAFETY: `ft` points at the current live input byte.
-        } else if unsafe { *ft } == b'\\' as c_char {
-            // SAFETY: the caller's string is NUL-terminated; reading the byte
-            // after a non-NUL backslash stays within its allocation.
-            if unsafe { *ft.add(1) } != b'x' as c_char {
-                // SAFETY: `r` is the unique allocation returned above.
-                unsafe { free(r as *mut c_void) };
-                return Errno::EINVAL.to_neg_errno();
-            }
-
-            // SAFETY: a valid `\x` escape must provide two following bytes;
-            // NUL reads are allowed and rejected by `unhexchar`.
-            let a = unhexchar(unsafe { *ft.add(2) });
-            if a < 0 {
-                // SAFETY: `r` is the unique allocation returned above.
-                unsafe { free(r as *mut c_void) };
-                return Errno::EINVAL.to_neg_errno();
-            }
-
-            // SAFETY: as above, this read remains within the terminated input.
-            let b = unhexchar(unsafe { *ft.add(3) });
-            if b < 0 {
-                // SAFETY: `r` is the unique allocation returned above.
-                unsafe { free(r as *mut c_void) };
-                return Errno::EINVAL.to_neg_errno();
-            }
-
-            // SAFETY: `t` stays within the same-size duplicate allocation.
-            unsafe { *t = (((a << 4) | b) as u8) as c_char };
-            // SAFETY: one output byte was initialized.
-            t = unsafe { t.add(1) };
-            // SAFETY: the validated escape consumes four input bytes total.
-            ft = unsafe { ft.add(3) };
-        } else {
-            // SAFETY: both current input and output pointers are in bounds.
-            unsafe { *t = *ft };
-            // SAFETY: one output byte was initialized.
-            t = unsafe { t.add(1) };
-        }
-        // SAFETY: the current input component was non-NUL and consumed.
-        ft = unsafe { ft.add(1) };
-    }
-
-    // SAFETY: the output never grows and has room for its terminator.
-    unsafe { *t = 0 };
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = r };
+    unsafe { write_out(ret, result) };
     0
 }
 
@@ -1203,86 +1178,36 @@ pub unsafe fn rs_unit_name_replace_instance(
     unsafe { rs_unit_name_replace_instance_full(original, instance, false, ret) }
 }
 
-// SAFETY: when non-null, `s` must point to a live NUL-terminated C string.
-unsafe fn c_string_is_glob(s: *const c_char) -> bool {
-    if s.is_null() {
-        return false;
-    }
-
-    let mut p = s;
-    // SAFETY: the caller guarantees that `s` is a live NUL-terminated string.
-    while unsafe { *p } != 0 {
-        // SAFETY: `p` points at the current live input byte.
-        if matches!(unsafe { *p } as u8, b'*' | b'?' | b'[') {
-            return true;
-        }
-        // SAFETY: the current byte is non-NUL, so advancing remains within the
-        // NUL-terminated string.
-        p = unsafe { p.add(1) };
-    }
-    false
+fn bytes_are_glob(bytes: &[u8]) -> bool {
+    bytes.iter().any(|byte| matches!(byte, b'*' | b'?' | b'['))
 }
 
-// SAFETY: when non-null, `s` must point to a live NUL-terminated C string.
-unsafe fn c_string_in_charset(s: *const c_char, charset: &[u8]) -> bool {
-    if s.is_null() {
-        return false;
-    }
-
-    let mut p = s;
-    // SAFETY: the caller guarantees that `s` is a live NUL-terminated string.
-    while unsafe { *p } != 0 {
-        // SAFETY: `p` points at the current live input byte.
-        if !char_in_set(unsafe { *p } as u8, charset) {
-            return false;
-        }
-        // SAFETY: the current byte is non-NUL, so advancing remains within the
-        // NUL-terminated string.
-        p = unsafe { p.add(1) };
-    }
-    true
+fn bytes_in_charset(bytes: &[u8], charset: &[u8]) -> bool {
+    bytes.iter().all(|&byte| char_in_set(byte, charset))
 }
 
-// SAFETY: `f` must be a live NUL-terminated C string, and `t` must provide
-// four writable bytes per input byte plus one byte for the terminator.
-unsafe fn do_escape_mangle(f: *const c_char, allow_globs: bool, t: *mut u8) -> bool {
-    let mut ff = f;
-    let mut tt = t;
+fn escape_mangle_bytes(input: &[u8], allow_globs: bool) -> (Vec<u8>, bool) {
     let valid_chars = if allow_globs {
         VALID_CHARS_GLOB
     } else {
         VALID_CHARS_WITH_AT
     };
     let mut mangled = false;
+    let mut output = Vec::with_capacity(input.len().saturating_mul(4));
 
-    // SAFETY: the caller supplies a live NUL-terminated input and a destination
-    // with four bytes reserved per input byte plus a terminator.
-    while unsafe { *ff } != 0 {
-        // SAFETY: `ff` points at the current live input byte.
-        let c = unsafe { *ff } as u8;
+    for &c in input {
         if c == b'/' {
-            // SAFETY: one destination byte remains for this input byte.
-            unsafe { *tt = b'-' };
-            // SAFETY: advancing remains within the reserved output.
-            tt = unsafe { tt.add(1) };
+            output.push(b'-');
             mangled = true;
         } else if !char_in_set(c, valid_chars) {
-            // SAFETY: four destination bytes remain for this input byte.
-            tt = unsafe { do_escape_char(c, tt) };
+            escape_byte(c, &mut output);
             mangled = true;
         } else {
-            // SAFETY: one destination byte remains for this input byte.
-            unsafe { *tt = c };
-            // SAFETY: advancing remains within the reserved output.
-            tt = unsafe { tt.add(1) };
+            output.push(c);
         }
-        // SAFETY: the current byte was non-NUL.
-        ff = unsafe { ff.add(1) };
     }
-    // SAFETY: the caller reserved an additional byte for the terminator.
-    unsafe { *tt = 0 };
 
-    mangled
+    (output, mangled)
 }
 
 // SAFETY: `path` must be a live NUL-terminated C string and `ret` must be
@@ -1409,22 +1334,36 @@ pub unsafe fn rs_unit_name_mangle_with_suffix(
     if isempty(name) {
         return Errno::EINVAL.to_neg_errno();
     }
+    // SAFETY: `name` is non-null and live under this function's contract.
+    let name_bytes = unsafe { cstr_bytes(name) };
     // SAFETY: the caller guarantees that `suffix` is a live C string.
     if !unsafe { rs_unit_suffix_is_valid(suffix) } {
         return Errno::EINVAL.to_neg_errno();
     }
+    // SAFETY: the suffix validator above established a live C string.
+    let suffix_bytes = unsafe { cstr_bytes(suffix) };
 
-    // SAFETY: this function forwards its input contract to validation.
-    if unsafe { unit_name_is_valid_internal(name, UNIT_NAME_ANY) } {
-        // SAFETY: `name` is live and `ret` is writable under the caller contract.
-        return unsafe { strdup_to(ret, name) };
+    if unit_name_bytes_are_valid(name_bytes, UNIT_NAME_ANY) {
+        // SAFETY: ownership of the C allocation is transferred to the output.
+        let result = unsafe { bytes_to_malloc(name_bytes) };
+        if result.is_null() {
+            return Errno::ENOMEM.to_neg_errno();
+        }
+        // SAFETY: `ret` is writable under the documented contract.
+        unsafe { write_out(ret, result) };
+        return 0;
     }
 
-    // SAFETY: both helpers receive the documented live string.
-    if unsafe { c_string_is_glob(name) } && unsafe { c_string_in_charset(name, VALID_CHARS_GLOB) } {
+    if bytes_are_glob(name_bytes) && bytes_in_charset(name_bytes, VALID_CHARS_GLOB) {
         if (flags & UNIT_NAME_MANGLE_GLOB) != 0 {
-            // SAFETY: `name` is live and `ret` is writable.
-            return unsafe { strdup_to(ret, name) };
+            // SAFETY: ownership of the C allocation is transferred to the output.
+            let result = unsafe { bytes_to_malloc(name_bytes) };
+            if result.is_null() {
+                return Errno::ENOMEM.to_neg_errno();
+            }
+            // SAFETY: `ret` is writable under the documented contract.
+            unsafe { write_out(ret, result) };
+            return 0;
         }
     }
 
@@ -1465,44 +1404,31 @@ pub unsafe fn rs_unit_name_mangle_with_suffix(
         }
     }
 
-    // SAFETY: both inputs are live NUL-terminated strings.
-    let (name_len, suffix_len) = unsafe { (strlen(name), strlen(suffix)) };
-    let Some(allocation) =
-        checked_escape_allocation(name_len, suffix_len).and_then(|escaped| escaped.checked_add(1))
-    else {
-        return Errno::ENOMEM.to_neg_errno();
-    };
-    let s = malloc(allocation) as *mut c_char;
-    if s.is_null() {
+    if checked_escape_allocation(name_bytes.len(), suffix_bytes.len())
+        .and_then(|size| size.checked_add(1))
+        .is_none()
+    {
         return Errno::ENOMEM.to_neg_errno();
     }
 
-    // SAFETY: the allocation reserves four bytes per name byte plus the suffix
-    // and terminator, satisfying the helper's output contract.
-    unsafe { do_escape_mangle(name, (flags & UNIT_NAME_MANGLE_GLOB) != 0, s as *mut u8) };
-
-    // SAFETY: `s` is a live NUL-terminated string initialized by the helper.
-    if ((flags & UNIT_NAME_MANGLE_GLOB) == 0 || !unsafe { c_string_is_glob(s) })
-        && unsafe { rs_unit_name_to_type(s) } < 0
+    let (mut output, _) = escape_mangle_bytes(name_bytes, (flags & UNIT_NAME_MANGLE_GLOB) != 0);
+    if ((flags & UNIT_NAME_MANGLE_GLOB) == 0 || !bytes_are_glob(&output))
+        && !unit_name_bytes_are_valid(&output, UNIT_NAME_ANY)
     {
-        // SAFETY: `s` is live; the allocation reserved `suffix_len + 1`
-        // additional bytes after its current contents.
-        let pos = unsafe { strlen(s) };
-        // SAFETY: the destination tail is writable and disjoint from `suffix`.
-        unsafe { ptr::copy_nonoverlapping(suffix, s.add(pos), suffix_len + 1) };
+        output.extend_from_slice(suffix_bytes);
     }
 
-    // SAFETY: `s` is a live NUL-terminated string.
-    if (flags & UNIT_NAME_MANGLE_GLOB) == 0
-        && !unsafe { unit_name_is_valid_internal(s, UNIT_NAME_ANY) }
-    {
-        // SAFETY: `s` is the unique allocation obtained above.
-        unsafe { free(s as *mut c_void) };
+    if (flags & UNIT_NAME_MANGLE_GLOB) == 0 && !unit_name_bytes_are_valid(&output, UNIT_NAME_ANY) {
         return Errno::EINVAL.to_neg_errno();
     }
 
+    // SAFETY: ownership of the returned C allocation is transferred to `ret`.
+    let result = unsafe { bytes_to_malloc(&output) };
+    if result.is_null() {
+        return Errno::ENOMEM.to_neg_errno();
+    }
     // SAFETY: the caller guarantees that `ret` is writable.
-    unsafe { *ret = s };
+    unsafe { write_out(ret, result) };
     1
 }
 

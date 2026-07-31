@@ -164,11 +164,7 @@ pub unsafe extern "C" fn rs_isempty(s: *const c_char) -> bool {
 /// result remains valid only as long as the caller's source pointer is valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strempty(s: *const c_char) -> *const c_char {
-    if s.is_null() {
-        static_c(EMPTY)
-    } else {
-        s
-    }
+    if s.is_null() { static_c(EMPTY) } else { s }
 }
 
 /// C ABI for fundamental `yes_no()`.
