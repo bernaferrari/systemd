@@ -146,16 +146,17 @@ static void test_seccomp_arch_invalid(void) {
 }
 
 static void test_seccomp_arch_optional_header_tokens(void) {
+        uint32_t r_ret = 0;
+
 #ifndef SCMP_ARCH_LOONGARCH64
-        uint32_t r_loongarch64_ret = 0;
-        assert_se(rs_seccomp_arch_from_string("loongarch64", &r_loongarch64_ret) == -EINVAL);
-        assert_se(r_loongarch64_ret == 0);
+        assert_se(rs_seccomp_arch_from_string("loongarch64", &r_ret) == -EINVAL);
+        assert_se(r_ret == 0);
 #endif
 #ifndef SCMP_ARCH_RISCV64
-        uint32_t r_riscv64_ret = 0;
-        assert_se(rs_seccomp_arch_from_string("riscv64", &r_riscv64_ret) == -EINVAL);
-        assert_se(r_riscv64_ret == 0);
+        assert_se(rs_seccomp_arch_from_string("riscv64", &r_ret) == -EINVAL);
+        assert_se(r_ret == 0);
 #endif
+        (void) r_ret;
 }
 
 int main(int argc, char *argv[]) {
