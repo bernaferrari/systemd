@@ -161,6 +161,10 @@ mod imp {
         fn remove(&mut self, id: PrivateBusConnectionId) {
             self.flags.remove(&id);
         }
+
+        fn is_empty(&self) -> bool {
+            self.flags.is_empty()
+        }
     }
 
     struct RegisteredWireSource {
@@ -299,6 +303,72 @@ mod imp {
                 .try_borrow_mut()
                 .map_err(|_| PrivateBusWireSourceError::EventLoop(Errno::EBUSY))?
                 .pop())
+        }
+
+        pub fn has_ready(&self) -> Result<bool, PrivateBusWireSourceError> {
+            Ok(!self
+                .pending
+                .try_borrow()
+                .map_err(|_| PrivateBusWireSourceError::EventLoop(Errno::EBUSY))?
+                .is_empty())
+        }
+
+        /// Queue a synthetic readable turn for bytes already retained by the
+        /// wire accumulator.
+        ///
+        /// Authentication may pipeline the first method call after `BEGIN`,
+        /// and one bounded socket read may complete a frame while retaining no
+        /// unread kernel bytes. In both cases epoll has no obligation to emit
+        /// another `EPOLLIN`, so the outer lifecycle owner explicitly
+        /// schedules the checked decoder. The coalescing queue still retains
+        /// at most one entry per registered connection.
+        pub fn schedule_buffered_read(
+            &self,
+            id: PrivateBusConnectionId,
+        ) -> Result<(), PrivateBusWireSourceError> {
+            if !self.registered.contains_key(&id) {
+                return Err(PrivateBusWireSourceError::UnknownWireSlot(id));
+            }
+            self.pending
+                .try_borrow_mut()
+                .map_err(|_| PrivateBusWireSourceError::EventLoop(Errno::EBUSY))?
+                .push(id, EpollFlags::EPOLLIN);
+            Ok(())
+        }
+
+        /// Detach one wire source before its owning slot is closed.
+        ///
+        /// The registration is forgotten even if event-loop deletion reports
+        /// an error: dropping the duplicated descriptor makes Linux remove it
+        /// from epoll and prevents a recycled descriptor from being targeted
+        /// later. The caller may therefore close the slot fail-closed after
+        /// any return value.
+        pub fn unregister_one(
+            &mut self,
+            event_loop: &mut EventLoop,
+            id: PrivateBusConnectionId,
+        ) -> Result<(), PrivateBusWireSourceError> {
+            let source = self
+                .registered
+                .remove(&id)
+                .ok_or(PrivateBusWireSourceError::UnknownWireSlot(id))?;
+            let pending_result = match self.pending.try_borrow_mut() {
+                Ok(mut pending) => {
+                    pending.remove(id);
+                    Ok(())
+                }
+                Err(_) => Err(PrivateBusWireSourceError::EventLoop(Errno::EBUSY)),
+            };
+            let event_result = event_loop
+                .remove_source(&source.fd, source.source_id)
+                .map_err(PrivateBusWireSourceError::EventLoop);
+            // Keep event-loop cleanup independent from callback-queue
+            // bookkeeping: even an unexpected RefCell conflict must not
+            // leave a live registration behind.
+            match (pending_result, event_result) {
+                (Err(error), _) | (Ok(()), Err(error)) => Err(error),
+                (Ok(()), Ok(())) => Ok(()),
+            }
         }
 
         /// Remove every registration and discard queued readiness before the
@@ -501,6 +571,56 @@ mod imp {
                 Err(PrivateBusWireSourceError::UnknownWireSlot(id))
             );
             assert_eq!(event_loop.run_once(0), Ok(false));
+            transport.unregister(&mut event_loop).unwrap();
+            drop((client, transport));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn synthetic_read_is_coalesced_and_one_slot_teardown_always_detaches_epoll() {
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut client, mut transport, id) =
+                wire_slot(&mut event_loop, "synthetic-unregister");
+            let mut sources = PrivateBusWireSourceOwner::new();
+            sources
+                .register(
+                    &mut event_loop,
+                    id,
+                    transport.wire_slot(id).unwrap(),
+                    PrivateBusWireInterest::read_only(),
+                )
+                .unwrap();
+
+            sources.schedule_buffered_read(id).unwrap();
+            sources.schedule_buffered_read(id).unwrap();
+            assert_eq!(sources.has_ready(), Ok(true));
+            assert_eq!(
+                sources.pop_ready(),
+                Ok(Some((
+                    id,
+                    PrivateBusWireEvent {
+                        readable: true,
+                        writable: false,
+                        terminal: false,
+                    }
+                )))
+            );
+            assert_eq!(sources.pop_ready(), Ok(None));
+
+            // Force the callback-queue cleanup branch to fail. The epoll
+            // deletion must still run, and ownership must still be forgotten.
+            let pending_owner = Rc::clone(&sources.pending);
+            let pending_borrow = pending_owner.borrow_mut();
+            assert_eq!(
+                sources.unregister_one(&mut event_loop, id),
+                Err(PrivateBusWireSourceError::EventLoop(Errno::EBUSY))
+            );
+            drop(pending_borrow);
+            assert_eq!(sources.registered_count(), 0);
+            client.write_all(b"after-unregister").unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(false));
+
+            assert!(transport.close_wire_slot(id));
             transport.unregister(&mut event_loop).unwrap();
             drop((client, transport));
             std::fs::remove_file(path).unwrap();

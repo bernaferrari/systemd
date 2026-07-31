@@ -85,6 +85,7 @@ pub mod pid1_dbus_event_source;
 pub mod pid1_dbus_listener;
 pub mod pid1_dbus_reply_adapter;
 pub mod pid1_dbus_reply_queue;
+pub mod pid1_dbus_server;
 pub mod pid1_dbus_transport;
 pub mod pid1_dbus_wire;
 pub mod pid1_dbus_wire_source;

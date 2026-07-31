@@ -20,9 +20,11 @@
 #[cfg(target_os = "linux")]
 mod imp {
     use std::collections::BTreeMap;
+    use std::io::{Read, Write};
     use std::num::NonZeroUsize;
     use std::rc::Rc;
 
+    use nix::errno::Errno;
     use systemd_event_loop_rs::loop_::EventLoop;
 
     use crate::pid1_bus_source::Pid1BusSendError;
@@ -114,8 +116,31 @@ mod imp {
         /// The slot has failed closed and must be detached before any more
         /// protocol state is accessed.
         Terminal,
+        Io(Errno),
         Input(PrivateBusWireAccumulatorError),
         Reply(PrivateBusReplyQueueError),
+    }
+
+    /// Progress from one bounded nonblocking read on an authenticated slot.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PrivateBusWireReadOutcome {
+        /// A complete first frame is already buffered and must be dispatched
+        /// before another byte may be retained.
+        Backpressured,
+        WouldBlock,
+        Read {
+            bytes: usize,
+        },
+        PeerClosed,
+    }
+
+    /// Progress from one bounded nonblocking write of the current reply frame.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PrivateBusWireWriteOutcome {
+        Idle,
+        WouldBlock,
+        Written { bytes: usize, frame_complete: bool },
+        PeerClosed,
     }
 
     /// One bounded private-bus wire-dispatch result.
@@ -257,6 +282,50 @@ mod imp {
                 return Err(PrivateBusWireSlotError::Terminal);
             }
             self.input.receive(input).map_err(Into::into)
+        }
+
+        /// Read at most one bounded chunk from the nonblocking peer stream.
+        ///
+        /// The accumulator's current-frame allowance and strict total cap are
+        /// applied before the syscall. Before a complete primary header is
+        /// known, a peer may pipeline following bytes only within that fixed
+        /// cap; once known, the read stops exactly at the first frame. EOF and
+        /// fatal I/O/framing failures mark the slot terminal; the lifecycle
+        /// owner must then detach its event source and close it.
+        pub fn read_from_stream_once(
+            &mut self,
+        ) -> Result<PrivateBusWireReadOutcome, PrivateBusWireSlotError> {
+            const READ_CHUNK: usize = 8 * 1024;
+
+            if self.is_terminal() {
+                return Err(PrivateBusWireSlotError::Terminal);
+            }
+            let budget = match self.input.read_budget() {
+                Ok(0) => return Ok(PrivateBusWireReadOutcome::Backpressured),
+                Ok(budget) => budget,
+                Err(error) => return self.slot_failure(PrivateBusWireSlotError::Input(error)),
+            };
+            let mut bytes = [0_u8; READ_CHUNK];
+            let mut stream = self.connection.stream();
+            match stream.read(&mut bytes[..budget.min(READ_CHUNK)]) {
+                Ok(0) => {
+                    self.dispatch_terminal = true;
+                    Ok(PrivateBusWireReadOutcome::PeerClosed)
+                }
+                Ok(read) => {
+                    if let Err(error) = self.input.receive(&bytes[..read]) {
+                        return self.slot_failure(PrivateBusWireSlotError::Input(error));
+                    }
+                    Ok(PrivateBusWireReadOutcome::Read { bytes: read })
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    Ok(PrivateBusWireReadOutcome::WouldBlock)
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+                    Ok(PrivateBusWireReadOutcome::WouldBlock)
+                }
+                Err(error) => self.slot_failure(PrivateBusWireSlotError::Io(io_errno(&error))),
+            }
         }
 
         /// Decode and remove one complete request, leaving following
@@ -403,6 +472,71 @@ mod imp {
                 .map_err(Into::into)
         }
 
+        /// Write at most one nonblocking chunk from the current reply frame.
+        ///
+        /// Reply ownership remains in the queue until the exact successful
+        /// byte count is acknowledged. This means `WouldBlock`, short writes,
+        /// and disconnects cannot lose correlation or duplicate bytes.
+        pub fn write_reply_to_stream_once(
+            &mut self,
+        ) -> Result<PrivateBusWireWriteOutcome, PrivateBusWireSlotError> {
+            if self.is_terminal() {
+                return Err(PrivateBusWireSlotError::Terminal);
+            }
+            let Some(frame) = self.replies.current_frame() else {
+                return Ok(PrivateBusWireWriteOutcome::Idle);
+            };
+            let mut stream = self.connection.stream();
+            let result = stream.write(frame);
+            self.finish_reply_write(result)
+        }
+
+        #[cfg(test)]
+        fn write_reply_with(
+            &mut self,
+            writer: impl FnOnce(&[u8]) -> std::io::Result<usize>,
+        ) -> Result<PrivateBusWireWriteOutcome, PrivateBusWireSlotError> {
+            if self.is_terminal() {
+                return Err(PrivateBusWireSlotError::Terminal);
+            }
+            let Some(frame) = self.replies.current_frame() else {
+                return Ok(PrivateBusWireWriteOutcome::Idle);
+            };
+            let result = writer(frame);
+            self.finish_reply_write(result)
+        }
+
+        fn finish_reply_write(
+            &mut self,
+            result: std::io::Result<usize>,
+        ) -> Result<PrivateBusWireWriteOutcome, PrivateBusWireSlotError> {
+            match result {
+                Ok(0) => {
+                    self.dispatch_terminal = true;
+                    Ok(PrivateBusWireWriteOutcome::PeerClosed)
+                }
+                Ok(written) => {
+                    let frame_complete = match self.replies.acknowledge_written(written) {
+                        Ok(complete) => complete,
+                        Err(error) => {
+                            return self.slot_failure(PrivateBusWireSlotError::Reply(error));
+                        }
+                    };
+                    Ok(PrivateBusWireWriteOutcome::Written {
+                        bytes: written,
+                        frame_complete,
+                    })
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    Ok(PrivateBusWireWriteOutcome::WouldBlock)
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+                    Ok(PrivateBusWireWriteOutcome::WouldBlock)
+                }
+                Err(error) => self.slot_failure(PrivateBusWireSlotError::Io(io_errno(&error))),
+            }
+        }
+
         pub fn readiness(&self) -> Result<PrivateBusWireSlotReadiness, PrivateBusWireSlotError> {
             if self.is_terminal() {
                 return Ok(PrivateBusWireSlotReadiness {
@@ -431,6 +565,14 @@ mod imp {
             &mut self,
             error: PrivateBusWireDispatchError,
         ) -> Result<T, PrivateBusWireDispatchError> {
+            self.dispatch_terminal = true;
+            Err(error)
+        }
+
+        fn slot_failure<T>(
+            &mut self,
+            error: PrivateBusWireSlotError,
+        ) -> Result<T, PrivateBusWireSlotError> {
             self.dispatch_terminal = true;
             Err(error)
         }
@@ -573,6 +715,49 @@ mod imp {
                 .ok_or(PrivateBusTransportError::UnknownWireSlot(id))?
                 .readiness()
                 .map_err(Into::into)
+        }
+
+        /// Run one bounded nonblocking socket read for a retained wire slot.
+        pub fn read_wire_slot_once(
+            &mut self,
+            id: PrivateBusConnectionId,
+        ) -> Result<PrivateBusWireReadOutcome, PrivateBusTransportError> {
+            self.wire_slots
+                .get_mut(&id)
+                .ok_or(PrivateBusTransportError::UnknownWireSlot(id))?
+                .read_from_stream_once()
+                .map_err(Into::into)
+        }
+
+        /// Run one bounded nonblocking reply write for a retained wire slot.
+        pub fn write_wire_slot_once(
+            &mut self,
+            id: PrivateBusConnectionId,
+        ) -> Result<PrivateBusWireWriteOutcome, PrivateBusTransportError> {
+            self.wire_slots
+                .get_mut(&id)
+                .ok_or(PrivateBusTransportError::UnknownWireSlot(id))?
+                .write_reply_to_stream_once()
+                .map_err(Into::into)
+        }
+
+        /// Return the first wire-slot ID strictly after `after`, or the first
+        /// retained ID when `after` is `None`. This supports bounded
+        /// allocation-free round-robin scans by the lifecycle owner.
+        pub fn next_wire_slot_id(
+            &self,
+            after: Option<PrivateBusConnectionId>,
+        ) -> Option<PrivateBusConnectionId> {
+            use std::ops::Bound::{Excluded, Unbounded};
+
+            match after {
+                Some(id) => self
+                    .wire_slots
+                    .range((Excluded(id), Unbounded))
+                    .next()
+                    .map(|(&id, _)| id),
+                None => self.wire_slots.keys().next().copied(),
+            }
         }
 
         /// Poll manager reply receivers for one slot with a finite per-turn
@@ -721,6 +906,10 @@ mod imp {
                 .field("same_thread_owners", &Rc::strong_count(&self.same_thread))
                 .finish_non_exhaustive()
         }
+    }
+
+    fn io_errno(error: &std::io::Error) -> Errno {
+        Errno::from_raw(error.raw_os_error().unwrap_or(libc::EIO))
     }
 
     #[cfg(test)]
@@ -907,6 +1096,40 @@ mod imp {
             dispatch(owner, event_loop);
             event_loop.run_once(0).unwrap();
             assert_eq!(dispatch(owner, event_loop).authenticated, 1);
+        }
+
+        fn queue_denied_reply(
+            owner: &mut PrivateBusTransportOwner,
+            id: PrivateBusConnectionId,
+            reply_serial: u32,
+        ) {
+            let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+            let receiver = sender
+                .try_send(
+                    SenderIdentity::from_authenticated_peer(
+                        AuthenticatedPeer::from_kernel_peer_credentials(1, 0, 0),
+                    ),
+                    Pid1ManagerCommand::LoadUnit {
+                        name: "missing.service".into(),
+                    },
+                )
+                .unwrap();
+            let mut runtime = crate::runtime_manager::RuntimeManager::new();
+            let mut authorizer = DenyAllPid1CommandAuthorizer;
+            inbox.dispatch_pending(&mut runtime, &mut authorizer, NonZeroUsize::new(1).unwrap());
+            owner
+                .wire_slot_mut(id)
+                .unwrap()
+                .replies_mut()
+                .track(Endian::Little, reply_serial, false, receiver)
+                .unwrap();
+            assert_eq!(
+                owner
+                    .poll_wire_slot_replies(id, NonZeroUsize::new(1).unwrap())
+                    .unwrap()
+                    .enqueued,
+                1
+            );
         }
 
         #[test]
@@ -1302,6 +1525,126 @@ mod imp {
             );
 
             drop((client, owner));
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn bounded_stream_read_reports_would_block_progress_and_eof() {
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "stream-read", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, b"");
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(64))
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(
+                owner.read_wire_slot_once(wire_id),
+                Ok(PrivateBusWireReadOutcome::WouldBlock)
+            );
+            client.write_all(b"abc").unwrap();
+            assert_eq!(
+                owner.read_wire_slot_once(wire_id),
+                Ok(PrivateBusWireReadOutcome::Read { bytes: 3 })
+            );
+            assert_eq!(owner.wire_slot(wire_id).unwrap().input().buffered(), b"abc");
+
+            let mut auth_ok = Vec::new();
+            loop {
+                let mut byte = [0_u8; 1];
+                client.read_exact(&mut byte).unwrap();
+                auth_ok.push(byte[0]);
+                if byte[0] == b'\n' {
+                    break;
+                }
+            }
+            assert!(auth_ok.starts_with(b"OK "));
+            drop(client);
+            assert_eq!(
+                owner.read_wire_slot_once(wire_id),
+                Ok(PrivateBusWireReadOutcome::PeerClosed)
+            );
+            assert!(owner.wire_slot(wire_id).unwrap().is_terminal());
+
+            owner.unregister(&mut event_loop).unwrap();
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn reply_write_preserves_bytes_across_would_block_short_write_and_eof() {
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "stream-write", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, b"");
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(64))
+                .unwrap()
+                .unwrap();
+            queue_denied_reply(&mut owner, wire_id, 17);
+            let frame_len = owner
+                .wire_slot(wire_id)
+                .unwrap()
+                .current_reply_frame()
+                .unwrap()
+                .len();
+            assert!(frame_len > 1);
+
+            assert_eq!(
+                owner.wire_slot_mut(wire_id).unwrap().write_reply_with(|_| {
+                    Err(std::io::Error::from(std::io::ErrorKind::WouldBlock))
+                }),
+                Ok(PrivateBusWireWriteOutcome::WouldBlock)
+            );
+            assert_eq!(
+                owner
+                    .wire_slot(wire_id)
+                    .unwrap()
+                    .current_reply_frame()
+                    .unwrap()
+                    .len(),
+                frame_len
+            );
+            assert_eq!(
+                owner
+                    .wire_slot_mut(wire_id)
+                    .unwrap()
+                    .write_reply_with(|_| Ok(frame_len - 1)),
+                Ok(PrivateBusWireWriteOutcome::Written {
+                    bytes: frame_len - 1,
+                    frame_complete: false,
+                })
+            );
+            assert_eq!(
+                owner
+                    .wire_slot_mut(wire_id)
+                    .unwrap()
+                    .write_reply_with(|_| Ok(1)),
+                Ok(PrivateBusWireWriteOutcome::Written {
+                    bytes: 1,
+                    frame_complete: true,
+                })
+            );
+            assert!(
+                owner
+                    .wire_slot(wire_id)
+                    .unwrap()
+                    .current_reply_frame()
+                    .is_none()
+            );
+
+            queue_denied_reply(&mut owner, wire_id, 18);
+            assert_eq!(
+                owner
+                    .wire_slot_mut(wire_id)
+                    .unwrap()
+                    .write_reply_with(|_| Ok(0)),
+                Ok(PrivateBusWireWriteOutcome::PeerClosed)
+            );
+            assert!(owner.wire_slot(wire_id).unwrap().is_terminal());
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop(client);
             std::fs::remove_file(path).unwrap();
         }
 

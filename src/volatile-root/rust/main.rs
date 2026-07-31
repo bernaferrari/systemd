@@ -5,8 +5,11 @@
 //
 // PORT-SYNC: src/volatile-root/volatile-root.c
 
+use systemd_volatile_root_rs::resolve_args_from_cmdline;
+#[cfg(target_os = "linux")]
 use systemd_volatile_root_rs::{
-    SysrootState, inspect_sysroot, mode_requires_root_transition, resolve_args_from_cmdline,
+    LinuxVolatileRootPreflightBackend, VolatileRootDiagnostic, VolatileRootRunOutcome,
+    VolatileRootTransitionPolicy, run_volatile_root_with_policy, volatile_root_transition_refusal,
 };
 
 fn print_help() {
@@ -16,6 +19,28 @@ fn print_help() {
     eprintln!("     --version          Show package version");
     eprintln!();
     eprintln!("  MODE: yes|state|overlay|no");
+}
+
+#[cfg(target_os = "linux")]
+fn report_diagnostic(diagnostic: &VolatileRootDiagnostic) {
+    match diagnostic {
+        VolatileRootDiagnostic::AlreadyTemporary { path } => {
+            eprintln!("systemd-volatile-root: {path} already is a temporary file system");
+        }
+        VolatileRootDiagnostic::BackingDeviceLinkFailed {
+            target,
+            link,
+            error_kind,
+            error_raw_os_error,
+        } => {
+            eprintln!(
+                "systemd-volatile-root: failed to create informational backing-device link {link} -> {target}: {error_kind}{}",
+                error_raw_os_error
+                    .map(|errno| format!(" (errno {errno})"))
+                    .unwrap_or_default(),
+            );
+        }
+    }
 }
 
 fn main() {
@@ -58,38 +83,47 @@ fn main() {
         }
     };
 
-    if !mode_requires_root_transition(parsed.mode) {
-        return;
+    #[cfg(target_os = "linux")]
+    {
+        let mut backend = LinuxVolatileRootPreflightBackend::new();
+        let result = run_volatile_root_with_policy(
+            &parsed,
+            // This is deliberately explicit: the installed Rust binary shares
+            // the orchestration contract with namespace tests, but its default
+            // runtime authority cannot mutate a root filesystem before those
+            // tests prove the full transition and fallback behaviour.
+            VolatileRootTransitionPolicy::RefuseTransitions,
+            &mut backend,
+        );
+        for diagnostic in backend.take_diagnostics() {
+            report_diagnostic(&diagnostic);
+        }
+        match result {
+            Ok(VolatileRootRunOutcome::Inactive | VolatileRootRunOutcome::AlreadyTemporary) => {}
+            Ok(VolatileRootRunOutcome::MadeVolatile | VolatileRootRunOutcome::MadeOverlay) => {
+                unreachable!("the refuse-transitions policy cannot perform a mount transition")
+            }
+            Err(error) if volatile_root_transition_refusal(&error).is_some() => {
+                eprintln!(
+                    "systemd-volatile-root: Rust volatile-root mount transition is not implemented; refusing to modify {}",
+                    parsed.path
+                );
+                std::process::exit(1);
+            }
+            Err(error) => {
+                eprintln!(
+                    "systemd-volatile-root: failed to validate {} before the volatile-root transition: {error}",
+                    parsed.path
+                );
+                std::process::exit(1);
+            }
+        }
     }
 
-    match inspect_sysroot(&parsed.path) {
-        Ok(SysrootState::AlreadyTemporary) => {
-            eprintln!(
-                "systemd-volatile-root: {} already is a temporary file system",
-                parsed.path
-            );
-            return;
-        }
-        Ok(SysrootState::NeedsTransition { .. }) => {}
-        Err(error) => {
-            eprintln!(
-                "systemd-volatile-root: failed to validate {} before the volatile-root transition: {error}",
-                parsed.path
-            );
-            std::process::exit(1);
-        }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = parsed;
+        eprintln!("systemd-volatile-root: Rust volatile-root requires Linux");
+        std::process::exit(1);
     }
-
-    // `yes` and `overlay` require C's carefully ordered mount namespace
-    // transition, including backing-device discovery, source resolution,
-    // recursive no-follow unmounts, and cleanup. Keep this boundary
-    // fail-closed until that whole sequence is implemented, rather than
-    // approximating it with direct mount calls. In particular, creating the
-    // backing-device symlink here would violate the no-side-effects guarantee
-    // when the following transition is deliberately unavailable.
-    eprintln!(
-        "systemd-volatile-root: Rust volatile-root mount transition is not implemented; refusing to modify {}",
-        parsed.path
-    );
-    std::process::exit(1);
 }

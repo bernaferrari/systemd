@@ -479,6 +479,12 @@
         "src/core/rust/pid1_dbus_reply_queue.rs"
       ]
     },
+    "pid1_dbus_server": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/pid1_dbus_server.rs"
+      ]
+    },
     "pid1_dbus_transport": {
       "classification": "compiled-but-disconnected",
       "source_files": [

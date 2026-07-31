@@ -13,17 +13,17 @@ Scope: `src`
 ## Snapshot Totals
 
 - All `src` C files: **1831**
-- All `src` Rust files: **1293**
+- All `src` Rust files: **1294**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1178**
+- Unverified Rust behavior candidates: **1179**
 
 Excluding `src/test`:
 - C files: **1569**
-- Rust files: **1293**
+- Rust files: **1294**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1178**
+- Unverified Rust behavior candidates: **1179**
 
 ## Per-Subsystem Inventory
 
@@ -44,7 +44,7 @@ Excluding `src/test`:
 | `cgls` | 1 | 3 | 0 | 0 | 3 |
 | `cgtop` | 1 | 2 | 0 | 0 | 2 |
 | `clonesetup` | 4 | 0 | 0 | 0 | 0 |
-| `core` | 97 | 152 | 0 | 6 | 146 |
+| `core` | 97 | 153 | 0 | 6 | 147 |
 | `coredump` | 11 | 0 | 0 | 0 | 0 |
 | `creds` | 1 | 3 | 0 | 0 | 3 |
 | `cryptenroll` | 10 | 0 | 0 | 0 | 0 |

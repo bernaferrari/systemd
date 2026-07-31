@@ -639,7 +639,7 @@ pub fn mode_from_cmdline(cmdline: &str) -> Result<Option<VolatileMode>, i32> {
     let mut found = false;
     let mut value = None;
 
-    for word in split_cmdline_words(cmdline) {
+    for word in split_cmdline_words(cmdline)? {
         let Some(suffix) = word.strip_prefix("systemd.volatile") else {
             continue;
         };
@@ -809,56 +809,31 @@ fn parse_filesystem_type(mountinfo: &str, wanted_mount_id: u64) -> Option<&str> 
     })
 }
 
-/// Split `/proc/cmdline` into words with the quoting semantics needed by the
-/// `systemd.volatile` lookup. This is deliberately small, but supports both
-/// quote styles and retained backslash escapes so quoted values remain one
-/// argument without accidentally accepting an escaped mode spelling.
-fn split_cmdline_words(cmdline: &str) -> Vec<String> {
+/// Split `/proc/cmdline` with `proc_cmdline_strv_internal()`'s exact word
+/// extraction flags for the `systemd.volatile` lookup.
+fn split_cmdline_words(cmdline: &str) -> Result<Vec<String>, i32> {
+    use systemd_basic_rs::extract_word::{
+        EXTRACT_RELAX, EXTRACT_RETAIN_ESCAPE, EXTRACT_UNQUOTE, extract_first_word,
+    };
+
+    // `proc_cmdline_strv_internal()` delegates precisely this tokenization to
+    // `strv_split_full(..., EXTRACT_UNQUOTE|EXTRACT_RELAX|
+    // EXTRACT_RETAIN_ESCAPE)`. Do not maintain a second, subtly different
+    // quote state machine here: in particular, RETAIN_ESCAPE makes a
+    // backslash an ordinary byte, so it does *not* protect a following quote.
+    let mut remainder = cmdline;
     let mut words = Vec::new();
-    let mut current = String::new();
-    let mut quote = None;
-    let mut escaped = false;
-
-    for character in cmdline.chars() {
-        if escaped {
-            current.push(character);
-            escaped = false;
-            continue;
-        }
-
-        if character == '\\' {
-            // `proc_cmdline_strv()` uses EXTRACT_RETAIN_ESCAPE. Preserve the
-            // slash while still preventing an escaped quote from closing this
-            // word.
-            current.push(character);
-            escaped = true;
-            continue;
-        }
-
-        if let Some(active_quote) = quote {
-            if character == active_quote {
-                quote = None;
-            } else {
-                current.push(character);
-            }
-            continue;
-        }
-
-        if matches!(character, '\'' | '"') {
-            quote = Some(character);
-        } else if character.is_ascii_whitespace() {
-            if !current.is_empty() {
-                words.push(std::mem::take(&mut current));
-            }
-        } else {
-            current.push(character);
-        }
+    while let Some((word, next)) = extract_first_word(
+        remainder,
+        None,
+        EXTRACT_UNQUOTE | EXTRACT_RELAX | EXTRACT_RETAIN_ESCAPE,
+    )
+    .map_err(|errno| errno.to_neg_errno())?
+    {
+        words.push(word);
+        remainder = next;
     }
-
-    if !current.is_empty() {
-        words.push(current);
-    }
-    words
+    Ok(words)
 }
 
 // ── Device symlink path ───────────────────────────────────────────────────
@@ -979,9 +954,14 @@ impl BackingDeviceLinkBackend for LinuxBackingDeviceLinkBackend {
 mod orchestration;
 
 #[cfg(target_os = "linux")]
-pub use orchestration::LinuxVolatileRootRunBackend;
 pub use orchestration::{
-    VolatileRootDiagnostic, VolatileRootRunBackend, VolatileRootRunOutcome, run_volatile_root_with,
+    LinuxVolatileRootPreflightBackend, LinuxVolatileRootRunBackend,
+    run_linux_volatile_root_with_policy,
+};
+pub use orchestration::{
+    VolatileRootDiagnostic, VolatileRootRunBackend, VolatileRootRunOutcome,
+    VolatileRootTransitionPolicy, VolatileRootTransitionRefused, run_volatile_root_with,
+    run_volatile_root_with_policy, volatile_root_transition_refusal,
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────
@@ -1427,6 +1407,20 @@ mod tests {
     #[test]
     fn escaped_cmdline_mode_is_not_silently_unescaped() {
         assert!(mode_from_cmdline(r"systemd.volatile=over\\lay").is_err());
+    }
+
+    #[test]
+    fn retained_escape_does_not_hide_a_following_quote() {
+        // `proc_cmdline_strv()` uses EXTRACT_RETAIN_ESCAPE: the backslash is
+        // retained in the word, but it has no syntactic effect. The quote
+        // therefore closes the first word and allows the later setting to
+        // win. The former local parser incorrectly kept that quote open.
+        let cmdline = r#"systemd.volatile="overlay\" systemd.volatile=no"#;
+        assert_eq!(
+            split_cmdline_words(cmdline).unwrap(),
+            vec!["systemd.volatile=overlay\\", "systemd.volatile=no"]
+        );
+        assert_eq!(mode_from_cmdline(cmdline).unwrap(), Some(VolatileMode::No));
     }
 
     #[test]

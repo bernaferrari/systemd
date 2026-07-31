@@ -52,6 +52,66 @@ pub enum VolatileRootRunOutcome {
     MadeOverlay,
 }
 
+/// Runtime authority to perform an active volatile-root transition.
+///
+/// The Rust executable currently supplies [`Self::RefuseTransitions`] while
+/// the installed C binary remains authoritative.  Namespace-scoped harnesses
+/// can explicitly select [`Self::AllowTransitions`] to exercise the exact
+/// same concrete Linux composition that a future replacement will use.  The
+/// permission is intentionally an argument, rather than an environment
+/// variable or hidden global, so production callers cannot enable a root
+/// mount replacement accidentally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VolatileRootTransitionPolicy {
+    /// Permit only the read-only preflight and the already-temporary success
+    /// path. A non-temporary active request returns `PermissionDenied` before
+    /// device discovery, link creation, or a mount operation.
+    #[default]
+    RefuseTransitions,
+    /// Perform C's full active-mode ordering through the supplied backend.
+    ///
+    /// This is for an explicitly isolated, validated mount namespace only;
+    /// selecting it does not add any rollback beyond C's own transaction.
+    AllowTransitions,
+}
+
+/// Error payload used when the explicit runtime policy forbids a transition.
+///
+/// Use [`volatile_root_transition_refusal`] to distinguish this deliberate
+/// fail-closed condition from a filesystem-preflight failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VolatileRootTransitionRefused {
+    path: String,
+}
+
+impl VolatileRootTransitionRefused {
+    /// The non-temporary active root that was deliberately left untouched.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+impl std::fmt::Display for VolatileRootTransitionRefused {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "Rust volatile-root transition policy refuses to modify {}",
+            self.path
+        )
+    }
+}
+
+impl std::error::Error for VolatileRootTransitionRefused {}
+
+/// Return the refusal payload carried by a policy-denied transition error.
+pub fn volatile_root_transition_refusal(
+    error: &io::Error,
+) -> Option<&VolatileRootTransitionRefused> {
+    error
+        .get_ref()?
+        .downcast_ref::<VolatileRootTransitionRefused>()
+}
+
 /// Injectable complete active-mode boundary for `volatile-root.c`'s `run()`.
 ///
 /// The trait starts after argument and command-line parsing, but retains the
@@ -147,6 +207,98 @@ impl VolatileRootRunBackend for LinuxVolatileRootRunBackend {
     }
 }
 
+/// Linux backend used by the installed Rust executable while transitions are
+/// still deliberately disabled.
+///
+/// It implements only the read-only preflight and diagnostic collection
+/// needed by [`VolatileRootTransitionPolicy::RefuseTransitions`]. Keeping it
+/// separate from [`LinuxVolatileRootRunBackend`] means the fail-closed binary
+/// does not pull in the C-backed block-device helper merely to decide that it
+/// must not modify the mount namespace. The concrete backend remains exposed
+/// through [`run_linux_volatile_root_with_policy`] for a Meson-linked,
+/// namespace-scoped harness.
+#[cfg(target_os = "linux")]
+#[derive(Debug, Default)]
+pub struct LinuxVolatileRootPreflightBackend {
+    diagnostics: Vec<VolatileRootDiagnostic>,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxVolatileRootPreflightBackend {
+    /// Construct an empty, read-only preflight backend.
+    pub const fn new() -> Self {
+        Self {
+            diagnostics: Vec::new(),
+        }
+    }
+
+    /// Take diagnostics produced by the no-side-effect execution boundary.
+    pub fn take_diagnostics(&mut self) -> Vec<VolatileRootDiagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl VolatileRootRunBackend for LinuxVolatileRootPreflightBackend {
+    fn inspect_sysroot(&mut self, path: &str) -> io::Result<SysrootState> {
+        inspect_sysroot(path)
+    }
+
+    fn backing_device(&mut self, _path: &str) -> io::Result<Option<BackingDevice>> {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "fail-closed volatile-root preflight cannot discover a backing device",
+        ))
+    }
+
+    fn create_backing_device_link(&mut self, _target: &str, _link: &str) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "fail-closed volatile-root preflight cannot create a backing-device link",
+        ))
+    }
+
+    fn make_volatile(&mut self, _path: &str) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "fail-closed volatile-root preflight cannot replace a root mount",
+        ))
+    }
+
+    fn make_overlay(&mut self, _path: &str) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "fail-closed volatile-root preflight cannot create an overlay root",
+        ))
+    }
+
+    fn report(&mut self, diagnostic: VolatileRootDiagnostic) {
+        self.diagnostics.push(diagnostic);
+    }
+}
+
+/// Run the concrete Linux volatile-root backend under an explicit policy.
+///
+/// This is the only live composition boundary a namespace-test harness needs:
+/// it owns the concrete backend and delivers C-compatible non-fatal
+/// diagnostics in their original ordering after the attempted transaction.
+/// The installed Rust executable selects `RefuseTransitions`; harnesses must
+/// opt in to `AllowTransitions` themselves after creating an isolated mount
+/// namespace.
+#[cfg(target_os = "linux")]
+pub fn run_linux_volatile_root_with_policy(
+    args: &VolatileRootArgs,
+    policy: VolatileRootTransitionPolicy,
+    mut report: impl FnMut(&VolatileRootDiagnostic),
+) -> io::Result<VolatileRootRunOutcome> {
+    let mut backend = LinuxVolatileRootRunBackend::new();
+    let result = run_volatile_root_with_policy(args, policy, &mut backend);
+    for diagnostic in backend.take_diagnostics() {
+        report(&diagnostic);
+    }
+    result
+}
+
 /// Execute the complete mode-specific ordering of C's `run()` through an
 /// injectable backend.
 ///
@@ -157,6 +309,27 @@ impl VolatileRootRunBackend for LinuxVolatileRootRunBackend {
 /// older-kernel fallback policy.
 pub fn run_volatile_root_with(
     args: &VolatileRootArgs,
+    backend: &mut impl VolatileRootRunBackend,
+) -> io::Result<VolatileRootRunOutcome> {
+    run_volatile_root_with_policy(
+        args,
+        VolatileRootTransitionPolicy::AllowTransitions,
+        backend,
+    )
+}
+
+/// Execute the volatile-root ordering under an explicit transition policy.
+///
+/// `RefuseTransitions` deliberately preserves C's read-only active-mode
+/// preflight: an already temporary sysroot remains a successful no-op and a
+/// malformed/non-mount target still reports its real validation failure. A
+/// non-temporary active root is then refused before the first mutating C
+/// operation (backing-device discovery/linking or mounts). This lets the
+/// shipped executable stay fail-closed while exposing the same backend
+/// integration point to an isolated namespace harness.
+pub fn run_volatile_root_with_policy(
+    args: &VolatileRootArgs,
+    policy: VolatileRootTransitionPolicy,
     backend: &mut impl VolatileRootRunBackend,
 ) -> io::Result<VolatileRootRunOutcome> {
     // `run()` validates a supplied positional path before checking whether
@@ -175,6 +348,16 @@ pub fn run_volatile_root_with(
                 path: args.path.clone(),
             });
             return Ok(VolatileRootRunOutcome::AlreadyTemporary);
+        }
+        SysrootState::NeedsTransition { .. }
+            if policy == VolatileRootTransitionPolicy::RefuseTransitions =>
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                VolatileRootTransitionRefused {
+                    path: args.path.clone(),
+                },
+            ));
         }
         SysrootState::NeedsTransition { .. } => {}
     }
@@ -314,6 +497,64 @@ mod tests {
             assert!(backend.calls.is_empty());
             assert!(backend.diagnostics.is_empty());
         }
+    }
+
+    #[test]
+    fn refuse_policy_keeps_a_non_temporary_root_entirely_non_mutating() {
+        let args = VolatileRootArgs {
+            mode: VolatileMode::Overlay,
+            path: "/sysroot".into(),
+        };
+        let mut backend = FakeRunBackend {
+            device: Some(BackingDevice { major: 8, minor: 2 }),
+            ..FakeRunBackend::default()
+        };
+
+        let error = run_volatile_root_with_policy(
+            &args,
+            VolatileRootTransitionPolicy::RefuseTransitions,
+            &mut backend,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            volatile_root_transition_refusal(&error),
+            Some(&VolatileRootTransitionRefused {
+                path: "/sysroot".into(),
+            })
+        );
+        assert_eq!(backend.calls, vec![RunCall::Inspect("/sysroot".into())]);
+        assert!(backend.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn refuse_policy_preserves_already_temporary_success() {
+        let args = VolatileRootArgs {
+            mode: VolatileMode::Yes,
+            path: "/sysroot".into(),
+        };
+        let mut backend = FakeRunBackend {
+            preflight: SysrootState::AlreadyTemporary,
+            ..FakeRunBackend::default()
+        };
+
+        assert_eq!(
+            run_volatile_root_with_policy(
+                &args,
+                VolatileRootTransitionPolicy::RefuseTransitions,
+                &mut backend,
+            )
+            .unwrap(),
+            VolatileRootRunOutcome::AlreadyTemporary
+        );
+        assert_eq!(backend.calls, vec![RunCall::Inspect("/sysroot".into())]);
+        assert_eq!(
+            backend.diagnostics,
+            vec![VolatileRootDiagnostic::AlreadyTemporary {
+                path: "/sysroot".into(),
+            }]
+        );
     }
 
     #[cfg(target_os = "linux")]
