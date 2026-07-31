@@ -2,7 +2,7 @@
 
 use super::*;
 #[cfg(target_os = "linux")]
-use std::os::fd::OwnedFd;
+use std::os::fd::{FromRawFd, OwnedFd};
 
 #[cfg(target_os = "linux")]
 // Defined by Linux UAPI <linux/socket.h>, but not yet exposed by libc on all
@@ -258,6 +258,10 @@ impl AuditNetlinkReceiver {
             return Err(io::Error::last_os_error());
         }
 
+        // SAFETY: socket returned a checked, uniquely owned descriptor. From
+        // here on, OwnedFd closes it if any setup step fails.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+
         // SAFETY: all-zero is a valid sockaddr_nl initializer; nl_pad must
         // remain zero, and the public fields below fully specify this address.
         let mut addr = unsafe { std::mem::zeroed::<libc::sockaddr_nl>() };
@@ -268,25 +272,20 @@ impl AuditNetlinkReceiver {
         // describe exactly that live stack value.
         let bind_result = unsafe {
             libc::bind(
-                fd,
+                fd.as_raw_fd(),
                 (&mut addr as *mut libc::sockaddr_nl).cast::<libc::sockaddr>(),
                 std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
             )
         };
         if bind_result < 0 {
-            let err = io::Error::last_os_error();
-            // SAFETY: fd is still owned by this error path.
-            unsafe {
-                libc::close(fd);
-            }
-            return Err(err);
+            return Err(io::Error::last_os_error());
         }
 
         let passcred: libc::c_int = 1;
         // SAFETY: fd is live and the option pointer/length describe passcred.
         let opt_result = unsafe {
             libc::setsockopt(
-                fd,
+                fd.as_raw_fd(),
                 libc::SOL_SOCKET,
                 libc::SO_PASSCRED,
                 (&passcred as *const libc::c_int).cast::<libc::c_void>(),
@@ -294,17 +293,8 @@ impl AuditNetlinkReceiver {
             )
         };
         if opt_result < 0 {
-            let err = io::Error::last_os_error();
-            // SAFETY: fd is still owned by this error path.
-            unsafe {
-                libc::close(fd);
-            }
-            return Err(err);
+            return Err(io::Error::last_os_error());
         }
-
-        // SAFETY: the checked descriptor is uniquely owned and ownership is
-        // transferred exactly once to OwnedFd.
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
         Ok(Self {
             fd,
             buffer: vec![0_u8; 65_536],
@@ -623,109 +613,61 @@ pub(super) fn recv_datagram_with_metadata(
     socket: &UnixDatagram,
     buf: &mut [u8],
 ) -> Result<(usize, Option<PathBuf>, DatagramMetadata), io::Error> {
+    use nix::sys::socket::{ControlMessageOwned, MsgFlags, UnixAddr, recvmsg};
     use std::os::fd::AsRawFd;
-    let mut metadata = DatagramMetadata::default();
-    let mut iov = libc::iovec {
-        iov_base: buf.as_mut_ptr().cast(),
-        iov_len: buf.len(),
-    };
-    // SAFETY: all-zero is a valid initial sockaddr_un output buffer for
-    // recvmsg, which supplies the actual address length.
-    let mut name = unsafe { std::mem::zeroed::<libc::sockaddr_un>() };
-    // SAFETY: CMSG_SPACE performs libc layout calculations only and does not
-    // dereference memory.
-    let control_len = unsafe {
-        libc::CMSG_SPACE(std::mem::size_of::<libc::ucred>() as u32) as usize
-            + libc::CMSG_SPACE(std::mem::size_of::<libc::timeval>() as u32) as usize
-            + libc::CMSG_SPACE(SELINUX_CMSG_MAX as u32) as usize
-    };
-    let mut control = vec![0_u8; control_len];
-    // SAFETY: all-zero is a valid initial msghdr before its fields are filled
-    // below.
-    let mut hdr = unsafe { std::mem::zeroed::<libc::msghdr>() };
-    hdr.msg_name = (&mut name as *mut libc::sockaddr_un).cast();
-    hdr.msg_namelen = std::mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
-    hdr.msg_iov = &mut iov;
-    hdr.msg_iovlen = 1;
-    hdr.msg_control = control.as_mut_ptr().cast();
-    hdr.msg_controllen = control.len();
-
-    // SAFETY: hdr references live writable name, iovec, and control buffers
-    // for the duration of recvmsg.
-    let n = unsafe {
-        libc::recvmsg(
+    let (bytes, peer, messages) = {
+        let mut iov = [io::IoSliceMut::new(buf)];
+        let mut control = nix::cmsg_space!(libc::ucred, libc::timeval, [u8; SELINUX_CMSG_MAX]);
+        let msg = recvmsg::<UnixAddr>(
             socket.as_raw_fd(),
-            &mut hdr,
-            libc::MSG_DONTWAIT | libc::MSG_CMSG_CLOEXEC,
+            &mut iov,
+            Some(&mut control),
+            MsgFlags::MSG_DONTWAIT | MsgFlags::MSG_CMSG_CLOEXEC,
         )
+        .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?;
+        let peer = msg
+            .address
+            .as_ref()
+            .and_then(UnixAddr::path)
+            .map(Path::to_path_buf);
+        let messages = msg
+            .cmsgs()
+            .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?
+            .collect::<Vec<_>>();
+        (msg.bytes, peer, messages)
     };
-    if n < 0 {
-        return Err(io::Error::last_os_error());
-    }
 
-    // SAFETY: recvmsg populated hdr and msg_controllen; libc returns either a
-    // pointer into that control buffer or null.
-    let mut cmsg = unsafe { libc::CMSG_FIRSTHDR(&hdr) };
-    while !cmsg.is_null() {
-        // SAFETY: cmsg was returned by the CMSG traversal macros for hdr.
-        let header = unsafe { &*cmsg };
-        if header.cmsg_level == libc::SOL_SOCKET {
-            match header.cmsg_type {
-                libc::SCM_CREDENTIALS
-                    if header.cmsg_len as usize
-                        // SAFETY: CMSG_LEN is a pure layout calculation.
-                        >= unsafe { libc::CMSG_LEN(std::mem::size_of::<libc::ucred>() as u32) as usize } =>
-                {
-                    // SAFETY: the length guard proves a complete ucred payload
-                    // is present; read handles the C buffer's alignment.
-                    let cred = unsafe { libc::CMSG_DATA(cmsg).cast::<libc::ucred>().read() };
-                    metadata.creds = Some(PeerCredentials {
-                        pid: cred.pid,
-                        uid: cred.uid,
-                        gid: cred.gid,
-                    });
-                }
-                libc::SCM_TIMESTAMP
-                    if header.cmsg_len as usize
-                        // SAFETY: CMSG_LEN is a pure layout calculation.
-                        >= unsafe { libc::CMSG_LEN(std::mem::size_of::<libc::timeval>() as u32) as usize } =>
-                {
-                    // SAFETY: the length guard proves a complete timeval
-                    // payload is present; read handles the C buffer's alignment.
-                    let tv = unsafe { libc::CMSG_DATA(cmsg).cast::<libc::timeval>().read() };
-                    metadata.source_realtime_timestamp_usec = Some(timeval_to_usec(tv));
-                }
-                SCM_SECURITY => {
-                    // SAFETY: CMSG_LEN is a pure layout calculation.
-                    let data_offset = unsafe { libc::CMSG_LEN(0) as usize };
-                    if let Some(payload_len) = (header.cmsg_len as usize).checked_sub(data_offset) {
-                        // SAFETY: payload_len is bounded by the kernel-validated
-                        // cmsghdr length returned in hdr's control buffer.
-                        let bytes = unsafe {
-                            std::slice::from_raw_parts(
-                                libc::CMSG_DATA(cmsg).cast::<u8>(),
-                                payload_len,
-                            )
-                        };
-                        let label = parse_selinux_label_bytes(bytes);
-                        if !label.is_empty() {
-                            metadata.selinux_label = Some(label);
-                        }
-                    }
-                }
-                _ => {}
+    let mut metadata = DatagramMetadata::default();
+    for message in messages {
+        match message {
+            ControlMessageOwned::ScmCredentials(cred) => {
+                metadata.creds = Some(PeerCredentials {
+                    pid: cred.pid(),
+                    uid: cred.uid(),
+                    gid: cred.gid(),
+                });
             }
+            ControlMessageOwned::ScmTimestamp(tv) => {
+                metadata.source_realtime_timestamp_usec = Some(
+                    (tv.tv_sec() as u64)
+                        .saturating_mul(1_000_000)
+                        .saturating_add((tv.tv_usec() as u64).min(999_999)),
+                );
+            }
+            ControlMessageOwned::Unknown(message)
+                if message.cmsg_header.cmsg_level == libc::SOL_SOCKET
+                    && message.cmsg_header.cmsg_type == SCM_SECURITY =>
+            {
+                let label = parse_selinux_label_bytes(&message.data_bytes);
+                if !label.is_empty() {
+                    metadata.selinux_label = Some(label);
+                }
+            }
+            _ => {}
         }
-        // SAFETY: cmsg is the current pointer from this same hdr traversal;
-        // libc returns the next in-bounds header or null.
-        cmsg = unsafe { libc::CMSG_NXTHDR(&hdr, cmsg) };
     }
 
-    Ok((
-        n as usize,
-        sockaddr_un_path(&name, hdr.msg_namelen),
-        metadata,
-    ))
+    Ok((bytes, peer, metadata))
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -742,47 +684,10 @@ pub(super) fn recv_datagram_with_metadata(
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn timeval_to_usec(tv: libc::timeval) -> u64 {
-    (tv.tv_sec as u64)
-        .saturating_mul(1_000_000)
-        .saturating_add((tv.tv_usec as u64).min(999_999))
-}
-
-#[cfg(target_os = "linux")]
 pub(super) fn parse_selinux_label_bytes(bytes: &[u8]) -> String {
     let end = bytes
         .iter()
         .position(|byte| *byte == b'\0')
         .unwrap_or(bytes.len());
     String::from_utf8_lossy(&bytes[..end]).into_owned()
-}
-
-#[cfg(target_os = "linux")]
-pub(super) fn sockaddr_un_path(
-    addr: &libc::sockaddr_un,
-    namelen: libc::socklen_t,
-) -> Option<PathBuf> {
-    let path_offset = std::mem::size_of::<libc::sa_family_t>();
-    if namelen as usize <= path_offset {
-        return None;
-    }
-
-    let path_len = (namelen as usize - path_offset).min(addr.sun_path.len());
-    // SAFETY: path_len is capped to sun_path's allocation and the reference
-    // cannot outlive addr.
-    let bytes =
-        unsafe { std::slice::from_raw_parts(addr.sun_path.as_ptr().cast::<u8>(), path_len) };
-    if bytes.first().copied() == Some(0) {
-        return None;
-    }
-
-    let end = bytes
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(bytes.len());
-    if end == 0 {
-        return None;
-    }
-
-    Some(PathBuf::from(OsStr::from_bytes(&bytes[..end])))
 }

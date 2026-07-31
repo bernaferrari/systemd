@@ -147,7 +147,8 @@ pub fn write_le64(bytes: &mut [u8], val: u64) {
 // ── C ABI ────────────────────────────────────────────────────────────────
 
 /// Copy exactly `N` bytes from a C pointer without imposing an alignment
-/// requirement.
+/// requirement. This private adapter is called only by the documented C ABI
+/// entry points below.
 ///
 /// # Safety
 /// `p` must be non-null and point to `N` initialized, readable bytes for the
@@ -155,12 +156,14 @@ pub fn write_le64(bytes: &mut [u8], val: u64) {
 /// copied array has byte alignment.
 #[inline]
 unsafe fn read_c_bytes<const N: usize>(p: *const c_void) -> [u8; N] {
-    // SAFETY: guaranteed by this helper's contract; `[u8; N]` has alignment 1.
+    // SAFETY: each caller is an audited C ABI adapter whose contract requires
+    // `N` initialized bytes; `[u8; N]` has alignment 1.
     unsafe { std::ptr::read(p.cast::<[u8; N]>()) }
 }
 
 /// Copy exactly `N` bytes to a C pointer without imposing an alignment
-/// requirement.
+/// requirement. This private adapter is called only by the documented C ABI
+/// entry points below.
 ///
 /// # Safety
 /// `p` must be non-null and point to `N` writable bytes for the duration of
@@ -169,8 +172,21 @@ unsafe fn read_c_bytes<const N: usize>(p: *const c_void) -> [u8; N] {
 /// copied array has byte alignment.
 #[inline]
 unsafe fn write_c_bytes<const N: usize>(p: *mut c_void, bytes: [u8; N]) {
-    // SAFETY: guaranteed by this helper's contract; `[u8; N]` has alignment 1.
+    // SAFETY: each caller is an audited C ABI adapter whose contract requires
+    // `N` writable bytes; `[u8; N]` has alignment 1.
     unsafe { std::ptr::write(p.cast::<[u8; N]>(), bytes) };
+}
+
+// The exported functions below establish the pointer contracts once; their
+// byte-order logic can then use these safe fixed-width copy adapters.
+fn read_abi_bytes<const N: usize>(p: *const c_void) -> [u8; N] {
+    // SAFETY: callers are the audited C ABI adapters documented below.
+    unsafe { read_c_bytes(p) }
+}
+
+fn write_abi_bytes<const N: usize>(p: *mut c_void, bytes: [u8; N]) {
+    // SAFETY: callers are the audited C ABI adapters documented below.
+    unsafe { write_c_bytes(p, bytes) };
 }
 
 /// Read a big-endian 16-bit integer from an unaligned C byte buffer.
@@ -180,8 +196,7 @@ unsafe fn write_c_bytes<const N: usize>(p: *mut c_void, bytes: [u8; N]) {
 /// alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_read_be16(p: *const c_void) -> u16 {
-    // SAFETY: required by this C ABI entry point's contract.
-    read_be16(&unsafe { read_c_bytes::<2>(p) })
+    read_be16(&read_abi_bytes::<2>(p))
 }
 
 /// Read a big-endian 32-bit integer from an unaligned C byte buffer.
@@ -191,8 +206,7 @@ pub unsafe extern "C" fn rs_unaligned_read_be16(p: *const c_void) -> u16 {
 /// alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_read_be32(p: *const c_void) -> u32 {
-    // SAFETY: required by this C ABI entry point's contract.
-    read_be32(&unsafe { read_c_bytes::<4>(p) })
+    read_be32(&read_abi_bytes::<4>(p))
 }
 
 /// Read a big-endian 64-bit integer from an unaligned C byte buffer.
@@ -202,8 +216,7 @@ pub unsafe extern "C" fn rs_unaligned_read_be32(p: *const c_void) -> u32 {
 /// alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_read_be64(p: *const c_void) -> u64 {
-    // SAFETY: required by this C ABI entry point's contract.
-    read_be64(&unsafe { read_c_bytes::<8>(p) })
+    read_be64(&read_abi_bytes::<8>(p))
 }
 
 /// Write a big-endian 16-bit integer to an unaligned C byte buffer.
@@ -213,8 +226,7 @@ pub unsafe extern "C" fn rs_unaligned_read_be64(p: *const c_void) -> u64 {
 /// synchronize concurrent access. No alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_write_be16(p: *mut c_void, value: u16) {
-    // SAFETY: required by this C ABI entry point's contract.
-    unsafe { write_c_bytes(p, value.to_be_bytes()) };
+    write_abi_bytes(p, value.to_be_bytes());
 }
 
 /// Write a big-endian 32-bit integer to an unaligned C byte buffer.
@@ -224,8 +236,7 @@ pub unsafe extern "C" fn rs_unaligned_write_be16(p: *mut c_void, value: u16) {
 /// synchronize concurrent access. No alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_write_be32(p: *mut c_void, value: u32) {
-    // SAFETY: required by this C ABI entry point's contract.
-    unsafe { write_c_bytes(p, value.to_be_bytes()) };
+    write_abi_bytes(p, value.to_be_bytes());
 }
 
 /// Write a big-endian 64-bit integer to an unaligned C byte buffer.
@@ -235,8 +246,7 @@ pub unsafe extern "C" fn rs_unaligned_write_be32(p: *mut c_void, value: u32) {
 /// synchronize concurrent access. No alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_write_be64(p: *mut c_void, value: u64) {
-    // SAFETY: required by this C ABI entry point's contract.
-    unsafe { write_c_bytes(p, value.to_be_bytes()) };
+    write_abi_bytes(p, value.to_be_bytes());
 }
 
 /// Read a little-endian 16-bit integer from an unaligned C byte buffer.
@@ -246,8 +256,7 @@ pub unsafe extern "C" fn rs_unaligned_write_be64(p: *mut c_void, value: u64) {
 /// alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_read_le16(p: *const c_void) -> u16 {
-    // SAFETY: required by this C ABI entry point's contract.
-    read_le16(&unsafe { read_c_bytes::<2>(p) })
+    read_le16(&read_abi_bytes::<2>(p))
 }
 
 /// Read a little-endian 32-bit integer from an unaligned C byte buffer.
@@ -257,8 +266,7 @@ pub unsafe extern "C" fn rs_unaligned_read_le16(p: *const c_void) -> u16 {
 /// alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_read_le32(p: *const c_void) -> u32 {
-    // SAFETY: required by this C ABI entry point's contract.
-    read_le32(&unsafe { read_c_bytes::<4>(p) })
+    read_le32(&read_abi_bytes::<4>(p))
 }
 
 /// Read a little-endian 64-bit integer from an unaligned C byte buffer.
@@ -268,8 +276,7 @@ pub unsafe extern "C" fn rs_unaligned_read_le32(p: *const c_void) -> u32 {
 /// alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_read_le64(p: *const c_void) -> u64 {
-    // SAFETY: required by this C ABI entry point's contract.
-    read_le64(&unsafe { read_c_bytes::<8>(p) })
+    read_le64(&read_abi_bytes::<8>(p))
 }
 
 /// Write a little-endian 16-bit integer to an unaligned C byte buffer.
@@ -279,8 +286,7 @@ pub unsafe extern "C" fn rs_unaligned_read_le64(p: *const c_void) -> u64 {
 /// synchronize concurrent access. No alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_write_le16(p: *mut c_void, value: u16) {
-    // SAFETY: required by this C ABI entry point's contract.
-    unsafe { write_c_bytes(p, value.to_le_bytes()) };
+    write_abi_bytes(p, value.to_le_bytes());
 }
 
 /// Write a little-endian 32-bit integer to an unaligned C byte buffer.
@@ -290,8 +296,7 @@ pub unsafe extern "C" fn rs_unaligned_write_le16(p: *mut c_void, value: u16) {
 /// synchronize concurrent access. No alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_write_le32(p: *mut c_void, value: u32) {
-    // SAFETY: required by this C ABI entry point's contract.
-    unsafe { write_c_bytes(p, value.to_le_bytes()) };
+    write_abi_bytes(p, value.to_le_bytes());
 }
 
 /// Write a little-endian 64-bit integer to an unaligned C byte buffer.
@@ -301,8 +306,7 @@ pub unsafe extern "C" fn rs_unaligned_write_le32(p: *mut c_void, value: u32) {
 /// synchronize concurrent access. No alignment is required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_unaligned_write_le64(p: *mut c_void, value: u64) {
-    // SAFETY: required by this C ABI entry point's contract.
-    unsafe { write_c_bytes(p, value.to_le_bytes()) };
+    write_abi_bytes(p, value.to_le_bytes());
 }
 
 #[cfg(test)]

@@ -24,6 +24,47 @@ const S_IFMT: u32 = 0o170000;
 const S_IFCHR: u32 = 0o020000;
 const S_IFBLK: u32 = 0o060000;
 
+/// A C ABI output pointer whose writable-storage contract is established by
+/// the exporting function. Keeping stores here leaves parsing and formatting
+/// cores entirely in Rust values.
+#[derive(Clone, Copy)]
+struct COut<T>(*mut T);
+
+impl<T> COut<T> {
+    fn from_contract(ptr: *mut T) -> Self {
+        Self(ptr)
+    }
+
+    fn store(self, value: T) {
+        if !self.0.is_null() {
+            // SAFETY: a non-null output pointer is writable under the enclosing ABI contract.
+            unsafe { *self.0 = value };
+        }
+    }
+}
+
+/// Caller-contract-validated writable C buffer used by the stack formatter.
+struct CCharBuffer(*mut c_char);
+
+impl CCharBuffer {
+    fn from_contract(ptr: *mut c_char) -> Self {
+        Self(ptr)
+    }
+
+    fn is_present(&self) -> bool {
+        !self.0.is_null()
+    }
+
+    fn write_nul_terminated(&self, bytes: &[u8]) {
+        // SAFETY: the C ABI contract guarantees space for `bytes` plus NUL;
+        // `bytes` is a live Rust slice and therefore cannot overlap this output.
+        unsafe {
+            ptr::copy_nonoverlapping(bytes.as_ptr().cast::<c_char>(), self.0, bytes.len());
+            *self.0.add(bytes.len()) = 0;
+        }
+    }
+}
+
 #[inline]
 const fn makedev(major: u32, minor: u32) -> u64 {
     (minor as u64 & 0x0000_00ff)
@@ -164,22 +205,33 @@ fn parse_devnum_bytes(text: &[u8]) -> Result<u64, Errno> {
     Ok(makedev(major, minor))
 }
 
-fn allocate_c_string(text: &str) -> Result<*mut c_char, Errno> {
-    let bytes = text.as_bytes();
-    let size = bytes.len().checked_add(1).ok_or(Errno::ENOMEM)?;
-    // SAFETY: `size` includes the trailing NUL and is non-zero. The returned
-    // allocation crosses the C ABI, so it must be made by the C allocator.
-    let ptr = unsafe { libc::malloc(size) }.cast::<u8>();
-    if ptr.is_null() {
+/// Allocate and NUL-terminate concatenated byte slices using the C allocator.
+/// This is the common ownership-transfer boundary for device paths.
+fn allocate_c_string_parts(parts: &[&[u8]]) -> Result<*mut c_char, Errno> {
+    let content_len = parts.iter().try_fold(0usize, |len, part| {
+        len.checked_add(part.len()).ok_or(Errno::ENOMEM)
+    })?;
+    let size = content_len.checked_add(1).ok_or(Errno::ENOMEM)?;
+    let allocation = crate::ffi::malloc(size).cast::<u8>();
+    if allocation.is_null() {
         return Err(Errno::ENOMEM);
     }
 
-    // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
+    // SAFETY: `allocation` owns `size` bytes from the C allocator. Each input
+    // is a live Rust slice; cursor advancement is bounded by `content_len`.
     unsafe {
-        ptr.copy_from_nonoverlapping(bytes.as_ptr(), bytes.len());
-        *ptr.add(bytes.len()) = 0;
+        let mut cursor = allocation;
+        for part in parts {
+            ptr::copy_nonoverlapping(part.as_ptr(), cursor, part.len());
+            cursor = cursor.add(part.len());
+        }
+        *cursor = 0;
     }
-    Ok(ptr.cast::<c_char>())
+    Ok(allocation.cast::<c_char>())
+}
+
+fn allocate_c_string(text: &str) -> Result<*mut c_char, Errno> {
+    allocate_c_string_parts(&[text.as_bytes()])
 }
 
 fn write_u32_decimal(mut value: u32, output: &mut [u8]) -> Result<usize, Errno> {
@@ -320,13 +372,12 @@ pub unsafe extern "C" fn rs_parse_devnum(s: *const c_char, ret: *mut u64) -> i32
         return Errno::EINVAL.to_neg_errno();
     }
 
-    // SAFETY: required by this C ABI entry point's contract.
+    // SAFETY: `s` is a readable NUL-terminated string by this C ABI contract.
     let result = parse_devnum_bytes(unsafe { CStr::from_ptr(s) }.to_bytes());
 
     match result {
         Ok(dev) => {
-            // SAFETY: required by this C ABI entry point's contract.
-            unsafe { *ret = dev };
+            COut::from_contract(ret).store(dev);
             0
         }
         Err(errno) => errno.to_neg_errno(),
@@ -340,18 +391,15 @@ pub unsafe extern "C" fn rs_parse_devnum(s: *const c_char, ret: *mut u64) -> i32
 /// formatted value and its trailing NUL byte.
 #[unsafe(export_name = "rs_format_devnum")]
 pub unsafe extern "C" fn rs_format_devnum(d: u64, buf: *mut c_char) -> *mut c_char {
-    if buf.is_null() {
+    let output = CCharBuffer::from_contract(buf);
+    if !output.is_present() {
         return ptr::null_mut();
     }
 
     let Ok((text, text_length)) = format_devnum_bytes(d) else {
         return ptr::null_mut();
     };
-    // SAFETY: required by this C ABI entry point's contract.
-    unsafe {
-        ptr::copy_nonoverlapping(text.as_ptr().cast::<c_char>(), buf, text_length);
-        *buf.add(text_length) = 0;
-    }
+    output.write_nul_terminated(&text[..text_length]);
     buf
 }
 
@@ -381,17 +429,11 @@ pub unsafe extern "C" fn rs_device_path_parse_major_minor(
         return Errno::EINVAL.to_neg_errno();
     }
 
-    // SAFETY: required by this C ABI entry point's contract.
+    // SAFETY: `path` is a readable NUL-terminated string by this C ABI contract.
     match parse_device_path(unsafe { CStr::from_ptr(path) }.to_bytes()) {
         Ok((mode, devnum)) => {
-            if !ret_mode.is_null() {
-                // SAFETY: required by this C ABI entry point's contract.
-                unsafe { *ret_mode = mode };
-            }
-            if !ret_devnum.is_null() {
-                // SAFETY: required by this C ABI entry point's contract.
-                unsafe { *ret_devnum = devnum };
-            }
+            COut::from_contract(ret_mode).store(mode);
+            COut::from_contract(ret_devnum).store(devnum);
             0
         }
         Err(errno) => errno.to_neg_errno(),
@@ -430,16 +472,14 @@ pub unsafe extern "C" fn rs_device_path_make_major_minor(
         return Errno::ENOMEM.to_neg_errno();
     };
 
-    // SAFETY: `size` includes the trailing NUL. This allocation crosses the C
-    // ABI, so it is made once by the C allocator and written within bounds.
+    // SAFETY: `size` includes the NUL terminator. This single C allocator
+    // boundary preserves the ownership expected by the exported C ABI.
     let path = unsafe { libc::malloc(size) }.cast::<u8>();
     if path.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
-
-    // SAFETY: required by this C ABI entry point's contract. The allocation
-    // above has exactly `size` writable bytes and does not overlap either
-    // static source range.
+    // SAFETY: `path` owns exactly `size` writable bytes and both source ranges
+    // are live Rust slices whose combined length is `size - 1`.
     unsafe {
         ptr::copy_nonoverlapping(prefix.as_ptr(), path, prefix.len());
         ptr::copy_nonoverlapping(
@@ -448,8 +488,8 @@ pub unsafe extern "C" fn rs_device_path_make_major_minor(
             formatted_devnum_length,
         );
         *path.add(size - 1) = 0;
-        *ret = path.cast::<c_char>();
     }
+    COut::from_contract(ret).store(path.cast::<c_char>());
     0
 }
 
@@ -473,8 +513,7 @@ pub unsafe extern "C" fn rs_device_path_make_inaccessible(mode: u32, ret: *mut *
 
     match allocate_c_string(path) {
         Ok(p) => {
-            // SAFETY: required by this C ABI entry point's contract.
-            unsafe { *ret = p };
+            COut::from_contract(ret).store(p);
             0
         }
         Err(errno) => errno.to_neg_errno(),
