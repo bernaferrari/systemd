@@ -693,7 +693,7 @@ pub fn parse_ip_port(s: &str) -> Result<u16> {
     let port = parse_c_unsigned(s)
         .and_then(|port| u16::try_from(port).ok())
         .ok_or(SocketNetlinkError::InvalidPort)?;
-    if port == 0 || port > 65535 {
+    if port == 0 {
         return Err(SocketNetlinkError::InvalidPort);
     }
     Ok(port)
