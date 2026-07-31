@@ -19,6 +19,11 @@ use std::fs;
 /// Maximum number of CPUs supported (kernel 5.1+ PowerPC allows 8192).
 pub const CPU_SET_MAX_NCPU: u32 = 8192;
 
+#[inline]
+const fn is_systemd_whitespace(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\r')
+}
+
 // ── Error type ────────────────────────────────────────────────────────────
 
 /// Errors produced by CPU set operations.
@@ -192,14 +197,17 @@ impl CpuSet {
     /// When `lenient` is false, the first parse error is returned.
     pub fn parse_full(s: &str, lenient: bool) -> Result<Self, CpuSetError> {
         let mut set = Self::new();
-        let input = s.trim();
+        // C's `extract_first_word(..., WHITESPACE ",", ...)` recognizes only
+        // space, tab, LF, and CR. Do not use `str::trim` or
+        // `char::is_whitespace`, which would accept additional Unicode/control
+        // separators that the C parser rejects.
+        let input = s;
 
         if input.is_empty() {
             return Ok(set);
         }
 
-        for token in input.split(|c: char| c == ',' || c.is_whitespace()) {
-            let token = token.trim();
+        for token in input.split(|c: char| c == ',' || is_systemd_whitespace(c)) {
             if token.is_empty() {
                 continue;
             }
@@ -732,6 +740,17 @@ mod tests {
         assert_eq!(set.count(), 5);
         assert!(set.contains(0));
         assert!(set.contains(5));
+    }
+
+    #[test]
+    fn test_parse_uses_c_whitespace_grammar() {
+        for separator in [' ', '\t', '\n', '\r'] {
+            let set = CpuSet::parse(&format!("0{separator}1")).unwrap();
+            assert_eq!(set.count(), 2);
+        }
+        for separator in ['\u{b}', '\u{c}', '\u{a0}'] {
+            assert!(CpuSet::parse(&format!("0{separator}1")).is_err());
+        }
     }
 
     #[test]
