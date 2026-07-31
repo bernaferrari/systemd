@@ -1849,13 +1849,13 @@ sync_status = "needs_review"
 
 [core_dbus_policy]
 c_file = "src/core/dbus.c"
-rust_file = "src/core/rust/dbus.rs"
+rust_paths = ["src/core/rust/dbus.rs", "src/core/rust/pid1_dbus_reply_queue.rs"]
 status = "in-progress"
 tier = 1
 symbols = 0
 sync_status = "needs_review"
 last_reviewed_upstream_blobs = { "src/core/dbus.c" = "83a4e8912e091216955aab60125d248d1e30f9f0" }
-last_reviewed_rust_blobs = { "src/core/rust/dbus.rs" = "ff43c029e432576c746d1254fac6518dfb826b51" }
+last_reviewed_rust_blobs = { "src/core/rust/dbus.rs" = "ff43c029e432576c746d1254fac6518dfb826b51", "src/core/rust/pid1_dbus_reply_queue.rs" = "a2f88235982d0cb37b766fe1937a4e457b27d1a3" }
 notes = "Source-local disconnected policy model only. It retains the narrow API-bus-ready holdback for a queued reload message, but has no sd-bus transport, asynchronous GetId reply, subscription serialization/coldplug, or PID1/sd-event dispatch lifecycle. Production C remains authoritative."
 
 [core_manager_policy]
