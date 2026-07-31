@@ -229,8 +229,10 @@ pub unsafe extern "C" fn rs_memory_startswith(
     let Some(offset) = fundamental::memory_startswith(input, token) else {
         return ptr::null_mut();
     };
-    // SAFETY: `offset <= sz`, guaranteed by `memory_startswith()` above.
-    unsafe { p.cast_mut().cast::<u8>().add(offset).cast() }
+    // `offset <= sz`, guaranteed by `memory_startswith()` above. This only
+    // forms the returned C pointer; the caller retains responsibility for any
+    // subsequent dereference.
+    p.cast_mut().cast::<u8>().wrapping_add(offset).cast()
 }
 
 /// C ABI for fundamental `ascii_isdigit()`.

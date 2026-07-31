@@ -29,6 +29,61 @@ pub struct RsEtherAddr {
     pub octet: [u8; ETH_ALEN],
 }
 
+// The exported ABI contracts validate these pointers. Keep the raw conversion
+// here so address parsing, comparison, and formatting operate only on Rust
+// values and fixed slices.
+fn with_hw_addr<T>(ptr: *const RsHwAddrData, operation: impl FnOnce(&RsHwAddrData) -> T) -> T {
+    // SAFETY: the enclosing ABI contract guarantees a live readable RsHwAddrData.
+    operation(unsafe { &*ptr })
+}
+
+fn with_hw_addrs<T>(
+    left: *const RsHwAddrData,
+    right: *const RsHwAddrData,
+    operation: impl FnOnce(&RsHwAddrData, &RsHwAddrData) -> T,
+) -> T {
+    // SAFETY: the enclosing ABI contract guarantees both live readable values.
+    unsafe { operation(&*left, &*right) }
+}
+
+fn with_mut_hw_addr<T>(
+    ptr: *mut RsHwAddrData,
+    operation: impl FnOnce(&mut RsHwAddrData) -> T,
+) -> T {
+    // SAFETY: the enclosing ABI contract guarantees a live writable RsHwAddrData.
+    operation(unsafe { &mut *ptr })
+}
+
+fn with_ether_addr<T>(ptr: *const RsEtherAddr, operation: impl FnOnce(&RsEtherAddr) -> T) -> T {
+    // SAFETY: the enclosing ABI contract guarantees a live readable RsEtherAddr.
+    operation(unsafe { &*ptr })
+}
+
+fn with_ether_addrs<T>(
+    left: *const RsEtherAddr,
+    right: *const RsEtherAddr,
+    operation: impl FnOnce(&RsEtherAddr, &RsEtherAddr) -> T,
+) -> T {
+    // SAFETY: the enclosing ABI contract guarantees both live readable values.
+    unsafe { operation(&*left, &*right) }
+}
+
+fn with_mut_ether_addr<T>(
+    ptr: *mut RsEtherAddr,
+    operation: impl FnOnce(&mut RsEtherAddr) -> T,
+) -> T {
+    // SAFETY: the enclosing ABI contract guarantees a live writable RsEtherAddr.
+    operation(unsafe { &mut *ptr })
+}
+
+fn with_c_buffer<const N: usize, T>(
+    ptr: *mut c_char,
+    operation: impl FnOnce(&mut [c_char; N]) -> T,
+) -> T {
+    // SAFETY: the enclosing ABI contract guarantees N writable C-char slots.
+    operation(unsafe { &mut *ptr.cast::<[c_char; N]>() })
+}
+
 impl RsHwAddrData {
     fn bytes(&self) -> Option<&[u8]> {
         self.bytes.get(..self.length)
@@ -357,15 +412,15 @@ pub unsafe extern "C" fn rs_hw_addr_to_string_full(
     flags: u32,
     buffer: *mut c_char,
 ) -> *mut c_char {
-    // SAFETY: guaranteed by this FFI function's documented contract.
-    let addr = unsafe { &*addr };
-    let Some(bytes) = addr.bytes() else {
-        return ptr::null_mut();
-    };
-    // SAFETY: the public FFI contract guarantees this fixed-size writable buffer.
-    let buffer = unsafe { &mut *buffer.cast::<[c_char; HW_ADDR_TO_STRING_MAX]>() };
-    hw_addr_to_string_bytes(bytes, flags, buffer);
-    buffer.as_mut_ptr()
+    with_hw_addr(addr, |addr| {
+        let Some(bytes) = addr.bytes() else {
+            return ptr::null_mut();
+        };
+        with_c_buffer(buffer, |buffer| {
+            hw_addr_to_string_bytes(bytes, flags, buffer);
+            buffer.as_mut_ptr()
+        })
+    })
 }
 
 /// # Safety
@@ -382,12 +437,12 @@ pub unsafe extern "C" fn rs_hw_addr_set(
     if length > HW_ADDR_MAX_SIZE || addr.is_null() || (length > 0 && bytes.is_null()) {
         return ptr::null_mut();
     }
-    // SAFETY: `addr` is writable by the documented FFI contract.
-    let addr = unsafe { &mut *addr };
-    // SAFETY: the public FFI contract guarantees `length` readable source bytes.
+    // SAFETY: the public ABI contract guarantees `length` readable bytes.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, length) };
-    addr.set_bytes(bytes);
-    addr as *mut RsHwAddrData
+    with_mut_hw_addr(addr, |addr| {
+        addr.set_bytes(bytes);
+        addr as *mut RsHwAddrData
+    })
 }
 
 /// # Safety
@@ -396,11 +451,7 @@ pub unsafe extern "C" fn rs_hw_addr_set(
 /// larger than `HW_ADDR_MAX_SIZE`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_hw_addr_compare(a: *const RsHwAddrData, b: *const RsHwAddrData) -> i32 {
-    // SAFETY: both pointers are readable by the documented FFI contract.
-    let a = unsafe { &*a };
-    // SAFETY: both pointers are readable by the documented FFI contract.
-    let b = unsafe { &*b };
-    a.compare(b).unwrap_or(0)
+    with_hw_addrs(a, b, |a, b| a.compare(b).unwrap_or(0))
 }
 
 /// # Safety
@@ -409,9 +460,7 @@ pub unsafe extern "C" fn rs_hw_addr_compare(a: *const RsHwAddrData, b: *const Rs
 /// `HW_ADDR_MAX_SIZE`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_hw_addr_is_null(addr: *const RsHwAddrData) -> bool {
-    // SAFETY: `addr` is readable by the documented FFI contract.
-    let addr = unsafe { &*addr };
-    addr.is_null()
+    with_hw_addr(addr, RsHwAddrData::is_null)
 }
 
 /// # Safety
@@ -423,12 +472,12 @@ pub unsafe extern "C" fn rs_ether_addr_to_string(
     addr: *const RsEtherAddr,
     buffer: *mut c_char,
 ) -> *mut c_char {
-    // SAFETY: `addr` is readable by the documented FFI contract.
-    let addr = unsafe { &*addr };
-    // SAFETY: the public FFI contract guarantees this fixed-size writable buffer.
-    let buffer = unsafe { &mut *buffer.cast::<[c_char; ETHER_ADDR_TO_STRING_MAX]>() };
-    ether_addr_to_string_bytes(&addr.octet, buffer);
-    buffer.as_mut_ptr()
+    with_ether_addr(addr, |addr| {
+        with_c_buffer(buffer, |buffer| {
+            ether_addr_to_string_bytes(&addr.octet, buffer);
+            buffer.as_mut_ptr()
+        })
+    })
 }
 
 /// # Safety
@@ -439,11 +488,7 @@ pub unsafe extern "C" fn rs_ether_addr_compare(
     a: *const RsEtherAddr,
     b: *const RsEtherAddr,
 ) -> i32 {
-    // SAFETY: both pointers are readable by the documented FFI contract.
-    let a = unsafe { &*a };
-    // SAFETY: both pointers are readable by the documented FFI contract.
-    let b = unsafe { &*b };
-    compare_bytes(&a.octet, &b.octet)
+    with_ether_addrs(a, b, |a, b| compare_bytes(&a.octet, &b.octet))
 }
 
 /// # Safety
@@ -451,8 +496,7 @@ pub unsafe extern "C" fn rs_ether_addr_compare(
 /// `addr` must designate a live `RsEtherAddr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_broadcast(addr: *const RsEtherAddr) -> bool {
-    // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).as_ether_addr().is_broadcast() }
+    with_ether_addr(addr, |addr| addr.as_ether_addr().is_broadcast())
 }
 
 /// # Safety
@@ -460,8 +504,7 @@ pub unsafe extern "C" fn rs_ether_addr_is_broadcast(addr: *const RsEtherAddr) ->
 /// Both pointers must designate live `RsEtherAddr` values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_equal(a: *const RsEtherAddr, b: *const RsEtherAddr) -> bool {
-    // SAFETY: both pointers are readable by the documented FFI contract.
-    unsafe { (&*a).as_ether_addr() == (&*b).as_ether_addr() }
+    with_ether_addrs(a, b, |a, b| a.as_ether_addr() == b.as_ether_addr())
 }
 
 /// # Safety
@@ -469,8 +512,7 @@ pub unsafe extern "C" fn rs_ether_addr_equal(a: *const RsEtherAddr, b: *const Rs
 /// `addr` must designate a live `RsEtherAddr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_null(addr: *const RsEtherAddr) -> bool {
-    // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).as_ether_addr().is_null() }
+    with_ether_addr(addr, |addr| addr.as_ether_addr().is_null())
 }
 
 /// # Safety
@@ -478,8 +520,7 @@ pub unsafe extern "C" fn rs_ether_addr_is_null(addr: *const RsEtherAddr) -> bool
 /// `addr` must designate a live `RsEtherAddr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_multicast(addr: *const RsEtherAddr) -> bool {
-    // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).as_ether_addr().is_multicast() }
+    with_ether_addr(addr, |addr| addr.as_ether_addr().is_multicast())
 }
 
 /// # Safety
@@ -487,8 +528,7 @@ pub unsafe extern "C" fn rs_ether_addr_is_multicast(addr: *const RsEtherAddr) ->
 /// `addr` must designate a live `RsEtherAddr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_unicast(addr: *const RsEtherAddr) -> bool {
-    // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).as_ether_addr().is_unicast() }
+    with_ether_addr(addr, |addr| addr.as_ether_addr().is_unicast())
 }
 
 /// # Safety
@@ -496,8 +536,7 @@ pub unsafe extern "C" fn rs_ether_addr_is_unicast(addr: *const RsEtherAddr) -> b
 /// `addr` must designate a live `RsEtherAddr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_local(addr: *const RsEtherAddr) -> bool {
-    // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).as_ether_addr().is_local() }
+    with_ether_addr(addr, |addr| addr.as_ether_addr().is_local())
 }
 
 /// # Safety
@@ -505,8 +544,7 @@ pub unsafe extern "C" fn rs_ether_addr_is_local(addr: *const RsEtherAddr) -> boo
 /// `addr` must designate a live `RsEtherAddr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_is_global(addr: *const RsEtherAddr) -> bool {
-    // SAFETY: `addr` is readable by the documented FFI contract.
-    unsafe { (&*addr).as_ether_addr().is_global() }
+    with_ether_addr(addr, |addr| addr.as_ether_addr().is_global())
 }
 
 /// # Safety
@@ -514,11 +552,11 @@ pub unsafe extern "C" fn rs_ether_addr_is_global(addr: *const RsEtherAddr) -> bo
 /// `addr` must designate a writable `RsEtherAddr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ether_addr_mark_random(addr: *mut RsEtherAddr) {
-    // SAFETY: `addr` is writable by the documented FFI contract.
-    let addr = unsafe { &mut *addr };
-    let mut ether = addr.as_ether_addr();
-    ether.mark_random();
-    addr.set_ether_addr(ether);
+    with_mut_ether_addr(addr, |addr| {
+        let mut ether = addr.as_ether_addr();
+        ether.mark_random();
+        addr.set_ether_addr(ether);
+    });
 }
 
 /// # Safety
@@ -531,17 +569,17 @@ pub unsafe extern "C" fn rs_parse_hw_addr_full(
     expected_len: usize,
     ret: *mut RsHwAddrData,
 ) -> i32 {
-    // SAFETY: `s` is a live NUL-terminated string by the documented contract.
-    let Ok(s) = unsafe { CStr::from_ptr(s) }.to_str() else {
+    // SAFETY: the documented ABI contract guarantees a readable C string.
+    let Ok(text) = unsafe { CStr::from_ptr(s) }.to_str() else {
         return Errno::EINVAL.to_neg_errno();
     };
-    let Ok(parsed) = parse_hw_addr_full(s, expected_len) else {
+    let Ok(parsed) = parse_hw_addr_full(text, expected_len) else {
         return Errno::EINVAL.to_neg_errno();
     };
-    // SAFETY: `ret` is writable by the documented FFI contract.
-    let ret = unsafe { &mut *ret };
-    ret.bytes.fill(0);
-    ret.set_bytes(parsed.as_bytes());
+    with_mut_hw_addr(ret, |ret| {
+        ret.bytes.fill(0);
+        ret.set_bytes(parsed.as_bytes());
+    });
     0
 }
 
@@ -551,15 +589,14 @@ pub unsafe extern "C" fn rs_parse_hw_addr_full(
 /// writable `RsEtherAddr` storage.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_ether_addr(s: *const c_char, ret: *mut RsEtherAddr) -> i32 {
-    // SAFETY: `s` is a live NUL-terminated string by the documented contract.
-    let Ok(s) = unsafe { CStr::from_ptr(s) }.to_str() else {
+    // SAFETY: the documented ABI contract guarantees a readable C string.
+    let Ok(text) = unsafe { CStr::from_ptr(s) }.to_str() else {
         return Errno::EINVAL.to_neg_errno();
     };
-    let Ok(parsed) = parse_ether_addr(s) else {
+    let Ok(parsed) = parse_ether_addr(text) else {
         return Errno::EINVAL.to_neg_errno();
     };
-    // SAFETY: `ret` is writable by the documented FFI contract.
-    unsafe { (&mut *ret).set_ether_addr(parsed) };
+    with_mut_ether_addr(ret, |ret| ret.set_ether_addr(parsed));
     0
 }
 

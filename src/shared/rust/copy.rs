@@ -13,6 +13,7 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
 use crate::ffi::*;
+use std::fs::File;
 use std::os::unix::io::AsRawFd;
 /// Userspace fallback buffer size (64 KiB).
 use std::os::unix::{
@@ -33,6 +34,52 @@ fn fstat_fd(fd: i32) -> std::io::Result<libc::stat> {
     }
     // SAFETY: a successful fstat initializes every field of libc::stat.
     Ok(unsafe { stat.assume_init() })
+}
+
+fn fchmod_fd(fd: i32, mode: libc::mode_t) -> std::io::Result<()> {
+    // SAFETY: fd is kernel-validated and mode is passed by value.
+    if unsafe { libc::fchmod(fd, mode) } < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+fn fchown_fd(fd: i32, uid: libc::uid_t, gid: libc::gid_t) -> std::io::Result<()> {
+    // SAFETY: fd is kernel-validated and uid/gid are passed by value.
+    if unsafe { libc::fchown(fd, uid, gid) } < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+fn futimens_fd(fd: i32, times: &[libc::timespec; 2]) -> std::io::Result<()> {
+    // SAFETY: times is a live two-element array with futimens' required ABI.
+    if unsafe { libc::futimens(fd, times.as_ptr()) } < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+fn seek_fd(fd: i32, offset: libc::off_t, whence: i32) -> std::io::Result<libc::off_t> {
+    // SAFETY: fd is kernel-validated and offset/whence are scalar arguments.
+    let result = unsafe { libc::lseek(fd, offset, whence) };
+    if result < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(result)
+    }
+}
+
+fn truncate_fd(fd: i32, length: libc::off_t) -> std::io::Result<()> {
+    // SAFETY: fd is kernel-validated and length is a scalar argument.
+    if unsafe { libc::ftruncate(fd, length) } < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 // ── Copy flags ────────────────────────────────────────────────────────────
@@ -141,16 +188,8 @@ pub fn fd_is_nonblock_pipe(fd: i32) -> PipeKind {
 /// Uses `fallocate(PUNCH_HOLE | KEEP_SIZE)` where possible and `ftruncate`
 /// to extend beyond the current end-of-file.
 pub fn create_hole(fd: i32, size: i64) -> std::io::Result<()> {
-    // SAFETY: `fd` is passed through to libc for validation and SEEK_CUR has no pointer arguments.
-    let offset = unsafe { libc::lseek(fd, 0, libc::SEEK_CUR) };
-    if offset < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    // SAFETY: `fd` is passed through to libc for validation and SEEK_END has no pointer arguments.
-    let end = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };
-    if end < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
+    let offset = seek_fd(fd, 0, libc::SEEK_CUR)?;
+    let end = seek_fd(fd, 0, libc::SEEK_END)?;
 
     if offset < end {
         let punch_len = std::cmp::min(size, end - offset) as libc::off_t;
@@ -172,24 +211,13 @@ pub fn create_hole(fd: i32, size: i64) -> std::io::Result<()> {
     }
 
     if end - offset >= size {
-        // SAFETY: `fd` is passed through to libc for validation and SEEK_SET has no pointer arguments.
-        let ret = unsafe { libc::lseek(fd, offset + size, libc::SEEK_SET) };
-        if ret < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
+        seek_fd(fd, offset + size, libc::SEEK_SET)?;
         return Ok(());
     }
 
     let remaining = (size - (end - offset)) as libc::off_t;
-    // SAFETY: `fd` is passed through to libc for validation and the length is an integer.
-    if unsafe { libc::ftruncate(fd, end + remaining) } < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    // SAFETY: `fd` is passed through to libc for validation and SEEK_END has no pointer arguments.
-    let ret = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };
-    if ret < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
+    truncate_fd(fd, end + remaining)?;
+    seek_fd(fd, 0, libc::SEEK_END)?;
     Ok(())
 }
 
@@ -387,15 +415,8 @@ pub fn copy_bytes_fd(
         }
     }
     if flags.contains(CopyFlags::TRUNCATE) {
-        // SAFETY: `fd_out` is passed through to libc for validation and SEEK_CUR has no pointer arguments.
-        let offset = unsafe { libc::lseek(fd_out, 0, libc::SEEK_CUR) };
-        if offset < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        // SAFETY: `fd_out` is passed through to libc for validation and the length is an integer.
-        if unsafe { libc::ftruncate(fd_out, offset) } < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
+        let offset = seek_fd(fd_out, 0, libc::SEEK_CUR)?;
+        truncate_fd(fd_out, offset)?;
     }
 
     Ok((total, CopyBytesResult::ByteLimit))
@@ -422,12 +443,7 @@ fn set_file_times(
             tv_nsec: mtime_nsec as libc::c_long,
         },
     ];
-    // SAFETY: `times` is a live two-element array required by futimens; `fd` is libc-validated.
-    if unsafe { libc::futimens(fd, times.as_ptr()) } < 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
+    futimens_fd(fd, &times)
 }
 
 // ── File-level copy ───────────────────────────────────────────────────────
@@ -583,39 +599,21 @@ fn copy_tree_inner(
 /// Copy access mode (permission bits) from `src_fd` to `dst_fd`.
 pub fn copy_access(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
     let st = fstat_fd(src_fd)?;
-    // SAFETY: `dst_fd` is passed through to libc for validation and the mode is an integer.
-    if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
+    fchmod_fd(dst_fd, st.st_mode & 0o7777)
 }
 
 /// Copy ownership (uid/gid) from `src_fd` to `dst_fd`.
 pub fn copy_owner(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
     let st = fstat_fd(src_fd)?;
-    // SAFETY: `dst_fd` is passed through to libc for validation and uid/gid are integers.
-    if unsafe { libc::fchown(dst_fd, st.st_uid, st.st_gid) } < 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
+    fchown_fd(dst_fd, st.st_uid, st.st_gid)
 }
 
 /// Copy both mode and ownership from `src_fd` to `dst_fd`.
 pub fn copy_rights(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
     let st = fstat_fd(src_fd)?;
     // fchmod first – fchown may clear setuid/setgid bits.
-    // SAFETY: `dst_fd` is passed through to libc for validation and the mode is an integer.
-    if unsafe { libc::fchmod(dst_fd, st.st_mode & 0o7777) } < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    // SAFETY: `dst_fd` is passed through to libc for validation and uid/gid are integers.
-    if unsafe { libc::fchown(dst_fd, st.st_uid, st.st_gid) } < 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
+    fchmod_fd(dst_fd, st.st_mode & 0o7777)?;
+    fchown_fd(dst_fd, st.st_uid, st.st_gid)
 }
 
 /// Copy timestamps (atime + mtime) from `src_fd` to `dst_fd`.
@@ -631,12 +629,7 @@ pub fn copy_times(src_fd: i32, dst_fd: i32) -> std::io::Result<()> {
             tv_nsec: st.st_mtime_nsec,
         },
     ];
-    // SAFETY: `times` is a live two-element array required by futimens; `dst_fd` is libc-validated.
-    if unsafe { libc::futimens(dst_fd, times.as_ptr()) } < 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
+    futimens_fd(dst_fd, &times)
 }
 
 // ── Reflink support ───────────────────────────────────────────────────────
@@ -716,18 +709,20 @@ impl HardlinkContext {
         };
         let key = format!("{}:{}", dev, ino);
         let key_cstr = std::ffi::CString::new(key)?;
-        let store_cstr = std::ffi::CString::new(store.to_str().unwrap_or(""))?;
-        // SAFETY: `store_cstr` is NUL-terminated and remains live for the open call.
-        let store_dir =
-            unsafe { libc::open(store_cstr.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };
-        if store_dir < 0 {
-            return Ok(false);
-        }
+        let store_dir = match File::open(&store) {
+            Ok(file) => file,
+            Err(_) => return Ok(false),
+        };
         // SAFETY: both C strings are NUL-terminated and both directory fds are libc-validated.
-        let ret =
-            unsafe { libc::linkat(store_dir, key_cstr.as_ptr(), dst_dir, dst_name.as_ptr(), 0) };
-        // SAFETY: `store_dir` was returned by open and has not yet been closed.
-        unsafe { libc::close(store_dir) };
+        let ret = unsafe {
+            libc::linkat(
+                store_dir.as_raw_fd(),
+                key_cstr.as_ptr(),
+                dst_dir,
+                dst_name.as_ptr(),
+                0,
+            )
+        };
         if ret < 0 {
             let err = std::io::Error::last_os_error();
             if err.raw_os_error() == Some(libc::ENOENT) {
@@ -756,18 +751,17 @@ impl HardlinkContext {
         let store = self.store_path.as_ref().unwrap();
         let key = format!("{}:{}", dev, ino);
         let key_cstr = std::ffi::CString::new(key)?;
-        let store_cstr = std::ffi::CString::new(store.to_str().unwrap_or(""))?;
-        // SAFETY: `store_cstr` is NUL-terminated and remains live for the open call.
-        let store_dir =
-            unsafe { libc::open(store_cstr.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };
-        if store_dir < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
+        let store_dir = File::open(store)?;
         // SAFETY: both C strings are NUL-terminated and both directory fds are libc-validated.
-        let ret =
-            unsafe { libc::linkat(dst_dir, dst_name.as_ptr(), store_dir, key_cstr.as_ptr(), 0) };
-        // SAFETY: `store_dir` was returned by open and has not yet been closed.
-        unsafe { libc::close(store_dir) };
+        let ret = unsafe {
+            libc::linkat(
+                dst_dir,
+                dst_name.as_ptr(),
+                store_dir.as_raw_fd(),
+                key_cstr.as_ptr(),
+                0,
+            )
+        };
         if ret < 0 {
             Err(std::io::Error::last_os_error())
         } else {
