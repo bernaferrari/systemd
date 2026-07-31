@@ -87,6 +87,64 @@ fn erase_bytes(bytes: &mut [u8]) {
     compiler_fence(Ordering::SeqCst);
 }
 
+fn total_size(iovecs: &[IoVec]) -> usize {
+    iovecs
+        .iter()
+        .fold(0, |sum, iov| sum.saturating_add(iov.iov_len))
+}
+
+/// Advance safe iovec descriptors after their raw array has been validated by
+/// the C ABI adapter. Returns true when no payload remains.
+fn increment_many(iovecs: &mut [IoVec], mut remaining: usize) -> bool {
+    let mut have_payload = false;
+    for entry in iovecs {
+        if entry.iov_len == 0 {
+            continue;
+        }
+        if remaining == 0 {
+            return false;
+        }
+
+        let consumed = cmp::min(entry.iov_len, remaining);
+        entry.iov_len -= consumed;
+        // The ABI adapter's contract guarantees this pointer remains within
+        // the payload allocation. No dereference is performed here.
+        entry.iov_base = entry.iov_base.wrapping_byte_add(consumed);
+        remaining -= consumed;
+        have_payload |= entry.iov_len > 0 && !entry.iov_base.is_null();
+    }
+    assert_eq!(remaining, 0);
+    !have_payload
+}
+
+/// Borrow the payload of a validated iovec as a Rust byte slice.
+///
+/// A null base is accepted only for the canonical empty iovec. Keeping this
+/// conversion here lets comparison and copy cores operate entirely on slices.
+fn iovec_bytes(iovec: &IoVec) -> Option<&[u8]> {
+    if iovec.iov_len == 0 {
+        return Some(&[]);
+    }
+    if iovec.iov_base.is_null() {
+        return None;
+    }
+    // SAFETY: callers have validated the iovec payload's readable extent.
+    Some(unsafe { slice::from_raw_parts(iovec.iov_base.cast::<u8>(), iovec.iov_len) })
+}
+
+fn memcmp_bytes(a: &[u8], b: &[u8]) -> i32 {
+    for (left, right) in a.iter().zip(b) {
+        if left != right {
+            return (*left as i32) - (*right as i32);
+        }
+    }
+    match a.len().cmp(&b.len()) {
+        cmp::Ordering::Less => -1,
+        cmp::Ordering::Equal => 0,
+        cmp::Ordering::Greater => 1,
+    }
+}
+
 /// Free the owned C allocation described by an iovec and clear the descriptor.
 ///
 /// # Safety
@@ -156,33 +214,6 @@ pub unsafe extern "C" fn rs_iovec_erase(iovec: *mut IoVec) {
     // SAFETY: required by this C ABI entry point's contract.
     let bytes = unsafe { slice::from_raw_parts_mut(iovec.iov_base.cast::<u8>(), iovec.iov_len) };
     erase_bytes(bytes);
-}
-
-/// Compare two non-null C memory ranges with the `memcmp_nn()` ordering.
-///
-/// # Safety
-/// When the smaller of `a_len` and `b_len` is non-zero, both `a` and `b` must
-/// be non-null and readable for that many bytes. The ranges must remain valid
-/// for the duration of the comparison.
-unsafe fn memcmp_nn(a: *const c_void, a_len: usize, b: *const c_void, b_len: usize) -> i32 {
-    let min_len = cmp::min(a_len, b_len);
-    if min_len > 0 {
-        // SAFETY: the caller guarantees both non-empty ranges are readable.
-        let a_bytes = unsafe { slice::from_raw_parts(a.cast::<u8>(), min_len) };
-        // SAFETY: the caller guarantees both non-empty ranges are readable.
-        let b_bytes = unsafe { slice::from_raw_parts(b.cast::<u8>(), min_len) };
-        for (x, y) in a_bytes.iter().zip(b_bytes.iter()) {
-            if x != y {
-                return (*x as i32) - (*y as i32);
-            }
-        }
-    }
-
-    match a_len.cmp(&b_len) {
-        std::cmp::Ordering::Less => -1,
-        std::cmp::Ordering::Equal => 0,
-        std::cmp::Ordering::Greater => 1,
-    }
 }
 
 /// Report whether a C iovec has a non-empty payload.
@@ -256,9 +287,7 @@ pub unsafe extern "C" fn rs_iovec_total_size(iovec: *const IoVec, n: usize) -> u
     }
 
     // SAFETY: required by this C ABI entry point's contract.
-    unsafe { slice::from_raw_parts(iovec, n) }
-        .iter()
-        .fold(0, |sum, iov| sum.saturating_add(iov.iov_len))
+    total_size(unsafe { slice::from_raw_parts(iovec, n) })
 }
 
 /// Advance through a mutable C iovec array by exactly `k` bytes.
@@ -271,33 +300,15 @@ pub unsafe extern "C" fn rs_iovec_total_size(iovec: *const IoVec, n: usize) -> u
 /// Returns true only when no payload remains after the increment, matching
 /// `iovec_inc_many()` rather than merely reporting that `k` was consumed.
 #[unsafe(export_name = "rs_iovec_inc_many")]
-pub unsafe extern "C" fn rs_iovec_inc_many(iovec: *mut IoVec, n: usize, mut k: usize) -> bool {
+pub unsafe extern "C" fn rs_iovec_inc_many(iovec: *mut IoVec, n: usize, k: usize) -> bool {
     assert!(!iovec.is_null() || n == 0);
     if n == 0 {
         assert_eq!(k, 0);
         return true;
     }
 
-    let mut have = false;
     // SAFETY: required by this C ABI entry point's contract.
-    for entry in unsafe { slice::from_raw_parts_mut(iovec, n) } {
-        if entry.iov_len == 0 {
-            continue;
-        }
-        if k == 0 {
-            return false;
-        }
-
-        let sub = cmp::min(entry.iov_len, k);
-        entry.iov_len -= sub;
-        // SAFETY: required by this C ABI entry point's contract.
-        entry.iov_base = unsafe { entry.iov_base.cast::<u8>().add(sub) }.cast::<c_void>();
-        k -= sub;
-        have = have || (entry.iov_len > 0 && !entry.iov_base.is_null());
-    }
-
-    assert_eq!(k, 0);
-    !have
+    increment_many(unsafe { slice::from_raw_parts_mut(iovec, n) }, k)
 }
 
 /// Point a C iovec at a borrowed NUL-terminated C string.
@@ -337,24 +348,18 @@ pub unsafe extern "C" fn rs_iovec_memcmp(a: *const IoVec, b: *const IoVec) -> i3
     }
 
     // SAFETY: required by this C ABI entry point's contract.
-    let (a_base, a_len) = if let Some(a) = unsafe { a.as_ref() } {
-        (a.iov_base, a.iov_len)
-    } else {
-        (ptr::null_mut(), 0)
-    };
     // SAFETY: required by this C ABI entry point's contract.
-    let (b_base, b_len) = if let Some(b) = unsafe { b.as_ref() } {
-        (b.iov_base, b.iov_len)
-    } else {
-        (ptr::null_mut(), 0)
-    };
-
-    if cmp::min(a_len, b_len) > 0 && (a_base.is_null() || b_base.is_null()) {
-        return 0;
+    let a = unsafe { a.as_ref() };
+    // SAFETY: required by this C ABI entry point's contract.
+    let b = unsafe { b.as_ref() };
+    let a_bytes = a.and_then(iovec_bytes);
+    let b_bytes = b.and_then(iovec_bytes);
+    match (a_bytes, b_bytes) {
+        (Some(a), Some(b)) => memcmp_bytes(a, b),
+        // Preserve `memcmp_nn()`'s defensive result for malformed non-empty
+        // iovecs whose payload pointer is null.
+        _ => 0,
     }
-
-    // SAFETY: required by this C ABI entry point's contract.
-    unsafe { memcmp_nn(a_base, a_len, b_base, b_len) }
 }
 
 /// Duplicate one C iovec's payload into C-allocator-owned storage.
