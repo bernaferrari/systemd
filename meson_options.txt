@@ -595,6 +595,8 @@ option('default-oci-registry', type : 'string', value : 'docker.io',
 option('rust', type : 'feature',
        description : 'build Rust shadow modules in src/basic/rust/')
 option('rust-core-pid1', type : 'feature',
-       description : 'EXPERIMENTAL developer-only incomplete Rust PID1; forbidden in release mode and for production installation')
+       description : 'EXPERIMENTAL developer-only incomplete Rust PID1; forbidden in release mode and as the production PID1')
+option('rust-core-pid1-sidecar-install', type : 'boolean', value : false,
+       description : 'EXPERIMENTAL developer-only install of incomplete Rust PID1 as libexecdir/systemd-rust, never as the production PID1')
 option('rust-init-milestones', type : 'feature',
        description : 'enable Rust init replacement milestone integration test gates')

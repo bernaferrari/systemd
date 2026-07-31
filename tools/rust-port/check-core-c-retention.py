@@ -100,8 +100,12 @@ def main() -> int:
     required_core_fragments = (
         "libcore_static = static_library(\n        libcore_name,\n        libcore_sources,",
         "link_whole: libcore_static",
+        "install_rust_pid1_sidecar = get_option('rust-core-pid1-sidecar-install')",
+        "if install_rust_pid1_sidecar and not use_rust_pid1",
+        "error('rust-core-pid1-sidecar-install requires -Drust-core-pid1=enabled')",
         "if use_rust_pid1 and get_option('mode') == 'release'",
         "error('rust-core-pid1 is experimental and cannot be enabled in release mode')",
+        "install_symlink('init',\n                pointing_to : '../lib/systemd/systemd',\n                install_dir : sbindir)",
     )
     for fragment in required_core_fragments:
         if fragment not in core:
@@ -122,13 +126,23 @@ def main() -> int:
         r"(?ms)rust_pid1\s*=\s*custom_target\(\s*"
         r"'systemd-rust-pid1',.*?"
         r"output\s*:\s*'systemd-rust',.*?"
-        r"install\s*:\s*false\s*\)",
+        r"install\s*:\s*install_rust_pid1_sidecar,.*?"
+        r"install_dir\s*:\s*libexecdir\s*\)",
         core,
     )
     if not rust_pid1:
-        return fail("experimental Rust PID1 is no longer a non-installed custom target")
+        return fail("experimental Rust PID1 is no longer an opt-in libexecdir sidecar target")
 
-    if "forbidden in release mode and for production installation" not in options:
+    sidecar_option = re.search(
+        r"(?ms)^option\('rust-core-pid1-sidecar-install',\s*"
+        r"type\s*:\s*'boolean',\s*value\s*:\s*false,\s*"
+        r"description\s*:\s*'EXPERIMENTAL developer-only install of incomplete Rust PID1 "
+        r"as libexecdir/systemd-rust, never as the production PID1'\)",
+        options,
+    )
+    if not sidecar_option:
+        return fail("rust-core-pid1-sidecar-install is no longer a default-off developer-only option")
+    if "forbidden in release mode and as the production PID1" not in options:
         return fail("rust-core-pid1 option no longer documents its production prohibition")
 
     if "+ sd_future_sources +" not in libsystemd:
@@ -161,7 +175,7 @@ def main() -> int:
         "core C-retention gate OK: "
         f"core_sources={len(CORE_SOURCES)} future_sources={len(FUTURE_SOURCES)} "
         f"bpf_contract={len(BPF_CONTRACT)} luo_contract={len(LUO_CONTRACT)} "
-        "rust_pid1=developer-only/non-installed"
+        "developer-sidecar=opt-in production-owner=C"
     )
     return 0
 

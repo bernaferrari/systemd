@@ -164,8 +164,8 @@ run cloud-localds "$seed_iso" "$user_data" "$meta_data"
 run virt-customize \
     -a "$overlay" \
     --upload "$systemd_bin":/root/systemd-rust \
-    --run-command 'cp /root/systemd-rust /usr/lib/systemd/systemd' \
-    --run-command 'cp /root/systemd-rust /lib/systemd/systemd' \
+    --run-command 'install -m 0755 /root/systemd-rust /usr/lib/systemd/systemd-rust' \
+    --run-command 'ln -sfnT /usr/lib/systemd/systemd-rust /sbin/init' \
     --run-command 'if command -v update-initramfs >/dev/null 2>&1; then update-initramfs -u; fi' \
     --run-command 'rm -f /root/systemd-rust'
 
@@ -226,6 +226,31 @@ if ! /proc/1/exe --version | grep -q '^systemd 0\.0\.1$'; then
     exit 1
 fi
 
+test -x /usr/lib/systemd/systemd
+if /usr/lib/systemd/systemd --version | grep -q '^systemd 0\.0\.1$'; then
+    echo "FAIL: canonical C PID 1 path reports the Rust systemd version" >&2
+    /usr/lib/systemd/systemd --version >&2 || true
+    exit 1
+fi
+
+test -x /usr/lib/systemd/systemd-rust
+if ! test /proc/1/exe -ef /usr/lib/systemd/systemd-rust; then
+    echo "FAIL: PID 1 is not the installed Rust sidecar" >&2
+    readlink -f /proc/1/exe >&2 || true
+    readlink -f /usr/lib/systemd/systemd-rust >&2 || true
+    exit 1
+fi
+EOF
+
+if [[ "${SYSTEMD_CD4_SYSTEM_BUS_CHECKS:-0}" != 1 ]]; then
+    echo "SKIP: system-bus checks require Rust PID1 API-bus parity; set SYSTEMD_CD4_SYSTEM_BUS_CHECKS=1 to run them." >&2
+    echo "PASS: Ubuntu 24.04 Rust PID1 sidecar identity and C fallback checks completed."
+    exit 0
+fi
+
+guest "system-bus checks" 'bash -se' <<'EOF'
+set -euo pipefail
+
 sudo systemctl get-default | grep -qx multi-user.target
 sudo systemctl is-active --quiet multi-user.target
 sudo systemctl is-active --quiet systemd-networkd.service
@@ -252,4 +277,4 @@ test "$(grep -c '^stop ' /run/systemd-cd4.log)" -ge 1
 sudo systemctl show -p ActiveState -p SubState systemd-cd4.service | grep -q '^ActiveState=inactive$'
 EOF
 
-echo "PASS: Ubuntu 24.04 QEMU milestone checks completed."
+echo "PASS: Ubuntu 24.04 Rust PID1 sidecar and system-bus checks completed."

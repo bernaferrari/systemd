@@ -1734,6 +1734,31 @@ fn test_load_unit_symlink_registers_alias_to_canonical_name() {
 }
 
 #[test]
+fn test_default_systemd_unit_path_matches_c_search_order() {
+    let expected = [
+        "/etc/systemd/system.control",
+        "/run/systemd/system.control",
+        "/run/systemd/transient",
+        "/run/systemd/generator.early",
+        "/etc/systemd/system",
+        "/etc/systemd/system.attached",
+        "/run/systemd/system",
+        "/run/systemd/system.attached",
+        "/run/systemd/generator",
+        "/usr/local/lib/systemd/system",
+        "/usr/lib/systemd/system",
+        "/run/systemd/generator.late",
+    ];
+    assert_eq!(
+        UNIT_SEARCH_PATHS
+            .iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>(),
+        expected.into_iter().map(PathBuf::from).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn test_systemd_unit_path_override() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1

@@ -282,7 +282,7 @@ fn configure_unit_search_paths() {
         unsafe {
             std::env::set_var(
                 "SYSTEMD_UNIT_PATH",
-                "/etc/systemd/system:/run/systemd/system:/usr/lib/systemd/system:/lib/systemd/system",
+                "/etc/systemd/system.control:/run/systemd/system.control:/run/systemd/transient:/run/systemd/generator.early:/etc/systemd/system:/etc/systemd/system.attached:/run/systemd/system:/run/systemd/system.attached:/run/systemd/generator:/usr/local/lib/systemd/system:/usr/lib/systemd/system:/run/systemd/generator.late",
             );
         }
     }

@@ -114,11 +114,18 @@ pub enum Pid1ManagerCommand {
         name: String,
     },
     /// Request that the event-loop owner stop normal dispatch and enter the
-    /// outer manager lifecycle. `Ok` is not a request and is rejected.
+    /// outer manager lifecycle.
     ///
-    /// `SwitchRoot` and `SoftReboot` are deliberately unavailable here until
-    /// the command owns their root/init payload rather than storing it in a
-    /// transport shadow.
+    /// This command remains a typed seam for the eventual complete manager
+    /// implementation, but it is not an admission ticket to tear down the
+    /// live event loop today. C can complete every objective after
+    /// `manager_loop()` returns; Rust does not yet own the matching reload,
+    /// descriptor-preserving reexec, root-switch, user exit, or shutdown
+    /// handoff. Consequently dispatch rejects every value at present:
+    /// `Ok` with `EINVAL`, all actual lifecycle objectives with
+    /// `EOPNOTSUPP`. Signal-originated objectives remain explicitly handled
+    /// by the outer PID 1 owner, where a failure cannot be reported to a
+    /// request/reply client.
     RequestObjective {
         objective: ManagerObjective,
     },
@@ -428,13 +435,16 @@ fn dispatch(
             if objective == ManagerObjective::Ok {
                 return Err(Pid1CommandError::Runtime(Errno::EINVAL));
             }
-            if matches!(
-                objective,
-                ManagerObjective::SwitchRoot | ManagerObjective::SoftReboot
-            ) {
-                return Err(Pid1CommandError::Runtime(Errno::EOPNOTSUPP));
-            }
-            return Ok(Pid1CommandEffect::RequestObjective(objective));
+
+            // Do not accept a request and then discover, after all epoll
+            // sources have been unregistered, that the outer transition has
+            // no versioned state/descriptors/shutdown implementation. That
+            // used to turn an authenticated test-bus request for reexec,
+            // exit, or shutdown into a fatal PID 1 path. C routes accepted
+            // objectives through `invoke_main_loop()` and can finish them;
+            // until Rust can do the same, reject synchronously while the
+            // exact manager and every queued command remain live.
+            return Err(Pid1CommandError::Runtime(Errno::EOPNOTSUPP));
         }
     }
     .map_err(Pid1CommandError::Runtime)?;
@@ -560,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn accepted_objective_stops_dispatch_immediately() {
+    fn unavailable_objective_is_rejected_without_tearing_down_following_work() {
         let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(2).unwrap());
         let objective_reply = sender
             .try_send(
@@ -578,24 +588,11 @@ mod tests {
             &mut AllowAuthorizer,
             NonZeroUsize::new(2).unwrap(),
         );
-        assert_eq!(outcome.dispatched, 1);
-        let pending = outcome.objective.expect("reload reply must remain pending");
-        assert_eq!(pending.objective(), ManagerObjective::Reload);
-        assert_eq!(objective_reply.try_recv(), Err(TryRecvError::Empty));
-        assert_eq!(later_reply.try_recv(), Err(TryRecvError::Empty));
-
-        pending.reply(Err(Pid1CommandError::Runtime(Errno::EOPNOTSUPP)));
+        assert_eq!(outcome.dispatched, 2);
+        assert!(outcome.objective.is_none());
         assert_eq!(
             objective_reply.try_recv(),
             Ok(Err(Pid1CommandError::Runtime(Errno::EOPNOTSUPP)))
-        );
-        assert_no_objective(
-            inbox.dispatch_pending(
-                &mut runtime,
-                &mut AllowAuthorizer,
-                NonZeroUsize::new(1).unwrap(),
-            ),
-            1,
         );
         assert_eq!(
             later_reply.try_recv(),
@@ -604,9 +601,16 @@ mod tests {
     }
 
     #[test]
-    fn objective_without_an_outer_transition_is_rejected() {
+    fn every_unavailable_outer_lifecycle_objective_is_rejected_at_ingress() {
         for (objective, error) in [
             (ManagerObjective::Ok, Errno::EINVAL),
+            (ManagerObjective::Reload, Errno::EOPNOTSUPP),
+            (ManagerObjective::Reexecute, Errno::EOPNOTSUPP),
+            (ManagerObjective::Exit, Errno::EOPNOTSUPP),
+            (ManagerObjective::Reboot, Errno::EOPNOTSUPP),
+            (ManagerObjective::Poweroff, Errno::EOPNOTSUPP),
+            (ManagerObjective::Halt, Errno::EOPNOTSUPP),
+            (ManagerObjective::Kexec, Errno::EOPNOTSUPP),
             (ManagerObjective::SwitchRoot, Errno::EOPNOTSUPP),
             (ManagerObjective::SoftReboot, Errno::EOPNOTSUPP),
         ] {

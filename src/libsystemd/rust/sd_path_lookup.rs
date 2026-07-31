@@ -252,19 +252,20 @@ pub fn lookup_paths_init(
         RuntimeScope::Global => None,
     };
 
-    let mut search = env
-        .systemd_unit_path
-        .clone()
-        .unwrap_or_else(|| match scope {
+    let mut search = env.systemd_unit_path.clone().unwrap_or_else(|| {
+        let mut defaults = match scope {
             RuntimeScope::System => vec![
                 "/etc/systemd/system.control".into(),
                 "/run/systemd/system.control".into(),
                 "/run/systemd/transient".into(),
                 "/run/systemd/generator.early".into(),
                 "/etc/systemd/system".into(),
+                "/etc/systemd/system.attached".into(),
+                "/run/systemd/system".into(),
+                "/run/systemd/system.attached".into(),
+                "/run/systemd/generator".into(),
                 "/usr/local/lib/systemd/system".into(),
                 "/usr/lib/systemd/system".into(),
-                "/run/systemd/generator".into(),
                 "/run/systemd/generator.late".into(),
             ],
             RuntimeScope::Global => vec![
@@ -287,7 +288,20 @@ pub fn lookup_paths_init(
                 generator.clone().unwrap_or_default(),
                 generator_late.clone().unwrap_or_default(),
             ],
-        });
+        };
+
+        // Match path-lookup.c: /lib is a legacy split-/usr fallback and must
+        // appear immediately before generator.late rather than shadowing the
+        // regular /usr unit directory on unified-/usr systems.
+        if scope == RuntimeScope::System && flags.contains(LookupPathsFlags::SPLIT_USR) {
+            let late = defaults
+                .pop()
+                .expect("system defaults include generator.late");
+            defaults.push("/lib/systemd/system".into());
+            defaults.push(late);
+        }
+        defaults
+    });
 
     let mut uniq = BTreeSet::new();
     search.retain(|path| !path.is_empty() && uniq.insert(path.clone()));
@@ -382,6 +396,64 @@ mod tests {
             lp.search_path
                 .iter()
                 .any(|path| path == "/usr/lib/systemd/system")
+        );
+    }
+
+    #[test]
+    fn system_lookup_matches_c_default_order() {
+        let lp =
+            lookup_paths_init(RuntimeScope::System, LookupPathsFlags(0), None, &env()).unwrap();
+        assert_eq!(
+            lp.search_path,
+            [
+                "/etc/systemd/system.control",
+                "/run/systemd/system.control",
+                "/run/systemd/transient",
+                "/run/systemd/generator.early",
+                "/etc/systemd/system",
+                "/etc/systemd/system.attached",
+                "/run/systemd/system",
+                "/run/systemd/system.attached",
+                "/run/systemd/generator",
+                "/usr/local/lib/systemd/system",
+                "/usr/lib/systemd/system",
+                "/run/systemd/generator.late",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn system_lookup_adds_legacy_lib_only_for_split_usr() {
+        let lp = lookup_paths_init(
+            RuntimeScope::System,
+            LookupPathsFlags::SPLIT_USR,
+            None,
+            &env(),
+        )
+        .unwrap();
+        assert_eq!(
+            lp.search_path,
+            [
+                "/etc/systemd/system.control",
+                "/run/systemd/system.control",
+                "/run/systemd/transient",
+                "/run/systemd/generator.early",
+                "/etc/systemd/system",
+                "/etc/systemd/system.attached",
+                "/run/systemd/system",
+                "/run/systemd/system.attached",
+                "/run/systemd/generator",
+                "/usr/local/lib/systemd/system",
+                "/usr/lib/systemd/system",
+                "/lib/systemd/system",
+                "/run/systemd/generator.late",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>()
         );
     }
 

@@ -76,7 +76,7 @@ mod service_readiness;
 mod service_runtime;
 mod service_shutdown;
 mod socket_runtime;
-mod unit_file;
+pub(crate) mod unit_file;
 mod unit_load;
 mod unit_specifier;
 

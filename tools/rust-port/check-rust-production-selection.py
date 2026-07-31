@@ -10,6 +10,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+CORE_MESON = ROOT / "src/core/meson.build"
+CD4_HARNESS = ROOT / "test/systemd-cd4.sh"
 
 # These are the only Meson files allowed to know about the Cargo/Rust build
 # graph. The basic archive is shadow-test-only; the core target is
@@ -86,10 +88,42 @@ def main() -> int:
             )
         retained_count += len(required_sources)
 
+    core = CORE_MESON.read_text(encoding="utf-8")
+    rust_pid1 = re.search(
+        r"(?ms)rust_pid1\s*=\s*custom_target\(\s*"
+        r"'systemd-rust-pid1',.*?"
+        r"output\s*:\s*'systemd-rust',.*?"
+        r"install\s*:\s*install_rust_pid1_sidecar,.*?"
+        r"install_dir\s*:\s*libexecdir\s*\)",
+        core,
+    )
+    if not rust_pid1:
+        return fail("Rust PID1 sidecar must remain systemd-rust in libexecdir")
+    if re.search(r"(?ms)rust_pid1\s*=\s*custom_target\(.*?output\s*:\s*'systemd'", core):
+        return fail("Rust PID1 custom target collides with the canonical systemd output")
+
+    cd4 = CD4_HARNESS.read_text(encoding="utf-8")
+    forbidden_overwrite = re.compile(
+        r"(?:cp|install)\s+[^'\n]*systemd-rust\s+/(?:usr/)?lib/systemd/systemd(?:['\s]|$)"
+    )
+    if forbidden_overwrite.search(cd4):
+        return fail("CD4 harness overwrites the canonical C PID1 with Rust")
+    required_cd4_fragments = (
+        "install -m 0755 /root/systemd-rust /usr/lib/systemd/systemd-rust",
+        "ln -sfnT /usr/lib/systemd/systemd-rust /sbin/init",
+        "test -x /usr/lib/systemd/systemd",
+        "test -x /usr/lib/systemd/systemd-rust",
+        "test /proc/1/exe -ef /usr/lib/systemd/systemd-rust",
+        "SYSTEMD_CD4_SYSTEM_BUS_CHECKS",
+    )
+    for fragment in required_cd4_fragments:
+        if fragment not in cd4:
+            return fail(f"CD4 harness lost required sidecar-selection contract {fragment!r}")
+
     print(
         "Rust production-selection gate OK: "
         f"rust_meson_files={len(rust_mesons)} "
-        f"retained_c_tools={retained_count} incomplete_rust_installed=0"
+        f"retained_c_tools={retained_count} rust_production_replacements=0"
     )
     return 0
 

@@ -34,9 +34,14 @@ PID1_RELEASE_GUARD_RE = re.compile(
 endif$""",
     re.MULTILINE,
 )
-PID1_DEVELOPER_WARNING_RE = re.compile(
+PID1_BUILD_ONLY_WARNING_RE = re.compile(
     r"^\s*warning\('rust-core-pid1 selects an incomplete experimental Rust PID1; "
-    r"developer builds only, never production installation'\)$",
+    r"build-only developer target, C remains the production-selected PID1'\)$",
+    re.MULTILINE,
+)
+PID1_SIDECAR_WARNING_RE = re.compile(
+    r"^\s*warning\('rust-core-pid1-sidecar-install installs an incomplete experimental Rust PID1 "
+    r"as libexecdir/systemd-rust; developer builds only, C remains the production-selected PID1'\)$",
     re.MULTILINE,
 )
 
@@ -75,10 +80,10 @@ def check_rust_pid1_release_guard(root: Path, failures: list[str]) -> None:
         failures.append(
             "src/core/meson.build: missing fail-closed rust-core-pid1 release-mode guard"
         )
-    if not PID1_DEVELOPER_WARNING_RE.search(text):
-        failures.append(
-            "src/core/meson.build: missing incomplete Rust PID1 developer-build warning"
-        )
+    if not PID1_BUILD_ONLY_WARNING_RE.search(text):
+        failures.append("src/core/meson.build: missing exact Rust PID1 build-only warning")
+    if not PID1_SIDECAR_WARNING_RE.search(text):
+        failures.append("src/core/meson.build: missing exact Rust PID1 sidecar warning")
 
 
 def main() -> int:

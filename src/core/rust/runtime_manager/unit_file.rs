@@ -31,15 +31,23 @@ const VALID_SUFFIXES: &[&str] = &[
 ];
 
 #[cfg(target_os = "linux")]
-const UNIT_SEARCH_PATHS: &[&str] = &[
+pub(super) const UNIT_SEARCH_PATHS: &[&str] = &[
+    "/etc/systemd/system.control",
+    "/run/systemd/system.control",
+    "/run/systemd/transient",
+    "/run/systemd/generator.early",
     "/etc/systemd/system",
+    "/etc/systemd/system.attached",
     "/run/systemd/system",
+    "/run/systemd/system.attached",
+    "/run/systemd/generator",
+    "/usr/local/lib/systemd/system",
     "/usr/lib/systemd/system",
-    "/lib/systemd/system",
+    "/run/systemd/generator.late",
 ];
 
 #[cfg(not(target_os = "linux"))]
-const UNIT_SEARCH_PATHS: &[&str] = &["/tmp/test-systemd-units"];
+pub(super) const UNIT_SEARCH_PATHS: &[&str] = &["/tmp/test-systemd-units"];
 
 #[derive(Debug, Clone)]
 pub struct UnitFileInfo {
@@ -1195,6 +1203,10 @@ pub(super) fn directive_allows_tokenwise_specifier_fallback(section: &str, key: 
     )
 }
 
+pub(crate) fn default_unit_search_paths() -> Vec<PathBuf> {
+    UNIT_SEARCH_PATHS.iter().map(PathBuf::from).collect()
+}
+
 pub(super) fn unit_search_paths() -> Vec<PathBuf> {
     if let Ok(path) = env::var("SYSTEMD_UNIT_PATH") {
         let parsed: Vec<PathBuf> = path
@@ -1207,7 +1219,7 @@ pub(super) fn unit_search_paths() -> Vec<PathBuf> {
             return parsed;
         }
     }
-    UNIT_SEARCH_PATHS.iter().map(PathBuf::from).collect()
+    default_unit_search_paths()
 }
 
 pub(super) fn append_or_clear_list(target: &mut Vec<String>, value: &str) {

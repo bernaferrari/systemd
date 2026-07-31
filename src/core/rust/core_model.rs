@@ -19,12 +19,6 @@ use systemd_shared_rs::unit_file::UnitFile;
 
 pub type EnumMap<K, V> = BTreeMap<K, V>;
 pub type Pid = u32;
-const DEFAULT_UNIT_PATHS: [&str; 4] = [
-    "/etc/systemd/system",
-    "/run/systemd/system",
-    "/usr/lib/systemd/system",
-    "/lib/systemd/system",
-];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UnitId(pub u32);
@@ -455,7 +449,10 @@ pub fn unit_add_dependency(
 }
 
 fn default_unit_paths() -> Vec<PathBuf> {
-    DEFAULT_UNIT_PATHS.iter().map(PathBuf::from).collect()
+    // This disconnected model must not grow a second, stale unit-path
+    // policy. The runtime manager owns the compiled default order; both
+    // models retain an explicit `Manager::unit_path` override for tests.
+    crate::runtime_manager::unit_file::default_unit_search_paths()
 }
 
 fn unit_candidate_names(name: &str) -> Vec<String> {
@@ -556,6 +553,14 @@ mod tests {
         assert!(units.contains(&UnitId(7)));
         assert_eq!(UnitId(12).to_string(), "12");
         assert_eq!(JobId(33).to_string(), "33");
+    }
+
+    #[test]
+    fn disconnected_model_uses_runtime_unit_search_defaults() {
+        assert_eq!(
+            default_unit_paths(),
+            crate::runtime_manager::unit_file::default_unit_search_paths()
+        );
     }
 
     #[test]

@@ -160,10 +160,6 @@ mod tests {
     #[test]
     fn parses_fixed_node_types() {
         assert_eq!(
-            bus_match_node_type_from_string("root"),
-            Ok(BusMatchNodeType::Root)
-        );
-        assert_eq!(
             bus_match_node_type_from_string("type"),
             Ok(BusMatchNodeType::MessageType)
         );

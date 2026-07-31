@@ -210,14 +210,22 @@ systemd_deps = [
 ]
 
 use_rust_pid1 = get_option('rust-core-pid1').enabled()
+install_rust_pid1_sidecar = get_option('rust-core-pid1-sidecar-install')
 if use_rust_pid1 and not get_option('rust').enabled()
         error('rust-core-pid1 requires -Drust=enabled')
+endif
+if install_rust_pid1_sidecar and not use_rust_pid1
+        error('rust-core-pid1-sidecar-install requires -Drust-core-pid1=enabled')
 endif
 if use_rust_pid1 and get_option('mode') == 'release'
         error('rust-core-pid1 is experimental and cannot be enabled in release mode')
 endif
 if use_rust_pid1
-        warning('rust-core-pid1 selects an incomplete experimental Rust PID1; developer builds only, never production installation')
+        if install_rust_pid1_sidecar
+                warning('rust-core-pid1-sidecar-install installs an incomplete experimental Rust PID1 as libexecdir/systemd-rust; developer builds only, C remains the production-selected PID1')
+        else
+                warning('rust-core-pid1 selects an incomplete experimental Rust PID1; build-only developer target, C remains the production-selected PID1')
+        endif
 endif
 
 if conf.get('SYSTEMD_MULTICALL_BINARY') == 1
@@ -235,7 +243,8 @@ executables += [
                 'name' : 'systemd',
                 'dbus' : true,
                 # The installed PID 1 remains the C implementation. The Rust
-                # target below is an explicitly non-installed developer aid.
+                # target below may be sidecar-installed, but is never selected
+                # as systemd or by the canonical init symlink.
                 'public' : true,
                 'sources' : systemd_sources,
                 'link_args_static' : get_option('build-static') ? ['-static'] : [],
@@ -343,9 +352,10 @@ os.chmod(out, 0o755)
                            fallback_default_target],
                 build_by_default : true,
                 build_always_stale : true,
-                # This target is intentionally never installed. In particular,
-                # it must not replace libexecdir/systemd or its init symlink.
-                install : false)
+                # This optional developer sidecar never replaces
+                # libexecdir/systemd or its canonical init symlink.
+                install : install_rust_pid1_sidecar,
+                install_dir : libexecdir)
 endif
 
 in_files = [['system.conf',                     pkgconfigfiledir],
