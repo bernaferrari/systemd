@@ -37,15 +37,31 @@ const LISTEN_ENV_VARS: [&str; 4] = [
 const WATCHDOG_ENV_VARS: [&str; 2] = ["WATCHDOG_USEC", "WATCHDOG_PID"];
 const NOTIFY_ENV_VAR: &str = "NOTIFY_SOCKET";
 
-/// Parse a PID with the same grammar and validity checks as C `parse_pid()`.
-fn parse_pid(value: &str, variable: &'static str) -> Result<libc::pid_t> {
+fn parse_with_c<T: Default>(
+    value: &str,
+    variable: &'static str,
+    // SAFETY: callers pass the matching exported parser for `T`; the adapter
+    // validates the string and output storage before invoking it.
+    parser: unsafe extern "C" fn(*const libc::c_char, *mut T) -> i32,
+) -> Result<T> {
     let value = CString::new(value).map_err(|_| DaemonCheckError::Parse(variable))?;
-    let mut parsed = 0;
-    // SAFETY: `value` is a live NUL-terminated C string and `parsed` is writable.
-    let r = unsafe { systemd_basic_rs::parse_util::rs_safe_atolu(value.as_ptr(), &mut parsed) };
+    let mut parsed = T::default();
+    // SAFETY: the private callers supply a parser matching `T`; `value` is
+    // NUL-terminated and `parsed` is writable for the duration of the call.
+    let r = unsafe { parser(value.as_ptr(), &mut parsed) };
     if r < 0 {
         return Err(DaemonCheckError::Parse(variable));
     }
+    Ok(parsed)
+}
+
+fn current_pid() -> libc::pid_t {
+    std::process::id() as libc::pid_t
+}
+
+/// Parse a PID with the same grammar and validity checks as C `parse_pid()`.
+fn parse_pid(value: &str, variable: &'static str) -> Result<libc::pid_t> {
+    let parsed = parse_with_c(value, variable, systemd_basic_rs::parse_util::rs_safe_atolu)?;
     let pid = libc::pid_t::try_from(parsed).map_err(|_| DaemonCheckError::Parse(variable))?;
     if pid <= 0 {
         return Err(DaemonCheckError::Parse(variable));
@@ -55,26 +71,16 @@ fn parse_pid(value: &str, variable: &'static str) -> Result<libc::pid_t> {
 
 /// Parse an i32 with C `safe_atoi()`'s base-zero grammar.
 fn parse_i32(value: &str, variable: &'static str) -> Result<i32> {
-    let value = CString::new(value).map_err(|_| DaemonCheckError::Parse(variable))?;
-    let mut parsed = 0;
-    // SAFETY: `value` is a live NUL-terminated C string and `parsed` is writable.
-    let r = unsafe { systemd_basic_rs::parse_util::rs_safe_atoi(value.as_ptr(), &mut parsed) };
-    if r < 0 {
-        return Err(DaemonCheckError::Parse(variable));
-    }
-    Ok(parsed)
+    parse_with_c(value, variable, systemd_basic_rs::parse_util::rs_safe_atoi)
 }
 
 /// Parse a u64 with C `safe_atou64()`'s base-zero grammar.
 fn parse_u64(value: &str, variable: &'static str) -> Result<u64> {
-    let value = CString::new(value).map_err(|_| DaemonCheckError::Parse(variable))?;
-    let mut parsed = 0;
-    // SAFETY: `value` is a live NUL-terminated C string and `parsed` is writable.
-    let r = unsafe { systemd_basic_rs::parse_util::rs_safe_atou64(value.as_ptr(), &mut parsed) };
-    if r < 0 {
-        return Err(DaemonCheckError::Parse(variable));
-    }
-    Ok(parsed)
+    parse_with_c(
+        value,
+        variable,
+        systemd_basic_rs::parse_util::rs_safe_atou64,
+    )
 }
 
 fn collect_listen_env() -> BTreeMap<String, String> {
@@ -174,17 +180,7 @@ pub fn listen_fds_from_env(
 /// When `unset_environment` is true, the caller must ensure that no other
 /// thread reads or mutates the process environment until this function returns.
 pub unsafe fn sd_listen_fds(unset_environment: bool) -> Result<i32> {
-    let result = (|| {
-        let env = collect_listen_env();
-        // SAFETY: `libc::getpid` has no preconditions and does not dereference pointers.
-        let fds = listen_fds_from_env(&env, unsafe { libc::getpid() }, None)?;
-
-        for fd in &fds {
-            set_fd_cloexec(*fd)?;
-        }
-
-        i32::try_from(fds.len()).map_err(|_| DaemonCheckError::InvalidInput("LISTEN_FDS"))
-    })();
+    let result = listen_fds_from_process_env();
 
     if unset_environment {
         // SAFETY: required by this function's contract when unsetting.
@@ -196,8 +192,18 @@ pub unsafe fn sd_listen_fds(unset_environment: bool) -> Result<i32> {
 
 /// Parse descriptors without changing the process environment.
 pub fn sd_listen_fds_preserve_environment() -> Result<i32> {
-    // SAFETY: false disables the only process-environment mutation.
-    unsafe { sd_listen_fds(false) }
+    listen_fds_from_process_env()
+}
+
+fn listen_fds_from_process_env() -> Result<i32> {
+    let env = collect_listen_env();
+    let fds = listen_fds_from_env(&env, current_pid(), None)?;
+
+    for fd in &fds {
+        set_fd_cloexec(*fd)?;
+    }
+
+    i32::try_from(fds.len()).map_err(|_| DaemonCheckError::InvalidInput("LISTEN_FDS"))
 }
 
 pub fn listen_fds_with_names_from_env(
@@ -236,17 +242,7 @@ pub fn listen_fds_with_names_from_env(
 /// When `unset_environment` is true, the caller must ensure that no other
 /// thread reads or mutates the process environment until this function returns.
 pub unsafe fn sd_listen_fds_with_names(unset_environment: bool) -> Result<Vec<PassedFd>> {
-    let result = (|| {
-        let env = collect_listen_env();
-        // SAFETY: `libc::getpid` has no preconditions and does not dereference pointers.
-        let passed = listen_fds_with_names_from_env(&env, unsafe { libc::getpid() }, None)?;
-
-        for passed_fd in &passed {
-            set_fd_cloexec(passed_fd.fd)?;
-        }
-
-        Ok(passed)
-    })();
+    let result = listen_fds_with_names_from_process_env();
 
     if unset_environment {
         // SAFETY: required by this function's contract when unsetting.
@@ -258,8 +254,18 @@ pub unsafe fn sd_listen_fds_with_names(unset_environment: bool) -> Result<Vec<Pa
 
 /// Parse named descriptors without changing the process environment.
 pub fn sd_listen_fds_with_names_preserve_environment() -> Result<Vec<PassedFd>> {
-    // SAFETY: false disables the only process-environment mutation.
-    unsafe { sd_listen_fds_with_names(false) }
+    listen_fds_with_names_from_process_env()
+}
+
+fn listen_fds_with_names_from_process_env() -> Result<Vec<PassedFd>> {
+    let env = collect_listen_env();
+    let passed = listen_fds_with_names_from_env(&env, current_pid(), None)?;
+
+    for passed_fd in &passed {
+        set_fd_cloexec(passed_fd.fd)?;
+    }
+
+    Ok(passed)
 }
 
 pub fn watchdog_enabled_from_env(
@@ -292,8 +298,7 @@ pub fn watchdog_enabled_from_env(
 /// When `unset_environment` is true, the caller must ensure that no other
 /// thread reads or mutates the process environment until this function returns.
 pub unsafe fn sd_watchdog_enabled(unset_environment: bool) -> Result<Option<u64>> {
-    // SAFETY: `libc::getpid` has no preconditions and does not dereference pointers.
-    let result = watchdog_enabled_from_env(&collect_watchdog_env(), unsafe { libc::getpid() });
+    let result = watchdog_enabled_from_process_env();
 
     if unset_environment {
         // SAFETY: required by this function's contract when unsetting.
@@ -305,8 +310,11 @@ pub unsafe fn sd_watchdog_enabled(unset_environment: bool) -> Result<Option<u64>
 
 /// Read the watchdog interval without changing the process environment.
 pub fn sd_watchdog_enabled_preserve_environment() -> Result<Option<u64>> {
-    // SAFETY: false disables the only process-environment mutation.
-    unsafe { sd_watchdog_enabled(false) }
+    watchdog_enabled_from_process_env()
+}
+
+fn watchdog_enabled_from_process_env() -> Result<Option<u64>> {
+    watchdog_enabled_from_env(&collect_watchdog_env(), current_pid())
 }
 
 /// Send an sd_notify message to the service manager.
@@ -316,18 +324,7 @@ pub fn sd_watchdog_enabled_preserve_environment() -> Result<Option<u64>> {
 /// When `unset_environment` is true, the caller must ensure that no other
 /// thread reads or mutates the process environment until this function returns.
 pub unsafe fn sd_notify(unset_environment: bool, state: &str) -> Result<bool> {
-    let result = (|| {
-        let notify_socket = match env::var(NOTIFY_ENV_VAR) {
-            Ok(value) => value,
-            Err(env::VarError::NotPresent) => return Ok(false),
-            Err(env::VarError::NotUnicode(_)) => {
-                return Err(DaemonCheckError::InvalidInput("NOTIFY_SOCKET"));
-            }
-        };
-
-        send_notify_message(&notify_socket, state.as_bytes())?;
-        Ok(true)
-    })();
+    let result = notify_from_process_env(state);
 
     if unset_environment {
         // SAFETY: required by this function's contract when unsetting.
@@ -339,8 +336,20 @@ pub unsafe fn sd_notify(unset_environment: bool, state: &str) -> Result<bool> {
 
 /// Send an sd_notify message without changing the process environment.
 pub fn sd_notify_preserve_environment(state: &str) -> Result<bool> {
-    // SAFETY: false disables the only process-environment mutation.
-    unsafe { sd_notify(false, state) }
+    notify_from_process_env(state)
+}
+
+fn notify_from_process_env(state: &str) -> Result<bool> {
+    let notify_socket = match env::var(NOTIFY_ENV_VAR) {
+        Ok(value) => value,
+        Err(env::VarError::NotPresent) => return Ok(false),
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(DaemonCheckError::InvalidInput("NOTIFY_SOCKET"));
+        }
+    };
+
+    send_notify_message(&notify_socket, state.as_bytes())?;
+    Ok(true)
 }
 
 /// Format and send an sd_notify message to the service manager.
@@ -545,24 +554,29 @@ fn read_inet_socket_address_from_storage(
     storage: &libc::sockaddr_storage,
     len: libc::socklen_t,
 ) -> Result<InetSocketAddress> {
-    match sockaddr_family(storage) {
-        libc::AF_INET if len >= size_of::<libc::sockaddr_in>() as libc::socklen_t => {
-            // SAFETY: `getsockname` initialized `storage` with an AF_INET address
-            // of at least the checked complete struct length.
-            Ok(InetSocketAddress::V4(unsafe {
-                std::ptr::read(std::ptr::from_ref(storage).cast::<libc::sockaddr_in>())
-            }))
-        }
-        libc::AF_INET6 if len >= size_of::<libc::sockaddr_in6>() as libc::socklen_t => {
-            // SAFETY: `getsockname` initialized `storage` with an AF_INET6 address
-            // of at least the checked complete struct length.
-            Ok(InetSocketAddress::V6(unsafe {
-                std::ptr::read(std::ptr::from_ref(storage).cast::<libc::sockaddr_in6>())
-            }))
-        }
-        libc::AF_INET | libc::AF_INET6 => Err(DaemonCheckError::InvalidInput("addr_len")),
-        _ => Err(DaemonCheckError::InvalidInput("family")),
+    let family = sockaddr_family(storage);
+    let min_len = match family {
+        libc::AF_INET => size_of::<libc::sockaddr_in>(),
+        libc::AF_INET6 => size_of::<libc::sockaddr_in6>(),
+        _ => return Err(DaemonCheckError::InvalidInput("family")),
+    };
+    if len < min_len as libc::socklen_t {
+        return Err(DaemonCheckError::InvalidInput("addr_len"));
     }
+
+    // SAFETY: `getsockname` initialized `storage` as the checked family and
+    // supplied at least the complete corresponding address length.
+    Ok(unsafe {
+        match family {
+            libc::AF_INET => InetSocketAddress::V4(std::ptr::read(
+                std::ptr::from_ref(storage).cast::<libc::sockaddr_in>(),
+            )),
+            libc::AF_INET6 => InetSocketAddress::V6(std::ptr::read(
+                std::ptr::from_ref(storage).cast::<libc::sockaddr_in6>(),
+            )),
+            _ => unreachable!("family was validated above"),
+        }
+    })
 }
 
 fn inet_socket_address_matches(actual: InetSocketAddress, expected: InetSocketAddress) -> bool {
@@ -664,8 +678,6 @@ pub fn sd_is_socket_unix(
         return Ok(true);
     };
 
-    // SAFETY: `storage` was populated by `getsockname`, family was validated as `AF_UNIX`, and we only read fields.
-    let addr = unsafe { &*(&storage as *const _ as *const libc::sockaddr_un) };
     let actual_len =
         usize::try_from(len).map_err(|_| DaemonCheckError::InvalidInput("sockaddr"))?;
     let path_offset = offset_of!(libc::sockaddr_un, sun_path);
@@ -674,8 +686,16 @@ pub fn sd_is_socket_unix(
     }
     let actual_path_len = actual_len - path_offset;
     let actual_path =
-        // SAFETY: the pointer and length originate from validated storage and produce a temporary slice within bounds.
-        unsafe { std::slice::from_raw_parts(addr.sun_path.as_ptr().cast::<u8>(), actual_path_len) };
+        // SAFETY: `path_offset` and `actual_path_len` were checked against the
+        // sockaddr bytes initialized by `getsockname` above.
+        unsafe {
+            std::slice::from_raw_parts(
+                std::ptr::from_ref(&storage)
+                    .cast::<u8>()
+                    .add(path_offset),
+                actual_path_len,
+            )
+        };
 
     Ok(unix_socket_path_matches(actual_path, path))
 }
@@ -847,10 +867,15 @@ impl NotifySocketAddress<'_> {
 
 struct NotifySocketFd(RawFd);
 
+fn close_fd(fd: RawFd) {
+    // SAFETY: `close` accepts any integer descriptor; callers intentionally
+    // ignore the close result to preserve the existing cleanup behavior.
+    unsafe { libc::close(fd) };
+}
+
 impl Drop for NotifySocketFd {
     fn drop(&mut self) {
-        // SAFETY: this guard exclusively owns a descriptor returned by socket().
-        unsafe { libc::close(self.0) };
+        close_fd(self.0);
     }
 }
 
@@ -914,8 +939,7 @@ fn create_socket_cloexec(family: libc::c_int, sock_type: libc::c_int) -> Result<
         return Err(DaemonCheckError::Io(last_errno()));
     }
     if let Err(e) = set_fd_cloexec(fd) {
-        // SAFETY: arguments satisfy the libc `close` contract and any passed pointers remain valid for the call.
-        unsafe { libc::close(fd) };
+        close_fd(fd);
         return Err(e);
     }
     Ok(fd)
@@ -1047,8 +1071,7 @@ fn getsockname(fd: RawFd) -> Result<(libc::sockaddr_storage, libc::socklen_t)> {
 }
 
 fn sockaddr_family(storage: &libc::sockaddr_storage) -> i32 {
-    // SAFETY: `storage` came from `getsockname`; reading its `sa_family` via `sockaddr` view is valid.
-    unsafe { (*(storage as *const _ as *const libc::sockaddr)).sa_family as i32 }
+    storage.ss_family as i32
 }
 
 fn unix_socket_path_matches(actual_path: &[u8], expected_path: &[u8]) -> bool {
@@ -1066,18 +1089,12 @@ fn unix_socket_path_matches(actual_path: &[u8], expected_path: &[u8]) -> bool {
 }
 
 fn socket_port(storage: &libc::sockaddr_storage) -> Result<u16> {
-    match sockaddr_family(storage) {
-        libc::AF_INET => {
-            // SAFETY: `storage` came from `getsockname`, family is `AF_INET`, and we only read fields.
-            let addr = unsafe { &*(storage as *const _ as *const libc::sockaddr_in) };
-            Ok(u16::from_be(addr.sin_port))
-        }
-        libc::AF_INET6 => {
-            // SAFETY: `storage` came from `getsockname`, family is `AF_INET6`, and we only read fields.
-            let addr = unsafe { &*(storage as *const _ as *const libc::sockaddr_in6) };
-            Ok(u16::from_be(addr.sin6_port))
-        }
-        _ => Err(DaemonCheckError::InvalidInput("family")),
+    match read_inet_socket_address_from_storage(
+        storage,
+        size_of::<libc::sockaddr_storage>() as libc::socklen_t,
+    )? {
+        InetSocketAddress::V4(addr) => Ok(u16::from_be(addr.sin_port)),
+        InetSocketAddress::V6(addr) => Ok(u16::from_be(addr.sin6_port)),
     }
 }
 

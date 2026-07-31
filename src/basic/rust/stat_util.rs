@@ -253,281 +253,354 @@ pub unsafe extern "C" fn rs_btrfs_might_be_subvol(st: *const libc::stat) -> bool
 mod tests {
     use super::*;
 
+    // These layouts are composed entirely of integer fields on the supported
+    // Linux ABIs. Each constructor confines that representation detail to the
+    // test boundary, so individual cases can focus on the fields they use.
+    fn zeroed_stat() -> libc::stat {
+        // SAFETY: `libc::stat` has an all-zero valid test representation.
+        unsafe { std::mem::zeroed() }
+    }
+
+    fn zeroed_statx() -> libc::statx {
+        // SAFETY: `libc::statx` has an all-zero valid test representation.
+        unsafe { std::mem::zeroed() }
+    }
+
+    fn zeroed_statx_timestamp() -> libc::statx_timestamp {
+        // SAFETY: `libc::statx_timestamp` has an all-zero valid test representation.
+        unsafe { std::mem::zeroed() }
+    }
+
+    fn zeroed_statfs() -> libc::statfs {
+        // SAFETY: `libc::statfs` has an all-zero valid test representation.
+        unsafe { std::mem::zeroed() }
+    }
+
+    macro_rules! stat_test_adapter {
+        ($name:ident, $target:ident, $type:ty, $return:ty) => {
+            fn $name(value: Option<&$type>) -> $return {
+                // SAFETY: `value` supplies either a live typed borrow or the
+                // explicit fail-closed null case covered by this ABI entry point.
+                unsafe { $target(value.map_or(std::ptr::null(), |value| value)) }
+            }
+        };
+    }
+
+    macro_rules! stat_test_mut_adapter {
+        ($name:ident, $target:ident) => {
+            fn $name(value: Option<&mut libc::stat>) -> bool {
+                // SAFETY: `value` supplies either an exclusive typed borrow or
+                // the explicit fail-closed null case covered by this ABI entry point.
+                unsafe { $target(value.map_or(std::ptr::null_mut(), |value| value)) }
+            }
+        };
+    }
+
+    stat_test_adapter!(stat_verify_regular, rs_stat_verify_regular, libc::stat, i32);
+    stat_test_adapter!(
+        stat_verify_directory,
+        rs_stat_verify_directory,
+        libc::stat,
+        i32
+    );
+    stat_test_adapter!(stat_verify_symlink, rs_stat_verify_symlink, libc::stat, i32);
+    stat_test_adapter!(stat_verify_socket, rs_stat_verify_socket, libc::stat, i32);
+    stat_test_adapter!(stat_verify_linked, rs_stat_verify_linked, libc::stat, i32);
+    stat_test_adapter!(
+        stat_verify_device_node,
+        rs_stat_verify_device_node,
+        libc::stat,
+        i32
+    );
+    stat_test_adapter!(stat_is_set, rs_stat_is_set, libc::stat, bool);
+    stat_test_adapter!(
+        statx_verify_regular,
+        rs_statx_verify_regular,
+        libc::statx,
+        i32
+    );
+    stat_test_adapter!(
+        statx_verify_directory,
+        rs_statx_verify_directory,
+        libc::statx,
+        i32
+    );
+    stat_test_adapter!(
+        statx_verify_socket,
+        rs_statx_verify_socket,
+        libc::statx,
+        i32
+    );
+    stat_test_adapter!(statx_is_set, rs_statx_is_set, libc::statx, bool);
+    stat_test_adapter!(
+        statx_timestamp_load,
+        rs_statx_timestamp_load,
+        libc::statx_timestamp,
+        u64
+    );
+    stat_test_adapter!(
+        statx_timestamp_load_nsec,
+        rs_statx_timestamp_load_nsec,
+        libc::statx_timestamp,
+        u64
+    );
+    stat_test_mut_adapter!(stat_may_be_dev_null, rs_stat_may_be_dev_null);
+    stat_test_mut_adapter!(stat_is_empty, rs_stat_is_empty);
+
+    fn with_statfs(statfs: Option<&libc::statfs>, magic: StatFsType) -> bool {
+        // SAFETY: `statfs` supplies either a live typed borrow or the explicit
+        // fail-closed null case covered by this test ABI entry point.
+        unsafe { rs_is_fs_type(statfs.map_or(std::ptr::null(), |statfs| statfs), magic) }
+    }
+
     #[test]
     fn test_stat_verify_regular_success() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFREG as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_regular(&st) }, 0);
+        assert_eq!(stat_verify_regular(Some(&st)), 0);
     }
 
     #[test]
     fn test_stat_verify_regular_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert_eq!(
-            unsafe { rs_stat_verify_regular(std::ptr::null()) },
-            -libc::EINVAL
-        );
+        assert_eq!(stat_verify_regular(None), -libc::EINVAL);
     }
 
     #[test]
     fn test_stat_verify_regular_directory() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFDIR as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_regular(&st) }, -libc::EISDIR);
+        assert_eq!(stat_verify_regular(Some(&st)), -libc::EISDIR);
     }
 
     #[test]
     fn test_stat_verify_regular_symlink() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFLNK as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_regular(&st) }, -libc::ELOOP);
+        assert_eq!(stat_verify_regular(Some(&st)), -libc::ELOOP);
     }
 
     #[test]
     fn test_statx_verify_regular_success() {
         // SAFETY: libc's all-integer statx layout accepts an all-zero value.
-        let mut stx: libc::statx = unsafe { std::mem::zeroed() };
+        let mut stx = zeroed_statx();
         stx.stx_mask = libc::STATX_TYPE;
         stx.stx_mode = S_IFREG as u16;
         // SAFETY: `stx` is initialized and live for this call.
-        assert_eq!(unsafe { rs_statx_verify_regular(&stx) }, 0);
+        assert_eq!(statx_verify_regular(Some(&stx)), 0);
     }
 
     #[test]
     fn test_statx_verify_regular_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert_eq!(
-            unsafe { rs_statx_verify_regular(std::ptr::null()) },
-            -libc::EINVAL
-        );
+        assert_eq!(statx_verify_regular(None), -libc::EINVAL);
     }
 
     #[test]
     fn test_statx_verify_regular_no_type() {
         // SAFETY: libc's all-integer statx layout accepts an all-zero value.
-        let mut stx: libc::statx = unsafe { std::mem::zeroed() };
+        let mut stx = zeroed_statx();
         stx.stx_mode = S_IFREG as u16;
         // SAFETY: `stx` is initialized and live for this call.
-        assert_eq!(unsafe { rs_statx_verify_regular(&stx) }, -libc::ENODATA);
+        assert_eq!(statx_verify_regular(Some(&stx)), -libc::ENODATA);
     }
 
     #[test]
     fn test_stat_verify_directory_success() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFDIR as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_directory(&st) }, 0);
+        assert_eq!(stat_verify_directory(Some(&st)), 0);
     }
 
     #[test]
     fn test_stat_verify_directory_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert_eq!(
-            unsafe { rs_stat_verify_directory(std::ptr::null()) },
-            -libc::EINVAL
-        );
+        assert_eq!(stat_verify_directory(None), -libc::EINVAL);
     }
 
     #[test]
     fn test_stat_verify_directory_not_dir() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFREG as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_directory(&st) }, -libc::ENOTDIR);
+        assert_eq!(stat_verify_directory(Some(&st)), -libc::ENOTDIR);
     }
 
     #[test]
     fn test_statx_verify_directory_success() {
         // SAFETY: libc's all-integer statx layout accepts an all-zero value.
-        let mut stx: libc::statx = unsafe { std::mem::zeroed() };
+        let mut stx = zeroed_statx();
         stx.stx_mask = libc::STATX_TYPE;
         stx.stx_mode = S_IFDIR as u16;
         // SAFETY: `stx` is initialized and live for this call.
-        assert_eq!(unsafe { rs_statx_verify_directory(&stx) }, 0);
+        assert_eq!(statx_verify_directory(Some(&stx)), 0);
     }
 
     #[test]
     fn test_statx_verify_directory_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert_eq!(
-            unsafe { rs_statx_verify_directory(std::ptr::null()) },
-            -libc::EINVAL
-        );
+        assert_eq!(statx_verify_directory(None), -libc::EINVAL);
     }
 
     #[test]
     fn test_stat_verify_symlink_success() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFLNK as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_symlink(&st) }, 0);
+        assert_eq!(stat_verify_symlink(Some(&st)), 0);
     }
 
     #[test]
     fn test_stat_verify_symlink_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert_eq!(
-            unsafe { rs_stat_verify_symlink(std::ptr::null()) },
-            -libc::EINVAL
-        );
+        assert_eq!(stat_verify_symlink(None), -libc::EINVAL);
     }
 
     #[test]
     fn test_stat_verify_symlink_directory() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFDIR as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_symlink(&st) }, -libc::EISDIR);
+        assert_eq!(stat_verify_symlink(Some(&st)), -libc::EISDIR);
     }
 
     #[test]
     fn test_stat_verify_socket_success() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFSOCK as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_socket(&st) }, 0);
+        assert_eq!(stat_verify_socket(Some(&st)), 0);
     }
 
     #[test]
     fn test_stat_verify_socket_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert_eq!(
-            unsafe { rs_stat_verify_socket(std::ptr::null()) },
-            -libc::EINVAL
-        );
+        assert_eq!(stat_verify_socket(None), -libc::EINVAL);
     }
 
     #[test]
     fn test_statx_verify_socket_success() {
         // SAFETY: libc's all-integer statx layout accepts an all-zero value.
-        let mut stx: libc::statx = unsafe { std::mem::zeroed() };
+        let mut stx = zeroed_statx();
         stx.stx_mode = S_IFSOCK as u16;
         // SAFETY: `stx` is initialized and live for this call.
-        assert_eq!(unsafe { rs_statx_verify_socket(&stx) }, 0);
+        assert_eq!(statx_verify_socket(Some(&stx)), 0);
     }
 
     #[test]
     fn test_statx_verify_socket_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert_eq!(
-            unsafe { rs_statx_verify_socket(std::ptr::null()) },
-            -libc::EINVAL
-        );
+        assert_eq!(statx_verify_socket(None), -libc::EINVAL);
     }
 
     #[test]
     fn test_stat_verify_linked_success() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_nlink = 1;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_linked(&st) }, 0);
+        assert_eq!(stat_verify_linked(Some(&st)), 0);
     }
 
     #[test]
     fn test_stat_verify_linked_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert_eq!(
-            unsafe { rs_stat_verify_linked(std::ptr::null()) },
-            -libc::EINVAL
-        );
+        assert_eq!(stat_verify_linked(None), -libc::EINVAL);
     }
 
     #[test]
     fn test_stat_verify_linked_zero_nlink() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let st: libc::stat = unsafe { std::mem::zeroed() };
+        let st = zeroed_stat();
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_linked(&st) }, -libc::EIDRM);
+        assert_eq!(stat_verify_linked(Some(&st)), -libc::EIDRM);
     }
 
     #[test]
     fn test_stat_verify_device_node_success() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFCHR as libc::mode_t;
         // SAFETY: `st` is initialized and live for these calls.
-        assert_eq!(unsafe { rs_stat_verify_device_node(&st) }, 0);
+        assert_eq!(stat_verify_device_node(Some(&st)), 0);
         st.st_mode = S_IFBLK as libc::mode_t;
         // SAFETY: `st` remains initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_device_node(&st) }, 0);
+        assert_eq!(stat_verify_device_node(Some(&st)), 0);
     }
 
     #[test]
     fn test_stat_verify_device_node_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert_eq!(
-            unsafe { rs_stat_verify_device_node(std::ptr::null()) },
-            -libc::EINVAL
-        );
+        assert_eq!(stat_verify_device_node(None), -libc::EINVAL);
     }
 
     #[test]
     fn test_stat_verify_device_node_not_device() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFREG as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert_eq!(unsafe { rs_stat_verify_device_node(&st) }, -libc::ENOTTY);
+        assert_eq!(stat_verify_device_node(Some(&st)), -libc::ENOTTY);
     }
 
     #[test]
     fn test_stat_may_be_dev_null() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFCHR as libc::mode_t;
         // SAFETY: `st` is initialized and live for these calls.
-        assert!(unsafe { rs_stat_may_be_dev_null(&mut st) });
+        assert!(stat_may_be_dev_null(Some(&mut st)));
         st.st_mode = S_IFREG as libc::mode_t;
         // SAFETY: `st` remains initialized and live for this call.
-        assert!(!unsafe { rs_stat_may_be_dev_null(&mut st) });
+        assert!(!stat_may_be_dev_null(Some(&mut st)));
     }
 
     #[test]
     fn test_stat_may_be_dev_null_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert!(!unsafe { rs_stat_may_be_dev_null(std::ptr::null_mut()) });
+        assert!(!stat_may_be_dev_null(None));
     }
 
     #[test]
     fn test_stat_is_empty() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFREG as libc::mode_t;
         // SAFETY: `st` is initialized and live for these calls.
-        assert!(unsafe { rs_stat_is_empty(&mut st) });
+        assert!(stat_is_empty(Some(&mut st)));
         st.st_size = 100;
         // SAFETY: `st` remains initialized and live for this call.
-        assert!(!unsafe { rs_stat_is_empty(&mut st) });
+        assert!(!stat_is_empty(Some(&mut st)));
         st.st_size = -1;
         // SAFETY: `st` remains initialized and live for this call.
-        assert!(unsafe { rs_stat_is_empty(&mut st) });
+        assert!(stat_is_empty(Some(&mut st)));
     }
 
     #[test]
     fn test_stat_is_empty_null() {
         // SAFETY: null is an explicitly supported fail-closed extension.
-        assert!(!unsafe { rs_stat_is_empty(std::ptr::null_mut()) });
+        assert!(!stat_is_empty(None));
     }
 
     #[test]
     fn test_stat_is_empty_non_regular() {
         // SAFETY: libc's all-integer stat layout accepts an all-zero value.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_mode = S_IFDIR as libc::mode_t;
         // SAFETY: `st` is initialized and live for this call.
-        assert!(!unsafe { rs_stat_is_empty(&mut st) });
+        assert!(!stat_is_empty(Some(&mut st)));
     }
 
     #[test]
@@ -545,133 +618,124 @@ mod tests {
     fn test_stat_is_set() {
         // SAFETY: all-integer libc C ABI structs accept an all-zero initial
         // representation; the test then initializes each field it observes.
-        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let mut st = zeroed_stat();
         st.st_dev = 1;
         st.st_mode = S_IFREG as libc::mode_t;
         // SAFETY: `st` remains live and initialized for this call.
-        assert!(unsafe { rs_stat_is_set(&st) });
+        assert!(stat_is_set(Some(&st)));
 
         st.st_dev = 0;
         // SAFETY: `st` remains live and initialized for this call.
-        assert!(!unsafe { rs_stat_is_set(&st) });
+        assert!(!stat_is_set(Some(&st)));
 
         st.st_dev = 1;
         st.st_mode = MODE_INVALID as libc::mode_t;
         // SAFETY: `st` remains live and initialized for this call.
-        assert!(!unsafe { rs_stat_is_set(&st) });
+        assert!(!stat_is_set(Some(&st)));
     }
 
     #[test]
     fn test_stat_is_set_null() {
         // SAFETY: null is explicitly accepted and fail-closed by this ABI.
-        assert!(!unsafe { rs_stat_is_set(std::ptr::null()) });
+        assert!(!stat_is_set(None));
     }
 
     #[test]
     fn test_statx_is_set() {
         // SAFETY: all-integer libc C ABI structs accept an all-zero initial
         // representation; the test initializes the observed mask field.
-        let mut stx: libc::statx = unsafe { std::mem::zeroed() };
+        let mut stx = zeroed_statx();
         stx.stx_mask = 1;
         // SAFETY: `stx` remains live and initialized for this call.
-        assert!(unsafe { rs_statx_is_set(&stx) });
+        assert!(statx_is_set(Some(&stx)));
         stx.stx_mask = 0;
         // SAFETY: `stx` remains live and initialized for this call.
-        assert!(!unsafe { rs_statx_is_set(&stx) });
+        assert!(!statx_is_set(Some(&stx)));
     }
 
     #[test]
     fn test_statx_is_set_null() {
         // SAFETY: null is explicitly accepted and fail-closed by this ABI.
-        assert!(!unsafe { rs_statx_is_set(std::ptr::null()) });
+        assert!(!statx_is_set(None));
     }
 
     #[test]
     fn test_statx_timestamp_load() {
         // SAFETY: all-integer libc C ABI structs accept an all-zero initial
         // representation; the test initializes both public fields.
-        let mut ts: libc::statx_timestamp = unsafe { std::mem::zeroed() };
+        let mut ts = zeroed_statx_timestamp();
         ts.tv_sec = 100;
         ts.tv_nsec = 500_000_000;
         // SAFETY: `ts` remains live and initialized for this call.
-        assert_eq!(unsafe { rs_statx_timestamp_load(&ts) }, 100_500_000u64);
+        assert_eq!(statx_timestamp_load(Some(&ts)), 100_500_000u64);
     }
 
     #[test]
     fn test_statx_timestamp_load_null() {
         // SAFETY: null is explicitly accepted and fail-closed by this ABI.
-        assert_eq!(
-            unsafe { rs_statx_timestamp_load(std::ptr::null()) },
-            u64::MAX
-        );
+        assert_eq!(statx_timestamp_load(None), u64::MAX);
     }
 
     #[test]
     fn test_statx_timestamp_load_negative() {
         // SAFETY: all-integer libc C ABI structs accept an all-zero initial
         // representation; the test initializes both public fields.
-        let mut ts: libc::statx_timestamp = unsafe { std::mem::zeroed() };
+        let mut ts = zeroed_statx_timestamp();
         ts.tv_sec = -1;
         // SAFETY: `ts` remains live and initialized for this call.
-        assert_eq!(unsafe { rs_statx_timestamp_load(&ts) }, u64::MAX);
+        assert_eq!(statx_timestamp_load(Some(&ts)), u64::MAX);
     }
 
     #[test]
     fn test_statx_timestamp_load_nsec() {
         // SAFETY: all-integer libc C ABI structs accept an all-zero initial
         // representation; the test initializes both public fields.
-        let mut ts: libc::statx_timestamp = unsafe { std::mem::zeroed() };
+        let mut ts = zeroed_statx_timestamp();
         ts.tv_sec = 1;
         ts.tv_nsec = 500_000_000;
         // SAFETY: `ts` remains live and initialized for this call.
-        assert_eq!(
-            unsafe { rs_statx_timestamp_load_nsec(&ts) },
-            1_500_000_000u64
-        );
+        assert_eq!(statx_timestamp_load_nsec(Some(&ts)), 1_500_000_000u64);
     }
 
     #[test]
     fn test_statx_timestamp_load_nsec_null() {
         // SAFETY: null is explicitly accepted and fail-closed by this ABI.
-        assert_eq!(
-            unsafe { rs_statx_timestamp_load_nsec(std::ptr::null()) },
-            u64::MAX
-        );
+        assert_eq!(statx_timestamp_load_nsec(None), u64::MAX);
     }
 
     #[test]
     fn test_statx_timestamp_load_nsec_negative() {
         // SAFETY: all-integer libc C ABI structs accept an all-zero initial
         // representation; the test initializes both public fields.
-        let mut ts: libc::statx_timestamp = unsafe { std::mem::zeroed() };
+        let mut ts = zeroed_statx_timestamp();
         ts.tv_sec = -1;
         // SAFETY: `ts` remains live and initialized for this call.
-        assert_eq!(unsafe { rs_statx_timestamp_load_nsec(&ts) }, u64::MAX);
+        assert_eq!(statx_timestamp_load_nsec(Some(&ts)), u64::MAX);
     }
 
     #[test]
     fn test_is_fs_type_match() {
         // SAFETY: all-integer libc C ABI structs accept an all-zero initial
         // representation; the test initializes the observed type field.
-        let mut statfs: libc::statfs = unsafe { std::mem::zeroed() };
+        let mut statfs = zeroed_statfs();
         statfs.f_type = 0x1234;
         // SAFETY: `statfs` remains live and initialized for this call.
-        assert!(unsafe { rs_is_fs_type(&statfs, 0x1234) });
+        assert!(with_statfs(Some(&statfs), 0x1234));
     }
 
     #[test]
     fn test_is_fs_type_no_match() {
         // SAFETY: all-integer libc C ABI structs accept an all-zero initial
         // representation; the test initializes the observed type field.
-        let mut statfs: libc::statfs = unsafe { std::mem::zeroed() };
+        let mut statfs = zeroed_statfs();
         statfs.f_type = 0x1234;
         // SAFETY: `statfs` remains live and initialized for this call.
-        assert!(!unsafe { rs_is_fs_type(&statfs, 0x5678) });
+        assert!(!with_statfs(Some(&statfs), 0x5678));
     }
 
     #[test]
     fn test_is_fs_type_null() {
         // SAFETY: null is explicitly accepted and fail-closed by this ABI.
-        assert!(!unsafe { rs_is_fs_type(std::ptr::null(), 0x1234) });
+        assert!(!with_statfs(None, 0x1234));
     }
 }

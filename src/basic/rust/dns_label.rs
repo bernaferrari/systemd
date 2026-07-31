@@ -907,16 +907,12 @@ pub unsafe fn rs_dns_srv_type_is_valid(name: *const c_char) -> bool {
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
 pub unsafe fn rs_dnssd_srv_type_is_valid(name: *const c_char) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    // SAFETY: this wrapper forwards the C-string contract to the validator.
-    if !unsafe { rs_dns_srv_type_is_valid(name) } {
-        return false;
-    }
-    // SAFETY: the validator accepted the non-null C string.
+    // SAFETY: this wrapper forwards one live C-string contract to the
+    // validator and both suffix checks.
     unsafe {
-        rs_dns_name_endswith(name, c"_tcp".as_ptr()) > 0
-            || rs_dns_name_endswith(name, c"_udp".as_ptr()) > 0
+        rs_dns_srv_type_is_valid(name)
+            && (rs_dns_name_endswith(name, c"_tcp".as_ptr()) > 0
+                || rs_dns_name_endswith(name, c"_udp".as_ptr()) > 0)
     }
 }
 
@@ -2197,19 +2193,55 @@ mod tests {
     use crate::ffi::Errno;
     use std::ffi::{CStr, CString};
 
+    /// Test-only ownership-free conversion for results whose producing helper
+    /// has already established a live NUL-terminated allocation.
+    fn c_string_bytes(value: *const c_char) -> Vec<u8> {
+        // SAFETY: every test passes a pointer from a live CString, a local
+        // NUL-terminated output buffer, or a successful DNS helper result.
+        unsafe { CStr::from_ptr(value) }.to_bytes().to_vec()
+    }
+
+    /// Test one label-unescape ABI call through references and an optional
+    /// destination buffer, keeping the raw call boundary in one place.
+    fn unescape_label(
+        name: &mut *const c_char,
+        destination: Option<&mut [c_char]>,
+        flags: u32,
+    ) -> i32 {
+        let (destination, size) = destination.map_or((ptr::null_mut(), DNS_LABEL_MAX), |buffer| {
+            (buffer.as_mut_ptr(), buffer.len())
+        });
+        // SAFETY: test references provide writable pointer storage and any
+        // supplied buffer; the input pointers come from live CStrings.
+        unsafe { rs_dns_label_unescape(name, destination, size, flags) }
+    }
+
+    fn srv_type_is_valid(name: &CStr) -> bool {
+        // SAFETY: the test input is a live NUL-terminated CString.
+        unsafe { rs_dns_srv_type_is_valid(name.as_ptr()) }
+    }
+
+    fn dot_suffixed(name: &CStr) -> i32 {
+        // SAFETY: the test input is a live NUL-terminated CString.
+        unsafe { rs_dns_name_dot_suffixed(name.as_ptr()) }
+    }
+
+    fn free_c_string(value: *mut c_char) {
+        // SAFETY: every caller passes one successful C-allocator result and
+        // transfers its ownership to this helper exactly once.
+        unsafe { free(value.cast()) }
+    }
+
     #[test]
     fn dns_label_unescape_plain_label() {
         let input = CString::new("host.example").unwrap();
         let mut p = input.as_ptr();
         let mut out = [0 as c_char; DNS_LABEL_MAX + 1];
 
-        // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        let r = unsafe { rs_dns_label_unescape(&mut p, out.as_mut_ptr(), out.len(), 0) };
+        let r = unescape_label(&mut p, Some(&mut out), 0);
         assert_eq!(r, 4);
-        // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        assert_eq!(unsafe { CStr::from_ptr(out.as_ptr()) }.to_bytes(), b"host");
-        // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        assert_eq!(unsafe { CStr::from_ptr(p) }.to_bytes(), b"example");
+        assert_eq!(c_string_bytes(out.as_ptr()), b"host");
+        assert_eq!(c_string_bytes(p), b"example");
     }
 
     #[test]
@@ -2217,8 +2249,7 @@ mod tests {
         let input = CString::new("foo..").unwrap();
         let mut p = input.as_ptr();
 
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let r = unsafe { rs_dns_label_unescape(&mut p, std::ptr::null_mut(), DNS_LABEL_MAX, 0) };
+        let r = unescape_label(&mut p, None, 0);
         assert_eq!(r, Errno::EINVAL.to_neg_errno());
     }
 
@@ -2252,20 +2283,16 @@ mod tests {
     fn dns_srv_type_validation_tracks_c_rules() {
         let ok = CString::new("_http._tcp").unwrap();
         let bad = CString::new("http._tcp").unwrap();
-        // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert!(unsafe { rs_dns_srv_type_is_valid(ok.as_ptr()) });
-        // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert!(!unsafe { rs_dns_srv_type_is_valid(bad.as_ptr()) });
+        assert!(srv_type_is_valid(&ok));
+        assert!(!srv_type_is_valid(&bad));
     }
 
     #[test]
     fn dns_name_dot_suffixed_detects_trailing_dot() {
         let dotted = CString::new("example.com.").unwrap();
         let plain = CString::new("example.com").unwrap();
-        // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert_eq!(unsafe { rs_dns_name_dot_suffixed(dotted.as_ptr()) }, 1);
-        // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        assert_eq!(unsafe { rs_dns_name_dot_suffixed(plain.as_ptr()) }, 0);
+        assert_eq!(dot_suffixed(&dotted), 1);
+        assert_eq!(dot_suffixed(&plain), 0);
     }
 
     #[test]
@@ -2280,11 +2307,7 @@ mod tests {
             unsafe { rs_dns_name_reverse(2, addr.as_ptr().cast(), &mut name) },
             0
         );
-        assert_eq!(
-            // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-            unsafe { CStr::from_ptr(name) }.to_bytes(),
-            b"4.3.2.1.in-addr.arpa"
-        );
+        assert_eq!(c_string_bytes(name), b"4.3.2.1.in-addr.arpa");
         assert_eq!(
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
             unsafe { rs_dns_name_address(name, &mut family, out.as_mut_ptr().cast()) },
@@ -2292,8 +2315,7 @@ mod tests {
         );
         assert_eq!(family, 2);
         assert_eq!(&out[..4], &addr);
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { free(name.cast()) };
+        free_c_string(name);
     }
 
     #[test]
@@ -2318,23 +2340,14 @@ mod tests {
             unsafe { rs_dns_service_split(joined, &mut out_name, &mut out_type, &mut out_domain) },
             0
         );
-        // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        assert_eq!(unsafe { CStr::from_ptr(out_name) }.to_bytes(), b"Printer");
-        // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        assert_eq!(unsafe { CStr::from_ptr(out_type) }.to_bytes(), b"_ipp._tcp");
-        assert_eq!(
-            // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-            unsafe { CStr::from_ptr(out_domain) }.to_bytes(),
-            b"example.com"
-        );
+        assert_eq!(c_string_bytes(out_name), b"Printer");
+        assert_eq!(c_string_bytes(out_type), b"_ipp._tcp");
+        assert_eq!(c_string_bytes(out_domain), b"example.com");
 
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
-            free(joined.cast());
-            free(out_name.cast());
-            free(out_type.cast());
-            free(out_domain.cast());
-        }
+        free_c_string(joined);
+        free_c_string(out_name);
+        free_c_string(out_type);
+        free_c_string(out_domain);
     }
 
     #[test]
@@ -2343,16 +2356,10 @@ mod tests {
         let mut p = input.as_ptr();
         let mut out = [0 as c_char; DNS_LABEL_MAX + 1];
 
-        // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let r = unsafe { rs_dns_label_unescape(&mut p, out.as_mut_ptr(), out.len(), 0) };
+        let r = unescape_label(&mut p, Some(&mut out), 0);
         assert_eq!(r, 7);
-        assert_eq!(
-            // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-            unsafe { CStr::from_ptr(out.as_ptr()) }.to_bytes(),
-            b"foo.bar"
-        );
-        // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        assert_eq!(unsafe { CStr::from_ptr(p) }.to_bytes(), b"rest");
+        assert_eq!(c_string_bytes(out.as_ptr()), b"foo.bar");
+        assert_eq!(c_string_bytes(p), b"rest");
     }
 
     #[test]
@@ -2361,10 +2368,7 @@ mod tests {
         let mut p = input.as_ptr();
         let mut out = [0 as c_char; DNS_LABEL_MAX + 1];
 
-        // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let r = unsafe {
-            rs_dns_label_unescape(&mut p, out.as_mut_ptr(), out.len(), DNS_LABEL_LDH as u32)
-        };
+        let r = unescape_label(&mut p, Some(&mut out), DNS_LABEL_LDH);
         assert_eq!(r, Errno::EINVAL.to_neg_errno());
     }
 
