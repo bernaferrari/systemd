@@ -12,18 +12,18 @@ Scope: `src`
 
 ## Snapshot Totals
 
-- All `src` C files: **1831**
-- All `src` Rust files: **1294**
+- All `src` C files: **1832**
+- All `src` Rust files: **1296**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1179**
+- Unverified Rust behavior candidates: **1181**
 
 Excluding `src/test`:
-- C files: **1569**
-- Rust files: **1294**
+- C files: **1570**
+- Rust files: **1296**
 - Rust metadata adapters: **29**
 - Rust test/fuzz support files: **86**
-- Unverified Rust behavior candidates: **1179**
+- Unverified Rust behavior candidates: **1181**
 
 ## Per-Subsystem Inventory
 
@@ -44,7 +44,7 @@ Excluding `src/test`:
 | `cgls` | 1 | 3 | 0 | 0 | 3 |
 | `cgtop` | 1 | 2 | 0 | 0 | 2 |
 | `clonesetup` | 4 | 0 | 0 | 0 | 0 |
-| `core` | 97 | 153 | 0 | 6 | 147 |
+| `core` | 97 | 154 | 0 | 6 | 148 |
 | `coredump` | 11 | 0 | 0 | 0 | 0 |
 | `creds` | 1 | 3 | 0 | 0 | 3 |
 | `cryptenroll` | 10 | 0 | 0 | 0 | 0 |
@@ -152,7 +152,7 @@ Excluding `src/test`:
 | `vconsole` | 1 | 3 | 0 | 0 | 3 |
 | `veritysetup` | 2 | 0 | 0 | 0 | 0 |
 | `vmspawn` | 11 | 0 | 0 | 0 | 0 |
-| `volatile-root` | 1 | 6 | 0 | 0 | 6 |
+| `volatile-root` | 2 | 7 | 0 | 0 | 7 |
 | `vpick` | 1 | 3 | 0 | 0 | 3 |
 | `xdg-autostart-generator` | 5 | 0 | 0 | 0 | 0 |
 

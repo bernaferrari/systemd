@@ -20,7 +20,10 @@ systemd-platform-rs = { path = "../../platform/rust" }
 libc = { workspace = true }
 
 [lib]
-crate-type = ["lib"]
+# `staticlib` is consumed only by the Meson integration harness. The
+# production Meson target remains the C executable until the full initrd
+# transition contract is proven.
+crate-type = ["lib", "staticlib"]
 name = "systemd_volatile_root_rs"
 path = "lib.rs"
 

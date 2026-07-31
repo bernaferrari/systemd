@@ -28,6 +28,8 @@ use std::path::Path;
 use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
 
 #[cfg(target_os = "linux")]
+mod integration_harness;
+#[cfg(target_os = "linux")]
 mod linux_mount;
 #[cfg(target_os = "linux")]
 mod linux_transition_requirement;

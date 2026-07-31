@@ -94,6 +94,7 @@ pub mod pid1_idle_pipe_source;
 pub mod pid1_lifecycle;
 pub mod pid1_manager_commands;
 pub mod pid1_manager_runtime;
+pub mod pid1_private_bus_runtime;
 pub mod pid1_socket_sources;
 pub mod runtime_manager;
 pub mod scope;

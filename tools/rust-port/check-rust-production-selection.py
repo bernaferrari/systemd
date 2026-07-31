@@ -13,10 +13,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # These are the only Meson files allowed to know about the Cargo/Rust build
 # graph. The basic archive is shadow-test-only; the core target is
-# developer-only/non-installed; tests-extra may link the basic archive.
+# developer-only/non-installed; volatile-root has one fail-closed integration
+# harness; tests-extra may link the basic archive.
 RUST_MESON_BOUNDARY = {
     Path("src/basic/meson.build"),
     Path("src/core/meson.build"),
+    Path("src/volatile-root/meson.build"),
     Path("tests-extra/meson.build"),
 }
 
