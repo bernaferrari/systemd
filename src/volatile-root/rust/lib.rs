@@ -30,6 +30,8 @@ use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
 #[cfg(target_os = "linux")]
 mod linux_transition_requirement;
 #[cfg(target_os = "linux")]
+mod linux_unmount;
+#[cfg(target_os = "linux")]
 pub use linux_transition_requirement::{
     LinuxVolatileTransitionFallbackRequired, LinuxVolatileTransitionRequirement,
     linux_volatile_transition_requirement,
@@ -38,6 +40,10 @@ pub use linux_transition_requirement::{
 use linux_transition_requirement::{
     fallback_required_error, mark_openat2_unavailable, openat2_available,
 };
+#[cfg(target_os = "linux")]
+use linux_unmount::unmount_tree_nofollow;
+#[cfg(all(target_os = "linux", test))]
+use linux_unmount::{mount_targets_beneath, unmount_tree_with};
 
 /// Mode value for a persistent root.
 pub const VOLATILE_NO: i32 = 0;
@@ -632,85 +638,6 @@ fn set_mount_tree_read_only(target: &Path) -> io::Result<()> {
         };
     }
     Ok(())
-}
-
-/// C-compatible, best-effort recursive unmount using a pinned mountinfo
-/// snapshot. Entries are processed in reverse mountinfo order, which removes
-/// nested and stacked mounts before their parent. Individual unmount failures
-/// are ignored exactly as `umount_recursive_full()` does; failure to obtain or
-/// parse mountinfo remains fatal.
-#[cfg(target_os = "linux")]
-fn unmount_tree_nofollow(prefix: &Path) -> io::Result<()> {
-    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo")?;
-    let mut targets = mount_targets_beneath(&mountinfo, prefix)?;
-    targets.reverse();
-    for target in targets {
-        let _ = systemd_shared_rs::mount_util::umount_verbose_path(
-            &target,
-            systemd_shared_rs::mount_util::UMOUNT_NOFOLLOW,
-        );
-    }
-    Ok(())
-}
-
-/// Extract mount targets that are `prefix` or descendants, decoding the
-/// octal quoting used by `/proc/*/mountinfo` before byte-wise path matching.
-#[cfg(target_os = "linux")]
-fn mount_targets_beneath(mountinfo: &str, prefix: &Path) -> io::Result<Vec<std::path::PathBuf>> {
-    let prefix = prefix.as_os_str().as_bytes();
-    let mut targets = Vec::new();
-
-    for line in mountinfo.lines() {
-        let mount_point = line.split_ascii_whitespace().nth(4).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "truncated mountinfo entry")
-        })?;
-        let mount_point = unescape_mountinfo_path(mount_point)?;
-        if path_is_prefix(prefix, &mount_point) {
-            use std::os::unix::ffi::OsStringExt;
-            targets.push(std::path::PathBuf::from(std::ffi::OsString::from_vec(
-                mount_point,
-            )));
-        }
-    }
-    Ok(targets)
-}
-
-#[cfg(target_os = "linux")]
-fn path_is_prefix(prefix: &[u8], path: &[u8]) -> bool {
-    prefix == b"/"
-        || path == prefix
-        || path
-            .strip_prefix(prefix)
-            .is_some_and(|rest| rest.first() == Some(&b'/'))
-}
-
-#[cfg(target_os = "linux")]
-fn unescape_mountinfo_path(path: &str) -> io::Result<Vec<u8>> {
-    let bytes = path.as_bytes();
-    let mut unescaped = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'\\' {
-            let Some(octal) = bytes.get(index + 1..index + 4) else {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "truncated mountinfo escape",
-                ));
-            };
-            if !octal.iter().all(u8::is_ascii_digit) || octal.iter().any(|byte| *byte > b'7') {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "invalid mountinfo escape",
-                ));
-            }
-            unescaped.push((octal[0] - b'0') * 64 + (octal[1] - b'0') * 8 + octal[2] - b'0');
-            index += 4;
-        } else {
-            unescaped.push(bytes[index]);
-            index += 1;
-        }
-    }
-    Ok(unescaped)
 }
 
 // ── Argument parsing ──────────────────────────────────────────────────────
@@ -1875,6 +1802,66 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn recursive_unmount_restarts_from_fresh_mountinfo_after_each_success() {
+        use std::collections::VecDeque;
+
+        let mut snapshots = VecDeque::from([
+            "40 23 0:35 / /sysroot rw - ext4 /dev/vda rw\n41 40 0:36 / /sysroot/usr rw - ext4 /dev/vdb rw\n".to_owned(),
+            "40 23 0:35 / /sysroot rw - ext4 /dev/vda rw\n".to_owned(),
+            String::new(),
+        ]);
+        let mut calls = Vec::new();
+
+        unmount_tree_with(
+            Path::new("/sysroot"),
+            || Ok(snapshots.pop_front().unwrap_or_default()),
+            |target| {
+                calls.push(target.to_owned());
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        // The second snapshot is only observed because the first successful
+        // unmount restarts the walk, matching C's stacked-mount handling.
+        assert_eq!(
+            calls,
+            vec![Path::new("/sysroot/usr"), Path::new("/sysroot")]
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn recursive_unmount_ignores_individual_failures_without_retrying_the_snapshot() {
+        let mountinfo = "\
+40 23 0:35 / /sysroot rw - ext4 /dev/vda rw
+41 40 0:36 / /sysroot/usr rw - ext4 /dev/vdb rw
+";
+        let mut reads = 0;
+        let mut calls = Vec::new();
+
+        unmount_tree_with(
+            Path::new("/sysroot"),
+            || {
+                reads += 1;
+                Ok(mountinfo.to_owned())
+            },
+            |target| {
+                calls.push(target.to_owned());
+                Err(io::Error::from_raw_os_error(libc::EBUSY))
+            },
+        )
+        .unwrap();
+
+        assert_eq!(reads, 1);
+        assert_eq!(
+            calls,
+            vec![Path::new("/sysroot/usr"), Path::new("/sysroot")]
+        );
     }
 
     #[cfg(target_os = "linux")]

@@ -83,6 +83,7 @@ pub mod pid1_dbus_auth;
 pub mod pid1_dbus_command_adapter;
 pub mod pid1_dbus_event_source;
 pub mod pid1_dbus_listener;
+pub mod pid1_dbus_reply_adapter;
 pub mod pid1_dbus_transport;
 pub mod pid1_dbus_wire;
 pub mod pid1_exec_sources;
