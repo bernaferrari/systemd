@@ -159,20 +159,6 @@ fn encode_unichar_bytes(g: u32) -> ([u8; 4], usize) {
     (output, len)
 }
 
-/// Encode single UCS-4 character as UTF-8 into a u8 buffer.
-/// Returns byte count. Writes to out_utf8 if non-null. Does NOT NUL-terminate.
-///
-/// # Safety
-/// When non-null, `out_utf8` must point to at least four writable bytes.
-unsafe fn utf8_encode_unichar_raw(out_utf8: *mut u8, g: u32) -> usize {
-    let (encoded, len) = encode_unichar_bytes(g);
-    if !out_utf8.is_null() && len > 0 {
-        // SAFETY: the helper contract provides four writable bytes.
-        unsafe { std::slice::from_raw_parts_mut(out_utf8, len).copy_from_slice(&encoded[..len]) };
-    }
-    len
-}
-
 /// UTF-16 surrogate check.
 #[inline]
 pub(crate) fn utf16_is_surrogate(c: u16) -> bool {
@@ -741,9 +727,14 @@ pub unsafe extern "C" fn rs_utf8_escape_non_printable_full(
 /// C-string inputs must remain NUL-terminated and live for the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_utf8_encode_unichar(out_utf8: *mut c_char, g: u32) -> usize {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe { utf8_encode_unichar_raw(out_utf8 as *mut u8, g) }
+    let (encoded, len) = encode_unichar_bytes(g);
+    if !out_utf8.is_null() && len > 0 {
+        // SAFETY: a non-null output pointer is writable for the encoded bytes
+        // under this export's documented C ABI contract.
+        unsafe { std::slice::from_raw_parts_mut(out_utf8.cast::<u8>(), len) }
+            .copy_from_slice(&encoded[..len]);
+    }
+    len
 }
 
 ///
@@ -823,7 +814,7 @@ pub unsafe extern "C" fn rs_utf16_to_utf8(s: *const u16, length: usize) -> *mut 
             pos = pos.add(2);
 
             if !utf16_is_surrogate(w1) {
-                t = t.add(utf8_encode_unichar_raw(t, w1 as u32));
+                t = t.add(rs_utf8_encode_unichar(t.cast::<c_char>(), w1 as u32));
                 continue;
             }
 
@@ -843,8 +834,8 @@ pub unsafe extern "C" fn rs_utf16_to_utf8(s: *const u16, length: usize) -> *mut 
                 continue;
             }
 
-            t = t.add(utf8_encode_unichar_raw(
-                t,
+            t = t.add(rs_utf8_encode_unichar(
+                t.cast::<c_char>(),
                 utf16_surrogate_pair_to_unichar(w1, w2),
             ));
         }

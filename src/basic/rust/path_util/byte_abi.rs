@@ -552,9 +552,10 @@ pub unsafe extern "C" fn rs_path_find_first_component(
     match first_component(path, 0, accept_dot_dot) {
         Err(error) => error,
         Ok(None) => {
-            // SAFETY: all offsets are within the input C string.
+            // SAFETY: `p` and optional `ret` are writable per this export's
+            // contract; wrapping offsets stay within the input C string.
             unsafe {
-                *p = input.add(path.len());
+                *p = input.wrapping_add(path.len());
                 if !ret.is_null() {
                     *ret = ptr::null();
                 }
@@ -562,11 +563,12 @@ pub unsafe extern "C" fn rs_path_find_first_component(
             0
         }
         Ok(Some(component)) => {
-            // SAFETY: all offsets are within the input C string.
+            // SAFETY: `p` and optional `ret` are writable per this export's
+            // contract; component offsets were checked by the byte-slice core.
             unsafe {
-                *p = input.add(component.next);
+                *p = input.wrapping_add(component.next);
                 if !ret.is_null() {
-                    *ret = input.add(component.start);
+                    *ret = input.wrapping_add(component.start);
                 }
             }
             (component.end - component.start) as i32
@@ -600,13 +602,18 @@ pub unsafe extern "C" fn rs_path_find_last_component(
         return 0;
     };
     // SAFETY: a nonnull `next` is readable by the entry-point contract.
-    let next_offset = if next.is_null() || unsafe { *next }.is_null() {
+    let next_value = if next.is_null() {
+        ptr::null()
+    } else {
+        // SAFETY: non-null `next` is readable by this export's contract.
+        unsafe { *next }
+    };
+    let next_offset = if next_value.is_null() {
         None
     } else {
         // Address arithmetic avoids creating an out-of-allocation offset before
         // the explicit range check in the safe core.
-        // SAFETY: `next` was checked nonnull above and is readable.
-        let address = unsafe { *next } as usize;
+        let address = next_value as usize;
         let base = path as usize;
         if address < base {
             return -libc::EINVAL;
@@ -628,13 +635,14 @@ pub unsafe extern "C" fn rs_path_find_last_component(
             0
         }
         Ok(Some(component)) => {
-            // SAFETY: safe-core offsets are within the input C string.
+            // SAFETY: optional `next` and `ret` are writable per this export's
+            // contract; component offsets were checked by the byte-slice core.
             unsafe {
                 if !next.is_null() {
-                    *next = path.add(component.next);
+                    *next = path.wrapping_add(component.next);
                 }
                 if !ret.is_null() {
-                    *ret = path.add(component.start);
+                    *ret = path.wrapping_add(component.start);
                 }
             }
             (component.end - component.start) as i32
@@ -652,8 +660,7 @@ pub unsafe extern "C" fn rs_last_path_component(path: *const c_char) -> *const c
     let Some(path_bytes) = path_bytes_or_none!(path) else {
         return ptr::null();
     };
-    // SAFETY: the safe core returns an in-bounds or one-past offset.
-    unsafe { path.add(last_path_component_offset(path_bytes)) }
+    path.wrapping_add(last_path_component_offset(path_bytes))
 }
 
 /// C ABI mirror of `path_compare()`.
@@ -683,8 +690,7 @@ pub unsafe extern "C" fn rs_path_startswith_full(
     // SAFETY: both pointers passed the null checks and satisfy the entry contract.
     let offset = path_startswith_offset(path_bytes!(path), path_bytes!(prefix), flags);
     offset.map_or(ptr::null_mut(), |offset| {
-        // SAFETY: the safe core returns an in-bounds or one-past offset.
-        unsafe { path.add(offset).cast_mut() }
+        path.wrapping_add(offset).cast_mut()
     })
 }
 
@@ -857,8 +863,7 @@ pub unsafe extern "C" fn rs_path_startswith_strv(
         }
         // SAFETY: strv entries are live C strings by the entry contract.
         if let Some(offset) = path_startswith_offset(path_bytes, path_bytes!(prefix), 0) {
-            // SAFETY: the safe core returns an in-bounds or one-past offset.
-            return unsafe { path.add(offset).cast_mut() };
+            return path.wrapping_add(offset).cast_mut();
         }
         index += 1;
     }

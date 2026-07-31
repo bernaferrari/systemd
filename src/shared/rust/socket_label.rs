@@ -8,7 +8,7 @@ use std::fs;
 use std::io;
 use std::mem::{self, offset_of};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::os::fd::{FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -281,52 +281,73 @@ impl SocketAddress {
 }
 
 struct RawSocketAddress {
-    storage: libc::sockaddr_storage,
+    storage: RawSocketAddressStorage,
     len: libc::socklen_t,
+}
+
+/// Owns the concrete socket address behind a borrowed `sockaddr` ABI pointer.
+///
+/// This avoids constructing untyped `sockaddr_storage` buffers and writing a
+/// typed address into them through a raw pointer. Each variant remains valid
+/// and aligned for as long as `RawSocketAddress` is borrowed by `bind(2)`.
+enum RawSocketAddressStorage {
+    Inet(libc::sockaddr_in),
+    Inet6(libc::sockaddr_in6),
+    Unix(libc::sockaddr_un),
+    #[cfg(target_os = "linux")]
+    Netlink(libc::sockaddr_nl),
+    #[cfg(target_os = "linux")]
+    Vsock(libc::sockaddr_vm),
 }
 
 impl RawSocketAddress {
     fn as_ptr(&self) -> *const libc::sockaddr {
-        &self.storage as *const libc::sockaddr_storage as *const libc::sockaddr
+        match &self.storage {
+            RawSocketAddressStorage::Inet(addr) => (addr as *const libc::sockaddr_in).cast(),
+            RawSocketAddressStorage::Inet6(addr) => (addr as *const libc::sockaddr_in6).cast(),
+            RawSocketAddressStorage::Unix(addr) => (addr as *const libc::sockaddr_un).cast(),
+            #[cfg(target_os = "linux")]
+            RawSocketAddressStorage::Netlink(addr) => (addr as *const libc::sockaddr_nl).cast(),
+            #[cfg(target_os = "linux")]
+            RawSocketAddressStorage::Vsock(addr) => (addr as *const libc::sockaddr_vm).cast(),
+        }
     }
 
-    fn from_sockaddr_in(addr: libc::sockaddr_in) -> Result<Self> {
-        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        // SAFETY: storage is suitably aligned and large enough for sockaddr_in, and is exclusively borrowed.
-        unsafe {
-            ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_in, addr);
-        }
-        Ok(Self {
-            storage,
+    fn from_sockaddr_in(addr: libc::sockaddr_in) -> Self {
+        Self {
+            storage: RawSocketAddressStorage::Inet(addr),
             len: mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-        })
+        }
     }
 
-    fn from_sockaddr_in6(addr: libc::sockaddr_in6) -> Result<Self> {
-        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        // SAFETY: storage is suitably aligned and large enough for sockaddr_in6, and is exclusively borrowed.
-        unsafe {
-            ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_in6, addr);
-        }
-        Ok(Self {
-            storage,
+    fn from_sockaddr_in6(addr: libc::sockaddr_in6) -> Self {
+        Self {
+            storage: RawSocketAddressStorage::Inet6(addr),
             len: mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
-        })
+        }
     }
 
-    fn from_sockaddr_un(addr: libc::sockaddr_un, len: usize) -> Result<Self> {
-        // SAFETY: sockaddr_storage is a C socket-address buffer whose all-zero bit pattern is valid.
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        // SAFETY: storage is suitably aligned and large enough for sockaddr_un, and is exclusively borrowed.
-        unsafe {
-            ptr::write(&mut storage as *mut _ as *mut libc::sockaddr_un, addr);
-        }
-        Ok(Self {
-            storage,
+    fn from_sockaddr_un(addr: libc::sockaddr_un, len: usize) -> Self {
+        Self {
+            storage: RawSocketAddressStorage::Unix(addr),
             len: len as libc::socklen_t,
-        })
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn from_sockaddr_nl(addr: libc::sockaddr_nl) -> Self {
+        Self {
+            storage: RawSocketAddressStorage::Netlink(addr),
+            len: mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn from_sockaddr_vm(addr: libc::sockaddr_vm) -> Self {
+        Self {
+            storage: RawSocketAddressStorage::Vsock(addr),
+            len: mem::size_of::<libc::sockaddr_vm>() as libc::socklen_t,
+        }
     }
 }
 
