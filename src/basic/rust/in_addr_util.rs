@@ -35,23 +35,6 @@ fn htobe32(x: u32) -> u32 {
     u32::to_be(x)
 }
 
-/// Check if all u32 elements are zero.
-#[inline]
-/// # Safety
-/// `data` must be valid and properly aligned for reading `nelem` initialized `u32` values.
-unsafe fn eqzero(data: *const u32, nelem: usize) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        for i in 0..nelem {
-            if *data.add(i) != 0 {
-                return false;
-            }
-        }
-        true
-    }
-}
-
 // ── Repr(C) types ──────────────────────────────────────────────────────────
 
 /// Mirrors C's union in_addr_union (using bytes array for FFI).
@@ -74,12 +57,130 @@ pub struct In6Addr {
     pub s6_addr: [u8; 16],
 }
 
-/// Access the s6_addr32 view of an In6Addr (overlapping union in C).
+// ── Safe address helpers ───────────────────────────────────────────────────
+
 #[inline]
+fn in4_addr_is_null(a: &InAddr) -> bool {
+    a.s_addr == 0
+}
+
+#[inline]
+fn in6_addr_is_null(a: &In6Addr) -> bool {
+    a.s6_addr.iter().all(|&byte| byte == 0)
+}
+
+#[inline]
+fn in4_addr_is_link_local(a: &InAddr) -> bool {
+    (be32toh(a.s_addr) & 0xFFFF0000) == ((169u32 << 24) | (254u32 << 16))
+}
+
+#[inline]
+fn in4_addr_is_link_local_dynamic(a: &InAddr) -> bool {
+    in4_addr_is_link_local(a) && {
+        let v = be32toh(a.s_addr) & 0x0000FF00;
+        v != 0 && v != 0xFF00
+    }
+}
+
+#[inline]
+fn in6_addr_is_link_local(a: &In6Addr) -> bool {
+    a.s6_addr[0] == 0xfe && (a.s6_addr[1] & 0xc0) == 0x80
+}
+
+#[inline]
+fn in6_addr_is_link_local_all_nodes(a: &In6Addr) -> bool {
+    a.s6_addr == [0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+}
+
+#[inline]
+fn in4_addr_is_multicast(a: &InAddr) -> bool {
+    (be32toh(a.s_addr) & 0xF0000000) == 0xE0000000
+}
+
+#[inline]
+fn in6_addr_is_multicast(a: &In6Addr) -> bool {
+    a.s6_addr[0] == 0xff
+}
+
+#[inline]
+fn in4_addr_is_local_multicast(a: &InAddr) -> bool {
+    (be32toh(a.s_addr) & 0xFFFFFF00) == 0xE0000000
+}
+
+#[inline]
+fn in4_addr_is_localhost(a: &InAddr) -> bool {
+    (be32toh(a.s_addr) & 0xFF000000) == 127 << 24
+}
+
+#[inline]
+fn in4_addr_is_non_local(a: &InAddr) -> bool {
+    !in4_addr_is_null(a) && !in4_addr_is_localhost(a)
+}
+
+#[inline]
+fn in6_addr_is_loopback(a: &In6Addr) -> bool {
+    a.s6_addr == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+}
+
+#[inline]
+fn in4_addr_equal(a: &InAddr, b: &InAddr) -> bool {
+    a.s_addr == b.s_addr
+}
+
+#[inline]
+fn in6_addr_equal(a: &In6Addr, b: &In6Addr) -> bool {
+    a.s6_addr == b.s6_addr
+}
+
+#[inline]
+fn in6_addr_is_ipv4_mapped_address(a: &In6Addr) -> bool {
+    a.s6_addr[..10].iter().all(|&byte| byte == 0) && a.s6_addr[10..12] == [0xff, 0xff]
+}
+
+#[inline]
+fn in4_addr_prefix_intersect(a: &InAddr, aprefixlen: u32, b: &InAddr, bprefixlen: u32) -> bool {
+    let m = aprefixlen.min(bprefixlen).min(32);
+    m == 0 || (be32toh(a.s_addr ^ b.s_addr) & (u32::MAX << (32 - m))) == 0
+}
+
+#[inline]
+fn in6_addr_prefix_intersect(a: &In6Addr, aprefixlen: u32, b: &In6Addr, bprefixlen: u32) -> bool {
+    let mut remaining = aprefixlen.min(bprefixlen).min(128);
+    for (&left, &right) in a.s6_addr.iter().zip(b.s6_addr.iter()) {
+        if remaining == 0 {
+            return true;
+        }
+        let mask = if remaining < 8 {
+            0xff << (8 - remaining)
+        } else {
+            0xff
+        };
+        if (left & mask) != (right & mask) {
+            return false;
+        }
+        remaining = remaining.saturating_sub(8);
+    }
+    true
+}
+
+/// Select a union member after the caller has validated the address family.
+///
 /// # Safety
-/// `a` must be non-null, valid, and properly aligned for an `In6Addr` while the result is used.
-unsafe fn s6_addr32(a: *const In6Addr) -> *const [u32; 4] {
-    a as *const [u32; 4]
+/// The union must contain an initialized value of the selected member type.
+#[inline]
+unsafe fn union_in4(u: &InAddrUnion) -> &InAddr {
+    // SAFETY: the caller has established that the union currently holds `in4`.
+    unsafe { &u.in4 }
+}
+
+/// Select a union member after the caller has validated the address family.
+///
+/// # Safety
+/// The union must contain an initialized value of the selected member type.
+#[inline]
+unsafe fn union_in6(u: &InAddrUnion) -> &In6Addr {
+    // SAFETY: the caller has established that the union currently holds `in6`.
+    unsafe { &u.in6 }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -88,46 +189,29 @@ unsafe fn s6_addr32(a: *const In6Addr) -> *const [u32; 4] {
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in4_addr_is_null(a: *const InAddr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        (*a).s_addr == 0
-    }
+pub fn rs_in4_addr_is_null(a: &InAddr) -> bool {
+    in4_addr_is_null(a)
 }
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in6_addr_is_null(a: *const In6Addr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        eqzero(s6_addr32(a) as *const u32, 4)
-    }
+pub fn rs_in6_addr_is_null(a: &In6Addr) -> bool {
+    in6_addr_is_null(a)
 }
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
 pub unsafe fn rs_in_addr_is_null(family: i32, u: *const InAddrUnion) -> i32 {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if u.is_null() {
-            return Errno::EINVAL.to_neg_errno();
-        }
-        if family == AF_INET {
-            return if rs_in4_addr_is_null(&(*u).in4) { 1 } else { 0 };
-        }
-        if family == AF_INET6 {
-            return if rs_in6_addr_is_null(&(*u).in6) { 1 } else { 0 };
-        }
-        Errno::EAFNOSUPPORT.to_neg_errno() // -EAFNOSUPPORT
+    // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
+    let Some(u) = (unsafe { u.as_ref() }) else {
+        return Errno::EINVAL.to_neg_errno();
+    };
+    match family {
+        // SAFETY: the selected union member corresponds to `family`.
+        AF_INET => i32::from(in4_addr_is_null(unsafe { union_in4(u) })),
+        // SAFETY: the selected union member corresponds to `family`.
+        AF_INET6 => i32::from(in6_addr_is_null(unsafe { union_in6(u) })),
+        _ => Errno::EAFNOSUPPORT.to_neg_errno(),
     }
 }
 
@@ -141,9 +225,8 @@ pub unsafe fn rs_in_addr_is_null(family: i32, u: *const InAddrUnion) -> i32 {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in4_addr_is_set(a: *const InAddr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe { !rs_in4_addr_is_null(a) }
+    // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
+    unsafe { a.as_ref() }.is_none_or(|a| !rs_in4_addr_is_null(a))
 }
 
 /// Shadow of C in_addr_data_is_set() — C quirk: delegates to in_addr_data_is_null.
@@ -154,14 +237,8 @@ pub unsafe fn rs_in4_addr_is_set(a: *const InAddr) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in_addr_data_is_set(a: *const InAddrData) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        rs_in_addr_data_is_null(a) != 0
-    }
+    // SAFETY: forwarded unchanged to the audited pointer adapter below.
+    unsafe { a.as_ref() }.is_some_and(|a| unsafe { rs_in_addr_data_is_null(a) } != 0)
 }
 
 /// Shadow of C in6_addr_is_set() — returns true if in6 address is not null.
@@ -172,9 +249,8 @@ pub unsafe fn rs_in_addr_data_is_set(a: *const InAddrData) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in6_addr_is_set(a: *const In6Addr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe { !rs_in6_addr_is_null(a) }
+    // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
+    unsafe { a.as_ref() }.is_none_or(|a| !rs_in6_addr_is_null(a))
 }
 
 /// Shadow of C in_addr_is_set() — returns true if address is not null.
@@ -185,8 +261,7 @@ pub unsafe fn rs_in6_addr_is_set(a: *const In6Addr) -> bool {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in_addr_is_set(family: i32, u: *const InAddrUnion) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
+    // SAFETY: forwarded unchanged to the audited pointer adapter above.
     unsafe { rs_in_addr_is_null(family, u) == 0 }
 }
 
@@ -205,59 +280,32 @@ pub struct InAddrData {
 /// valid and properly aligned for all writes. Pointer ranges must not alias
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in_addr_data_is_null(a: *const InAddrData) -> i32 {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return Errno::EINVAL.to_neg_errno();
-        }
-        rs_in_addr_is_null((*a).family, &(*a).address)
-    }
+    // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
+    let Some(a) = (unsafe { a.as_ref() }) else {
+        return Errno::EINVAL.to_neg_errno();
+    };
+    // SAFETY: `address` is an initialized union member selected by `family`.
+    unsafe { rs_in_addr_is_null(a.family, &a.address) }
 }
 
 // ── Link-local checks ─────────────────────────────────────────────────────// ── Link-local checks ─────────────────────────────────────────────────────
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in4_addr_is_link_local(a: *const InAddr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        (be32toh((*a).s_addr) & 0xFFFF0000) == ((169u32 << 24) | (254u32 << 16))
-    }
+pub fn rs_in4_addr_is_link_local(a: &InAddr) -> bool {
+    in4_addr_is_link_local(a)
 }
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in4_addr_is_link_local_dynamic(a: *const InAddr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        if !rs_in4_addr_is_link_local(a) {
-            return false;
-        }
-        let v = be32toh((*a).s_addr) & 0x0000FF00;
-        v != 0x0000 && v != 0xFF00
-    }
+pub fn rs_in4_addr_is_link_local_dynamic(a: &InAddr) -> bool {
+    in4_addr_is_link_local_dynamic(a)
 }
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in6_addr_is_link_local(a: *const In6Addr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        ((*s6_addr32(a))[0] & htobe32(0xffc00000)) == htobe32(0xfe800000)
-    }
+pub fn rs_in6_addr_is_link_local(a: &In6Addr) -> bool {
+    in6_addr_is_link_local(a)
 }
 
 /// # Safety
@@ -289,48 +337,22 @@ pub unsafe fn rs_in_addr_is_link_local(family: i32, u: *const InAddrUnion) -> i3
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in6_addr_is_link_local_all_nodes(a: *const In6Addr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        // ff02::1
-        be32toh((*s6_addr32(a))[0]) == 0xff020000
-            && (*s6_addr32(a))[1] == 0
-            && (*s6_addr32(a))[2] == 0
-            && be32toh((*s6_addr32(a))[3]) == 0x00000001
-    }
+pub fn rs_in6_addr_is_link_local_all_nodes(a: &In6Addr) -> bool {
+    in6_addr_is_link_local_all_nodes(a)
 }
 
 // ── Multicast checks ─────────────────────────────────────────────────────
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in4_addr_is_multicast(a: *const InAddr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        // IN_MULTICAST: (be32toh(x) & 0xf0000000) == 0xe0000000
-        (be32toh((*a).s_addr) & 0xF0000000) == 0xE0000000
-    }
+pub fn rs_in4_addr_is_multicast(a: &InAddr) -> bool {
+    in4_addr_is_multicast(a)
 }
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in6_addr_is_multicast(a: *const In6Addr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        (*a).s6_addr[0] == 0xff
-    }
+pub fn rs_in6_addr_is_multicast(a: &In6Addr) -> bool {
+    in6_addr_is_multicast(a)
 }
 
 /// # Safety
@@ -362,44 +384,22 @@ pub unsafe fn rs_in_addr_is_multicast(family: i32, u: *const InAddrUnion) -> i32
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in4_addr_is_local_multicast(a: *const InAddr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        (be32toh((*a).s_addr) & 0xFFFFFF00) == 0xE0000000
-    }
+pub fn rs_in4_addr_is_local_multicast(a: &InAddr) -> bool {
+    in4_addr_is_local_multicast(a)
 }
 
 // ── Localhost checks ──────────────────────────────────────────────────────
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in4_addr_is_localhost(a: *const InAddr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        // 127.x.x.x
-        (be32toh((*a).s_addr) & 0xFF000000) == 127 << 24
-    }
+pub fn rs_in4_addr_is_localhost(a: &InAddr) -> bool {
+    in4_addr_is_localhost(a)
 }
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
-pub unsafe fn rs_in4_addr_is_non_local(a: *const InAddr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        !rs_in4_addr_is_null(a) && !rs_in4_addr_is_localhost(a)
-    }
+pub fn rs_in4_addr_is_non_local(a: &InAddr) -> bool {
+    in4_addr_is_non_local(a)
 }
 
 /// # Safety
@@ -462,45 +462,27 @@ pub unsafe fn rs_in_addr_is_localhost_one(family: i32, u: *const InAddrUnion) ->
     }
 }
 
-/// ::1 loopback check for IPv6.
-///
-/// # Safety
-/// `a` must be non-null and valid for reading an initialized, properly aligned `In6Addr`.
-unsafe fn in6_addr_is_loopback(a: *const In6Addr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        // IN6ADDR_LOOPBACK_INIT = { { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1 } }
-        let expected: [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
-        memcmp(a as *const c_void, expected.as_ptr() as *const c_void, 16) == 0
-    }
-}
-
 // ── Equality ─────────────────────────────────────────────────────────────
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
 pub unsafe fn rs_in4_addr_equal(a: *const InAddr, b: *const InAddr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() || b.is_null() {
-            return false;
-        }
-        (*a).s_addr == (*b).s_addr
+    // SAFETY: the C ABI contract guarantees non-null pointers are readable.
+    // SAFETY: the C ABI contract guarantees non-null pointers are readable.
+    match unsafe { (a.as_ref(), b.as_ref()) } {
+        (Some(a), Some(b)) => in4_addr_equal(a, b),
+        _ => false,
     }
 }
 
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
 pub unsafe fn rs_in6_addr_equal(a: *const In6Addr, b: *const In6Addr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() || b.is_null() {
-            return false;
-        }
-        memcmp(a as *const c_void, b as *const c_void, 16) == 0
+    // SAFETY: the C ABI contract guarantees non-null pointers are readable.
+    // SAFETY: the C ABI contract guarantees non-null pointers are readable.
+    match unsafe { (a.as_ref(), b.as_ref()) } {
+        (Some(a), Some(b)) => in6_addr_equal(a, b),
+        _ => false,
     }
 }
 
@@ -540,16 +522,8 @@ pub unsafe fn rs_in_addr_equal(family: i32, a: *const InAddrUnion, b: *const InA
 /// # Safety
 /// The caller must ensure that all pointer arguments are valid and properly aligned.
 pub unsafe fn rs_in6_addr_is_ipv4_mapped_address(a: *const In6Addr) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() {
-            return false;
-        }
-        (*s6_addr32(a))[0] == 0
-            && (*s6_addr32(a))[1] == 0
-            && (*s6_addr32(a))[2] == htobe32(0x0000ffff)
-    }
+    // SAFETY: the C ABI contract guarantees a non-null pointer is readable.
+    unsafe { a.as_ref() }.is_some_and(in6_addr_is_ipv4_mapped_address)
 }
 
 // ── Prefix intersection ────────────────────────────────────────────────────
@@ -566,21 +540,11 @@ pub unsafe fn rs_in4_addr_prefix_intersect(
     b: *const InAddr,
     bprefixlen: u32,
 ) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() || b.is_null() {
-            return false;
-        }
-
-        let m = aprefixlen.min(bprefixlen).min(32);
-        if m == 0 {
-            return true;
-        }
-
-        let x = be32toh((*a).s_addr ^ (*b).s_addr);
-        let n: u32 = 0xFFFFFFFF << (32 - m);
-        (x & n) == 0
+    // SAFETY: the C ABI contract guarantees non-null pointers are readable.
+    // SAFETY: the C ABI contract guarantees non-null pointers are readable.
+    match unsafe { (a.as_ref(), b.as_ref()) } {
+        (Some(a), Some(b)) => in4_addr_prefix_intersect(a, aprefixlen, b, bprefixlen),
+        _ => false,
     }
 }
 
@@ -596,31 +560,11 @@ pub unsafe fn rs_in6_addr_prefix_intersect(
     b: *const In6Addr,
     bprefixlen: u32,
 ) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        if a.is_null() || b.is_null() {
-            return false;
-        }
-
-        let mut m = aprefixlen.min(bprefixlen).min(128);
-        if m == 0 {
-            return true;
-        }
-
-        for i in 0..16usize {
-            let x = (*a).s6_addr[i] ^ (*b).s6_addr[i];
-            let n: u8 = if m < 8 { 0xFF << (8 - m) } else { 0xFF };
-            if (x & n) != 0 {
-                return false;
-            }
-            if m <= 8 {
-                break;
-            }
-            m -= 8;
-        }
-
-        true
+    // SAFETY: the C ABI contract guarantees non-null pointers are readable.
+    // SAFETY: the C ABI contract guarantees non-null pointers are readable.
+    match unsafe { (a.as_ref(), b.as_ref()) } {
+        (Some(a), Some(b)) => in6_addr_prefix_intersect(a, aprefixlen, b, bprefixlen),
+        _ => false,
     }
 }
 
@@ -1905,11 +1849,28 @@ macro_rules! ffi_forward {
     };
 }
 
+/// Raw-pointer ABI adapter for predicates whose implementation is safe once it
+/// has an address reference. A NULL C pointer retains the historical `false`
+/// result; all address inspection happens in the safe implementation.
+macro_rules! ffi_forward_addr_predicate {
+    ($symbol:literal, $wrapper:ident, $argument:ident: $raw:ty, $address:ty, $implementation:path) => {
+        #[unsafe(export_name = $symbol)]
+        // SAFETY: this wrapper is the audited C ABI boundary for a borrowed address.
+        pub unsafe extern "C" fn $wrapper($argument: $raw) -> bool {
+            // SAFETY: the C ABI contract guarantees a non-null pointer is a readable address.
+            let Some($argument): Option<&$address> = (unsafe { $argument.as_ref() }) else {
+                return false;
+            };
+            $implementation($argument)
+        }
+    };
+}
+
 // Keep this list mechanically aligned with `rust/in_addr_util.h`.  These
 // facades never reinterpret ownership: inputs and fixed-size outputs are
 // borrowed, and the one allocated string uses libc allocation.
-ffi_forward!("rs_in4_addr_is_null", ffi_in4_addr_is_null, (a: *const InAddr) -> bool, rs_in4_addr_is_null);
-ffi_forward!("rs_in6_addr_is_null", ffi_in6_addr_is_null, (a: *const In6Addr) -> bool, rs_in6_addr_is_null);
+ffi_forward_addr_predicate!("rs_in4_addr_is_null", ffi_in4_addr_is_null, a: *const InAddr, InAddr, rs_in4_addr_is_null);
+ffi_forward_addr_predicate!("rs_in6_addr_is_null", ffi_in6_addr_is_null, a: *const In6Addr, In6Addr, rs_in6_addr_is_null);
 ffi_forward!("rs_in_addr_is_null", ffi_in_addr_is_null, (family: i32, u: *const InAddrUnion) -> i32, rs_in_addr_is_null);
 ffi_forward!("rs_in4_addr_is_set", ffi_in4_addr_is_set, (a: *const InAddr) -> bool, rs_in4_addr_is_set);
 ffi_forward!("rs_in6_addr_is_set", ffi_in6_addr_is_set, (a: *const In6Addr) -> bool, rs_in6_addr_is_set);
@@ -1917,19 +1878,19 @@ ffi_forward!("rs_in_addr_is_set", ffi_in_addr_is_set, (family: i32, u: *const In
 ffi_forward!("rs_in_addr_data_is_null", ffi_in_addr_data_is_null, (a: *const InAddrData) -> i32, rs_in_addr_data_is_null);
 ffi_forward!("rs_in_addr_data_is_set", ffi_in_addr_data_is_set, (a: *const InAddrData) -> bool, rs_in_addr_data_is_set);
 
-ffi_forward!("rs_in4_addr_is_link_local", ffi_in4_addr_is_link_local, (a: *const InAddr) -> bool, rs_in4_addr_is_link_local);
-ffi_forward!("rs_in4_addr_is_link_local_dynamic", ffi_in4_addr_is_link_local_dynamic, (a: *const InAddr) -> bool, rs_in4_addr_is_link_local_dynamic);
-ffi_forward!("rs_in6_addr_is_link_local", ffi_in6_addr_is_link_local, (a: *const In6Addr) -> bool, rs_in6_addr_is_link_local);
+ffi_forward_addr_predicate!("rs_in4_addr_is_link_local", ffi_in4_addr_is_link_local, a: *const InAddr, InAddr, rs_in4_addr_is_link_local);
+ffi_forward_addr_predicate!("rs_in4_addr_is_link_local_dynamic", ffi_in4_addr_is_link_local_dynamic, a: *const InAddr, InAddr, rs_in4_addr_is_link_local_dynamic);
+ffi_forward_addr_predicate!("rs_in6_addr_is_link_local", ffi_in6_addr_is_link_local, a: *const In6Addr, In6Addr, rs_in6_addr_is_link_local);
 ffi_forward!("rs_in_addr_is_link_local", ffi_in_addr_is_link_local, (family: i32, u: *const InAddrUnion) -> i32, rs_in_addr_is_link_local);
-ffi_forward!("rs_in6_addr_is_link_local_all_nodes", ffi_in6_addr_is_link_local_all_nodes, (a: *const In6Addr) -> bool, rs_in6_addr_is_link_local_all_nodes);
+ffi_forward_addr_predicate!("rs_in6_addr_is_link_local_all_nodes", ffi_in6_addr_is_link_local_all_nodes, a: *const In6Addr, In6Addr, rs_in6_addr_is_link_local_all_nodes);
 
-ffi_forward!("rs_in4_addr_is_multicast", ffi_in4_addr_is_multicast, (a: *const InAddr) -> bool, rs_in4_addr_is_multicast);
-ffi_forward!("rs_in6_addr_is_multicast", ffi_in6_addr_is_multicast, (a: *const In6Addr) -> bool, rs_in6_addr_is_multicast);
+ffi_forward_addr_predicate!("rs_in4_addr_is_multicast", ffi_in4_addr_is_multicast, a: *const InAddr, InAddr, rs_in4_addr_is_multicast);
+ffi_forward_addr_predicate!("rs_in6_addr_is_multicast", ffi_in6_addr_is_multicast, a: *const In6Addr, In6Addr, rs_in6_addr_is_multicast);
 ffi_forward!("rs_in_addr_is_multicast", ffi_in_addr_is_multicast, (family: i32, u: *const InAddrUnion) -> i32, rs_in_addr_is_multicast);
-ffi_forward!("rs_in4_addr_is_local_multicast", ffi_in4_addr_is_local_multicast, (a: *const InAddr) -> bool, rs_in4_addr_is_local_multicast);
+ffi_forward_addr_predicate!("rs_in4_addr_is_local_multicast", ffi_in4_addr_is_local_multicast, a: *const InAddr, InAddr, rs_in4_addr_is_local_multicast);
 
-ffi_forward!("rs_in4_addr_is_localhost", ffi_in4_addr_is_localhost, (a: *const InAddr) -> bool, rs_in4_addr_is_localhost);
-ffi_forward!("rs_in4_addr_is_non_local", ffi_in4_addr_is_non_local, (a: *const InAddr) -> bool, rs_in4_addr_is_non_local);
+ffi_forward_addr_predicate!("rs_in4_addr_is_localhost", ffi_in4_addr_is_localhost, a: *const InAddr, InAddr, rs_in4_addr_is_localhost);
+ffi_forward_addr_predicate!("rs_in4_addr_is_non_local", ffi_in4_addr_is_non_local, a: *const InAddr, InAddr, rs_in4_addr_is_non_local);
 ffi_forward!("rs_in_addr_is_localhost", ffi_in_addr_is_localhost, (family: i32, u: *const InAddrUnion) -> i32, rs_in_addr_is_localhost);
 ffi_forward!("rs_in_addr_is_localhost_one", ffi_in_addr_is_localhost_one, (family: i32, u: *const InAddrUnion) -> i32, rs_in_addr_is_localhost_one);
 
@@ -1989,30 +1950,20 @@ mod tests {
             s_addr: u32::to_be(0xA9FE0001),
         }; // 169.254.0.1
 
-        // SAFETY: Unsafe operation - invariants have been checked by caller
-        // SAFETY: Unsafe operation - invariants have been checked by caller
-        // SAFETY: Unsafe operation - invariants have been checked by caller
-        // SAFETY: Unsafe operation - invariants have been checked by caller
-        assert!(unsafe { rs_in4_addr_is_link_local_dynamic(&dyn_addr) });
-        // SAFETY: Unsafe operation - invariants have been checked by caller
-        // SAFETY: Unsafe operation - invariants have been checked by caller
-        // SAFETY: Unsafe operation - invariants have been checked by caller
-        // SAFETY: Unsafe operation - invariants have been checked by caller
-        assert!(!unsafe { rs_in4_addr_is_link_local_dynamic(&non_dyn_addr) });
+        assert!(rs_in4_addr_is_link_local_dynamic(&dyn_addr));
+        assert!(!rs_in4_addr_is_link_local_dynamic(&non_dyn_addr));
     }
 
     #[test]
     fn in4_null_detection() {
         let addr = InAddr { s_addr: 0 };
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_in4_addr_is_null(&addr) });
+        assert!(rs_in4_addr_is_null(&addr));
     }
 
     #[test]
     fn in6_null_detection() {
         let addr = In6Addr { s6_addr: [0; 16] };
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_in6_addr_is_null(&addr) });
+        assert!(rs_in6_addr_is_null(&addr));
     }
 
     #[test]
@@ -2020,8 +1971,7 @@ mod tests {
         let addr = InAddr {
             s_addr: u32::to_be(0xE0000001),
         };
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_in4_addr_is_multicast(&addr) });
+        assert!(rs_in4_addr_is_multicast(&addr));
     }
 
     #[test]
@@ -2029,8 +1979,7 @@ mod tests {
         let addr = InAddr {
             s_addr: u32::to_be(0x7F000001),
         };
-        // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        assert!(unsafe { rs_in4_addr_is_localhost(&addr) });
+        assert!(rs_in4_addr_is_localhost(&addr));
     }
 
     #[test]

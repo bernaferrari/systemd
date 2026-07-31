@@ -37,6 +37,153 @@ mod tests {
     use crate::ffi::Errno;
     use std::ffi::{CStr, CString, c_long};
 
+    fn timespec_load_for_test(ts: Option<&LibcTimespec>) -> u64 {
+        // SAFETY: the helper either passes a null pointer or a reference-derived pointer
+        // that remains valid for the duration of this synchronous FFI call.
+        unsafe { rs_timespec_load(ts.map_or(std::ptr::null(), std::ptr::from_ref)) }
+    }
+
+    fn timespec_load_nsec_for_test(ts: Option<&LibcTimespec>) -> u64 {
+        // SAFETY: the helper either passes a null pointer or a reference-derived pointer
+        // that remains valid for the duration of this synchronous FFI call.
+        unsafe { rs_timespec_load_nsec(ts.map_or(std::ptr::null(), std::ptr::from_ref)) }
+    }
+
+    fn timespec_store_for_test(ts: Option<&mut LibcTimespec>, usec: u64) -> bool {
+        let ts = ts.map_or(std::ptr::null_mut(), std::ptr::from_mut);
+        // SAFETY: the helper either passes a null pointer or an exclusive reference-derived
+        // pointer that remains valid for the duration of this synchronous FFI call.
+        unsafe { rs_timespec_store(ts, usec) == ts }
+    }
+
+    fn timespec_store_nsec_for_test(ts: Option<&mut LibcTimespec>, nsec: u64) -> bool {
+        let ts = ts.map_or(std::ptr::null_mut(), std::ptr::from_mut);
+        // SAFETY: the helper either passes a null pointer or an exclusive reference-derived
+        // pointer that remains valid for the duration of this synchronous FFI call.
+        unsafe { rs_timespec_store_nsec(ts, nsec) == ts }
+    }
+
+    fn timeval_load_for_test(tv: Option<&LibcTimeval>) -> u64 {
+        // SAFETY: the helper either passes a null pointer or a reference-derived pointer
+        // that remains valid for the duration of this synchronous FFI call.
+        unsafe { rs_timeval_load(tv.map_or(std::ptr::null(), std::ptr::from_ref)) }
+    }
+
+    fn timeval_store_for_test(tv: Option<&mut LibcTimeval>, usec: u64) -> bool {
+        let tv = tv.map_or(std::ptr::null_mut(), std::ptr::from_mut);
+        // SAFETY: the helper either passes a null pointer or an exclusive reference-derived
+        // pointer that remains valid for the duration of this synchronous FFI call.
+        unsafe { rs_timeval_store(tv, usec) == tv }
+    }
+
+    fn triple_timestamp_by_clock_for_test(ts: Option<&mut TripleTimestamp>, clock: i32) -> u64 {
+        // SAFETY: the helper either passes a null pointer or an exclusive reference-derived
+        // pointer that remains valid for the duration of this synchronous FFI call.
+        unsafe {
+            rs_triple_timestamp_by_clock(ts.map_or(std::ptr::null_mut(), std::ptr::from_mut), clock)
+        }
+    }
+
+    fn cstr_from_static_for_test(ptr: *const c_char) -> Option<&'static CStr> {
+        if ptr.is_null() {
+            return None;
+        }
+        // SAFETY: rs_timestamp_style_to_string returns static NUL-terminated strings.
+        Some(unsafe { CStr::from_ptr(ptr) })
+    }
+
+    fn timestamp_style_from_string_for_test(input: Option<&CStr>) -> i32 {
+        // SAFETY: the helper either passes a null pointer or CStr's NUL-terminated,
+        // live byte sequence for the duration of this synchronous FFI call.
+        unsafe { rs_timestamp_style_from_string(input.map_or(std::ptr::null(), CStr::as_ptr)) }
+    }
+
+    fn parse_gmtoff_for_test(input: Option<&CStr>, output: Option<&mut c_long>) -> i32 {
+        // SAFETY: the helper either passes null pointers or pointers derived from live
+        // CStr/exclusive references for the duration of this synchronous FFI call.
+        unsafe {
+            rs_parse_gmtoff(
+                input.map_or(std::ptr::null(), CStr::as_ptr),
+                output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
+            )
+        }
+    }
+
+    fn format_timespan_for_test<'a>(
+        buffer: Option<&'a mut [c_char]>,
+        usec: u64,
+        accuracy: u64,
+    ) -> Option<&'a CStr> {
+        let (buffer, buffer_len) = buffer.map_or((std::ptr::null_mut(), 0), |buffer| {
+            (buffer.as_mut_ptr(), buffer.len())
+        });
+        // SAFETY: the helper either passes a null pointer or a mutable slice's writable
+        // storage and length. A non-null return points to the NUL-terminated output buffer.
+        let result = unsafe { rs_format_timespan(buffer, buffer_len, usec, accuracy) };
+        (!result.is_null()).then(|| unsafe { CStr::from_ptr(result) })
+    }
+
+    fn dual_timestamp_is_set_for_test(ts: Option<&DualTimestamp>) -> bool {
+        // SAFETY: the helper either passes a null pointer or a reference-derived pointer
+        // that remains valid for the duration of this synchronous FFI call.
+        unsafe { rs_dual_timestamp_is_set(ts.map_or(std::ptr::null(), std::ptr::from_ref)) }
+    }
+
+    fn triple_timestamp_is_set_for_test(ts: Option<&TripleTimestamp>) -> bool {
+        // SAFETY: the helper either passes a null pointer or a reference-derived pointer
+        // that remains valid for the duration of this synchronous FFI call.
+        unsafe { rs_triple_timestamp_is_set(ts.map_or(std::ptr::null(), std::ptr::from_ref)) }
+    }
+
+    fn parse_time_for_test(
+        input: Option<&CStr>,
+        output: Option<&mut u64>,
+        default_unit: u64,
+    ) -> i32 {
+        // SAFETY: the helper either passes null pointers or pointers derived from live
+        // CStr/exclusive references for the duration of this synchronous FFI call.
+        unsafe {
+            rs_parse_time(
+                input.map_or(std::ptr::null(), CStr::as_ptr),
+                output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
+                default_unit,
+            )
+        }
+    }
+
+    fn parse_sec_for_test(input: Option<&CStr>, output: Option<&mut u64>) -> i32 {
+        // SAFETY: the helper either passes null pointers or pointers derived from live
+        // CStr/exclusive references for the duration of this synchronous FFI call.
+        unsafe {
+            rs_parse_sec(
+                input.map_or(std::ptr::null(), CStr::as_ptr),
+                output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
+            )
+        }
+    }
+
+    fn parse_sec_fix_0_for_test(input: Option<&CStr>, output: Option<&mut u64>) -> i32 {
+        // SAFETY: the helper either passes null pointers or pointers derived from live
+        // CStr/exclusive references for the duration of this synchronous FFI call.
+        unsafe {
+            rs_parse_sec_fix_0(
+                input.map_or(std::ptr::null(), CStr::as_ptr),
+                output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
+            )
+        }
+    }
+
+    fn parse_sec_def_infinity_for_test(input: Option<&CStr>, output: Option<&mut u64>) -> i32 {
+        // SAFETY: the helper either passes null pointers or pointers derived from live
+        // CStr/exclusive references for the duration of this synchronous FFI call.
+        unsafe {
+            rs_parse_sec_def_infinity(
+                input.map_or(std::ptr::null(), CStr::as_ptr),
+                output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
+            )
+        }
+    }
+
     // ── rs_map_clock_usec_raw ───────────────────────────────────────────────
 
     #[test]
@@ -81,7 +228,7 @@ mod tests {
     #[test]
     fn test_timespec_load_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_load(std::ptr::null()) };
+        let result = timespec_load_for_test(None);
         assert_eq!(result, 0);
     }
 
@@ -92,7 +239,7 @@ mod tests {
             tv_nsec: 500_000_000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_load(&ts) };
+        let result = timespec_load_for_test(Some(&ts));
         assert_eq!(result, 5 * USEC_PER_SEC + 500_000);
     }
 
@@ -103,7 +250,7 @@ mod tests {
             tv_nsec: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_load(&ts) };
+        let result = timespec_load_for_test(Some(&ts));
         assert_eq!(result, 0);
     }
 
@@ -114,7 +261,7 @@ mod tests {
             tv_nsec: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_load(&ts) };
+        let result = timespec_load_for_test(Some(&ts));
         assert_eq!(result, USEC_INFINITY);
     }
 
@@ -125,7 +272,7 @@ mod tests {
             tv_nsec: -1,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_load(&ts) };
+        let result = timespec_load_for_test(Some(&ts));
         assert_eq!(result, USEC_INFINITY);
     }
 
@@ -134,7 +281,7 @@ mod tests {
     #[test]
     fn test_timespec_load_nsec_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_load_nsec(std::ptr::null()) };
+        let result = timespec_load_nsec_for_test(None);
         assert_eq!(result, 0);
     }
 
@@ -145,7 +292,7 @@ mod tests {
             tv_nsec: 500_000_000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_load_nsec(&ts) };
+        let result = timespec_load_nsec_for_test(Some(&ts));
         assert_eq!(result, 2 * NSEC_PER_SEC + 500_000_000);
     }
 
@@ -156,7 +303,7 @@ mod tests {
             tv_nsec: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_load_nsec(&ts) };
+        let result = timespec_load_nsec_for_test(Some(&ts));
         assert_eq!(result, NSEC_INFINITY);
     }
 
@@ -165,8 +312,8 @@ mod tests {
     #[test]
     fn test_timespec_store_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_store(std::ptr::null_mut(), 1000) };
-        assert!(result.is_null());
+        let result = timespec_store_for_test(None, 1000);
+        assert!(result);
     }
 
     #[test]
@@ -177,8 +324,8 @@ mod tests {
         };
         let usec = 5_500_000u64;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_store(&mut ts, usec) };
-        assert_eq!(result as *const _, &ts as *const _);
+        let result = timespec_store_for_test(Some(&mut ts), usec);
+        assert!(result);
         assert_eq!(ts.tv_sec, 5);
         assert_eq!(ts.tv_nsec, 500_000_000);
     }
@@ -190,7 +337,7 @@ mod tests {
             tv_nsec: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { rs_timespec_store(&mut ts, USEC_INFINITY) };
+        timespec_store_for_test(Some(&mut ts), USEC_INFINITY);
         assert_eq!(ts.tv_sec, -1);
         assert_eq!(ts.tv_nsec, -1);
     }
@@ -202,7 +349,7 @@ mod tests {
             tv_nsec: 999,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { rs_timespec_store(&mut ts, 0) };
+        timespec_store_for_test(Some(&mut ts), 0);
         assert_eq!(ts.tv_sec, 0);
         assert_eq!(ts.tv_nsec, 0);
     }
@@ -212,8 +359,8 @@ mod tests {
     #[test]
     fn test_timespec_store_nsec_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timespec_store_nsec(std::ptr::null_mut(), 1000) };
-        assert!(result.is_null());
+        let result = timespec_store_nsec_for_test(None, 1000);
+        assert!(result);
     }
 
     #[test]
@@ -224,7 +371,7 @@ mod tests {
         };
         let nsec = 2_500_000_000u64;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { rs_timespec_store_nsec(&mut ts, nsec) };
+        timespec_store_nsec_for_test(Some(&mut ts), nsec);
         assert_eq!(ts.tv_sec, 2);
         assert_eq!(ts.tv_nsec, 500_000_000);
     }
@@ -236,7 +383,7 @@ mod tests {
             tv_nsec: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { rs_timespec_store_nsec(&mut ts, NSEC_INFINITY) };
+        timespec_store_nsec_for_test(Some(&mut ts), NSEC_INFINITY);
         assert_eq!(ts.tv_sec, -1);
         assert_eq!(ts.tv_nsec, -1);
     }
@@ -246,7 +393,7 @@ mod tests {
     #[test]
     fn test_timeval_load_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timeval_load(std::ptr::null()) };
+        let result = timeval_load_for_test(None);
         assert_eq!(result, 0);
     }
 
@@ -257,7 +404,7 @@ mod tests {
             tv_usec: 250_000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timeval_load(&tv) };
+        let result = timeval_load_for_test(Some(&tv));
         assert_eq!(result, 3 * USEC_PER_SEC + 250_000);
     }
 
@@ -268,7 +415,7 @@ mod tests {
             tv_usec: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timeval_load(&tv) };
+        let result = timeval_load_for_test(Some(&tv));
         assert_eq!(result, USEC_INFINITY);
     }
 
@@ -277,8 +424,8 @@ mod tests {
     #[test]
     fn test_timeval_store_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timeval_store(std::ptr::null_mut(), 1000) };
-        assert!(result.is_null());
+        let result = timeval_store_for_test(None, 1000);
+        assert!(result);
     }
 
     #[test]
@@ -289,7 +436,7 @@ mod tests {
         };
         let usec = 7_123_456u64;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { rs_timeval_store(&mut tv, usec) };
+        timeval_store_for_test(Some(&mut tv), usec);
         assert_eq!(tv.tv_sec, 7);
         assert_eq!(tv.tv_usec, 123_456);
     }
@@ -301,7 +448,7 @@ mod tests {
             tv_usec: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe { rs_timeval_store(&mut tv, USEC_INFINITY) };
+        timeval_store_for_test(Some(&mut tv), USEC_INFINITY);
         assert_eq!(tv.tv_sec, -1);
         assert_eq!(tv.tv_usec, -1);
     }
@@ -311,7 +458,7 @@ mod tests {
     #[test]
     fn test_triple_timestamp_by_clock_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(std::ptr::null_mut(), CLOCK_REALTIME) };
+        let result = triple_timestamp_by_clock_for_test(None, CLOCK_REALTIME);
         assert_eq!(result, 0);
     }
 
@@ -323,7 +470,7 @@ mod tests {
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_REALTIME) };
+        let result = triple_timestamp_by_clock_for_test(Some(&mut ts), CLOCK_REALTIME);
         assert_eq!(result, 1000);
     }
 
@@ -335,7 +482,7 @@ mod tests {
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_MONOTONIC) };
+        let result = triple_timestamp_by_clock_for_test(Some(&mut ts), CLOCK_MONOTONIC);
         assert_eq!(result, 2000);
     }
 
@@ -347,7 +494,7 @@ mod tests {
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_BOOTTIME) };
+        let result = triple_timestamp_by_clock_for_test(Some(&mut ts), CLOCK_BOOTTIME);
         assert_eq!(result, 3000);
     }
 
@@ -359,7 +506,7 @@ mod tests {
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_REALTIME_ALARM) };
+        let result = triple_timestamp_by_clock_for_test(Some(&mut ts), CLOCK_REALTIME_ALARM);
         assert_eq!(result, 1000);
     }
 
@@ -371,7 +518,7 @@ mod tests {
             boottime: 3000,
         };
         // SAFETY: the raw pointer is derived from a live stack value.
-        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, CLOCK_BOOTTIME_ALARM) };
+        let result = triple_timestamp_by_clock_for_test(Some(&mut ts), CLOCK_BOOTTIME_ALARM);
         assert_eq!(result, 3000);
     }
 
@@ -383,7 +530,7 @@ mod tests {
             boottime: 3000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_by_clock(&mut ts, 999) };
+        let result = triple_timestamp_by_clock_for_test(Some(&mut ts), 999);
         assert_eq!(result, USEC_INFINITY);
     }
 
@@ -394,7 +541,7 @@ mod tests {
         let result = rs_timestamp_style_to_string(0);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
-        let s = unsafe { CStr::from_ptr(result) };
+        let s = cstr_from_static_for_test(result).unwrap();
         assert_eq!(s.to_bytes(), b"pretty");
     }
 
@@ -403,7 +550,7 @@ mod tests {
         let result = rs_timestamp_style_to_string(1);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
-        let s = unsafe { CStr::from_ptr(result) };
+        let s = cstr_from_static_for_test(result).unwrap();
         assert_eq!(s.to_bytes(), b"us");
     }
 
@@ -412,7 +559,7 @@ mod tests {
         let result = rs_timestamp_style_to_string(2);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
-        let s = unsafe { CStr::from_ptr(result) };
+        let s = cstr_from_static_for_test(result).unwrap();
         assert_eq!(s.to_bytes(), b"utc");
     }
 
@@ -421,7 +568,7 @@ mod tests {
         let result = rs_timestamp_style_to_string(3);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
-        let s = unsafe { CStr::from_ptr(result) };
+        let s = cstr_from_static_for_test(result).unwrap();
         assert_eq!(s.to_bytes(), b"us+utc");
     }
 
@@ -430,7 +577,7 @@ mod tests {
         let result = rs_timestamp_style_to_string(4);
         assert!(!result.is_null());
         // SAFETY: `result` was checked for null and points to a static NUL-terminated string.
-        let s = unsafe { CStr::from_ptr(result) };
+        let s = cstr_from_static_for_test(result).unwrap();
         assert_eq!(s.to_bytes(), b"unix");
     }
 
@@ -451,7 +598,7 @@ mod tests {
     #[test]
     fn test_timestamp_style_from_string_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_timestamp_style_from_string(std::ptr::null()) };
+        let result = timestamp_style_from_string_for_test(None);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -459,7 +606,7 @@ mod tests {
     fn test_timestamp_style_from_string_pretty() {
         let s = CString::new("pretty").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr()) };
+        let result = timestamp_style_from_string_for_test(Some(&s));
         assert_eq!(result, 0);
     }
 
@@ -467,7 +614,7 @@ mod tests {
     fn test_timestamp_style_from_string_us() {
         let s = CString::new("us").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr()) };
+        let result = timestamp_style_from_string_for_test(Some(&s));
         assert_eq!(result, 1);
     }
 
@@ -475,7 +622,7 @@ mod tests {
     fn test_timestamp_style_from_string_utc() {
         let s = CString::new("utc").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr()) };
+        let result = timestamp_style_from_string_for_test(Some(&s));
         assert_eq!(result, 2);
     }
 
@@ -483,7 +630,7 @@ mod tests {
     fn test_timestamp_style_from_string_us_utc() {
         let s = CString::new("us+utc").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr()) };
+        let result = timestamp_style_from_string_for_test(Some(&s));
         assert_eq!(result, 3);
     }
 
@@ -491,7 +638,7 @@ mod tests {
     fn test_timestamp_style_from_string_unix() {
         let s = CString::new("unix").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr()) };
+        let result = timestamp_style_from_string_for_test(Some(&s));
         assert_eq!(result, 4);
     }
 
@@ -499,7 +646,8 @@ mod tests {
     fn test_timestamp_style_from_string_micro_sign() {
         let s = [0xC2u8, 0xB5, b's', 0];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr() as *const c_char) };
+        let result =
+            timestamp_style_from_string_for_test(Some(CStr::from_bytes_with_nul(&s).unwrap()));
         assert_eq!(result, 1);
     }
 
@@ -507,7 +655,8 @@ mod tests {
     fn test_timestamp_style_from_string_greek_mu() {
         let s = [0xCEu8, 0xBC, b's', 0];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr() as *const c_char) };
+        let result =
+            timestamp_style_from_string_for_test(Some(CStr::from_bytes_with_nul(&s).unwrap()));
         assert_eq!(result, 1);
     }
 
@@ -515,7 +664,8 @@ mod tests {
     fn test_timestamp_style_from_string_micro_sign_utc() {
         let s = [0xC2u8, 0xB5, b's', b'+', b'u', b't', b'c', 0];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr() as *const c_char) };
+        let result =
+            timestamp_style_from_string_for_test(Some(CStr::from_bytes_with_nul(&s).unwrap()));
         assert_eq!(result, 3);
     }
 
@@ -523,7 +673,7 @@ mod tests {
     fn test_timestamp_style_from_string_invalid() {
         let s = CString::new("invalid").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr()) };
+        let result = timestamp_style_from_string_for_test(Some(&s));
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -531,7 +681,7 @@ mod tests {
     fn test_timestamp_style_from_string_empty() {
         let s = CString::new("").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_timestamp_style_from_string(s.as_ptr()) };
+        let result = timestamp_style_from_string_for_test(Some(&s));
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -540,7 +690,7 @@ mod tests {
     #[test]
     fn test_parse_gmtoff_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_parse_gmtoff(std::ptr::null(), std::ptr::null_mut()) };
+        let result = parse_gmtoff_for_test(None, None);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -549,7 +699,7 @@ mod tests {
         let s = CString::new("+0900").unwrap();
         let mut ret: c_long = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_gmtoff(s.as_ptr(), &mut ret) };
+        let result = parse_gmtoff_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 9 * 3600);
     }
@@ -559,7 +709,7 @@ mod tests {
         let s = CString::new("-0500").unwrap();
         let mut ret: c_long = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_gmtoff(s.as_ptr(), &mut ret) };
+        let result = parse_gmtoff_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, -5 * 3600);
     }
@@ -569,7 +719,7 @@ mod tests {
         let s = CString::new("+09").unwrap();
         let mut ret: c_long = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_gmtoff(s.as_ptr(), &mut ret) };
+        let result = parse_gmtoff_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 9 * 3600);
     }
@@ -579,7 +729,7 @@ mod tests {
         let s = CString::new("+09:30").unwrap();
         let mut ret: c_long = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_gmtoff(s.as_ptr(), &mut ret) };
+        let result = parse_gmtoff_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 9 * 3600 + 30 * 60);
     }
@@ -589,7 +739,7 @@ mod tests {
         let s = CString::new("+0000").unwrap();
         let mut ret: c_long = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_gmtoff(s.as_ptr(), &mut ret) };
+        let result = parse_gmtoff_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 0);
     }
@@ -598,7 +748,7 @@ mod tests {
     fn test_parse_gmtoff_invalid_no_sign() {
         let s = CString::new("0900").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_gmtoff(s.as_ptr(), std::ptr::null_mut()) };
+        let result = parse_gmtoff_for_test(Some(&s), None);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -606,7 +756,7 @@ mod tests {
     fn test_parse_gmtoff_invalid_minutes_60() {
         let s = CString::new("+0960").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_gmtoff(s.as_ptr(), std::ptr::null_mut()) };
+        let result = parse_gmtoff_for_test(Some(&s), None);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -614,7 +764,7 @@ mod tests {
     fn test_parse_gmtoff_null_ret() {
         let s = CString::new("+0500").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_gmtoff(s.as_ptr(), std::ptr::null_mut()) };
+        let result = parse_gmtoff_for_test(Some(&s), None);
         assert_eq!(result, 0);
     }
 
@@ -623,25 +773,23 @@ mod tests {
     #[test]
     fn test_format_timespan_null_buf() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_format_timespan(std::ptr::null_mut(), 64, 1000, 1) };
-        assert!(result.is_null());
+        let result = format_timespan_for_test(None, 1000, 1);
+        assert!(result.is_none());
     }
 
     #[test]
     fn test_format_timespan_zero_length() {
         let mut buf = [0 as c_char; 64];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_format_timespan(buf.as_mut_ptr(), 0, 1000, 1) };
-        assert!(result.is_null());
+        let result = format_timespan_for_test(Some(&mut buf[..0]), 1000, 1);
+        assert!(result.is_none());
     }
 
     #[test]
     fn test_format_timespan_infinity() {
         let mut buf = [0 as c_char; 64];
         // SAFETY: `buf` points to writable stack storage of length `buf.len()`.
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), USEC_INFINITY, 1) };
-        // SAFETY: `rs_format_timespan` wrote a NUL-terminated string into `buf`.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), USEC_INFINITY, 1).unwrap();
         assert_eq!(s.to_bytes(), b"infinity");
     }
 
@@ -649,9 +797,7 @@ mod tests {
     fn test_format_timespan_zero() {
         let mut buf = [0 as c_char; 64];
         // SAFETY: `buf` points to writable stack storage of length `buf.len()`.
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), 0, 1) };
-        // SAFETY: `rs_format_timespan` wrote a NUL-terminated string into `buf`.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), 0, 1).unwrap();
         assert_eq!(s.to_bytes(), b"0");
     }
 
@@ -659,9 +805,7 @@ mod tests {
     fn test_format_timespan_seconds() {
         let mut buf = [0 as c_char; 64];
         // SAFETY: `buf` points to writable stack storage of length `buf.len()`.
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), 5 * USEC_PER_SEC, 1) };
-        // SAFETY: `rs_format_timespan` wrote a NUL-terminated string into `buf`.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), 5 * USEC_PER_SEC, 1).unwrap();
         assert_eq!(s.to_bytes(), b"5s");
     }
 
@@ -670,9 +814,7 @@ mod tests {
         let mut buf = [0 as c_char; 64];
         let usec = 2 * USEC_PER_MINUTE + 30 * USEC_PER_SEC;
         // SAFETY: `buf` points to writable stack storage of length `buf.len()`.
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), usec, 1) };
-        // SAFETY: `rs_format_timespan` wrote a NUL-terminated string into `buf`.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), usec, 1).unwrap();
         assert_eq!(s.to_bytes(), b"2min 30s");
     }
 
@@ -681,9 +823,7 @@ mod tests {
         let mut buf = [0 as c_char; 64];
         let usec = 3 * USEC_PER_DAY;
         // SAFETY: `buf` points to writable stack storage of length `buf.len()`.
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), usec, 1) };
-        // SAFETY: `rs_format_timespan` wrote a NUL-terminated string into `buf`.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), usec, 1).unwrap();
         assert_eq!(s.to_bytes(), b"3d");
     }
 
@@ -691,9 +831,7 @@ mod tests {
     fn test_format_timespan_milliseconds() {
         let mut buf = [0 as c_char; 64];
         // SAFETY: `buf` points to writable stack storage of length `buf.len()`.
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), 500_000, 1) };
-        // SAFETY: `rs_format_timespan` wrote a NUL-terminated string into `buf`.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), 500_000, 1).unwrap();
         assert_eq!(s.to_bytes(), b"500ms");
     }
 
@@ -701,9 +839,7 @@ mod tests {
     fn test_format_timespan_microseconds() {
         let mut buf = [0 as c_char; 64];
         // SAFETY: `buf` points to writable stack storage of length `buf.len()`.
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), 1234, 1) };
-        // SAFETY: `rs_format_timespan` wrote a NUL-terminated string into `buf`.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), 1234, 1).unwrap();
         assert_eq!(s.to_bytes(), b"1.234ms");
     }
 
@@ -711,9 +847,7 @@ mod tests {
     fn test_format_timespan_small_buffer() {
         let mut buf = [0 as c_char; 4];
         // SAFETY: `buf` points to writable stack storage of length `buf.len()`.
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), 5 * USEC_PER_SEC, 1) };
-        // SAFETY: `rs_format_timespan` wrote a NUL-terminated string into `buf`.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), 5 * USEC_PER_SEC, 1).unwrap();
         assert!(s.to_bytes().len() < 4);
     }
 
@@ -722,12 +856,7 @@ mod tests {
         let mut buf = [0 as c_char; 4];
         let usec = USEC_PER_YEAR + 2 * USEC_PER_MONTH;
         // SAFETY: buf points to writable stack storage of length buf.len().
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), usec, 1) };
-        // C appends each segment with the remaining buffer size, leaving only
-        // the separator from the second segment in this constrained buffer.
-        // SAFETY: rs_format_timespan above received all four writable bytes and
-        // always NUL-terminates a non-null buffer with nonzero length.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), usec, 1).unwrap();
         assert_eq!(s.to_bytes(), b"1y ");
     }
 
@@ -735,7 +864,7 @@ mod tests {
     fn test_format_timespan_single_byte_buffer_is_nul_terminated() {
         let mut buf = [127 as c_char];
         // SAFETY: buf points to writable stack storage of length buf.len().
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), USEC_PER_SEC, 1) };
+        let _ = format_timespan_for_test(Some(&mut buf), USEC_PER_SEC, 1);
         assert_eq!(buf, [0]);
     }
 
@@ -744,9 +873,7 @@ mod tests {
         let mut buf = [0 as c_char; 64];
         let usec = 2 * USEC_PER_DAY + 3 * USEC_PER_HOUR + 500_000;
         // SAFETY: `buf` points to writable stack storage of length `buf.len()`.
-        unsafe { rs_format_timespan(buf.as_mut_ptr(), buf.len(), usec, USEC_PER_SEC) };
-        // SAFETY: `rs_format_timespan` wrote a NUL-terminated string into `buf`.
-        let s = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        let s = format_timespan_for_test(Some(&mut buf), usec, USEC_PER_SEC).unwrap();
         assert_eq!(s.to_bytes(), b"2d 3h");
     }
 
@@ -781,7 +908,7 @@ mod tests {
     #[test]
     fn test_dual_timestamp_is_set_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_dual_timestamp_is_set(std::ptr::null()) };
+        let result = dual_timestamp_is_set_for_test(None);
         assert!(!result);
     }
 
@@ -792,7 +919,7 @@ mod tests {
             monotonic: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_dual_timestamp_is_set(&ts) };
+        let result = dual_timestamp_is_set_for_test(Some(&ts));
         assert!(!result);
     }
 
@@ -803,7 +930,7 @@ mod tests {
             monotonic: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_dual_timestamp_is_set(&ts) };
+        let result = dual_timestamp_is_set_for_test(Some(&ts));
         assert!(result);
     }
 
@@ -814,7 +941,7 @@ mod tests {
             monotonic: 1000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_dual_timestamp_is_set(&ts) };
+        let result = dual_timestamp_is_set_for_test(Some(&ts));
         assert!(result);
     }
 
@@ -825,7 +952,7 @@ mod tests {
             monotonic: 2000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_dual_timestamp_is_set(&ts) };
+        let result = dual_timestamp_is_set_for_test(Some(&ts));
         assert!(result);
     }
 
@@ -836,7 +963,7 @@ mod tests {
             monotonic: USEC_INFINITY,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_dual_timestamp_is_set(&ts) };
+        let result = dual_timestamp_is_set_for_test(Some(&ts));
         assert!(!result);
     }
 
@@ -845,7 +972,7 @@ mod tests {
     #[test]
     fn test_triple_timestamp_is_set_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_is_set(std::ptr::null()) };
+        let result = triple_timestamp_is_set_for_test(None);
         assert!(!result);
     }
 
@@ -857,7 +984,7 @@ mod tests {
             boottime: 0,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_is_set(&ts) };
+        let result = triple_timestamp_is_set_for_test(Some(&ts));
         assert!(!result);
     }
 
@@ -869,7 +996,7 @@ mod tests {
             boottime: 1000,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_triple_timestamp_is_set(&ts) };
+        let result = triple_timestamp_is_set_for_test(Some(&ts));
         assert!(result);
     }
 
@@ -968,7 +1095,7 @@ mod tests {
     #[test]
     fn test_parse_time_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_parse_time(std::ptr::null(), std::ptr::null_mut(), USEC_PER_SEC) };
+        let result = parse_time_for_test(None, None, USEC_PER_SEC);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -976,7 +1103,7 @@ mod tests {
     fn test_parse_time_default_unit_zero() {
         let s = CString::new("5").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), std::ptr::null_mut(), 0) };
+        let result = parse_time_for_test(Some(&s), None, 0);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -985,7 +1112,7 @@ mod tests {
         let s = CString::new("infinity").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_INFINITY);
     }
@@ -995,7 +1122,7 @@ mod tests {
         let s = CString::new("5").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 5 * USEC_PER_SEC);
     }
@@ -1005,7 +1132,7 @@ mod tests {
         let s = CString::new("5s").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 5 * USEC_PER_SEC);
     }
@@ -1015,7 +1142,7 @@ mod tests {
         let s = CString::new("500ms").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 500 * USEC_PER_MSEC);
     }
@@ -1025,7 +1152,7 @@ mod tests {
         let s = CString::new("2min").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 2 * USEC_PER_MINUTE);
     }
@@ -1035,7 +1162,7 @@ mod tests {
         let s = CString::new("1h").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_PER_HOUR);
     }
@@ -1045,7 +1172,7 @@ mod tests {
         let s = CString::new("3d").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 3 * USEC_PER_DAY);
     }
@@ -1055,7 +1182,7 @@ mod tests {
         let s = CString::new("2w").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 2 * USEC_PER_WEEK);
     }
@@ -1065,7 +1192,7 @@ mod tests {
         let s = CString::new("1y").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_PER_YEAR);
     }
@@ -1075,7 +1202,7 @@ mod tests {
         let s = CString::new("6month").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 6 * USEC_PER_MONTH);
     }
@@ -1085,7 +1212,7 @@ mod tests {
         let s = CString::new("100us").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 100);
     }
@@ -1095,7 +1222,7 @@ mod tests {
         let s = CString::new("100usec").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 100);
     }
@@ -1105,7 +1232,7 @@ mod tests {
         let s = CString::new("10seconds").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 10 * USEC_PER_SEC);
     }
@@ -1115,7 +1242,7 @@ mod tests {
         let s = CString::new("2days").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 2 * USEC_PER_DAY);
     }
@@ -1125,7 +1252,7 @@ mod tests {
         let s = CString::new("1year").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_PER_YEAR);
     }
@@ -1135,7 +1262,7 @@ mod tests {
         let s = CString::new("3hr").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 3 * USEC_PER_HOUR);
     }
@@ -1145,7 +1272,7 @@ mod tests {
         let s = CString::new("2hour").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 2 * USEC_PER_HOUR);
     }
@@ -1155,7 +1282,7 @@ mod tests {
         let s = CString::new("5hours").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 5 * USEC_PER_HOUR);
     }
@@ -1165,7 +1292,7 @@ mod tests {
         let s = CString::new("3weeks").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 3 * USEC_PER_WEEK);
     }
@@ -1175,7 +1302,7 @@ mod tests {
         let s = CString::new("1week").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_PER_WEEK);
     }
@@ -1185,7 +1312,7 @@ mod tests {
         let s = CString::new("10minutes").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 10 * USEC_PER_MINUTE);
     }
@@ -1195,7 +1322,7 @@ mod tests {
         let s = CString::new("5minute").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 5 * USEC_PER_MINUTE);
     }
@@ -1205,7 +1332,7 @@ mod tests {
         let s = CString::new("2months").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 2 * USEC_PER_MONTH);
     }
@@ -1215,7 +1342,7 @@ mod tests {
         let s = CString::new("3M").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 3 * USEC_PER_MONTH);
     }
@@ -1225,7 +1352,7 @@ mod tests {
         let s = CString::new("10sec").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 10 * USEC_PER_SEC);
     }
@@ -1235,7 +1362,7 @@ mod tests {
         let s = CString::new("7second").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 7 * USEC_PER_SEC);
     }
@@ -1245,7 +1372,7 @@ mod tests {
         let s = CString::new("1day").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_PER_DAY);
     }
@@ -1255,7 +1382,7 @@ mod tests {
         let s = CString::new("2min 500ms").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 2 * USEC_PER_MINUTE + 500 * USEC_PER_MSEC);
     }
@@ -1265,7 +1392,7 @@ mod tests {
         let s = CString::new("  5s").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 5 * USEC_PER_SEC);
     }
@@ -1274,7 +1401,7 @@ mod tests {
     fn test_parse_time_empty() {
         let s = CString::new("").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), std::ptr::null_mut(), USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), None, USEC_PER_SEC);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -1282,7 +1409,7 @@ mod tests {
     fn test_parse_time_invalid_suffix() {
         let s = CString::new("5x").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), std::ptr::null_mut(), USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), None, USEC_PER_SEC);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -1290,7 +1417,7 @@ mod tests {
     fn test_parse_time_negative() {
         let s = CString::new("-5").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), std::ptr::null_mut(), USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), None, USEC_PER_SEC);
         assert_eq!(result, Errno::ERANGE.to_neg_errno());
     }
 
@@ -1299,7 +1426,7 @@ mod tests {
         let s = CString::new("9223372036854775808").unwrap();
         let mut ret = 0;
         // SAFETY: the raw pointer is derived from a live allocation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, 1) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), 1);
         assert_eq!(result, Errno::ERANGE.to_neg_errno());
     }
 
@@ -1308,7 +1435,7 @@ mod tests {
         let s = CString::new("1.5s").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_PER_SEC + USEC_PER_SEC / 2);
     }
@@ -1318,7 +1445,7 @@ mod tests {
         let s = CString::new(".22s").unwrap();
         let mut ret = 0;
         // SAFETY: s is NUL-terminated and ret is a live writable u64.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 220_000);
     }
@@ -1328,7 +1455,7 @@ mod tests {
         let s = CString::new("+3.1s").unwrap();
         let mut ret = 0;
         // SAFETY: s is NUL-terminated and ret is a live writable u64.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 3_100_000);
     }
@@ -1338,7 +1465,7 @@ mod tests {
         let s = CString::new("3.1 .2s").unwrap();
         let mut ret = 0;
         // SAFETY: s is NUL-terminated and ret is a live writable u64.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), USEC_PER_SEC);
         assert_eq!(result, 0);
         assert_eq!(ret, 3_300_000);
     }
@@ -1348,7 +1475,7 @@ mod tests {
         let s = CString::new(".7").unwrap();
         let mut ret = u64::MAX;
         // SAFETY: s is NUL-terminated and ret is a live writable u64.
-        let result = unsafe { rs_parse_time(s.as_ptr(), &mut ret, 1) };
+        let result = parse_time_for_test(Some(&s), Some(&mut ret), 1);
         assert_eq!(result, 0);
         assert_eq!(ret, 0);
     }
@@ -1357,7 +1484,7 @@ mod tests {
     fn test_parse_time_null_ret() {
         let s = CString::new("5s").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_time(s.as_ptr(), std::ptr::null_mut(), USEC_PER_SEC) };
+        let result = parse_time_for_test(Some(&s), None, USEC_PER_SEC);
         assert_eq!(result, 0);
     }
 
@@ -1366,7 +1493,7 @@ mod tests {
     #[test]
     fn test_parse_sec_null() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_parse_sec(std::ptr::null(), std::ptr::null_mut()) };
+        let result = parse_sec_for_test(None, None);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -1375,7 +1502,7 @@ mod tests {
         let s = CString::new("10").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec(s.as_ptr(), &mut ret) };
+        let result = parse_sec_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 10 * USEC_PER_SEC);
     }
@@ -1385,7 +1512,7 @@ mod tests {
         let s = CString::new("5min").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec(s.as_ptr(), &mut ret) };
+        let result = parse_sec_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 5 * USEC_PER_MINUTE);
     }
@@ -1395,7 +1522,7 @@ mod tests {
         let s = CString::new("infinity").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec(s.as_ptr(), &mut ret) };
+        let result = parse_sec_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_INFINITY);
     }
@@ -1405,7 +1532,7 @@ mod tests {
         let s = CString::new("0").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec(s.as_ptr(), &mut ret) };
+        let result = parse_sec_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 0);
     }
@@ -1415,7 +1542,7 @@ mod tests {
     #[test]
     fn test_parse_sec_fix_0_null_input() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_parse_sec_fix_0(std::ptr::null(), std::ptr::null_mut()) };
+        let result = parse_sec_fix_0_for_test(None, None);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -1423,7 +1550,7 @@ mod tests {
     fn test_parse_sec_fix_0_null_ret() {
         let s = CString::new("5").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec_fix_0(s.as_ptr(), std::ptr::null_mut()) };
+        let result = parse_sec_fix_0_for_test(Some(&s), None);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -1432,7 +1559,7 @@ mod tests {
         let s = CString::new("0").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec_fix_0(s.as_ptr(), &mut ret) };
+        let result = parse_sec_fix_0_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_INFINITY);
     }
@@ -1442,7 +1569,7 @@ mod tests {
         let s = CString::new("5").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec_fix_0(s.as_ptr(), &mut ret) };
+        let result = parse_sec_fix_0_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 5 * USEC_PER_SEC);
     }
@@ -1452,7 +1579,7 @@ mod tests {
         let s = CString::new("invalid").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec_fix_0(s.as_ptr(), &mut ret) };
+        let result = parse_sec_fix_0_for_test(Some(&s), Some(&mut ret));
         assert!(result < 0);
     }
 
@@ -1461,7 +1588,7 @@ mod tests {
     #[test]
     fn test_parse_sec_def_infinity_null_input() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let result = unsafe { rs_parse_sec_def_infinity(std::ptr::null(), std::ptr::null_mut()) };
+        let result = parse_sec_def_infinity_for_test(None, None);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -1469,7 +1596,7 @@ mod tests {
     fn test_parse_sec_def_infinity_null_ret() {
         let s = CString::new("5").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec_def_infinity(s.as_ptr(), std::ptr::null_mut()) };
+        let result = parse_sec_def_infinity_for_test(Some(&s), None);
         assert_eq!(result, Errno::EINVAL.to_neg_errno());
     }
 
@@ -1478,7 +1605,7 @@ mod tests {
         let s = CString::new("").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec_def_infinity(s.as_ptr(), &mut ret) };
+        let result = parse_sec_def_infinity_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_INFINITY);
     }
@@ -1488,7 +1615,7 @@ mod tests {
         let s = CString::new("   ").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec_def_infinity(s.as_ptr(), &mut ret) };
+        let result = parse_sec_def_infinity_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, USEC_INFINITY);
     }
@@ -1498,7 +1625,7 @@ mod tests {
         let s = CString::new("10").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec_def_infinity(s.as_ptr(), &mut ret) };
+        let result = parse_sec_def_infinity_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 10 * USEC_PER_SEC);
     }
@@ -1508,7 +1635,7 @@ mod tests {
         let s = CString::new("0").unwrap();
         let mut ret: u64 = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let result = unsafe { rs_parse_sec_def_infinity(s.as_ptr(), &mut ret) };
+        let result = parse_sec_def_infinity_for_test(Some(&s), Some(&mut ret));
         assert_eq!(result, 0);
         assert_eq!(ret, 0);
     }

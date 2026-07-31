@@ -26,18 +26,23 @@ pub const fn safe_ato_mask_flags(base: u32) -> u32 {
 
 // ── Local helpers ─────────────────────────────────────────────────────────
 
-/// Resolve a C errno name through the safe Rust table.
+/// Convert an ABI C-string argument into the safe representation used by the
+/// parsers below.
 ///
 /// # Safety
-/// `name` must be null or point to a live NUL-terminated C string for the
-/// duration of this call.
-unsafe fn errno_from_name(name: *const c_char) -> i32 {
-    if name.is_null() {
-        return Errno::EINVAL.to_neg_errno();
+/// `s` must be null or point to a live NUL-terminated C string for the call.
+unsafe fn cstr_bytes<'a>(s: *const c_char) -> Result<&'a [u8], i32> {
+    if s.is_null() {
+        return Err(Errno::EINVAL.to_neg_errno());
     }
 
-    // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-    let Ok(name) = unsafe { CStr::from_ptr(name) }.to_str() else {
+    // SAFETY: upheld by this helper's contract.
+    Ok(unsafe { CStr::from_ptr(s) }.to_bytes())
+}
+
+/// Resolve a C errno name through the safe Rust table.
+fn errno_from_name(name: &[u8]) -> i32 {
+    let Ok(name) = std::str::from_utf8(name) else {
         return Errno::EINVAL.to_neg_errno();
     };
 
@@ -56,105 +61,63 @@ fn errno_is_valid(e: i32) -> bool {
 
 // ── Private helpers ────────────────────────────────────────────────────────
 
-/// Skip leading whitespace.
-///
-/// # Safety
-/// If non-null, `s` must point to a live NUL-terminated C string readable for this call.
-unsafe fn skip_whitespace(s: *const c_char) -> *const c_char {
-    let mut p = s;
-    while !p.is_null()
-        // SAFETY: the caller guarantees p is readable through its terminating NUL.
-        && unsafe { *p } != 0
-        // SAFETY: p currently points before the terminating NUL.
-        && is_whitespace(unsafe { *p } as u8)
-    {
-        // SAFETY: advancing from a non-NUL byte remains within the C string.
-        p = unsafe { p.add(1) };
-    }
-    p
+fn skip_whitespace(bytes: &[u8]) -> &[u8] {
+    let first = bytes
+        .iter()
+        .position(|byte| !is_whitespace(*byte))
+        .unwrap_or(bytes.len());
+    &bytes[first..]
 }
 
-/// Case-insensitive comparison of a C string against a set of literals.
-///
-/// # Safety
-/// If non-null, `s` must point to a live NUL-terminated C string readable for this call.
-unsafe fn strcase_in_set(s: *const c_char, set: &[&CStr]) -> bool {
-    if s.is_null() {
-        return false;
-    }
-    // SAFETY: the caller guarantees s is a live NUL-terminated C string.
-    let val = unsafe { CStr::from_ptr(s) };
-    for item in set {
-        // Case-insensitive: compare byte-by-byte, lowercasing ASCII
-        let val_bytes = val.to_bytes();
-        let item_bytes = item.to_bytes();
-        if val_bytes.len() != item_bytes.len() {
-            continue;
-        }
-        let mut eq = true;
-        for (a, b) in val_bytes.iter().zip(item_bytes.iter()) {
-            let al = a.to_ascii_lowercase();
-            let bl = b.to_ascii_lowercase();
-            if al != bl {
-                eq = false;
-                break;
-            }
-        }
-        if eq {
-            return true;
-        }
-    }
-    false
+/// Match the C library's `strto*()` leading-ASCII-whitespace grammar. This is
+/// intentionally broader than systemd's `WHITESPACE`, which is used only by
+/// the explicit refusal flag above.
+fn skip_c_whitespace(bytes: &[u8]) -> &[u8] {
+    let first = bytes
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .unwrap_or(bytes.len());
+    &bytes[first..]
 }
 
-/// Check if string starts with one of the given prefixes (case-sensitive).
-/// Returns pointer past the prefix, or null.
+/// Return the first non-whitespace byte of an ABI C string.
 ///
 /// # Safety
-/// If non-null, `s` must point to a live NUL-terminated C string readable for this call.
-unsafe fn startswith_set(s: *const c_char, prefixes: &[&CStr]) -> *const c_char {
-    if s.is_null() {
-        return std::ptr::null();
-    }
-    // SAFETY: the caller guarantees s is a live NUL-terminated C string.
+/// `s` must point to a live NUL-terminated C string for this call.
+unsafe fn skip_whitespace_ptr(s: *const c_char) -> *const c_char {
+    // SAFETY: upheld by this helper's contract.
     let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
-    for prefix in prefixes {
-        let pbytes = prefix.to_bytes();
-        if bytes.len() >= pbytes.len() && &bytes[..pbytes.len()] == pbytes {
-            // SAFETY: the matched prefix length is within the C string.
-            return unsafe { s.add(pbytes.len()) };
-        }
-    }
-    std::ptr::null()
+    let offset = bytes
+        .iter()
+        .position(|byte| !is_whitespace(*byte))
+        .unwrap_or(bytes.len());
+    // SAFETY: offset was measured within the C string above.
+    unsafe { s.add(offset) }
+}
+
+fn strcase_in_set(value: &[u8], set: &[&CStr]) -> bool {
+    set.iter()
+        .any(|item| value.eq_ignore_ascii_case(item.to_bytes()))
 }
 
 /// Mangle base: handle Python 3 style "0b"/"0B" and "0o"/"0O" prefixes.
-///
-/// # Safety
-/// `s` must point to a live NUL-terminated C string readable for this call.
-unsafe fn mangle_base(s: *const c_char, base: &mut u32) -> *const c_char {
+fn mangle_base<'a>(bytes: &'a [u8], base: &mut u32) -> &'a [u8] {
     // If base is already explicitly specified (non-zero actual base), don't mangle.
     if safe_ato_mask_flags(*base) != 0 {
-        return s;
+        return bytes;
     }
 
-    let prefixes_0b: [&CStr; 2] = [c"0b", c"0B"];
-    // SAFETY: the caller guarantees s is a live C string.
-    let k = unsafe { startswith_set(s, &prefixes_0b) };
-    if !k.is_null() {
+    if bytes.starts_with(b"0b") || bytes.starts_with(b"0B") {
         *base = 2 | (*base & SAFE_ATO_ALL_FLAGS);
-        return k;
+        return &bytes[2..];
     }
 
-    let prefixes_0o: [&CStr; 2] = [c"0o", c"0O"];
-    // SAFETY: the caller guarantees s is a live C string.
-    let k = unsafe { startswith_set(s, &prefixes_0o) };
-    if !k.is_null() {
+    if bytes.starts_with(b"0o") || bytes.starts_with(b"0O") {
         *base = 8 | (*base & SAFE_ATO_ALL_FLAGS);
-        return k;
+        return &bytes[2..];
     }
 
-    s
+    bytes
 }
 
 /// Flags_SET equivalent: check if flags are set in value.
@@ -169,25 +132,104 @@ fn in_set<T: PartialEq>(value: T, set: &[T]) -> bool {
     set.contains(&value)
 }
 
+fn digit_value(byte: u8) -> Option<u32> {
+    match byte {
+        b'0'..=b'9' => Some((byte - b'0') as u32),
+        b'a'..=b'f' => Some((byte - b'a') as u32 + 10),
+        b'A'..=b'F' => Some((byte - b'A') as u32 + 10),
+        _ => None,
+    }
+}
+
+fn parse_unsigned_digits(bytes: &[u8], mut base: u32, limit: u64) -> Result<u64, i32> {
+    if base == 1 || base > 16 {
+        return Err(Errno::EINVAL.to_neg_errno());
+    }
+
+    let mut pos = 0;
+    if base == 0 {
+        base = if bytes.starts_with(b"0x") || bytes.starts_with(b"0X") {
+            pos = 2;
+            16
+        } else if bytes.starts_with(b"0") {
+            8
+        } else {
+            10
+        };
+    } else if base == 16 && (bytes.starts_with(b"0x") || bytes.starts_with(b"0X")) {
+        pos = 2;
+    }
+
+    let mut value = 0u64;
+    let mut digits = 0;
+    while let Some(&byte) = bytes.get(pos) {
+        let Some(digit) = digit_value(byte) else {
+            break;
+        };
+        if digit >= base {
+            break;
+        }
+        value = value
+            .checked_mul(base as u64)
+            .and_then(|value| value.checked_add(digit as u64))
+            .filter(|value| *value <= limit)
+            .ok_or(Errno::ERANGE.to_neg_errno())?;
+        pos += 1;
+        digits += 1;
+    }
+
+    if digits == 0 || pos != bytes.len() {
+        return Err(Errno::EINVAL.to_neg_errno());
+    }
+
+    Ok(value)
+}
+
+fn parse_unsigned(bytes: &[u8], base: u32, limit: u64) -> Result<u64, i32> {
+    let bytes = skip_c_whitespace(bytes);
+    let (negative, bytes) = match bytes.first() {
+        Some(b'+') => (false, &bytes[1..]),
+        Some(b'-') => (true, &bytes[1..]),
+        _ => (false, bytes),
+    };
+    let value = parse_unsigned_digits(bytes, base, limit)?;
+    if negative && value != 0 {
+        return Err(Errno::ERANGE.to_neg_errno());
+    }
+    Ok(value)
+}
+
+fn parse_signed(bytes: &[u8], base: u32, min: i64, max: i64) -> Result<i64, i32> {
+    let bytes = skip_c_whitespace(bytes);
+    let (negative, bytes) = match bytes.first() {
+        Some(b'+') => (false, &bytes[1..]),
+        Some(b'-') => (true, &bytes[1..]),
+        _ => (false, bytes),
+    };
+    let limit = if negative {
+        (-(min + 1)) as u64 + 1
+    } else {
+        max as u64
+    };
+    let value = parse_unsigned_digits(bytes, base, limit)?;
+    if negative {
+        Ok(if value == limit { min } else { -(value as i64) })
+    } else {
+        Ok(value as i64)
+    }
+}
+
 // ── parse_boolean ─────────────────────────────────────────────────────────
 
 static TRUE_VALUES: [&CStr; 6] = [c"1", c"yes", c"y", c"true", c"t", c"on"];
 static FALSE_VALUES: [&CStr; 6] = [c"0", c"no", c"n", c"false", c"f", c"off"];
 
-/// # Safety
-/// If non-null, `v` must point to a live NUL-terminated C string readable for this call.
-unsafe fn parse_boolean_inner(v: *const c_char) -> i32 {
-    if v.is_null() {
-        return Errno::EINVAL.to_neg_errno();
-    }
-
-    // SAFETY: the caller guarantees v is a live C string.
-    if unsafe { strcase_in_set(v, &TRUE_VALUES) } {
+fn parse_boolean_inner(v: &[u8]) -> i32 {
+    if strcase_in_set(v, &TRUE_VALUES) {
         return 1;
     }
 
-    // SAFETY: the caller guarantees v is a live C string.
-    if unsafe { strcase_in_set(v, &FALSE_VALUES) } {
+    if strcase_in_set(v, &FALSE_VALUES) {
         return 0;
     }
 
@@ -205,8 +247,11 @@ unsafe fn parse_boolean_inner(v: *const c_char) -> i32 {
 /// C-string inputs must remain NUL-terminated and live for the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_boolean(v: *const c_char) -> i32 {
-    // SAFETY: this function forwards its C-string contract unchanged.
-    unsafe { parse_boolean_inner(v) }
+    // SAFETY: the ABI contract guarantees that a non-null input is a C string.
+    match unsafe { cstr_bytes(v) } {
+        Ok(bytes) => parse_boolean_inner(bytes),
+        Err(error) => error,
+    }
 }
 
 // ── safe_atou_full ────────────────────────────────────────────────────────
@@ -219,75 +264,41 @@ pub unsafe extern "C" fn rs_parse_boolean(v: *const c_char) -> i32 {
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
 pub(crate) unsafe fn safe_atou_full_inner(s: *const c_char, base: u32, ret_u: *mut u32) -> i32 {
-    let mut x: *mut c_char = std::ptr::null_mut();
-    let whitespace: [u8; 4] = *b" \t\n\r";
-
-    if s.is_null() {
-        return Errno::EINVAL.to_neg_errno();
-    }
     if safe_ato_mask_flags(base) > 16 {
         return Errno::EINVAL.to_neg_errno();
     }
 
-    let mut s = s;
-
-    // Check leading whitespace flag
-    // SAFETY: the caller guarantees s is a live C string.
+    // SAFETY: upheld by this function's C-string contract.
+    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
+        return Errno::EINVAL.to_neg_errno();
+    };
     if flags_set(base, SAFE_ATO_REFUSE_LEADING_WHITESPACE)
-        && whitespace.contains(&(unsafe { *s } as u8))
+        && bytes.first().is_some_and(|byte| is_whitespace(*byte))
     {
         return Errno::EINVAL.to_neg_errno();
     }
-
-    // Skip whitespace
-    // SAFETY: s is the caller-validated C string.
-    s = unsafe { skip_whitespace(s) };
-
-    // Check +/- refusal flag
-    // SAFETY: skip_whitespace returns an in-bounds C-string pointer.
-    if flags_set(base, SAFE_ATO_REFUSE_PLUS_MINUS) && in_set(unsafe { *s } as u8, b"+-") {
+    let bytes = skip_whitespace(bytes);
+    if flags_set(base, SAFE_ATO_REFUSE_PLUS_MINUS)
+        && bytes.first().is_some_and(|byte| in_set(*byte, b"+-"))
+    {
         return Errno::EINVAL.to_neg_errno();
     }
-
-    // Check leading zero refusal flag
-    // SAFETY: s remains within the caller's C string.
-    if flags_set(base, SAFE_ATO_REFUSE_LEADING_ZERO) && (unsafe { *s } as u8) == b'0' {
-        // SAFETY: s remains a live NUL-terminated C string.
-        let rest = unsafe { CStr::from_ptr(s) };
-        if rest.to_bytes_with_nul().len() > 2 {
-            // Not exactly "0"
-            return Errno::EINVAL.to_neg_errno();
-        }
+    if flags_set(base, SAFE_ATO_REFUSE_LEADING_ZERO)
+        && bytes.first() == Some(&b'0')
+        && bytes.len() > 1
+    {
+        return Errno::EINVAL.to_neg_errno();
     }
-
     let mut mang_base = base;
-    // SAFETY: s is live and mang_base is a writable local.
-    s = unsafe { mangle_base(s, &mut mang_base) };
-
-    let actual_base = safe_ato_mask_flags(mang_base) as i32;
-
-    clear_errno();
-    // SAFETY: s is a live C string and x is a writable end-pointer.
-    let l = unsafe { crate::ffi::strtoul(s, &mut x, actual_base) };
-    let errno_val = get_errno();
-    if errno_val > 0 {
-        return -errno_val;
-    }
-    // SAFETY: a non-null x returned by strtoul points within s.
-    if x.is_null() || x as *const c_char == s || unsafe { *x } != 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-    // SAFETY: s remains within the caller's C string.
-    if l != 0 && (unsafe { *s } as u8) == b'-' {
-        return Errno::ERANGE.to_neg_errno();
-    }
-    if (l as u64) != (l as u32) as u64 {
-        return Errno::ERANGE.to_neg_errno();
-    }
+    let bytes = mangle_base(bytes, &mut mang_base);
+    let value = match parse_unsigned(bytes, safe_ato_mask_flags(mang_base), u32::MAX as u64) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
 
     if !ret_u.is_null() {
         // SAFETY: the caller guarantees non-null ret_u is writable.
-        unsafe { *ret_u = l as u32 };
+        unsafe { *ret_u = value as u32 };
     }
     0
 }
@@ -415,36 +426,24 @@ pub unsafe extern "C" fn rs_safe_atou16_full(s: *const c_char, base: u32, ret: *
 // SAFETY: callers pass either NULL (rejected) or a readable NUL-terminated C string;
 // a non-NULL output is writable for one i32 and is only published on success.
 unsafe fn safe_atoi_inner(s: *const c_char, ret_i: *mut i32) -> i32 {
-    let mut x: *mut c_char = std::ptr::null_mut();
-
-    if s.is_null() {
+    // SAFETY: upheld by this function's C-string contract.
+    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
         return Errno::EINVAL.to_neg_errno();
-    }
-
-    // SAFETY: the caller guarantees s is a live C string.
-    let mut s = unsafe { skip_whitespace(s) };
+    };
+    let bytes = skip_whitespace(bytes);
     let mut base: u32 = 0;
-    // SAFETY: s is live and base is a writable local.
-    s = unsafe { mangle_base(s, &mut base) };
-
-    clear_errno();
-    // SAFETY: s is a live C string and x is a writable end-pointer.
-    let l = unsafe { crate::ffi::strtol(s, &mut x, base as i32) };
-    let errno_val = get_errno();
-    if errno_val > 0 {
-        return -errno_val;
-    }
-    // SAFETY: a non-null x returned by strtol points within s.
-    if x.is_null() || x as *const c_char == s || unsafe { *x } != 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-    if (l as c_long) != (l as i32) as c_long {
+    let bytes = mangle_base(bytes, &mut base);
+    let value = match parse_signed(bytes, base, c_long::MIN as i64, c_long::MAX as i64) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    if value < i32::MIN as i64 || value > i32::MAX as i64 {
         return Errno::ERANGE.to_neg_errno();
     }
 
     if !ret_i.is_null() {
         // SAFETY: the caller guarantees non-null ret_i is writable.
-        unsafe { *ret_i = l as i32 };
+        unsafe { *ret_i = value as i32 };
     }
     0
 }
@@ -477,36 +476,23 @@ pub unsafe extern "C" fn rs_safe_atoi(s: *const c_char, ret_i: *mut i32) -> i32 
 /// C-string inputs must remain NUL-terminated and live for the call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_safe_atoi16(s: *const c_char, ret: *mut i16) -> i32 {
-    let mut x: *mut c_char = std::ptr::null_mut();
-
-    if s.is_null() {
+    // SAFETY: upheld by this export's C-string contract.
+    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
         return Errno::EINVAL.to_neg_errno();
-    }
-
-    // SAFETY: the caller guarantees s is a live C string.
-    let mut s = unsafe { skip_whitespace(s) };
-    let mut base: u32 = 0;
-    // SAFETY: s is live and base is a writable local.
-    s = unsafe { mangle_base(s, &mut base) };
-
-    clear_errno();
-    // SAFETY: s is a live C string and x is a writable end-pointer.
-    let l = unsafe { crate::ffi::strtol(s, &mut x, base as i32) };
-    let errno_val = get_errno();
-    if errno_val > 0 {
-        return -errno_val;
-    }
-    // SAFETY: a non-null x returned by strtol points within s.
-    if x.is_null() || x as *const c_char == s || unsafe { *x } != 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-    if (l as c_long) != (l as i16) as c_long {
+    };
+    let mut base = 0;
+    let bytes = mangle_base(skip_whitespace(bytes), &mut base);
+    let value = match parse_signed(bytes, base, i16::MIN as i64, i16::MAX as i64) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    if value < i16::MIN as i64 || value > i16::MAX as i64 {
         return Errno::ERANGE.to_neg_errno();
     }
 
     if !ret.is_null() {
         // SAFETY: the caller guarantees non-null ret is writable.
-        unsafe { *ret = l as i16 };
+        unsafe { *ret = value as i16 };
     }
     0
 }
@@ -521,33 +507,21 @@ pub unsafe extern "C" fn rs_safe_atoi16(s: *const c_char, ret: *mut i16) -> i32 
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
 pub(crate) unsafe fn safe_atolli_inner(s: *const c_char, ret_lli: *mut i64) -> i32 {
-    let mut x: *mut c_char = std::ptr::null_mut();
-
-    if s.is_null() {
+    // SAFETY: upheld by this function's C-string contract.
+    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
         return Errno::EINVAL.to_neg_errno();
-    }
-
-    // SAFETY: the caller guarantees s is a live C string.
-    let mut s = unsafe { skip_whitespace(s) };
+    };
+    let bytes = skip_whitespace(bytes);
     let mut base: u32 = 0;
-    // SAFETY: s is live and base is a writable local.
-    s = unsafe { mangle_base(s, &mut base) };
-
-    clear_errno();
-    // SAFETY: s is a live C string and x is a writable end-pointer.
-    let l = unsafe { crate::ffi::strtoll(s, &mut x, base as i32) };
-    let errno_val = get_errno();
-    if errno_val > 0 {
-        return -errno_val;
-    }
-    // SAFETY: a non-null x returned by strtoll points within s.
-    if x.is_null() || x as *const c_char == s || unsafe { *x } != 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
+    let bytes = mangle_base(bytes, &mut base);
+    let value = match parse_signed(bytes, base, i64::MIN, i64::MAX) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
 
     if !ret_lli.is_null() {
         // SAFETY: the caller guarantees non-null ret_lli is writable.
-        unsafe { *ret_lli = l as i64 };
+        unsafe { *ret_lli = value };
     }
     0
 }
@@ -579,66 +553,41 @@ pub unsafe extern "C" fn rs_safe_atolli(s: *const c_char, ret_lli: *mut i64) -> 
 /// in ways forbidden by the operation's documented ownership contract.
 /// C-string inputs must remain NUL-terminated and live for the call.
 pub(crate) unsafe fn safe_atollu_full_inner(s: *const c_char, base: u32, ret_llu: *mut u64) -> i32 {
-    let mut x: *mut c_char = std::ptr::null_mut();
-    let whitespace: [u8; 4] = *b" \t\n\r";
-
-    if s.is_null() {
-        return Errno::EINVAL.to_neg_errno();
-    }
     if safe_ato_mask_flags(base) > 16 {
         return Errno::EINVAL.to_neg_errno();
     }
 
-    let mut s = s;
-
-    // SAFETY: the caller guarantees s is a live C string.
+    // SAFETY: upheld by this function's C-string contract.
+    let Ok(bytes) = (unsafe { cstr_bytes(s) }) else {
+        return Errno::EINVAL.to_neg_errno();
+    };
     if flags_set(base, SAFE_ATO_REFUSE_LEADING_WHITESPACE)
-        && whitespace.contains(&(unsafe { *s } as u8))
+        && bytes.first().is_some_and(|byte| is_whitespace(*byte))
     {
         return Errno::EINVAL.to_neg_errno();
     }
-
-    // SAFETY: s is the caller-validated C string.
-    s = unsafe { skip_whitespace(s) };
-
-    // SAFETY: skip_whitespace returns an in-bounds C-string pointer.
-    if flags_set(base, SAFE_ATO_REFUSE_PLUS_MINUS) && in_set(unsafe { *s } as u8, b"+-") {
+    let bytes = skip_whitespace(bytes);
+    if flags_set(base, SAFE_ATO_REFUSE_PLUS_MINUS)
+        && bytes.first().is_some_and(|byte| in_set(*byte, b"+-"))
+    {
         return Errno::EINVAL.to_neg_errno();
     }
-
-    // SAFETY: s is readable through its terminating NUL; add(1) is only
-    // evaluated after observing a leading non-NUL zero digit.
     if flags_set(base, SAFE_ATO_REFUSE_LEADING_ZERO)
-        && (unsafe { *s } as u8) == b'0'
-        // SAFETY: a leading zero is non-NUL, so the next byte is within the C string.
-        && unsafe { *s.add(1) } != 0
+        && bytes.first() == Some(&b'0')
+        && bytes.len() > 1
     {
         return Errno::EINVAL.to_neg_errno();
     }
-
     let mut mang_base = base;
-    // SAFETY: s is live and mang_base is a writable local.
-    s = unsafe { mangle_base(s, &mut mang_base) };
-
-    clear_errno();
-    // SAFETY: s is a live C string and x is a writable end-pointer.
-    let l = unsafe { crate::ffi::strtoull(s, &mut x, safe_ato_mask_flags(mang_base) as i32) };
-    let errno_val = get_errno();
-    if errno_val > 0 {
-        return -errno_val;
-    }
-    // SAFETY: a non-null x returned by strtoull points within s.
-    if x.is_null() || x as *const c_char == s || unsafe { *x } != 0 {
-        return Errno::EINVAL.to_neg_errno();
-    }
-    // SAFETY: s remains within the caller's C string.
-    if l != 0 && (unsafe { *s } as u8) == b'-' {
-        return Errno::ERANGE.to_neg_errno();
-    }
+    let bytes = mangle_base(bytes, &mut mang_base);
+    let value = match parse_unsigned(bytes, safe_ato_mask_flags(mang_base), u64::MAX) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
 
     if !ret_llu.is_null() {
         // SAFETY: the caller guarantees non-null ret_llu is writable.
-        unsafe { *ret_llu = l as u64 };
+        unsafe { *ret_llu = value };
     }
     0
 }
@@ -1038,7 +987,7 @@ unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
     loop {
         // Skip whitespace
         // SAFETY: p remains within the caller's C string.
-        p = unsafe { skip_whitespace(p) };
+        p = unsafe { skip_whitespace_ptr(p) };
 
         let mut x: *mut c_char = std::ptr::null_mut();
         clear_errno();
@@ -1084,7 +1033,7 @@ unsafe fn parse_size_inner(t: *const c_char, base: u64, size: *mut u64) -> i32 {
 
         // Skip whitespace after number
         // SAFETY: e remains within the caller's C string.
-        e = unsafe { skip_whitespace(e) }.cast_mut();
+        e = unsafe { skip_whitespace_ptr(e) }.cast_mut();
 
         // Find matching suffix
         let mut i = start_pos;
@@ -1338,7 +1287,10 @@ unsafe fn parse_errno_inner(s: *const c_char) -> i32 {
 
     // SAFETY: `s` is non-null and the caller guarantees a live
     // NUL-terminated string.
-    let r = unsafe { errno_from_name(s) };
+    let r = match unsafe { cstr_bytes(s) } {
+        Ok(bytes) => errno_from_name(bytes),
+        Err(error) => return error,
+    };
     if r > 0 {
         return r;
     }
@@ -2129,6 +2081,43 @@ mod tests {
             assert_eq!(val, 42);
         }
         free_cstr(s);
+    }
+
+    #[test]
+    fn test_safe_numeric_slice_grammar() {
+        let mut binary_base = 0;
+        assert_eq!(
+            parse_unsigned(
+                mangle_base(b"0b101", &mut binary_base),
+                binary_base,
+                u64::MAX
+            ),
+            Ok(5)
+        );
+        let mut octal_base = 0;
+        assert_eq!(
+            parse_unsigned(mangle_base(b"0o17", &mut octal_base), octal_base, u64::MAX),
+            Ok(15)
+        );
+        assert_eq!(parse_unsigned(b"0x10", 0, u64::MAX), Ok(16));
+        assert_eq!(parse_unsigned(b"\x0b42", 0, u64::MAX), Ok(42));
+        assert_eq!(parse_unsigned(b"-0", 0, u64::MAX), Ok(0));
+        assert_eq!(
+            parse_unsigned(b"-1", 0, u64::MAX),
+            Err(Errno::ERANGE.to_neg_errno())
+        );
+        assert_eq!(
+            parse_unsigned(b"09", 0, u64::MAX),
+            Err(Errno::EINVAL.to_neg_errno())
+        );
+        assert_eq!(
+            parse_unsigned(b"18446744073709551616", 10, u64::MAX),
+            Err(Errno::ERANGE.to_neg_errno())
+        );
+        assert_eq!(
+            parse_signed(b"-0x8000000000000000", 0, i64::MIN, i64::MAX),
+            Ok(i64::MIN)
+        );
     }
 
     #[test]

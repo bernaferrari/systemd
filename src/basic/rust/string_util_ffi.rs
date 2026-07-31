@@ -22,6 +22,19 @@ const LESS: &[u8] = b"<\0";
 const EQUAL: &[u8] = b"==\0";
 const GREATER: &[u8] = b">\0";
 
+/// Invoke a reviewed core C-ABI implementation from an exported adapter.
+///
+/// The caller's surrounding `# Safety` section is the contract forwarded to
+/// the core implementation. Keeping the unsafe operation here makes the FFI
+/// layer's pointer hand-off explicit and prevents otherwise identical adapter
+/// bodies from duplicating an unsafe operation site.
+macro_rules! forward_core_ffi {
+    ($call:expr) => {{
+        // SAFETY: the invoking exported adapter documents and forwards this contract.
+        unsafe { $call }
+    }};
+}
+
 /// Borrow a valid optional C string for an ABI call without transferring
 /// ownership. The caller proves the non-null C-string contract.
 ///
@@ -54,7 +67,7 @@ fn static_c(bytes: &'static [u8]) -> *const c_char {
 pub unsafe extern "C" fn rs_strcmp_ptr(a: *const c_char, b: *const c_char) -> i32 {
     // SAFETY: this entry point establishes the same optional C-string contract
     // as the shared, reviewed Rust implementation.
-    unsafe { core::rs_strcmp_ptr(a, b) }
+    forward_core_ffi!(core::rs_strcmp_ptr(a, b))
 }
 
 /// C ABI for fundamental `strncmp_ptr()`.
@@ -70,7 +83,7 @@ pub unsafe extern "C" fn rs_strcmp_ptr(a: *const c_char, b: *const c_char) -> i3
 pub unsafe extern "C" fn rs_strncmp_ptr(a: *const c_char, b: *const c_char, n: usize) -> i32 {
     // SAFETY: this entry point establishes the same optional C-string contract
     // as the shared, reviewed Rust implementation.
-    unsafe { core::rs_strncmp_ptr(a, b, n) }
+    forward_core_ffi!(core::rs_strncmp_ptr(a, b, n))
 }
 
 /// C ABI for fundamental `strcasecmp_ptr()`.
@@ -86,7 +99,7 @@ pub unsafe extern "C" fn rs_strncmp_ptr(a: *const c_char, b: *const c_char, n: u
 pub unsafe extern "C" fn rs_strcasecmp_ptr(a: *const c_char, b: *const c_char) -> i32 {
     // SAFETY: this entry point establishes the same optional C-string contract
     // as the shared, reviewed Rust implementation.
-    unsafe { core::rs_strcasecmp_ptr(a, b) }
+    forward_core_ffi!(core::rs_strcasecmp_ptr(a, b))
 }
 
 /// C ABI for fundamental `streq_ptr()`.
@@ -96,7 +109,7 @@ pub unsafe extern "C" fn rs_strcasecmp_ptr(a: *const c_char, b: *const c_char) -
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_streq_ptr(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: forwarded C-string contract.
-    unsafe { rs_strcmp_ptr(a, b) == 0 }
+    forward_core_ffi!(rs_strcmp_ptr(a, b) == 0)
 }
 
 /// C ABI for fundamental `strneq_ptr()`.
@@ -106,7 +119,7 @@ pub unsafe extern "C" fn rs_streq_ptr(a: *const c_char, b: *const c_char) -> boo
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strneq_ptr(a: *const c_char, b: *const c_char, n: usize) -> bool {
     // SAFETY: forwarded C-string contract.
-    unsafe { rs_strncmp_ptr(a, b, n) == 0 }
+    forward_core_ffi!(rs_strncmp_ptr(a, b, n) == 0)
 }
 
 /// C ABI for fundamental `strcaseeq_ptr()`.
@@ -116,7 +129,7 @@ pub unsafe extern "C" fn rs_strneq_ptr(a: *const c_char, b: *const c_char, n: us
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strcaseeq_ptr(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: forwarded C-string contract.
-    unsafe { rs_strcasecmp_ptr(a, b) == 0 }
+    forward_core_ffi!(rs_strcasecmp_ptr(a, b) == 0)
 }
 
 /// C ABI for fundamental `strlen_ptr()`.
@@ -151,7 +164,11 @@ pub unsafe extern "C" fn rs_isempty(s: *const c_char) -> bool {
 /// result remains valid only as long as the caller's source pointer is valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strempty(s: *const c_char) -> *const c_char {
-    if s.is_null() { static_c(EMPTY) } else { s }
+    if s.is_null() {
+        static_c(EMPTY)
+    } else {
+        s
+    }
 }
 
 /// C ABI for fundamental `yes_no()`.
@@ -288,7 +305,7 @@ pub unsafe extern "C" fn rs_ascii_strcasecmp_n(
     n: usize,
 ) -> i32 {
     // SAFETY: the wrapper's contract is exactly the core's counted-range contract.
-    unsafe { core::rs_ascii_strcasecmp_n(a, b, n) }
+    forward_core_ffi!(core::rs_ascii_strcasecmp_n(a, b, n))
 }
 
 /// C ABI for `ascii_strcasecmp_nn()`.
@@ -304,7 +321,7 @@ pub unsafe extern "C" fn rs_ascii_strcasecmp_nn(
     m: usize,
 ) -> i32 {
     // SAFETY: the wrapper's contract is exactly the core's counted-range contract.
-    unsafe { core::rs_ascii_strcasecmp_nn(a, n, b, m) }
+    forward_core_ffi!(core::rs_ascii_strcasecmp_nn(a, n, b, m))
 }
 
 /// C ABI for `chars_intersect()`.
@@ -314,7 +331,7 @@ pub unsafe extern "C" fn rs_ascii_strcasecmp_nn(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_chars_intersect(a: *const c_char, b: *const c_char) -> bool {
     // SAFETY: the wrapper's C-string contract implies the core contract.
-    unsafe { core::rs_chars_intersect(a, b) }
+    forward_core_ffi!(core::rs_chars_intersect(a, b))
 }
 
 /// C ABI for `string_has_cc()`.
@@ -325,7 +342,7 @@ pub unsafe extern "C" fn rs_chars_intersect(a: *const c_char, b: *const c_char) 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_string_has_cc(p: *const c_char, ok: *const c_char) -> bool {
     // SAFETY: the wrapper's C-string contract implies the core contract.
-    unsafe { core::rs_string_has_cc(p, ok) }
+    forward_core_ffi!(core::rs_string_has_cc(p, ok))
 }
 
 /// C ABI for `strdup_to_full()`.
@@ -337,7 +354,7 @@ pub unsafe extern "C" fn rs_string_has_cc(p: *const c_char, ok: *const c_char) -
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strdup_to_full(ret: *mut *mut c_char, src: *const c_char) -> i32 {
     // SAFETY: the wrapper's optional-output and C-string contracts match the core.
-    unsafe { core::rs_strdup_to_full(ret, src) }
+    forward_core_ffi!(core::rs_strdup_to_full(ret, src))
 }
 
 /// C ABI for `free_and_strdup()`.
@@ -349,7 +366,7 @@ pub unsafe extern "C" fn rs_strdup_to_full(ret: *mut *mut c_char, src: *const c_
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_free_and_strdup(p: *mut *mut c_char, s: *const c_char) -> i32 {
     // SAFETY: the wrapper's ownership and C-string contracts match the core.
-    unsafe { core::rs_free_and_strdup(p, s) }
+    forward_core_ffi!(core::rs_free_and_strdup(p, s))
 }
 
 /// C ABI for `free_and_strndup()`.
@@ -366,7 +383,7 @@ pub unsafe extern "C" fn rs_free_and_strndup(
     l: usize,
 ) -> i32 {
     // SAFETY: the wrapper's ownership and counted-range contracts match the core.
-    unsafe { core::rs_free_and_strndup(p, s, l) }
+    forward_core_ffi!(core::rs_free_and_strndup(p, s, l))
 }
 
 /// C ABI for `make_cstring()`.
@@ -385,7 +402,7 @@ pub unsafe extern "C" fn rs_make_cstring(
 ) -> i32 {
     // SAFETY: the wrapper's counted-range, output, and ownership contracts
     // match the core; byte buffers have no alignment requirement.
-    unsafe { core::rs_make_cstring(s.cast::<c_char>(), n, mode, ret) }
+    forward_core_ffi!(core::rs_make_cstring(s.cast::<c_char>(), n, mode, ret))
 }
 
 /// C ABI for `split_pair()`.
@@ -402,7 +419,7 @@ pub unsafe extern "C" fn rs_split_pair(
     ret_second: *mut *mut c_char,
 ) -> i32 {
     // SAFETY: the wrapper's C-string and optional-output contracts match the core.
-    unsafe { core::rs_split_pair(s, sep, ret_first, ret_second) }
+    forward_core_ffi!(core::rs_split_pair(s, sep, ret_first, ret_second))
 }
 
 /// C ABI for `str_common_prefix()`.
@@ -412,7 +429,7 @@ pub unsafe extern "C" fn rs_split_pair(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_str_common_prefix(a: *const c_char, b: *const c_char) -> usize {
     // SAFETY: the wrapper's C-string contract implies the core contract.
-    unsafe { core::rs_str_common_prefix(a, b) }
+    forward_core_ffi!(core::rs_str_common_prefix(a, b))
 }
 
 /// C ABI for `strspn_from_end()`.
@@ -422,7 +439,7 @@ pub unsafe extern "C" fn rs_str_common_prefix(a: *const c_char, b: *const c_char
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strspn_from_end(str_: *const c_char, accept: *const c_char) -> usize {
     // SAFETY: the wrapper's C-string contract implies the core contract.
-    unsafe { core::rs_strspn_from_end(str_, accept) }
+    forward_core_ffi!(core::rs_strspn_from_end(str_, accept))
 }
 
 /// C ABI for `streq_skip_trailing_chars()`.
@@ -437,7 +454,7 @@ pub unsafe extern "C" fn rs_streq_skip_trailing_chars(
     ok: *const c_char,
 ) -> bool {
     // SAFETY: the wrapper's nullable C-string contract matches the core.
-    unsafe { core::rs_streq_skip_trailing_chars(s1, s2, ok) }
+    forward_core_ffi!(core::rs_streq_skip_trailing_chars(s1, s2, ok))
 }
 
 /// C ABI for `strdupspn()`.
@@ -448,7 +465,7 @@ pub unsafe extern "C" fn rs_streq_skip_trailing_chars(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strdupspn(a: *const c_char, accept: *const c_char) -> *mut c_char {
     // SAFETY: the wrapper's C-string contract implies the core contract.
-    unsafe { core::rs_strdupspn(a, accept) }
+    forward_core_ffi!(core::rs_strdupspn(a, accept))
 }
 
 /// C ABI for `strdupcspn()`.
@@ -459,7 +476,7 @@ pub unsafe extern "C" fn rs_strdupspn(a: *const c_char, accept: *const c_char) -
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strdupcspn(a: *const c_char, reject: *const c_char) -> *mut c_char {
     // SAFETY: the wrapper's C-string contract implies the core contract.
-    unsafe { core::rs_strdupcspn(a, reject) }
+    forward_core_ffi!(core::rs_strdupcspn(a, reject))
 }
 
 /// C ABI for `string_replace_char()`.
@@ -474,7 +491,7 @@ pub unsafe extern "C" fn rs_string_replace_char(
     new_char: c_char,
 ) -> *mut c_char {
     // SAFETY: the wrapper's writable-string contract implies the core contract.
-    unsafe { core::rs_string_replace_char(str_, old_char, new_char) }
+    forward_core_ffi!(core::rs_string_replace_char(str_, old_char, new_char))
 }
 
 /// C ABI for `strrep()`.
@@ -485,7 +502,7 @@ pub unsafe extern "C" fn rs_string_replace_char(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strrep(s: *const c_char, n: usize) -> *mut c_char {
     // SAFETY: the wrapper's C-string contract implies the core contract.
-    unsafe { core::rs_strrep(s, n) }
+    forward_core_ffi!(core::rs_strrep(s, n))
 }
 
 /// C ABI for `strreplace()`.
@@ -501,7 +518,7 @@ pub unsafe extern "C" fn rs_strreplace(
     new_string: *const c_char,
 ) -> *mut c_char {
     // SAFETY: the wrapper's C-string contract implies the core contract.
-    unsafe { core::rs_strreplace(text, old_string, new_string) }
+    forward_core_ffi!(core::rs_strreplace(text, old_string, new_string))
 }
 
 /// C ABI for `json_underscorify()`.
@@ -511,7 +528,7 @@ pub unsafe extern "C" fn rs_strreplace(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_json_underscorify(p: *mut c_char) -> *mut c_char {
     // SAFETY: the wrapper's writable C-string contract matches the core.
-    unsafe { core::rs_json_underscorify(p) }
+    forward_core_ffi!(core::rs_json_underscorify(p))
 }
 
 /// C ABI for `json_dashify()`.
@@ -521,7 +538,7 @@ pub unsafe extern "C" fn rs_json_underscorify(p: *mut c_char) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_json_dashify(p: *mut c_char) -> *mut c_char {
     // SAFETY: the wrapper's writable C-string contract matches the core.
-    unsafe { core::rs_json_dashify(p) }
+    forward_core_ffi!(core::rs_json_dashify(p))
 }
 
 /// C ABI for `in_charset()`.
@@ -531,7 +548,7 @@ pub unsafe extern "C" fn rs_json_dashify(p: *mut c_char) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_in_charset(s: *const c_char, charset: *const c_char) -> bool {
     // SAFETY: the wrapper's C-string contract implies the core contract.
-    unsafe { core::rs_in_charset(s, charset) }
+    forward_core_ffi!(core::rs_in_charset(s, charset))
 }
 
 /// C ABI for `strgrowpad0()`.
@@ -543,7 +560,7 @@ pub unsafe extern "C" fn rs_in_charset(s: *const c_char, charset: *const c_char)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strgrowpad0(s: *mut *mut c_char, l: usize) -> i32 {
     // SAFETY: the wrapper's allocation ownership contract matches the core.
-    unsafe { core::rs_strgrowpad0(s, l) }
+    forward_core_ffi!(core::rs_strgrowpad0(s, l))
 }
 
 /// C ABI for `strshorten()`.
@@ -555,7 +572,7 @@ pub unsafe extern "C" fn rs_strgrowpad0(s: *mut *mut c_char, l: usize) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strshorten(s: *mut c_char, l: usize) -> *mut c_char {
     // SAFETY: the wrapper's writable C-string contract matches the core.
-    unsafe { core::rs_strshorten(s, l) }
+    forward_core_ffi!(core::rs_strshorten(s, l))
 }
 
 /// C ABI for `strrstr_internal()`.
@@ -569,7 +586,7 @@ pub unsafe extern "C" fn rs_strrstr_internal(
     needle: *const c_char,
 ) -> *mut c_char {
     // SAFETY: the wrapper's nullable C-string contract matches the core.
-    unsafe { core::rs_strrstr_internal(haystack, needle) }
+    forward_core_ffi!(core::rs_strrstr_internal(haystack, needle))
 }
 
 /// C ABI for `strlevenshtein()`.
@@ -581,7 +598,7 @@ pub unsafe extern "C" fn rs_strrstr_internal(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strlevenshtein(x: *const c_char, y: *const c_char) -> isize {
     // SAFETY: the wrapper's nullable C-string contract matches the core.
-    unsafe { core::rs_strlevenshtein(x, y) }
+    forward_core_ffi!(core::rs_strlevenshtein(x, y))
 }
 
 /// C ABI for `version_is_valid()`.
@@ -593,7 +610,7 @@ pub unsafe extern "C" fn rs_strlevenshtein(x: *const c_char, y: *const c_char) -
 pub unsafe extern "C" fn rs_version_is_valid(s: *const c_char, flags: i32) -> bool {
     // SAFETY: the wrapper's nullable C-string contract and integer flag ABI
     // match the core and current C authority.
-    unsafe { core::rs_version_is_valid(s, flags) }
+    forward_core_ffi!(core::rs_version_is_valid(s, flags))
 }
 
 /// C ABI for `cellescape()`.
@@ -609,7 +626,7 @@ pub unsafe extern "C" fn rs_cellescape(
     s: *const c_char,
 ) -> *mut c_char {
     // SAFETY: the wrapper's output-capacity and C-string contract matches the core.
-    unsafe { core::rs_cellescape(buf, len, s) }
+    forward_core_ffi!(core::rs_cellescape(buf, len, s))
 }
 
 /// C ABI for `string_erase()`.
@@ -620,7 +637,7 @@ pub unsafe extern "C" fn rs_cellescape(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_string_erase(x: *mut c_char) -> *mut c_char {
     // SAFETY: the wrapper's nullable writable C-string contract matches the core.
-    unsafe { core::rs_string_erase(x) }
+    forward_core_ffi!(core::rs_string_erase(x))
 }
 
 /// C ABI for `strextendn()`.
@@ -639,7 +656,7 @@ pub unsafe extern "C" fn rs_strextendn(
     l: usize,
 ) -> *mut c_char {
     // SAFETY: the wrapper's allocation, source, and non-aliasing contract matches the core.
-    unsafe { core::rs_strextendn(x, s, l) }
+    forward_core_ffi!(core::rs_strextendn(x, s, l))
 }
 
 /// C ABI for `escape_non_printable_full()`.
@@ -655,5 +672,9 @@ pub unsafe extern "C" fn rs_escape_non_printable_full(
     flags: i32,
 ) -> *mut c_char {
     // SAFETY: the wrapper's C-string, flag, and allocator contract matches the core.
-    unsafe { core::rs_escape_non_printable_full(str_, console_width, flags) }
+    forward_core_ffi!(core::rs_escape_non_printable_full(
+        str_,
+        console_width,
+        flags
+    ))
 }
