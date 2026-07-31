@@ -6,9 +6,7 @@
 
 use std::ffi::CStr;
 
-use crate::ffi::{
-    Errno, free, malloc, memcmp, memmove, strchr, strcmp, strdup, strlen, strrchr, strstr,
-};
+use crate::ffi::{Errno, free, malloc, memcmp, memmove, strchr, strcmp, strdup, strlen};
 use libc::c_char;
 
 mod byte_abi;
@@ -21,77 +19,50 @@ const PATH_MAX_VAL: usize = 4096;
 
 // ── Internal helpers ──────────────────────────────────────────────────────
 
-/// Check if byte string s starts with prefix p.
-// SAFETY: `s` and `p` must each be live, NUL-terminated C strings readable for
-// the duration of this call.
-unsafe fn startswith(s: *const c_char, p: *const c_char) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        let s = CStr::from_ptr(s);
-        let p = CStr::from_ptr(p);
-        s.to_bytes().starts_with(p.to_bytes())
-    }
+fn startswith_bytes(value: &[u8], prefix: &[u8]) -> bool {
+    value.starts_with(prefix)
 }
 
-/// Check if byte string s ends with suffix p.
-// SAFETY: `s` and `p` must each be live, NUL-terminated C strings readable for
-// the duration of this call.
-unsafe fn endswith(s: *const c_char, p: *const c_char) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        let s = CStr::from_ptr(s);
-        let p = CStr::from_ptr(p);
-        let s_bytes = s.to_bytes();
-        let p_bytes = p.to_bytes();
-        if p_bytes.len() > s_bytes.len() {
-            return false;
-        }
-        s_bytes.ends_with(p_bytes)
+fn hidden_or_backup_file_bytes(filename: &[u8]) -> bool {
+    if filename.first() == Some(&b'.') {
+        return true;
     }
+    if matches!(filename, b"lost+found" | b"aquota.user" | b"aquota.group")
+        || filename.ends_with(b"~")
+    {
+        return true;
+    }
+    let Some(dot) = filename.iter().rposition(|byte| *byte == b'.') else {
+        return false;
+    };
+    matches!(
+        &filename[dot + 1..],
+        b"ignore"
+            | b"rpmnew"
+            | b"rpmsave"
+            | b"rpmorig"
+            | b"dpkg-old"
+            | b"dpkg-new"
+            | b"dpkg-tmp"
+            | b"dpkg-dist"
+            | b"dpkg-bak"
+            | b"dpkg-backup"
+            | b"dpkg-remove"
+            | b"ucf-new"
+            | b"ucf-old"
+            | b"ucf-dist"
+            | b"swp"
+            | b"bak"
+            | b"old"
+            | b"new"
+    )
 }
 
-/// Check if string is in a set of candidates.
-// SAFETY: `s` and every pointer in `candidates` must be live, NUL-terminated
-// C strings readable for the duration of this call.
-unsafe fn str_in_set(s: *const c_char, candidates: &[*const c_char]) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        let s = CStr::from_ptr(s);
-        for &c in candidates {
-            if strcmp(s.as_ptr(), c) == 0 {
-                return true;
-            }
-        }
-        false
-    }
-}
-
-/// Check if string ends with any of the given suffixes.
-// SAFETY: `s` and every pointer in `suffixes` must be live, NUL-terminated C
-// strings readable for the duration of this call.
-unsafe fn endswith_set(s: *const c_char, suffixes: &[*const c_char]) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
-        for &suffix in suffixes {
-            if endswith(s, suffix) {
-                return true;
-            }
-        }
-        false
-    }
-}
-
-/// streq: fast check for string equality.
-// SAFETY: `a` and `b` must each be live, NUL-terminated C strings readable for
-// the duration of this call.
-unsafe fn streq(a: *const c_char, b: *const c_char) -> bool {
-    // SAFETY: this raw-pointer port is one audited FFI operation region; its
-    // documented caller contract covers every pointer traversal and C call below.
-    unsafe { strcmp(a, b) == 0 }
+fn path_implies_directory_bytes(path: &[u8]) -> bool {
+    matches!(path, b"." | b"..")
+        || path.ends_with(b"/")
+        || path.ends_with(b"/.")
+        || path.ends_with(b"/..")
 }
 
 /// Skip leading '/' and "./" sequences.
@@ -341,66 +312,7 @@ pub unsafe extern "C" fn rs_hidden_or_backup_file(filename: *const c_char) -> bo
         if filename.is_null() {
             return false;
         }
-
-        if *filename == b'.' as c_char {
-            return true;
-        }
-
-        let lost_found = c"lost+found";
-        let aquota_user = c"aquota.user";
-        let aquota_group = c"aquota.group";
-
-        if str_in_set(
-            filename,
-            &[
-                lost_found.as_ptr(),
-                aquota_user.as_ptr(),
-                aquota_group.as_ptr(),
-            ],
-        ) {
-            return true;
-        }
-
-        if endswith(filename, c"~".as_ptr()) {
-            return true;
-        }
-
-        let dot = strrchr(filename, '.' as i32);
-        if dot.is_null() {
-            return false;
-        }
-
-        let suffix = dot.add(1);
-        static SUFFIXES: &[&[u8]] = &[
-            b"ignore",
-            b"rpmnew",
-            b"rpmsave",
-            b"rpmorig",
-            b"dpkg-old",
-            b"dpkg-new",
-            b"dpkg-tmp",
-            b"dpkg-dist",
-            b"dpkg-bak",
-            b"dpkg-backup",
-            b"dpkg-remove",
-            b"ucf-new",
-            b"ucf-old",
-            b"ucf-dist",
-            b"swp",
-            b"bak",
-            b"old",
-            b"new",
-        ];
-
-        // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        let suffix_cstr = CStr::from_ptr(suffix);
-        for &s in SUFFIXES {
-            if suffix_cstr.to_bytes() == s {
-                return true;
-            }
-        }
-
-        false
+        hidden_or_backup_file_bytes(CStr::from_ptr(filename).to_bytes())
     }
 }
 
@@ -465,12 +377,7 @@ pub unsafe extern "C" fn rs_path_implies_directory(path: *const c_char) -> bool 
         if path.is_null() {
             return false;
         }
-
-        if rs_dot_or_dot_dot(path) {
-            return true;
-        }
-
-        endswith_set(path, &[c"/".as_ptr(), c"/.".as_ptr(), c"/..".as_ptr()])
+        path_implies_directory_bytes(CStr::from_ptr(path).to_bytes())
     }
 }
 
@@ -494,20 +401,12 @@ pub unsafe extern "C" fn rs_path_is_normalized(p: *const c_char) -> bool {
         if !rs_path_is_safe(p) {
             return false;
         }
-
-        if streq(p, c".".as_ptr())
-            || startswith(p, c"./".as_ptr())
-            || endswith(p, c"/.".as_ptr())
-            || !strstr(p, c"/./".as_ptr()).is_null()
-        {
-            return false;
-        }
-
-        if !strstr(p, c"//".as_ptr()).is_null() {
-            return false;
-        }
-
-        true
+        let bytes = CStr::from_ptr(p).to_bytes();
+        bytes != b"."
+            && !bytes.starts_with(b"./")
+            && !bytes.ends_with(b"/.")
+            && !bytes.windows(3).any(|part| part == b"/./")
+            && !bytes.windows(2).any(|part| part == b"//")
     }
 }
 
@@ -662,14 +561,14 @@ pub unsafe extern "C" fn rs_valid_device_node_path(path: *const c_char) -> bool 
             return false;
         }
         // Check prefix
-        let has_dev_prefix = startswith(path, c"/dev/".as_ptr());
-        let has_inaccessible_prefix = startswith(path, c"/run/systemd/inaccessible/".as_ptr());
+        let bytes = CStr::from_ptr(path).to_bytes();
+        let has_dev_prefix = startswith_bytes(bytes, b"/dev/");
+        let has_inaccessible_prefix = startswith_bytes(bytes, b"/run/systemd/inaccessible/");
         if !has_dev_prefix && !has_inaccessible_prefix {
             return false;
         }
         // Must not end with /
-        let len = strlen(path);
-        if len > 0 && *path.add(len - 1) == b'/' as c_char {
+        if bytes.ends_with(b"/") {
             return false;
         }
         // Must be normalized
@@ -695,7 +594,8 @@ pub unsafe extern "C" fn rs_valid_device_allow_pattern(path: *const c_char) -> b
             return false;
         }
         // Check for "block-" or "char-" prefix
-        if startswith(path, c"block-".as_ptr()) || startswith(path, c"char-".as_ptr()) {
+        let bytes = CStr::from_ptr(path).to_bytes();
+        if startswith_bytes(bytes, b"block-") || startswith_bytes(bytes, b"char-") {
             return true;
         }
         rs_valid_device_node_path(path)
@@ -747,7 +647,7 @@ unsafe fn rs_path_find_first_component_inner(
             }
             return 0;
         }
-        if streq(first, c".".as_ptr()) {
+        if CStr::from_ptr(first).to_bytes() == b"." {
             *p = first.add(1);
             if !ret.is_null() {
                 *ret = std::ptr::null();
@@ -771,7 +671,7 @@ unsafe fn rs_path_find_first_component_inner(
 
         let next = skip_slash_or_dot(end_first);
 
-        if streq(next, c".".as_ptr()) {
+        if CStr::from_ptr(next).to_bytes() == b"." {
             *p = next.add(1);
         } else {
             *p = next;
@@ -1140,7 +1040,8 @@ pub unsafe fn rs_path_simplify_full(path: *mut c_char, flags: u32) -> *mut c_cha
             return path;
         }
 
-        let keep_trailing_slash = (flags & 1 != 0) && endswith(path, c"/".as_ptr());
+        let keep_trailing_slash =
+            (flags & 1 != 0) && CStr::from_ptr(path).to_bytes().ends_with(b"/");
         let absolute = rs_path_is_absolute(path);
         let mut f = path;
         if absolute {
@@ -1159,7 +1060,7 @@ pub unsafe fn rs_path_simplify_full(path: *mut c_char, flags: u32) -> *mut c_cha
                 break;
             }
 
-            if r > 0 && absolute && beginning && startswith(e, c"..".as_ptr()) {
+            if r > 0 && absolute && beginning && CStr::from_ptr(e).to_bytes().starts_with(b"..") {
                 // Skip ".." at beginning of absolute path
                 continue;
             }
