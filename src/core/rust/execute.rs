@@ -580,7 +580,15 @@ pub fn exec_context_load_environment(context: &ExecContext) -> Result<Vec<String
     Ok(context.log_extra_fields.clone())
 }
 pub fn tty_may_match_dev_console(tty: Option<&str>) -> bool {
-    tty.is_none() || tty == Some("/dev/console")
+    let Some(tty) = tty else {
+        // An unset TTY path lets the runtime choose the console, just like C.
+        return true;
+    };
+
+    // The compact model has no live /dev/console resolution. Preserve the
+    // aliases whose console relationship is explicit; a concrete device
+    // needs the production resolver before it can be classified accurately.
+    matches!(tty.strip_prefix("/dev/").unwrap_or(tty), "console" | "tty0")
 }
 pub fn exec_context_may_touch_tty(context: &ExecContext) -> bool {
     // Keep this predicate in lockstep with C's `exec_context_may_touch_tty()`
@@ -703,6 +711,11 @@ mod tests {
         let default_context = ExecContext::default();
         assert!(!exec_context_may_touch_tty(&default_context));
         assert!(!exec_context_may_touch_console(&default_context));
+
+        assert!(tty_may_match_dev_console(None));
+        assert!(tty_may_match_dev_console(Some("console")));
+        assert!(tty_may_match_dev_console(Some("/dev/tty0")));
+        assert!(!tty_may_match_dev_console(Some("/dev/ttyS0")));
 
         let reset_console = ExecContext {
             tty_reset: true,
