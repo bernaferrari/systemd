@@ -200,6 +200,34 @@ const fn is_systemd_whitespace(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\r')
 }
 
+/// Parse an unsigned integer with systemd's `safe_atou` base-0 grammar.
+///
+/// C accepts a leading `+`, recognizes hexadecimal/octal prefixes, and
+/// systemd extends base-0 parsing with `0b`/`0o` prefixes.
+fn parse_c_unsigned(s: &str) -> Option<u64> {
+    let s = s.strip_prefix('+').unwrap_or(s);
+    if s.is_empty() || s.starts_with('-') {
+        return None;
+    }
+
+    let (digits, base) = if let Some(rest) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        (rest, 16)
+    } else if let Some(rest) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
+        (rest, 2)
+    } else if let Some(rest) = s.strip_prefix("0o").or_else(|| s.strip_prefix("0O")) {
+        (rest, 8)
+    } else if s.starts_with('0') {
+        (s, 8)
+    } else {
+        (s, 10)
+    };
+
+    if digits.is_empty() {
+        return None;
+    }
+    u64::from_str_radix(digits, base).ok()
+}
+
 // ── IP address union ────────────────────────────────────────────────
 
 /// Union-style enum representing either an IPv4 or IPv6 address.
@@ -662,11 +690,13 @@ pub fn netlink_family_to_string(family: i32) -> Option<&'static str> {
 ///
 /// Returns an error for values outside 1..=65535.
 pub fn parse_ip_port(s: &str) -> Result<u16> {
-    let port: u32 = s.parse().map_err(|_| SocketNetlinkError::InvalidPort)?;
+    let port = parse_c_unsigned(s)
+        .and_then(|port| u16::try_from(port).ok())
+        .ok_or(SocketNetlinkError::InvalidPort)?;
     if port == 0 || port > 65535 {
         return Err(SocketNetlinkError::InvalidPort);
     }
-    Ok(port as u16)
+    Ok(port)
 }
 
 // ── Socket address parsing ───────────────────────────────────────────
@@ -830,9 +860,12 @@ pub fn socket_address_parse_netlink(s: &str) -> Result<SocketAddress> {
         .next()
         .map(|value| value.trim_matches(is_systemd_whitespace))
         .filter(|s| !s.is_empty())
-        .map(|s| s.parse::<u32>())
-        .transpose()
-        .map_err(|_| SocketNetlinkError::InvalidAddress("invalid group number".into()))?
+        .map(|s| {
+            parse_c_unsigned(s)
+                .and_then(|group| u32::try_from(group).ok())
+                .ok_or_else(|| SocketNetlinkError::InvalidAddress("invalid group number".into()))
+        })
+        .transpose()?
         .unwrap_or(0);
 
     Ok(SocketAddress::Netlink { groups, protocol })
@@ -1382,8 +1415,14 @@ mod tests {
         assert_eq!(parse_ip_port("443").unwrap(), 443);
         assert_eq!(parse_ip_port("1").unwrap(), 1);
         assert_eq!(parse_ip_port("65535").unwrap(), 65535);
+        assert_eq!(parse_ip_port("+80").unwrap(), 80);
+        assert_eq!(parse_ip_port("0x50").unwrap(), 80);
+        assert_eq!(parse_ip_port("0o120").unwrap(), 80);
+        assert_eq!(parse_ip_port("0b1010000").unwrap(), 80);
+        assert_eq!(parse_ip_port("010").unwrap(), 8);
         assert!(parse_ip_port("0").is_err());
         assert!(parse_ip_port("65536").is_err());
+        assert!(parse_ip_port("08").is_err());
         assert!(parse_ip_port("abc").is_err());
         assert!(parse_ip_port("").is_err());
     }
@@ -1499,6 +1538,25 @@ mod tests {
                 protocol: NETLINK_AUDIT
             }
         );
+    }
+
+    #[test]
+    fn test_socket_address_parse_netlink_group_uses_c_integer_grammar() {
+        assert_eq!(
+            socket_address_parse_netlink("route +7").unwrap(),
+            SocketAddress::Netlink {
+                groups: 7,
+                protocol: NETLINK_ROUTE,
+            }
+        );
+        assert_eq!(
+            socket_address_parse_netlink("route 0x10").unwrap(),
+            SocketAddress::Netlink {
+                groups: 16,
+                protocol: NETLINK_ROUTE,
+            }
+        );
+        assert!(socket_address_parse_netlink("route 08").is_err());
     }
 
     #[test]
