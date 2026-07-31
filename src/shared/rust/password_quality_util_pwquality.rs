@@ -193,6 +193,15 @@ struct PwqualityLibrary {
 /// library, exactly as C's `static void *pwquality_dl` does.
 static LIBPWQUALITY: OnceLock<Mutex<Option<PwqualityLibrary>>> = OnceLock::new();
 
+/// Resolve one libpwquality symbol through the single audited typed-FFI bridge.
+macro_rules! resolve_pwquality_symbol {
+    ($handle:expr, $type:ty, $name:literal) => {{
+        // SAFETY: every invocation supplies the exact public-header type for
+        // its named libpwquality symbol; the published loader retains the DSO.
+        unsafe { resolve_symbol::<$type>($handle, $name) }
+    }};
+}
+
 // ── Feature description ────────────────────────────────────────────────────
 
 /// Returns the human-readable description of the pwquality feature.
@@ -250,69 +259,67 @@ fn load_pwquality() -> Result<PwqualityLibrary, PwqualityError> {
     // Resolve all required symbols.
     // SAFETY: every requested type below is the exact declaration from the
     // libpwquality public header for the named required symbol.
-    let check_fn = unsafe {
-        resolve_symbol::<
-            // SAFETY: this is `pwquality_check`'s header declaration.
-            unsafe extern "C" fn(
-                *mut c_void,
-                *const libc::c_char,
-                *const libc::c_char,
-                *const libc::c_char,
-                *mut *mut c_void,
-            ) -> i32,
-        >(&handle, "pwquality_check")
-    }?;
+    let check_fn = resolve_pwquality_symbol!(
+        &handle,
+        // SAFETY: this is `pwquality_check`'s header declaration.
+        unsafe extern "C" fn(
+            *mut c_void,
+            *const libc::c_char,
+            *const libc::c_char,
+            *const libc::c_char,
+            *mut *mut c_void,
+        ) -> i32,
+        "pwquality_check"
+    )?;
 
     // SAFETY: see the ABI proof above.
-    let default_settings_fn = unsafe {
-        resolve_symbol::<unsafe extern "C" fn() -> *mut c_void>(
-            &handle,
-            "pwquality_default_settings",
-        )
-    }?;
+    let default_settings_fn = resolve_pwquality_symbol!(
+        &handle,
+        unsafe extern "C" fn() -> *mut c_void,
+        "pwquality_default_settings"
+    )?;
 
     // SAFETY: see the ABI proof above.
-    let free_settings_fn = unsafe {
-        resolve_symbol::<unsafe extern "C" fn(*mut c_void)>(&handle, "pwquality_free_settings")
-    }?;
+    let free_settings_fn = resolve_pwquality_symbol!(
+        &handle,
+        unsafe extern "C" fn(*mut c_void),
+        "pwquality_free_settings"
+    )?;
 
     // SAFETY: see the ABI proof above.
-    let generate_fn = unsafe {
-        resolve_symbol::<unsafe extern "C" fn(*mut c_void, i32, *mut *mut libc::c_char) -> i32>(
-            &handle,
-            "pwquality_generate",
-        )
-    }?;
+    let generate_fn = resolve_pwquality_symbol!(
+        &handle,
+        unsafe extern "C" fn(*mut c_void, i32, *mut *mut libc::c_char) -> i32,
+        "pwquality_generate"
+    )?;
 
     // SAFETY: see the ABI proof above.
-    let get_str_fn = unsafe {
-        resolve_symbol::<unsafe extern "C" fn(*mut c_void, i32, *mut *const libc::c_char) -> i32>(
-            &handle,
-            "pwquality_get_str_value",
-        )
-    }?;
+    let get_str_fn = resolve_pwquality_symbol!(
+        &handle,
+        unsafe extern "C" fn(*mut c_void, i32, *mut *const libc::c_char) -> i32,
+        "pwquality_get_str_value"
+    )?;
 
     // SAFETY: see the ABI proof above.
-    let read_config_fn = unsafe {
-        resolve_symbol::<
-            unsafe extern "C" fn(*mut c_void, *const libc::c_char, *mut *mut c_void) -> i32,
-        >(&handle, "pwquality_read_config")
-    }?;
+    let read_config_fn = resolve_pwquality_symbol!(
+        &handle,
+        unsafe extern "C" fn(*mut c_void, *const libc::c_char, *mut *mut c_void) -> i32,
+        "pwquality_read_config"
+    )?;
 
     // SAFETY: see the ABI proof above.
-    let set_int_fn = unsafe {
-        resolve_symbol::<unsafe extern "C" fn(*mut c_void, i32, i32) -> i32>(
-            &handle,
-            "pwquality_set_int_value",
-        )
-    }?;
+    let set_int_fn = resolve_pwquality_symbol!(
+        &handle,
+        unsafe extern "C" fn(*mut c_void, i32, i32) -> i32,
+        "pwquality_set_int_value"
+    )?;
 
     // SAFETY: see the ABI proof above.
-    let strerror_fn = unsafe {
-        resolve_symbol::<
-            unsafe extern "C" fn(*mut libc::c_char, usize, i32, *mut c_void) -> *const libc::c_char,
-        >(&handle, "pwquality_strerror")
-    }?;
+    let strerror_fn = resolve_pwquality_symbol!(
+        &handle,
+        unsafe extern "C" fn(*mut libc::c_char, usize, i32, *mut c_void) -> *const libc::c_char,
+        "pwquality_strerror"
+    )?;
 
     Ok(PwqualityLibrary {
         _handle: handle.publish(),
