@@ -15,6 +15,65 @@ use libc::c_char;
 
 use crate::ffi::{Errno, calloc, free, malloc};
 
+/// Optional C ABI output pointer. Its public caller establishes writability;
+/// this adapter is the sole ownership-publication boundary for copied strings.
+#[derive(Clone, Copy)]
+struct COutString(*mut *mut c_char);
+
+impl COutString {
+    fn from_contract(ptr: *mut *mut c_char) -> Self {
+        Self(ptr)
+    }
+
+    fn is_requested(self) -> bool {
+        !self.0.is_null()
+    }
+
+    fn store(self, value: *mut c_char) {
+        if !self.0.is_null() {
+            // SAFETY: a non-null pointer is writable under the enclosing C ABI contract.
+            unsafe { *self.0 = value };
+        }
+    }
+}
+
+/// A C ABI slot with the unique malloc-compatible ownership required by
+/// `free()`. Replacement is intentionally atomic at the ownership level:
+/// callers allocate a complete replacement before releasing the old value.
+struct OwnedCStringSlot(*mut *mut c_char);
+
+impl OwnedCStringSlot {
+    fn from_contract(ptr: *mut *mut c_char) -> Self {
+        debug_assert!(!ptr.is_null());
+        Self(ptr)
+    }
+
+    fn current(&self) -> *mut c_char {
+        // SAFETY: construction requires a writable pointer-sized C ABI slot.
+        unsafe { *self.0 }
+    }
+
+    fn replace(&self, replacement: *mut c_char) {
+        // SAFETY: the slot uniquely owns its old malloc-compatible value; this
+        // releases it before publishing `replacement` exactly once.
+        unsafe {
+            let old = *self.0;
+            if !old.is_null() {
+                free(old.cast::<c_void>());
+            }
+            *self.0 = replacement;
+        }
+    }
+}
+
+fn free_unpublished_c_string(value: *mut c_char) {
+    if !value.is_null() {
+        // SAFETY: this helper only receives allocations made by this module
+        // before they have been published to a caller-owned output slot.
+        unsafe { free(value.cast::<c_void>()) };
+    }
+}
+
 pub(crate) fn alloc_empty_c_string() -> *mut c_char {
     alloc_c_string_from_bytes(&[])
 }
@@ -39,14 +98,12 @@ pub(crate) fn alloc_c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
 /// `src` must be null or a readable NUL-terminated string. When non-null,
 /// `ret` must be null or writable for one pointer.
 pub unsafe fn rs_strdup_to_full(ret: *mut *mut c_char, src: *const c_char) -> i32 {
+    let output = COutString::from_contract(ret);
     if src.is_null() {
-        if !ret.is_null() {
-            // SAFETY: non-null `ret` is writable by contract.
-            unsafe { *ret = std::ptr::null_mut() };
-        }
+        output.store(std::ptr::null_mut());
         return 0;
     }
-    if ret.is_null() {
+    if !output.is_requested() {
         return 1;
     }
     // SAFETY: non-null `src` is a readable C string by the function contract.
@@ -54,8 +111,7 @@ pub unsafe fn rs_strdup_to_full(ret: *mut *mut c_char, src: *const c_char) -> i3
     if copy.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
-    // SAFETY: non-null `ret` is writable by contract and takes ownership.
-    unsafe { *ret = copy };
+    output.store(copy);
     1
 }
 
@@ -67,8 +123,8 @@ pub unsafe fn rs_free_and_strdup(p: *mut *mut c_char, s: *const c_char) -> i32 {
         return Errno::EINVAL.to_neg_errno();
     }
 
-    // SAFETY: `p` is writable for one pointer by the function contract.
-    let old = unsafe { *p };
+    let slot = OwnedCStringSlot::from_contract(p);
+    let old = slot.current();
     let unchanged = match (old.is_null(), s.is_null()) {
         (true, true) => true,
         (true, false) | (false, true) => false,
@@ -88,13 +144,7 @@ pub unsafe fn rs_free_and_strdup(p: *mut *mut c_char, s: *const c_char) -> i32 {
         }
         copy
     };
-    // SAFETY: `p` is writable for one pointer by the function contract.
-    if !old.is_null() {
-        // SAFETY: `*p` is the unique C allocation relinquished by this API.
-        unsafe { free(old.cast::<c_void>()) };
-    }
-    // SAFETY: `p` is writable and receives unique ownership of replacement.
-    unsafe { *p = replacement };
+    slot.replace(replacement);
     1
 }
 
@@ -106,8 +156,8 @@ pub unsafe fn rs_free_and_strndup(p: *mut *mut c_char, s: *const c_char, l: usiz
     if p.is_null() || (s.is_null() && l != 0) {
         return Errno::EINVAL.to_neg_errno();
     }
-    // SAFETY: non-null `p` is writable for one pointer by the contract.
-    let old = unsafe { *p };
+    let slot = OwnedCStringSlot::from_contract(p);
+    let old = slot.current();
     if old.is_null() && s.is_null() {
         return 0;
     }
@@ -133,13 +183,7 @@ pub unsafe fn rs_free_and_strndup(p: *mut *mut c_char, s: *const c_char, l: usiz
         }
         copy
     };
-    // SAFETY: `p` is writable for one pointer by the function contract.
-    if !old.is_null() {
-        // SAFETY: replacement is complete before the unique old allocation is released.
-        unsafe { free(old.cast::<c_void>()) };
-    }
-    // SAFETY: `p` is writable and receives unique ownership of replacement.
-    unsafe { *p = replacement };
+    slot.replace(replacement);
     1
 }
 
@@ -177,6 +221,7 @@ const MAKE_CSTRING_REQUIRE_TRAILING_NUL: i32 = 2;
 /// `s` must be readable for `n` bytes when non-null; non-null `ret` must be
 /// writable for one owned pointer.
 pub unsafe fn rs_make_cstring(s: *const c_char, n: usize, mode: i32, ret: *mut *mut c_char) -> i32 {
+    let output = COutString::from_contract(ret);
     if (s.is_null() && n != 0) || !(0..=2).contains(&mode) {
         return Errno::EINVAL.to_neg_errno();
     }
@@ -184,7 +229,7 @@ pub unsafe fn rs_make_cstring(s: *const c_char, n: usize, mode: i32, ret: *mut *
         if mode == MAKE_CSTRING_REQUIRE_TRAILING_NUL {
             return Errno::EINVAL.to_neg_errno();
         }
-        if ret.is_null() {
+        if !output.is_requested() {
             return 0;
         }
         // SAFETY: calloc returns null or a unique zeroed byte.
@@ -192,8 +237,7 @@ pub unsafe fn rs_make_cstring(s: *const c_char, n: usize, mode: i32, ret: *mut *
         if value.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
-        // SAFETY: `ret` is writable by contract and takes ownership.
-        unsafe { *ret = value };
+        output.store(value);
         return 0;
     }
 
@@ -208,15 +252,14 @@ pub unsafe fn rs_make_cstring(s: *const c_char, n: usize, mode: i32, ret: *mut *
         None if mode == MAKE_CSTRING_REQUIRE_TRAILING_NUL => return Errno::EINVAL.to_neg_errno(),
         None => n,
     };
-    if ret.is_null() {
+    if !output.is_requested() {
         return 0;
     }
     let value = alloc_c_string_from_bytes(&bytes[..actual_n]);
     if value.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
-    // SAFETY: `ret` is writable by contract and takes ownership.
-    unsafe { *ret = value };
+    output.store(value);
     0
 }
 
@@ -229,6 +272,8 @@ pub unsafe fn rs_split_pair(
     ret_first: *mut *mut c_char,
     ret_second: *mut *mut c_char,
 ) -> i32 {
+    let first_output = COutString::from_contract(ret_first);
+    let second_output = COutString::from_contract(ret_second);
     // SAFETY: non-null `sep` is a readable C string by the function contract.
     if s.is_null() || sep.is_null() || unsafe { *sep } == 0 {
         return Errno::EINVAL.to_neg_errno();
@@ -244,7 +289,7 @@ pub unsafe fn rs_split_pair(
         return Errno::EINVAL.to_neg_errno();
     };
 
-    let first = if ret_first.is_null() {
+    let first = if !first_output.is_requested() {
         std::ptr::null_mut()
     } else {
         let value = alloc_c_string_from_bytes(&bytes[..position]);
@@ -253,26 +298,17 @@ pub unsafe fn rs_split_pair(
         }
         value
     };
-    let second = if ret_second.is_null() {
+    let second = if !second_output.is_requested() {
         std::ptr::null_mut()
     } else {
         let value = alloc_c_string_from_bytes(&bytes[position + separator.len()..]);
         if value.is_null() {
-            if !first.is_null() {
-                // SAFETY: first has not been published and remains uniquely owned.
-                unsafe { free(first.cast::<c_void>()) };
-            }
+            free_unpublished_c_string(first);
             return Errno::ENOMEM.to_neg_errno();
         }
         value
     };
-    // SAFETY: each non-null output pointer is writable by the function contract.
-    if !ret_first.is_null() {
-        unsafe { *ret_first = first };
-    }
-    // SAFETY: each non-null output pointer is writable by the function contract.
-    if !ret_second.is_null() {
-        unsafe { *ret_second = second };
-    }
+    first_output.store(first);
+    second_output.store(second);
     0
 }
