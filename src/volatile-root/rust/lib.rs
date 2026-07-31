@@ -27,6 +27,18 @@ use std::path::Path;
 #[cfg(target_os = "linux")]
 use systemd_basic_rs::devnum_util::{devnum_major, devnum_minor};
 
+#[cfg(target_os = "linux")]
+mod linux_transition_requirement;
+#[cfg(target_os = "linux")]
+pub use linux_transition_requirement::{
+    LinuxVolatileTransitionFallbackRequired, LinuxVolatileTransitionRequirement,
+    linux_volatile_transition_requirement,
+};
+#[cfg(target_os = "linux")]
+use linux_transition_requirement::{
+    fallback_required_error, mark_openat2_unavailable, openat2_available,
+};
+
 /// Mode value for a persistent root.
 pub const VOLATILE_NO: i32 = 0;
 /// Mode value for fully volatile root (tmpfs mount).
@@ -371,10 +383,10 @@ struct MountAttr {
 /// Linux implementation of the complete isolated `make_volatile()` backend.
 ///
 /// This deliberately relies on kernel-enforced `RESOLVE_IN_ROOT` and
-/// recursive `mount_setattr()`. On kernels or seccomp profiles without either
-/// facility it returns `EOPNOTSUPP` before the affected operation, rather
-/// than approximating C's root-bounded chase or recursive read-only remount
-/// with a host-path walk. The enclosing transaction then preserves C's first
+/// recursive `mount_setattr()`. When either needs C's older-kernel fallback,
+/// it returns a typed [`LinuxVolatileTransitionFallbackRequired`] error before
+/// attempting an unsafe approximation of root-bounded chasing or recursive
+/// read-only remounting. The enclosing transaction then preserves C's first
 /// error and cleanup ordering.
 ///
 /// The type is available for namespace-scoped integration tests and future
@@ -490,6 +502,13 @@ fn chase_usr_beneath_root(root: &Path) -> io::Result<std::path::PathBuf> {
     // ownership, which is held until the `openat2()` resolution completes.
     let root_fd = unsafe { OwnedFd::from_raw_fd(root_fd) };
 
+    if !openat2_available() {
+        return Err(fallback_required_error(
+            LinuxVolatileTransitionRequirement::RootBoundedUsrResolution,
+            libc::ENOSYS,
+        ));
+    }
+
     let usr = c"usr";
     // SAFETY: `open_how` consists only of integer fields for which zero is a
     // valid initial value. All fields relevant to this syscall are assigned
@@ -511,12 +530,22 @@ fn chase_usr_beneath_root(root: &Path) -> io::Result<std::path::PathBuf> {
     if fd < 0 {
         let error = io::Error::last_os_error();
         return match error.raw_os_error() {
-            // C has a libmount/chase fallback. This staged native backend
-            // refuses rather than let a host-path fallback misinterpret an
-            // absolute symlink inside the old root.
-            Some(libc::ENOSYS | libc::EPERM | libc::EAGAIN) => {
-                Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+            // This exactly mirrors C's `chase_openat2()` fallback boundary:
+            // ENOSYS means an old kernel (or systemd's own seccomp policy),
+            // while EPERM and EAGAIN must remain per-call fallbacks. Only
+            // ENOSYS is cached, because EPERM can be an access failure and
+            // EAGAIN is transient during mount or rename activity.
+            Some(libc::ENOSYS) => {
+                mark_openat2_unavailable();
+                Err(fallback_required_error(
+                    LinuxVolatileTransitionRequirement::RootBoundedUsrResolution,
+                    libc::ENOSYS,
+                ))
             }
+            Some(errno @ (libc::EPERM | libc::EAGAIN)) => Err(fallback_required_error(
+                LinuxVolatileTransitionRequirement::RootBoundedUsrResolution,
+                errno,
+            )),
             _ => Err(error),
         };
     }
@@ -587,11 +616,17 @@ fn set_mount_tree_read_only(target: &Path) -> io::Result<()> {
     if result < 0 {
         let error = io::Error::last_os_error();
         return match error.raw_os_error() {
-            // Do not replace C's careful classic remount fallback with a
-            // weaker flag-clobbering loop. The caller cleans up and remains
-            // fail-closed until that fallback is ported.
-            Some(libc::ENOSYS | libc::EPERM | libc::EINVAL) => {
-                Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+            // C deliberately falls back to the classic recursive remount
+            // implementation for these cases. In particular EINVAL can mean
+            // that `target` is not itself a mount point, a case the classic
+            // path handles by first making it one. Do not replace that code
+            // with a flag-clobbering loop: return an inspectable, fail-closed
+            // boundary instead.
+            Some(errno @ (libc::ENOSYS | libc::EOPNOTSUPP | libc::EPERM | libc::EINVAL)) => {
+                Err(fallback_required_error(
+                    LinuxVolatileTransitionRequirement::RecursiveReadOnlyRemount,
+                    errno,
+                ))
             }
             _ => Err(error),
         };
@@ -1899,5 +1934,47 @@ mod tests {
             Path::new("/sysroot")
         );
         assert!(simplify_absolute_path(Path::new("relative")).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn volatile_transition_fallback_error_preserves_openat2_requirement() {
+        let error = fallback_required_error(
+            LinuxVolatileTransitionRequirement::RootBoundedUsrResolution,
+            libc::EAGAIN,
+        );
+
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        let requirement = linux_volatile_transition_requirement(&error).unwrap();
+        assert_eq!(
+            requirement.requirement(),
+            LinuxVolatileTransitionRequirement::RootBoundedUsrResolution
+        );
+        assert_eq!(requirement.source_errno(), libc::EAGAIN);
+        assert!(error.to_string().contains("openat2"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn volatile_transition_fallback_error_preserves_mount_setattr_requirement() {
+        let error = fallback_required_error(
+            LinuxVolatileTransitionRequirement::RecursiveReadOnlyRemount,
+            libc::EINVAL,
+        );
+
+        let requirement = linux_volatile_transition_requirement(&error).unwrap();
+        assert_eq!(
+            requirement.requirement(),
+            LinuxVolatileTransitionRequirement::RecursiveReadOnlyRemount
+        );
+        assert_eq!(requirement.source_errno(), libc::EINVAL);
+        assert_eq!(requirement.requirement().syscall_name(), "mount_setattr");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn ordinary_io_errors_do_not_claim_a_missing_volatile_transition_fallback() {
+        let error = io::Error::from_raw_os_error(libc::EACCES);
+        assert_eq!(linux_volatile_transition_requirement(&error), None);
     }
 }
