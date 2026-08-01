@@ -4,13 +4,6 @@
 //
 // PORT-SYNC: src/socket-proxy/socket-proxyd.c
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::env;
 use std::ffi::{CStr, CString};
 use std::fs::File;
@@ -21,6 +14,7 @@ use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+use systemd_shared_rs::unsafe_ffi;
 use systemd_socket_proxy_rs::{
     DEFAULT_EXIT_IDLE_TIME, ProxyConfig, ProxyError, RemoteAddress, at_connection_limit,
     parse_remote_host,

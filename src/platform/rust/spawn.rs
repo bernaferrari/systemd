@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-// Centralized unsafe expression boundary for this module.
+// Local platform boundary: the substrate layer intentionally has no
+// dependency on higher-level Rust crates.
 macro_rules! unsafe_ffi {
     ($expression:expr) => {{
         // SAFETY: the enclosing helper documents and validates this operation.
         unsafe { $expression }
     }};
 }
+
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 

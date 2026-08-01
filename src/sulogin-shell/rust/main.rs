@@ -3,6 +3,7 @@
 //
 // Binary entry point for systemd-sulogin-shell
 
+use systemd_shared_rs::unsafe_ffi;
 use systemd_sulogin_shell_rs::{build_sulogin_cmdline, determine_target};
 
 fn print_help() {
@@ -54,9 +55,9 @@ fn main() {
         c_args_ptrs.push(std::ptr::null());
         // SAFETY: `c_program` and every element of `c_args` remain live for this call, and
         // `c_args_ptrs` is terminated with the null sentinel required by execvp(3).
-        unsafe {
+        unsafe_ffi!({
             libc::execvp(c_program.as_ptr(), c_args_ptrs.as_ptr());
-        }
+        });
         eprintln!("sulogin-shell: execvp failed");
         std::process::exit(127);
     }

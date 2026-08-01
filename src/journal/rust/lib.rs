@@ -4,6 +4,15 @@
 // Rust FFI wrappers for systemd/src/journal.
 //
 
+#[macro_export]
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {
+        $crate::shared_unsafe_ffi!($expression)
+    };
+}
+
+pub use systemd_shared_rs::unsafe_ffi as shared_unsafe_ffi;
+
 pub struct Errno(pub i32);
 
 #[path = "fuzz_journald_audit.rs"]

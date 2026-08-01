@@ -2,13 +2,6 @@
 //
 // PORT-SYNC: src/libsystemd/sd-daemon/sd-daemon.c
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::collections::BTreeMap;
 use std::env;
 use std::ffi::CString;
@@ -17,7 +10,6 @@ use std::os::fd::RawFd;
 use std::path::Path;
 #[cfg(target_os = "linux")]
 use systemd_basic_rs::socket_util::{SocketAddress, SocketType, socket_address_parse_vsock};
-
 pub type Result<T> = std::result::Result<T, DaemonCheckError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

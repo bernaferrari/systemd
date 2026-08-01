@@ -21,6 +21,7 @@ SAFETY_RATIONALE_MARKERS = ("SAFETY:", "# Safety")
 @dataclass
 class FileMetrics:
     unsafe_sites: int = 0
+    api_sites: int = 0
     abi_sites: int = 0
     missing_safety: int = 0
     missing_safety_sites: tuple[str, ...] = ()
@@ -28,6 +29,7 @@ class FileMetrics:
     def to_dict(self) -> dict[str, object]:
         return {
             "unsafe_sites": self.unsafe_sites,
+            "api_sites": self.api_sites,
             "abi_sites": self.abi_sites,
             "missing_safety": self.missing_safety,
             "missing_safety_sites": list(self.missing_safety_sites),
@@ -151,6 +153,8 @@ def collect_metrics(root: Path, window: int) -> dict[str, FileMetrics]:
                 # C boundary remains visible and baselined.
                 if re.match(r"unsafe\s+extern\b", context):
                     metrics.abi_sites += 1
+                elif re.match(r"unsafe\s+(?:fn|impl|trait)\b", context):
+                    metrics.api_sites += 1
                 else:
                     metrics.unsafe_sites += 1
                 if not has_safety_rationale(
@@ -167,7 +171,7 @@ def collect_metrics(root: Path, window: int) -> dict[str, FileMetrics]:
         metrics.missing_safety_sites = tuple(missing_safety_sites)
 
         rel = path.relative_to(root).as_posix()
-        if metrics.unsafe_sites > 0 or metrics.abi_sites > 0:
+        if metrics.unsafe_sites > 0 or metrics.api_sites > 0 or metrics.abi_sites > 0:
             out[rel] = metrics
 
     return out
@@ -175,10 +179,12 @@ def collect_metrics(root: Path, window: int) -> dict[str, FileMetrics]:
 
 def summarize(metrics: dict[str, FileMetrics]) -> dict[str, int]:
     unsafe_sites = sum(m.unsafe_sites for m in metrics.values())
+    api_sites = sum(m.api_sites for m in metrics.values())
     abi_sites = sum(m.abi_sites for m in metrics.values())
     missing_safety = sum(m.missing_safety for m in metrics.values())
     return {
         "unsafe_sites": unsafe_sites,
+        "api_sites": api_sites,
         "abi_sites": abi_sites,
         "missing_safety": missing_safety,
     }
@@ -210,6 +216,9 @@ def load_baseline(path: Path) -> dict[str, object]:
         abi_sites = metrics.get("abi_sites", 0)
         if not isinstance(abi_sites, int) or abi_sites < 0:
             raise SystemExit(f"malformed ABI-site count for {relative} in {path}")
+        api_sites = metrics.get("api_sites", 0)
+        if not isinstance(api_sites, int) or api_sites < 0:
+            raise SystemExit(f"malformed API-site count for {relative} in {path}")
     return raw
 
 
@@ -233,7 +242,8 @@ def main() -> int:
         print(f"wrote baseline: {baseline_path}")
         print(
             f"totals unsafe_sites={totals['unsafe_sites']} "
-            f"abi_sites={totals['abi_sites']} missing_safety={totals['missing_safety']}"
+            f"api_sites={totals['api_sites']} abi_sites={totals['abi_sites']} "
+            f"missing_safety={totals['missing_safety']}"
         )
         return 0
 
@@ -246,10 +256,11 @@ def main() -> int:
     base_files: dict[str, dict[str, object]] = baseline["files"]  # type: ignore[assignment]
     failed = False
 
-    print("file,unsafe_sites,abi_sites,missing_safety,baseline_missing_safety,status")
+    print("file,unsafe_sites,api_sites,abi_sites,missing_safety,baseline_missing_safety,status")
     for file_path, metrics in sorted(current.items()):
         base_metrics = base_files.get(file_path, {})
         base_unsafe = int(base_metrics.get("unsafe_sites", 0))
+        base_api = base_metrics.get("api_sites")
         base_abi = base_metrics.get("abi_sites")
         base_missing = int(base_metrics.get("missing_safety", 0))
         base_sites = Counter(base_metrics.get("missing_safety_sites", []))
@@ -262,6 +273,14 @@ def main() -> int:
             print(
                 f"FAIL unsafe-site growth: {file_path}: "
                 f"{base_unsafe} -> {metrics.unsafe_sites}",
+                file=sys.stderr,
+            )
+        if base_api is not None and metrics.api_sites > int(base_api):
+            status = "FAIL"
+            failed = True
+            print(
+                f"FAIL API-site growth: {file_path}: "
+                f"{base_api} -> {metrics.api_sites}",
                 file=sys.stderr,
             )
         # Older baselines predate the split inventory. Their unsafe_sites
@@ -284,7 +303,7 @@ def main() -> int:
                     file=sys.stderr,
                 )
         print(
-            f"{file_path},{metrics.unsafe_sites},{metrics.abi_sites},"
+            f"{file_path},{metrics.unsafe_sites},{metrics.api_sites},{metrics.abi_sites},"
             f"{metrics.missing_safety},{base_missing},{status}"
         )
 
@@ -298,7 +317,8 @@ def main() -> int:
 
     print(
         f"\nSAFETY gate OK: unsafe_sites={totals['unsafe_sites']} "
-        f"abi_sites={totals['abi_sites']} missing_safety={totals['missing_safety']}"
+        f"api_sites={totals['api_sites']} abi_sites={totals['abi_sites']} "
+        f"missing_safety={totals['missing_safety']}"
     )
     return 0
 

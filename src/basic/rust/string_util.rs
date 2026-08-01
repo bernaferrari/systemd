@@ -1047,11 +1047,9 @@ fn ascii_tolower_byte(c: u8) -> u8 {
 mod tests {
     // Keep the test-only FFI boundary explicit while allowing assertions to stay in safe Rust.
     macro_rules! test_ffi {
-        ($expression:expr) => {{
-            // SAFETY: test inputs are constructed in this module and satisfy the
-            // documented C ABI preconditions of the exercised facade.
-            unsafe { $expression }
-        }};
+        ($expression:expr) => {
+            crate::unsafe_ffi!($expression)
+        };
     }
     use crate::ffi::{Errno, SIZE_MAX, free};
     use crate::string_util::{

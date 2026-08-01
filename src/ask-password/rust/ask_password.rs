@@ -1,16 +1,10 @@
-// Centralized unsafe expression boundary for this low-level adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper validates descriptors, pointers, and
-        // ownership before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/ask-password/ask-password.c
 //
 // Query the user for a passphrase, via TTY or a UI agent.
+
+use systemd_shared_rs::unsafe_ffi;
 
 /// Echo mode for password input.
 #[repr(C)]

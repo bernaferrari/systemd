@@ -5,11 +5,17 @@
 #![allow(dead_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
+#[macro_export]
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {
+        $crate::shared_unsafe_ffi!($expression)
+    };
+}
+
+pub use systemd_shared_rs::unsafe_ffi as shared_unsafe_ffi;
+
 #[path = "dmi_memory_id/dmi_memory_id.rs"]
 pub mod dmi_memory_id_dmi_memory_id;
-#[macro_use]
-#[path = "uevent-netlink.rs"]
-pub mod uevent_netlink;
 pub mod ffi;
 #[path = "fuzz-udev-rule-parse-value.rs"]
 pub mod fuzz_udev_rule_parse_value;
@@ -135,5 +141,7 @@ pub mod udevadm_verify;
 pub mod udevadm_wait;
 #[path = "udevd.rs"]
 pub mod udevd;
+#[path = "uevent-netlink.rs"]
+pub mod uevent_netlink;
 #[path = "v4l_id/v4l_id.rs"]
 pub mod v4l_id_v4l_id;

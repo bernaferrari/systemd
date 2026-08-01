@@ -4,14 +4,9 @@
 //
 // Check battery level to see whether there's enough charge.
 
+use systemd_shared_rs::unsafe_ffi;
+
 /// Battery low warning message.
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 const BATTERY_LOW_MESSAGE: &std::ffi::CStr =
     c"Battery level critically low. Please connect your charger or the system will power off in 10 seconds.";
 

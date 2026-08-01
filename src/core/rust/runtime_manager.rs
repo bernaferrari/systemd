@@ -1,31 +1,23 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
+#[cfg(target_os = "linux")]
+use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
-use std::fs;
-use std::hash::{Hash, Hasher};
-use std::os::fd::{AsRawFd, OwnedFd, RawFd};
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Component, Path, PathBuf};
-use std::time::Instant;
-
-#[cfg(target_os = "linux")]
-use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::ffi::CString;
+use std::fs;
+use std::hash::{Hash, Hasher};
 #[cfg(target_os = "linux")]
 use std::os::fd::AsFd;
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 #[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Component, Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::rc::{Rc, Weak};
+use std::time::Instant;
 
 use crate::ffi::Errno;
 use crate::job::{Job, JobId, JobRegistry, UnitActiveState as JobUnitActiveState};

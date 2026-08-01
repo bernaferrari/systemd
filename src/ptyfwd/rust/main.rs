@@ -5,13 +5,7 @@
 //
 // PORT-SYNC: src/ptyfwd/ptyfwd-tool.c
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
+use systemd_shared_rs::unsafe_ffi;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PROGRAM: &str = "systemd-pty-forward";
 

@@ -12,17 +12,11 @@
 //! remains a release gate. The raw ABI is confined to this module in the
 //! meantime.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CString, c_char, c_int};
 use std::fmt;
 use std::os::fd::RawFd;
 use std::ptr::NonNull;
+use systemd_basic_rs::unsafe_ffi;
 
 use systemd_basic_rs::hostname_util::{ValidHostnameFlags, hostname_is_valid};
 

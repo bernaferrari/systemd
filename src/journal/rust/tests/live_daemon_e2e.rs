@@ -2,13 +2,6 @@
 
 #![cfg(unix)]
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use nix::libc;
 use nix::sys::signal::{Signal, kill};
 use nix::sys::socket::{ControlMessageOwned, MsgFlags, UnixAddr, recvmsg};
@@ -33,6 +26,7 @@ use systemd_libsystemd_rs::sd_journal_file::{
     HEADER_COMPATIBLE_TAIL_ENTRY_BOOT_ID, JOURNAL_FILE_SIZE_MIN, append_journal_record_unindexed,
     create_empty_journal_file_at, open_journal_file_at, render_journal_file_as_text,
 };
+use systemd_shared_rs::unsafe_ffi;
 
 const RUNTIME_ROOT_ENV: &str = "SYSTEMD_JOURNAL_RUNTIME_ROOT";
 const STORAGE_MODE_ENV: &str = "SYSTEMD_JOURNAL_STORAGE";

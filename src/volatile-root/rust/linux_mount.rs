@@ -13,6 +13,7 @@ use std::ffi::CString;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use systemd_shared_rs::unsafe_ffi;
 
 use crate::linux_transition_requirement::{
     LinuxVolatileTransitionRequirement, fallback_required_error, mark_mount_setattr_unavailable,

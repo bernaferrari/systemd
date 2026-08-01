@@ -13,6 +13,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
+use systemd_shared_rs::unsafe_ffi;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -596,13 +597,13 @@ fn read_capabilities() -> Result<LinuxCapabilities, ResolvedError> {
     let mut data = [LinuxCapabilityData::default(); 2];
     // SAFETY: SYS_capget receives pointers to the kernel-defined v3 header and
     // two-element data array, both writable and live for the complete syscall.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::syscall(
             libc::SYS_capget,
             &mut header as *mut LinuxCapabilityHeader,
             data.as_mut_ptr(),
         )
-    };
+    });
     if result < 0 {
         return privilege_error(format!("capget: {}", std::io::Error::last_os_error()));
     }
@@ -637,13 +638,13 @@ fn write_capabilities(
     ];
     // SAFETY: SYS_capset receives pointers to the kernel-defined v3 header and
     // two initialized data records. The kernel copies them during this call.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::syscall(
             libc::SYS_capset,
             &mut header as *mut LinuxCapabilityHeader,
             data.as_ptr(),
         )
-    };
+    });
     if result < 0 {
         return privilege_error(format!("capset: {}", std::io::Error::last_os_error()));
     }
@@ -668,7 +669,7 @@ fn prctl_noargs(operation: i32, argument: u64) -> std::io::Result<i32> {
 fn prctl_two_args(operation: i32, argument: u64, second_argument: u64) -> std::io::Result<i32> {
     // SAFETY: these prctl operations accept one integer argument followed by
     // integer/zero arguments and do not dereference userspace pointers.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::prctl(
             operation,
             argument as libc::c_ulong,
@@ -676,7 +677,7 @@ fn prctl_two_args(operation: i32, argument: u64, second_argument: u64) -> std::i
             0 as libc::c_ulong,
             0 as libc::c_ulong,
         )
-    };
+    });
     if result < 0 {
         Err(std::io::Error::last_os_error())
     } else {

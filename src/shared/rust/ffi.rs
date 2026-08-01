@@ -5,13 +5,6 @@
 // FFI layer for the shared Rust crate. Re-exports types from systemd_basic_rs
 // and provides additional safe Rust wrappers for common C library operations.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 use libc::c_char;
 
@@ -112,34 +105,20 @@ pub mod linux_compat {
     }
 
     ///
-    /// # Safety
-    /// The caller must uphold the generated or platform ABI invariants documented
-    /// by this operation; no raw Rust references may outlive the call.
-    pub unsafe fn syncfs(_fd: c_int) -> c_int {
+    /// Safe stub for platforms without `syncfs(2)`.
+    pub fn syncfs(_fd: c_int) -> c_int {
         -1
     }
 
     ///
-    /// # Safety
-    /// The caller must uphold the generated or platform ABI invariants documented
-    /// by this operation; no raw Rust references may outlive the call.
-    pub unsafe fn prctl(
-        _option: c_int,
-        _arg2: c_int,
-        _arg3: c_int,
-        _arg4: c_int,
-        _arg5: c_int,
-    ) -> c_int {
+    /// Safe stub for platforms without the Linux `prctl(2)` interface.
+    pub fn prctl(_option: c_int, _arg2: c_int, _arg3: c_int, _arg4: c_int, _arg5: c_int) -> c_int {
         -1
     }
 
     ///
-    /// # Safety
-    /// Every non-null input pointer must be valid and properly aligned for all
-    /// reads performed by this call, and every non-null output pointer must be
-    /// valid and properly aligned for all writes. Pointer ranges must not alias
-    /// in ways forbidden by the operation's documented ownership contract.
-    pub unsafe fn fallocate(_fd: c_int, _mode: c_int, _offset: i64, _length: i64) -> c_int {
+    /// Safe stub for platforms without `fallocate(2)`.
+    pub fn fallocate(_fd: c_int, _mode: c_int, _offset: i64, _length: i64) -> c_int {
         -1
     }
 

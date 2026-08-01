@@ -1,16 +1,10 @@
-// Centralized unsafe expression boundary for this low-level adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper validates descriptors, pointers, and
-        // ownership before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/backlight/backlight.c
 //
 // Save and restore backlight brightness at shutdown and boot.
+
+use systemd_shared_rs::unsafe_ffi;
 
 /// PCI class for graphics cards.
 const PCI_CLASS_GRAPHICS_CARD: u32 = 0x30000;

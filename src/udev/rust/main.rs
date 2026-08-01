@@ -2,14 +2,6 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
-// Centralized unsafe expression boundary for this binary adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
-
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::OpenOptions;
 use std::io;
@@ -21,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use systemd_libsystemd_rs::sd_daemon_checks::sd_listen_fds_with_names;
+use systemd_shared_rs::unsafe_ffi;
 use systemd_udev_rs::udev_db_monitor::{
     ControlCommand, UDEV_RUN_DIR, UdevRuntimeResources, default_rules_dirs,
     encode_uevent_properties, initialize_udev_runtime_with_fds,

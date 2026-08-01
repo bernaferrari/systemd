@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // PORT-SYNC: src/udev/udev-manager.c
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::udev_db_monitor::create_kobject_uevent_multicast_socket;
 use std::collections::{BTreeMap, VecDeque};
 use std::io;

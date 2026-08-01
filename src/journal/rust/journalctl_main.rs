@@ -1,19 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 #![deny(unsafe_op_in_unsafe_fn)]
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
+use systemd_shared_rs::unsafe_ffi;
 
 #[cfg(unix)]
 use nix::unistd::{getegid, geteuid, getgid, getuid};

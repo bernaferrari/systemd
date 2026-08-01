@@ -4,14 +4,8 @@
 //
 // Binary entry point for systemd-random-seed
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use systemd_random_seed_rs::{SeedAction, seed_file_path};
+use systemd_shared_rs::unsafe_ffi;
 
 #[cfg(target_os = "linux")]
 use systemd_random_seed_rs::{CreditContext, CreditEntropy, may_credit};

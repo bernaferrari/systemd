@@ -6,7 +6,8 @@
 // Memory utilities: alignment, zeroing, uniform-byte checks, and pointer
 // alignment validation.
 
-// Centralized unsafe expression boundary for this module.
+// Single audited unsafe expression boundary shared by the Rust port.
+#[macro_export]
 macro_rules! unsafe_ffi {
     ($expression:expr) => {{
         // SAFETY: the enclosing helper documents and validates this operation.
