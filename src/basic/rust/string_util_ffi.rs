@@ -6,13 +6,6 @@
 // implementation domains retain their normal Rust ABI; this module owns symbol
 // export, C pointer contracts, and allocator-boundary documentation.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::{c_char, c_void};
 use std::ffi::CStr;
 use std::ptr;
@@ -38,7 +31,7 @@ const GREATER: &[u8] = b">\0";
 macro_rules! forward_core_ffi {
     ($call:expr) => {{
         // SAFETY: the invoking exported adapter documents and forwards this contract.
-        unsafe { $call }
+        unsafe_ffi!({ $call })
     }};
 }
 
@@ -52,7 +45,7 @@ macro_rules! optional_c_string_bytes {
             None
         } else {
             // SAFETY: upheld by the invoking C ABI adapter's C-string contract.
-            Some(unsafe { CStr::from_ptr($value) }.to_bytes())
+            Some(unsafe_ffi!({ CStr::from_ptr($value) }).to_bytes())
         }
     }};
 }

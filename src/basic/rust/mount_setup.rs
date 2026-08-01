@@ -5,13 +5,6 @@
 // Mount point classification — pure path-component comparison against the
 // mount table and ignore list in mount-setup.c.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_char};
 
 // These are the .where fields from mount_table in mount-setup.c. Keep entries

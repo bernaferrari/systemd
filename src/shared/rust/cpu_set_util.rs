@@ -9,13 +9,6 @@
 // internally for ergonomic, safe CPU membership tracking with
 // deterministic iteration order.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::collections::BTreeSet;
 use std::fmt;
 #[cfg(target_os = "linux")]
@@ -516,9 +509,9 @@ pub fn sched_getaffinity(pid: libc::pid_t) -> Result<CpuSet, CpuSetError> {
         let mut mask: Vec<u8> = vec![0u8; size];
 
         // SAFETY: buffer is valid and sized.
-        let ret = unsafe {
+        let ret = unsafe_ffi!({
             libc::sched_getaffinity(pid, size, mask.as_mut_ptr() as *mut libc::cpu_set_t)
-        };
+        });
 
         if ret == 0 {
             return Ok(CpuSet::from_dbus(&mask));

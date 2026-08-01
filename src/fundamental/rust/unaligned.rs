@@ -1,11 +1,3 @@
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // PORT-SYNC: src/fundamental/unaligned.h

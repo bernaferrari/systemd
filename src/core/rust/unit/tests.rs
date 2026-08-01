@@ -3,14 +3,6 @@
     reason = "the C-aligned `unit` facade deliberately keeps its tests in unit/tests.rs"
 )]
 
-// Centralized unsafe expression boundary for this test module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
-
 mod tests {
     use crate::unit::{
         ActiveState, CollectMode, DependencyKind, FUNCTION_INVENTORY, FreezerState, ManagerRecord,

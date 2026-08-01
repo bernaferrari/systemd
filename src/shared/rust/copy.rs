@@ -12,13 +12,6 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
@@ -201,14 +194,14 @@ pub fn create_hole(fd: i32, size: i64) -> std::io::Result<()> {
     if offset < end {
         let punch_len = std::cmp::min(size, end - offset) as libc::off_t;
         // SAFETY: `fd` is passed through to the kernel; the integer offset and length need no memory validity.
-        let ret = unsafe {
+        let ret = unsafe_ffi!({
             crate::ffi::fallocate(
                 fd,
                 FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
                 offset,
                 punch_len,
             )
-        };
+        });
         if ret < 0 {
             let err = std::io::Error::last_os_error();
             if err.raw_os_error() != Some(libc::ENOTSUP) {
@@ -248,7 +241,7 @@ fn try_copy_file_range(
         .map(|v| v as *mut i64)
         .unwrap_or(std::ptr::null_mut());
     // SAFETY: all pointers are valid file descriptors or null offsets.
-    let n = unsafe {
+    let n = unsafe_ffi!({
         libc::syscall(
             SYS_copy_file_range,
             fd_in,
@@ -258,7 +251,7 @@ fn try_copy_file_range(
             len,
             0u64,
         )
-    };
+    });
     if n < 0 {
         Err(std::io::Error::last_os_error())
     } else {
@@ -400,13 +393,13 @@ pub fn copy_bytes_fd(
         let mut written: usize = 0;
         while written < n as usize {
             // SAFETY: `written < n <= buf.len()`, so this pointer and remaining byte range are valid to read.
-            let k = unsafe {
+            let k = unsafe_ffi!({
                 libc::write(
                     fd_out,
                     buf.as_ptr().add(written) as *const libc::c_void,
                     n as usize - written,
                 )
-            };
+            });
             if k < 0 {
                 let err = std::io::Error::last_os_error();
                 if err.kind() == std::io::ErrorKind::Interrupted {
@@ -725,7 +718,7 @@ impl HardlinkContext {
             Err(_) => return Ok(false),
         };
         // SAFETY: both C strings are NUL-terminated and both directory fds are libc-validated.
-        let ret = unsafe {
+        let ret = unsafe_ffi!({
             libc::linkat(
                 store_dir.as_raw_fd(),
                 key_cstr.as_ptr(),
@@ -733,7 +726,7 @@ impl HardlinkContext {
                 dst_name.as_ptr(),
                 0,
             )
-        };
+        });
         if ret < 0 {
             let err = std::io::Error::last_os_error();
             if err.raw_os_error() == Some(libc::ENOENT) {
@@ -764,7 +757,7 @@ impl HardlinkContext {
         let key_cstr = std::ffi::CString::new(key)?;
         let store_dir = File::open(store)?;
         // SAFETY: both C strings are NUL-terminated and both directory fds are libc-validated.
-        let ret = unsafe {
+        let ret = unsafe_ffi!({
             libc::linkat(
                 dst_dir,
                 dst_name.as_ptr(),
@@ -772,7 +765,7 @@ impl HardlinkContext {
                 key_cstr.as_ptr(),
                 0,
             )
-        };
+        });
         if ret < 0 {
             Err(std::io::Error::last_os_error())
         } else {
@@ -1049,7 +1042,7 @@ mod tests {
         }
 
         // SAFETY: the temporary CString is NUL-terminated and remains live for the duration of open.
-        let fd = unsafe {
+        let fd = unsafe_ffi!({
             libc::open(
                 std::ffi::CString::new(path.to_str().unwrap())
                     .unwrap()
@@ -1057,7 +1050,7 @@ mod tests {
                 libc::O_RDWR,
                 0,
             )
-        };
+        });
         assert!(fd >= 0);
 
         // SAFETY: `fd` was returned by open and SEEK_SET has no pointer arguments.

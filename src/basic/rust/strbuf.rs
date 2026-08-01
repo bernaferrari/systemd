@@ -6,13 +6,6 @@
 
 // ── Internal types ──────────────────────────────────────────────────────────
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 struct StrbufNode {
     value_off: usize,
     value_len: usize,

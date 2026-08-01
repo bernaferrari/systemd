@@ -2,7 +2,6 @@
 // PORT-SYNC: src/udev/udev-manager.c
 
 // Centralized unsafe expression boundary for this module.
-#[cfg(test)]
 macro_rules! unsafe_ffi {
     ($expression:expr) => {{
         // SAFETY: the enclosing helper documents and validates this operation.
@@ -200,14 +199,14 @@ impl KobjectUeventReceiver {
 
 fn recv_datagram(fd: &OwnedFd, buf: &mut [u8]) -> io::Result<usize> {
     // SAFETY: fd is valid and buffer is a valid mutable byte span.
-    let n = unsafe {
+    let n = unsafe_ffi!({
         libc::recv(
             fd.as_raw_fd(),
             buf.as_mut_ptr().cast::<libc::c_void>(),
             buf.len(),
             0,
         )
-    };
+    });
 
     if n < 0 {
         return Err(io::Error::last_os_error());

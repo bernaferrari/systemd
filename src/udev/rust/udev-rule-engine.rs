@@ -2,13 +2,6 @@
 //
 // PORT-SYNC: src/udev/udev-rules.c, src/udev/udev-node.c, src/udev/udev-worker.c
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::udev_builtin::builtin_by_name;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;

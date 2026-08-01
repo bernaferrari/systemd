@@ -5,13 +5,6 @@
 // Coredump utilities — coredump filter parsing, /proc/self/coredump_filter
 // manipulation, ELF auxiliary vector parsing, and core dump disabling.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::fmt;
 use std::io;

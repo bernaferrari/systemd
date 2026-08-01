@@ -6,13 +6,6 @@
 // deliberately does not pretend to implement the libseccomp filter runtime;
 // that larger boundary remains owned by src/shared/seccomp-util.c.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_char, c_int};
 use std::ptr;
 

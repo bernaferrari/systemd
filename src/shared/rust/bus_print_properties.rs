@@ -9,13 +9,6 @@
 // sets, namespace flags, etc.) and supports filtering by expected value
 // and display flags.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::{ffi::CStr, fmt::Write as FmtWrite};
 
 use systemd_basic_rs::{

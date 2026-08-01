@@ -4,13 +4,6 @@
 //
 // Mount propagation flag conversion and mountpoint utility functions.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 
 use libc::{c_char, c_int, c_ulong};

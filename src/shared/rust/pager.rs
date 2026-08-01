@@ -12,13 +12,6 @@
 // $SYSTEMD_PAGERSECURE, sudo privilege detection, and a fallback chain of
 // pagers (pager → less → more → built-in cat).
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::env;
 use std::fmt;
@@ -488,9 +481,9 @@ pub fn pager_close(mut session: PagerSession) -> Result<(), PagerError> {
         } else {
             // SAFETY: closing an already-closed stdout is harmless here; the
             // return value is intentionally ignored during pager teardown.
-            unsafe {
+            unsafe_ffi!({
                 libc::close(libc::STDOUT_FILENO);
-            }
+            })
         }
     }
     session.stored_stdout = None;
@@ -502,9 +495,9 @@ pub fn pager_close(mut session: PagerSession) -> Result<(), PagerError> {
         } else {
             // SAFETY: closing an already-closed stderr is harmless here; the
             // return value is intentionally ignored during pager teardown.
-            unsafe {
+            unsafe_ffi!({
                 libc::close(libc::STDERR_FILENO);
-            }
+            })
         }
     }
     session.stored_stderr = None;
@@ -558,7 +551,7 @@ mod tests {
         ($expression:expr) => {{
             // SAFETY: test inputs are constructed in this module and satisfy the
             // documented C ABI preconditions of the exercised facade.
-            unsafe { $expression }
+            unsafe_ffi!({ $expression })
         }};
     }
     use super::*;

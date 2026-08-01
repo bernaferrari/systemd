@@ -8,13 +8,6 @@
 
 /// Sentinel value for unset capability masks.
 /// Mirrors C `CAP_MASK_UNSET` (UINT64_MAX).
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 pub const CAP_MASK_UNSET: u64 = u64::MAX;
 
 /// All possible capability bits on (63 bits, since bit 63 is reserved for

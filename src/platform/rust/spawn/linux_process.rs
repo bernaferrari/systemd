@@ -9,13 +9,6 @@
 //! for C-compatible descriptor/memory exhaustion because PID 1 still owns the
 //! wait relationship.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use super::ProcessIdentity;
 use nix::sys::wait::waitpid;
 use nix::unistd::{Pid, fork};

@@ -6,13 +6,6 @@
 // edge.  The escaping, unescaping, and quoting policies operate on safe byte
 // slices and create a fresh C-allocator result only after they succeed.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::c_char;
 use std::ffi::CStr;
 use std::ptr;

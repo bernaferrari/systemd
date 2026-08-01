@@ -11,13 +11,6 @@
 // the parent never hangs on potentially blocking syscalls such as
 // close() on a busy NFS mount.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::io;
 use std::os::unix::io::RawFd;

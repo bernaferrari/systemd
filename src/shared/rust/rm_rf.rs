@@ -12,14 +12,6 @@
 // files and directories with mount point protection, physical
 // filesystem guards, and chmod-based permission escalation.
 
-// Centralized unsafe expression boundary for this low-level adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper validates descriptors, pointers, and
-        // ownership before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::fs;
@@ -596,13 +588,13 @@ fn path_is_root_at(dfd: RawFd, path: &CString) -> Result<bool, RmRfError> {
     } else {
         // SAFETY: `path` is NUL-terminated and live for the call. A successful
         // result is immediately adopted below.
-        let fd = unsafe {
+        let fd = unsafe_ffi!({
             libc::openat(
                 dfd,
                 path.as_ptr(),
                 O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
             )
-        };
+        });
         if fd < 0 {
             let error = last_errno();
             if error == -libc::ENOTDIR {
@@ -798,12 +790,12 @@ fn next_directory_entry(dir: *mut libc::DIR) -> Result<Option<(String, Directory
         }
         // SAFETY: `entry` remains valid until the next readdir call on this
         // stream, which occurs only after this function returns.
-        let (name, d_type) = unsafe {
+        let (name, d_type) = unsafe_ffi!({
             (
                 std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()),
                 (*entry).d_type,
             )
-        };
+        });
         let Ok(name) = name.to_str() else {
             continue;
         };
@@ -897,14 +889,14 @@ fn rm_rf_children_impl(
                     if flags.contains(RemoveFlags::REMOVE_CHMOD_RESTORE) {
                         // SAFETY: `parent_fd` is borrowed from the live parent
                         // stream and `dirname` is a live NUL-terminated path.
-                        unsafe {
+                        unsafe_ffi!({
                             libc::fchmodat(
                                 parent_fd,
                                 dirname.as_ptr(),
                                 current_old_mode & 0o7777,
                                 0,
                             );
-                        }
+                        })
                     }
                 }
             }
@@ -1092,14 +1084,14 @@ pub fn rm_rf_at(dir_fd: i32, path: &Path, flags: RemoveFlags) -> Result<(), RmRf
             // reports ENOENT for dangling symlinks. Match C by checking the
             // entry itself without following it before accepting absence.
             // SAFETY: `c_path` is NUL-terminated and live for the call.
-            if unsafe {
+            if unsafe_ffi!({
                 libc::faccessat(
                     dir_fd,
                     c_path.as_ptr(),
                     libc::F_OK,
                     libc::AT_SYMLINK_NOFOLLOW,
                 )
-            } < 0
+            }) < 0
             {
                 let error = last_errno();
                 if flags.contains(RemoveFlags::REMOVE_MISSING_OK) && error == -libc::ENOENT {

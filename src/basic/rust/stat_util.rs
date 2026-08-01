@@ -57,7 +57,7 @@ mod xstatx;
 macro_rules! ffi_borrow_or_return {
     ($pointer:expr, $fallback:expr) => {{
         // SAFETY: a non-null pointer is valid for the enclosing C ABI call.
-        let Some(value) = (unsafe { ($pointer).as_ref() }) else {
+        let Some(value) = (unsafe_ffi!({ ($pointer).as_ref() })) else {
             return $fallback;
         };
         value
@@ -256,7 +256,7 @@ mod tests {
         ($expression:expr) => {{
             // SAFETY: test inputs are constructed in this module and satisfy the
             // documented C ABI preconditions of the exercised facade.
-            unsafe { $expression }
+            unsafe_ffi!({ $expression })
         }};
     }
     use super::*;

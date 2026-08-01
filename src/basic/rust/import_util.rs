@@ -9,13 +9,6 @@
 // only unsafe boundary; their successful string outputs are libc allocations
 // and may therefore be released by the C caller with free(3).
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_char, c_int};
 use std::ops::Range;
 use std::ptr;

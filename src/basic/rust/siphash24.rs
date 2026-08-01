@@ -4,13 +4,6 @@
 //
 // SipHash-2-4 cryptographic hash (pure Rust implementation).
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::{c_char, c_void};
 use std::{ffi::CStr, ptr, slice};
 

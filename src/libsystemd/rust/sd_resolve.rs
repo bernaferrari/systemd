@@ -5,13 +5,6 @@
 // Asynchronous getaddrinfo/getnameinfo backed by blocking resolver workers.
 // Worker completion is signalled through a pollable Unix datagram socket.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
@@ -665,7 +658,7 @@ fn sockaddr_to_socket_addr(
 
     // SAFETY: callers provide ai_addr and ai_addrlen from a live getaddrinfo
     // node. Each cast is guarded by both family and minimum structure length.
-    unsafe {
+    unsafe_ffi!({
         match i32::from((*address).sa_family) {
             libc::AF_INET if (length as usize) >= std::mem::size_of::<libc::sockaddr_in>() => {
                 let address = &*address.cast::<libc::sockaddr_in>();
@@ -686,7 +679,7 @@ fn sockaddr_to_socket_addr(
             }
             _ => None,
         }
-    }
+    })
 }
 
 fn lookup_nameinfo(address: SocketAddr) -> LookupResult {
@@ -726,7 +719,7 @@ fn call_getnameinfo(address: *const libc::sockaddr, length: libc::socklen_t) -> 
     let mut service = [0 as libc::c_char; 32];
     // SAFETY: address points to a fully initialized sockaddr of length bytes;
     // both output arrays are writable for the lengths passed to libc.
-    let ret_code = unsafe {
+    let ret_code = unsafe_ffi!({
         libc::getnameinfo(
             address,
             length,
@@ -736,7 +729,7 @@ fn call_getnameinfo(address: *const libc::sockaddr, length: libc::socklen_t) -> 
             service.len() as libc::socklen_t,
             0,
         )
-    };
+    });
     if ret_code != 0 {
         return LookupResult::NameInfo {
             ret_code,

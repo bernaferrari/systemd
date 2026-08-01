@@ -381,7 +381,7 @@ pub fn numa_is_supported() -> Result<(), NumaError> {
     // SAFETY: the raw syscall has the get_mempolicy(2) ABI. It explicitly
     // permits all output pointers to be null when no query flags request
     // data, and no Rust memory is dereferenced.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         libc::syscall(
             libc::SYS_get_mempolicy,
             std::ptr::null_mut::<libc::c_int>(),
@@ -390,7 +390,7 @@ pub fn numa_is_supported() -> Result<(), NumaError> {
             std::ptr::null::<libc::c_void>(),
             0 as libc::c_ulong,
         )
-    };
+    });
     if ret < 0 {
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() == Some(libc::ENOSYS) {
@@ -427,14 +427,14 @@ pub fn apply_numa_policy(policy: &NumaPolicy) -> Result<(), NumaError> {
     // SAFETY: `nodes` either supplies a null pointer with `maxnode == 0`, or
     // borrows the policy's contiguous node-mask words for the synchronous
     // syscall. `maxnode` describes that same allocation.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         libc::syscall(
             libc::SYS_set_mempolicy,
             mode,
             nodes.map_or(std::ptr::null(), |n| n.as_ptr()),
             maxnode as libc::c_ulong,
         )
-    };
+    });
 
     if ret < 0 {
         let err = std::io::Error::last_os_error();

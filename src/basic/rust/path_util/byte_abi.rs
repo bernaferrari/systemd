@@ -9,14 +9,6 @@
 //! C-allocator ownership at the ABI boundary. Paths are never interpreted as
 //! UTF-8 and never pass through `std::path::Path`.
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use std::cmp::Ordering;
 use std::ffi::CStr;
 use std::ptr;

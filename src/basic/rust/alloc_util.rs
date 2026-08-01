@@ -7,13 +7,6 @@
 // boundary. Rust-owned buffers never cross the ABI: each `rs_*` result is
 // allocated by libc and is therefore valid input to C's `free()`.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi;
 use std::ffi::c_void;
 use std::ptr;

@@ -6,13 +6,6 @@
 // Daemon notification utilities for communicating with the systemd service manager
 // via the sd_notify protocol (NOTIFY_SOCKET).
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::env;
 use std::ffi::CString;
 use std::fmt;

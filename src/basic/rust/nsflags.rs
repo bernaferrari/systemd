@@ -6,13 +6,6 @@
 // computation; the narrow C ABI facade allocates owned output with libc so it
 // remains compatible with C's free(3) and strv_free() ownership contracts.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_char, c_int, c_ulong, c_void};
 use std::mem::size_of;
 use std::ptr;
@@ -226,7 +219,7 @@ fn allocate_namespace_string(flags: c_ulong) -> Result<*mut c_char, c_int> {
     // SAFETY: `allocation` owns `allocation_size` writable bytes. Every
     // source is immutable static storage; the calculated separators and final
     // NUL occupy exactly the remaining destination positions.
-    unsafe {
+    unsafe_ffi!({
         let mut cursor = allocation;
         let mut needs_separator = false;
         for info in NAMESPACE_INFO {
@@ -243,7 +236,7 @@ fn allocate_namespace_string(flags: c_ulong) -> Result<*mut c_char, c_int> {
             needs_separator = true;
         }
         *cursor = 0;
-    }
+    });
 
     Ok(allocation.cast::<c_char>())
 }

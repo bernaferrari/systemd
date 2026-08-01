@@ -7,6 +7,8 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+#[macro_use]
+pub mod sd_daemon_checks;
 pub mod bus_address_escape;
 pub mod bus_common_errors;
 pub mod bus_internal_types;
@@ -22,7 +24,6 @@ pub mod journal_object_type;
 pub mod netlink_sock_diag;
 pub mod network_util;
 pub mod sd_daemon;
-pub mod sd_daemon_checks;
 pub mod sd_device;
 pub mod sd_device_enumerator;
 pub mod sd_device_filter;

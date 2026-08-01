@@ -4,13 +4,6 @@
 //
 // Descriptor and path verification adapters (verify_* / is_* / fd_verify_*).
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;

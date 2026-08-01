@@ -2,13 +2,6 @@
 
 //! Allocation-free child side of the manager-owned `Type=idle` protocol.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use super::super::IdlePipe;
 use super::child_errno_or_invalid_argument;
 use std::os::fd::RawFd;

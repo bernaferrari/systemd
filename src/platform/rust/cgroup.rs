@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::env;
 use std::fs;
 use std::io::{self, Write};

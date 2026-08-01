@@ -137,11 +137,11 @@ impl LoopDevice {
     /// Sync the loop device to ensure in-flight blocks are written.
     pub fn sync(&self) -> Result<(), LoopError> {
         // SAFETY: fsync consumes an integer fd by value.
-        unsafe {
+        unsafe_ffi!({
             if libc::fsync(self.fd.as_raw_fd()) < 0 {
                 return Err(LoopError::from_errno(crate::ffi::get_errno()));
             }
-        }
+        });
         Ok(())
     }
 
@@ -173,11 +173,11 @@ impl LoopDevice {
         // Otherwise change the lock mode on the existing fd.
         let lock_fd = self.lock_fd.as_ref().unwrap();
         // SAFETY: flock consumes an integer fd and validated operation by value.
-        unsafe {
+        unsafe_ffi!({
             if libc::flock(lock_fd.as_raw_fd(), op_val) < 0 {
                 return Err(LoopError::from_errno(crate::ffi::get_errno()));
             }
-        }
+        });
         Ok(())
     }
 
@@ -295,23 +295,23 @@ impl Drop for LoopDevice {
         if should_cleanup {
             if let Some(ctrl_fd) = &control {
                 // SAFETY: flock consumes an integer fd and operation by value.
-                unsafe {
+                unsafe_ffi!({
                     let _ = libc::flock(ctrl_fd.as_raw_fd(), LOCK_EX);
-                }
+                })
             }
         }
 
         // Sync even foreign or relinquished devices, matching loop_device_free.
         // SAFETY: fsync consumes an integer fd by value.
-        unsafe {
+        unsafe_ffi!({
             let _ = libc::fsync(self.fd.as_raw_fd());
-        }
+        });
 
         if should_cleanup {
             // SAFETY: flock consumes an integer fd and operation by value.
-            unsafe {
+            unsafe_ffi!({
                 let _ = libc::flock(self.fd.as_raw_fd(), LOCK_EX);
-            }
+            });
 
             // Best-effort cleanup mirrors the C destructor.
             let _ = remove_all_partitions_sysfs(self.fd.as_raw_fd(), self.nr);

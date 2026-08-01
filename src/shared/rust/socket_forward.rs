@@ -15,13 +15,6 @@
 // The forwarder detects EOF/disconnect on either side and reports completion
 // when all buffered data has been flushed.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::fmt;
 use std::io;
@@ -309,12 +302,12 @@ impl SocketForward {
 
         // SAFETY: the validated descriptors are transferred exactly once into
         // OwnedFd, which closes them if pipe setup subsequently fails.
-        let (server_fd, client_fd) = unsafe {
+        let (server_fd, client_fd) = unsafe_ffi!({
             (
                 OwnedFd::from_raw_fd(server_fd),
                 OwnedFd::from_raw_fd(client_fd),
             )
-        };
+        });
         Self::from_owned_fds(server_fd, client_fd)
     }
 
@@ -620,13 +613,13 @@ fn rights_cmsg_layout(fd_count: usize) -> io::Result<CmsgLayout> {
 
     // SAFETY: payload_len is representable by the libc CMSG layout helpers,
     // which calculate sizes only and dereference no memory.
-    let (cmsg_len, cmsg_space, header_len) = unsafe {
+    let (cmsg_len, cmsg_space, header_len) = unsafe_ffi!({
         (
             libc::CMSG_LEN(payload_len) as usize,
             libc::CMSG_SPACE(payload_len) as usize,
             libc::CMSG_LEN(0) as usize,
         )
-    };
+    });
 
     // The libc helpers accept u32 but may wrap their header/alignment addition
     // at the type boundary. Reject such a layout before allocating or writing.
@@ -701,12 +694,12 @@ fn collect_rights(
         let cmsg_start = cmsg.cast::<u8>() as usize;
         // SAFETY: CMSG_FIRSTHDR/CMSG_NXTHDR return a cmsghdr-aligned pointer
         // within the control buffer; cmsg is bounds-checked immediately below.
-        let (cmsg_len, is_rights) = unsafe {
+        let (cmsg_len, is_rights) = unsafe_ffi!({
             (
                 (*cmsg).cmsg_len as usize,
                 (*cmsg).cmsg_level == libc::SOL_SOCKET && (*cmsg).cmsg_type == libc::SCM_RIGHTS,
             )
-        };
+        });
         let cmsg_end =
             checked_cmsg_end(control_start, control_len, cmsg_start, cmsg_len, header_len)?;
 
@@ -775,7 +768,7 @@ pub fn send_fds(sock: RawFd, fds: &[RawFd]) -> io::Result<()> {
 
     // SAFETY: `layout` is checked before allocation; `cmsg_buf` is aligned
     // for cmsghdr and remains live for the complete sendmsg call.
-    unsafe {
+    unsafe_ffi!({
         // Carry one byte with the ancillary data. Linux requires at least one
         // data byte for reliable SCM_RIGHTS delivery over SOCK_STREAM.
         let payload = [0u8; 1];
@@ -804,7 +797,7 @@ pub fn send_fds(sock: RawFd, fds: &[RawFd]) -> io::Result<()> {
         if rc < 0 {
             return Err(io::Error::last_os_error());
         }
-    }
+    });
     Ok(())
 }
 
@@ -822,7 +815,7 @@ pub fn recv_fds(sock: RawFd, max_fds: usize) -> io::Result<Vec<OwnedFd>> {
 
     // SAFETY: `layout` is checked before allocation; `cmsg_buf` is aligned
     // for cmsghdr and remains live while recvmsg and control parsing run.
-    unsafe {
+    unsafe_ffi!({
         // Consume the one-byte carrier used by `send_fds`.
         let mut payload = [0u8; 1];
         let iov = libc::iovec {
@@ -858,7 +851,7 @@ pub fn recv_fds(sock: RawFd, max_fds: usize) -> io::Result<Vec<OwnedFd>> {
         }
 
         Ok(received)
-    }
+    })
 }
 
 // ── Socket activation helpers ─────────────────────────────────────────────

@@ -15,13 +15,6 @@
 // probing delegates to the narrow C authority shared with find-esp.c so blkid,
 // udev, optional-feature, and errno behavior cannot drift.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::btrfs_util::btrfs_get_block_device_fd;
 use crate::ffi::*;
 use std::ffi::{CString, OsStr};
@@ -403,7 +396,7 @@ fn verify_fsroot_dir_fd(
 
     // SAFETY: `fd` is live, `c""` is a valid NUL-terminated empty path used
     // with AT_EMPTY_PATH, and `statx` is writable target-native storage.
-    if unsafe {
+    if unsafe_ffi!({
         libc::statx(
             fd.as_raw_fd(),
             c"".as_ptr(),
@@ -411,7 +404,7 @@ fn verify_fsroot_dir_fd(
             libc::STATX_TYPE | libc::STATX_INO,
             statx.as_mut_ptr(),
         )
-    } < 0
+    }) < 0
     {
         return Err(FindEspError::Io(io::Error::last_os_error()));
     }
@@ -511,7 +504,7 @@ fn verify_esp_partition_metadata(
     // SAFETY: devnum_from_major_minor supplies the target-authoritative dev_t
     // representation. Every output points to live, initialized, uniquely
     // borrowed storage and the C helper retains none of it.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         c_verify_esp_partition(
             devnum_from_major_minor(device.0, device.1) as libc::dev_t,
             if flags.contains(VerifyEspFlags::UNPRIVILEGED_MODE) {
@@ -529,7 +522,7 @@ fn verify_esp_partition_metadata(
             &mut partition_size,
             &mut partition_uuid,
         )
-    };
+    });
     partition_probe_result(result)?;
 
     Ok((
@@ -548,7 +541,7 @@ fn verify_xbootldr_partition_metadata(
 
     // SAFETY: the encoded dev_t is target-authoritative, partition_uuid is a
     // live unique output slot with sd_id128_t layout, and C retains no pointer.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         c_verify_xbootldr_partition(
             devnum_from_major_minor(device.0, device.1) as libc::dev_t,
             if flags.contains(VerifyEspFlags::UNPRIVILEGED_MODE) {
@@ -563,7 +556,7 @@ fn verify_xbootldr_partition_metadata(
             },
             &mut partition_uuid,
         )
-    };
+    });
     partition_probe_result(result)?;
 
     Ok((!partition_uuid.is_null()).then_some(partition_uuid.bytes))
@@ -673,7 +666,7 @@ fn canonicalize_or_resolve_at(root_fd: BorrowedFd<'_>, p: &Path) -> io::Result<P
     // SAFETY: root_fd is borrowed for the duration of the call; c_path and how
     // remain live; the kernel is given the exact size of open_how. On success,
     // the returned value is a newly owned file descriptor.
-    let fd = unsafe {
+    let fd = unsafe_ffi!({
         libc::syscall(
             libc::SYS_openat2,
             root_fd.as_raw_fd(),
@@ -681,7 +674,7 @@ fn canonicalize_or_resolve_at(root_fd: BorrowedFd<'_>, p: &Path) -> io::Result<P
             &how,
             std::mem::size_of::<libc::open_how>(),
         )
-    };
+    });
     if fd >= 0 {
         // SAFETY: a successful openat2 syscall returns a new descriptor in
         // c_int range, and ownership has not been transferred elsewhere.
@@ -751,12 +744,12 @@ fn open_path(p: &Path) -> io::Result<OwnedFd> {
     // SAFETY: c_path is NUL-terminated and remains alive for the call. These
     // flags do not include O_CREAT or O_TMPFILE, so no variadic mode argument
     // is required.
-    let fd = unsafe {
+    let fd = unsafe_ffi!({
         libc::open(
             c_path.as_ptr(),
             O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
         )
-    };
+    });
     if fd < 0 {
         Err(io::Error::last_os_error())
     } else {

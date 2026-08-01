@@ -9,13 +9,6 @@
 // or auto-detected from pattern content), and pattern matching against
 // arbitrary byte buffers with optional ovector output.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::collections::HashSet;
 use std::ffi::{CString, c_void};
 use std::fmt;
@@ -178,9 +171,9 @@ impl Drop for CompiledPattern {
             // SAFETY: `self.ptr` came from this library's pcre2_compile_8,
             // is owned by this guard, and the published library handle is
             // retained for the process lifetime.
-            unsafe {
+            unsafe_ffi!({
                 (lib.code_free())(self.ptr);
-            }
+            })
         }
     }
 }
@@ -283,9 +276,9 @@ impl Drop for MatchDataGuard {
     fn drop(&mut self) {
         // SAFETY: this guard owns the non-null match-data allocation returned
         // by its corresponding PCRE2 constructor exactly once.
-        unsafe {
+        unsafe_ffi!({
             (self.free_fn)(self.ptr);
-        }
+        })
     }
 }
 
@@ -409,7 +402,7 @@ pub fn dlopen_pcre2() -> Result<(), Pcre2Error> {
             // SAFETY: each symbol is resolved from the process-lifetime
             // libpcre2-8 handle and its explicit type below is the matching
             // PCRE2 C declaration from pcre2-util.h.
-            unsafe { std::mem::transmute::<*mut c_void, $type>(symbol.as_ptr()) }
+            unsafe_ffi!({ std::mem::transmute::<*mut c_void, $type>(symbol.as_ptr()) })
         }};
     }
 
@@ -480,7 +473,7 @@ fn compile_pattern_with_flags(
     // SAFETY: compile is the validated PCRE2 ABI symbol; `pattern` is live
     // and NUL-terminated, both out-pointers refer to live writable locals,
     // and a null compile context is explicitly supported by PCRE2.
-    let code_ptr = unsafe {
+    let code_ptr = unsafe_ffi!({
         (lib.compile())(
             pattern.as_ptr() as *const u8,
             PCRE2_ZERO_TERMINATED,
@@ -489,7 +482,7 @@ fn compile_pattern_with_flags(
             &mut erroroffset,
             std::ptr::null_mut(),
         )
-    };
+    });
 
     if code_ptr.is_null() {
         return Err(Pcre2Error::InvalidPattern {
@@ -516,7 +509,7 @@ fn match_with_data(
     // SAFETY: match_fn is the validated PCRE2 ABI symbol; the compiled code
     // and match-data allocation are live, and `message` remains valid for its
     // exact explicit length for the duration of this call.
-    unsafe {
+    unsafe_ffi!({
         (lib.match_fn())(
             compiled_pattern.as_ptr(),
             message.as_ptr(),
@@ -526,7 +519,7 @@ fn match_with_data(
             match_data.as_ptr(),
             std::ptr::null_mut(),
         )
-    }
+    })
 }
 
 /// Reproduce C's AUTO-case probe using PCRE2 itself.

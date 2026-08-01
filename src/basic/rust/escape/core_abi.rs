@@ -7,13 +7,6 @@
 // public nullable cases, borrows C input for the duration of a call, and
 // transfers fresh malloc(3) output to the C caller.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::c_char;
 use std::ffi::CStr;
 use std::ptr;

@@ -7,14 +7,6 @@
 //! owns only a duplicated registration descriptor and a one-bit inbox. The
 //! callback never reads a pipe, starts a service, or mutates manager state.
 
-// Centralized unsafe expression boundary for this module.
-#[cfg(test)]
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 #[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]

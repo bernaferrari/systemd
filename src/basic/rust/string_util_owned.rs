@@ -9,13 +9,6 @@
 // explicit pointer/ownership contract; allocation sites additionally document
 // allocator provenance and the exact point where ownership is published.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_void};
 
 use libc::c_char;

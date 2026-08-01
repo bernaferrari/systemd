@@ -13,14 +13,6 @@
 //
 // All operations are pure Rust. No FFI blocks or no_mangle attributes remain.
 
-// Centralized unsafe expression boundary for this module.
-#[cfg(test)]
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::collections::HashMap;
 use std::env;

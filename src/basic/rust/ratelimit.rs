@@ -6,13 +6,6 @@
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 const USEC_INFINITY: u64 = u64::MAX;
 
 // ── Internal helpers ──────────────────────────────────────────────────────

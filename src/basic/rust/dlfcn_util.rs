@@ -7,13 +7,6 @@
 // `dlopen_safe()` remains responsible for static-build handling,
 // `block_dlopen()`, and the security-required RTLD_NOW | RTLD_NODELETE flags.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::fmt;
 use std::ptr::{self, NonNull};

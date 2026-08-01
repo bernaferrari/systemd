@@ -5,14 +5,6 @@
 // DNS label parsing and DNS name utility functions.
 // These are pure functions with no I/O or global state.
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use libc::{c_char, c_void};
 
 use crate::ffi::Errno;
@@ -2207,7 +2199,7 @@ mod tests {
         ($expression:expr) => {{
             // SAFETY: test inputs are constructed in this module and satisfy the
             // documented C ABI preconditions of the exercised facade.
-            unsafe { $expression }
+            unsafe_ffi!({ $expression })
         }};
     }
     use super::*;

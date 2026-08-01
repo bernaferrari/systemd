@@ -537,7 +537,7 @@ fn set_root_shared_propagation() -> io::Result<()> {
     let c_path = std::ffi::CString::new("/")?;
     // SAFETY: c_path is a valid null-terminated string. NULL source, type,
     // and data pointers are valid for mount(2) when only changing propagation.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         libc::mount(
             std::ptr::null(),
             c_path.as_ptr(),
@@ -545,7 +545,7 @@ fn set_root_shared_propagation() -> io::Result<()> {
             (MS_REC | MS_SHARED) as u64,
             std::ptr::null(),
         )
-    };
+    });
     if ret < 0 {
         return Err(io::Error::last_os_error());
     }

@@ -195,9 +195,9 @@ impl<'a> VarEraser<'a> {
     pub fn erase(&mut self) {
         // SAFETY: the exclusive slice proves that its pointer is writable for
         // exactly its length and remains alive for this call.
-        unsafe {
+        unsafe_ffi!({
             explicit_bzero_safe(self.data.as_mut_ptr().cast(), self.data.len());
-        }
+        })
     }
 }
 

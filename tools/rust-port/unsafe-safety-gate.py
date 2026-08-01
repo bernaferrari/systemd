@@ -21,12 +21,14 @@ SAFETY_RATIONALE_MARKERS = ("SAFETY:", "# Safety")
 @dataclass
 class FileMetrics:
     unsafe_sites: int = 0
+    abi_sites: int = 0
     missing_safety: int = 0
     missing_safety_sites: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
             "unsafe_sites": self.unsafe_sites,
+            "abi_sites": self.abi_sites,
             "missing_safety": self.missing_safety,
             "missing_safety_sites": list(self.missing_safety_sites),
         }
@@ -142,7 +144,15 @@ def collect_metrics(root: Path, window: int) -> dict[str, FileMetrics]:
                 context = unsafe_site_context(lines, idx, unsafe_token.start())
                 if not UNSAFE_SITE_RE.match(context):
                     continue
-                metrics.unsafe_sites += 1
+                # `unsafe extern` declarations and definitions are ABI
+                # contracts, not executable unsafe operations. Keep them in a
+                # separate inventory so the execution-surface metric reflects
+                # code that can actually perform unsafe operations while every
+                # C boundary remains visible and baselined.
+                if re.match(r"unsafe\s+extern\b", context):
+                    metrics.abi_sites += 1
+                else:
+                    metrics.unsafe_sites += 1
                 if not has_safety_rationale(
                     lines,
                     idx,
@@ -157,7 +167,7 @@ def collect_metrics(root: Path, window: int) -> dict[str, FileMetrics]:
         metrics.missing_safety_sites = tuple(missing_safety_sites)
 
         rel = path.relative_to(root).as_posix()
-        if metrics.unsafe_sites > 0:
+        if metrics.unsafe_sites > 0 or metrics.abi_sites > 0:
             out[rel] = metrics
 
     return out
@@ -165,8 +175,13 @@ def collect_metrics(root: Path, window: int) -> dict[str, FileMetrics]:
 
 def summarize(metrics: dict[str, FileMetrics]) -> dict[str, int]:
     unsafe_sites = sum(m.unsafe_sites for m in metrics.values())
+    abi_sites = sum(m.abi_sites for m in metrics.values())
     missing_safety = sum(m.missing_safety for m in metrics.values())
-    return {"unsafe_sites": unsafe_sites, "missing_safety": missing_safety}
+    return {
+        "unsafe_sites": unsafe_sites,
+        "abi_sites": abi_sites,
+        "missing_safety": missing_safety,
+    }
 
 
 def load_baseline(path: Path) -> dict[str, object]:
@@ -192,6 +207,9 @@ def load_baseline(path: Path) -> dict[str, object]:
             raise SystemExit(
                 f"missing safety count does not match site ledger for {relative} in {path}"
             )
+        abi_sites = metrics.get("abi_sites", 0)
+        if not isinstance(abi_sites, int) or abi_sites < 0:
+            raise SystemExit(f"malformed ABI-site count for {relative} in {path}")
     return raw
 
 
@@ -213,7 +231,10 @@ def main() -> int:
         baseline_path.parent.mkdir(parents=True, exist_ok=True)
         baseline_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(f"wrote baseline: {baseline_path}")
-        print(f"totals unsafe_sites={totals['unsafe_sites']} missing_safety={totals['missing_safety']}")
+        print(
+            f"totals unsafe_sites={totals['unsafe_sites']} "
+            f"abi_sites={totals['abi_sites']} missing_safety={totals['missing_safety']}"
+        )
         return 0
 
     baseline = load_baseline(baseline_path)
@@ -225,10 +246,11 @@ def main() -> int:
     base_files: dict[str, dict[str, object]] = baseline["files"]  # type: ignore[assignment]
     failed = False
 
-    print("file,unsafe_sites,missing_safety,baseline_missing_safety,status")
+    print("file,unsafe_sites,abi_sites,missing_safety,baseline_missing_safety,status")
     for file_path, metrics in sorted(current.items()):
         base_metrics = base_files.get(file_path, {})
         base_unsafe = int(base_metrics.get("unsafe_sites", 0))
+        base_abi = base_metrics.get("abi_sites")
         base_missing = int(base_metrics.get("missing_safety", 0))
         base_sites = Counter(base_metrics.get("missing_safety_sites", []))
         current_sites = Counter(metrics.missing_safety_sites)
@@ -242,6 +264,17 @@ def main() -> int:
                 f"{base_unsafe} -> {metrics.unsafe_sites}",
                 file=sys.stderr,
             )
+        # Older baselines predate the split inventory. Their unsafe_sites
+        # field remains a conservative upper bound; once refreshed, ABI growth
+        # is checked independently here.
+        if base_abi is not None and metrics.abi_sites > int(base_abi):
+            status = "FAIL"
+            failed = True
+            print(
+                f"FAIL ABI-site growth: {file_path}: "
+                f"{base_abi} -> {metrics.abi_sites}",
+                file=sys.stderr,
+            )
         if new_sites:
             status = "FAIL"
             failed = True
@@ -251,7 +284,8 @@ def main() -> int:
                     file=sys.stderr,
                 )
         print(
-            f"{file_path},{metrics.unsafe_sites},{metrics.missing_safety},{base_missing},{status}"
+            f"{file_path},{metrics.unsafe_sites},{metrics.abi_sites},"
+            f"{metrics.missing_safety},{base_missing},{status}"
         )
 
     if failed:
@@ -263,7 +297,8 @@ def main() -> int:
         return 1
 
     print(
-        f"\nSAFETY gate OK: unsafe_sites={totals['unsafe_sites']} missing_safety={totals['missing_safety']}"
+        f"\nSAFETY gate OK: unsafe_sites={totals['unsafe_sites']} "
+        f"abi_sites={totals['abi_sites']} missing_safety={totals['missing_safety']}"
     )
     return 0
 

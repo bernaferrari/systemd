@@ -4,13 +4,6 @@
 //
 // User/group name validation and closely related pure helpers.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 
 use libc::c_char;
@@ -287,7 +280,7 @@ pub unsafe extern "C" fn rs_id128_is_valid(s: *const c_char) -> bool {
 #[unsafe(export_name = "rs_hashed_password_is_locked_or_invalid")]
 pub unsafe extern "C" fn rs_hashed_password_is_locked_or_invalid(password: *const c_char) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
-    !password.is_null() && unsafe { *password != b'$' as c_char }
+    !password.is_null() && unsafe_ffi!(*password != b'$' as c_char)
 }
 
 #[cfg(test)]

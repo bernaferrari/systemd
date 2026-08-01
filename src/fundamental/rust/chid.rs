@@ -5,13 +5,6 @@
 // CHID (Component Hardware ID) calculation based on SMBIOS fields.
 // Uses SHA-1 to generate deterministic GUIDs from hardware identifiers.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::efi_guid::EfiGuid;
 use crate::sha1::Sha1State;
 

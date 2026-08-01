@@ -5,14 +5,6 @@
 // Safe numeric parsing, boolean parsing, and size parsing.
 // Core safe_ato* family and parse_boolean used throughout systemd.
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use crate::errno_util::errno_from_name as errno_from_name_rs;
 use crate::ffi::{Errno, clear_errno, get_errno, is_whitespace};
 use crate::process_util_str_tables::oom_score_adjust_is_valid as oom_score_adjust_is_valid_rs;

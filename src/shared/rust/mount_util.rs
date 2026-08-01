@@ -2,13 +2,6 @@
 //
 // PORT-SYNC: src/shared/mount-util.c, src/shared/mount-util.h
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::io;
@@ -713,12 +706,12 @@ fn open_mount_target_nofollow(target: &CString) -> io::Result<OwnedFd> {
     // SAFETY: target is a retained, NUL-terminated pathname. O_PATH avoids
     // opening FIFOs/devices for I/O; O_NOFOLLOW pins the final directory entry
     // itself, and successful open() returns a uniquely owned descriptor.
-    let fd = unsafe {
+    let fd = unsafe_ffi!({
         libc::open(
             target.as_ptr(),
             libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW,
         )
-    };
+    });
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -926,9 +919,9 @@ pub fn trigger_automount_at(dir_fd: i32, path: &str) -> io::Result<()> {
     // SAFETY: dir_fd is a valid directory fd, c_nested is a valid path.
     // Return value is intentionally ignored — we only care about
     // the side effect of triggering automounts.
-    unsafe {
+    unsafe_ffi!({
         libc::faccessat(dir_fd, c_nested.as_ptr(), libc::F_OK, 0);
-    }
+    });
     Ok(())
 }
 

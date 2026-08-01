@@ -5,13 +5,6 @@
 // Read-only string scanning, distance, and version validation. No sibling
 // string-util domain is imported, keeping this layer acyclic.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 
 use libc::c_char;

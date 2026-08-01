@@ -5,13 +5,6 @@
 // The byte policies stay safe; this module alone owns the fallible Vec and
 // libc allocation boundaries used by the C ABI.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::c_char;
 use std::ffi::CStr;
 use std::ptr;

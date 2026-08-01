@@ -4,13 +4,6 @@
 //
 // Allocating strv transforms with C-owned results and explicit rollback rules.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_void};
 
 use libc::c_char;
@@ -26,7 +19,7 @@ use super::{CStrvAllocation, StrvSlot, rs_strv_copy_n, rs_strv_length, strv_iter
 macro_rules! borrowed_strv {
     ($vector:expr) => {{
         // SAFETY: upheld by the invoking C ABI adapter's strv contract.
-        unsafe { strv_iter(($vector).cast::<*const c_char>()) }
+        unsafe_ffi!({ strv_iter(($vector).cast::<*const c_char>()) })
     }};
 }
 

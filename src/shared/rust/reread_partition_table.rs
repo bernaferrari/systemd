@@ -13,13 +13,6 @@
 //
 // `unsafe` is confined to the BLKRRPART ioctl syscall.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::collections::{HashMap, HashSet};
 use std::os::unix::io::AsRawFd;
 

@@ -4,13 +4,6 @@
 //
 // Unicode manipulation: prev_char, skip_data, iswide.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::c_char;
 
 // ── UTF-8 skip data table ─────────────────────────────────────────────────

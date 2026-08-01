@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // PORT-SYNC: src/shared/pretty-print.c
 
-// Centralized unsafe expression boundary for this module.
-#[cfg(test)]
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::fmt::Write as FmtWrite;
 use std::fs;
@@ -276,13 +268,13 @@ fn terminal_columns() -> usize {
         // SAFETY: stdout's conventional fd is passed to the `TIOCGWINSZ`
         // ioctl, which initializes the supplied winsize on success. The
         // result is checked before the buffer is assumed initialized.
-        let ws = unsafe {
+        let ws = unsafe_ffi!({
             if libc::ioctl(1, libc::TIOCGWINSZ, ws.as_mut_ptr()) == 0 {
                 Some(ws.assume_init())
             } else {
                 None
             }
-        };
+        });
         if let Some(ws) = ws {
             if ws.ws_col != 0 {
                 return ws.ws_col as usize;

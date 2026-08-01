@@ -6,13 +6,6 @@
 // Handles '~' (pre-release), '-' (version/release separator),
 // '^' (patch release), '.' (point release) markers.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_char};
 
 // ── Internal helpers ────────────────────────────────────────────────────

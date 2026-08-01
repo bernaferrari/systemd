@@ -52,6 +52,8 @@ pub fn startswith<'a>(s: &'a str, prefix: &'a str) -> Option<&'a str> {
 
 // Public module surface. Keep this alphabetized so source-domain ownership is
 // easy to locate without conflating it with private ABI implementation pieces.
+#[macro_use]
+pub mod ffi;
 pub mod af_list;
 pub mod alloc_util;
 pub mod basic_validators;
@@ -73,7 +75,6 @@ pub mod ether_addr_util;
 pub mod exec_util;
 pub mod exit_status;
 pub mod extract_word;
-pub mod ffi;
 pub mod gpt_util;
 pub mod gunicode;
 pub mod hexdecoct;

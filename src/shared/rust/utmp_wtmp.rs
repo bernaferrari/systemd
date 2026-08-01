@@ -11,13 +11,6 @@
 // utmp maintains one entry per entry type/user (key/value semantics).
 // wtmp is an append-only log where each entry is appended to the end.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::CStr;
 use std::fmt;
@@ -130,10 +123,10 @@ fn copy_utmpx(source: &Utmpx) -> Utmpx {
     let mut destination = MaybeUninit::<Utmpx>::uninit();
     // SAFETY: source is a live initialized libc::utmpx and destination is
     // correctly aligned, non-overlapping storage for exactly one record.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(source, destination.as_mut_ptr(), 1);
         destination.assume_init()
-    }
+    })
 }
 
 #[cfg(test)]
@@ -221,9 +214,9 @@ fn now_realtime_usec() -> u64 {
         tv_usec: 0,
     };
     // SAFETY: gettimeofday with null timezone pointer is always safe.
-    unsafe {
+    unsafe_ffi!({
         libc::gettimeofday(&mut tv, ptr::null_mut());
-    }
+    });
     (tv.tv_sec as u64) * USEC_PER_SEC + (tv.tv_usec as u64)
 }
 
@@ -272,7 +265,7 @@ fn write_entry_utmp(store: &Utmpx) -> Result<(), UtmpError> {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     // SAFETY: `store` is the exact libc record type and the filename is a
     // static NUL-terminated C string.
-    unsafe {
+    unsafe_ffi!({
         if libc::utmpxname(UTMPX_FILE.as_ptr().cast()) < 0 {
             return Err(UtmpError::Errno(get_errno()));
         }
@@ -289,7 +282,7 @@ fn write_entry_utmp(store: &Utmpx) -> Result<(), UtmpError> {
             }
             return Err(UtmpError::Errno(e));
         }
-    }
+    });
     Ok(())
 }
 
@@ -301,9 +294,9 @@ fn write_entry_utmp(store: &Utmpx) -> Result<(), UtmpError> {
 fn write_entry_wtmp(store: &Utmpx) -> Result<(), UtmpError> {
     clear_errno();
     // SAFETY: updwtmpx is thread-safe.
-    unsafe {
+    unsafe_ffi!({
         crate::ffi::updwtmpx(WTMPX_FILE.as_ptr().cast(), store);
-    }
+    });
     match get_errno() {
         0 => Ok(()),
         e if e == libc::ENOENT => Ok(()),
@@ -459,7 +452,7 @@ pub fn utmp_put_dead_process(id: &str, pid: u32, code: i32, status: i32) -> Resu
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         // SAFETY: `lookup` is an exact libc record; any returned pointer is
         // copied before endutxent() invalidates libc's internal storage.
-        unsafe {
+        unsafe_ffi!({
             libc::setutxent();
             let ptr = libc::getutxid(&lookup);
             let found = if ptr.is_null() {
@@ -470,7 +463,7 @@ pub fn utmp_put_dead_process(id: &str, pid: u32, code: i32, status: i32) -> Resu
             };
             libc::endutxent();
             found
-        }
+        })
     };
 
     let Some(mut store) = found else {

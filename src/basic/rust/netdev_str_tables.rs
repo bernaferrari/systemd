@@ -9,14 +9,6 @@
 // tables; this file owns only the shared lookup machinery and exceptional ABI
 // adapters that cannot be expressed as a table pair.
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::Errno;
 use libc::c_char;
 use std::ffi::c_void;

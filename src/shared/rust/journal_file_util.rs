@@ -12,13 +12,6 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Buffer size for reading hash table payload in chunks.
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 pub const PAYLOAD_BUFFER_SIZE: usize = 16 * 1024;
 
@@ -317,14 +310,14 @@ pub fn punch_hole(fd: i32, offset: u64, size: u64) -> Result<()> {
         return Err(JournalFileError::Einval);
     }
     // SAFETY: fd is validated >= 0; offset/size are u64 values from journal metadata.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         crate::ffi::fallocate(
             fd,
             FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
             offset as i64,
             size as i64,
         )
-    };
+    });
     if ret < 0 {
         let err = JournalFileError::last_errno();
         if matches!(err, JournalFileError::Eopnotsupp) {
@@ -358,14 +351,14 @@ pub fn pread_bytes(fd: i32, buf: &mut [u8], offset: u64) -> Result<usize> {
         return Err(JournalFileError::Einval);
     }
     // SAFETY: fd validated, buf is a valid mutable slice.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         libc::pread(
             fd,
             buf.as_mut_ptr() as *mut libc::c_void,
             buf.len(),
             offset as i64,
         )
-    };
+    });
     if ret < 0 {
         return Err(JournalFileError::last_errno());
     }

@@ -5,13 +5,6 @@
 // Simplified XML tokenizer. Supports basic XML syntax with HTML5-like
 // simplifications (e.g. unquoted attribute values).
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::{c_char, c_uint, c_void};
 use std::ffi::CStr;
 

@@ -8,13 +8,6 @@
 // adapters below preserve C-string byte semantics, including invalid UTF-8
 // rejection and NULL-terminated string-vector traversal.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 
 use libc::c_char;

@@ -5,13 +5,6 @@
 // Word extraction from strings with quoting and escaping support.
 // Pure Rust — cunescape and UTF-8 encoding implemented inline.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::c_char;
 
 use crate::ffi::Errno;

@@ -251,7 +251,7 @@ pub fn get_file_context_raw(path: &CString) -> Result<String, ContextError> {
 
     // SAFETY: getxattr(2) is a POSIX syscall; we provide a valid path pointer,
     // a valid attribute name, and a sufficiently large buffer.
-    unsafe {
+    unsafe_ffi!({
         let buf_size = libc::getxattr(
             path_ptr,
             XATTR_NAME_SELINUX.as_ptr().cast(),
@@ -297,7 +297,7 @@ pub fn get_file_context_raw(path: &CString) -> Result<String, ContextError> {
         }
 
         String::from_utf8(buf).map_err(|_| ContextError::InvalidUtf8)
-    }
+    })
 }
 
 /// Read the SELinux context of an open file descriptor via `fgetxattr(2)`.
@@ -307,7 +307,7 @@ pub fn get_file_context_raw(path: &CString) -> Result<String, ContextError> {
 /// `fd` must be a valid open file descriptor.
 pub fn get_fd_context_raw(fd: i32) -> Result<String, ContextError> {
     // SAFETY: fgetxattr(2) is a POSIX syscall; fd must be valid.
-    unsafe {
+    unsafe_ffi!({
         let buf_size = libc::fgetxattr(
             fd,
             XATTR_NAME_SELINUX.as_ptr().cast(),
@@ -348,7 +348,7 @@ pub fn get_fd_context_raw(fd: i32) -> Result<String, ContextError> {
         }
 
         String::from_utf8(buf).map_err(|_| ContextError::InvalidUtf8)
-    }
+    })
 }
 
 /// Set the SELinux context on a file via `setxattr(2)`.
@@ -361,7 +361,7 @@ pub fn set_file_context_raw(path: &CString, context: &str) -> Result<(), Context
     let c_context = CString::new(context).map_err(|_| ContextError::MalformedContext)?;
 
     // SAFETY: setxattr(2) is a POSIX syscall with valid pointers.
-    unsafe {
+    unsafe_ffi!({
         let ret = libc::setxattr(
             path_ptr,
             XATTR_NAME_SELINUX.as_ptr().cast(),
@@ -377,7 +377,7 @@ pub fn set_file_context_raw(path: &CString, context: &str) -> Result<(), Context
                     .unwrap_or(libc::EIO),
             ));
         }
-    }
+    });
 
     Ok(())
 }
@@ -434,7 +434,7 @@ pub fn mac_selinux_apply_fd(fd: i32, _path: Option<&str>, label: &str) -> Result
     let c_context = CString::new(label).map_err(|_| ContextError::MalformedContext)?;
 
     // SAFETY: fsetxattr(2) with a valid fd.
-    unsafe {
+    unsafe_ffi!({
         let ret = libc::fsetxattr(
             fd,
             XATTR_NAME_SELINUX.as_ptr().cast(),
@@ -450,7 +450,7 @@ pub fn mac_selinux_apply_fd(fd: i32, _path: Option<&str>, label: &str) -> Result
                     .unwrap_or(libc::EIO),
             ));
         }
-    }
+    });
 
     Ok(())
 }

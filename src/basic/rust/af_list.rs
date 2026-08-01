@@ -12,13 +12,6 @@
 // table when it is available, but a target-generated-table parity claim must
 // not be inferred from this source-only port.
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter validates the pointer and lifetime contract.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::c_char;
 

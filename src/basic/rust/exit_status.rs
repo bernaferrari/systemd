@@ -2,13 +2,6 @@
 //
 // PORT-SYNC: scope=basic.exit-status; authority=src/shared/exit-status.c,src/shared/exit-status.h,src/shared/securebits-util.c,src/shared/securebits-util.h
 //
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::collections::BTreeSet;
 use std::ffi::CStr;
 use std::fmt;
@@ -229,7 +222,7 @@ pub fn exit_status_from_string(s: &str) -> Result<i32, ExitStatusFromStringError
 pub unsafe extern "C" fn rs_exit_status_from_string(s: *const libc::c_char) -> libc::c_int {
     // SAFETY: the entry-point contract covers the C-string traversal below;
     // `rs_safe_atou8` has the same null and writable-output requirements.
-    unsafe {
+    unsafe_ffi!({
         if !s.is_null() {
             let value = CStr::from_ptr(s);
             for code in 0u16..=u8::MAX as u16 {
@@ -244,7 +237,7 @@ pub unsafe extern "C" fn rs_exit_status_from_string(s: *const libc::c_char) -> l
         let mut value = 0u8;
         let r = crate::parse_util::rs_safe_atou8(s, &mut value);
         if r < 0 { r } else { i32::from(value) }
-    }
+    })
 }
 
 pub fn secure_bit_to_string(bit: i32) -> Option<&'static str> {

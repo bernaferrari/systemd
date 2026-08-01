@@ -4,14 +4,6 @@
 //
 // Path and filename validation/comparison utilities.
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 
 use crate::ffi::{Errno, free, malloc, memcmp, memmove, strchr, strcmp, strdup, strlen};

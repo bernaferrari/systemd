@@ -2,13 +2,6 @@
 //
 // PORT-SYNC: scope=basic.iovec-wrapper; authority=src/basic/alloc-util.c,src/basic/alloc-util.h,src/basic/iovec-util.c,src/basic/iovec-util.h,src/basic/iovec-wrapper.c,src/basic/iovec-wrapper.h
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::Errno;
 use libc::{c_int, c_void, iovec};
 use std::ptr;

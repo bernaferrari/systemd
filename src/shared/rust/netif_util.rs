@@ -12,13 +12,6 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Interface operational state: interface is up (RFC 2863 / operstates.txt).
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 pub const IF_OPER_UP: u8 = 6;
 /// Interface operational state: state is unknown / not reported.

@@ -13,13 +13,6 @@
 // directory-stream boundaries. All traversal and policy decisions remain safe
 // Rust.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::{CStr, CString};
 use std::fs::{self, Metadata};
@@ -226,7 +219,7 @@ fn remove_acl_xattrs(fd: RawFd) -> io::Result<()> {
     for name in ACL_XATTR_NAMES {
         // SAFETY: `fd` stays owned by the caller, and every attribute name is
         // a static NUL-terminated byte string for the duration of the call.
-        let mut ret = unsafe {
+        let mut ret = unsafe_ffi!({
             #[cfg(target_os = "linux")]
             {
                 libc::fremovexattr(fd, name.as_ptr().cast())
@@ -236,7 +229,7 @@ fn remove_acl_xattrs(fd: RawFd) -> io::Result<()> {
                 // fremovexattr is Linux-only; no-op on other platforms.
                 0_i32
             }
-        };
+        });
 
         if ret < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::EBADF) {
             // O_PATH descriptors deliberately reject fremovexattr(2). The
@@ -360,7 +353,7 @@ fn chown_one_fd(fd: RawFd, status: InodeStatus, opts: &ChownOptions) -> io::Resu
     if do_chown {
         // SAFETY: `fd` names the pinned inode, the empty pathname is
         // NUL-terminated, and AT_EMPTY_PATH explicitly requests fd operation.
-        if unsafe {
+        if unsafe_ffi!({
             libc::fchownat(
                 fd,
                 c"".as_ptr(),
@@ -368,7 +361,7 @@ fn chown_one_fd(fd: RawFd, status: InodeStatus, opts: &ChownOptions) -> io::Resu
                 gid.unwrap_or(GID_INVALID),
                 libc::AT_EMPTY_PATH,
             )
-        } < 0
+        }) < 0
         {
             return Err(io::Error::last_os_error());
         }

@@ -4,13 +4,6 @@
 //
 // Small inline validation functions from various headers.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 const CGROUP_WEIGHT_INVALID: u64 = u64::MAX;
 const CGROUP_WEIGHT_MIN: u64 = 1;
 const CGROUP_WEIGHT_MAX: u64 = 10_000;
@@ -338,13 +331,13 @@ mod tests {
         };
 
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert!(rs_pidref_is_set(&set));
             assert!(rs_pidref_is_remote(&set));
             assert!(rs_pidref_is_automatic(&automatic));
             assert!(rs_pidref_is_set_or_automatic(&automatic));
             assert!(!rs_pidref_is_set(&unset));
-        }
+        })
     }
 
     #[test]
@@ -381,7 +374,7 @@ mod tests {
         let value = CString::new("value").unwrap();
 
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(as_bytes(rs_empty_to_na(empty.as_ptr())), b"n/a");
             assert_eq!(as_bytes(rs_empty_to_dash(empty.as_ptr())), b"-");
             assert_eq!(as_bytes(rs_empty_to_na(value.as_ptr())), b"value");
@@ -389,6 +382,6 @@ mod tests {
             assert!(rs_empty_or_dash(empty.as_ptr()));
             assert!(rs_empty_or_dash(dash.as_ptr()));
             assert!(!rs_empty_or_dash(value.as_ptr()));
-        }
+        })
     }
 }

@@ -8,13 +8,6 @@
 //! its fallback is still descriptor-relative, rejects `.`/`..`/slashes, and
 //! uses `O_NOFOLLOW`, so it cannot escape through a renamed parent or symlink.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, CString, OsStr};
 use std::fs::File;
 use std::io::{self, Read};

@@ -5,13 +5,6 @@
 // SHA-256 hash, validation/parsing, and HMAC-SHA-256 computation.
 // Pure Rust implementation; no dependency on C sha256-fundamental.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::{c_char, c_int, c_void};
 use std::{
     ffi::CStr,

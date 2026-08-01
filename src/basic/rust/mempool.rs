@@ -5,13 +5,6 @@
 // Memory pool: fixed-size tile allocator with freelist.
 // Skipped: mempool_trim (uses log_debug/FORMAT_BYTES).
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::c_void;
 use std::ptr;
 

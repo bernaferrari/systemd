@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::cell::RefCell;
 use std::env;
 use std::ffi::{OsStr, OsString};
@@ -77,12 +70,12 @@ impl Drop for TestEnvironment {
         for (key, value) in self.previous_values.get_mut().drain(..).rev() {
             // SAFETY: `self` still owns the process-wide test environment lock,
             // so restoration has the same synchronization as mutation.
-            unsafe {
+            unsafe_ffi!({
                 match value {
                     Some(value) => env::set_var(key, value),
                     None => env::remove_var(key),
                 }
-            }
+            })
         }
     }
 }
@@ -122,7 +115,7 @@ pub fn write_tmpfile(pattern: &str, contents: &str) -> io::Result<PathBuf> {
 pub fn can_memlock(size: usize) -> bool {
     // SAFETY: the mmap result is checked against MAP_FAILED before use, and any
     // successful mapping is released with munmap after the optional mlock call.
-    unsafe {
+    unsafe_ffi!({
         let ptr = libc::mmap(
             std::ptr::null_mut(),
             size,
@@ -140,5 +133,5 @@ pub fn can_memlock(size: usize) -> bool {
         }
         let _ = libc::munmap(ptr, size);
         ok
-    }
+    })
 }

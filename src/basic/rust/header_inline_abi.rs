@@ -7,13 +7,6 @@
 // for one call and returns either the original borrowed pointer or a fresh
 // libc allocation, exactly as the corresponding C inline helper does.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 use std::ptr;
 

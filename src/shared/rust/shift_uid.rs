@@ -14,13 +14,6 @@
 // - Filesystem compatibility checks
 // - The main `shift_uid_shift` entry point for recursive tree patching
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::fmt;
@@ -328,7 +321,7 @@ fn patch_path(path: &Path, meta: &fs::Metadata, shift: u32) -> Result<bool, Shif
     // entry rather than a symlink target; the optional chmod is skipped for
     // symlinks, which Linux cannot chmod.
     // SAFETY: all pointer and descriptor contracts hold for this operation.
-    let chmod_ret = unsafe {
+    let chmod_ret = unsafe_ffi!({
         let ret = libc::fchownat(
             libc::AT_FDCWD,
             path.as_ptr(),
@@ -350,7 +343,7 @@ fn patch_path(path: &Path, meta: &fs::Metadata, shift: u32) -> Result<bool, Shif
                 0,
             ))
         }
-    };
+    });
     if let Some(ret) = chmod_ret {
         if ret < 0 {
             return Err(ShiftUidError::Io(io::Error::last_os_error()));
@@ -415,11 +408,11 @@ fn recurse_dir(
     // SAFETY: `libc::statfs` is an integer-only output struct for which a
     // zeroed temporary is valid. `dir_file` owns a live descriptor and the
     // kernel may write the complete struct through the provided pointer.
-    let (ret, statfs_buf) = unsafe {
+    let (ret, statfs_buf) = unsafe_ffi!({
         let mut statfs_buf: libc::statfs = std::mem::zeroed();
         let ret = libc::fstatfs(dir_file.as_raw_fd(), &mut statfs_buf);
         (ret, statfs_buf)
-    };
+    });
     if ret < 0 {
         return Err(ShiftUidError::Io(io::Error::last_os_error()));
     }
@@ -433,13 +426,13 @@ fn recurse_dir(
     // C's conservative EROFS fallback for network filesystems.
     // SAFETY: `statvfs` is an integer-only output struct, and `dir_file` owns
     // the live descriptor supplied to this synchronous system call.
-    let mount_is_read_only = unsafe {
+    let mount_is_read_only = unsafe_ffi!({
         let mut statvfs_buf: libc::statvfs = std::mem::zeroed();
         if libc::fstatvfs(dir_file.as_raw_fd(), &mut statvfs_buf) < 0 {
             return Err(ShiftUidError::Io(io::Error::last_os_error()));
         }
         (statvfs_buf.f_flag & libc::ST_RDONLY as libc::c_ulong) != 0
-    };
+    });
     if mount_is_read_only || fd_is_effectively_read_only(dir_file.as_raw_fd()) {
         return Ok(false);
     }

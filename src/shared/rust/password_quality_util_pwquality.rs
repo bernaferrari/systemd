@@ -16,13 +16,6 @@
 // - `check_password_quality()` → strength validation returning quality score
 // - `suggest_passwords()` → random password generation
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::io::ErrorKind;
@@ -373,9 +366,9 @@ fn pwq_strerror(error_code: i32, auxerror: *mut c_void) -> String {
 
     let mut buf = vec![0u8; PWQ_MAX_ERROR_MESSAGE_LEN];
     // SAFETY: buf is writable for its full length and auxerror is supplied by libpwquality.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         (syms.pwquality_strerror)(buf.as_mut_ptr().cast(), buf.len(), error_code, auxerror)
-    };
+    });
 
     if result.is_null() {
         format!("pwquality error {}", error_code)
@@ -554,7 +547,7 @@ pub fn check_password_quality(
 
     // SAFETY: All CString pointers remain valid for the duration of this call.
     // pwq is freed before returning.
-    unsafe {
+    unsafe_ffi!({
         let pwq = pwq_allocate_context()?;
         let _guard = ScopeGuard(Some(|| pwq_free_settings(pwq)));
 
@@ -576,7 +569,7 @@ pub fn check_password_quality(
         } else {
             Ok(PasswordQualityResult::Good)
         }
-    }
+    })
 }
 
 // ── Public API: suggest_passwords ─────────────────────────────────────────
@@ -592,7 +585,7 @@ pub fn check_password_quality(
 /// * `Err(PwqualityError)` — system error (library not available, generation failure)
 pub fn suggest_passwords() -> Result<Vec<String>, PwqualityError> {
     // SAFETY: pwq is freed before returning via ScopeGuard.
-    unsafe {
+    unsafe_ffi!({
         let pwq = pwq_allocate_context()?;
         let _guard = ScopeGuard(Some(|| pwq_free_settings(pwq)));
 
@@ -625,7 +618,7 @@ pub fn suggest_passwords() -> Result<Vec<String>, PwqualityError> {
         }
 
         Ok(suggestions)
-    }
+    })
 }
 
 /// Generate password suggestions and format them as a printable string.

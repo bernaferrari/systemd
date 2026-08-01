@@ -3,14 +3,6 @@
 // PORT-SYNC: src/libsystemd/sd-device/device-util.c
 //
 
-// Centralized unsafe expression boundary for this module.
-#[cfg(test)]
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::collections::HashMap;
 
 pub type Result<T> = std::result::Result<T, i32>;

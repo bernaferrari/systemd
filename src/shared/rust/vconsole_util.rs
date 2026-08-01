@@ -2,14 +2,6 @@
 //
 // PORT-SYNC: src/shared/vconsole-util.c
 
-// Centralized unsafe expression boundary for this module.
-#[cfg(test)]
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::fs;
 use std::io;
 use std::path::Path;

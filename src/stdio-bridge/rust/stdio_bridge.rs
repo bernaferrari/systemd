@@ -484,9 +484,9 @@ impl Bus {
                     unsafe_ffi!(sd_bus_set_address(self.ptr.as_ptr(), address.as_ptr()))
                 }
                 // SAFETY: `self.ptr` is a live, unset bus.
-                None if config.runtime_scope == RuntimeScope::System => unsafe {
-                    bus_set_address_system(self.ptr.as_ptr())
-                },
+                None if config.runtime_scope == RuntimeScope::System => {
+                    unsafe_ffi!(bus_set_address_system(self.ptr.as_ptr()))
+                }
                 // SAFETY: `self.ptr` is a live, unset bus.
                 None => unsafe_ffi!(bus_set_address_user(self.ptr.as_ptr())),
             },
@@ -496,13 +496,13 @@ impl Bus {
                 })?;
                 let machine = CString::new(machine).map_err(|_| BridgeError::NulInAddress)?;
                 // SAFETY: `self.ptr` is a live bus and the C enum values are pinned above to runtime-scope.h.
-                unsafe {
+                unsafe_ffi!({
                     bus_set_address_machine(
                         self.ptr.as_ptr(),
                         config.runtime_scope.c_value(),
                         machine.as_ptr(),
                     )
-                }
+                })
             }
         };
         check_bus_call(result, "Failed to set address to connect to")
@@ -574,13 +574,13 @@ impl Bus {
 
     fn send(&mut self, message: &Message) -> Result<(), BridgeError> {
         // SAFETY: both objects are live and sd_bus_send only borrows the message for the call.
-        let result = unsafe {
+        let result = unsafe_ffi!({
             sd_bus_send(
                 self.ptr.as_ptr(),
                 message.ptr.as_ptr(),
                 std::ptr::null_mut(),
             )
-        };
+        });
         check_bus_call(result, "Failed to send message")
     }
 
@@ -637,13 +637,13 @@ struct Message {
 impl Message {
     fn is_disconnected_signal(&self) -> bool {
         // SAFETY: `ptr` is a live message and both constants are NUL-terminated C strings.
-        unsafe {
+        unsafe_ffi!({
             sd_bus_message_is_signal(
                 self.ptr.as_ptr(),
                 DBUS_LOCAL_INTERFACE.as_ptr().cast::<c_char>(),
                 DBUS_DISCONNECTED_SIGNAL.as_ptr().cast::<c_char>(),
             ) > 0
-        }
+        })
     }
 }
 

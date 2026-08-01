@@ -2,13 +2,14 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
-// Centralized unsafe expression boundary for this module.
+// Centralized unsafe expression boundary for this binary adapter.
 macro_rules! unsafe_ffi {
     ($expression:expr) => {{
         // SAFETY: the enclosing helper documents and validates this operation.
         unsafe { $expression }
     }};
 }
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::OpenOptions;
 use std::io;

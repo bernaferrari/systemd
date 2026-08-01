@@ -4,13 +4,6 @@
 //
 // Device number parsing and formatting utilities.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 use std::ptr;
 
@@ -487,7 +480,7 @@ pub unsafe extern "C" fn rs_device_path_make_major_minor(
     }
     // SAFETY: `path` owns exactly `size` writable bytes and both source ranges
     // are live Rust slices whose combined length is `size - 1`.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(prefix.as_ptr(), path, prefix.len());
         ptr::copy_nonoverlapping(
             formatted_devnum.as_ptr(),
@@ -495,7 +488,7 @@ pub unsafe extern "C" fn rs_device_path_make_major_minor(
             formatted_devnum_length,
         );
         *path.add(size - 1) = 0;
-    }
+    });
     COut::from_contract(ret).store(path.cast::<c_char>());
     0
 }
@@ -537,9 +530,9 @@ mod tests {
         let mut dev = 0;
         let input = CString::new("8:2").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_devnum(input.as_ptr(), &mut dev), 0);
-        }
+        });
         assert_eq!(dev_major(dev), 8);
         assert_eq!(dev_minor(dev), 2);
     }
@@ -549,9 +542,9 @@ mod tests {
         let mut dev = 0;
         let input = CString::new("4095:1048575").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_devnum(input.as_ptr(), &mut dev), 0);
-        }
+        });
         assert_eq!(dev_major(dev), 4095);
         assert_eq!(dev_minor(dev), 1_048_575);
     }
@@ -583,12 +576,12 @@ mod tests {
         let mut dev = 0;
         let input = CString::new("8").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(
                 rs_parse_devnum(input.as_ptr(), &mut dev),
                 Errno::EINVAL.to_neg_errno()
             );
-        }
+        })
     }
 
     #[test]
@@ -596,12 +589,12 @@ mod tests {
         let mut dev = 0;
         let input = CString::new("abc").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(
                 rs_parse_devnum(input.as_ptr(), &mut dev),
                 Errno::EINVAL.to_neg_errno()
             );
-        }
+        })
     }
 
     #[test]
@@ -609,12 +602,12 @@ mod tests {
         let mut dev = 0;
         let input = CString::new("4096:0").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(
                 rs_parse_devnum(input.as_ptr(), &mut dev),
                 Errno::ERANGE.to_neg_errno()
             );
-        }
+        })
     }
 
     #[test]
@@ -622,23 +615,23 @@ mod tests {
         let mut dev = 0;
         let input = CString::new("0:1048576").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(
                 rs_parse_devnum(input.as_ptr(), &mut dev),
                 Errno::ERANGE.to_neg_errno()
             );
-        }
+        })
     }
 
     #[test]
     fn format_devnum_matches_c_format() {
         let mut buf = [0 as c_char; 32];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             let out = rs_format_devnum(makedev(7, 255), buf.as_mut_ptr());
             assert_eq!(out, buf.as_mut_ptr());
             assert_eq!(CStr::from_ptr(out).to_str().unwrap(), "7:255");
-        }
+        })
     }
 
     #[test]
@@ -646,14 +639,14 @@ mod tests {
         let mut buf = [0 as c_char; DEVNUM_FORMAT_MAX + 1];
         // SAFETY: the fixed buffer has room for two maximum-width u32 values,
         // their separator, and the trailing NUL byte.
-        unsafe {
+        unsafe_ffi!({
             let out = rs_format_devnum(u64::MAX, buf.as_mut_ptr());
             assert_eq!(out, buf.as_mut_ptr());
             assert_eq!(
                 CStr::from_ptr(out).to_str().unwrap(),
                 "4294967295:4294967295"
             );
-        }
+        })
     }
 
     #[test]
@@ -677,12 +670,12 @@ mod tests {
         ] {
             let c = CString::new(path).unwrap();
             // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-            unsafe {
+            unsafe_ffi!({
                 assert_eq!(
                     rs_device_path_parse_major_minor(c.as_ptr(), &mut mode, &mut dev),
                     0
                 );
-            }
+            });
             assert_eq!(mode, expected_mode);
             assert_eq!(dev, expected_dev);
         }
@@ -713,37 +706,37 @@ mod tests {
     fn device_path_parse_rejects_non_device_paths() {
         let input = CString::new("/home/user/file").unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(
                 rs_device_path_parse_major_minor(input.as_ptr(), ptr::null_mut(), ptr::null_mut()),
                 Errno::ENODEV.to_neg_errno()
             );
-        }
+        })
     }
 
     #[test]
     fn device_path_make_major_minor_builds_expected_paths() {
         let mut out = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(
                 rs_device_path_make_major_minor(S_IFBLK, makedev(8, 2), &mut out),
                 0
             );
             assert_eq!(CStr::from_ptr(out).to_str().unwrap(), "/dev/block/8:2");
-        }
+        })
     }
 
     #[test]
     fn device_path_make_inaccessible_builds_expected_paths() {
         let mut out = ptr::null_mut();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_device_path_make_inaccessible(S_IFCHR, &mut out), 0);
             assert_eq!(
                 CStr::from_ptr(out).to_str().unwrap(),
                 "/run/systemd/inaccessible/chr"
             );
-        }
+        })
     }
 }

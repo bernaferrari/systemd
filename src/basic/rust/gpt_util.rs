@@ -7,13 +7,6 @@
 // partition-type table and lookup API.  The core below operates on Rust
 // integers and byte slices; only the exported adapters touch C pointers.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_char, c_int};
 
 use crate::ffi::Errno;

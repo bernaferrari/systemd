@@ -2,13 +2,6 @@
 //
 // PORT-SYNC: src/libsystemd/sd-journal/journal-vacuum.c
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::cmp::Ordering;
 use std::fs;
 use std::os::unix::fs::MetadataExt;

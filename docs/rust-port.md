@@ -457,7 +457,10 @@ python3 tools/rust-port/check-tests-extra-header-includes.py
     SAFETY baseline is a location-specific ledger of accepted legacy debt, not
     merely a global count: it also caps total unsafe sites per file. Do not
     refresh it merely to admit a new site. Refresh it only as part of a
-    reviewed safety-boundary or rationale change.
+    reviewed safety-boundary or rationale change. The gate reports executable
+    unsafe boundaries as `unsafe_sites` and required C ABI declarations as
+    `abi_sites`; both inventories are audited, while the execution-surface
+    metric excludes declarations that cannot execute on their own.
 
 ```sh
 python3 tools/rust-port/unsafe-safety-gate.py --baseline tools/rust-port/unsafe-safety-baseline.json

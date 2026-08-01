@@ -2,13 +2,6 @@
 //
 // PORT-SYNC: src/shared/wifi-util.c, src/shared/wifi-util.h
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::c_void;
 use std::fmt;
@@ -467,13 +460,13 @@ impl GenericNetlinkSocket {
         };
 
         // SAFETY: self.fd is owned, and addr is a valid SockAddrNl for the duration of bind().
-        let r = unsafe {
+        let r = unsafe_ffi!({
             libc::bind(
                 self.fd,
                 (&addr as *const SockAddrNl).cast::<libc::sockaddr>(),
                 size_of::<SockAddrNl>() as libc::socklen_t,
             )
-        };
+        });
         if r < 0 {
             return Err(last_errno());
         }
@@ -488,7 +481,7 @@ impl GenericNetlinkSocket {
 
         for name in [SO_RCVTIMEO, SO_SNDTIMEO] {
             // SAFETY: self.fd is owned and timeout is valid initialized storage of the supplied size.
-            let r = unsafe {
+            let r = unsafe_ffi!({
                 libc::setsockopt(
                     self.fd,
                     SOL_SOCKET,
@@ -496,7 +489,7 @@ impl GenericNetlinkSocket {
                     (&timeout as *const libc::timeval).cast::<c_void>(),
                     size_of::<libc::timeval>() as libc::socklen_t,
                 )
-            };
+            });
             if r < 0 {
                 return Err(last_errno());
             }
@@ -556,7 +549,7 @@ impl GenericNetlinkSocket {
         };
 
         // SAFETY: self.fd is owned; request and addr remain valid for the duration of sendto().
-        let r = unsafe {
+        let r = unsafe_ffi!({
             libc::sendto(
                 self.fd,
                 request.as_ptr().cast::<c_void>(),
@@ -565,7 +558,7 @@ impl GenericNetlinkSocket {
                 (&kernel as *const SockAddrNl).cast::<libc::sockaddr>(),
                 size_of::<SockAddrNl>() as libc::socklen_t,
             )
-        };
+        });
         if r < 0 {
             return Err(last_errno());
         }
@@ -578,14 +571,14 @@ impl GenericNetlinkSocket {
         loop {
             let mut buffer = vec![0u8; NETLINK_BUFFER_SIZE];
             // SAFETY: self.fd is owned and buffer provides writable storage for its stated length.
-            let received = unsafe {
+            let received = unsafe_ffi!({
                 libc::recv(
                     self.fd,
                     buffer.as_mut_ptr().cast::<c_void>(),
                     buffer.len(),
                     0,
                 )
-            };
+            });
             if received < 0 {
                 return Err(last_errno());
             }
@@ -626,9 +619,9 @@ impl GenericNetlinkSocket {
 impl Drop for GenericNetlinkSocket {
     fn drop(&mut self) {
         // SAFETY: self.fd is the descriptor owned by this socket and is closed exactly once here.
-        unsafe {
+        unsafe_ffi!({
             libc::close(self.fd);
-        }
+        })
     }
 }
 

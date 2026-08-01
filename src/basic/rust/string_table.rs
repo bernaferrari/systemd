@@ -5,13 +5,6 @@
 // Generic string table lookup helpers: index↔string conversion with
 // optional boolean parsing and numeric fallback.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::Errno;
 use std::ffi::{CStr, c_char};
 use std::ptr;

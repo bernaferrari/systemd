@@ -7,13 +7,6 @@
 
 /// Cleanup guard that runs a closure when dropped.
 /// PORT-SYNC: mirrors CLEANUP_ERASE / DEFINE_TRIVIAL_CLEANUP_FUNC patterns.
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 pub struct CleanupGuard<F: FnOnce()> {
     f: core::mem::ManuallyDrop<Option<F>>,
 }

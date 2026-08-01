@@ -5,13 +5,6 @@
 // Process utility string tables (sigchld_code, sched_policy)
 // and process parameter validators.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::{Errno, clear_errno, get_errno, is_whitespace, strtoul};
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::c_char;

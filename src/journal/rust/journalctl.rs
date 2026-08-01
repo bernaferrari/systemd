@@ -4,6 +4,14 @@
 //
 // Native journalctl argument parsing, filtering, and action dispatch.
 
+// Centralized unsafe expression boundary for journalctl adapters.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
+
 #[path = "journalctl/argument_values.rs"]
 mod argument_values;
 #[path = "journalctl/arguments.rs"]

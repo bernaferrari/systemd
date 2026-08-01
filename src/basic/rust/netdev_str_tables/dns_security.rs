@@ -2,13 +2,6 @@
 //
 // PORT-SYNC: src/shared/dns-packet.c, dns-type.c, dns-rr.c
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use super::*;
 
 // ── dns-packet: dns_rcode (SUCCESS=0..BADCOOKIE=23, gap at 12-15) ──

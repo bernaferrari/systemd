@@ -8,13 +8,6 @@
 // with automatic fallback from fd-based to path-based quotactl on
 // kernels older than 5.14.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::c_void;
 
 use crate::ffi::Errno;
@@ -323,7 +316,7 @@ unsafe fn quotactl_fd_syscall(
 fn get_block_device_fd(fd: i32) -> Result<libc::dev_t, QuotaError> {
     // SAFETY: `stat` is stack-allocated and its lifetime does not escape
     // this function.  `fstat` return value is checked before `st` is read.
-    unsafe {
+    unsafe_ffi!({
         let mut st: libc::stat = std::mem::zeroed();
         if libc::fstat(fd, &mut st) < 0 {
             return Err(QuotaError::from_neg_errno(
@@ -331,7 +324,7 @@ fn get_block_device_fd(fd: i32) -> Result<libc::dev_t, QuotaError> {
             ));
         }
         Ok(st.st_dev)
-    }
+    })
 }
 
 /// Resolve a block device number to its `/dev` node path.

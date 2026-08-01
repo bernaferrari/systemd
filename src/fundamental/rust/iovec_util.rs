@@ -6,13 +6,6 @@
 
 /// A single I/O vector entry.
 /// PORT-SYNC: mirrors struct iovec from POSIX / EFI mode.
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct Iovec {

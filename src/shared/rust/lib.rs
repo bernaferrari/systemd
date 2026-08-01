@@ -45,6 +45,8 @@
 #![allow(clippy::needless_bool)]
 #![allow(clippy::nonminimal_bool)]
 
+#[macro_use]
+pub mod ffi;
 pub mod barrier;
 pub mod bitmap;
 pub mod bootspec;
@@ -84,7 +86,6 @@ pub mod ethtool_util;
 pub mod exec_util;
 pub mod exit_status;
 pub mod fdset;
-pub mod ffi;
 pub mod fileio_label;
 pub mod firewall_util;
 pub mod format_table;

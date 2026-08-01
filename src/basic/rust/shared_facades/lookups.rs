@@ -5,13 +5,6 @@
 //           src/basic/compress.c,src/basic/compress.h,src/basic/socket-util.c,
 //           src/basic/socket-util.h,src/shared/output-mode.c,src/shared/output-mode.h
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::{Errno, malloc};
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr;
@@ -702,11 +695,11 @@ unsafe fn copy_to_c_allocation(text: &str, ret: *mut *mut c_char) -> i32 {
 
     // SAFETY: `allocation` has `text.len() + 1` writable bytes and source is
     // a valid, non-overlapping Rust byte slice. `ret` is writable by contract.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(text.as_ptr(), allocation, text.len());
         *allocation.add(text.len()) = 0;
         *ret = allocation.cast();
-    }
+    });
     0
 }
 

@@ -7,6 +7,8 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+#[macro_use]
+pub mod runtime_manager;
 pub mod apparmor_setup;
 pub mod audit_fd;
 pub mod automount;
@@ -103,7 +105,6 @@ pub mod pid1_manager_runtime;
 pub mod pid1_notify_source;
 pub mod pid1_private_bus_runtime;
 pub mod pid1_socket_sources;
-pub mod runtime_manager;
 pub mod scope;
 pub mod scope_tables;
 pub mod selinux_access;

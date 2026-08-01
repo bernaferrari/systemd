@@ -6,13 +6,6 @@
 //! the one Linux ownership ABI call and keeps all traversal rooted at those
 //! descriptors, separate from the post-fork child path.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, CString, OsStr};
 use std::fs::File;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};

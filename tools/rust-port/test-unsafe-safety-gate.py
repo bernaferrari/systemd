@@ -58,7 +58,7 @@ class UnsafeSafetyGateTests(unittest.TestCase):
 
         result = self.run_gate("--baseline", "baseline.json")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("fixture.rs,1,1,1,OK", result.stdout)
+        self.assertIn("fixture.rs,1,0,1,1,OK", result.stdout)
 
     def test_documented_unsafe_site_growth_is_rejected(self) -> None:
         self.source.write_text("fn fixture() {}\n", encoding="utf-8")
@@ -83,7 +83,19 @@ class UnsafeSafetyGateTests(unittest.TestCase):
 
         result = self.run_gate("--baseline", "baseline.json")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("unsafe_sites=0 missing_safety=0", result.stdout)
+        self.assertIn("unsafe_sites=0 abi_sites=0 missing_safety=0", result.stdout)
+
+    def test_unsafe_extern_is_reported_separately_from_execution_surface(self) -> None:
+        self.source.write_text(
+            '// SAFETY: fixture ABI declaration is only called with valid pointers.\n'
+            'unsafe extern "C" { fn imported(value: *mut u8); }\n',
+            encoding="utf-8",
+        )
+        self.write_baseline()
+
+        result = self.run_gate("--baseline", "baseline.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("fixture.rs,0,1,0,0,OK", result.stdout)
 
 
 if __name__ == "__main__":

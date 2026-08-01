@@ -3,13 +3,6 @@
 //            src/basic/label-util.c, src/basic/label-util.h,
 //            src/shared/selinux-util.c, src/shared/selinux-util.h
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::fs::File;
@@ -291,14 +284,14 @@ fn open_tempfile(dir_fd: RawFd, temp_name: &CString) -> io::Result<File> {
     // SAFETY: `temp_name` is a live, NUL-terminated pathname; `dir_fd` was
     // validated by the public entry point; and the creation mode is supplied
     // because O_CREAT is present.
-    let fd = unsafe {
+    let fd = unsafe_ffi!({
         libc::openat(
             dir_fd,
             temp_name.as_ptr(),
             libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_CLOEXEC | libc::O_NOFOLLOW,
             DEFAULT_FILE_MODE as u32,
         )
-    };
+    });
 
     if fd < 0 {
         return Err(io::Error::last_os_error());

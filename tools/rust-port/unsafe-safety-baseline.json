@@ -1,1149 +1,892 @@
 {
   "files": {
     "src/ask-password/rust/ask_password.rs": {
+      "abi_sites": 1,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
+    },
+    "src/backlight/rust/backlight.rs": {
+      "abi_sites": 3,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
+    "src/basic/rust/af_list.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/alloc_util.rs": {
+      "abi_sites": 5,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/basic_validators.rs": {
+      "abi_sites": 7,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/bitmap.rs": {
+      "abi_sites": 10,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/bus_label.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/capability_util.rs": {
+      "abi_sites": 3,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/credential_validators.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/device_nodes.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/devnum_util.rs": {
+      "abi_sites": 5,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/dlfcn_util.rs": {
+      "abi_sites": 1,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
+    "src/basic/rust/dns_domain_validators.rs": {
+      "abi_sites": 4,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/dns_label.rs": {
+      "abi_sites": 30,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 6
     },
-    "src/backlight/rust/backlight.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 21
-    },
-    "src/basic/rust/af_list.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/basic/rust/alloc_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 14
-    },
-    "src/basic/rust/basic_validators.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 20
-    },
-    "src/basic/rust/bitmap.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 43
-    },
-    "src/basic/rust/bus_label.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 9
-    },
-    "src/basic/rust/capability_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
-    "src/basic/rust/credential_validators.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/basic/rust/device_nodes.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
-    "src/basic/rust/devnum_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 28
-    },
-    "src/basic/rust/dlfcn_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 10
-    },
-    "src/basic/rust/dns_domain_validators.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 8
-    },
-    "src/basic/rust/dns_label.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 100
-    },
     "src/basic/rust/env_util.rs": {
+      "abi_sites": 6,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 21
+      "unsafe_sites": 2
     },
     "src/basic/rust/errno_util.rs": {
+      "abi_sites": 4,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 8
+      "unsafe_sites": 0
     },
     "src/basic/rust/escape/allocating.rs": {
+      "abi_sites": 3,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 11
+      "unsafe_sites": 1
     },
     "src/basic/rust/escape/core_abi.rs": {
+      "abi_sites": 5,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 20
+      "unsafe_sites": 1
     },
     "src/basic/rust/escape/full_abi.rs": {
+      "abi_sites": 4,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 13
+      "unsafe_sites": 0
     },
     "src/basic/rust/ether_addr_util.rs": {
+      "abi_sites": 16,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 43
+      "unsafe_sites": 0
     },
     "src/basic/rust/exec_util.rs": {
+      "abi_sites": 4,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 18
+      "unsafe_sites": 1
     },
     "src/basic/rust/exit_status.rs": {
+      "abi_sites": 5,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 13
+      "unsafe_sites": 0
     },
     "src/basic/rust/extract_word.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 8
+      "unsafe_sites": 0
     },
     "src/basic/rust/ffi.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 52
+      "unsafe_sites": 24
     },
     "src/basic/rust/ffi_string_table.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 1
     },
     "src/basic/rust/gpt_util.rs": {
+      "abi_sites": 3,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 7
+      "unsafe_sites": 0
     },
     "src/basic/rust/gunicode.rs": {
+      "abi_sites": 1,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/header_inline_abi.rs": {
+      "abi_sites": 4,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/hexdecoct.rs": {
+      "abi_sites": 10,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/hostname_util.rs": {
+      "abi_sites": 9,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/id128_util.rs": {
+      "abi_sites": 7,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/image_policy_util.rs": {
+      "abi_sites": 15,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 3
     },
-    "src/basic/rust/header_inline_abi.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 11
-    },
-    "src/basic/rust/hexdecoct.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 72
-    },
-    "src/basic/rust/hostname_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 33
-    },
-    "src/basic/rust/id128_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 17
-    },
-    "src/basic/rust/image_policy_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 72
-    },
     "src/basic/rust/import_util.rs": {
+      "abi_sites": 5,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 17
+      "unsafe_sites": 0
     },
     "src/basic/rust/in_addr_util.rs": {
+      "abi_sites": 3,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 144
+      "unsafe_sites": 51
     },
     "src/basic/rust/iovec_util.rs": {
+      "abi_sites": 12,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 67
+      "unsafe_sites": 0
     },
     "src/basic/rust/iovec_wrapper.rs": {
+      "abi_sites": 8,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 29
+      "unsafe_sites": 0
     },
     "src/basic/rust/memory_util.rs": {
+      "abi_sites": 8,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 22
+      "unsafe_sites": 0
     },
     "src/basic/rust/mempool.rs": {
+      "abi_sites": 3,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 19
+      "unsafe_sites": 2
     },
     "src/basic/rust/misc_validators.rs": {
+      "abi_sites": 8,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 16
+      "unsafe_sites": 0
     },
     "src/basic/rust/mount_setup.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/mountpoint_util.rs": {
+      "abi_sites": 1,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/netdev_str_tables.rs": {
+      "abi_sites": 6,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 4
     },
-    "src/basic/rust/mountpoint_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 3
-    },
-    "src/basic/rust/netdev_str_tables.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 43
-    },
     "src/basic/rust/netdev_str_tables/core.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 1
     },
     "src/basic/rust/netdev_str_tables/dns_security.rs": {
+      "abi_sites": 1,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/netdev_str_tables/tpm_bpf_wifi.rs": {
+      "abi_sites": 4,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/nsflags.rs": {
+      "abi_sites": 3,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/nulstr_util.rs": {
+      "abi_sites": 2,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/basic/rust/netdev_str_tables/tests.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 21
-    },
-    "src/basic/rust/netdev_str_tables/tpm_bpf_wifi.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 19
-    },
-    "src/basic/rust/nsflags.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 13
-    },
-    "src/basic/rust/nulstr_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 18
-    },
     "src/basic/rust/parse_util.rs": {
+      "abi_sites": 41,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 232
+      "unsafe_sites": 17
     },
     "src/basic/rust/path_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 107
-    },
-    "src/basic/rust/path_util/byte_abi.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 79
-    },
-    "src/basic/rust/pe_binary.rs": {
+      "abi_sites": 15,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 29
     },
-    "src/basic/rust/percent_util.rs": {
+    "src/basic/rust/path_util/byte_abi.rs": {
+      "abi_sites": 22,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 16
+      "unsafe_sites": 2
+    },
+    "src/basic/rust/pe_binary.rs": {
+      "abi_sites": 7,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/percent_util.rs": {
+      "abi_sites": 6,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
     },
     "src/basic/rust/prioq.rs": {
+      "abi_sites": 9,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 50
+      "unsafe_sites": 0
     },
     "src/basic/rust/process_util_str_tables.rs": {
+      "abi_sites": 3,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 9
+      "unsafe_sites": 0
     },
     "src/basic/rust/procfs_util.rs": {
+      "abi_sites": 6,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 14
+      "unsafe_sites": 0
     },
     "src/basic/rust/ratelimit.rs": {
+      "abi_sites": 6,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 14
+      "unsafe_sites": 0
     },
     "src/basic/rust/rlimit_util.rs": {
+      "abi_sites": 6,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
+    "src/basic/rust/seccomp_util.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/serialize.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/sha1.rs": {
+      "abi_sites": 3,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/sha256_hmac.rs": {
+      "abi_sites": 3,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/shared_facades/lookups.rs": {
+      "abi_sites": 9,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
+    "src/basic/rust/shared_facades/validation.rs": {
+      "abi_sites": 10,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/signal_util.rs": {
+      "abi_sites": 3,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/siphash24.rs": {
+      "abi_sites": 6,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/socket_util.rs": {
+      "abi_sites": 18,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
+    "src/basic/rust/sort_util.rs": {
+      "abi_sites": 6,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/stat_util.rs": {
+      "abi_sites": 6,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/stat_util/descriptor.rs": {
+      "abi_sites": 6,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/stat_util/filesystem.rs": {
+      "abi_sites": 8,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/stat_util/hash.rs": {
+      "abi_sites": 3,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/stat_util/inode.rs": {
+      "abi_sites": 7,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/stat_util/inode_same.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/stat_util/moderate.rs": {
+      "abi_sites": 7,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/stat_util/verification.rs": {
+      "abi_sites": 14,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/stat_util/xstatx.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/strbuf.rs": {
+      "abi_sites": 3,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/string_table.rs": {
+      "abi_sites": 5,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/string_util.rs": {
+      "abi_sites": 17,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 20
     },
-    "src/basic/rust/seccomp_util.rs": {
+    "src/basic/rust/string_util_escape.rs": {
+      "abi_sites": 1,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 4
+    },
+    "src/basic/rust/string_util_ffi.rs": {
+      "abi_sites": 39,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/string_util_json.rs": {
+      "abi_sites": 0,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 3
+    },
+    "src/basic/rust/string_util_lines.rs": {
+      "abi_sites": 6,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/string_util_owned.rs": {
+      "abi_sites": 0,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 6
+    },
+    "src/basic/rust/string_util_replace.rs": {
+      "abi_sites": 0,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 8
+    },
+    "src/basic/rust/string_util_scan.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 5
     },
-    "src/basic/rust/serialize.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 11
-    },
-    "src/basic/rust/sha1.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 9
-    },
-    "src/basic/rust/sha256_hmac.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 11
-    },
-    "src/basic/rust/shared_facades/lookups.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 26
-    },
-    "src/basic/rust/shared_facades/validation.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 26
-    },
-    "src/basic/rust/signal_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 17
-    },
-    "src/basic/rust/siphash24.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 17
-    },
-    "src/basic/rust/socket_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 98
-    },
-    "src/basic/rust/sort_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 20
-    },
-    "src/basic/rust/stat_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 89
-    },
-    "src/basic/rust/stat_util/descriptor.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 16
-    },
-    "src/basic/rust/stat_util/filesystem.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 34
-    },
-    "src/basic/rust/stat_util/hash.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 9
-    },
-    "src/basic/rust/stat_util/inode.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 20
-    },
-    "src/basic/rust/stat_util/inode_same.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 18
-    },
-    "src/basic/rust/stat_util/moderate.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 23
-    },
-    "src/basic/rust/stat_util/verification.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 28
-    },
-    "src/basic/rust/stat_util/xstatx.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 9
-    },
-    "src/basic/rust/strbuf.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 11
-    },
-    "src/basic/rust/string_table.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 17
-    },
-    "src/basic/rust/string_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 133
-    },
-    "src/basic/rust/string_util_escape.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 19
-    },
-    "src/basic/rust/string_util_ffi.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 80
-    },
-    "src/basic/rust/string_util_json.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 11
-    },
-    "src/basic/rust/string_util_lines.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 43
-    },
-    "src/basic/rust/string_util_owned.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 35
-    },
-    "src/basic/rust/string_util_replace.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 39
-    },
-    "src/basic/rust/string_util_scan.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 17
-    },
     "src/basic/rust/strv.rs": {
+      "abi_sites": 51,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 302
+      "unsafe_sites": 9
     },
     "src/basic/rust/strv/allocating_transforms.rs": {
+      "abi_sites": 2,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 19
+      "unsafe_sites": 0
     },
     "src/basic/rust/strv/matching_escape.rs": {
+      "abi_sites": 2,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 13
+      "unsafe_sites": 0
     },
     "src/basic/rust/strverscmp.rs": {
+      "abi_sites": 1,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/strxcpyx.rs": {
+      "abi_sites": 4,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/basic/rust/time_util/arithmetic.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/time_util/conversion.rs": {
+      "abi_sites": 7,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/time_util/formatting.rs": {
+      "abi_sites": 3,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/time_util/parsing.rs": {
+      "abi_sites": 4,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/udev_util.rs": {
+      "abi_sites": 2,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/basic/rust/unaligned.rs": {
+      "abi_sites": 12,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/basic/rust/strxcpyx.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 18
-    },
-    "src/basic/rust/time_util/arithmetic.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/basic/rust/time_util/conversion.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 14
-    },
-    "src/basic/rust/time_util/formatting.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 28
-    },
-    "src/basic/rust/time_util/parsing.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 54
-    },
-    "src/basic/rust/time_util/tests.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 142
-    },
-    "src/basic/rust/udev_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 10
-    },
-    "src/basic/rust/unaligned.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 28
-    },
     "src/basic/rust/unit_def.rs": {
+      "abi_sites": 4,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 14
+      "unsafe_sites": 0
     },
     "src/basic/rust/unit_name.rs": {
+      "abi_sites": 20,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 290
+      "unsafe_sites": 14
     },
     "src/basic/rust/user_util.rs": {
+      "abi_sites": 6,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 17
+      "unsafe_sites": 1
     },
     "src/basic/rust/utf8.rs": {
+      "abi_sites": 18,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 49
+      "unsafe_sites": 1
     },
     "src/basic/rust/virt.rs": {
+      "abi_sites": 2,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 3
+      "unsafe_sites": 0
     },
     "src/basic/rust/xml_tokenizer.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 9
+      "unsafe_sites": 0
     },
     "src/battery-check/rust/battery_check.rs": {
+      "abi_sites": 5,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 18
-    },
-    "src/core/rust/generator_runtime.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 8
+      "unsafe_sites": 1
     },
     "src/core/rust/main.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/core/rust/pid1_dbus_listener.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/core/rust/pid1_generator_lifecycle.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 6
-    },
-    "src/core/rust/pid1_idle_pipe_source.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
+      "unsafe_sites": 2
     },
     "src/core/rust/runtime_manager.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
-    "src/core/rust/runtime_manager/linux_cgroup.rs": {
+    "src/core/rust/unit/relationships.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 4
+      "unsafe_sites": 1
     },
-    "src/core/rust/runtime_manager/service_runtime.rs": {
+    "src/fundamental/rust/iovec_util.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 3
     },
-    "src/core/rust/runtime_manager/tests.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 25
-    },
-    "src/core/rust/runtime_manager/unit_specifier.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 10
-    },
-    "src/core/rust/unit/relationships.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/core/rust/unit/tests.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/core/rust/unit_printf.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/fundamental/rust/chid.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/fundamental/rust/cleanup.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/fundamental/rust/iovec_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 8
-    },
     "src/fundamental/rust/memory_util.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 6
+      "unsafe_sites": 2
     },
     "src/fundamental/rust/unaligned.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 44
+      "unsafe_sites": 18
     },
-    "src/journal/rust/journalctl/argument_values.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 15
-    },
-    "src/journal/rust/journalctl/model.rs": {
+    "src/journal/rust/journalctl.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/journal/rust/journalctl_main.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/journal/rust/journald_runtime_client_context.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/journal/rust/journald_runtime_daemon.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/journal/rust/journald_runtime_io.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 31
-    },
-    "src/journal/rust/journald_runtime_record.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
-    "src/journal/rust/journald_runtime_tests.rs": {
+    "src/journal/rust/journald_runtime.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 60
+      "unsafe_sites": 1
     },
     "src/journal/rust/tests/live_daemon_e2e.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 1
     },
     "src/libsystemd/rust/sd_daemon_checks.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 94
-    },
-    "src/libsystemd/rust/sd_device_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/libsystemd/rust/sd_id128_api.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/libsystemd/rust/sd_journal_send.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 33
-    },
-    "src/libsystemd/rust/sd_journal_vacuum.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/libsystemd/rust/sd_resolve.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 11
+      "unsafe_sites": 12
     },
     "src/libsystemd/rust/test_support.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/platform/rust/cgroup.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 17
-    },
-    "src/platform/rust/io.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
-    "src/platform/rust/process.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 3
-    },
-    "src/platform/rust/signal.rs": {
+    "src/platform/rust/cgroup.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/platform/rust/spawn.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
-    "src/platform/rust/spawn/linux.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 40
-    },
-    "src/platform/rust/spawn/linux_cgroup.rs": {
+    "src/platform/rust/process.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
-    "src/platform/rust/spawn/linux_hygiene.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/platform/rust/spawn/linux_idle.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 9
-    },
-    "src/platform/rust/spawn/linux_process.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 10
-    },
-    "src/platform/rust/time.rs": {
+    "src/platform/rust/spawn.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/ptyfwd/rust/main.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 8
+      "unsafe_sites": 1
     },
     "src/random-seed/rust/main.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/resolve/rust/ffi.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 1
+      "unsafe_sites": 0
     },
     "src/resolve/rust/resolved.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 3
-    },
-    "src/shared/rust/acl_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 6
-    },
-    "src/shared/rust/ask_password_agent.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 40
-    },
-    "src/shared/rust/ask_password_api.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 3
-    },
-    "src/shared/rust/async.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 18
-    },
-    "src/shared/rust/barrier.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 20
     },
     "src/shared/rust/btrfs_util.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 0
     },
     "src/shared/rust/bus_print_properties.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/shared/rust/chown_recursive.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 19
-    },
-    "src/shared/rust/condition.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 15
-    },
-    "src/shared/rust/copy.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 39
-    },
-    "src/shared/rust/coredump_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/shared/rust/cpu_set_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/shared/rust/creds_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 3
+      "unsafe_sites": 0
     },
     "src/shared/rust/daemon_util.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 11
-    },
-    "src/shared/rust/env_file_label.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/shared/rust/exec_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 1
     },
     "src/shared/rust/fdset.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 23
+      "unsafe_sites": 0
     },
     "src/shared/rust/ffi.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 12
+      "unsafe_sites": 8
     },
     "src/shared/rust/find_esp.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 20
-    },
-    "src/shared/rust/fork_notify.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 14
-    },
-    "src/shared/rust/hostname_setup.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 3
-    },
-    "src/shared/rust/hwdb_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/shared/rust/install_file.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 23
-    },
-    "src/shared/rust/journal_file_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
+      "unsafe_sites": 0
     },
     "src/shared/rust/libaudit_util.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 16
+      "unsafe_sites": 1
     },
-    "src/shared/rust/loop_util/allocate.rs": {
+    "src/shared/rust/machine_id_setup.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 5
+      "unsafe_sites": 0
     },
-    "src/shared/rust/loop_util/device.rs": {
+    "src/shared/rust/openssl_util.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 5
+      "unsafe_sites": 0
     },
-    "src/shared/rust/loop_util/linux.rs": {
+    "src/shared/rust/osc_context.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 21
+      "unsafe_sites": 0
     },
-    "src/shared/rust/loop_util/tests.rs": {
+    "src/shared/rust/pam_util.rs": {
+      "abi_sites": 0,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 2
+    },
+    "src/shared/rust/password_quality_util_passwdqc.rs": {
+      "abi_sites": 10,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 1
+    },
+    "src/shared/rust/password_quality_util_pwquality.rs": {
+      "abi_sites": 16,
+      "missing_safety": 0,
+      "missing_safety_sites": [],
+      "unsafe_sites": 0
+    },
+    "src/shared/rust/pcre2_util.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 3
     },
-    "src/shared/rust/loopback_setup.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 22
-    },
-    "src/shared/rust/machine_id_setup.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 15
-    },
-    "src/shared/rust/mkfs_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/shared/rust/mount_setup.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/shared/rust/mount_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
-    "src/shared/rust/netif_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/shared/rust/numa_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
-    "src/shared/rust/openssl_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/shared/rust/osc_context.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 11
-    },
-    "src/shared/rust/pager.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 27
-    },
-    "src/shared/rust/pam_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
-    "src/shared/rust/password_quality_util_passwdqc.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 27
-    },
-    "src/shared/rust/password_quality_util_pwquality.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 42
-    },
-    "src/shared/rust/pcre2_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 15
-    },
-    "src/shared/rust/pretty_print.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 2
-    },
     "src/shared/rust/quota_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
-    "src/shared/rust/reboot_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/shared/rust/reread_partition_table.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/shared/rust/rm_rf.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 47
-    },
-    "src/shared/rust/seccomp_util/architecture.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
-    },
-    "src/shared/rust/secret_bytes.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/shared/rust/selinux_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/shared/rust/serialize.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 1
-    },
-    "src/shared/rust/shift_uid.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
-    "src/shared/rust/smack_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 14
     },
     "src/shared/rust/socket_forward.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 20
-    },
-    "src/shared/rust/socket_label.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 25
-    },
-    "src/shared/rust/socket_netlink.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 10
-    },
-    "src/shared/rust/specifier.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 16
-    },
-    "src/shared/rust/tar_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 13
-    },
-    "src/shared/rust/tests.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 5
-    },
-    "src/shared/rust/tmpfile_util_label.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 2
     },
-    "src/shared/rust/utmp_wtmp.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 10
-    },
-    "src/shared/rust/vconsole_util.rs": {
+    "src/shared/rust/tests.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
-    "src/shared/rust/wifi_util.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 6
-    },
     "src/socket-proxy/rust/runtime.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 21
+      "unsafe_sites": 1
     },
     "src/stdio-bridge/rust/stdio_bridge.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 23
+      "unsafe_sites": 1
     },
     "src/sulogin-shell/rust/main.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     },
     "src/udev/rust/main.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 4
-    },
-    "src/udev/rust/udev-db-monitor.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 10
-    },
-    "src/udev/rust/udev-rule-engine.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 19
+      "unsafe_sites": 1
     },
     "src/udev/rust/uevent-netlink.rs": {
+      "abi_sites": 0,
       "missing_safety": 0,
       "missing_safety_sites": [],
-      "unsafe_sites": 2
+      "unsafe_sites": 1
     },
     "src/volatile-root/rust/lib.rs": {
-      "missing_safety": 0,
-      "missing_safety_sites": [],
-      "unsafe_sites": 7
-    },
-    "src/volatile-root/rust/linux_mount.rs": {
+      "abi_sites": 1,
       "missing_safety": 0,
       "missing_safety_sites": [],
       "unsafe_sites": 1
     }
   },
   "totals": {
+    "abi_sites": 735,
     "missing_safety": 0,
-    "unsafe_sites": 4964
+    "unsafe_sites": 336
   },
   "version": 2,
   "window": 3

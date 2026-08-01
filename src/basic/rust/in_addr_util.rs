@@ -6,14 +6,6 @@
 // Skipped: hash functions (depend on siphash state), random functions (I/O),
 //          in_addr_port_ifindex_name_to_string (uses asprintf_safe variadic).
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::os::raw::c_void;
@@ -246,7 +238,7 @@ pub unsafe fn rs_in4_addr_is_set(a: *const InAddr) -> bool {
 /// in ways forbidden by the operation's documented ownership contract.
 pub unsafe fn rs_in_addr_data_is_set(a: *const InAddrData) -> bool {
     // SAFETY: forwarded unchanged to the audited pointer adapter below.
-    unsafe_ffi!(a.as_ref()).is_some_and(|a| unsafe { rs_in_addr_data_is_null(a) } != 0)
+    unsafe_ffi!(a.as_ref()).is_some_and(|a| unsafe_ffi!(rs_in_addr_data_is_null(a)) != 0)
 }
 
 /// Shadow of C in6_addr_is_set() — returns true if in6 address is not null.
@@ -1952,7 +1944,7 @@ mod tests {
         ($expression:expr) => {{
             // SAFETY: test inputs are constructed in this module and satisfy the
             // documented C ABI preconditions of the exercised facade.
-            unsafe { $expression }
+            unsafe_ffi!({ $expression })
         }};
     }
     use super::*;

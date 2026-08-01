@@ -534,7 +534,7 @@ unsafe fn read_inet_socket_address(
 ) -> Result<InetSocketAddress> {
     // SAFETY: the helper contract guarantees alignment and `addr_len` readable
     // bytes. Full struct reads occur only after their length checks.
-    unsafe {
+    unsafe_ffi!({
         match family {
             libc::AF_INET => {
                 if addr_len < size_of::<libc::sockaddr_in>() {
@@ -554,7 +554,7 @@ unsafe fn read_inet_socket_address(
             }
             _ => Err(DaemonCheckError::InvalidInput("family")),
         }
-    }
+    })
 }
 
 fn read_inet_socket_address_from_storage(
@@ -573,7 +573,7 @@ fn read_inet_socket_address_from_storage(
 
     // SAFETY: `getsockname` initialized `storage` as the checked family and
     // supplied at least the complete corresponding address length.
-    Ok(unsafe {
+    Ok(unsafe_ffi!({
         match family {
             libc::AF_INET => InetSocketAddress::V4(std::ptr::read(
                 std::ptr::from_ref(storage).cast::<libc::sockaddr_in>(),
@@ -583,7 +583,7 @@ fn read_inet_socket_address_from_storage(
             )),
             _ => unreachable!("family was validated above"),
         }
-    })
+    }))
 }
 
 fn inet_socket_address_matches(actual: InetSocketAddress, expected: InetSocketAddress) -> bool {
@@ -893,7 +893,7 @@ fn send_notify_datagram(fd: RawFd, payload: &[u8], address: NotifySocketAddress<
     let (address, address_len) = address.as_raw_parts();
     // SAFETY: the typed address reference remains live for the call and its
     // matching socket length is carried with it; payload is a live byte slice.
-    let sent = unsafe {
+    let sent = unsafe_ffi!({
         libc::sendto(
             fd,
             payload.as_ptr().cast(),
@@ -902,7 +902,7 @@ fn send_notify_datagram(fd: RawFd, payload: &[u8], address: NotifySocketAddress<
             address,
             address_len,
         )
-    };
+    });
     if sent < 0 {
         Err(DaemonCheckError::Io(last_errno()))
     } else if sent as usize != payload.len() {
@@ -1046,7 +1046,7 @@ fn getsockopt_int(fd: RawFd, opt: i32) -> Result<i32> {
     let mut value = 0i32;
     let mut len = size_of::<i32>() as libc::socklen_t;
     // SAFETY: arguments satisfy the libc `getsockopt` contract and any passed pointers remain valid for the call.
-    let r = unsafe {
+    let r = unsafe_ffi!({
         libc::getsockopt(
             fd,
             libc::SOL_SOCKET,
@@ -1054,7 +1054,7 @@ fn getsockopt_int(fd: RawFd, opt: i32) -> Result<i32> {
             &mut value as *mut _ as *mut libc::c_void,
             &mut len,
         )
-    };
+    });
     if r < 0 {
         return Err(DaemonCheckError::Io(last_errno()));
     }
@@ -1121,7 +1121,7 @@ mod tests {
         ($expression:expr) => {{
             // SAFETY: test inputs are constructed in this module and satisfy the
             // documented C ABI preconditions of the exercised facade.
-            unsafe { $expression }
+            unsafe_ffi!({ $expression })
         }};
     }
     use super::*;
@@ -1286,10 +1286,10 @@ mod tests {
         close_if_not_kept(pipe_b[1], SD_LISTEN_FDS_START, SD_LISTEN_FDS_START + 1);
 
         // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-        unsafe {
+        unsafe_ffi!({
             libc::fcntl(SD_LISTEN_FDS_START, libc::F_SETFD, 0);
             libc::fcntl(SD_LISTEN_FDS_START + 1, libc::F_SETFD, 0);
-        }
+        });
 
         // SAFETY: arguments satisfy the libc `getpid` contract and any passed pointers remain valid for the call.
         environment.set("LISTEN_PID", test_ffi!(libc::getpid()).to_string());
@@ -1332,10 +1332,10 @@ mod tests {
         close_if_not_kept(pipe_b[0], SD_LISTEN_FDS_START, SD_LISTEN_FDS_START + 1);
         close_if_not_kept(pipe_b[1], SD_LISTEN_FDS_START, SD_LISTEN_FDS_START + 1);
         // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-        unsafe {
+        unsafe_ffi!({
             libc::fcntl(SD_LISTEN_FDS_START, libc::F_SETFD, 0);
             libc::fcntl(SD_LISTEN_FDS_START + 1, libc::F_SETFD, 0);
-        }
+        });
 
         // SAFETY: arguments satisfy the libc `getpid` contract and any passed pointers remain valid for the call.
         environment.set("LISTEN_PID", test_ffi!(libc::getpid()).to_string());
@@ -1454,7 +1454,7 @@ mod tests {
         );
 
         // SAFETY: TestEnvironment upholds the environment mutation contract.
-        let sent = unsafe { sd_notifyf(true, format_args!("MAINPID={}", 1234)) }.unwrap();
+        let sent = unsafe_ffi!(sd_notifyf(true, format_args!("MAINPID={}", 1234))).unwrap();
         assert!(sent);
 
         let mut buf = [0u8; 64];
@@ -1559,7 +1559,7 @@ mod tests {
 
         // SAFETY: `addr` remains live and is a correctly sized/aligned IPv4
         // socket address for the duration of this synchronous call.
-        assert!(unsafe {
+        assert!(unsafe_ffi!({
             sd_is_socket_sockaddr(
                 listener.as_raw_fd(),
                 Some(libc::SOCK_STREAM),
@@ -1568,7 +1568,7 @@ mod tests {
                 Some(true),
             )
             .unwrap()
-        });
+        }));
     }
 
     #[cfg(target_os = "linux")]
@@ -1649,7 +1649,7 @@ mod tests {
 
         // SAFETY: `addr` remains live and is a correctly sized/aligned IPv4
         // socket address for the duration of this synchronous call.
-        assert!(unsafe {
+        assert!(unsafe_ffi!({
             sd_is_socket_sockaddr(
                 listener.as_raw_fd(),
                 Some(libc::SOCK_STREAM),
@@ -1658,7 +1658,7 @@ mod tests {
                 Some(true),
             )
             .unwrap()
-        });
+        }));
     }
 
     #[cfg(target_os = "linux")]
@@ -1700,23 +1700,23 @@ mod tests {
         );
         let c_name = CString::new(name.clone()).unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let fd = unsafe {
+        let fd = unsafe_ffi!({
             libc::mq_open(
                 c_name.as_ptr(),
                 libc::O_CREAT | libc::O_RDWR | libc::O_CLOEXEC,
                 0o600,
                 std::ptr::null::<libc::mq_attr>(),
             )
-        };
+        });
         assert_ne!(fd, -1);
         let queue_path = PathBuf::from(name);
         let result = sd_is_mq(fd, Some(&queue_path)).unwrap();
         assert!(result);
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             libc::mq_close(fd);
             libc::mq_unlink(c_name.as_ptr());
-        }
+        })
     }
 
     #[cfg(target_os = "linux")]
@@ -1731,14 +1731,14 @@ mod tests {
         );
         let c_name = CString::new(name.clone()).unwrap();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        let fd = unsafe {
+        let fd = unsafe_ffi!({
             libc::mq_open(
                 c_name.as_ptr(),
                 libc::O_CREAT | libc::O_RDWR | libc::O_CLOEXEC,
                 0o600,
                 std::ptr::null::<libc::mq_attr>(),
             )
-        };
+        });
         assert_ne!(fd, -1);
 
         let result = sd_is_mq(fd, Some(Path::new("relative-name")));
@@ -1748,10 +1748,10 @@ mod tests {
         ));
 
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             libc::mq_close(fd);
             libc::mq_unlink(c_name.as_ptr());
-        }
+        })
     }
 
     #[cfg(target_os = "linux")]

@@ -5,13 +5,6 @@
 // SHA-1 hash implementation, faithful to the public domain SHA-1 by Steve Reid.
 // The algorithm is safe Rust; unsafe code is confined to the documented C ABI facade.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::c_void;
 use std::{ptr, slice};
 

@@ -9,13 +9,6 @@
 // platform-specific read-only semantics (btrfs subvolumes, immutable
 // flags, block-device read-only mode).
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::io;

@@ -4,13 +4,6 @@
 //
 // Clock-domain conversion and libc timestamp conversion primitives.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use super::types::{
     CLOCK_BOOTTIME, CLOCK_BOOTTIME_ALARM, CLOCK_MONOTONIC, CLOCK_REALTIME, CLOCK_REALTIME_ALARM,
     LibcTimespec, LibcTimeval, NSEC_INFINITY, NSEC_PER_SEC, NSEC_PER_USEC, TIME_T_MAX,

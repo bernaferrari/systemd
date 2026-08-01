@@ -8,13 +8,6 @@
 // Udev string transformations. The byte-slice core deliberately owns all
 // parsing and mutation; the two C exports are only checked pointer adapters.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_char};
 
 use crate::device_nodes::allow_listed_char_for_devnode;

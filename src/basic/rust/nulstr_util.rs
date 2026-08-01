@@ -5,13 +5,6 @@
 // NUL-terminated string list utilities.
 // Safe Rust core with narrow C-allocator ABI facades.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_void};
 use std::ptr;
 

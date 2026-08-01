@@ -9,14 +9,6 @@
     reason = "The dedicated C-mirror test module deliberately lives in time_util/tests.rs."
 )]
 
-// Centralized unsafe expression boundary for this test module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
-
 #[cfg(test)]
 mod tests {
     use crate::time_util::arithmetic::{

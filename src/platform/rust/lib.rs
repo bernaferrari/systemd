@@ -3,6 +3,8 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+#[macro_use]
+pub mod spawn;
 pub mod cgroup;
 #[cfg(target_os = "linux")]
 pub mod epoll;
@@ -14,5 +16,4 @@ pub mod netlink;
 pub mod process;
 #[cfg(target_os = "linux")]
 pub mod signal;
-pub mod spawn;
 pub mod time;

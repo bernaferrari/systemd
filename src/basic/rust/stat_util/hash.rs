@@ -4,13 +4,6 @@
 //
 // inode_hash_func and inode_unmodified_hash_func via canonical SipHash.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
@@ -104,9 +97,10 @@ fn inode_unmodified_hash(stat: &libc::stat, state: &mut SipHashCompressor<'_>) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_inode_hash_func(stat: *const libc::stat, state: *mut SipHashState) {
     // SAFETY: both conversions are covered by the entry-point contract.
-    let (Some(stat), Some(mut state)) = (unsafe_ffi!(stat.as_ref()), unsafe {
-        SipHashCompressor::from_raw(state)
-    }) else {
+    let (Some(stat), Some(mut state)) = (
+        unsafe_ffi!(stat.as_ref()),
+        unsafe_ffi!(SipHashCompressor::from_raw(state)),
+    ) else {
         return;
     };
     inode_hash(stat, &mut state);
@@ -123,9 +117,10 @@ pub unsafe extern "C" fn rs_inode_unmodified_hash_func(
     state: *mut SipHashState,
 ) {
     // SAFETY: both conversions are covered by the entry-point contract.
-    let (Some(stat), Some(mut state)) = (unsafe_ffi!(stat.as_ref()), unsafe {
-        SipHashCompressor::from_raw(state)
-    }) else {
+    let (Some(stat), Some(mut state)) = (
+        unsafe_ffi!(stat.as_ref()),
+        unsafe_ffi!(SipHashCompressor::from_raw(state)),
+    ) else {
         return;
     };
     inode_unmodified_hash(stat, &mut state);

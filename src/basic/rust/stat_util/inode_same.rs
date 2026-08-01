@@ -4,13 +4,6 @@
 //
 // inode_same_at and related identity helpers.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::alloc::{Layout, alloc_zeroed, dealloc};
 use std::ffi::CStr;
 use std::mem::{MaybeUninit, align_of, offset_of};

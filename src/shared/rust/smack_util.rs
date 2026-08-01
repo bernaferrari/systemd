@@ -9,13 +9,6 @@
 // labels to processes, MAC address to SMACK label conversion,
 // and SMACK netlabel configuration.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CString;
 use std::fs;
 use std::io;
@@ -176,14 +169,14 @@ fn read_xattr_path(path: &Path, xattr_name: &[u8]) -> Result<Option<String>, Sma
     let path_cstr =
         CString::new(path.as_os_str().as_bytes()).map_err(|_| SmackError::InvalidLabel)?;
     // SAFETY: path_cstr and xattr_name are valid null-terminated byte strings.
-    let buf_size = unsafe {
+    let buf_size = unsafe_ffi!({
         libc::lgetxattr(
             path_cstr.as_ptr(),
             xattr_name_ptr(xattr_name),
             std::ptr::null_mut(),
             0,
         )
-    };
+    });
     if buf_size < 0 {
         let errno = std::io::Error::last_os_error();
         let code = errno.raw_os_error().unwrap_or(0);
@@ -197,14 +190,14 @@ fn read_xattr_path(path: &Path, xattr_name: &[u8]) -> Result<Option<String>, Sma
     }
     let mut buf = vec![0u8; buf_size as usize];
     // SAFETY: buf correctly sized, all pointers valid.
-    let read = unsafe {
+    let read = unsafe_ffi!({
         libc::lgetxattr(
             path_cstr.as_ptr(),
             xattr_name_ptr(xattr_name),
             buf.as_mut_ptr() as *mut libc::c_void,
             buf.len(),
         )
-    };
+    });
     if read < 0 {
         return Err(SmackError::from(std::io::Error::last_os_error()));
     }
@@ -237,14 +230,14 @@ fn read_xattr_fd(fd: i32, xattr_name: &[u8]) -> Result<Option<String>, SmackErro
     }
     let mut buf = vec![0u8; buf_size as usize];
     // SAFETY: buf correctly sized, fd assumed valid.
-    let read = unsafe {
+    let read = unsafe_ffi!({
         libc::fgetxattr(
             fd,
             xattr_name_ptr(xattr_name),
             buf.as_mut_ptr() as *mut libc::c_void,
             buf.len(),
         )
-    };
+    });
     if read < 0 {
         return Err(SmackError::from(std::io::Error::last_os_error()));
     }
@@ -297,7 +290,7 @@ fn apply_xattr_path(path: &Path, xattr_name: &[u8], label: Option<&str>) -> Resu
             // is intentionally excluded because xattr values are raw bytes and C
             // passes `strlen(label)` to xsetxattr().
             // SAFETY: all raw pointers and the value length are valid for this call.
-            let ret = unsafe {
+            let ret = unsafe_ffi!({
                 libc::lsetxattr(
                     path_cstr.as_ptr(),
                     xattr_name_ptr(xattr_name),
@@ -305,7 +298,7 @@ fn apply_xattr_path(path: &Path, xattr_name: &[u8], label: Option<&str>) -> Resu
                     c_label.as_bytes().len(),
                     0,
                 )
-            };
+            });
             if ret < 0 {
                 Err(SmackError::from(std::io::Error::last_os_error()))
             } else {
@@ -335,7 +328,7 @@ fn apply_xattr_fd(fd: i32, xattr_name: &[u8], label: Option<&str>) -> Result<(),
             // SAFETY: `fd` is passed through to the kernel. `xattr_name` is
             // NUL-terminated and `c_label` points to the initialized raw value
             // bytes, excluding its CString terminator as required by xattr(7).
-            let ret = unsafe {
+            let ret = unsafe_ffi!({
                 libc::fsetxattr(
                     fd,
                     xattr_name_ptr(xattr_name),
@@ -343,7 +336,7 @@ fn apply_xattr_fd(fd: i32, xattr_name: &[u8], label: Option<&str>) -> Result<(),
                     c_label.as_bytes().len(),
                     0,
                 )
-            };
+            });
             if ret < 0 {
                 Err(SmackError::from(std::io::Error::last_os_error()))
             } else {
@@ -433,7 +426,7 @@ fn smack_fix_fd_inner(fd: i32, label_path: &Path, flags: LabelFixFlags) -> Resul
     // SAFETY: F_GETFL neither dereferences Rust memory nor takes ownership of
     // `fd`; every branch passes NUL-terminated attribute and path names plus
     // a live raw label slice to the kernel for the duration of this call.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         let fd_flags = libc::fcntl(fd, libc::F_GETFL);
         if fd_flags >= 0 && (fd_flags & O_PATH) != 0 {
             let proc_fd_path = CString::new(format!("/proc/self/fd/{fd}"))
@@ -454,7 +447,7 @@ fn smack_fix_fd_inner(fd: i32, label_path: &Path, flags: LabelFixFlags) -> Resul
                 0,
             )
         }
-    };
+    });
 
     if ret >= 0 {
         return Ok(());
@@ -551,9 +544,9 @@ impl Drop for FdGuard {
     fn drop(&mut self) {
         if self.0 >= 0 {
             // SAFETY: fd is valid and owned by this guard.
-            unsafe {
+            unsafe_ffi!({
                 libc::close(self.0);
-            }
+            })
         }
     }
 }

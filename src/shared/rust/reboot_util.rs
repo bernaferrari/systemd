@@ -187,7 +187,7 @@ pub fn raw_reboot(cmd: i32, arg: Option<&str>) -> Result<(), RebootError> {
         .map_or(std::ptr::null(), |s| s.as_ptr().cast());
 
     // SAFETY: Direct syscall wrapper — caller provides valid command constants.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         libc::syscall(
             SYS_REBOOT,
             LINUX_REBOOT_MAGIC1,
@@ -195,7 +195,7 @@ pub fn raw_reboot(cmd: i32, arg: Option<&str>) -> Result<(), RebootError> {
             cmd,
             arg_ptr,
         )
-    };
+    });
 
     if ret < 0 {
         return Err(RebootError::RebootFailed(

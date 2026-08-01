@@ -7,13 +7,6 @@
 // Skipped: detect_vm/detect_virtualization (file I/O, CPUID),
 //          running_in_userns/running_in_chroot (namespace/inode checks).
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::c_char;
 

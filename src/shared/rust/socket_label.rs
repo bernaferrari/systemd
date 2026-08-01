@@ -2,13 +2,6 @@
 //
 // PORT-SYNC: src/shared/socket-label.c
 //
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CString;
 use std::fmt;
 use std::fs;
@@ -523,13 +516,13 @@ pub fn socket_address_listen(
     let _selinux_guard = SelinuxSocketCreateGuard::new(selinux_label)?;
 
     // SAFETY: address verification supplies a supported socket family and type; libc::socket accepts these integer arguments.
-    let fd = cvt_fd(unsafe {
+    let fd = cvt_fd(unsafe_ffi!({
         libc::socket(
             address.family(),
             address.socket_type() | flags,
             address.protocol(),
         )
-    })?;
+    }))?;
 
     if let Some(label) = smack_label {
         let _ = mac_smack_apply_fd(fd, SmackAttr::Access, Some(label));
@@ -646,7 +639,7 @@ fn socket_bind_to_ifname(fd: RawFd, ifname: &str) -> Result<()> {
         let name = CString::new(ifname)
             .map_err(|_| SocketLabelError::InvalidValue("interface name contains NUL"))?;
         // SAFETY: name is a live NUL-terminated CString, and its byte pointer and length remain valid for this call.
-        cvt(unsafe {
+        cvt(unsafe_ffi!({
             libc::setsockopt(
                 fd,
                 libc::SOL_SOCKET,
@@ -654,7 +647,7 @@ fn socket_bind_to_ifname(fd: RawFd, ifname: &str) -> Result<()> {
                 name.as_ptr() as *const libc::c_void,
                 name.as_bytes().len() as libc::socklen_t,
             )
-        })?;
+        }))?;
         Ok(())
     }
 
@@ -728,7 +721,7 @@ fn socket_set_transparent(fd: RawFd, family: i32, enabled: bool) -> Result<()> {
 fn set_sockopt_int(fd: RawFd, level: i32, optname: i32, value: i32) -> Result<()> {
     let value = value as i32;
     // SAFETY: value is a live, aligned i32 and the pointer and length describe exactly that object for this call.
-    cvt(unsafe {
+    cvt(unsafe_ffi!({
         libc::setsockopt(
             fd,
             level,
@@ -736,7 +729,7 @@ fn set_sockopt_int(fd: RawFd, level: i32, optname: i32, value: i32) -> Result<()
             &value as *const i32 as *const libc::c_void,
             mem::size_of::<i32>() as libc::socklen_t,
         )
-    })?;
+    }))?;
     Ok(())
 }
 
@@ -782,9 +775,9 @@ impl UmaskGuard {
 impl Drop for UmaskGuard {
     fn drop(&mut self) {
         // SAFETY: the mode was returned by libc::umask and is valid to restore.
-        unsafe {
+        unsafe_ffi!({
             libc::umask(self.0);
-        }
+        })
     }
 }
 

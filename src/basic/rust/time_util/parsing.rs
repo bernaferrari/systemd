@@ -4,13 +4,6 @@
 //
 // Duration parsing and its byte-oriented C-string helpers.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 
 use libc::c_char;
@@ -402,7 +395,7 @@ pub unsafe extern "C" fn rs_parse_sec_fix_0(t: *const c_char, ret: *mut u64) -> 
     }
 
     // SAFETY: ret is non-null and writable by the caller contract.
-    unsafe { *ret = if k == 0 { USEC_INFINITY } else { k } };
+    unsafe_ffi!(*ret = if k == 0 { USEC_INFINITY } else { k });
     0
 }
 

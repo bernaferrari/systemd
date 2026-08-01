@@ -2,14 +2,6 @@
 //
 // PORT-SYNC: scope=basic.socket-util; authority=src/basic/socket-util.c,src/basic/socket-util.h,src/basic/parse-util.c,src/basic/parse-util.h
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, CString};
 use std::mem::{offset_of, size_of, zeroed};
 use std::ptr;

@@ -58,7 +58,7 @@ pub fn btrfs_get_block_device_fd(fd: BorrowedFd<'_>) -> io::Result<Option<libc::
     // SAFETY: `fd` stays live for the call, null selects the fd itself exactly
     // like the C inline btrfs_get_block_device_fd(), unused outputs are null,
     // and `device` is a valid unique output slot.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         c_btrfs_get_block_device_at_full(
             fd.as_raw_fd(),
             std::ptr::null(),
@@ -66,7 +66,7 @@ pub fn btrfs_get_block_device_fd(fd: BorrowedFd<'_>) -> io::Result<Option<libc::
             std::ptr::null_mut(),
             &mut device,
         )
-    };
+    });
 
     if result < 0 {
         return Err(io::Error::from_raw_os_error(-result));

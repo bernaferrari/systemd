@@ -8,13 +8,6 @@
 // permille (‰), and permyriad (‱) values. Also provides
 // UINT32_SCALE_FROM/TO helpers for converting to/from 2^32-1 scale.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, CString};
 
 use crate::ffi::{clear_errno, get_errno};

@@ -9,13 +9,6 @@
 // each public function's Safety contract. Owned results are created solely by
 // the lower `owned` domain or the explicitly documented malloc site.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 use std::ptr;
 

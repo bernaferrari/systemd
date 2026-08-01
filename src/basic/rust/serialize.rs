@@ -4,13 +4,6 @@
 //
 // Serialization format deserialization utilities and C ABI facades.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::Errno;
 use crate::time_util::DualTimestamp as CDualTimestamp;
 use libc::{c_char, c_int, c_ulonglong};

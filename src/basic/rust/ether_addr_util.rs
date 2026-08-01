@@ -2,14 +2,6 @@
 //
 // PORT-SYNC: scope=basic.ether-addr-util; authority=src/basic/ether-addr-util.c,src/basic/ether-addr-util.h
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use libc::c_char;
 use std::cmp::Ordering;
 use std::ffi::CStr;

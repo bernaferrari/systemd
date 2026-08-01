@@ -142,9 +142,9 @@ impl Drop for SecretBytes {
         // Vec exposes a writable allocation of exactly `capacity` u8 slots.
         // SAFETY: explicit_bzero is non-elidable, retains no pointer, and
         // initializes/clears only storage owned exclusively by this Vec.
-        unsafe {
+        unsafe_ffi!({
             libc::explicit_bzero(self.0.as_mut_ptr().cast::<libc::c_void>(), capacity);
-        }
+        })
     }
 }
 

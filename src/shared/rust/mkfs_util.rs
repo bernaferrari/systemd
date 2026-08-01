@@ -9,14 +9,6 @@
 // Supports ext2/3/4, btrfs, f2fs, xfs, vfat, swap, squashfs, erofs, and
 // generic fallback to mkfs.<fstype>.
 
-// Centralized unsafe expression boundary for this module.
-#[cfg(test)]
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;

@@ -4,13 +4,6 @@
 //!
 //! Translated from `src/shared/serialize.c`.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::fdset::FdSetError;
 use crate::ffi::*;
 use std::io::{self, BufRead, Write};

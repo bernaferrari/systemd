@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // PORT-SYNC: src/shared/specifier.c, src/shared/specifier.h
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::any::Any;
 use std::ffi::{CStr, CString};
@@ -361,7 +354,7 @@ fn lookup_passwd(uid: libc::uid_t) -> Result<Option<(String, String, String)>, i
     let mut result = std::ptr::null_mut();
 
     // SAFETY: all pointers are valid and remain alive for the duration of the call.
-    let rc = unsafe {
+    let rc = unsafe_ffi!({
         libc::getpwuid_r(
             uid,
             pwd.as_mut_ptr(),
@@ -369,7 +362,7 @@ fn lookup_passwd(uid: libc::uid_t) -> Result<Option<(String, String, String)>, i
             buf.len(),
             &mut result,
         )
-    };
+    });
     if rc != 0 {
         return Err(-rc);
     }
@@ -407,7 +400,7 @@ fn lookup_group(gid: libc::gid_t) -> Result<Option<String>, i32> {
     let mut result = std::ptr::null_mut();
 
     // SAFETY: all pointers are valid and remain alive for the duration of the call.
-    let rc = unsafe {
+    let rc = unsafe_ffi!({
         libc::getgrgid_r(
             gid,
             grp.as_mut_ptr(),
@@ -415,7 +408,7 @@ fn lookup_group(gid: libc::gid_t) -> Result<Option<String>, i32> {
             buf.len(),
             &mut result,
         )
-    };
+    });
     if rc != 0 {
         return Err(-rc);
     }

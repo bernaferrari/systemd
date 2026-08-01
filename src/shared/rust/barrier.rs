@@ -11,13 +11,6 @@
 // they placed more.  Values near i64::MIN encode abort states with the
 // invariant WE_ABORTED < THEY_ABORTED < I_ABORTED.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::fmt;
 use std::io;
@@ -132,9 +125,9 @@ fn safe_close(fd: i32) -> i32 {
         return INVALID_FD;
     }
     // SAFETY: fd is known to be a valid file descriptor we own.
-    unsafe {
+    unsafe_ffi!({
         libc::close(fd);
-    }
+    });
     INVALID_FD
 }
 
@@ -194,10 +187,10 @@ fn create_pipe() -> io::Result<[i32; 2]> {
 
     let cleanup = || {
         // SAFETY: both values were initialized by a successful pipe() call.
-        unsafe {
+        unsafe_ffi!({
             libc::close(fds[0]);
             libc::close(fds[1]);
-        }
+        })
     };
 
     for &fd in &fds {
@@ -281,9 +274,9 @@ impl Barrier {
         let them = sys_eventfd(0, libc::O_CLOEXEC | libc::O_NONBLOCK);
         if them < 0 {
             // SAFETY: me is a successfully created eventfd owned by this function.
-            unsafe {
+            unsafe_ffi!({
                 libc::close(me);
-            }
+            });
             return Err(io::Error::last_os_error().into());
         }
 
@@ -291,10 +284,10 @@ impl Barrier {
             Ok(p) => p,
             Err(e) => {
                 // SAFETY: both eventfds were successfully created and are owned by this function.
-                unsafe {
+                unsafe_ffi!({
                     libc::close(me);
                     libc::close(them);
-                }
+                });
                 return Err(e.into());
             }
         };
@@ -398,13 +391,13 @@ impl Barrier {
         // SAFETY: self.me is a valid eventfd we own; buf points to a
         // properly aligned u64.
         let len = loop {
-            let len = unsafe {
+            let len = unsafe_ffi!({
                 libc::write(
                     self.me,
                     &buf as *const u64 as *const libc::c_void,
                     std::mem::size_of::<u64>(),
                 )
-            };
+            });
             if len >= 0 {
                 break len;
             }
@@ -497,13 +490,13 @@ impl Barrier {
             if pfds[1].revents != 0 {
                 // SAFETY: self.them is a valid eventfd we own.
                 let len = loop {
-                    let len = unsafe {
+                    let len = unsafe_ffi!({
                         libc::read(
                             self.them,
                             &mut buf as *mut u64 as *mut libc::c_void,
                             std::mem::size_of::<u64>(),
                         )
-                    };
+                    });
                     if len >= 0 {
                         break len;
                     }
@@ -905,9 +898,9 @@ mod tests {
         fn reap(pid: libc::pid_t) {
             let mut status: i32 = 0;
             // SAFETY: pid is a valid child process id.
-            unsafe {
+            unsafe_ffi!({
                 libc::waitpid(pid, &mut status, 0);
-            }
+            })
         }
 
         #[test]

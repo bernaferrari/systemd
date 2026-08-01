@@ -4,13 +4,6 @@
 //
 // Memory utility functions.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::cmp::Ordering;
 use std::ffi::{c_int, c_void};
 use std::sync::OnceLock;

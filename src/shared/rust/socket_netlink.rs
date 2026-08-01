@@ -7,13 +7,6 @@
 // Pure data-structure logic and parsing are safe; only raw syscalls
 // (socket, bind, sendto, recv, fstat, close) use unsafe blocks.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::c_void;
 use std::fmt;
@@ -913,7 +906,7 @@ fn netlink_socket_new(protocol: i32) -> Result<RawFd> {
     // original descriptor; a successful duplicate is the only descriptor
     // returned and already carries FD_CLOEXEC.
     // SAFETY: the descriptor is uniquely owned until return or close.
-    unsafe {
+    unsafe_ffi!({
         let fd = libc::socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, protocol);
         if fd < 0 {
             return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
@@ -934,7 +927,7 @@ fn netlink_socket_new(protocol: i32) -> Result<RawFd> {
 
         let _ = libc::close(fd);
         Ok(replacement)
-    }
+    })
 }
 
 /// Create a netlink socket with the given protocol.
@@ -947,9 +940,9 @@ pub fn netlink_open(protocol: i32, pid: u32, groups: u32) -> Result<RawFd> {
     let addr = SockAddrNl::new(pid, groups);
     if let Err(e) = netlink_bind(fd, &addr) {
         // SAFETY: fd was returned by socket above and is still owned by this function.
-        unsafe {
+        unsafe_ffi!({
             libc::close(fd);
-        }
+        });
         return Err(e);
     }
 
@@ -967,13 +960,13 @@ pub fn netlink_bind(fd: RawFd, addr: &SockAddrNl) -> Result<()> {
     let sa = addr.as_sockaddr();
     let sa_len = mem::size_of::<crate::ffi::sockaddr_nl>() as libc::socklen_t;
     // SAFETY: sa is a valid sockaddr_nl that remains live for the call, and sa_len matches its size.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         libc::bind(
             fd,
             &sa as *const crate::ffi::sockaddr_nl as *const libc::sockaddr,
             sa_len,
         )
-    };
+    });
     if ret < 0 {
         return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
             last_errno(),
@@ -987,7 +980,7 @@ pub fn netlink_send(fd: RawFd, buf: &[u8], addr: &SockAddrNl) -> Result<usize> {
     let sa = addr.as_sockaddr();
     let sa_len = mem::size_of::<crate::ffi::sockaddr_nl>() as libc::socklen_t;
     // SAFETY: buf and sa are valid for their specified lengths and remain live for the synchronous call.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         libc::sendto(
             fd,
             buf.as_ptr() as *const c_void,
@@ -996,7 +989,7 @@ pub fn netlink_send(fd: RawFd, buf: &[u8], addr: &SockAddrNl) -> Result<usize> {
             &sa as *const crate::ffi::sockaddr_nl as *const libc::sockaddr,
             sa_len,
         )
-    };
+    });
     if ret < 0 {
         return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
             last_errno(),
@@ -1026,9 +1019,9 @@ pub fn netlink_recv(fd: RawFd, buf: &mut [u8]) -> Result<usize> {
 pub fn safe_close_fd(fd: RawFd) {
     if fd >= 0 {
         // SAFETY: close accepts any non-negative file descriptor; an invalid or already-closed one returns an error.
-        unsafe {
+        unsafe_ffi!({
             libc::close(fd);
-        }
+        })
     }
 }
 

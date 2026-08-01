@@ -6,13 +6,6 @@
 // configured HAVE_OPENSSL decision, lazy loading, provider lookup, and OpenSSL
 // ABI; Rust owns only validated inputs and returned-allocation lifetime.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CString, c_char, c_void};
 use std::ptr::NonNull;
 use std::sync::Mutex;
@@ -172,7 +165,7 @@ pub fn compute_hash(data: &[u8], algorithm: &str) -> Result<Vec<u8>> {
     // SAFETY: the one-element iovec, its input bytes (or live zero-length
     // sentinel), and both output slots live for the call. C copies no input
     // pointers and transfers only the malloc allocation in `digest` on success.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         c_openssl_digest_many(
             digest_alg.as_ptr(),
             &iovec,
@@ -180,7 +173,7 @@ pub fn compute_hash(data: &[u8], algorithm: &str) -> Result<Vec<u8>> {
             &mut digest,
             &mut digest_size,
         )
-    };
+    });
     if result < 0 {
         return Err(OpenSslError::from_neg_errno(result));
     }

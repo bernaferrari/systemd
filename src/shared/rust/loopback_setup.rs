@@ -12,13 +12,6 @@
 // Uses raw rtnetlink (AF_NETLINK / NETLINK_ROUTE) for all operations.
 // The netlink I/O itself is necessarily unsafe; everything else is safe Rust.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::io;
 use std::mem;
 use std::net::Ipv4Addr;

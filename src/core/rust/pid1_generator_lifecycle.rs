@@ -16,13 +16,6 @@
 //! launch inheritance. This does *not* select Rust as the installed PID 1:
 //! Meson/C ABI selection and several manager contracts remain incomplete.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::generator_runtime::{
     EnvironmentGeneratorExecutionReport, GeneratorExecutionError, GeneratorExecutionOptions,
     GeneratorExecutionReport, execute_system_environment_generators_with_fallback,

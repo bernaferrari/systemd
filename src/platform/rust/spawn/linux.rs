@@ -9,14 +9,6 @@
 //! nix/libc entry points are descriptor and process-control syscall wrappers;
 //! identity changes use raw syscalls to avoid glibc's NPTL setxid machinery.
 
-// Centralized unsafe expression boundary for this low-level adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper validates descriptors, pointers, and
-        // ownership before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use super::{
     ProcessIdentity, SpawnConfirmation, SpawnSecurity, SpawnStdio, SpawnedService, parse_command,
 };

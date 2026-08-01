@@ -4,14 +4,6 @@
 //
 // Bitmap functions.
 
-// Centralized unsafe expression boundary for this C-ABI adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing adapter documents and validates the raw-pointer,
-        // ownership, and lifetime contract before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use libc::c_void;
 use std::slice;
 
@@ -358,11 +350,11 @@ pub unsafe extern "C" fn rs_bitmap_copy(b: *mut CBitmap) -> *mut CBitmap {
         }
         // SAFETY: `words` names a fresh allocation for exactly `source.len()`
         // words and the borrowed source slice is live by the C Bitmap contract.
-        unsafe {
+        unsafe_ffi!({
             slice::from_raw_parts_mut(words, source.len()).copy_from_slice(source);
             (*copy).bitmaps = words;
             (*copy).n_bitmaps = source.len();
-        }
+        });
         copy
     })
 }

@@ -493,12 +493,12 @@ fn chase_usr_beneath_root(root: &Path) -> io::Result<std::path::PathBuf> {
 
     // SAFETY: root_c is NUL-terminated and retained for the call. No creation
     // flags are passed, and a successful call returns a fresh descriptor.
-    let root_fd = unsafe {
+    let root_fd = unsafe_ffi!({
         libc::open(
             root_c.as_ptr(),
             libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
         )
-    };
+    });
     if root_fd < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -522,7 +522,7 @@ fn chase_usr_beneath_root(root: &Path) -> io::Result<std::path::PathBuf> {
     how.resolve = libc::RESOLVE_IN_ROOT | libc::RESOLVE_NO_MAGICLINKS;
     // SAFETY: root_fd is live, `usr` is a static NUL-terminated relative
     // pathname, and `how` is fully initialized with the UAPI's exact size.
-    let fd = unsafe {
+    let fd = unsafe_ffi!({
         libc::syscall(
             libc::SYS_openat2,
             root_fd.as_raw_fd(),
@@ -530,7 +530,7 @@ fn chase_usr_beneath_root(root: &Path) -> io::Result<std::path::PathBuf> {
             &how,
             std::mem::size_of::<libc::open_how>(),
         )
-    };
+    });
     if fd < 0 {
         let error = io::Error::last_os_error();
         return match error.raw_os_error() {

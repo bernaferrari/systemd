@@ -15,13 +15,6 @@
 // - `check_password_quality()` → strength validation with username awareness
 // - `suggest_passwords()` → random password generation
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::fmt;
 use std::ptr::NonNull;
@@ -169,7 +162,7 @@ macro_rules! resolve_passwdqc_symbol {
     ($handle:expr, $name:literal, $symbol_type:ty) => {{
         // SAFETY: each invocation supplies the exact public declaration for
         // the named libpasswdqc required symbol.
-        unsafe { resolve_symbol::<$symbol_type>($handle, $name) }
+        unsafe_ffi!({ resolve_symbol::<$symbol_type>($handle, $name) })
     }};
 }
 
@@ -365,10 +358,10 @@ impl Drop for PasswdqcContext {
     fn drop(&mut self) {
         // SAFETY: `passwdqc_params_free` releases only the three internal
         // strings and resets the struct. The outer allocation is ours.
-        unsafe {
+        unsafe_ffi!({
             (self.library.symbols.passwdqc_params_free)(self.params.as_ptr());
             libc::free(self.params.as_ptr().cast());
-        }
+        })
     }
 }
 
@@ -395,9 +388,9 @@ fn pwqc_allocate_context() -> Result<PasswdqcContext, PasswdqcError> {
 
     // SAFETY: the allocation has the exact public layout and remains owned by
     // `context`; the reset function initializes all fields.
-    unsafe {
+    unsafe_ffi!({
         (syms.passwdqc_params_reset)(context.params.as_ptr());
-    }
+    });
 
     // Attempt to load config. As in the C implementation, a diagnostic means
     // the defaults remain usable; a missing diagnostic on error means OOM.
@@ -406,13 +399,13 @@ fn pwqc_allocate_context() -> Result<PasswdqcContext, PasswdqcError> {
     let mut load_reason: *mut c_char = std::ptr::null_mut();
     // SAFETY: `context` owns initialized params, and both the NUL-terminated
     // path and writable diagnostic output remain live for this call.
-    let r = unsafe {
+    let r = unsafe_ffi!({
         (syms.passwdqc_params_load)(
             context.params.as_ptr(),
             &mut load_reason,
             conf_path.as_ptr(),
         )
-    };
+    });
 
     if r < 0 && load_reason.is_null() {
         return Err(PasswdqcError::ContextAllocationFailed);
@@ -475,7 +468,7 @@ pub fn check_password_quality(
 
     // SAFETY: all CString pointers and the passwd structure remain valid for
     // the duration of the FFI call.
-    unsafe {
+    unsafe_ffi!({
         let context = pwqc_allocate_context()?;
         let syms = &context.library.symbols;
         let qc = context.qc();
@@ -511,7 +504,7 @@ pub fn check_password_quality(
             let reason = CStr::from_ptr(check_reason).to_string_lossy().into_owned();
             Ok(PasswordQualityResult::Bad(reason))
         }
-    }
+    })
 }
 
 // ── Public API: suggest_passwords ─────────────────────────────────────────
@@ -528,7 +521,7 @@ pub fn check_password_quality(
 pub fn suggest_passwords() -> Result<Vec<String>, PasswdqcError> {
     // SAFETY: the context owns the exact public params representation and
     // remains alive for every FFI call below.
-    unsafe {
+    unsafe_ffi!({
         let context = pwqc_allocate_context()?;
         let syms = &context.library.symbols;
         let qc = context.qc();
@@ -553,7 +546,7 @@ pub fn suggest_passwords() -> Result<Vec<String>, PasswdqcError> {
         }
 
         Ok(suggestions)
-    }
+    })
 }
 
 /// Generate password suggestions and format them as a printable string.

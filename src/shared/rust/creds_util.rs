@@ -8,13 +8,6 @@
 // credential directories (per-service, system, and encrypted variants),
 // reading credentials from disk, and Varlink error definitions.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{self, Read};
@@ -322,13 +315,13 @@ impl CredentialsDir {
         // SAFETY: the directory fd is live, the stack name is NUL-terminated,
         // and openat retains neither pointer. A non-negative result transfers
         // one newly owned descriptor to File.
-        let fd = unsafe {
+        let fd = unsafe_ffi!({
             libc::openat(
                 self.directory.as_raw_fd(),
                 nul_terminated.as_ptr().cast(),
                 libc::O_RDONLY | libc::O_CLOEXEC,
             )
-        };
+        });
         if fd < 0 {
             return Err(io_error(io::Error::last_os_error()));
         }

@@ -4,13 +4,6 @@
 //
 // Inode type names, chattr predicate, and inode comparisons.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::cmp::Ordering;
 use std::ffi::{CStr, c_char};
 

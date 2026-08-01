@@ -4,13 +4,6 @@
 //
 // Errno utility functions and errno name/value lookups.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 /* removed: use i32 */
 
 use std::ffi::CStr;

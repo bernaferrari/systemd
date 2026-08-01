@@ -3,13 +3,6 @@
 // PORT-SYNC: src/libsystemd/sd-journal/journal-send.c
 //
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};

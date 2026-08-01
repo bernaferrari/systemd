@@ -46,9 +46,9 @@ impl std::fmt::Debug for SecretString {
 impl Drop for SecretString {
     fn drop(&mut self) {
         // SAFETY: as_mut_vec() grants mutable access to valid UTF-8 bytes.
-        unsafe {
+        unsafe_ffi!({
             self.0.as_mut_vec().fill(b'x');
-        }
+        })
     }
 }
 

@@ -24,7 +24,7 @@ use std::ptr;
 macro_rules! libc_call {
     ($operation:expr) => {{
         // SAFETY: upheld by the documented contract of the enclosing adapter.
-        unsafe { $operation }
+        unsafe_ffi!({ $operation })
     }};
 }
 

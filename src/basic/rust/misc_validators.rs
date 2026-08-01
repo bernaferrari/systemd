@@ -10,13 +10,6 @@
 //           src/basic/syslog-util.c (log_namespace_name_valid),
 //           src/basic/socket-util.c (address_label_valid)
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::c_char;
 use std::ffi::CStr;
 

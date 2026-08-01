@@ -8,13 +8,6 @@
 // access helpers, cleanup callbacks, conversation prompting, and bus-cache
 // management for PAM modules.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::c_void;
 
 // ── PAM Error ───────────────────────────────────────────────────────────

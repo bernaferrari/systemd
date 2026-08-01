@@ -8,13 +8,6 @@
 // the `Drop` impl closes every fd in the set, mirroring `fdset_free()`.
 // When false, it merely deallocates, mirroring `fdset_shallow_freep()`.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use nix::errno::Errno;
 use std::collections::BTreeSet;
@@ -66,7 +59,7 @@ impl ProcFdDir {
         // SAFETY: `self.0` is exclusively borrowed for this call. A non-null
         // result is valid until the next directory operation on this stream;
         // the returned reference is consumed before the next call.
-        unsafe {
+        unsafe_ffi!({
             let entry = libc::readdir(self.0.as_ptr());
             if entry.is_null() {
                 return match Errno::last_raw() {
@@ -75,7 +68,7 @@ impl ProcFdDir {
                 };
             }
             Ok(Some(&*entry))
-        }
+        })
     }
 }
 
@@ -538,9 +531,9 @@ fn validate_fd(fd: RawFd) -> Result<(), FdSetError> {
 fn close_fd(fd: RawFd) {
     // SAFETY: `close` accepts any integer descriptor. This helper deliberately
     // ignores errors, exactly like the C fd-set destruction paths.
-    unsafe {
+    unsafe_ffi!({
         libc::close(fd);
-    }
+    })
 }
 
 /// Close a single fd asynchronously, preserving `async.c`'s shared

@@ -60,7 +60,7 @@ pub(crate) fn set_mount_tree_read_only(target: &Path) -> io::Result<()> {
     // SAFETY: target is retained and NUL-terminated; `attribute` exactly
     // matches Linux `struct mount_attr` and stays valid for the syscall. No
     // pointer is retained by the kernel after this synchronous operation.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::syscall(
             libc::SYS_mount_setattr,
             libc::AT_FDCWD,
@@ -69,7 +69,7 @@ pub(crate) fn set_mount_tree_read_only(target: &Path) -> io::Result<()> {
             &attribute,
             std::mem::size_of::<MountAttr>(),
         )
-    };
+    });
     if result < 0 {
         let error = io::Error::last_os_error();
         let errno = error.raw_os_error().unwrap_or(libc::EIO);

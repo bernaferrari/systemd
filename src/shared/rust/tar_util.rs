@@ -13,13 +13,6 @@
 // All operations that touch the filesystem are pure Rust using `libc` syscalls
 // wrapped in safe abstractions. No FFI blocks or no_mangle attributes remain.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::c_void;
 use std::fmt;
 use std::os::unix::io::RawFd;

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use super::model::{
     LO_FLAGS_AUTOCLEAR, LO_FLAGS_DIRECT_IO, LO_FLAGS_PARTSCAN, LO_FLAGS_READ_ONLY, LOCK_EX,
     LOCK_NB, LOCK_SH, LoopError, LoopFlags, MAX_ATTEMPTS, O_CLOEXEC, O_NOCTTY, O_NONBLOCK,
@@ -291,11 +284,11 @@ pub(super) fn fd_get_path(fd: RawFd) -> Result<PathBuf, LoopError> {
 /// Perform flock on a raw fd.
 pub(super) fn flock_fd(fd: RawFd, operation: i32) -> Result<(), LoopError> {
     // SAFETY: flock consumes an integer fd and operation by value.
-    unsafe {
+    unsafe_ffi!({
         if libc::flock(fd, operation) < 0 {
             return Err(LoopError::from_errno(crate::ffi::get_errno()));
         }
-    }
+    });
     Ok(())
 }
 

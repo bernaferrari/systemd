@@ -10,13 +10,6 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Sentinel value indicating an invalid or unset audit session.
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 pub const AUDIT_SESSION_INVALID: u32 = u32::MAX;
 
@@ -285,13 +278,13 @@ fn detect_audit_enabled() -> bool {
     // Open a netlink audit socket (SOCK_RAW | SOCK_CLOEXEC | SOCK_NONBLOCK)
     // SAFETY: `socket` receives only integer constants and does not access Rust
     // memory; success is checked before the returned descriptor is used.
-    let fd = unsafe {
+    let fd = unsafe_ffi!({
         libc::socket(
             AF_NETLINK,
             libc::SOCK_RAW | SOCK_CLOEXEC | SOCK_NONBLOCK,
             NETLINK_AUDIT,
         )
-    };
+    });
 
     if fd < 0 {
         let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);

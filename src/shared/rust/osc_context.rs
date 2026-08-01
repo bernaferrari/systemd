@@ -9,13 +9,6 @@
 //! an independently linked crypto backend.  Keep this module at that C seam
 //! instead of duplicating the protocol or its configuration decisions here.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, CString, c_char};
 use std::fmt;
 use std::io;
@@ -187,14 +180,14 @@ pub fn osc_context_open_container(name: Option<&str>) -> Result<(String, Id128),
     // SAFETY: optional `name` is either null or a NUL-terminated `CString`;
     // both output slots are live `osc-context.h`-compatible storage and C
     // retains none of the pointers after returning.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         c_osc_context_open_container(
             name.as_ref()
                 .map_or(std::ptr::null(), |value| value.as_ptr()),
             &mut sequence,
             &mut id,
         )
-    };
+    });
     Ok((required_sequence(result, sequence)?, id))
 }
 
@@ -237,7 +230,7 @@ pub fn osc_context_open_session(
     let mut id = Id128::NULL;
     // SAFETY: optional inputs are null or owned NUL-terminated C strings;
     // output slots are valid through the call and C does not retain them.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         c_osc_context_open_session(
             user.as_ref()
                 .map_or(std::ptr::null(), |value| value.as_ptr()),
@@ -247,7 +240,7 @@ pub fn osc_context_open_session(
             &mut sequence,
             &mut id,
         )
-    };
+    });
     Ok((required_sequence(result, sequence)?, id))
 }
 
@@ -264,14 +257,14 @@ pub fn osc_context_open_service(
     // SAFETY: `unit` is null or a NUL-terminated string; `invocation_id` is a
     // by-value ABI-compatible `sd_id128_t`, and `sequence` is a live output
     // slot which C does not retain.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         c_osc_context_open_service(
             unit.as_ref()
                 .map_or(std::ptr::null(), |value| value.as_ptr()),
             invocation_id,
             &mut sequence,
         )
-    };
+    });
     Ok((required_sequence(result, sequence)?, id))
 }
 

@@ -8,13 +8,6 @@
 // little-endian 16/32/64-bit values. Mirrors the C unaligned.h
 // inline functions using pure Rust byte manipulation.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::c_void;
 
 // ── Big-endian read ───────────────────────────────────────────────────────

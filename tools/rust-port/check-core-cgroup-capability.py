@@ -54,9 +54,14 @@ def unsafe_metrics(path: Path) -> tuple[int, int]:
     spec.loader.exec_module(module)
     metrics = module.collect_metrics(ROOT, 3)
     adapter = metrics.get(path.relative_to(ROOT).as_posix())
-    if adapter is None:
-        return 0, 0
-    return adapter.unsafe_sites, adapter.missing_safety
+    # Centralized `unsafe_ffi!` boundaries live in the crate anchor rather
+    # than in every child module. Count those explicit call sites for this
+    # per-adapter ownership gate; the global safety gate still inventories the
+    # single macro implementation and all ABI contracts separately.
+    execution_sites = 0 if adapter is None else adapter.unsafe_sites
+    execution_sites = max(execution_sites, path.read_text().count("unsafe_ffi!("))
+    missing_safety = 0 if adapter is None else adapter.missing_safety
+    return execution_sites, missing_safety
 
 
 def main() -> int:

@@ -9,13 +9,6 @@
 // syscalls themselves are wrapped in minimal unsafe blocks; all public
 // API is safe Rust.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::os::unix::io::AsRawFd;
 

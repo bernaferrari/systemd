@@ -4,13 +4,6 @@
 //
 // Device node name encoding: allow_listed_char_for_devnode, encode_devnode_name.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::Errno;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};

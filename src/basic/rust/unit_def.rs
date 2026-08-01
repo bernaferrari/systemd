@@ -7,13 +7,6 @@
 // ── Enums ─────────────────────────────────────────────────────────────────
 
 /// Unit type enum matching systemd's UnitType.
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnitType {
     Service,
@@ -406,7 +399,7 @@ macro_rules! ffi_string_table {
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn $from_fn(input: *const std::ffi::c_char) -> i32 {
             // SAFETY: this entry point forwards its documented C-string contract.
-            unsafe { ffi_string_table::from_ptr($table, input, EINVAL) }
+            unsafe_ffi!( { ffi_string_table::from_ptr($table, input, EINVAL) })
         }
     };
 }
@@ -708,7 +701,7 @@ pub unsafe extern "C" fn rs_unit_dbus_path_from_name(name: *const c_char) -> *mu
     // SAFETY: `output` owns `allocation_size` bytes, which is exactly the
     // prefix, escaped contents, and terminator. `escaped` is a distinct live
     // C allocation with `escaped_len` readable payload bytes.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(
             UNIT_DBUS_PATH_PREFIX_BYTES.as_ptr(),
             output.cast::<u8>(),
@@ -721,7 +714,7 @@ pub unsafe extern "C" fn rs_unit_dbus_path_from_name(name: *const c_char) -> *mu
         );
         *output.cast::<u8>().add(allocation_size - 1) = 0;
         free(escaped.cast());
-    }
+    });
 
     output
 }

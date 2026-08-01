@@ -6,13 +6,6 @@
 // DNS SRV/DNS-SD type parsing lives in dns_label.rs; this module owns the
 // exported validator facades declared by dns_domain_validators.h.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use libc::c_char;
 
 // ── Constants ─────────────────────────────────────────────────────────────

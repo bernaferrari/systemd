@@ -6,13 +6,6 @@
 // readiness via sd_notify (READY=1) before returning. Provides structured
 // wrappers for managing the child lifecycle, including termination helpers.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::fs;
 use std::io;
@@ -308,7 +301,7 @@ fn enable_sender_credentials(socket: &UnixDatagram) -> io::Result<()> {
     let enabled: libc::c_int = 1;
     // SAFETY: the socket owns a live file descriptor and `enabled` points to
     // an initialized `c_int` for exactly the size passed to setsockopt(2).
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::setsockopt(
             socket.as_raw_fd(),
             libc::SOL_SOCKET,
@@ -316,7 +309,7 @@ fn enable_sender_credentials(socket: &UnixDatagram) -> io::Result<()> {
             (&enabled as *const libc::c_int).cast(),
             mem::size_of_val(&enabled) as libc::socklen_t,
         )
-    };
+    });
     if result < 0 {
         Err(io::Error::last_os_error())
     } else {
@@ -342,14 +335,14 @@ fn recv_notification_with_sender(
     // descriptors so those descriptors can be closed rather than leaked.
     // SAFETY: CMSG_SPACE performs only ancillary-data layout arithmetic for
     // the exact payload sizes supplied here.
-    let control_len = unsafe {
+    let control_len = unsafe_ffi!({
         libc::CMSG_SPACE(mem::size_of::<ucred>() as u32) as usize
             + libc::CMSG_SPACE(
                 mem::size_of::<libc::c_int>()
                     .checked_mul(NOTIFY_FD_MAX)
                     .expect("notification fd control size overflow") as u32,
             ) as usize
-    };
+    });
     let control_slots = control_len.div_ceil(mem::size_of::<libc::cmsghdr>());
     let mut control = Vec::<MaybeUninit<libc::cmsghdr>>::with_capacity(control_slots);
     control.resize_with(control_slots, MaybeUninit::uninit);
@@ -436,20 +429,20 @@ fn recv_notification_with_sender(
                 // SAFETY: the payload bounds above prove this complete c_int
                 // lies in the received control record. SCM_RIGHTS descriptors
                 // are newly installed in this process by recvmsg(2).
-                let fd = unsafe {
+                let fd = unsafe_ffi!({
                     data.add(index * mem::size_of::<libc::c_int>())
                         .cast::<libc::c_int>()
                         .read_unaligned()
-                };
+                });
                 if fd < 0 {
                     malformed_control = true;
                     break;
                 }
                 // SAFETY: this function deliberately takes ownership of each
                 // unexpected received descriptor and closes it.
-                unsafe {
+                unsafe_ffi!({
                     libc::close(fd);
-                }
+                })
             }
             if malformed_control {
                 break;

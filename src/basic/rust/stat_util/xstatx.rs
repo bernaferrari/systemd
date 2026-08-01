@@ -6,13 +6,6 @@
 // The native libc type owns struct statx's target layout. The only raw
 // operation in this module is the libc statx call and its initialized output.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 use std::mem::MaybeUninit;
 

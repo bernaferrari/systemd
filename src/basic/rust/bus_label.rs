@@ -5,13 +5,6 @@
 // D-Bus object-path label escaping/unescaping. The C ABI accepts and returns
 // byte strings; only the input to rs_bus_label_escape is NUL-terminated.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::ptr;

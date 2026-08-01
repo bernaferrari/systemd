@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // PORT-SYNC: src/shared/ask-password-api.c, src/shared/ask-password-api.h
 
-// Centralized unsafe expression boundary for this low-level adapter.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper validates descriptors, pointers, and
-        // ownership before evaluating this expression.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::collections::BTreeSet;
 use std::env;
@@ -266,13 +258,13 @@ fn write_all_fd(fd: RawFd, data: &[u8]) -> io::Result<()> {
     let mut offset = 0;
     while offset < data.len() {
         // SAFETY: slice pointer/length are valid for the duration of the call.
-        let n = unsafe {
+        let n = unsafe_ffi!({
             libc::write(
                 fd,
                 data[offset..].as_ptr().cast::<c_void>(),
                 data.len() - offset,
             )
-        };
+        });
         if n < 0 {
             let error = io::Error::last_os_error();
             if error.kind() == io::ErrorKind::Interrupted {
@@ -473,7 +465,7 @@ fn request_key_serial(keyname: &str) -> AskPasswordResult<i32> {
         CString::new(keyname).map_err(|_| AskPasswordError::Io(io::ErrorKind::InvalidInput))?;
 
     // SAFETY: syscall arguments are valid C strings and scalar values.
-    let serial = unsafe {
+    let serial = unsafe_ffi!({
         libc::syscall(
             libc::SYS_request_key as libc::c_long,
             kind.as_ptr(),
@@ -481,7 +473,7 @@ fn request_key_serial(keyname: &str) -> AskPasswordResult<i32> {
             std::ptr::null::<c_void>(),
             0usize,
         )
-    };
+    });
     if serial < 0 {
         return errno_result();
     }
@@ -496,7 +488,7 @@ fn request_key_serial(_keyname: &str) -> AskPasswordResult<i32> {
 #[cfg(target_os = "linux")]
 fn read_key_payload(serial: i32) -> AskPasswordResult<Vec<u8>> {
     // SAFETY: query form of keyctl read; kernel only inspects arguments.
-    let size = unsafe {
+    let size = unsafe_ffi!({
         libc::syscall(
             libc::SYS_keyctl as libc::c_long,
             KEYCTL_READ,
@@ -504,14 +496,14 @@ fn read_key_payload(serial: i32) -> AskPasswordResult<Vec<u8>> {
             std::ptr::null_mut::<c_void>(),
             0usize,
         )
-    };
+    });
     if size < 0 {
         return errno_result();
     }
 
     let mut buffer = vec![0u8; size as usize];
     // SAFETY: buffer is writable for its full length.
-    let n = unsafe {
+    let n = unsafe_ffi!({
         libc::syscall(
             libc::SYS_keyctl as libc::c_long,
             KEYCTL_READ,
@@ -519,7 +511,7 @@ fn read_key_payload(serial: i32) -> AskPasswordResult<Vec<u8>> {
             buffer.as_mut_ptr().cast::<c_void>(),
             buffer.len(),
         )
-    };
+    });
     if n < 0 {
         return errno_result();
     }
@@ -543,7 +535,7 @@ fn add_key_payload(
         CString::new(keyname).map_err(|_| AskPasswordError::Io(io::ErrorKind::InvalidInput))?;
 
     // SAFETY: syscall arguments are valid pointers and scalar values.
-    let serial = unsafe {
+    let serial = unsafe_ffi!({
         libc::syscall(
             libc::SYS_add_key as libc::c_long,
             kind.as_ptr(),
@@ -552,7 +544,7 @@ fn add_key_payload(
             payload.len(),
             destination.serial() as libc::c_long,
         )
-    };
+    });
     if serial < 0 {
         return errno_result();
     }
@@ -574,7 +566,7 @@ fn set_key_timeout(serial: i32, timeout: Duration) -> AskPasswordResult<()> {
         .as_secs()
         .saturating_add(u64::from(timeout.subsec_nanos() > 0));
     // SAFETY: scalar keyctl arguments only.
-    let r = unsafe {
+    let r = unsafe_ffi!({
         libc::syscall(
             libc::SYS_keyctl as libc::c_long,
             KEYCTL_SET_TIMEOUT,
@@ -583,7 +575,7 @@ fn set_key_timeout(serial: i32, timeout: Duration) -> AskPasswordResult<()> {
             0usize,
             0usize,
         )
-    };
+    });
     if r < 0 {
         return errno_result();
     }
@@ -1070,7 +1062,7 @@ pub fn create_socket(askpwdir: &Path) -> AskPasswordResult<(OwnedFd, PathBuf)> {
 
     let one: i32 = 1;
     // SAFETY: setsockopt only reads the provided integer option value.
-    if unsafe {
+    if unsafe_ffi!({
         libc::setsockopt(
             socket.as_raw_fd(),
             libc::SOL_SOCKET,
@@ -1078,7 +1070,7 @@ pub fn create_socket(askpwdir: &Path) -> AskPasswordResult<(OwnedFd, PathBuf)> {
             (&one as *const i32).cast::<c_void>(),
             mem::size_of_val(&one) as libc::socklen_t,
         )
-    } < 0
+    }) < 0
     {
         return errno_result();
     }
@@ -1121,11 +1113,11 @@ impl SignalGuard {
         // SAFETY: sigset_t is immediately initialized by libc functions below.
         let mut mask = unsafe_ffi!(mem::zeroed::<libc::sigset_t>());
         // SAFETY: pointers are valid.
-        unsafe {
+        unsafe_ffi!({
             libc::sigemptyset(&mut mask);
             libc::sigaddset(&mut mask, libc::SIGINT);
             libc::sigaddset(&mut mask, libc::SIGTERM);
-        }
+        });
 
         // SAFETY: output parameter is valid.
         let mut oldmask = unsafe_ffi!(mem::zeroed::<libc::sigset_t>());

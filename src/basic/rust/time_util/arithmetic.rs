@@ -4,13 +4,6 @@
 //
 // Timestamp predicates and saturating microsecond arithmetic.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use super::types::{DualTimestamp, TripleTimestamp, USEC_INFINITY};
 
 /// Shadow of C timestamp_is_set() (inline in time-util.h)

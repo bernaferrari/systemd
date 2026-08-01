@@ -18,13 +18,6 @@
 //! only when namespace creation itself fails for the narrow reasons accepted
 //! by C.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::generator_setup::{
     GeneratorInvocation, GeneratorRunError, GeneratorRunOutcome, LookupPaths, PreparedGeneratorRun,
     discover_generator_executables, run_generators_with,

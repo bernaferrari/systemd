@@ -17,13 +17,6 @@
 // runtime implementation. The C implementation remains the production
 // authority for actual label lookup and process-global fscreate state.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::error::Error;
 use std::ffi::CString;

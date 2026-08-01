@@ -7,13 +7,6 @@
 // ABI exports and contains the only conversion from an inbound C string to
 // bytes; all table matching itself is ordinary safe Rust.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use std::ffi::{CStr, c_char};
 
 pub(crate) type Entry = (i32, &'static [u8]);

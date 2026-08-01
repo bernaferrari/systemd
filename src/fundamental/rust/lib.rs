@@ -19,6 +19,8 @@ extern crate alloc;
 
 // ── Module declarations ──────────────────────────────────────────────────
 
+#[macro_use]
+pub mod memory_util;
 pub mod bootspec;
 pub mod chid;
 pub mod cleanup;
@@ -29,7 +31,6 @@ pub mod efivars;
 pub mod iovec_util;
 pub mod logarithm;
 pub mod macro_fundamental;
-pub mod memory_util;
 pub mod sbat;
 pub mod sha1;
 pub mod sha256;

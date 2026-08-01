@@ -7,13 +7,6 @@
 // random generator.  Supports transient (tmpfs bind-mount) and
 // persistent modes, and can commit a transient ID to disk.
 
-// Centralized unsafe expression boundary for this module.
-macro_rules! unsafe_ffi {
-    ($expression:expr) => {{
-        // SAFETY: the enclosing helper documents and validates this operation.
-        unsafe { $expression }
-    }};
-}
 use crate::ffi::*;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::fmt;
@@ -497,9 +490,9 @@ fn read_machine_id_credential(name: &CStr) -> CredentialMachineId {
     // SAFETY: `name` is NUL-terminated, `value` is writable storage for the
     // one output pointer, and `ret_size == NULL` is explicitly supported by
     // creds-util.h. C does not retain `name` or the output-storage address.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         c_read_credential_with_decryption(name.as_ptr(), &mut value, std::ptr::null_mut())
-    };
+    });
     if result <= 0 {
         return CredentialMachineId::MissingOrInvalid;
     }
