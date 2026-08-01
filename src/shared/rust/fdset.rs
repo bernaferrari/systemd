@@ -8,6 +8,13 @@
 // the `Drop` impl closes every fd in the set, mirroring `fdset_free()`.
 // When false, it merely deallocates, mirroring `fdset_shallow_freep()`.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use nix::errno::Errno;
 use std::collections::BTreeSet;
@@ -39,7 +46,7 @@ impl ProcFdDir {
     fn open() -> io::Result<Self> {
         // SAFETY: the byte string is statically NUL-terminated and remains
         // valid for the duration of the synchronous `opendir` call.
-        let directory = unsafe { libc::opendir(c"/proc/self/fd".as_ptr()) };
+        let directory = unsafe_ffi!(libc::opendir(c"/proc/self/fd".as_ptr()));
         NonNull::new(directory)
             .map(Self)
             .ok_or_else(io::Error::last_os_error)
@@ -47,7 +54,7 @@ impl ProcFdDir {
 
     fn fd(&self) -> io::Result<RawFd> {
         // SAFETY: `self.0` is a live `DIR*` owned by this guard.
-        let fd = unsafe { libc::dirfd(self.0.as_ptr()) };
+        let fd = unsafe_ffi!(libc::dirfd(self.0.as_ptr()));
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -76,7 +83,7 @@ impl Drop for ProcFdDir {
     fn drop(&mut self) {
         // SAFETY: this guard owns the `DIR*` exactly once. Drop intentionally
         // ignores close errors, matching the prior `ReadDir` drop behavior.
-        let _ = unsafe { libc::closedir(self.0.as_ptr()) };
+        let _ = unsafe_ffi!(libc::closedir(self.0.as_ptr()));
     }
 }
 
@@ -201,7 +208,7 @@ impl FdSet {
         while let Some(entry) = dir.next().map_err(FdSetError::Io)? {
             // SAFETY: `d_name` is NUL-terminated for a successful `readdir`
             // result and is consumed before the next directory operation.
-            let name = unsafe { CStr::from_ptr(entry.d_name.as_ptr()) };
+            let name = unsafe_ffi!(CStr::from_ptr(entry.d_name.as_ptr()));
             let fd: RawFd = match name.to_str().ok().and_then(|s| s.parse().ok()) {
                 Some(v) => v,
                 None => continue,
@@ -282,7 +289,7 @@ impl FdSet {
         // SAFETY: `fd` passed validation and `F_DUPFD_CLOEXEC` takes only
         // scalar arguments. The returned descriptor is handled below on every
         // path, matching C's `_cleanup_close_` ownership discipline.
-        let copy = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, FDSET_MIN_FD) };
+        let copy = unsafe_ffi!(libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, FDSET_MIN_FD));
         if copy < 0 {
             return Err(FdSetError::Io(io::Error::last_os_error()));
         }
@@ -547,7 +554,7 @@ fn async_close_fd(fd: RawFd) {
 fn get_fd_flags(fd: RawFd) -> Result<i32, FdSetError> {
     // SAFETY: `F_GETFD` takes a scalar descriptor and has no pointer or
     // ownership preconditions. A negative result is translated below.
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    let flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD));
     if flags < 0 {
         Err(FdSetError::Io(io::Error::last_os_error()))
     } else {
@@ -565,7 +572,7 @@ fn set_cloexec_fd(fd: RawFd, value: bool) -> Result<(), FdSetError> {
     };
     // SAFETY: `F_SETFD` takes the scalar flag word computed above and does not
     // retain memory. Failure is reported before this helper returns.
-    let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, new_flags) };
+    let ret = unsafe_ffi!(libc::fcntl(fd, libc::F_SETFD, new_flags));
     if ret < 0 {
         Err(FdSetError::Io(io::Error::last_os_error()))
     } else {
@@ -586,7 +593,7 @@ fn close_all_except(except: &[RawFd]) -> Result<(), FdSetError> {
     // SAFETY: `except` is a contiguous `c_int` buffer that remains alive for
     // the synchronous C call. `close_all_fds` only reads it and returns a
     // negative errno-style value on failure.
-    let result = unsafe { close_all_fds(except.as_ptr(), except.len()) };
+    let result = unsafe_ffi!(close_all_fds(except.as_ptr(), except.len()));
     if result < 0 {
         Err(FdSetError::Io(io::Error::from_raw_os_error(-result)))
     } else {
@@ -607,20 +614,24 @@ mod tests {
         // SAFETY: `pipes` is a valid, writable two-element `int` array. On
         // success `pipe2` initializes both entries with new descriptors.
         assert_eq!(
-            unsafe { libc::pipe2(pipes.as_mut_ptr(), libc::O_CLOEXEC) },
+            unsafe_ffi!(libc::pipe2(pipes.as_mut_ptr(), libc::O_CLOEXEC)),
             0
         );
 
         // SAFETY: the successful `pipe2` call above created two distinct,
         // exclusively owned descriptors in `pipes`.
-        let read = unsafe { OwnedFd::from_raw_fd(pipes[0]) };
+        let read = unsafe_ffi!(OwnedFd::from_raw_fd(pipes[0]));
         // SAFETY: see the preceding ownership argument for the other pipe end.
-        let write = unsafe { OwnedFd::from_raw_fd(pipes[1]) };
+        let write = unsafe_ffi!(OwnedFd::from_raw_fd(pipes[1]));
 
         // `F_DUPFD_CLOEXEC` gives tests a descriptor outside the standard
         // streams even if the test process started with one of them closed.
         // SAFETY: `read` is a live descriptor and all arguments are scalars.
-        let fd = unsafe { libc::fcntl(read.as_raw_fd(), libc::F_DUPFD_CLOEXEC, FDSET_MIN_FD) };
+        let fd = unsafe_ffi!(libc::fcntl(
+            read.as_raw_fd(),
+            libc::F_DUPFD_CLOEXEC,
+            FDSET_MIN_FD
+        ));
         assert!(
             fd >= FDSET_MIN_FD,
             "failed to duplicate test pipe: {}",
@@ -631,7 +642,7 @@ mod tests {
 
         // SAFETY: `fcntl(F_DUPFD_CLOEXEC)` succeeded and returned a new,
         // exclusively owned descriptor not managed by another Rust object.
-        unsafe { OwnedFd::from_raw_fd(fd) }
+        unsafe_ffi!(OwnedFd::from_raw_fd(fd))
     }
 
     /// Transfer a private descriptor to an owning set through `put`.
@@ -864,9 +875,9 @@ mod tests {
         // fds should now be closed
         // SAFETY: `fcntl` accepts scalar arguments. `d1` and `d2` were
         // closed by `close_all`, so querying them must fail with `EBADF`.
-        assert_eq!(unsafe { libc::fcntl(d1, libc::F_GETFD) }, -1);
+        assert_eq!(unsafe_ffi!(libc::fcntl(d1, libc::F_GETFD)), -1);
         // SAFETY: same reasoning as for `d1` above.
-        assert_eq!(unsafe { libc::fcntl(d2, libc::F_GETFD) }, -1);
+        assert_eq!(unsafe_ffi!(libc::fcntl(d2, libc::F_GETFD)), -1);
     }
 
     // ── dup_all ────────────────────────────────────────────────────────
@@ -1009,13 +1020,13 @@ mod tests {
 
         set.set_cloexec(true).unwrap();
         // SAFETY: `fd` is still owned by `set`; `fcntl` uses scalar arguments.
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        let flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD));
         assert!(flags >= 0);
         assert_ne!(flags & libc::FD_CLOEXEC, 0);
 
         set.set_cloexec(false).unwrap();
         // SAFETY: `fd` remains live and owned by `set` until the end of this test.
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        let flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD));
         assert!(flags >= 0);
         assert_eq!(flags & libc::FD_CLOEXEC, 0);
     }
@@ -1034,7 +1045,7 @@ mod tests {
 
         // SAFETY: `fcntl` accepts scalar arguments. `FdSet::drop` closed its
         // private descriptor synchronously, so this query must fail.
-        assert_eq!(unsafe { libc::fcntl(fd, libc::F_GETFD) }, -1);
+        assert_eq!(unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD)), -1);
     }
 
     #[test]
@@ -1049,7 +1060,7 @@ mod tests {
         }
 
         // SAFETY: `fd` is still owned by the local `OwnedFd`.
-        let flags = unsafe { libc::fcntl(raw, libc::F_GETFD) };
+        let flags = unsafe_ffi!(libc::fcntl(raw, libc::F_GETFD));
         assert!(flags >= 0);
     }
 

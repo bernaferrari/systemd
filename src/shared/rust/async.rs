@@ -11,6 +11,13 @@
 // the parent never hangs on potentially blocking syscalls such as
 // close() on a busy NFS mount.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::io;
 use std::os::unix::io::RawFd;
@@ -198,9 +205,9 @@ pub fn asynchronous_close(fd: RawFd) -> Result<CloseResult, AsyncError> {
         Err(_) => {
             // Fallback: close synchronously.
             // SAFETY: fd has been validated as >= 0 above.
-            unsafe {
+            unsafe_ffi!({
                 libc::close(fd);
-            }
+            });
             Ok(CloseResult {
                 fd,
                 handed_off: false,
@@ -234,20 +241,20 @@ pub fn asynchronous_close_many(fds: &[RawFd]) -> Result<Vec<CloseResult>, AsyncE
 pub fn asynchronous_sync(track_pid: bool) -> AsyncResult<Option<u32>> {
     // SAFETY: fork / sync / _exit are syscall wrappers; the child
     // performs only async-signal-safe operations.
-    match unsafe { libc::fork() } {
+    match unsafe_ffi!(libc::fork()) {
         0 => {
             if !track_pid {
                 // Detach via double-fork.
                 // SAFETY: fork has no pointer preconditions; this child and its
                 // descendant use only async-signal-safe syscalls before _exit().
-                match unsafe { libc::fork() } {
+                match unsafe_ffi!(libc::fork()) {
                     0 => {
                         // Grandchild — do the actual work.
                         // SAFETY: sync is an async-signal-safe syscall wrapper
                         // with no pointer arguments, called only in the child.
-                        unsafe {
+                        unsafe_ffi!({
                             libc::sync();
-                        }
+                        });
                         child_exit(0);
                     }
                     _ => child_exit(0), // intermediate child exits
@@ -256,9 +263,9 @@ pub fn asynchronous_sync(track_pid: bool) -> AsyncResult<Option<u32>> {
             // Single child — do the work directly.
             // SAFETY: sync is an async-signal-safe syscall wrapper with no
             // pointer arguments, called only in the child.
-            unsafe {
+            unsafe_ffi!({
                 libc::sync();
-            }
+            });
             child_exit(0);
         }
         pid if pid > 0 => {
@@ -289,26 +296,26 @@ pub fn asynchronous_fsync(fd: RawFd, track_pid: bool) -> AsyncResult<Option<u32>
     }
 
     // SAFETY: fork / fsync / _exit are syscall wrappers.
-    match unsafe { libc::fork() } {
+    match unsafe_ffi!(libc::fork()) {
         0 => {
             if !track_pid {
                 // SAFETY: fork has no pointer preconditions; the child paths
                 // use only async-signal-safe syscalls before _exit().
-                match unsafe { libc::fork() } {
+                match unsafe_ffi!(libc::fork()) {
                     0 => {
                         // SAFETY: fd validated >= 0 above.
-                        unsafe {
+                        unsafe_ffi!({
                             libc::fsync(fd);
-                        }
+                        });
                         child_exit(0);
                     }
                     _ => child_exit(0),
                 }
             }
             // SAFETY: fd validated >= 0 above.
-            unsafe {
+            unsafe_ffi!({
                 libc::fsync(fd);
-            }
+            });
             child_exit(0);
         }
         pid if pid > 0 => {
@@ -342,7 +349,7 @@ pub fn asynchronous_rm_rf(path: &Path, _flags: RemoveFlags) -> AsyncResult<()> {
     }
 
     // SAFETY: fork / _exit are syscall wrappers.
-    match unsafe { libc::fork() } {
+    match unsafe_ffi!(libc::fork()) {
         0 => {
             // Detached child — best-effort.
             // In the full implementation this would:
@@ -368,7 +375,7 @@ pub fn asynchronous_rm_rf(path: &Path, _flags: RemoveFlags) -> AsyncResult<()> {
 #[inline]
 fn child_exit(code: i32) -> ! {
     // SAFETY: _exit is async-signal-safe and never returns.
-    unsafe { libc::_exit(code) }
+    unsafe_ffi!(libc::_exit(code))
 }
 
 /// Check whether the current process is a subreaper (PID 1 or has
@@ -384,7 +391,13 @@ fn is_reaper_process() -> Option<bool> {
     let mut subreaper: libc::c_int = 0;
     // SAFETY: `subreaper` is a live, writable `int`; `prctl` retains no
     // pointer and all remaining arguments are scalar zeroes.
-    let r = unsafe { libc::prctl(libc::PR_GET_CHILD_SUBREAPER, &mut subreaper, 0, 0, 0) };
+    let r = unsafe_ffi!(libc::prctl(
+        libc::PR_GET_CHILD_SUBREAPER,
+        &mut subreaper,
+        0,
+        0,
+        0
+    ));
     (r >= 0).then_some(subreaper != 0)
 }
 
@@ -415,7 +428,7 @@ struct CloseCloneRequest {
 extern "C" fn close_clone_child(argument: *mut libc::c_void) -> libc::c_int {
     // SAFETY: `argument` points to the live request prepared by the parent;
     // clone keeps its COW copy and nested stack mapped through this callback.
-    let request = unsafe { &mut *(argument.cast::<CloseCloneRequest>()) };
+    let request = unsafe_ffi!(&mut *(argument.cast::<CloseCloneRequest>()));
 
     if !request.nested_stack_top.is_null() {
         let nested_stack_top =
@@ -425,14 +438,14 @@ extern "C" fn close_clone_child(argument: *mut libc::c_void) -> libc::c_int {
         // SAFETY: both the callback and stack pointer were prepared before
         // cloning. `CLONE_FILES` is essential: this child must close the
         // original process's descriptor table, exactly like async.c.
-        let nested = unsafe {
+        let nested = unsafe_ffi!({
             libc::clone(
                 close_clone_child,
                 nested_stack_top,
                 libc::SIGCHLD | libc::CLONE_FILES,
                 argument,
             )
-        };
+        });
         if nested >= 0 {
             return 0;
         }
@@ -440,7 +453,7 @@ extern "C" fn close_clone_child(argument: *mut libc::c_void) -> libc::c_int {
 
     // SAFETY: `close` accepts an integer descriptor; errors are intentionally
     // ignored just like C's close callback.
-    let _ = unsafe { libc::close(request.fd) };
+    let _ = unsafe_ffi!(libc::close(request.fd));
     0
 }
 
@@ -448,13 +461,13 @@ extern "C" fn close_clone_child(argument: *mut libc::c_void) -> libc::c_int {
 fn clone_stack_top(stack: &mut CloseCloneStack) -> *mut libc::c_void {
     // SAFETY: the one-past-end pointer is the stack top expected by glibc's
     // clone wrapper. The stack object remains live until clone has returned.
-    unsafe {
+    unsafe_ffi!({
         stack
             .0
             .as_mut_ptr()
             .add(CLOSE_CLONE_STACK_SIZE)
             .cast::<libc::c_void>()
-    }
+    })
 }
 
 /// Create the C `clone_with_nested_stack()` equivalent used by
@@ -479,14 +492,14 @@ fn close_in_shared_fd_table(fd: RawFd, need_double_fork: bool) -> Result<(), io:
     // SAFETY: callback, aligned stack, and request all remain live for this
     // synchronous clone call. The child callback performs only async-signal-
     // safe operations and does not retain the parent's pointers after exit.
-    let pid = unsafe {
+    let pid = unsafe_ffi!({
         libc::clone(
             close_clone_child,
             clone_stack_top(&mut outer_stack),
             flags,
             (&mut request as *mut CloseCloneRequest).cast::<libc::c_void>(),
         )
-    };
+    });
     if pid < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -510,7 +523,7 @@ fn reap_child_with_options(pid: libc::pid_t, options: libc::c_int) {
     let mut status: i32 = 0;
     loop {
         // SAFETY: pid is a valid child pid we just forked.
-        let ret = unsafe { libc::waitpid(pid, &mut status, options) };
+        let ret = unsafe_ffi!(libc::waitpid(pid, &mut status, options));
         if ret >= 0 {
             break;
         }

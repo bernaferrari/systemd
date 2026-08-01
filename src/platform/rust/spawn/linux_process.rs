@@ -9,6 +9,13 @@
 //! for C-compatible descriptor/memory exhaustion because PID 1 still owns the
 //! wait relationship.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::ProcessIdentity;
 use nix::sys::wait::waitpid;
 use nix::unistd::{Pid, fork};
@@ -61,7 +68,7 @@ pub(super) enum ServiceFork {
 
 fn errno_or_invalid_argument() -> i32 {
     // SAFETY: Linux exposes the calling thread's errno through this pointer.
-    let errno = unsafe { *libc::__errno_location() };
+    let errno = unsafe_ffi!(*libc::__errno_location());
     if errno == 0 { libc::EINVAL } else { errno }
 }
 
@@ -96,13 +103,13 @@ fn raw_clone3(cgroup_fd: Option<RawFd>) -> Result<RawCloneResult, i32> {
     // SAFETY: `args` has the kernel's clone_args layout and remains live for
     // the syscall; its pidfd output points to parent stack storage. No sharing
     // flags are used, and the child returns to the allocation-free launch path.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::syscall(
             libc::SYS_clone3,
             &args as *const CloneArgs,
             std::mem::size_of::<CloneArgs>(),
         )
-    };
+    });
     if result < 0 {
         return Err(errno_or_invalid_argument());
     }
@@ -117,7 +124,7 @@ fn raw_clone3(cgroup_fd: Option<RawFd>) -> Result<RawCloneResult, i32> {
     }
     // SAFETY: CLONE_PIDFD returned a new descriptor in the parent-owned output
     // slot and no other owner has been constructed.
-    let pidfd = unsafe { OwnedFd::from_raw_fd(pidfd) };
+    let pidfd = unsafe_ffi!(OwnedFd::from_raw_fd(pidfd));
     Ok(RawCloneResult::Parent { child, pidfd })
 }
 
@@ -184,7 +191,7 @@ pub(super) fn spawn_process(
 
     // SAFETY: this is the retained compatibility fork. All launch storage and
     // child scratch buffers were prepared by the caller before reaching it.
-    match unsafe { fork() } {
+    match unsafe_ffi!(fork()) {
         Ok(nix::unistd::ForkResult::Parent { child }) => {
             let identity = match acquire_process_identity(child.as_raw() as u32) {
                 Ok(identity) => identity,
@@ -215,12 +222,13 @@ pub(super) fn acquire_process_identity(pid: u32) -> Result<ProcessIdentity, Stri
 
     // SAFETY: pidfd_open takes a validated positive PID and zero flags and
     // returns a new owned descriptor on success.
-    let pidfd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) };
+    let pidfd = unsafe_ffi!(libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0));
     if pidfd >= 0 {
         // SAFETY: pidfd_open returned a new descriptor with no existing owner.
-        return Ok(ProcessIdentity::with_pidfd(pid, unsafe {
-            OwnedFd::from_raw_fd(pidfd as RawFd)
-        }));
+        return Ok(ProcessIdentity::with_pidfd(
+            pid,
+            unsafe_ffi!(OwnedFd::from_raw_fd(pidfd as RawFd)),
+        ));
     }
 
     let errno = errno_or_invalid_argument();
@@ -241,7 +249,7 @@ pub(super) fn signal_process_identity(
         // SAFETY: the pidfd is manager-owned and live, the signal number is
         // passed through unchanged, and null siginfo with flags=0 is the
         // pidfd_send_signal contract.
-        unsafe {
+        unsafe_ffi!({
             libc::syscall(
                 libc::SYS_pidfd_send_signal,
                 pidfd.as_raw_fd(),
@@ -249,11 +257,11 @@ pub(super) fn signal_process_identity(
                 std::ptr::null::<libc::siginfo_t>(),
                 0,
             )
-        }
+        })
     } else {
         // SAFETY: numeric signaling is reachable only for resource-exhaustion
         // identity class established by acquire_process_identity().
-        unsafe { libc::kill(identity.pid() as libc::pid_t, signal) as libc::c_long }
+        unsafe_ffi!(libc::kill(identity.pid() as libc::pid_t, signal) as libc::c_long)
     };
 
     if result == 0 {
@@ -282,9 +290,9 @@ fn terminate_unconfirmed_child_pid(child: Pid) {
     // SAFETY: `child` is the process created by this call. This path is only
     // used when the parent cannot establish whether exec happened, so retaining
     // an untracked service would be less safe than terminating and reaping it.
-    unsafe {
+    unsafe_ffi!({
         libc::kill(child.as_raw(), libc::SIGKILL);
-    }
+    });
     reap_failed_child(child);
 }
 
@@ -294,9 +302,9 @@ pub(super) fn terminate_unconfirmed_child(child: Pid, identity: &ProcessIdentity
         // PID returned by clone/fork. Numeric fallback here cannot target a
         // reused PID or safely be omitted.
         // SAFETY: ownership of the unreaped child proves this PID is current.
-        unsafe {
+        unsafe_ffi!({
             libc::kill(child.as_raw(), libc::SIGKILL);
-        }
+        })
     }
     reap_failed_child(child);
 }

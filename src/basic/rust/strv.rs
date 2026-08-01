@@ -180,21 +180,21 @@ impl CStrvAllocation {
     fn push(&mut self, entry: *mut c_char) {
         debug_assert!(self.len + 1 < self.slots);
         // SAFETY: callers only push while the reserved terminator slot remains.
-        unsafe {
+        unsafe_ffi!({
             *self.ptr.add(self.len) = entry;
             self.len += 1;
             *self.ptr.add(self.len) = std::ptr::null_mut();
-        }
+        })
     }
 
     fn free_entries_and_storage(mut self) {
         // SAFETY: the first `len` slots are distinct owned C allocations.
-        unsafe {
+        unsafe_ffi!({
             for index in 0..self.len {
                 free((*self.ptr.add(index)).cast());
             }
             free(self.ptr.cast());
-        }
+        });
         self.ptr = std::ptr::null_mut();
     }
 
@@ -239,13 +239,13 @@ impl StrvSlot {
     fn grow_for(&mut self, slots: usize) -> Option<*mut *mut c_char> {
         // SAFETY: `*slot` is C-allocator storage or null, and the caller has
         // checked the requested finite element count.
-        let grown = unsafe {
+        let grown = unsafe_ffi!({
             reallocarray(
                 (*self.slot).cast(),
                 crate::basic_validators::rs_GREEDY_ALLOC_ROUND_UP(slots),
                 std::mem::size_of::<*mut c_char>(),
             )
-        }
+        })
         .cast::<*mut c_char>();
         if grown.is_null() {
             None
@@ -262,10 +262,10 @@ impl StrvSlot {
         let grown = self.grow_for(end)?;
         // SAFETY: `grown` has all `end` slots and entries cannot overlap the
         // destination vector under the C ownership contract.
-        unsafe {
+        unsafe_ffi!({
             std::ptr::copy_nonoverlapping(entries.as_ptr(), grown.add(len), entries.len());
             *grown.add(end - 1) = std::ptr::null_mut();
-        }
+        });
         Some(())
     }
 
@@ -275,7 +275,7 @@ impl StrvSlot {
         let grown = self.grow_for(len.checked_add(2)?)?;
         // SAFETY: the newly grown vector has `len + 2` slots and memmove
         // permits the overlapping suffix shift.
-        unsafe {
+        unsafe_ffi!({
             if position < len {
                 memmove(
                     grown.add(position + 1).cast(),
@@ -285,7 +285,7 @@ impl StrvSlot {
             }
             *grown.add(position) = value;
             *grown.add(len + 1) = std::ptr::null_mut();
-        }
+        });
         Some(())
     }
 
@@ -298,12 +298,12 @@ impl StrvSlot {
             let duplicate = unsafe_ffi!(strdup(s));
             if duplicate.is_null() {
                 // SAFETY: initialized suffix entries are owned strdup results.
-                unsafe {
+                unsafe_ffi!({
                     for rollback in 0..index {
                         free((*grown.add(len + rollback)).cast());
                     }
                     *grown.add(len) = std::ptr::null_mut();
-                }
+                });
                 return None;
             }
             // SAFETY: this is one of `count` reserved slots.
@@ -1460,23 +1460,23 @@ pub unsafe extern "C" fn rs_strv_push_with_size(
 
     // SAFETY: l is writable, and reallocarray receives the current allocation
     // with a finite rounded element count.
-    let c = unsafe {
+    let c = unsafe_ffi!({
         reallocarray(
             *l as *mut c_void,
             crate::basic_validators::rs_GREEDY_ALLOC_ROUND_UP(sz + 2),
             std::mem::size_of::<*mut c_char>(),
         )
-    }
+    })
     .cast::<*mut c_char>();
     if c.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
 
     // SAFETY: c reserves sz+2 entries.
-    unsafe {
+    unsafe_ffi!({
         *c.add(sz) = value;
         *c.add(sz + 1) = std::ptr::null_mut();
-    }
+    });
 
     if !size.is_null() {
         // SAFETY: non-null size is writable by the caller contract.
@@ -1659,9 +1659,9 @@ pub unsafe extern "C" fn rs_strv_split_full(
     loop {
         let mut word: *mut c_char = std::ptr::null_mut();
         // SAFETY: p/word are writable locals and s/separators satisfy the caller contract.
-        let r = unsafe {
+        let r = unsafe_ffi!({
             crate::extract_word::rs_extract_first_word(&mut p, &mut word, separators, flags)
-        };
+        });
         if r < 0 {
             // Cleanup
             let mut j: usize = 0;
@@ -1683,13 +1683,13 @@ pub unsafe extern "C" fn rs_strv_split_full(
         // GREEDY_REALLOC(l, n + 2)
         // SAFETY: reallocarray receives this function's current allocation and
         // a finite rounded element count.
-        let new_l = unsafe {
+        let new_l = unsafe_ffi!({
             reallocarray(
                 l.cast(),
                 crate::basic_validators::rs_GREEDY_ALLOC_ROUND_UP(n + 2),
                 std::mem::size_of::<*mut c_char>(),
             )
-        }
+        })
         .cast::<*mut c_char>();
         if new_l.is_null() {
             // Cleanup
@@ -1777,10 +1777,10 @@ pub unsafe extern "C" fn rs_strv_split_newlines_full(
         if !last.is_null() && unsafe_ffi!(*last) == 0 {
             // isempty check
             // SAFETY: last is an owned split allocation and the vector slot is writable.
-            unsafe {
+            unsafe_ffi!({
                 free(last.cast());
                 *l.add(n - 1) = std::ptr::null_mut();
-            }
+            })
         }
     }
 
@@ -2095,10 +2095,10 @@ pub unsafe extern "C" fn rs_strv_free_and_replace(
     }
     // SAFETY: this mirrors free_and_replace_full: read b after freeing a,
     // assign it to a, then consume b by clearing its caller-visible lvalue.
-    unsafe {
+    unsafe_ffi!({
         *a = *b;
         *b = std::ptr::null_mut();
-    }
+    })
 }
 
 // ── strv_extend_strv_consume ──────────────────────────────────────────────
@@ -2161,13 +2161,13 @@ pub unsafe extern "C" fn rs_strv_extend_strv_consume(
 
     // SAFETY: a is writable, and reallocarray receives its current allocation
     // with a finite rounded element count.
-    let t = unsafe {
+    let t = unsafe_ffi!({
         reallocarray(
             *a as *mut c_void,
             crate::basic_validators::rs_GREEDY_ALLOC_ROUND_UP(p + q + 1),
             std::mem::size_of::<*mut c_char>(),
         )
-    }
+    })
     .cast::<*mut c_char>();
     if t.is_null() {
         if !b.is_null() {
@@ -2178,10 +2178,10 @@ pub unsafe extern "C" fn rs_strv_extend_strv_consume(
     }
 
     // SAFETY: t reserves p+q+1 entries and a is writable.
-    unsafe {
+    unsafe_ffi!({
         *t.add(p) = std::ptr::null_mut();
         *a = t;
-    }
+    });
 
     let mut i: usize = 0;
     if !filter_duplicates {
@@ -2402,12 +2402,12 @@ pub unsafe extern "C" fn rs_strv_fnmatch_or_empty(
     // SAFETY: this function forwards the pattern vector contract.
     (unsafe_ffi!(rs_strv_isempty(patterns)))
         // SAFETY: this function forwards the pattern vector and string contracts.
-        || unsafe { rs_strv_fnmatch_full(
+        || unsafe_ffi!({ rs_strv_fnmatch_full(
             patterns.cast::<*mut c_char>(),
             s,
             flags,
             std::ptr::null_mut(),
-        ) }
+        ) })
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -2533,11 +2533,11 @@ mod tests {
         let len = test_ffi!(rs_strv_length(v as *const *mut c_char));
         assert_eq!(len, 3);
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(CStr::from_ptr(*v.add(0)).to_str().unwrap(), "alpha");
             assert_eq!(CStr::from_ptr(*v.add(1)).to_str().unwrap(), "bravo");
             assert_eq!(CStr::from_ptr(*v.add(2)).to_str().unwrap(), "charlie");
-        }
+        });
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
         test_ffi!(free_strv(v));
     }

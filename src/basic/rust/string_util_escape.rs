@@ -6,6 +6,13 @@
 // operate on borrowed byte slices; the few raw-pointer adapters are confined
 // to the C ABI and C allocator boundary.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_void};
 
 use libc::c_char;
@@ -31,7 +38,7 @@ unsafe extern "C" {
 fn cellescape_ellipsis() -> &'static [u8] {
     // SAFETY: the C helper takes no pointers and returns its cached locale
     // policy. Reusing it avoids a second, subtly divergent locale implementation.
-    if unsafe { is_locale_utf8() } {
+    if unsafe_ffi!(is_locale_utf8()) {
         UTF8_ELLIPSIS
     } else {
         ASCII_ELLIPSIS
@@ -186,9 +193,9 @@ fn console_width(valid_character: &[u8]) -> usize {
     // SAFETY: `valid_character` was accepted by `valid_utf8_character`, so it
     // has every byte that this raw helper reads and the helper returns a
     // non-negative width for valid input.
-    let width = unsafe {
+    let width = unsafe_ffi!({
         crate::utf8::rs_utf8_char_console_width(valid_character.as_ptr().cast::<c_char>())
-    };
+    });
     debug_assert!(width >= 0);
     width as usize
 }
@@ -372,10 +379,10 @@ fn malloc_c_string(bytes: &[u8]) -> *mut c_char {
         return std::ptr::null_mut();
     }
     // SAFETY: `output` owns `bytes.len() + 1` C-allocator bytes.
-    unsafe {
+    unsafe_ffi!({
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), output.cast::<u8>(), bytes.len());
         *output.add(bytes.len()) = 0;
-    }
+    });
     output
 }
 
@@ -389,9 +396,9 @@ pub unsafe fn rs_cellescape(buf: *mut c_char, len: usize, s: *const c_char) -> *
         return std::ptr::null_mut();
     }
     // SAFETY: the caller supplies a readable NUL-terminated input string.
-    let input = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let input = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     // SAFETY: the caller supplies a writable `len`-byte output range.
-    let output = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), len) };
+    let output = unsafe_ffi!(std::slice::from_raw_parts_mut(buf.cast::<u8>(), len));
     cellescape_bytes(output, input);
     buf
 }
@@ -406,11 +413,11 @@ pub unsafe fn rs_string_erase(x: *mut c_char) -> *mut c_char {
         return std::ptr::null_mut();
     }
     // SAFETY: the caller supplies a readable NUL-terminated string.
-    let length = unsafe { CStr::from_ptr(x) }.to_bytes().len();
+    let length = unsafe_ffi!(CStr::from_ptr(x)).to_bytes().len();
     if length > 0 {
         // SAFETY: `x` is writable for its visible C-string bytes. libc's
         // explicit_bzero is specifically specified not to be optimized away.
-        unsafe { libc::explicit_bzero(x.cast::<c_void>(), length) };
+        unsafe_ffi!(libc::explicit_bzero(x.cast::<c_void>(), length));
     }
     x
 }
@@ -431,7 +438,7 @@ pub unsafe fn rs_strextendn(x: *mut *mut c_char, s: *const c_char, l: usize) -> 
     while append_length < l {
         // SAFETY: the contract guarantees each byte through the first NUL or
         // all `l` bytes is readable.
-        if unsafe { *s.add(append_length) } == 0 {
+        if unsafe_ffi!(*s.add(append_length)) == 0 {
             break;
         }
         append_length += 1;
@@ -441,15 +448,15 @@ pub unsafe fn rs_strextendn(x: *mut *mut c_char, s: *const c_char, l: usize) -> 
     } else {
         // SAFETY: the bounded scan above established this exact non-empty
         // readable prefix, which also proves `s` is non-null.
-        unsafe { std::slice::from_raw_parts(s.cast::<u8>(), append_length) }
+        unsafe_ffi!(std::slice::from_raw_parts(s.cast::<u8>(), append_length))
     };
     // SAFETY: `x` is writable for one pointer by the function contract.
-    let current = unsafe { *x };
+    let current = unsafe_ffi!(*x);
     let existing_length = if current.is_null() {
         0
     } else {
         // SAFETY: non-null `*x` is a readable NUL-terminated C allocation.
-        unsafe { CStr::from_ptr(current) }.to_bytes().len()
+        unsafe_ffi!(CStr::from_ptr(current)).to_bytes().len()
     };
     if append.is_empty() && !current.is_null() {
         return current;
@@ -463,13 +470,13 @@ pub unsafe fn rs_strextendn(x: *mut *mut c_char, s: *const c_char, l: usize) -> 
     // SAFETY: `current` is null or a unique C allocation. The C `realloc`
     // contract leaves it intact when allocation fails.
     let replacement =
-        unsafe { realloc(current.cast::<c_void>(), allocation_size) }.cast::<c_char>();
+        unsafe_ffi!(realloc(current.cast::<c_void>(), allocation_size)).cast::<c_char>();
     if replacement.is_null() {
         return std::ptr::null_mut();
     }
     // SAFETY: `replacement` has the checked allocation size and `append` does
     // not alias it by this function's contract.
-    unsafe {
+    unsafe_ffi!({
         std::ptr::copy_nonoverlapping(
             append.as_ptr(),
             replacement.add(existing_length).cast::<u8>(),
@@ -477,7 +484,7 @@ pub unsafe fn rs_strextendn(x: *mut *mut c_char, s: *const c_char, l: usize) -> 
         );
         *replacement.add(existing_length + append.len()) = 0;
         *x = replacement;
-    }
+    });
     replacement
 }
 
@@ -496,7 +503,7 @@ pub unsafe fn rs_escape_non_printable_full(
         return std::ptr::null_mut();
     }
     // SAFETY: the caller supplies a readable NUL-terminated byte string.
-    let input = unsafe { CStr::from_ptr(str_) }.to_bytes();
+    let input = unsafe_ffi!(CStr::from_ptr(str_)).to_bytes();
     let escaped = if flags & XESCAPE_8_BIT != 0 {
         try_xescape_without_bad(input, console_width, flags)
     } else {

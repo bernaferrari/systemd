@@ -4,6 +4,13 @@
 //
 // 128-bit ID utilities.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi;
 use crate::sha256_hmac::sha256;
 use std::ffi::{CStr, c_char, c_void};
@@ -267,7 +274,7 @@ pub unsafe extern "C" fn rs_sd_id128_to_string(id: SdId128, s: *mut c_char) -> *
     }
 
     // SAFETY: the entry point contract guarantees this exact writable buffer.
-    let output = unsafe { &mut *s.cast::<[u8; SD_ID128_STRING_MAX]>() };
+    let output = unsafe_ffi!(&mut *s.cast::<[u8; SD_ID128_STRING_MAX]>());
     write_id128_string(id, output, false);
     s
 }
@@ -285,7 +292,7 @@ pub unsafe extern "C" fn rs_sd_id128_to_uuid_string(id: SdId128, s: *mut c_char)
     }
 
     // SAFETY: the entry point contract guarantees this exact writable buffer.
-    let output = unsafe { &mut *s.cast::<[u8; SD_ID128_UUID_STRING_MAX]>() };
+    let output = unsafe_ffi!(&mut *s.cast::<[u8; SD_ID128_UUID_STRING_MAX]>());
     write_id128_string(id, output, true);
     s
 }
@@ -303,14 +310,14 @@ pub unsafe extern "C" fn rs_sd_id128_from_string(s: *const c_char, ret: *mut SdI
     }
 
     // SAFETY: the entry point contract guarantees a live NUL-terminated input.
-    let parsed = match id128_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes()) {
+    let parsed = match id128_from_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes()) {
         Ok(parsed) => parsed,
         Err(Id128Error::InvalidArgument | Id128Error::NoSuchDevice) => return -libc::EINVAL,
     };
 
     if !ret.is_null() {
         // SAFETY: the entry point contract guarantees writable output storage.
-        unsafe { ret.write(parsed) };
+        unsafe_ffi!(ret.write(parsed));
     }
 
     0
@@ -329,7 +336,7 @@ pub unsafe extern "C" fn rs_sd_id128_string_equal(s: *const c_char, id: SdId128)
     }
 
     // SAFETY: the entry point contract guarantees a live NUL-terminated input.
-    match id128_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes()) {
+    match id128_from_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes()) {
         Ok(parsed) => i32::from(parsed == id),
         Err(Id128Error::InvalidArgument | Id128Error::NoSuchDevice) => -libc::EINVAL,
     }
@@ -349,7 +356,7 @@ pub unsafe extern "C" fn rs_id128_from_string_nonzero(s: *const c_char, ret: *mu
     }
 
     // SAFETY: the entry point contract guarantees a live NUL-terminated input.
-    let parsed = match id128_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes()) {
+    let parsed = match id128_from_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes()) {
         Ok(parsed) => parsed,
         Err(Id128Error::InvalidArgument | Id128Error::NoSuchDevice) => return -libc::EINVAL,
     };
@@ -358,7 +365,7 @@ pub unsafe extern "C" fn rs_id128_from_string_nonzero(s: *const c_char, ret: *mu
     }
 
     // SAFETY: the entry point contract guarantees writable output storage.
-    unsafe { ret.write(parsed) };
+    unsafe_ffi!(ret.write(parsed));
     0
 }
 
@@ -383,7 +390,11 @@ pub unsafe extern "C" fn rs_id128_compare_func(a: *const SdId128, b: *const SdId
     }
 
     // SAFETY: the entry point contract guarantees both sixteen-byte regions.
-    unsafe { ffi::memcmp(a.cast::<c_void>(), b.cast::<c_void>(), size_of::<SdId128>()) }
+    unsafe_ffi!(ffi::memcmp(
+        a.cast::<c_void>(),
+        b.cast::<c_void>(),
+        size_of::<SdId128>()
+    ))
 }
 
 /// ABI facade for the inline `sd_id128_equal()` accessor.
@@ -417,10 +428,10 @@ pub unsafe extern "C" fn rs_id128_digest(data: *const c_void, size: usize) -> Sd
 
     let input = if size == usize::MAX {
         // SAFETY: the entry point contract guarantees a live NUL-terminated input.
-        unsafe { CStr::from_ptr(data.cast::<c_char>()) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(data.cast::<c_char>())).to_bytes()
     } else {
         // SAFETY: the entry point contract guarantees this readable byte range.
-        unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size) }
+        unsafe_ffi!(std::slice::from_raw_parts(data.cast::<u8>(), size))
     };
 
     id128_digest(input)

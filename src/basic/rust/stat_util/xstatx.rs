@@ -6,6 +6,13 @@
 // The native libc type owns struct statx's target layout. The only raw
 // operation in this module is the libc statx call and its initialized output.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 use std::mem::MaybeUninit;
 
@@ -40,13 +47,20 @@ fn native_statx(
 
     // SAFETY: `path` is a live NUL-terminated string and `statx` is writable
     // target-native storage. libc owns both the syscall ABI and struct layout.
-    if unsafe { libc::statx(fd, path.as_ptr(), flags, mask, statx.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::statx(
+        fd,
+        path.as_ptr(),
+        flags,
+        mask,
+        statx.as_mut_ptr()
+    )) < 0
+    {
         return Err(-crate::ffi::get_errno());
     }
 
     // SAFETY: the backing storage was zeroed before the successful libc call,
     // so every byte is initialized even when an old kernel omits newer fields.
-    Ok(unsafe { statx.assume_init() })
+    Ok(unsafe_ffi!(statx.assume_init()))
 }
 
 pub(super) fn xstatx_full(
@@ -104,7 +118,7 @@ unsafe fn optional_c_path<'a>(path: *const libc::c_char) -> Option<&'a CStr> {
         None
     } else {
         // SAFETY: the caller guarantees a readable NUL-terminated C string.
-        Some(unsafe { CStr::from_ptr(path) })
+        Some(unsafe_ffi!(CStr::from_ptr(path)))
     }
 }
 
@@ -131,7 +145,7 @@ pub unsafe extern "C" fn rs_xstatx_full(
     }
 
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     let (statx, result) = match xstatx_full(
         fd,
         path,
@@ -147,7 +161,7 @@ pub unsafe extern "C" fn rs_xstatx_full(
 
     // SAFETY: checked non-null above; the entry-point contract guarantees
     // writable target-native storage, and no output is written on failure.
-    unsafe { ret.write(statx) };
+    unsafe_ffi!(ret.write(statx));
     result
 }
 
@@ -166,5 +180,14 @@ pub unsafe extern "C" fn rs_xstatx(
 ) -> libc::c_int {
     // SAFETY: this facade forwards the complete pointer contract unchanged
     // and supplies the exact zero optional-mask/attribute arguments from C.
-    unsafe { rs_xstatx_full(fd, path, statx_flags, 0, mandatory_mask, 0, 0, ret) }
+    unsafe_ffi!(rs_xstatx_full(
+        fd,
+        path,
+        statx_flags,
+        0,
+        mandatory_mask,
+        0,
+        0,
+        ret
+    ))
 }

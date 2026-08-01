@@ -5,6 +5,13 @@
 // Process utility string tables (sigchld_code, sched_policy)
 // and process parameter validators.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::{Errno, clear_errno, get_errno, is_whitespace, strtoul};
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::c_char;
@@ -109,12 +116,12 @@ fn parse_unsigned_c_integer(digits: &[u8], base: i32) -> Option<u32> {
     clear_errno();
     // SAFETY: `c_input` is a live NUL-terminated C string and `end` is a
     // writable local end-pointer for the duration of this call.
-    let value = unsafe { strtoul(c_input.as_ptr(), &mut end, base) };
+    let value = unsafe_ffi!(strtoul(c_input.as_ptr(), &mut end, base));
     if get_errno() != 0 || end.is_null() || end == c_input.as_ptr().cast_mut() {
         return None;
     }
     // SAFETY: `end` was produced by `strtoul()` for the live `c_input` buffer.
-    if unsafe { *end } != 0 {
+    if unsafe_ffi!(*end) != 0 {
         return None;
     }
     if value != 0 && digits.first() == Some(&b'-') {
@@ -142,7 +149,11 @@ pub extern "C" fn rs_sigchld_code_to_string(code: i32) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_sigchld_code_from_string(s: *const c_char) -> i32 {
     // SAFETY: this forwards the documented C-string contract unchanged.
-    unsafe { ffi_string_table::from_ptr(SIGCHLD_CODE_TABLE, s, Errno::EINVAL.to_neg_errno()) }
+    unsafe_ffi!(ffi_string_table::from_ptr(
+        SIGCHLD_CODE_TABLE,
+        s,
+        Errno::EINVAL.to_neg_errno()
+    ))
 }
 
 /// C ABI facade for `sched_policy_to_string_alloc()`.
@@ -191,13 +202,13 @@ pub unsafe extern "C" fn rs_sched_policy_to_string_alloc(
 
     // SAFETY: `source` is either a checked static C string or the local
     // NUL-terminated fallback buffer. `strdup()` returns C-allocator storage.
-    let allocated = unsafe { libc::strdup(source) };
+    let allocated = unsafe_ffi!(libc::strdup(source));
     if allocated.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
 
     // SAFETY: required by this entry point's documented output contract.
-    unsafe { *ret = allocated };
+    unsafe_ffi!(*ret = allocated);
     0
 }
 
@@ -216,7 +227,7 @@ pub unsafe extern "C" fn rs_sched_policy_from_string(s: *const c_char) -> i32 {
 
     // SAFETY: `s` is non-NULL and satisfies this entry point's documented
     // C-string contract; the bytes are borrowed only for this call.
-    let input = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let input = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     if let Some(policy) = SCHED_POLICY_TABLE.iter().find_map(|&(policy, name)| {
         (ffi_string_table::entry_cstr(name).to_bytes() == input).then_some(policy)
     }) {

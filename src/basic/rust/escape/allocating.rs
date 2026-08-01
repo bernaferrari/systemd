@@ -5,6 +5,13 @@
 // The byte policies stay safe; this module alone owns the fallible Vec and
 // libc allocation boundaries used by the C ABI.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::c_char;
 use std::ffi::CStr;
 use std::ptr;
@@ -129,10 +136,10 @@ pub(crate) fn malloc_c_string(bytes: &[u8]) -> *mut c_char {
     // SAFETY: `allocation` owns exactly `bytes.len() + 1` writable bytes from
     // the C allocator; `bytes` is live and disjoint. The final NUL establishes
     // the C-string result whose ownership transfers to the caller.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(bytes.as_ptr(), allocation, bytes.len());
         *allocation.add(bytes.len()) = 0;
-    }
+    });
     allocation.cast::<c_char>()
 }
 
@@ -152,15 +159,15 @@ unsafe fn with_input_bytes<T>(
             return None;
         }
         // SAFETY: upheld by this helper's documented sentinel contract.
-        return Some(use_bytes(unsafe { CStr::from_ptr(s) }.to_bytes()));
+        return Some(use_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes()));
     }
     if s.is_null() {
         return (len == 0).then(|| use_bytes(&[]));
     }
     // SAFETY: upheld by this helper's explicit-length contract.
-    Some(use_bytes(unsafe {
+    Some(use_bytes(unsafe_ffi!({
         std::slice::from_raw_parts(s.cast::<u8>(), len)
-    }))
+    })))
 }
 
 /// C ABI for `octescape()`.
@@ -171,9 +178,10 @@ unsafe fn with_input_bytes<T>(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_octescape(s: *const c_char, len: usize) -> *mut c_char {
     // SAFETY: this entry point forwards its documented input contract.
-    let Some(escaped) =
-        (unsafe { with_input_bytes(s, len, |bytes| try_octescape_full(bytes, &[])) })
-    else {
+    let Some(escaped) = (unsafe_ffi!(with_input_bytes(s, len, |bytes| try_octescape_full(
+        bytes,
+        &[]
+    )))) else {
         return ptr::null_mut();
     };
     escaped
@@ -198,11 +206,12 @@ pub unsafe extern "C" fn rs_decescape(
         return ptr::null_mut();
     }
     // SAFETY: the entry point's contract covers the borrowed `bad` string.
-    let bad = unsafe { CStr::from_ptr(bad) };
+    let bad = unsafe_ffi!(CStr::from_ptr(bad));
     // SAFETY: the entry point's contract covers the explicit-length input.
-    let Some(escaped) =
-        (unsafe { with_input_bytes(s, len, |bytes| try_decescape(bytes, bad.to_bytes())) })
-    else {
+    let Some(escaped) = (unsafe_ffi!(with_input_bytes(s, len, |bytes| try_decescape(
+        bytes,
+        bad.to_bytes()
+    )))) else {
         return ptr::null_mut();
     };
     escaped
@@ -222,7 +231,7 @@ pub unsafe extern "C" fn rs_shell_escape(s: *const c_char, bad: *const c_char) -
         return ptr::null_mut();
     }
     // SAFETY: the entry point's C-string contract guarantees both pointers.
-    let (s, bad) = unsafe { (CStr::from_ptr(s).to_bytes(), CStr::from_ptr(bad).to_bytes()) };
+    let (s, bad) = unsafe_ffi!((CStr::from_ptr(s).to_bytes(), CStr::from_ptr(bad).to_bytes()));
     try_strcpy_backslash_escaped(s, bad)
         .map(|escaped| malloc_c_string(&escaped))
         .unwrap_or(ptr::null_mut())

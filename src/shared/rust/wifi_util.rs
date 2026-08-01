@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/shared/wifi-util.c, src/shared/wifi-util.h
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::c_void;
 use std::fmt;
@@ -434,7 +441,7 @@ struct GenericNetlinkSocket {
 impl GenericNetlinkSocket {
     fn open() -> Result<Self, i32> {
         // SAFETY: socket() takes only scalar arguments and returns an owned descriptor on success.
-        let fd = unsafe { libc::socket(AF_NETLINK, libc::SOCK_RAW, NETLINK_GENERIC) };
+        let fd = unsafe_ffi!(libc::socket(AF_NETLINK, libc::SOCK_RAW, NETLINK_GENERIC));
         if fd < 0 {
             return Err(last_errno());
         }

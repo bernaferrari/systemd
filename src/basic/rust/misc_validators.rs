@@ -10,6 +10,13 @@
 //           src/basic/syslog-util.c (log_namespace_name_valid),
 //           src/basic/socket-util.c (address_label_valid)
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::c_char;
 use std::ffi::CStr;
 
@@ -95,7 +102,7 @@ pub unsafe extern "C" fn rs_image_name_is_valid(s: *const c_char) -> bool {
     }
 
     // SAFETY: guaranteed by the entry point contract after the NULL check.
-    image_name_is_valid_bytes(unsafe { CStr::from_ptr(s) }.to_bytes())
+    image_name_is_valid_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes())
 }
 
 // ── log_namespace_name_valid ──────────────────────────────────────────────
@@ -130,7 +137,7 @@ pub unsafe extern "C" fn rs_address_label_valid(p: *const c_char) -> bool {
     }
 
     // SAFETY: required by the entry point's contract and checked for NULL.
-    let bytes = unsafe { CStr::from_ptr(p) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(p)).to_bytes();
     !bytes.is_empty()
         && bytes.len() < IFNAMSIZ
         && bytes.iter().all(|byte| (32..=126).contains(byte))
@@ -270,7 +277,7 @@ pub unsafe extern "C" fn rs_nft_identifier_valid(id: *const c_char) -> bool {
         return false;
     }
     // SAFETY: required by this C ABI entry point's contract.
-    nft_identifier_valid_bytes(unsafe { CStr::from_ptr(id) }.to_bytes())
+    nft_identifier_valid_bytes(unsafe_ffi!(CStr::from_ptr(id)).to_bytes())
 }
 
 /// # Safety
@@ -281,7 +288,7 @@ pub unsafe extern "C" fn rs_valid_gecos(value: *const c_char) -> bool {
         return false;
     }
     // SAFETY: required by this C ABI entry point's contract.
-    valid_gecos_bytes(unsafe { CStr::from_ptr(value) }.to_bytes())
+    valid_gecos_bytes(unsafe_ffi!(CStr::from_ptr(value)).to_bytes())
 }
 
 /// # Safety
@@ -292,7 +299,7 @@ pub unsafe extern "C" fn rs_log_namespace_name_valid(name: *const c_char) -> boo
         return false;
     }
     // SAFETY: required by this C ABI entry point's contract.
-    log_namespace_name_valid_bytes(unsafe { CStr::from_ptr(name) }.to_bytes())
+    log_namespace_name_valid_bytes(unsafe_ffi!(CStr::from_ptr(name)).to_bytes())
 }
 
 /// # Safety
@@ -303,7 +310,7 @@ pub unsafe extern "C" fn rs_valid_home(path: *const c_char) -> bool {
         return false;
     }
     // SAFETY: required by this C ABI entry point's contract.
-    valid_home_bytes(unsafe { CStr::from_ptr(path) }.to_bytes())
+    valid_home_bytes(unsafe_ffi!(CStr::from_ptr(path)).to_bytes())
 }
 
 /// # Safety
@@ -314,7 +321,7 @@ pub unsafe extern "C" fn rs_valid_shell(path: *const c_char) -> bool {
         return false;
     }
     // SAFETY: required by this C ABI entry point's contract.
-    valid_shell_bytes(unsafe { CStr::from_ptr(path) }.to_bytes())
+    valid_shell_bytes(unsafe_ffi!(CStr::from_ptr(path)).to_bytes())
 }
 
 /// # Safety
@@ -325,7 +332,7 @@ pub unsafe extern "C" fn rs_bus_property_is_timestamp(name: *const c_char) -> bo
         return false;
     }
     // SAFETY: required by this C ABI entry point's contract.
-    bus_property_is_timestamp_bytes(unsafe { CStr::from_ptr(name) }.to_bytes())
+    bus_property_is_timestamp_bytes(unsafe_ffi!(CStr::from_ptr(name)).to_bytes())
 }
 
 // ── shorten_overlong ──────────────────────────────────────────────────────

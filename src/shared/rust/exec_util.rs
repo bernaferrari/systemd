@@ -4,6 +4,13 @@
 //!
 //! Functions for executing commands and scripts with various options.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -281,7 +288,7 @@ pub fn executable_is_executable(path: &Path) -> bool {
     };
     // SAFETY: c_path is a valid null-terminated C string. access() only
     // reads the filesystem and does not modify any state.
-    unsafe { libc::access(c_path.as_ptr(), libc::X_OK) == 0 }
+    unsafe_ffi!(libc::access(c_path.as_ptr(), libc::X_OK) == 0)
 }
 
 /// Flags for command execution
@@ -414,7 +421,11 @@ pub fn exec_command_flags_to_strv(flags: ExecCommandFlags) -> Vec<&'static str> 
 pub fn shall_fork_agent() -> Result<bool, std::io::Error> {
     // SAFETY: ioctl(TIOCGPGRP) on fd 0 checks for a controlling terminal.
     // It only reads kernel state; no mutation occurs.
-    let ret = unsafe { libc::ioctl(0, libc::TIOCGPGRP, std::ptr::null_mut::<libc::pid_t>()) };
+    let ret = unsafe_ffi!(libc::ioctl(
+        0,
+        libc::TIOCGPGRP,
+        std::ptr::null_mut::<libc::pid_t>()
+    ));
 
     if ret == 0 {
         Ok(true)

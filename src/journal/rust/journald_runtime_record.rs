@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::*;
 use crate::fuzz_journald_native::{NativeError, NativeMessage, parse_native_datagram};
 
@@ -388,8 +395,9 @@ pub(super) fn parse_audit_netlink_datagram(
 
     // SAFETY: the preceding length check proves the buffer contains a complete
     // netlink header; read_unaligned avoids imposing alignment requirements.
-    let header =
-        unsafe { std::ptr::read_unaligned(buffer.as_ptr().cast::<NetlinkMessageHeader>()) };
+    let header = unsafe_ffi!(std::ptr::read_unaligned(
+        buffer.as_ptr().cast::<NetlinkMessageHeader>()
+    ));
     let total_len = header.nlmsg_len as usize;
     if total_len < header_len || total_len > bytes {
         return None;

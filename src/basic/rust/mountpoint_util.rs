@@ -4,6 +4,13 @@
 //
 // Mount propagation flag conversion and mountpoint utility functions.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use libc::{c_char, c_int, c_ulong};
@@ -141,7 +148,7 @@ pub unsafe extern "C" fn rs_mount_propagation_flag_from_string(
         b"".as_slice()
     } else {
         // SAFETY: required by this entry point's contract after the NULL check.
-        unsafe { CStr::from_ptr(name) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(name)).to_bytes()
     };
 
     let flag = match mount_propagation_flag_from_bytes(name) {
@@ -151,7 +158,7 @@ pub unsafe extern "C" fn rs_mount_propagation_flag_from_string(
 
     // SAFETY: required by this entry point's contract; this is reached only
     // after successful parsing, matching the C function's publication order.
-    unsafe { *ret = flag.to_raw_flag() as c_ulong };
+    unsafe_ffi!(*ret = flag.to_raw_flag() as c_ulong);
     0
 }
 

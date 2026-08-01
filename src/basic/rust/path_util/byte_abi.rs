@@ -527,10 +527,10 @@ fn malloc_bytes(value: &[u8]) -> Result<*mut c_char, i32> {
         return Err(-libc::ENOMEM);
     }
     // SAFETY: allocation has `size` writable bytes and the source is disjoint.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(value.as_ptr().cast::<c_char>(), allocation, value.len());
         *allocation.add(value.len()) = 0;
-    }
+    });
     Ok(allocation)
 }
 
@@ -562,23 +562,23 @@ pub unsafe extern "C" fn rs_path_find_first_component(
         Ok(None) => {
             // SAFETY: `p` and optional `ret` are writable per this export's
             // contract; wrapping offsets stay within the input C string.
-            unsafe {
+            unsafe_ffi!({
                 *p = input.wrapping_add(path.len());
                 if !ret.is_null() {
                     *ret = ptr::null();
                 }
-            }
+            });
             0
         }
         Ok(Some(component)) => {
             // SAFETY: `p` and optional `ret` are writable per this export's
             // contract; component offsets were checked by the byte-slice core.
-            unsafe {
+            unsafe_ffi!({
                 *p = input.wrapping_add(component.next);
                 if !ret.is_null() {
                     *ret = input.wrapping_add(component.start);
                 }
-            }
+            });
             (component.end - component.start) as i32
         }
     }
@@ -599,14 +599,14 @@ pub unsafe extern "C" fn rs_path_find_last_component(
     // SAFETY: upheld by this entry point's C-string contract.
     let Some(path_bytes) = path_bytes_or_none!(path) else {
         // SAFETY: guaranteed by the entry-point contract.
-        unsafe {
+        unsafe_ffi!({
             if !next.is_null() {
                 *next = path;
             }
             if !ret.is_null() {
                 *ret = ptr::null();
             }
-        }
+        });
         return 0;
     };
     // SAFETY: a nonnull `next` is readable by the entry-point contract.
@@ -632,27 +632,27 @@ pub unsafe extern "C" fn rs_path_find_last_component(
         Err(error) => error,
         Ok(None) => {
             // SAFETY: guaranteed by the entry-point contract.
-            unsafe {
+            unsafe_ffi!({
                 if !next.is_null() {
                     *next = path;
                 }
                 if !ret.is_null() {
                     *ret = ptr::null();
                 }
-            }
+            });
             0
         }
         Ok(Some(component)) => {
             // SAFETY: optional `next` and `ret` are writable per this export's
             // contract; component offsets were checked by the byte-slice core.
-            unsafe {
+            unsafe_ffi!({
                 if !next.is_null() {
                     *next = path.wrapping_add(component.next);
                 }
                 if !ret.is_null() {
                     *ret = path.wrapping_add(component.start);
                 }
-            }
+            });
             (component.end - component.start) as i32
         }
     }
@@ -731,10 +731,10 @@ pub unsafe extern "C" fn rs_path_simplify_full(path: *mut c_char, flags: c_uint)
     let simplified = simplify_bytes(original, flags);
     debug_assert!(simplified.len() <= original.len());
     // SAFETY: simplification never grows beyond the original writable extent.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(simplified.as_ptr().cast::<c_char>(), path, simplified.len());
         *path.add(simplified.len()) = 0;
-    }
+    });
     path
 }
 
@@ -978,14 +978,14 @@ pub unsafe extern "C" fn rs_path_split_prefix_filename(
     };
 
     // SAFETY: allocations are complete and outputs satisfy the entry contract.
-    unsafe {
+    unsafe_ffi!({
         if !ret_dir.is_null() {
             *ret_dir = directory;
         }
         if !ret_filename.is_null() {
             *ret_filename = filename;
         }
-    }
+    });
     if trailing_slash { libc::O_DIRECTORY } else { 0 }
 }
 

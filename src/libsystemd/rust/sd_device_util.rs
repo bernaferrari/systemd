@@ -3,6 +3,14 @@
 // PORT-SYNC: src/libsystemd/sd-device/device-util.c
 //
 
+// Centralized unsafe expression boundary for this module.
+#[cfg(test)]
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::HashMap;
 
 pub type Result<T> = std::result::Result<T, i32>;
@@ -307,7 +315,7 @@ mod tests {
             },
         );
         // SAFETY: zeroed `libc::stat` is immediately initialized for the fields this test reads.
-        let mut stat = unsafe { MaybeUninit::<libc::stat>::zeroed().assume_init() };
+        let mut stat = unsafe_ffi!(MaybeUninit::<libc::stat>::zeroed().assume_init());
         stat.st_mode = libc::S_IFCHR;
         stat.st_rdev = 9;
         assert_eq!(

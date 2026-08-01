@@ -12,6 +12,13 @@
 // Uses raw rtnetlink (AF_NETLINK / NETLINK_ROUTE) for all operations.
 // The netlink I/O itself is necessarily unsafe; everything else is safe Rust.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::io;
 use std::mem;
 use std::net::Ipv4Addr;
@@ -334,9 +341,9 @@ fn rtnl_call(fd: i32, msg_type: u16, flags: u16, payload: &[u8]) -> Result<i32> 
                 return Err(LoopbackSetupError::TruncatedMessage);
             }
             // SAFETY: the preceding length check leaves a complete i32 at `payload_start`; unaligned access is permitted.
-            let error_code: i32 = unsafe {
+            let error_code: i32 = unsafe_ffi!({
                 std::ptr::read_unaligned(recv_buf[payload_start..].as_ptr() as *const i32)
-            };
+            });
             // Negative = error, 0 = success (ACK)
             Ok(error_code)
         }
@@ -356,12 +363,12 @@ fn append_attr_u32(buf: &mut Vec<u8>, attr_type: u16, value: u32) {
 
     let attr = RtAttr::new(attr_type, 4);
     // SAFETY: `attr` is a live repr(C) attribute header, and the byte slice covers exactly its size.
-    let attr_bytes = unsafe {
+    let attr_bytes = unsafe_ffi!({
         std::slice::from_raw_parts(
             &attr as *const RtAttr as *const u8,
             mem::size_of::<RtAttr>(),
         )
-    };
+    });
     buf.extend_from_slice(attr_bytes);
     buf.extend_from_slice(&value.to_ne_bytes());
 }
@@ -373,12 +380,12 @@ fn append_attr_bytes(buf: &mut Vec<u8>, attr_type: u16, data: &[u8]) {
 
     let attr = RtAttr::new(attr_type, data.len() as u16);
     // SAFETY: `attr` is a live repr(C) attribute header, and the byte slice covers exactly its size.
-    let attr_bytes = unsafe {
+    let attr_bytes = unsafe_ffi!({
         std::slice::from_raw_parts(
             &attr as *const RtAttr as *const u8,
             mem::size_of::<RtAttr>(),
         )
-    };
+    });
     buf.extend_from_slice(attr_bytes);
     buf.extend_from_slice(data);
 
@@ -395,12 +402,12 @@ fn append_attr_bytes(buf: &mut Vec<u8>, attr_type: u16, data: &[u8]) {
 fn start_loopback(fd: i32) -> Result<i32> {
     let ifi = IfInfoMsg::new(LOOPBACK_IFINDEX, IFF_UP);
     // SAFETY: `ifi` is a live repr(C) link header, and the byte slice covers exactly its size.
-    let ifi_bytes = unsafe {
+    let ifi_bytes = unsafe_ffi!({
         std::slice::from_raw_parts(
             &ifi as *const IfInfoMsg as *const u8,
             mem::size_of::<IfInfoMsg>(),
         )
-    };
+    });
 
     let mut payload = Vec::new();
     payload.extend_from_slice(ifi_bytes);
@@ -415,12 +422,12 @@ fn start_loopback(fd: i32) -> Result<i32> {
 fn add_ipv4_address(fd: i32) -> Result<i32> {
     let ifa = IfAddrMsg::new(AF_INET as u8, 8, RT_SCOPE_HOST, LOOPBACK_IFINDEX);
     // SAFETY: `ifa` is a live repr(C) address header, and the byte slice covers exactly its size.
-    let ifa_bytes = unsafe {
+    let ifa_bytes = unsafe_ffi!({
         std::slice::from_raw_parts(
             &ifa as *const IfAddrMsg as *const u8,
             mem::size_of::<IfAddrMsg>(),
         )
-    };
+    });
 
     let mut payload = Vec::new();
     payload.extend_from_slice(ifa_bytes);
@@ -440,12 +447,12 @@ fn add_ipv4_address(fd: i32) -> Result<i32> {
 fn add_ipv6_address(fd: i32) -> Result<i32> {
     let ifa = IfAddrMsg::new(AF_INET6 as u8, 128, RT_SCOPE_HOST, LOOPBACK_IFINDEX);
     // SAFETY: `ifa` is a live repr(C) address header, and the byte slice covers exactly its size.
-    let ifa_bytes = unsafe {
+    let ifa_bytes = unsafe_ffi!({
         std::slice::from_raw_parts(
             &ifa as *const IfAddrMsg as *const u8,
             mem::size_of::<IfAddrMsg>(),
         )
-    };
+    });
 
     let mut payload = Vec::new();
     payload.extend_from_slice(ifa_bytes);
@@ -469,12 +476,12 @@ fn add_ipv6_address(fd: i32) -> Result<i32> {
 fn check_loopback(fd: i32) -> Result<bool> {
     let ifi = IfInfoMsg::new(LOOPBACK_IFINDEX, 0);
     // SAFETY: `ifi` is a live repr(C) link header, and the byte slice covers exactly its size.
-    let ifi_bytes = unsafe {
+    let ifi_bytes = unsafe_ffi!({
         std::slice::from_raw_parts(
             &ifi as *const IfInfoMsg as *const u8,
             mem::size_of::<IfInfoMsg>(),
         )
-    };
+    });
 
     let mut payload = Vec::new();
     payload.extend_from_slice(ifi_bytes);
@@ -509,9 +516,9 @@ fn check_loopback(fd: i32) -> Result<bool> {
         let payload_start = mem::size_of::<NlMsgHdr>();
         if n >= payload_start + mem::size_of::<i32>() {
             // SAFETY: the enclosing length check leaves a complete i32 at `payload_start`; unaligned access is permitted.
-            let error_code: i32 = unsafe {
+            let error_code: i32 = unsafe_ffi!({
                 std::ptr::read_unaligned(recv_buf[payload_start..].as_ptr() as *const i32)
-            };
+            });
             if error_code != 0 {
                 return Ok(false);
             }
@@ -542,8 +549,9 @@ fn check_loopback(fd: i32) -> Result<bool> {
 
     let offset_ifi = mem::size_of::<NlMsgHdr>();
     // SAFETY: `n2` was checked for a complete header plus link message; unaligned access handles the byte buffer alignment.
-    let resp_ifi: IfInfoMsg =
-        unsafe { std::ptr::read_unaligned(recv_buf[offset_ifi..].as_ptr() as *const IfInfoMsg) };
+    let resp_ifi: IfInfoMsg = unsafe_ffi!(std::ptr::read_unaligned(
+        recv_buf[offset_ifi..].as_ptr() as *const IfInfoMsg
+    ));
 
     Ok(resp_ifi.ifi_flags & IFF_UP != 0)
 }
@@ -645,12 +653,12 @@ pub fn is_success(rcode: i32) -> bool {
 pub fn ipv4_loopback_payload() -> Vec<u8> {
     let ifa = IfAddrMsg::new(AF_INET as u8, 8, RT_SCOPE_HOST, LOOPBACK_IFINDEX);
     // SAFETY: `ifa` is a live repr(C) address header, and the byte slice covers exactly its size.
-    let ifa_bytes = unsafe {
+    let ifa_bytes = unsafe_ffi!({
         std::slice::from_raw_parts(
             &ifa as *const IfAddrMsg as *const u8,
             mem::size_of::<IfAddrMsg>(),
         )
-    };
+    });
     let mut payload = Vec::new();
     payload.extend_from_slice(ifa_bytes);
     append_attr_u32(&mut payload, IFA_FLAGS, IFA_F_PERMANENT);
@@ -664,12 +672,12 @@ pub fn ipv4_loopback_payload() -> Vec<u8> {
 pub fn ipv6_loopback_payload() -> Vec<u8> {
     let ifa = IfAddrMsg::new(AF_INET6 as u8, 128, RT_SCOPE_HOST, LOOPBACK_IFINDEX);
     // SAFETY: `ifa` is a live repr(C) address header, and the byte slice covers exactly its size.
-    let ifa_bytes = unsafe {
+    let ifa_bytes = unsafe_ffi!({
         std::slice::from_raw_parts(
             &ifa as *const IfAddrMsg as *const u8,
             mem::size_of::<IfAddrMsg>(),
         )
-    };
+    });
     let mut payload = Vec::new();
     payload.extend_from_slice(ifa_bytes);
     append_attr_u32(
@@ -687,12 +695,12 @@ pub fn ipv6_loopback_payload() -> Vec<u8> {
 pub fn setlink_up_payload() -> Vec<u8> {
     let ifi = IfInfoMsg::new(LOOPBACK_IFINDEX, IFF_UP);
     // SAFETY: `ifi` is a live repr(C) link header, and the byte slice covers exactly its size.
-    let ifi_bytes = unsafe {
+    let ifi_bytes = unsafe_ffi!({
         std::slice::from_raw_parts(
             &ifi as *const IfInfoMsg as *const u8,
             mem::size_of::<IfInfoMsg>(),
         )
-    };
+    });
     let mut payload = Vec::new();
     payload.extend_from_slice(ifi_bytes);
     append_attr_u32(&mut payload, IFLA_FLAGS, IFF_UP);
@@ -710,8 +718,9 @@ pub fn parse_ifa_flags(payload: &[u8]) -> Option<u32> {
     let mut offset = ifa_len;
     while offset + mem::size_of::<RtAttr>() <= payload.len() {
         // SAFETY: the loop condition guarantees a complete attribute header at `offset`; unaligned access handles byte alignment.
-        let attr: RtAttr =
-            unsafe { std::ptr::read_unaligned(payload[offset..].as_ptr() as *const RtAttr) };
+        let attr: RtAttr = unsafe_ffi!(std::ptr::read_unaligned(
+            payload[offset..].as_ptr() as *const RtAttr
+        ));
         if attr.rta_len as usize <= mem::size_of::<RtAttr>() {
             break;
         }
@@ -720,9 +729,9 @@ pub fn parse_ifa_flags(payload: &[u8]) -> Option<u32> {
             let data_end = offset + attr.rta_len as usize;
             if data_end <= payload.len() && data_end - data_start == 4 {
                 // SAFETY: the bounds check guarantees four bytes at `data_start`; unaligned access handles byte alignment.
-                let flags: u32 = unsafe {
+                let flags: u32 = unsafe_ffi!({
                     std::ptr::read_unaligned(payload[data_start..].as_ptr() as *const u32)
-                };
+                });
                 return Some(u32::from_ne_bytes(flags.to_ne_bytes()));
             }
         }
@@ -743,7 +752,9 @@ pub fn parse_ifi_flags(payload: &[u8]) -> Option<u32> {
         return None;
     }
     // SAFETY: the preceding length check guarantees a complete link message; unaligned access handles byte alignment.
-    let ifi: IfInfoMsg = unsafe { std::ptr::read_unaligned(payload.as_ptr() as *const IfInfoMsg) };
+    let ifi: IfInfoMsg = unsafe_ffi!(std::ptr::read_unaligned(
+        payload.as_ptr() as *const IfInfoMsg
+    ));
     Some(ifi.ifi_flags)
 }
 
@@ -774,7 +785,9 @@ pub fn targets_loopback(payload: &[u8]) -> bool {
         return false;
     }
     // SAFETY: the preceding length check guarantees a complete address message; unaligned access handles byte alignment.
-    let ifa: IfAddrMsg = unsafe { std::ptr::read_unaligned(payload.as_ptr() as *const IfAddrMsg) };
+    let ifa: IfAddrMsg = unsafe_ffi!(std::ptr::read_unaligned(
+        payload.as_ptr() as *const IfAddrMsg
+    ));
     ifa.ifa_index == LOOPBACK_IFINDEX
 }
 

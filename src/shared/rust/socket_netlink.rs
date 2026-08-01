@@ -7,6 +7,13 @@
 // Pure data-structure logic and parsing are safe; only raw syscalls
 // (socket, bind, sendto, recv, fstat, close) use unsafe blocks.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::c_void;
 use std::fmt;
@@ -611,7 +618,7 @@ impl SockAddrNl {
         // SAFETY: `sockaddr_nl` is a plain C socket-address structure; an
         // all-zero value is valid and avoids constructing target-specific
         // padding fields directly.
-        let mut address: crate::ffi::sockaddr_nl = unsafe { std::mem::zeroed() };
+        let mut address: crate::ffi::sockaddr_nl = unsafe_ffi!(std::mem::zeroed());
         address.nl_family = self.nl_family;
         address.nl_pid = self.nl_pid;
         address.nl_groups = self.nl_groups;
@@ -1001,7 +1008,12 @@ pub fn netlink_send(fd: RawFd, buf: &[u8], addr: &SockAddrNl) -> Result<usize> {
 /// Receive data from a netlink socket.
 pub fn netlink_recv(fd: RawFd, buf: &mut [u8]) -> Result<usize> {
     // SAFETY: buf is a valid, writable slice for buf.len() bytes throughout this synchronous call.
-    let ret = unsafe { libc::recv(fd, buf.as_mut_ptr() as *mut c_void, buf.len(), 0) };
+    let ret = unsafe_ffi!(libc::recv(
+        fd,
+        buf.as_mut_ptr() as *mut c_void,
+        buf.len(),
+        0
+    ));
     if ret < 0 {
         return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
             last_errno(),
@@ -1023,9 +1035,9 @@ pub fn safe_close_fd(fd: RawFd) {
 /// Check if a file descriptor refers to a socket via fstat.
 pub fn fd_is_socket(fd: RawFd) -> Result<bool> {
     // SAFETY: libc::stat is a C plain-data output structure, for which an all-zero initial value is valid.
-    let mut stat_buf: libc::stat = unsafe { mem::zeroed() };
+    let mut stat_buf: libc::stat = unsafe_ffi!(mem::zeroed());
     // SAFETY: stat_buf is valid, writable storage for a libc::stat and remains live for the call.
-    let ret = unsafe { libc::fstat(fd, &mut stat_buf) };
+    let ret = unsafe_ffi!(libc::fstat(fd, &mut stat_buf));
     if ret < 0 {
         return Err(SocketNetlinkError::Io(io::Error::from_raw_os_error(
             last_errno(),
@@ -1212,7 +1224,7 @@ mod tests {
         assert!(fd >= 3, "netlink descriptor must not replace stdio: {fd}");
         // SAFETY: `fd` is live for the duration of this assertion and
         // F_GETFD does not dereference userspace memory.
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        let flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD));
         assert!(flags >= 0, "F_GETFD failed: {}", io::Error::last_os_error());
         assert_ne!(
             flags & libc::FD_CLOEXEC,

@@ -7,6 +7,14 @@
 //! owns only a duplicated registration descriptor and a one-bit inbox. The
 //! callback never reads a pipe, starts a service, or mutates manager state.
 
+// Centralized unsafe expression boundary for this module.
+#[cfg(test)]
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 #[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]
@@ -159,7 +167,7 @@ mod tests {
 
         // SAFETY: the manager owns child_alert_fd for the duration of this
         // test and the static byte slice is valid for the requested length.
-        let wrote = unsafe { libc::write(pipe.child_alert_fd, b"x".as_ptr().cast(), 1) };
+        let wrote = unsafe_ffi!(libc::write(pipe.child_alert_fd, b"x".as_ptr().cast(), 1));
         assert_eq!(wrote, 1);
         assert!(event_loop.run_once(100).unwrap());
         assert!(source.take_alert().unwrap());

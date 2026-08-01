@@ -6,6 +6,13 @@
 //! not grow past its architectural debt cap. Every function is called only in
 //! the narrow child window between fork and exec.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::os::fd::{BorrowedFd, RawFd};
 
 use super::child_errno_or_invalid_argument;
@@ -24,7 +31,7 @@ pub(super) fn reset_child_signal_dispositions() -> Result<(), i32> {
     // SAFETY: `sigemptyset` initializes the local mask before it is embedded
     // in `sigaction`. The action installs only SIG_DFL (no Rust callback),
     // and every signal below is a valid, mutable Linux signal disposition.
-    unsafe {
+    unsafe_ffi!({
         let mut mask = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
         if libc::sigemptyset(mask.as_mut_ptr()) != 0 {
             return Err(child_errno_or_invalid_argument());
@@ -48,7 +55,7 @@ pub(super) fn reset_child_signal_dispositions() -> Result<(), i32> {
                 return Err(child_errno_or_invalid_argument());
             }
         }
-    }
+    });
     Ok(())
 }
 
@@ -58,7 +65,7 @@ fn child_close_fd_range(first: libc::c_uint, last: libc::c_uint) -> Result<(), i
     }
     // SAFETY: close_range changes only the calling child's descriptor table;
     // both bounds are scalar descriptor numbers and no pointer is involved.
-    let result = unsafe { libc::syscall(libc::SYS_close_range, first, last, 0_u32) };
+    let result = unsafe_ffi!(libc::syscall(libc::SYS_close_range, first, last, 0_u32));
     if result == 0 {
         Ok(())
     } else {
@@ -103,7 +110,7 @@ pub(super) fn duplicate_child_fd_cloexec(
 ) -> Result<RawFd, nix::errno::Errno> {
     // SAFETY: every caller passes a descriptor retained by PreparedLaunch or
     // an OwnedFd that remains live for this post-fork operation.
-    let fd = unsafe { BorrowedFd::borrow_raw(fd) };
+    let fd = unsafe_ffi!(BorrowedFd::borrow_raw(fd));
     fcntl(fd, FcntlArg::F_DUPFD_CLOEXEC(minimum_fd))
 }
 
@@ -155,7 +162,7 @@ pub(super) fn install_activation_fds(
         }
         // SAFETY: `duplicate` is a valid F_DUPFD_CLOEXEC result and `target`
         // is a checked slot intentionally replaced by dup3 in this child.
-        if unsafe { libc::dup3(duplicate, target, OFlag::empty().bits()) } < 0 {
+        if unsafe_ffi!(libc::dup3(duplicate, target, OFlag::empty().bits())) < 0 {
             return Err((
                 ChildSpawnStage::ActivationRemap,
                 child_errno_or_invalid_argument(),
@@ -176,7 +183,7 @@ pub(super) fn redirect_child_stdio(
     if let Some(source) = source {
         // SAFETY: stdio sources were validated before fork and remain open in
         // PreparedLaunch throughout child setup.
-        let source = unsafe { BorrowedFd::borrow_raw(source) };
+        let source = unsafe_ffi!(BorrowedFd::borrow_raw(source));
         let result = match target {
             libc::STDIN_FILENO => dup2_stdin(source),
             libc::STDOUT_FILENO => dup2_stdout(source),

@@ -5,6 +5,13 @@
 // NUL-terminated string list utilities.
 // Safe Rust core with narrow C-allocator ABI facades.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_void};
 use std::ptr;
 
@@ -68,12 +75,12 @@ pub unsafe extern "C" fn rs_nulstr_get(
 
     // SAFETY: the entry-point contract guarantees that `needle` is a live C
     // string and that every entry reached through `nulstr` is one too.
-    let needle = unsafe { CStr::from_ptr(needle) };
+    let needle = unsafe_ffi!(CStr::from_ptr(needle));
     let mut entry = nulstr;
     loop {
         // SAFETY: the NULSTR contract guarantees a NUL terminator for each
         // entry, including the final empty terminator entry.
-        let candidate = unsafe { CStr::from_ptr(entry) };
+        let candidate = unsafe_ffi!(CStr::from_ptr(entry));
         if candidate.to_bytes().is_empty() {
             return ptr::null();
         }
@@ -83,7 +90,7 @@ pub unsafe extern "C" fn rs_nulstr_get(
 
         // SAFETY: `candidate` includes the terminator of the current entry,
         // so this advances exactly to the next live NULSTR entry.
-        entry = unsafe { entry.add(candidate.to_bytes_with_nul().len()) };
+        entry = unsafe_ffi!(entry.add(candidate.to_bytes_with_nul().len()));
     }
 }
 
@@ -165,13 +172,13 @@ unsafe fn free_c_strv(strv: *mut *mut c_char) {
     let mut index = 0;
     // SAFETY: the caller guarantees the allocation has a NULL terminator and
     // all preceding entries are owned C allocations.
-    while !unsafe { (*strv.add(index)).is_null() } {
+    while !unsafe_ffi!((*strv.add(index)).is_null()) {
         // SAFETY: this is one of the owned entries described above.
-        unsafe { free((*strv.add(index)).cast::<c_void>()) };
+        unsafe_ffi!(free((*strv.add(index)).cast::<c_void>()));
         index += 1;
     }
     // SAFETY: `strv` itself is the C allocation described above.
-    unsafe { free(strv.cast::<c_void>()) };
+    unsafe_ffi!(free(strv.cast::<c_void>()));
 }
 
 /// Copy raw, non-NUL bytes into a C-owned NUL-terminated string.
@@ -190,10 +197,10 @@ unsafe fn malloc_suffix0(bytes: *const u8, length: usize) -> *mut c_char {
 
     // SAFETY: `allocation` has `length + 1` writable bytes. The caller gives
     // us `length` readable source bytes, and the two allocations are disjoint.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(bytes, allocation.cast::<u8>(), length);
         *allocation.cast::<u8>().add(length) = 0;
-    }
+    });
     allocation
 }
 
@@ -228,7 +235,7 @@ pub unsafe extern "C" fn rs_strv_parse_nulstr_full(
         while length > 0 {
             // SAFETY: for nonzero length the entry-point contract guarantees
             // `s` points to all `l` readable bytes.
-            if unsafe { *s.cast::<u8>().add(length - 1) } != 0 {
+            if unsafe_ffi!(*s.cast::<u8>().add(length - 1)) != 0 {
                 break;
             }
             length -= 1;
@@ -243,7 +250,7 @@ pub unsafe extern "C" fn rs_strv_parse_nulstr_full(
     let mut count = 0usize;
     for index in 0..length {
         // SAFETY: the entry-point contract guarantees this byte is readable.
-        if unsafe { *s.cast::<u8>().add(index) } == 0 {
+        if unsafe_ffi!(*s.cast::<u8>().add(index)) == 0 {
             let Some(next) = count.checked_add(1) else {
                 return ptr::null_mut();
             };
@@ -252,7 +259,7 @@ pub unsafe extern "C" fn rs_strv_parse_nulstr_full(
     }
     // A final non-NUL byte starts the final nonempty-terminated entry.
     // SAFETY: `length > 0`, and the entry-point contract covers this byte.
-    if unsafe { *s.cast::<u8>().add(length - 1) } != 0 {
+    if unsafe_ffi!(*s.cast::<u8>().add(length - 1)) != 0 {
         let Some(next) = count.checked_add(1) else {
             return ptr::null_mut();
         };
@@ -273,7 +280,7 @@ pub unsafe extern "C" fn rs_strv_parse_nulstr_full(
         let mut end = begin;
         while end < length {
             // SAFETY: the entry-point contract guarantees this byte is readable.
-            if unsafe { *s.cast::<u8>().add(end) } == 0 {
+            if unsafe_ffi!(*s.cast::<u8>().add(end)) == 0 {
                 break;
             }
             end += 1;
@@ -281,17 +288,20 @@ pub unsafe extern "C" fn rs_strv_parse_nulstr_full(
 
         // SAFETY: `begin..end` is a subrange of the `length` readable bytes
         // guaranteed by the entry-point contract.
-        let entry = unsafe { malloc_suffix0(s.cast::<u8>().wrapping_add(begin), end - begin) };
+        let entry = unsafe_ffi!(malloc_suffix0(
+            s.cast::<u8>().wrapping_add(begin),
+            end - begin
+        ));
         if entry.is_null() {
             // SAFETY: all slots below `slot` contain exactly the owned C
             // allocations installed by this function, and calloc supplied the
             // NULL terminator immediately after them.
-            unsafe { free_c_strv(result) };
+            unsafe_ffi!(free_c_strv(result));
             return ptr::null_mut();
         }
         // SAFETY: `slot < count`, because the count pass uses exactly the same
         // split rule, and `result` has `count + 1` zeroed slots.
-        unsafe { *result.add(slot) = entry };
+        unsafe_ffi!(*result.add(slot) = entry);
         slot += 1;
 
         if end == length {

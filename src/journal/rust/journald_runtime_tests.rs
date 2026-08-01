@@ -1,3 +1,10 @@
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::*;
 use std::env;
 use std::ffi::OsString;
@@ -22,7 +29,7 @@ impl EnvVarGuard {
     fn set_for_test(key: &'static str, value: &str) -> Self {
         let previous = env::var_os(key);
         // SAFETY: this test-only guard is only used by this serial test target.
-        unsafe { env::set_var(key, value) };
+        unsafe_ffi!(env::set_var(key, value));
         Self { key, previous }
     }
 }
@@ -32,11 +39,11 @@ impl Drop for EnvVarGuard {
         if let Some(value) = &self.previous {
             // SAFETY: dropping the guard restores the same test-scoped mutation
             // while the test target has no concurrent environment access.
-            unsafe { env::set_var(self.key, value) };
+            unsafe_ffi!(env::set_var(self.key, value));
         } else {
             // SAFETY: dropping the guard restores the same test-scoped mutation
             // while the test target has no concurrent environment access.
-            unsafe { env::remove_var(self.key) };
+            unsafe_ffi!(env::remove_var(self.key));
         }
     }
 }
@@ -777,9 +784,9 @@ fn parse_audit_netlink_datagram_accepts_valid_payload() {
     };
     // SAFETY: buffer has at least one full header and write_unaligned
     // avoids imposing an alignment requirement on Vec<u8>.
-    unsafe {
+    unsafe_ffi!({
         std::ptr::write_unaligned(buffer.as_mut_ptr().cast::<NetlinkMessageHeader>(), header);
-    }
+    });
     buffer[header_len..total_len].copy_from_slice(payload);
 
     let Some((msg_type, payload_range)) = parse_audit_netlink_datagram(&buffer, buffer.len())
@@ -807,9 +814,9 @@ fn parse_audit_netlink_datagram_rejects_control_types() {
         };
         // SAFETY: buffer has at least one full header and write_unaligned
         // avoids imposing an alignment requirement on Vec<u8>.
-        unsafe {
+        unsafe_ffi!({
             std::ptr::write_unaligned(buffer.as_mut_ptr().cast::<NetlinkMessageHeader>(), header);
-        }
+        });
         buffer[header_len..total_len].copy_from_slice(payload);
         assert!(parse_audit_netlink_datagram(&buffer, buffer.len()).is_none());
     }
@@ -830,9 +837,9 @@ fn parse_audit_netlink_datagram_rejects_non_user_control_messages() {
     };
     // SAFETY: buffer has at least one full header and write_unaligned
     // avoids imposing an alignment requirement on Vec<u8>.
-    unsafe {
+    unsafe_ffi!({
         std::ptr::write_unaligned(buffer.as_mut_ptr().cast::<NetlinkMessageHeader>(), header);
-    }
+    });
     buffer[header_len..total_len].copy_from_slice(payload);
     assert!(parse_audit_netlink_datagram(&buffer, buffer.len()).is_none());
 }
@@ -852,9 +859,9 @@ fn parse_audit_netlink_datagram_accepts_audit_user_type() {
     };
     // SAFETY: buffer has at least one full header and write_unaligned
     // avoids imposing an alignment requirement on Vec<u8>.
-    unsafe {
+    unsafe_ffi!({
         std::ptr::write_unaligned(buffer.as_mut_ptr().cast::<NetlinkMessageHeader>(), header);
-    }
+    });
     buffer[header_len..total_len].copy_from_slice(payload);
 
     let Some((msg_type, payload_range)) = parse_audit_netlink_datagram(&buffer, buffer.len())
@@ -1249,7 +1256,7 @@ fn append_datagram_with_credentials_applies_keep_log_filters() {
     let value = b"keep\0\xffdrop";
     // SAFETY: path/name are live C strings and value exposes value.len()
     // readable bytes for setxattr.
-    let rc = unsafe {
+    let rc = unsafe_ffi!({
         libc::setxattr(
             path.as_ptr(),
             name.as_ptr(),
@@ -1257,7 +1264,7 @@ fn append_datagram_with_credentials_applies_keep_log_filters() {
             value.len(),
             0,
         )
-    };
+    });
     assert_eq!(rc, 0, "setxattr failed: {}", io::Error::last_os_error());
 
     let runtime = JournalRuntime::new(&temp.path);

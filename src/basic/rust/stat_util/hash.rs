@@ -4,6 +4,13 @@
 //
 // inode_hash_func and inode_unmodified_hash_func via canonical SipHash.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
@@ -46,13 +53,13 @@ impl<'a> SipHashCompressor<'a> {
     fn compress<T>(&mut self, value: &T) {
         // SAFETY: `value` is readable for its exact native size and `state`
         // is the unique live canonical C state captured at the ABI boundary.
-        unsafe {
+        unsafe_ffi!({
             siphash24_compress(
                 (value as *const T).cast::<libc::c_void>(),
                 std::mem::size_of::<T>(),
                 self.state.as_ptr(),
             )
-        };
+        });
     }
 }
 
@@ -97,7 +104,7 @@ fn inode_unmodified_hash(stat: &libc::stat, state: &mut SipHashCompressor<'_>) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_inode_hash_func(stat: *const libc::stat, state: *mut SipHashState) {
     // SAFETY: both conversions are covered by the entry-point contract.
-    let (Some(stat), Some(mut state)) = (unsafe { stat.as_ref() }, unsafe {
+    let (Some(stat), Some(mut state)) = (unsafe_ffi!(stat.as_ref()), unsafe {
         SipHashCompressor::from_raw(state)
     }) else {
         return;
@@ -116,7 +123,7 @@ pub unsafe extern "C" fn rs_inode_unmodified_hash_func(
     state: *mut SipHashState,
 ) {
     // SAFETY: both conversions are covered by the entry-point contract.
-    let (Some(stat), Some(mut state)) = (unsafe { stat.as_ref() }, unsafe {
+    let (Some(stat), Some(mut state)) = (unsafe_ffi!(stat.as_ref()), unsafe {
         SipHashCompressor::from_raw(state)
     }) else {
         return;

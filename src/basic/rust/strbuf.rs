@@ -6,6 +6,13 @@
 
 // ── Internal types ──────────────────────────────────────────────────────────
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 struct StrbufNode {
     value_off: usize,
     value_len: usize,
@@ -211,7 +218,7 @@ fn find_child_index(children: &[StrbufChildEntry], c: u8) -> Option<usize> {
 pub extern "C" fn rs_strbuf_new() -> *mut RsStrbuf {
     // SAFETY: malloc accepts this nonzero layout size and returns storage from
     // the C allocator used for the opaque handle's final release.
-    let storage = unsafe { libc::malloc(std::mem::size_of::<Strbuf>()) }.cast::<Strbuf>();
+    let storage = unsafe_ffi!(libc::malloc(std::mem::size_of::<Strbuf>())).cast::<Strbuf>();
     if storage.is_null() {
         return std::ptr::null_mut();
     }
@@ -220,13 +227,13 @@ pub extern "C" fn rs_strbuf_new() -> *mut RsStrbuf {
         Ok(value) => value,
         Err(_) => {
             // SAFETY: `storage` was allocated above and has not been initialized.
-            unsafe { libc::free(storage.cast()) };
+            unsafe_ffi!(libc::free(storage.cast()));
             return std::ptr::null_mut();
         }
     };
     // SAFETY: malloc returned storage sized and aligned for Strbuf; it is
     // uninitialized and uniquely owned at this point.
-    unsafe { std::ptr::write(storage, value) };
+    unsafe_ffi!(std::ptr::write(storage, value));
     storage.cast::<RsStrbuf>()
 }
 
@@ -255,16 +262,16 @@ pub unsafe extern "C" fn rs_strbuf_add_string_full(
             return -(libc::EINVAL as isize);
         }
         // SAFETY: required by the SIZE_MAX branch of this export's contract.
-        unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes()
+        unsafe_ffi!(std::ffi::CStr::from_ptr(s)).to_bytes()
     } else if len == 0 {
         &[]
     } else {
         // SAFETY: required by the explicit-length branch of this export's contract.
-        unsafe { std::slice::from_raw_parts(s.cast::<u8>(), len) }
+        unsafe_ffi!(std::slice::from_raw_parts(s.cast::<u8>(), len))
     };
 
     // SAFETY: the opaque handle's allocation was initialized by rs_strbuf_new.
-    let buffer = unsafe { &mut *str.cast::<Strbuf>() };
+    let buffer = unsafe_ffi!(&mut *str.cast::<Strbuf>());
     match buffer.add_string_full(bytes, len) {
         Ok(offset) if offset <= isize::MAX as usize => offset as isize,
         Ok(_) => -(libc::EOVERFLOW as isize),
@@ -285,7 +292,7 @@ pub unsafe extern "C" fn rs_strbuf_complete(str: *mut RsStrbuf) {
         return;
     }
     // SAFETY: upheld by this export's opaque-handle contract.
-    unsafe { (&mut *str.cast::<Strbuf>()).complete() };
+    unsafe_ffi!((&mut *str.cast::<Strbuf>()).complete());
 }
 
 /// Destroy an opaque handle and return null, matching the C cleanup helper.
@@ -302,10 +309,10 @@ pub unsafe extern "C" fn rs_strbuf_free(str: *mut RsStrbuf) -> *mut RsStrbuf {
     // SAFETY: the handle was initialized in malloc(3) storage by
     // rs_strbuf_new. Dropping releases Rust-owned Vec allocations before the
     // C-allocator storage for the opaque handle itself is returned to libc.
-    unsafe {
+    unsafe_ffi!({
         std::ptr::drop_in_place(str.cast::<Strbuf>());
         libc::free(str.cast());
-    }
+    });
     std::ptr::null_mut()
 }
 

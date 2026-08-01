@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::io;
 #[cfg(target_os = "linux")]
 use std::io::{IoSlice, IoSliceMut};
@@ -66,7 +73,7 @@ pub fn recv_fd(sock: BorrowedFd<'_>) -> io::Result<OwnedFd> {
             for fd in fds {
                 // SAFETY: SCM_RIGHTS installs a new descriptor in the
                 // receiving process. This vector is its first Rust owner.
-                received.push(unsafe { OwnedFd::from_raw_fd(fd) });
+                received.push(unsafe_ffi!(OwnedFd::from_raw_fd(fd)));
             }
         }
     }

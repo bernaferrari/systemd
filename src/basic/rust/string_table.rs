@@ -5,6 +5,13 @@
 // Generic string table lookup helpers: index↔string conversion with
 // optional boolean parsing and numeric fallback.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::Errno;
 use std::ffi::{CStr, c_char};
 use std::ptr;
@@ -134,7 +141,7 @@ pub unsafe extern "C" fn rs_string_table_lookup_to_string(
     );
     // SAFETY: the documented C ABI requires an array containing `len`
     // readable pointers, and the range check above establishes `i < len`.
-    unsafe { *table.add(i as usize) }
+    unsafe_ffi!(*table.add(i as usize))
 }
 
 /// Look up an opaque C string in an enumerated table.
@@ -157,16 +164,16 @@ pub unsafe extern "C" fn rs_string_table_lookup_from_string(
 
     // SAFETY: the documented C ABI guarantees `key` is a live C string after
     // the NULL check above.
-    let key = unsafe { CStr::from_ptr(key) }.to_bytes();
+    let key = unsafe_ffi!(CStr::from_ptr(key)).to_bytes();
     for index in 0..len {
         // SAFETY: the documented C ABI guarantees a readable `len`-element
         // pointer array.
-        let entry = unsafe { *table.add(index) };
+        let entry = unsafe_ffi!(*table.add(index));
         if entry.is_null() {
             continue;
         }
         // SAFETY: each non-NULL table entry is a live C string by contract.
-        if unsafe { CStr::from_ptr(entry) }.to_bytes() == key {
+        if unsafe_ffi!(CStr::from_ptr(entry)).to_bytes() == key {
             return index as isize;
         }
     }
@@ -194,13 +201,13 @@ pub unsafe extern "C" fn rs_string_table_lookup_from_string_with_boolean(
 
     // SAFETY: `key` is non-NULL and the documented ABI forwards C's string
     // validity precondition to the shared parser.
-    match unsafe { crate::parse_util::rs_parse_boolean(key) } {
+    match unsafe_ffi!(crate::parse_util::rs_parse_boolean(key)) {
         0 => 0,
         value if value > 0 => yes,
         _ => {
             // SAFETY: this facade forwards the documented table/C-string
             // contract unchanged to the basic lookup helper.
-            unsafe { rs_string_table_lookup_from_string(table, len, key) }
+            unsafe_ffi!(rs_string_table_lookup_from_string(table, len, key))
         }
     }
 }
@@ -233,13 +240,13 @@ pub unsafe extern "C" fn rs_string_table_lookup_to_string_fallback(
     let allocated = if (i as usize) < len {
         // SAFETY: the documented C ABI guarantees a readable `len`-element
         // pointer array and this branch establishes `i < len`.
-        let entry = unsafe { *table.add(i as usize) };
+        let entry = unsafe_ffi!(*table.add(i as usize));
         if entry.is_null() {
             ptr::null_mut()
         } else {
             // SAFETY: the documented C ABI guarantees `entry` is a live C
             // string. `strdup` returns libc-owned storage or NULL.
-            let duplicate = unsafe { libc::strdup(entry) };
+            let duplicate = unsafe_ffi!(libc::strdup(entry));
             if duplicate.is_null() {
                 return -libc::ENOMEM;
             }
@@ -265,7 +272,7 @@ pub unsafe extern "C" fn rs_string_table_lookup_to_string_fallback(
         }
         // SAFETY: the suffix beginning at `start` is a local, NUL-terminated
         // ASCII decimal C string; strdup returns libc-owned storage or NULL.
-        let copy = unsafe { libc::strdup(decimal[start..].as_ptr()) };
+        let copy = unsafe_ffi!(libc::strdup(decimal[start..].as_ptr()));
         if copy.is_null() {
             return -libc::ENOMEM;
         }
@@ -276,7 +283,7 @@ pub unsafe extern "C" fn rs_string_table_lookup_to_string_fallback(
 
     // SAFETY: `ret` is the caller-provided writable output slot; publication
     // occurs only after allocation succeeds, matching C's transactional API.
-    unsafe { *ret = allocated };
+    unsafe_ffi!(*ret = allocated);
     0
 }
 
@@ -299,7 +306,7 @@ pub unsafe extern "C" fn rs_string_table_lookup_from_string_fallback(
     }
 
     // SAFETY: this facade forwards the documented table/C-string contract.
-    let index = unsafe { rs_string_table_lookup_from_string(table, len, s) };
+    let index = unsafe_ffi!(rs_string_table_lookup_from_string(table, len, s));
     if index >= 0 {
         return index;
     }
@@ -307,7 +314,7 @@ pub unsafe extern "C" fn rs_string_table_lookup_from_string_fallback(
     let mut value = 0_u32;
     // SAFETY: `s` is a live C string by this function's documented contract,
     // and `value` is a valid writable output slot for the duration of call.
-    if unsafe { crate::parse_util::safe_atou_full_inner(s, 10, &mut value) } < 0
+    if unsafe_ffi!(crate::parse_util::safe_atou_full_inner(s, 10, &mut value)) < 0
         || (value as u128) > (max as u128)
     {
         return -(libc::EINVAL as isize);

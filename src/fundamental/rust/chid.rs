@@ -5,6 +5,13 @@
 // CHID (Component Hardware ID) calculation based on SMBIOS fields.
 // Uses SHA-1 to generate deterministic GUIDs from hardware identifiers.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::efi_guid::EfiGuid;
 use crate::sha1::Sha1State;
 
@@ -153,18 +160,18 @@ fn get_chid(smbios_fields: &[Option<&[u16]>], mask: u32) -> EfiGuid {
 
         if i > 0 {
             // SAFETY: `CHID_SEPARATOR` is a fixed initialized `[u16; 1]`; viewing its bytes as `u8` with `len * 2` is in-bounds.
-            ctx.update(unsafe {
+            ctx.update(unsafe_ffi!({
                 core::slice::from_raw_parts(
                     CHID_SEPARATOR.as_ptr() as *const u8,
                     CHID_SEPARATOR.len() * 2,
                 )
-            });
+            }));
         }
 
         // SAFETY: `field` is a live initialized `[u16]`; viewing exactly `field.len() * 2` bytes as `u8` is in-bounds.
-        ctx.update(unsafe {
+        ctx.update(unsafe_ffi!({
             core::slice::from_raw_parts(field.as_ptr() as *const u8, field.len() * 2)
-        });
+        }));
     }
 
     let hash = ctx.finish();

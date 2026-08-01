@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/core/unit.c
 //
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::sync::Mutex;
 
 use super::model::{
@@ -69,7 +76,7 @@ pub unsafe fn setenv_unit_path(path: &str) -> Result<()> {
         return Err(UnitError::Invalid);
     }
     // SAFETY: upheld by the caller as required by this function's contract.
-    unsafe { std::env::set_var("SYSTEMD_UNIT_PATH", path) };
+    unsafe_ffi!(std::env::set_var("SYSTEMD_UNIT_PATH", path));
     *UNIT_PATH
         .get_or_init(|| Mutex::new(None))
         .lock()

@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::model::{
     LO_FLAGS_AUTOCLEAR, LO_FLAGS_DIRECT_IO, LO_FLAGS_PARTSCAN, LO_FLAGS_READ_ONLY, LOCK_EX,
     LOCK_NB, LOCK_SH, LoopError, LoopFlags, MAX_ATTEMPTS, O_CLOEXEC, O_NOCTTY, O_NONBLOCK,
@@ -130,7 +137,11 @@ const _: [(); 8 + 2 * std::mem::size_of::<usize>()] = [(); std::mem::size_of::<B
 pub(super) fn get_loop_status64(fd: RawFd) -> Result<LoopInfo64, LoopError> {
     let mut info = LoopInfo64::default();
     // SAFETY: info is a writable loop_info64 with the checked Linux UAPI layout.
-    let result = unsafe { libc::ioctl(fd, LOOP_GET_STATUS64, &mut info as *mut LoopInfo64) };
+    let result = unsafe_ffi!(libc::ioctl(
+        fd,
+        LOOP_GET_STATUS64,
+        &mut info as *mut LoopInfo64
+    ));
     if result < 0 {
         let errno = crate::ffi::get_errno();
         if errno == libc::ENXIO {
@@ -144,7 +155,11 @@ pub(super) fn get_loop_status64(fd: RawFd) -> Result<LoopInfo64, LoopError> {
 /// Perform LOOP_SET_STATUS64 ioctl.
 pub(super) fn set_loop_status64(fd: RawFd, info: &LoopInfo64) -> Result<(), LoopError> {
     // SAFETY: info is a readable loop_info64 with the checked Linux UAPI layout.
-    let result = unsafe { libc::ioctl(fd, LOOP_SET_STATUS64, info as *const LoopInfo64) };
+    let result = unsafe_ffi!(libc::ioctl(
+        fd,
+        LOOP_SET_STATUS64,
+        info as *const LoopInfo64
+    ));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -154,7 +169,7 @@ pub(super) fn set_loop_status64(fd: RawFd, info: &LoopInfo64) -> Result<(), Loop
 /// Perform LOOP_CLR_FD ioctl.
 pub(super) fn ioctl_loop_clr_fd(fd: RawFd) -> Result<(), LoopError> {
     // SAFETY: LOOP_CLR_FD takes no pointer argument; the kernel validates fd.
-    let result = unsafe { libc::ioctl(fd, LOOP_CLR_FD) };
+    let result = unsafe_ffi!(libc::ioctl(fd, LOOP_CLR_FD));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -165,7 +180,7 @@ pub(super) fn ioctl_loop_clr_fd(fd: RawFd) -> Result<(), LoopError> {
 pub(super) fn ioctl_loop_set_fd(fd: RawFd, backing_fd: RawFd) -> Result<(), LoopError> {
     // SAFETY: LOOP_SET_FD consumes the integer backing fd by value; both fds
     // remain owned by their callers for the duration of the call.
-    let result = unsafe { libc::ioctl(fd, LOOP_SET_FD, backing_fd) };
+    let result = unsafe_ffi!(libc::ioctl(fd, LOOP_SET_FD, backing_fd));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -175,7 +190,7 @@ pub(super) fn ioctl_loop_set_fd(fd: RawFd, backing_fd: RawFd) -> Result<(), Loop
 /// Perform LOOP_CTL_GET_FREE ioctl.
 pub(super) fn ioctl_loop_ctl_get_free(control_fd: RawFd) -> Result<i32, LoopError> {
     // SAFETY: LOOP_CTL_GET_FREE takes no pointer argument.
-    let result = unsafe { libc::ioctl(control_fd, LOOP_CTL_GET_FREE) };
+    let result = unsafe_ffi!(libc::ioctl(control_fd, LOOP_CTL_GET_FREE));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -185,7 +200,7 @@ pub(super) fn ioctl_loop_ctl_get_free(control_fd: RawFd) -> Result<i32, LoopErro
 /// Perform LOOP_CTL_REMOVE ioctl.
 pub(super) fn ioctl_loop_ctl_remove(control_fd: RawFd, nr: i32) -> Result<(), LoopError> {
     // SAFETY: LOOP_CTL_REMOVE consumes the loop number by value.
-    let result = unsafe { libc::ioctl(control_fd, LOOP_CTL_REMOVE, nr) };
+    let result = unsafe_ffi!(libc::ioctl(control_fd, LOOP_CTL_REMOVE, nr));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -195,7 +210,11 @@ pub(super) fn ioctl_loop_ctl_remove(control_fd: RawFd, nr: i32) -> Result<(), Lo
 /// Perform LOOP_SET_BLOCK_SIZE ioctl.
 pub(super) fn ioctl_loop_set_block_size(fd: RawFd, block_size: u32) -> Result<(), LoopError> {
     // SAFETY: LOOP_SET_BLOCK_SIZE consumes the size by value.
-    let result = unsafe { libc::ioctl(fd, LOOP_SET_BLOCK_SIZE, libc::c_ulong::from(block_size)) };
+    let result = unsafe_ffi!(libc::ioctl(
+        fd,
+        LOOP_SET_BLOCK_SIZE,
+        libc::c_ulong::from(block_size)
+    ));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -206,7 +225,7 @@ pub(super) fn ioctl_loop_set_block_size(fd: RawFd, block_size: u32) -> Result<()
 pub(super) fn ioctl_loop_set_direct_io(fd: RawFd, enable: bool) -> Result<(), LoopError> {
     // SAFETY: LOOP_SET_DIRECT_IO consumes a boolean-sized integer by value.
     let enabled: libc::c_ulong = if enable { 1 } else { 0 };
-    let result = unsafe { libc::ioctl(fd, LOOP_SET_DIRECT_IO, enabled) };
+    let result = unsafe_ffi!(libc::ioctl(fd, LOOP_SET_DIRECT_IO, enabled));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -217,7 +236,7 @@ pub(super) fn ioctl_loop_set_direct_io(fd: RawFd, enable: bool) -> Result<(), Lo
 pub(super) fn ioctl_loop_configure(fd: RawFd, config: &LoopConfig) -> Result<(), LoopError> {
     // SAFETY: config is a readable loop_config with the checked Linux UAPI
     // layout and remains alive for the duration of the ioctl.
-    let result = unsafe { libc::ioctl(fd, LOOP_CONFIGURE, config as *const LoopConfig) };
+    let result = unsafe_ffi!(libc::ioctl(fd, LOOP_CONFIGURE, config as *const LoopConfig));
     if result < 0 {
         let errno = crate::ffi::get_errno();
         // Check for ioctl-not-supported (ENOTTY, EINVAL on older kernels).
@@ -235,12 +254,12 @@ pub(super) fn ioctl_loop_configure(fd: RawFd, config: &LoopConfig) -> Result<(),
 pub(super) fn open_raw(path: &Path, flags: i32) -> Result<OwnedFd, LoopError> {
     let path_c = path_to_cstr(path)?;
     // SAFETY: path_c is NUL-terminated and its storage remains alive for the call.
-    let fd = unsafe { libc::open(path_c.as_ptr(), flags) };
+    let fd = unsafe_ffi!(libc::open(path_c.as_ptr(), flags));
     if fd < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
     // SAFETY: fd >= 0, so it's a valid file descriptor.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
 }
 
 /// Reopen a file descriptor with new flags.
@@ -254,12 +273,12 @@ pub(super) fn fd_reopen(fd: RawFd, flags: i32) -> Result<OwnedFd, LoopError> {
 pub(super) fn dup_fd(fd: RawFd) -> Result<OwnedFd, LoopError> {
     // SAFETY: F_DUPFD_CLOEXEC does not dereference userspace pointers and the
     // returned descriptor is uniquely owned when non-negative.
-    let duplicated = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+    let duplicated = unsafe_ffi!(libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0));
     if duplicated < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
     // SAFETY: duplicated is a fresh descriptor returned by fcntl.
-    Ok(unsafe { OwnedFd::from_raw_fd(duplicated) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(duplicated)))
 }
 
 /// Get the path associated with a file descriptor via /proc/self/fd/.
@@ -306,12 +325,15 @@ pub(super) fn open_loop_control() -> Option<OwnedFd> {
     let path = Path::new("/dev/loop-control");
     let path_c = path_to_cstr(path).ok()?;
     // SAFETY: path_c is NUL-terminated and its storage remains alive for the call.
-    let fd = unsafe { libc::open(path_c.as_ptr(), O_RDWR | O_CLOEXEC | O_NOCTTY | O_NONBLOCK) };
+    let fd = unsafe_ffi!(libc::open(
+        path_c.as_ptr(),
+        O_RDWR | O_CLOEXEC | O_NOCTTY | O_NONBLOCK
+    ));
     if fd < 0 {
         return None;
     }
     // SAFETY: fd >= 0.
-    Some(unsafe { OwnedFd::from_raw_fd(fd) })
+    Some(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
 }
 
 /// Convert a Path to a CString for use with C APIs.
@@ -324,7 +346,7 @@ pub(super) fn blockdev_get_sector_size(fd: RawFd) -> Result<u32, LoopError> {
     let mut ssz: i32 = 0;
     const BLKSSZGET: libc::c_ulong = 0x80041270;
     // SAFETY: ssz is writable for the call and matches the ioctl's u32 payload.
-    let result = unsafe { libc::ioctl(fd, BLKSSZGET, &mut ssz) };
+    let result = unsafe_ffi!(libc::ioctl(fd, BLKSSZGET, &mut ssz));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -336,7 +358,7 @@ pub(super) fn blockdev_get_device_size(fd: RawFd) -> Result<u64, LoopError> {
     let mut size: u64 = 0;
     const BLKGETSIZE64: libc::c_ulong = 0x80081272;
     // SAFETY: size is writable for the call and matches the ioctl's u64 payload.
-    let result = unsafe { libc::ioctl(fd, BLKGETSIZE64, &mut size) };
+    let result = unsafe_ffi!(libc::ioctl(fd, BLKGETSIZE64, &mut size));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -404,7 +426,11 @@ fn blkpg_partition(
 
     // SAFETY: argument and its nested partition pointer remain live and
     // writable for the call, and both layouts are checked against blkpg.h.
-    let result = unsafe { libc::ioctl(whole_fd, BLKPG, &mut argument as *mut BlkpgIoctlArg) };
+    let result = unsafe_ffi!(libc::ioctl(
+        whole_fd,
+        BLKPG,
+        &mut argument as *mut BlkpgIoctlArg
+    ));
     if result < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
@@ -475,9 +501,9 @@ pub(super) fn fd_set_max_discard(fd: RawFd, max_discard: u64) -> Result<(), Loop
 pub(super) fn fd_stat(fd: RawFd) -> Result<libc::stat, LoopError> {
     // SAFETY: all-zero is a valid initial byte pattern for libc::stat and the
     // value is not read until fstat initializes it.
-    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+    let mut stat: libc::stat = unsafe_ffi!(std::mem::zeroed());
     // SAFETY: stat points to writable storage for the duration of fstat.
-    if unsafe { libc::fstat(fd, &mut stat) } < 0 {
+    if unsafe_ffi!(libc::fstat(fd, &mut stat)) < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
     Ok(stat)

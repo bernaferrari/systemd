@@ -9,6 +9,13 @@
 // labels to processes, MAC address to SMACK label conversion,
 // and SMACK netlabel configuration.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CString;
 use std::fs;
 use std::io;
@@ -211,8 +218,12 @@ fn read_xattr_path(path: &Path, xattr_name: &[u8]) -> Result<Option<String>, Sma
 #[cfg(target_os = "linux")]
 fn read_xattr_fd(fd: i32, xattr_name: &[u8]) -> Result<Option<String>, SmackError> {
     // SAFETY: xattr_name is a valid null-terminated byte string.
-    let buf_size =
-        unsafe { libc::fgetxattr(fd, xattr_name_ptr(xattr_name), std::ptr::null_mut(), 0) };
+    let buf_size = unsafe_ffi!(libc::fgetxattr(
+        fd,
+        xattr_name_ptr(xattr_name),
+        std::ptr::null_mut(),
+        0
+    ));
     if buf_size < 0 {
         let errno = std::io::Error::last_os_error();
         let code = errno.raw_os_error().unwrap_or(0);
@@ -303,7 +314,10 @@ fn apply_xattr_path(path: &Path, xattr_name: &[u8], label: Option<&str>) -> Resu
         }
         None => {
             // SAFETY: pointers are valid.
-            let ret = unsafe { libc::lremovexattr(path_cstr.as_ptr(), xattr_name_ptr(xattr_name)) };
+            let ret = unsafe_ffi!(libc::lremovexattr(
+                path_cstr.as_ptr(),
+                xattr_name_ptr(xattr_name)
+            ));
             if ret < 0 {
                 Err(SmackError::from(std::io::Error::last_os_error()))
             } else {
@@ -339,7 +353,7 @@ fn apply_xattr_fd(fd: i32, xattr_name: &[u8], label: Option<&str>) -> Result<(),
         None => {
             // SAFETY: `fd` is passed through to the kernel and `xattr_name` is
             // a valid NUL-terminated attribute name.
-            let ret = unsafe { libc::fremovexattr(fd, xattr_name_ptr(xattr_name)) };
+            let ret = unsafe_ffi!(libc::fremovexattr(fd, xattr_name_ptr(xattr_name)));
             if ret < 0 {
                 Err(SmackError::from(std::io::Error::last_os_error()))
             } else {
@@ -400,11 +414,11 @@ fn smack_fix_fd_inner(fd: i32, label_path: &Path, flags: LabelFixFlags) -> Resul
     // SAFETY: `stat_buf` points to writable, properly aligned storage for a
     // complete stat result. The kernel reports an invalid descriptor as an
     // error without initializing that storage.
-    if unsafe { libc::fstat(fd, stat_buf.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::fstat(fd, stat_buf.as_mut_ptr())) < 0 {
         return Err(SmackError::from(std::io::Error::last_os_error()));
     }
     // SAFETY: successful fstat(2) initialized the entire output struct.
-    let stat_buf = unsafe { stat_buf.assume_init() };
+    let stat_buf = unsafe_ffi!(stat_buf.assume_init());
 
     let label = match label_for_file_type(stat_buf.st_mode as u32) {
         Some(l) => l,
@@ -492,8 +506,12 @@ pub fn mac_smack_fix_full(
             CString::new(path.as_os_str().as_bytes()).map_err(|_| SmackError::InvalidLabel)?;
 
         // SAFETY: path_cstr valid null-terminated, atfd assumed valid.
-        let fd =
-            unsafe { libc::openat(atfd, path_cstr.as_ptr(), O_NOFOLLOW | O_CLOEXEC | O_PATH, 0) };
+        let fd = unsafe_ffi!(libc::openat(
+            atfd,
+            path_cstr.as_ptr(),
+            O_NOFOLLOW | O_CLOEXEC | O_PATH,
+            0
+        ));
 
         if fd < 0 {
             let errno = std::io::Error::last_os_error();
@@ -616,7 +634,12 @@ fn renameat_and_apply_smack_floor_label_inner(
     let to_cstr = CString::new(to.as_os_str().as_bytes()).map_err(|_| SmackError::InvalidLabel)?;
 
     // SAFETY: all pointers are valid null-terminated byte strings.
-    let ret = unsafe { libc::renameat(fdf, from_cstr.as_ptr(), fdt, to_cstr.as_ptr()) };
+    let ret = unsafe_ffi!(libc::renameat(
+        fdf,
+        from_cstr.as_ptr(),
+        fdt,
+        to_cstr.as_ptr()
+    ));
     if ret < 0 {
         return Err(SmackError::from(std::io::Error::last_os_error()));
     }

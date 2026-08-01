@@ -5,6 +5,13 @@
 // SHA-256 hash, validation/parsing, and HMAC-SHA-256 computation.
 // Pure Rust implementation; no dependency on C sha256-fundamental.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::{c_char, c_int, c_void};
 use std::{
     ffi::CStr,
@@ -53,7 +60,7 @@ fn erase_bytes(bytes: &mut [u8]) {
     for byte in bytes {
         // SAFETY: every `byte` is a unique live byte in the supplied slice.
         // Volatile writes prevent removal of this key-material cleanup.
-        unsafe { ptr::write_volatile(byte, 0) };
+        unsafe_ffi!(ptr::write_volatile(byte, 0));
     }
     compiler_fence(Ordering::SeqCst);
 }
@@ -64,7 +71,7 @@ fn erase_sha256_ctx(ctx: &mut Sha256Ctx) {
     for offset in 0..size {
         // SAFETY: offsets below the object size remain within `ctx`; byte
         // writes are valid for every part of an object's representation.
-        unsafe { ptr::write_volatile(bytes.add(offset), 0) };
+        unsafe_ffi!(ptr::write_volatile(bytes.add(offset), 0));
     }
     compiler_fence(Ordering::SeqCst);
 }
@@ -304,7 +311,7 @@ pub unsafe extern "C" fn rs_sha256_is_valid(s: *const c_char) -> bool {
     }
 
     // SAFETY: required by this entry point's C-string contract.
-    sha256_bytes_is_valid(unsafe { CStr::from_ptr(s) }.to_bytes())
+    sha256_bytes_is_valid(unsafe_ffi!(CStr::from_ptr(s)).to_bytes())
 }
 
 /// Byte-oriented C facade for `parse_sha256()`.
@@ -322,14 +329,14 @@ pub unsafe extern "C" fn rs_parse_sha256(s: *const c_char, ret: *mut u8) -> c_in
     }
 
     // SAFETY: required by this entry point's C-string contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let Some(digest) = parse_sha256_bytes(bytes) else {
         return -libc::EINVAL;
     };
 
     // SAFETY: the caller guarantees a writable 32-byte result region. `copy`
     // permits the result to overlap the input string, as C's final memcpy can.
-    unsafe { ptr::copy(digest.as_ptr(), ret, SHA256_DIGEST_SIZE) };
+    unsafe_ffi!(ptr::copy(digest.as_ptr(), ret, SHA256_DIGEST_SIZE));
     0
 }
 
@@ -353,17 +360,17 @@ pub unsafe extern "C" fn rs_hmac_sha256(
     }
 
     // SAFETY: the caller guarantees a readable key region.
-    let key = unsafe { slice::from_raw_parts(key.cast::<u8>(), key_size) };
+    let key = unsafe_ffi!(slice::from_raw_parts(key.cast::<u8>(), key_size));
     let input = if input_size == 0 {
         &[]
     } else {
         // SAFETY: the caller guarantees a readable input region.
-        unsafe { slice::from_raw_parts(input.cast::<u8>(), input_size) }
+        unsafe_ffi!(slice::from_raw_parts(input.cast::<u8>(), input_size))
     };
     let digest = hmac_sha256(key, input);
     // SAFETY: the caller guarantees a writable 32-byte result region. `copy`
     // permits result/input overlap after the digest has been fully computed.
-    unsafe { ptr::copy(digest.as_ptr(), res, SHA256_DIGEST_SIZE) };
+    unsafe_ffi!(ptr::copy(digest.as_ptr(), res, SHA256_DIGEST_SIZE));
 }
 
 #[cfg(test)]

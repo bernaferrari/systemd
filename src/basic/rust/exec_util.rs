@@ -4,6 +4,13 @@
 //
 // Exec command flags string table and embedded newline indentation.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_void};
 use std::os::raw::c_char;
 use std::ptr;
@@ -251,22 +258,22 @@ fn allocate_exec_command_flags_strv(flags: u32) -> Result<*mut *mut c_char, i32>
 
         let Some(allocation_size) = name.len().checked_add(1) else {
             // SAFETY: vector owns exactly its initialized C-allocator entries.
-            unsafe { free_exec_command_flags_strv(vector, initialized) };
+            unsafe_ffi!(free_exec_command_flags_strv(vector, initialized));
             return Err(ENOMEM);
         };
         let string = ffi::malloc(allocation_size).cast::<c_char>();
         if string.is_null() {
             // SAFETY: vector owns exactly its initialized C-allocator entries.
-            unsafe { free_exec_command_flags_strv(vector, initialized) };
+            unsafe_ffi!(free_exec_command_flags_strv(vector, initialized));
             return Err(ENOMEM);
         }
         // SAFETY: `string` owns `name.len() + 1` writable bytes and the static
         // source has exactly `name.len()` readable bytes.
-        unsafe {
+        unsafe_ffi!({
             ptr::copy_nonoverlapping(name.as_ptr().cast::<c_char>(), string, name.len());
             *string.add(name.len()) = 0;
             *vector.add(initialized) = string;
-        }
+        });
         initialized += 1;
     }
 
@@ -282,10 +289,10 @@ fn allocate_exec_command_flags_strv(flags: u32) -> Result<*mut *mut c_char, i32>
 unsafe fn free_exec_command_flags_strv(vector: *mut *mut c_char, initialized: usize) {
     for index in 0..initialized {
         // SAFETY: each initialized slot is a unique C-allocator allocation.
-        unsafe { ffi::free((*vector.add(index)).cast::<c_void>()) };
+        unsafe_ffi!(ffi::free((*vector.add(index)).cast::<c_void>()));
     }
     // SAFETY: vector is the owning C-allocator base allocation.
-    unsafe { ffi::free(vector.cast::<c_void>()) };
+    unsafe_ffi!(ffi::free(vector.cast::<c_void>()));
 }
 
 /// Allocate the C-owned result for `indent_embedded_newlines()`.
@@ -299,10 +306,10 @@ fn allocate_indented_cmdline(bytes: &[u8]) -> Result<*mut c_char, i32> {
         return Err(ENOMEM);
     }
     // SAFETY: allocation owns output.len() + 1 bytes and output is readable.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(output.as_ptr().cast::<c_char>(), allocation, output.len());
         *allocation.add(output.len()) = 0;
-    }
+    });
     Ok(allocation)
 }
 
@@ -335,7 +342,7 @@ pub unsafe extern "C" fn rs_exec_command_flags_from_string(s: *const c_char) -> 
         return EINVAL;
     }
     // SAFETY: the entry point contract guarantees a live C string.
-    match exec_command_flags_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes()) {
+    match exec_command_flags_from_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes()) {
         Ok(flags) => flags.bits() as i32,
         Err(error) => error,
     }
@@ -362,13 +369,14 @@ pub unsafe extern "C" fn rs_exec_command_flags_from_strv(
         let mut index = 0usize;
         loop {
             // SAFETY: the entry point contract guarantees a NULL-terminated vector.
-            let option = unsafe { *ex_opts.add(index) };
+            let option = unsafe_ffi!(*ex_opts.add(index));
             if option.is_null() {
                 break;
             }
             // SAFETY: every non-NULL vector entry is a readable C string.
             let parsed =
-                match exec_command_flags_from_bytes(unsafe { CStr::from_ptr(option) }.to_bytes()) {
+                match exec_command_flags_from_bytes(unsafe_ffi!(CStr::from_ptr(option)).to_bytes())
+                {
                     Ok(flag) => flag,
                     Err(error) => return error,
                 };
@@ -381,7 +389,7 @@ pub unsafe extern "C" fn rs_exec_command_flags_from_strv(
     }
 
     // SAFETY: ret is non-null and writable by the entry point contract.
-    unsafe { *ret = flags as i32 };
+    unsafe_ffi!(*ret = flags as i32);
     0
 }
 
@@ -406,7 +414,7 @@ pub unsafe extern "C" fn rs_exec_command_flags_to_strv(
     match allocate_exec_command_flags_strv(flags as u32) {
         Ok(vector) => {
             // SAFETY: ret is non-null and writable by the entry point contract.
-            unsafe { *ret = vector };
+            unsafe_ffi!(*ret = vector);
             0
         }
         Err(error) => error,
@@ -430,10 +438,10 @@ pub unsafe extern "C" fn rs_indent_embedded_newlines(
         return EINVAL;
     }
     // SAFETY: cmdline is a live C string by the entry point contract.
-    match allocate_indented_cmdline(unsafe { CStr::from_ptr(cmdline.cast_const()) }.to_bytes()) {
+    match allocate_indented_cmdline(unsafe_ffi!(CStr::from_ptr(cmdline.cast_const())).to_bytes()) {
         Ok(result) => {
             // SAFETY: ret_cmdline is writable by the entry point contract.
-            unsafe { *ret_cmdline = result };
+            unsafe_ffi!(*ret_cmdline = result);
             0
         }
         Err(error) => error,

@@ -201,12 +201,12 @@ pub unsafe extern "C" fn rs_iovec_alloc(n: usize, ret: *mut IoVec) -> i32 {
     }
 
     // SAFETY: required by this C ABI entry point's contract.
-    unsafe {
+    unsafe_ffi!({
         ret.write(IoVec {
             iov_base: allocation,
             iov_len: n,
         })
-    };
+    });
     0
 }
 
@@ -534,12 +534,12 @@ mod tests {
         let mut empty = IoVec::default();
         // SAFETY: `empty` is writable and the successful allocation is
         // released through the matching C-allocator shim.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_iovec_alloc(0, &mut empty), 0);
             assert!(!empty.iov_base.is_null());
             assert_eq!(empty.iov_len, 0);
             rs_iovec_done(&mut empty);
-        }
+        });
         assert_eq!(empty, IoVec::default());
     }
 
@@ -561,7 +561,7 @@ mod tests {
     fn done_and_memdup_matches_changed_and_unchanged_results() {
         // SAFETY: both payloads use the C allocator and are released through
         // `rs_iovec_done`.
-        unsafe {
+        unsafe_ffi!({
             let mut destination = IoVec {
                 iov_base: alloc_test_bytes(b"old"),
                 iov_len: 3,
@@ -584,7 +584,7 @@ mod tests {
                 b"new"
             );
             rs_iovec_done(&mut destination);
-        }
+        })
     }
 
     #[test]
@@ -603,12 +603,12 @@ mod tests {
             iov_len: 3,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert!(rs_iovec_is_set(&set));
             assert!(!rs_iovec_is_set(&zero));
             assert!(!rs_iovec_is_set(&null));
             assert!(!rs_iovec_is_set(ptr::null()));
-        }
+        })
     }
 
     #[test]
@@ -627,12 +627,12 @@ mod tests {
             iov_len: 3,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert!(rs_iovec_is_valid(&set));
             assert!(rs_iovec_is_valid(&zero));
             assert!(rs_iovec_is_valid(ptr::null()));
             assert!(!rs_iovec_is_valid(&invalid));
-        }
+        })
     }
 
     #[test]
@@ -654,10 +654,10 @@ mod tests {
             },
         ];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_iovec_total_size(ptr::null(), 0), 0);
             assert_eq!(rs_iovec_total_size(iovecs.as_ptr(), 3), 6);
-        }
+        })
     }
 
     #[test]
@@ -696,9 +696,9 @@ mod tests {
             },
         ];
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert!(!rs_iovec_inc_many(iovecs.as_mut_ptr(), 2, 7));
-        }
+        });
         assert_eq!(iovecs[0].iov_len, 0);
         assert_eq!(iovecs[1].iov_len, 3);
     }
@@ -711,9 +711,9 @@ mod tests {
             iov_len: 5,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert!(!rs_iovec_inc_many(&mut iovec, 1, 0));
-        }
+        });
         assert_eq!(iovec.iov_len, 5);
     }
 
@@ -722,13 +722,13 @@ mod tests {
         let s = CString::new("hello").unwrap();
         let mut iovec = IoVec::default();
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert!(!rs_iovec_make_string(&mut iovec, s.as_ptr()).is_null());
             assert_eq!(iovec.iov_base, s.as_ptr() as *mut c_void);
             assert_eq!(iovec.iov_len, 5);
             rs_iovec_make_string(&mut iovec, ptr::null());
             assert_eq!(iovec.iov_len, 0);
-        }
+        })
     }
 
     #[test]
@@ -746,13 +746,13 @@ mod tests {
             iov_len: 2,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_iovec_memcmp(&a, &a), 0);
             assert!(rs_iovec_memcmp(&a, &b) < 0);
             assert!(rs_iovec_memcmp(&b, &a) > 0);
             assert!(rs_iovec_memcmp(&c, &a) < 0);
             assert_eq!(rs_iovec_memcmp(ptr::null(), ptr::null()), 0);
-        }
+        })
     }
 
     #[test]
@@ -763,14 +763,14 @@ mod tests {
             iov_len: 11,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert!(!rs_iovec_memdup(&src, &mut out).is_null());
             assert_eq!(out.iov_len, 11);
             assert_ne!(out.iov_base, src.iov_base);
             let bytes = slice::from_raw_parts(out.iov_base.cast::<u8>(), out.iov_len);
             assert_eq!(bytes, b"hello world");
             rs_iovec_done(&mut out);
-        }
+        })
     }
 
     #[test]
@@ -781,9 +781,9 @@ mod tests {
             iov_len: 1,
         };
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert!(!rs_iovec_memdup(&src, &mut out).is_null());
-        }
+        });
         assert_eq!(out, IoVec::default());
     }
 
@@ -797,7 +797,7 @@ mod tests {
         // SAFETY: the raw pointer is valid for both source and result. The C
         // API permits this aliasing and the implementation copies before it
         // writes the result back through the pointer.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_iovec_memdup(iovec_ptr, iovec_ptr), iovec_ptr);
             assert_ne!(iovec.iov_base, b"hello world".as_ptr() as *mut c_void);
             assert_eq!(
@@ -805,13 +805,13 @@ mod tests {
                 b"hello world"
             );
             rs_iovec_done(iovec_ptr);
-        }
+        })
     }
 
     #[test]
     fn done_many_and_free_clears_allocated_entries() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let entries = [
                 IoVec {
                     iov_base: alloc_test_bytes(b"ab"),
@@ -824,6 +824,6 @@ mod tests {
             ];
             let ptr = alloc_iovec_array(&entries);
             rs_iovec_done_many_and_free(ptr, 2);
-        }
+        })
     }
 }

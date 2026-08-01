@@ -12,6 +12,13 @@
 //! remains a release gate. The raw ABI is confined to this module in the
 //! meantime.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CString, c_char, c_int};
 use std::fmt;
 use std::os::fd::RawFd;
@@ -370,7 +377,7 @@ pub fn parse_args_detailed(args: &[String]) -> Result<ParsedArgs, ParseFailure> 
 pub fn print_version() -> Result<(), BridgeError> {
     // SAFETY: `version()` has no arguments or memory preconditions and writes
     // only to the process standard output, as it does for the C entry point.
-    let result = unsafe { version() };
+    let result = unsafe_ffi!(version());
     check_bus_call(result, "Failed to print version")
 }
 
@@ -459,7 +466,7 @@ impl Bus {
     fn new() -> Result<Self, BridgeError> {
         let mut ptr = std::ptr::null_mut();
         // SAFETY: `ptr` points to writable storage for one opaque bus pointer.
-        let result = unsafe { sd_bus_new(&mut ptr) };
+        let result = unsafe_ffi!(sd_bus_new(&mut ptr));
         check_bus_call(result, "Failed to allocate bus")?;
         let ptr = NonNull::new(ptr).ok_or(BridgeError::BusCall {
             operation: "sd_bus_new returned a null bus",
@@ -474,14 +481,14 @@ impl Bus {
                 Some(address) => {
                     let address = CString::new(address).map_err(|_| BridgeError::NulInAddress)?;
                     // SAFETY: `self.ptr` is a live bus and `address` is NUL-terminated for this call.
-                    unsafe { sd_bus_set_address(self.ptr.as_ptr(), address.as_ptr()) }
+                    unsafe_ffi!(sd_bus_set_address(self.ptr.as_ptr(), address.as_ptr()))
                 }
                 // SAFETY: `self.ptr` is a live, unset bus.
                 None if config.runtime_scope == RuntimeScope::System => unsafe {
                     bus_set_address_system(self.ptr.as_ptr())
                 },
                 // SAFETY: `self.ptr` is a live, unset bus.
-                None => unsafe { bus_set_address_user(self.ptr.as_ptr()) },
+                None => unsafe_ffi!(bus_set_address_user(self.ptr.as_ptr())),
             },
             BusTransport::Machine => {
                 let machine = config.bus_path.as_deref().ok_or_else(|| {
@@ -503,20 +510,20 @@ impl Bus {
 
     fn negotiate_fds(&mut self, enabled: bool) -> Result<(), BridgeError> {
         // SAFETY: `self.ptr` is a live bus in configuration state.
-        let result = unsafe { sd_bus_negotiate_fds(self.ptr.as_ptr(), enabled.into()) };
+        let result = unsafe_ffi!(sd_bus_negotiate_fds(self.ptr.as_ptr(), enabled.into()));
         check_bus_call(result, "Failed to set FD negotiation")
     }
 
     fn start(&mut self) -> Result<(), BridgeError> {
         // SAFETY: `self.ptr` is a fully configured live bus.
-        let result = unsafe { sd_bus_start(self.ptr.as_ptr()) };
+        let result = unsafe_ffi!(sd_bus_start(self.ptr.as_ptr()));
         check_bus_call(result, "Failed to start bus")
     }
 
     fn bus_id(&mut self) -> Result<SdId128, BridgeError> {
         let mut id = SdId128 { bytes: [0; 16] };
         // SAFETY: `self.ptr` is live and `id` is aligned writable storage for sd_id128_t.
-        let result = unsafe { sd_bus_get_bus_id(self.ptr.as_ptr(), &mut id) };
+        let result = unsafe_ffi!(sd_bus_get_bus_id(self.ptr.as_ptr(), &mut id));
         check_bus_call(result, "Failed to get server ID")?;
         Ok(id)
     }
@@ -530,7 +537,7 @@ impl Bus {
         }
         // SAFETY: `self.ptr` is an unset bus. sd-bus documents that ownership
         // transfers only on a non-negative result, which is reflected below.
-        let result = unsafe { sd_bus_set_fd(self.ptr.as_ptr(), fds.input, fds.output) };
+        let result = unsafe_ffi!(sd_bus_set_fd(self.ptr.as_ptr(), fds.input, fds.output));
         check_bus_call(result, "Failed to set fds")?;
         fds.transferred = true;
         Ok(())
@@ -538,20 +545,20 @@ impl Bus {
 
     fn set_server(&mut self, server_id: SdId128) -> Result<(), BridgeError> {
         // SAFETY: `self.ptr` is a live bus and `server_id` is ABI-compatible sd_id128_t.
-        let result = unsafe { sd_bus_set_server(self.ptr.as_ptr(), 1, server_id) };
+        let result = unsafe_ffi!(sd_bus_set_server(self.ptr.as_ptr(), 1, server_id));
         check_bus_call(result, "Failed to set server mode")
     }
 
     fn set_anonymous(&mut self) -> Result<(), BridgeError> {
         // SAFETY: `self.ptr` is a live bus in configuration state.
-        let result = unsafe { sd_bus_set_anonymous(self.ptr.as_ptr(), 1) };
+        let result = unsafe_ffi!(sd_bus_set_anonymous(self.ptr.as_ptr(), 1));
         check_bus_call(result, "Failed to set anonymous authentication")
     }
 
     fn process(&mut self) -> Result<ProcessResult, BridgeError> {
         let mut message = std::ptr::null_mut();
         // SAFETY: `self.ptr` is live and `message` is writable storage for an optional message reference.
-        let result = unsafe { sd_bus_process(self.ptr.as_ptr(), &mut message) };
+        let result = unsafe_ffi!(sd_bus_process(self.ptr.as_ptr(), &mut message));
         if result < 0 {
             return Err(BridgeError::BusCall {
                 operation: "Failed to process bus",
@@ -579,7 +586,7 @@ impl Bus {
 
     fn fd(&self) -> Result<RawFd, BridgeError> {
         // SAFETY: `self.ptr` is live.
-        let result = unsafe { sd_bus_get_fd(self.ptr.as_ptr()) };
+        let result = unsafe_ffi!(sd_bus_get_fd(self.ptr.as_ptr()));
         if result < 0 {
             return Err(BridgeError::BusCall {
                 operation: "Failed to get fd",
@@ -591,7 +598,7 @@ impl Bus {
 
     fn events(&self) -> Result<c_int, BridgeError> {
         // SAFETY: `self.ptr` is live.
-        let result = unsafe { sd_bus_get_events(self.ptr.as_ptr()) };
+        let result = unsafe_ffi!(sd_bus_get_events(self.ptr.as_ptr()));
         if result < 0 {
             return Err(BridgeError::BusCall {
                 operation: "Failed to get events mask",
@@ -604,7 +611,7 @@ impl Bus {
     fn timeout(&self) -> Result<u64, BridgeError> {
         let mut timeout = u64::MAX;
         // SAFETY: `self.ptr` is live and `timeout` is writable storage.
-        let result = unsafe { sd_bus_get_timeout(self.ptr.as_ptr(), &mut timeout) };
+        let result = unsafe_ffi!(sd_bus_get_timeout(self.ptr.as_ptr(), &mut timeout));
         check_bus_call(result, "Failed to get timeout")?;
         Ok(timeout)
     }
@@ -613,7 +620,7 @@ impl Bus {
 impl Drop for Bus {
     fn drop(&mut self) {
         // SAFETY: `ptr` was created by sd_bus_new and is released exactly once here.
-        unsafe { sd_bus_flush_close_unref(self.ptr.as_ptr()) };
+        unsafe_ffi!(sd_bus_flush_close_unref(self.ptr.as_ptr()));
     }
 }
 
@@ -643,7 +650,7 @@ impl Message {
 impl Drop for Message {
     fn drop(&mut self) {
         // SAFETY: `ptr` is an owned reference returned by sd_bus_process.
-        unsafe { sd_bus_message_unref(self.ptr.as_ptr()) };
+        unsafe_ffi!(sd_bus_message_unref(self.ptr.as_ptr()));
     }
 }
 
@@ -685,7 +692,7 @@ fn monotonic_now_usec() -> Result<u64, BridgeError> {
         tv_nsec: 0,
     };
     // SAFETY: `now` points to valid writable storage.
-    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut now) } < 0 {
+    if unsafe_ffi!(libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut now)) < 0 {
         return Err(BridgeError::Clock(last_errno()));
     }
     let seconds = u64::try_from(now.tv_sec).map_err(|_| BridgeError::Clock(libc::EOVERFLOW))?;
@@ -786,14 +793,14 @@ pub fn run_bridge(
             .as_ref()
             .map_or(std::ptr::null(), |value| value as *const libc::timespec);
         // SAFETY: `poll_fds` is a valid mutable array and `timeout_ptr` is either null or points to `timeout`.
-        let result = unsafe {
+        let result = unsafe_ffi!({
             libc::ppoll(
                 poll_fds.as_mut_ptr(),
                 poll_fds.len() as _,
                 timeout_ptr,
                 std::ptr::null(),
             )
-        };
+        });
         if result < 0 {
             let errno = last_errno();
             if !matches!(errno, libc::EAGAIN | libc::EINTR) {

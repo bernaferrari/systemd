@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::*;
 
 #[derive(Debug, Clone, Default)]
@@ -279,7 +286,12 @@ pub(super) fn read_path_xattr(path: &Path, name: &str) -> io::Result<Option<Vec<
 
     // SAFETY: path and name are live NUL-terminated strings; a null value
     // pointer with size zero performs the documented size query.
-    let size = unsafe { libc::getxattr(path.as_ptr(), name.as_ptr(), std::ptr::null_mut(), 0) };
+    let size = unsafe_ffi!(libc::getxattr(
+        path.as_ptr(),
+        name.as_ptr(),
+        std::ptr::null_mut(),
+        0
+    ));
     if size < 0 {
         let err = io::Error::last_os_error();
         if matches!(
@@ -294,14 +306,14 @@ pub(super) fn read_path_xattr(path: &Path, name: &str) -> io::Result<Option<Vec<
     let mut buf = vec![0_u8; size as usize];
     // SAFETY: both C strings remain live and buf exposes exactly buf.len()
     // writable bytes.
-    let rc = unsafe {
+    let rc = unsafe_ffi!({
         libc::getxattr(
             path.as_ptr(),
             name.as_ptr(),
             buf.as_mut_ptr().cast(),
             buf.len(),
         )
-    };
+    });
     if rc < 0 {
         return Err(io::Error::last_os_error());
     }

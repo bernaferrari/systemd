@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/shared/bpf-program.c, tpm2-util.c, wifi-util.c
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::*;
 
 // ── wifi-util: nl80211_iftype (ADHOC=1..NAN=12, UNSPECIFIED=0 has no string) ──
@@ -155,7 +162,7 @@ pub extern "C" fn rs_tpm2_pcr_index_to_string(v: i32) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_tpm2_pcr_index_from_string(s: *const c_char) -> i32 {
     // SAFETY: required by this C ABI entry point's contract.
-    let Some(input) = (unsafe { input_bytes(s) }) else {
+    let Some(input) = (unsafe_ffi!(input_bytes(s))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     // Try table lookup first
@@ -165,7 +172,7 @@ pub unsafe extern "C" fn rs_tpm2_pcr_index_from_string(s: *const c_char) -> i32 
     // Numeric fallback: 0..TPM2_PCRS_MAX-1
     // SAFETY: the entry point's C-string contract remains valid for the
     // delegated safe_atou-compatible numeric parser.
-    if let Some(u) = unsafe { parse_uint(s) }
+    if let Some(u) = unsafe_ffi!(parse_uint(s))
         && u < TPM2_PCRS_MAX as u32
     {
         return u as i32;
@@ -220,19 +227,19 @@ pub extern "C" fn rs_tpm2_hash_alg_to_string(alg: u16) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_tpm2_hash_alg_from_string(alg: *const c_char) -> i32 {
     // SAFETY: the caller guarantees alg is null or a live NUL-terminated C string.
-    if unsafe { cstr_eq_ignore_ascii_case_static(alg, b"sha1\0") } {
+    if unsafe_ffi!(cstr_eq_ignore_ascii_case_static(alg, b"sha1\0")) {
         return TPM2_ALG_SHA1 as i32;
     }
     // SAFETY: as above.
-    if unsafe { cstr_eq_ignore_ascii_case_static(alg, b"sha256\0") } {
+    if unsafe_ffi!(cstr_eq_ignore_ascii_case_static(alg, b"sha256\0")) {
         return TPM2_ALG_SHA256 as i32;
     }
     // SAFETY: as above.
-    if unsafe { cstr_eq_ignore_ascii_case_static(alg, b"sha384\0") } {
+    if unsafe_ffi!(cstr_eq_ignore_ascii_case_static(alg, b"sha384\0")) {
         return TPM2_ALG_SHA384 as i32;
     }
     // SAFETY: as above.
-    if unsafe { cstr_eq_ignore_ascii_case_static(alg, b"sha512\0") } {
+    if unsafe_ffi!(cstr_eq_ignore_ascii_case_static(alg, b"sha512\0")) {
         return TPM2_ALG_SHA512 as i32;
     }
     Errno::EINVAL.to_neg_errno()
@@ -260,11 +267,11 @@ pub extern "C" fn rs_tpm2_asym_alg_to_string(alg: u16) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_tpm2_asym_alg_from_string(alg: *const c_char) -> i32 {
     // SAFETY: the caller guarantees alg is null or a live NUL-terminated C string.
-    if unsafe { cstr_eq_ignore_ascii_case_static(alg, b"ecc\0") } {
+    if unsafe_ffi!(cstr_eq_ignore_ascii_case_static(alg, b"ecc\0")) {
         return TPM2_ALG_ECC as i32;
     }
     // SAFETY: as above.
-    if unsafe { cstr_eq_ignore_ascii_case_static(alg, b"rsa\0") } {
+    if unsafe_ffi!(cstr_eq_ignore_ascii_case_static(alg, b"rsa\0")) {
         return TPM2_ALG_RSA as i32;
     }
     Errno::EINVAL.to_neg_errno()
@@ -282,7 +289,7 @@ pub unsafe extern "C" fn rs_tpm2_asym_alg_from_string(alg: *const c_char) -> i32
 pub extern "C" fn rs_tpm2_pcr_mask_to_string(mask: u32) -> *mut c_char {
     if mask == 0 {
         // SAFETY: the source is immutable static NUL-terminated storage.
-        return unsafe { rust_strdup(static_cstr_ptr(b"\0")) };
+        return unsafe_ffi!(rust_strdup(static_cstr_ptr(b"\0")));
     }
 
     // Count set bits to estimate output size (each PCR index <= 2 digits + '+' separator)
@@ -304,7 +311,7 @@ pub extern "C" fn rs_tpm2_pcr_mask_to_string(mask: u32) -> *mut c_char {
 
         if !first {
             // SAFETY: j remains below alloc_size by the 3*n_bits+1 bound.
-            unsafe { *buf.add(j) = b'+' };
+            unsafe_ffi!(*buf.add(j) = b'+');
             j += 1;
         }
         first = false;
@@ -324,12 +331,12 @@ pub extern "C" fn rs_tpm2_pcr_mask_to_string(mask: u32) -> *mut c_char {
         // Digits are reversed, copy them in reverse order
         for k in (0..n_digits).rev() {
             // SAFETY: j remains below alloc_size by the 3*n_bits+1 bound.
-            unsafe { *buf.add(j) = digits[k] };
+            unsafe_ffi!(*buf.add(j) = digits[k]);
             j += 1;
         }
     }
     // SAFETY: alloc_size reserves the final NUL after every encoded index.
-    unsafe { *buf.add(j) = 0 };
+    unsafe_ffi!(*buf.add(j) = 0);
     buf.cast::<c_char>()
 }
 
@@ -348,17 +355,17 @@ pub unsafe extern "C" fn rs_tpm2_nvpcr_name_is_valid(name: *const c_char) -> boo
     }
     // filename_is_valid
     // SAFETY: the caller guarantees name is a live NUL-terminated C string.
-    if !unsafe { crate::path_util::rs_filename_is_valid(name) } {
+    if !unsafe_ffi!(crate::path_util::rs_filename_is_valid(name)) {
         return false;
     }
     // string_is_safe
     // SAFETY: the same caller contract applies to the string validator.
-    if !unsafe { crate::string_util::rs_string_is_safe(name) } {
+    if !unsafe_ffi!(crate::string_util::rs_string_is_safe(name)) {
         return false;
     }
     // Must NOT be a valid PCR index name
     // SAFETY: the same caller contract applies to the PCR parser.
-    if unsafe { rs_tpm2_pcr_index_from_string(name) } >= 0 {
+    if unsafe_ffi!(rs_tpm2_pcr_index_from_string(name)) >= 0 {
         return false;
     }
     true

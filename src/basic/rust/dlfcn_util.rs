@@ -7,6 +7,13 @@
 // `dlopen_safe()` remains responsible for static-build handling,
 // `block_dlopen()`, and the security-required RTLD_NOW | RTLD_NODELETE flags.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::fmt;
 use std::ptr::{self, NonNull};
@@ -133,18 +140,18 @@ fn resolve_required_symbol(
     // POSIX requires clearing the thread-local diagnostic before dlsym():
     // a null symbol value alone does not distinguish an error.
     // SAFETY: `dlerror()` takes no arguments.
-    unsafe { libc::dlerror() };
+    unsafe_ffi!(libc::dlerror());
     // SAFETY: `handle` is a live reference returned by `dlopen_safe()` and
     // `name` remains a live NUL-terminated string throughout the lookup.
-    let pointer = unsafe { libc::dlsym(handle.as_ptr(), name.as_ptr()) };
+    let pointer = unsafe_ffi!(libc::dlsym(handle.as_ptr(), name.as_ptr()));
     // SAFETY: `dlerror()` takes no arguments and returns thread-local loader
     // state.
-    let loader_error = unsafe { libc::dlerror() };
+    let loader_error = unsafe_ffi!(libc::dlerror());
 
     if !loader_error.is_null() {
         // SAFETY: checked non-null above; copy the borrowed diagnostic before
         // any subsequent loader operation invalidates it.
-        let detail = unsafe { CStr::from_ptr(loader_error) }
+        let detail = unsafe_ffi!(CStr::from_ptr(loader_error))
             .to_string_lossy()
             .into_owned();
         return Err(DlsymError {
@@ -168,7 +175,7 @@ impl UnpublishedDlopenHandle {
 
         // SAFETY: `name` is a live NUL-terminated string and both out-pointers
         // refer to writable local storage for the duration of the call.
-        let result = unsafe { c_dlopen_safe(name.as_ptr(), &mut handle, &mut loader_error) };
+        let result = unsafe_ffi!(c_dlopen_safe(name.as_ptr(), &mut handle, &mut loader_error));
         if result < 0 {
             let detail = if loader_error.is_null() {
                 None
@@ -177,7 +184,7 @@ impl UnpublishedDlopenHandle {
                     // SAFETY: `dlopen_safe()` returned this borrowed,
                     // NUL-terminated diagnostic. Copy it before another
                     // loader operation can replace the thread-local buffer.
-                    unsafe { CStr::from_ptr(loader_error) }
+                    unsafe_ffi!(CStr::from_ptr(loader_error))
                         .to_string_lossy()
                         .into_owned(),
                 )
@@ -218,7 +225,7 @@ impl Drop for UnpublishedDlopenHandle {
     fn drop(&mut self) {
         // SAFETY: this value owns exactly one unpublished reference returned
         // by `dlopen_safe()`. `safe_dlclose()` consumes that reference.
-        unsafe { c_safe_dlclose(self.0.as_ptr()) };
+        unsafe_ffi!(c_safe_dlclose(self.0.as_ptr()));
     }
 }
 

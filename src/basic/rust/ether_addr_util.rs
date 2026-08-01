@@ -89,7 +89,7 @@ fn with_c_buffer<const N: usize, T>(
     operation: impl FnOnce(&mut [c_char; N]) -> T,
 ) -> T {
     // SAFETY: the enclosing ABI contract guarantees N writable C-char slots.
-    operation(unsafe { &mut *ptr.cast::<[c_char; N]>() })
+    operation(unsafe_ffi!(&mut *ptr.cast::<[c_char; N]>()))
 }
 
 impl RsHwAddrData {

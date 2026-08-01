@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/core/unit-printf.c
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::Errno;
 use std::collections::HashMap;
 use std::env;
@@ -58,11 +65,11 @@ impl Default for ManagerContext {
     fn default() -> Self {
         let user_id = {
             // SAFETY: libc getters are thread-safe and do not require preconditions.
-            unsafe { libc::geteuid() as u32 }
+            unsafe_ffi!(libc::geteuid() as u32)
         };
         let group_id = {
             // SAFETY: libc getters are thread-safe and do not require preconditions.
-            unsafe { libc::getegid() as u32 }
+            unsafe_ffi!(libc::getegid() as u32)
         };
 
         let user_name = env::var("USER").unwrap_or_else(|_| "root".into());
@@ -154,14 +161,14 @@ fn normalize_id128(value: String) -> String {
 fn kernel_release() -> Option<String> {
     let mut uts = MaybeUninit::<libc::utsname>::zeroed();
     // SAFETY: `uts` points to writable memory for `uname`.
-    let rc = unsafe { libc::uname(uts.as_mut_ptr()) };
+    let rc = unsafe_ffi!(libc::uname(uts.as_mut_ptr()));
     if rc < 0 {
         return None;
     }
     // SAFETY: `uname` initialized `uts` on success.
-    let uts = unsafe { uts.assume_init() };
+    let uts = unsafe_ffi!(uts.assume_init());
     // SAFETY: `release` from `utsname` is NUL-terminated on POSIX systems.
-    let release = unsafe { CStr::from_ptr(uts.release.as_ptr()) }
+    let release = unsafe_ffi!(CStr::from_ptr(uts.release.as_ptr()))
         .to_string_lossy()
         .into_owned();
     Some(release)

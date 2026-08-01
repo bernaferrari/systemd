@@ -1580,10 +1580,10 @@ unsafe fn parse_ip_port_range_inner(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: low/high are non-null and writable by the caller contract.
-    unsafe {
+    unsafe_ffi!({
         *low = l as u16;
         *high = h as u16;
-    }
+    });
     0
 }
 
@@ -1835,10 +1835,10 @@ pub unsafe extern "C" fn rs_parse_loadavg_fixed_point(s: *const c_char, ret: *mu
     }
     // SAFETY: integer_string has dot_pos+1 bytes; the source prefix has
     // dot_pos readable bytes and cannot overlap this fresh allocation.
-    unsafe {
+    unsafe_ffi!({
         std::ptr::copy_nonoverlapping(s, integer_string, dot_pos);
         *integer_string.add(dot_pos) = 0;
-    }
+    });
 
     let mut i: c_ulong = 0;
     // SAFETY: integer_string is live and NUL-terminated, and i is writable.
@@ -1926,10 +1926,10 @@ pub unsafe extern "C" fn rs_parse_fractional_part_u(
     }
 
     // SAFETY: both output locations are writable by this export's contract.
-    unsafe {
+    unsafe_ffi!({
         *p = cursor;
         *res = value;
-    }
+    });
     0
 }
 
@@ -1946,18 +1946,18 @@ mod tests {
 
     fn free_cstr(s: *const c_char) {
         // SAFETY: ownership of the allocation is transferred exactly once from C back to Rust here.
-        unsafe {
+        unsafe_ffi!({
             let _ = CString::from_raw(s.cast_mut());
-        }
+        })
     }
 
     #[test]
     fn test_rs_parse_boolean_yes() {
         let s = cstr("yes");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_boolean(s), 1);
-        }
+        });
         free_cstr(s);
     }
 
@@ -1965,9 +1965,9 @@ mod tests {
     fn test_rs_parse_boolean_no() {
         let s = cstr("no");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_boolean(s), 0);
-        }
+        });
         free_cstr(s);
     }
 
@@ -1975,9 +1975,9 @@ mod tests {
     fn test_rs_parse_boolean_true() {
         let s = cstr("true");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_boolean(s), 1);
-        }
+        });
         free_cstr(s);
     }
 
@@ -1985,9 +1985,9 @@ mod tests {
     fn test_rs_parse_boolean_false() {
         let s = cstr("false");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_boolean(s), 0);
-        }
+        });
         free_cstr(s);
     }
 
@@ -1995,9 +1995,9 @@ mod tests {
     fn test_rs_parse_boolean_one() {
         let s = cstr("1");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_boolean(s), 1);
-        }
+        });
         free_cstr(s);
     }
 
@@ -2005,9 +2005,9 @@ mod tests {
     fn test_rs_parse_boolean_zero() {
         let s = cstr("0");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_boolean(s), 0);
-        }
+        });
         free_cstr(s);
     }
 
@@ -2015,9 +2015,9 @@ mod tests {
     fn test_rs_parse_boolean_invalid() {
         let s = cstr("invalid");
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_boolean(s), Errno::EINVAL.to_neg_errno());
-        }
+        });
         free_cstr(s);
     }
 
@@ -2026,10 +2026,10 @@ mod tests {
         let s = cstr("42");
         let mut val: u32 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_safe_atou(s, &mut val), 0);
             assert_eq!(val, 42);
-        }
+        });
         free_cstr(s);
     }
 
@@ -2038,10 +2038,10 @@ mod tests {
         let s = cstr("0");
         let mut val: u32 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_safe_atou(s, &mut val), 0);
             assert_eq!(val, 0);
-        }
+        });
         free_cstr(s);
     }
 
@@ -2050,9 +2050,9 @@ mod tests {
         let s = cstr("-1");
         let mut val: u32 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_safe_atou(s, &mut val), Errno::ERANGE.to_neg_errno());
-        }
+        });
         free_cstr(s);
     }
 
@@ -2061,9 +2061,9 @@ mod tests {
         let s = cstr("abc");
         let mut val: u32 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_safe_atou(s, &mut val), Errno::EINVAL.to_neg_errno());
-        }
+        });
         free_cstr(s);
     }
 
@@ -2072,10 +2072,10 @@ mod tests {
         let s = cstr("-42");
         let mut val: i32 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_safe_atoi(s, &mut val), 0);
             assert_eq!(val, -42);
-        }
+        });
         free_cstr(s);
     }
 
@@ -2084,10 +2084,10 @@ mod tests {
         let s = cstr("0");
         let mut val: i32 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_safe_atoi(s, &mut val), 0);
             assert_eq!(val, 0);
-        }
+        });
         free_cstr(s);
     }
 
@@ -2096,10 +2096,10 @@ mod tests {
         let s = cstr("42");
         let mut val: i32 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_safe_atoi(s, &mut val), 0);
             assert_eq!(val, 42);
-        }
+        });
         free_cstr(s);
     }
 
@@ -2145,10 +2145,10 @@ mod tests {
         let s = cstr("1K");
         let mut val: u64 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_size(s, 1024, &mut val), 0);
             assert_eq!(val, 1024);
-        }
+        });
         free_cstr(s);
     }
 
@@ -2157,10 +2157,10 @@ mod tests {
         let s = cstr("1M");
         let mut val: u64 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_size(s, 1024, &mut val), 0);
             assert_eq!(val, 1024 * 1024);
-        }
+        });
         free_cstr(s);
     }
 
@@ -2169,10 +2169,10 @@ mod tests {
         let s = cstr("1G");
         let mut val: u64 = 0;
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_size(s, 1024, &mut val), 0);
             assert_eq!(val, 1024 * 1024 * 1024);
-        }
+        });
         free_cstr(s);
     }
 }

@@ -5,6 +5,13 @@
 // Mount point classification — pure path-component comparison against the
 // mount table and ignore list in mount-setup.c.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_char};
 
 // These are the .where fields from mount_table in mount-setup.c. Keep entries
@@ -152,7 +159,7 @@ pub unsafe extern "C" fn rs_mount_point_is_api(path: *const c_char) -> bool {
 
     // SAFETY: the caller contract guarantees a live NUL-terminated C string;
     // to_bytes() deliberately preserves non-UTF-8 bytes.
-    let path = unsafe { CStr::from_ptr(path) }.to_bytes();
+    let path = unsafe_ffi!(CStr::from_ptr(path)).to_bytes();
     mount_point_is_api(path)
 }
 
@@ -172,7 +179,7 @@ pub unsafe extern "C" fn rs_mount_point_ignore(path: *const c_char) -> bool {
 
     // SAFETY: the caller contract guarantees a live NUL-terminated C string;
     // to_bytes() deliberately preserves non-UTF-8 bytes.
-    let path = unsafe { CStr::from_ptr(path) }.to_bytes();
+    let path = unsafe_ffi!(CStr::from_ptr(path)).to_bytes();
     mount_point_ignore(path)
 }
 

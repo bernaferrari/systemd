@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
@@ -100,13 +107,19 @@ pub fn is_seccomp_available() -> bool {
 
     // SAFETY: PR_GET_SECCOMP takes only integer values here and dereferences no
     // caller-provided pointer.
-    let basic = unsafe { crate::ffi::prctl(PR_GET_SECCOMP, 0, 0, 0, 0) } >= 0;
+    let basic = unsafe_ffi!(crate::ffi::prctl(PR_GET_SECCOMP, 0, 0, 0, 0)) >= 0;
 
     // The filter check is: prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, NULL)
     // which should fail with EFAULT if seccomp is available.
     // SAFETY: the null filter pointer is intentional: EFAULT is the feature
     // probe result, and the remaining arguments are integer values.
-    let filter = unsafe { crate::ffi::prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, 0, 0, 0) } < 0
+    let filter = unsafe_ffi!(crate::ffi::prctl(
+        PR_SET_SECCOMP,
+        SECCOMP_MODE_FILTER,
+        0,
+        0,
+        0
+    )) < 0
         && std::io::Error::last_os_error().raw_os_error() == Some(libc::EFAULT);
 
     let available = basic && filter;

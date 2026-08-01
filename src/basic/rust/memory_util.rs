@@ -4,6 +4,13 @@
 //
 // Memory utility functions.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::cmp::Ordering;
 use std::ffi::{c_int, c_void};
 use std::sync::OnceLock;
@@ -40,7 +47,7 @@ fn cached_page_size() -> Result<usize, MemoryError> {
 
     // SAFETY: `_SC_PAGESIZE` is the exact C authority query and has no
     // caller-provided memory contract.
-    let queried = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    let queried = unsafe_ffi!(libc::sysconf(libc::_SC_PAGESIZE));
     if queried <= 0 {
         return Err(MemoryError::SystemPageSizeUnavailable);
     }
@@ -170,7 +177,7 @@ pub unsafe extern "C" fn rs_memcpy_safe(
     assert!(!src.is_null(), "memcpy_safe source must be non-null");
     // SAFETY: documented C ABI preconditions match `memcpy_safe()` and the
     // lower-level wrapper's requirements.
-    unsafe { ffi::memcpy(dst, src, n) }
+    unsafe_ffi!(ffi::memcpy(dst, src, n))
 }
 
 /// Copy `n` bytes and return the one-past-end destination pointer, matching
@@ -191,10 +198,10 @@ pub unsafe extern "C" fn rs_mempcpy_safe(
     }
 
     // SAFETY: forwarded unchanged to the documented `rs_memcpy_safe` ABI.
-    unsafe { rs_memcpy_safe(dst, src, n) };
+    unsafe_ffi!(rs_memcpy_safe(dst, src, n));
     // SAFETY: the caller's destination range is valid for `n` bytes, so its
     // one-past-end pointer is valid under the same C object contract.
-    unsafe { dst.cast::<u8>().add(n).cast() }
+    unsafe_ffi!(dst.cast::<u8>().add(n).cast())
 }
 
 /// Compare `n` bytes with the null-for-zero-length exception of
@@ -211,7 +218,7 @@ pub unsafe extern "C" fn rs_memcmp_safe(s1: *const c_void, s2: *const c_void, n:
     assert!(!s1.is_null(), "memcmp_safe first input must be non-null");
     assert!(!s2.is_null(), "memcmp_safe second input must be non-null");
     // SAFETY: documented C ABI preconditions match the wrapper's requirements.
-    unsafe { ffi::memcmp(s1, s2, n) }
+    unsafe_ffi!(ffi::memcmp(s1, s2, n))
 }
 
 /// Compare two counted byte sequences lexicographically, matching
@@ -229,7 +236,7 @@ pub unsafe extern "C" fn rs_memcmp_nn(
 ) -> c_int {
     let shared_length = n1.min(n2);
     // SAFETY: `shared_length` is within both caller-provided readable ranges.
-    let comparison = unsafe { rs_memcmp_safe(s1, s2, shared_length) };
+    let comparison = unsafe_ffi!(rs_memcmp_safe(s1, s2, shared_length));
     if comparison != 0 {
         return comparison;
     }
@@ -249,14 +256,14 @@ pub unsafe extern "C" fn rs_memcmp_nn(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_mempset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void {
     // SAFETY: documented C ABI preconditions match the wrapper's requirements.
-    unsafe { ffi::memset(s, c, n) };
+    unsafe_ffi!(ffi::memset(s, c, n));
     if n == 0 {
         return s;
     }
 
     // SAFETY: the caller's writable range is valid for `n` bytes, so its
     // one-past-end pointer is valid under the same C object contract.
-    unsafe { s.cast::<u8>().add(n).cast() }
+    unsafe_ffi!(s.cast::<u8>().add(n).cast())
 }
 
 /// Find the first `needle` occurrence in a counted byte range, matching
@@ -290,7 +297,7 @@ pub unsafe extern "C" fn rs_memmem_safe(
         let mut index = 0;
         while index < needlelen {
             // SAFETY: the documented input ranges cover every compared byte.
-            if unsafe { *haystack.add(offset + index) != *needle.add(index) } {
+            if unsafe_ffi!(*haystack.add(offset + index) != *needle.add(index)) {
                 break;
             }
             index += 1;
@@ -299,7 +306,7 @@ pub unsafe extern "C" fn rs_memmem_safe(
             // SAFETY: the matching start lies within the caller's readable
             // haystack range, so converting it to the C-compatible result
             // pointer does not dereference or advance beyond that range.
-            return unsafe { haystack.add(offset).cast_mut().cast() };
+            return unsafe_ffi!(haystack.add(offset).cast_mut().cast());
         }
     }
 
@@ -321,14 +328,14 @@ pub unsafe extern "C" fn rs_mempmem_safe(
     needlelen: usize,
 ) -> *mut c_void {
     // SAFETY: forwarded unchanged to the documented `rs_memmem_safe` ABI.
-    let match_start = unsafe { rs_memmem_safe(haystack, haystacklen, needle, needlelen) };
+    let match_start = unsafe_ffi!(rs_memmem_safe(haystack, haystacklen, needle, needlelen));
     if match_start.is_null() {
         return std::ptr::null_mut();
     }
 
     // SAFETY: a non-null match is within the caller's haystack range and
     // `needlelen` advances at most to its one-past-end pointer.
-    unsafe { match_start.cast::<u8>().add(needlelen).cast() }
+    unsafe_ffi!(match_start.cast::<u8>().add(needlelen).cast())
 }
 
 /// Match the fundamental `memeqbyte()` implementation, including its
@@ -345,7 +352,7 @@ pub unsafe extern "C" fn rs_memeqbyte(byte: u8, data: *const c_void, length: usi
     let checked = length.min(16);
     for index in 0..checked {
         // SAFETY: the documented input range covers every inspected byte.
-        if unsafe { *data.add(index) } != byte {
+        if unsafe_ffi!(*data.add(index)) != byte {
             return false;
         }
     }
@@ -357,7 +364,7 @@ pub unsafe extern "C" fn rs_memeqbyte(byte: u8, data: *const c_void, length: usi
 
     // SAFETY: `length > 16`, so the documented input range covers both the
     // original prefix and the offset-by-sixteen range used by the C fast path.
-    unsafe { ffi::memcmp(data.cast(), data.add(16).cast(), remaining) == 0 }
+    unsafe_ffi!(ffi::memcmp(data.cast(), data.add(16).cast(), remaining) == 0)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────

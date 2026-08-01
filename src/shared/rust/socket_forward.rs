@@ -15,6 +15,13 @@
 // The forwarder detects EOF/disconnect on either side and reports completion
 // when all buffered data has been flushed.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::fmt;
 use std::io;
@@ -687,7 +694,8 @@ fn collect_rights(
     // SAFETY: CMSG_LEN only calculates layout and CMSG_FIRSTHDR returns a
     // pointer into hdr's recvmsg-populated control buffer; it is validated
     // before every dereference below.
-    let (header_len, mut cmsg) = unsafe { (libc::CMSG_LEN(0) as usize, libc::CMSG_FIRSTHDR(hdr)) };
+    let (header_len, mut cmsg) =
+        unsafe_ffi!((libc::CMSG_LEN(0) as usize, libc::CMSG_FIRSTHDR(hdr)));
 
     while !cmsg.is_null() {
         let cmsg_start = cmsg.cast::<u8>() as usize;
@@ -715,7 +723,7 @@ fn collect_rights(
 
             // SAFETY: the cmsg length validation above covers exactly this
             // aligned payload region before any raw fd is read.
-            let data = unsafe { libc::CMSG_DATA(cmsg).cast::<RawFd>() };
+            let data = unsafe_ffi!(libc::CMSG_DATA(cmsg).cast::<RawFd>());
             let data_start = data.cast::<u8>() as usize;
             let expected_data_start = cmsg_start
                 .checked_add(header_len)
@@ -731,19 +739,19 @@ fn collect_rights(
             for index in 0..count {
                 // SAFETY: `index < count` and the checked payload bounds above
                 // guarantee that this reads one complete RawFd.
-                let fd = unsafe { data.add(index).read() };
+                let fd = unsafe_ffi!(data.add(index).read());
                 if fd < 0 {
                     return Err(invalid_cmsg_data());
                 }
                 // SAFETY: SCM_RIGHTS supplies a new owned descriptor for each
                 // valid payload entry. `OwnedFd` closes previously collected
                 // descriptors if a later cmsg is rejected.
-                received.push(unsafe { OwnedFd::from_raw_fd(fd) });
+                received.push(unsafe_ffi!(OwnedFd::from_raw_fd(fd)));
             }
         }
 
         // SAFETY: the validated cmsg length is contained in the control buffer.
-        cmsg = unsafe { libc::CMSG_NXTHDR(hdr, cmsg) };
+        cmsg = unsafe_ffi!(libc::CMSG_NXTHDR(hdr, cmsg));
     }
 
     Ok(received)
@@ -1240,7 +1248,7 @@ mod tests {
     fn test_listen_fds_count_unset() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove(LISTEN_FDS_ENV);
         assert_eq!(listen_fds_count(), 0);
     }
@@ -1250,7 +1258,7 @@ mod tests {
     fn test_listen_fds_count_invalid() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set(LISTEN_FDS_ENV, "not_a_number");
         assert_eq!(listen_fds_count(), 0);
     }
@@ -1260,7 +1268,7 @@ mod tests {
     fn test_listen_fds_count_valid() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set(LISTEN_FDS_ENV, "5");
         assert_eq!(listen_fds_count(), 5);
     }
@@ -1270,7 +1278,7 @@ mod tests {
     fn test_is_socket_activated() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove(LISTEN_FDS_ENV);
         assert!(!is_socket_activated());
 

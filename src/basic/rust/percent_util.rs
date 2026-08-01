@@ -8,6 +8,13 @@
 // permille (‰), and permyriad (‱) values. Also provides
 // UINT32_SCALE_FROM/TO helpers for converting to/from 2^32-1 scale.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, CString};
 
 use crate::ffi::{clear_errno, get_errno};
@@ -64,7 +71,7 @@ fn safe_atoi_bytes(s: &[u8]) -> Result<i32, i32> {
     clear_errno();
     // SAFETY: `numeric` is a live NUL-terminated string, `end` is writable,
     // and mangle_base above supplies only libc-supported bases 0, 2, or 8.
-    let value = unsafe { libc::strtol(start, &mut end, base as libc::c_int) };
+    let value = unsafe_ffi!(libc::strtol(start, &mut end, base as libc::c_int));
     let errno = get_errno();
     if errno > 0 {
         return Err(-errno);
@@ -75,7 +82,7 @@ fn safe_atoi_bytes(s: &[u8]) -> Result<i32, i32> {
 
     // SAFETY: strtol returned `end` inside `numeric`, whose storage is still
     // live. A successful safe_atoi conversion must consume the entire string.
-    if unsafe { *end } != 0 {
+    if unsafe_ffi!(*end) != 0 {
         return Err(EINVAL);
     }
     if value as libc::c_int as libc::c_long != value {
@@ -247,7 +254,7 @@ unsafe fn parse_c_string(p: *const libc::c_char, parser: fn(&[u8]) -> Result<i32
     }
 
     // SAFETY: upheld by the caller of the public C ABI entry point.
-    let bytes = unsafe { CStr::from_ptr(p) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(p)).to_bytes();
     parser(bytes).unwrap_or_else(|error| error)
 }
 
@@ -260,7 +267,7 @@ unsafe fn parse_c_string(p: *const libc::c_char, parser: fn(&[u8]) -> Result<i32
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_percent_unbounded(p: *const libc::c_char) -> i32 {
     // SAFETY: this entry point forwards its documented C-string contract.
-    unsafe { parse_c_string(p, parse_percent_unbounded_bytes) }
+    unsafe_ffi!(parse_c_string(p, parse_percent_unbounded_bytes))
 }
 
 /// C ABI for `parse_percent()`.
@@ -272,7 +279,7 @@ pub unsafe extern "C" fn rs_parse_percent_unbounded(p: *const libc::c_char) -> i
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_percent(p: *const libc::c_char) -> i32 {
     // SAFETY: this entry point forwards its documented C-string contract.
-    unsafe { parse_c_string(p, parse_percent_bytes) }
+    unsafe_ffi!(parse_c_string(p, parse_percent_bytes))
 }
 
 /// C ABI for `parse_permille_unbounded()`.
@@ -284,7 +291,7 @@ pub unsafe extern "C" fn rs_parse_percent(p: *const libc::c_char) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_permille_unbounded(p: *const libc::c_char) -> i32 {
     // SAFETY: this entry point forwards its documented C-string contract.
-    unsafe { parse_c_string(p, parse_permille_unbounded_bytes) }
+    unsafe_ffi!(parse_c_string(p, parse_permille_unbounded_bytes))
 }
 
 /// C ABI for `parse_permille()`.
@@ -296,7 +303,7 @@ pub unsafe extern "C" fn rs_parse_permille_unbounded(p: *const libc::c_char) -> 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_permille(p: *const libc::c_char) -> i32 {
     // SAFETY: this entry point forwards its documented C-string contract.
-    unsafe { parse_c_string(p, parse_permille_bytes) }
+    unsafe_ffi!(parse_c_string(p, parse_permille_bytes))
 }
 
 /// C ABI for `parse_permyriad_unbounded()`.
@@ -308,7 +315,7 @@ pub unsafe extern "C" fn rs_parse_permille(p: *const libc::c_char) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_permyriad_unbounded(p: *const libc::c_char) -> i32 {
     // SAFETY: this entry point forwards its documented C-string contract.
-    unsafe { parse_c_string(p, parse_permyriad_unbounded_bytes) }
+    unsafe_ffi!(parse_c_string(p, parse_permyriad_unbounded_bytes))
 }
 
 /// C ABI for `parse_permyriad()`.
@@ -320,7 +327,7 @@ pub unsafe extern "C" fn rs_parse_permyriad_unbounded(p: *const libc::c_char) ->
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_permyriad(p: *const libc::c_char) -> i32 {
     // SAFETY: this entry point forwards its documented C-string contract.
-    unsafe { parse_c_string(p, parse_permyriad_bytes) }
+    unsafe_ffi!(parse_c_string(p, parse_permyriad_bytes))
 }
 
 // ── UINT32_SCALE helpers ──────────────────────────────────────────────────

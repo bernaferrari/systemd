@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: scope=basic.signal-util; authority=src/basic/signal-util.c,src/basic/signal-util.h
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char};
 
@@ -205,10 +212,10 @@ fn static_signal_from_c_bytes(name: &[u8]) -> Option<i32> {
 fn dynamic_signal_to_c_string(signo: i32) -> *const c_char {
     // SAFETY: these helpers are supplied by the linked C translation unit and
     // return the process's runtime signal constants without pointer effects.
-    let (realtime_min, realtime_max) = unsafe { (rs_get_sigrtmin(), rs_get_sigrtmax()) };
+    let (realtime_min, realtime_max) = unsafe_ffi!((rs_get_sigrtmin(), rs_get_sigrtmax()));
     SIGNAL_NAME_BUFFER.with(|cell| {
         // SAFETY: this thread exclusively accesses its own thread-local buffer.
-        let buffer = unsafe { &mut *cell.get() };
+        let buffer = unsafe_ffi!(&mut *cell.get());
         if (realtime_min..=realtime_max).contains(&signo) {
             write_signal_number(buffer, b"RTMIN+", signo - realtime_min);
         } else {
@@ -221,7 +228,7 @@ fn dynamic_signal_to_c_string(signo: i32) -> *const c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn rs_signal_is_valid(signo: i32) -> bool {
     // SAFETY: the helper has no pointer contract and returns the runtime bound.
-    signo > 0 && signo < unsafe { rs_get_nsig() }
+    signo > 0 && signo < unsafe_ffi!(rs_get_nsig())
 }
 
 #[unsafe(no_mangle)]
@@ -257,7 +264,7 @@ pub unsafe extern "C" fn rs_signal_from_string(s: *const c_char) -> i32 {
     // SAFETY: `s` satisfies the C-string precondition above and `signo` is a
     // writable local. This preserves `safe_atoi()`'s decimal/base and errno
     // semantics used by the C authority.
-    if unsafe { crate::parse_util::rs_safe_atoi(s, &mut signo) } >= 0 {
+    if unsafe_ffi!(crate::parse_util::rs_safe_atoi(s, &mut signo)) >= 0 {
         return if rs_signal_is_valid(signo) {
             signo
         } else {
@@ -268,10 +275,10 @@ pub unsafe extern "C" fn rs_signal_from_string(s: *const c_char) -> i32 {
     let mut input = s;
     // SAFETY: `s` is a live NUL-terminated string under this function's
     // contract; the bytes are only inspected during this call.
-    let mut bytes = unsafe { CStr::from_ptr(input) }.to_bytes();
+    let mut bytes = unsafe_ffi!(CStr::from_ptr(input)).to_bytes();
     if bytes.starts_with(b"SIG") {
         // SAFETY: the prefix length was checked against the borrowed C string.
-        input = unsafe { input.add(3) };
+        input = unsafe_ffi!(input.add(3));
         bytes = &bytes[3..];
     }
 
@@ -283,7 +290,7 @@ pub unsafe extern "C" fn rs_signal_from_string(s: *const c_char) -> i32 {
         if rest.is_empty() {
             // SAFETY: the helper has no pointer contract and returns the
             // process runtime's SIGRTMIN value.
-            return unsafe { rs_get_sigrtmin() };
+            return unsafe_ffi!(rs_get_sigrtmin());
         }
         if rest[0] != b'+' {
             return Errno::EINVAL.to_neg_errno();
@@ -291,14 +298,14 @@ pub unsafe extern "C" fn rs_signal_from_string(s: *const c_char) -> i32 {
 
         // SAFETY: `input + 5` is the checked RTMIN suffix and therefore a
         // live NUL-terminated C string; `signo` is a writable local.
-        let r = unsafe { crate::parse_util::rs_safe_atoi(input.add(5), &mut signo) };
+        let r = unsafe_ffi!(crate::parse_util::rs_safe_atoi(input.add(5), &mut signo));
         if r < 0 {
             return r;
         }
 
         // SAFETY: the helpers have no pointer effects and expose the C
         // runtime's dynamic real-time signal bounds.
-        let (realtime_min, realtime_max) = unsafe { (rs_get_sigrtmin(), rs_get_sigrtmax()) };
+        let (realtime_min, realtime_max) = unsafe_ffi!((rs_get_sigrtmin(), rs_get_sigrtmax()));
         if signo < 0 || signo > realtime_max - realtime_min {
             return Errno::ERANGE.to_neg_errno();
         }
@@ -309,7 +316,7 @@ pub unsafe extern "C" fn rs_signal_from_string(s: *const c_char) -> i32 {
         if rest.is_empty() {
             // SAFETY: the helper has no pointer contract and returns the
             // process runtime's SIGRTMAX value.
-            return unsafe { rs_get_sigrtmax() };
+            return unsafe_ffi!(rs_get_sigrtmax());
         }
         if rest[0] != b'-' {
             return Errno::EINVAL.to_neg_errno();
@@ -317,14 +324,14 @@ pub unsafe extern "C" fn rs_signal_from_string(s: *const c_char) -> i32 {
 
         // SAFETY: `input + 5` is the checked RTMAX suffix and therefore a
         // live NUL-terminated C string; `signo` is a writable local.
-        let r = unsafe { crate::parse_util::rs_safe_atoi(input.add(5), &mut signo) };
+        let r = unsafe_ffi!(crate::parse_util::rs_safe_atoi(input.add(5), &mut signo));
         if r < 0 {
             return r;
         }
 
         // SAFETY: the helpers have no pointer effects and expose the C
         // runtime's dynamic real-time signal bounds.
-        let (realtime_min, realtime_max) = unsafe { (rs_get_sigrtmin(), rs_get_sigrtmax()) };
+        let (realtime_min, realtime_max) = unsafe_ffi!((rs_get_sigrtmin(), rs_get_sigrtmax()));
         if signo > 0 || signo < realtime_min - realtime_max {
             return Errno::ERANGE.to_neg_errno();
         }
@@ -345,7 +352,7 @@ pub unsafe extern "C" fn rs_parse_signo(s: *const c_char, ret: *mut i32) -> i32 
     let mut signo = 0;
     // SAFETY: this forwards `parse_signo()`'s C-string and optional-output
     // contracts to the shared C-compatible numeric parser.
-    let r = unsafe { crate::parse_util::rs_safe_atoi(s, &mut signo) };
+    let r = unsafe_ffi!(crate::parse_util::rs_safe_atoi(s, &mut signo));
     if r < 0 {
         return r;
     }
@@ -354,7 +361,7 @@ pub unsafe extern "C" fn rs_parse_signo(s: *const c_char, ret: *mut i32) -> i32 
     }
     if !ret.is_null() {
         // SAFETY: guaranteed by this function's documented C ABI contract.
-        unsafe { *ret = signo };
+        unsafe_ffi!(*ret = signo);
     }
     0
 }

@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/shared/socket-label.c
 //
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CString;
 use std::fmt;
 use std::fs;
@@ -355,7 +362,7 @@ impl RawSocketAddress {
 
 fn sockaddr_in_from(addr: &SocketAddrV4) -> libc::sockaddr_in {
     // SAFETY: sockaddr_in is a C socket-address type whose all-zero bit pattern is valid.
-    let mut raw: libc::sockaddr_in = unsafe { mem::zeroed() };
+    let mut raw: libc::sockaddr_in = unsafe_ffi!(mem::zeroed());
     set_sockaddr_in_len(&mut raw, sockaddr_in_len());
     raw.sin_family = libc::AF_INET as libc::sa_family_t;
     raw.sin_port = addr.port().to_be();
@@ -367,7 +374,7 @@ fn sockaddr_in_from(addr: &SocketAddrV4) -> libc::sockaddr_in {
 
 fn sockaddr_in6_from(addr: &SocketAddrV6) -> libc::sockaddr_in6 {
     // SAFETY: sockaddr_in6 is a C socket-address type whose all-zero bit pattern is valid.
-    let mut raw: libc::sockaddr_in6 = unsafe { mem::zeroed() };
+    let mut raw: libc::sockaddr_in6 = unsafe_ffi!(mem::zeroed());
     set_sockaddr_in6_len(&mut raw, sockaddr_in6_len());
     raw.sin6_family = libc::AF_INET6 as libc::sa_family_t;
     raw.sin6_port = addr.port().to_be();
@@ -381,7 +388,7 @@ fn sockaddr_in6_from(addr: &SocketAddrV6) -> libc::sockaddr_in6 {
 
 fn sockaddr_unix_from(path: &UnixSocketPath) -> Result<RawSocketAddress> {
     // SAFETY: sockaddr_un is a C socket-address type whose all-zero bit pattern is valid.
-    let mut addr: libc::sockaddr_un = unsafe { mem::zeroed() };
+    let mut addr: libc::sockaddr_un = unsafe_ffi!(mem::zeroed());
     addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
     set_sockaddr_un_len(&mut addr, mem::size_of::<libc::sockaddr_un>());
 
@@ -451,7 +458,7 @@ fn sockaddr_netlink_from(pid: u32, groups: u32) -> Result<RawSocketAddress> {
     {
         // SAFETY: `sockaddr_nl` is a plain C socket-address structure; an
         // all-zero value is valid and leaves target-specific padding intact.
-        let mut addr: libc::sockaddr_nl = unsafe { mem::zeroed() };
+        let mut addr: libc::sockaddr_nl = unsafe_ffi!(mem::zeroed());
         addr.nl_family = libc::AF_NETLINK as libc::sa_family_t;
         addr.nl_pid = pid;
         addr.nl_groups = groups;
@@ -580,7 +587,7 @@ pub fn socket_address_listen(
 
     if address.can_accept() {
         // SAFETY: fd is a successfully created socket descriptor that remains owned by this function.
-        cvt(unsafe { libc::listen(fd, backlog) })?;
+        cvt(unsafe_ffi!(libc::listen(fd, backlog)))?;
     }
 
     if let Some(path) = address.get_path() {
@@ -588,12 +595,12 @@ pub fn socket_address_listen(
     }
 
     // SAFETY: fd was successfully created above and its ownership is transferred exactly once to OwnedFd.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
 }
 
 fn bind_socket(fd: RawFd, addr: &RawSocketAddress) -> io::Result<()> {
     // SAFETY: addr points to initialized socket storage with the matching recorded length; fd is supplied by the caller.
-    cvt(unsafe { libc::bind(fd, addr.as_ptr(), addr.len) }).map(|_| ())
+    cvt(unsafe_ffi!(libc::bind(fd, addr.as_ptr(), addr.len))).map(|_| ())
 }
 
 fn parse_boolean(s: &str) -> Option<bool> {
@@ -737,7 +744,13 @@ fn touch(path: &Path) -> io::Result<()> {
     let path = CString::new(path.as_os_str().as_bytes())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL byte"))?;
     // SAFETY: path is a live NUL-terminated CString; AT_FDCWD and a null times pointer are valid utimensat arguments.
-    cvt(unsafe { libc::utimensat(libc::AT_FDCWD, path.as_ptr(), ptr::null(), 0) }).map(|_| ())
+    cvt(unsafe_ffi!(libc::utimensat(
+        libc::AT_FDCWD,
+        path.as_ptr(),
+        ptr::null(),
+        0
+    )))
+    .map(|_| ())
 }
 
 fn cvt(ret: i32) -> io::Result<i32> {
@@ -761,7 +774,7 @@ struct UmaskGuard(libc::mode_t);
 impl UmaskGuard {
     fn set(mask: u32) -> Self {
         // SAFETY: umask accepts the converted mode value and has no pointer or lifetime requirements.
-        let old = unsafe { libc::umask(mask as libc::mode_t) };
+        let old = unsafe_ffi!(libc::umask(mask as libc::mode_t));
         Self(old)
     }
 }

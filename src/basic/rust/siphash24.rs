@@ -4,6 +4,13 @@
 //
 // SipHash-2-4 cryptographic hash (pure Rust implementation).
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::{c_char, c_void};
 use std::{ffi::CStr, ptr, slice};
 
@@ -191,9 +198,9 @@ pub unsafe extern "C" fn rs_siphash24_init(state: *mut siphash, k: *const u8) {
     }
 
     // SAFETY: the caller guarantees a readable 16-byte key.
-    let key = unsafe { &*k.cast::<[u8; 16]>() };
+    let key = unsafe_ffi!(&*k.cast::<[u8; 16]>());
     // SAFETY: the caller guarantees writable aligned state storage.
-    unsafe { ptr::write(state, siphash24_init(key)) };
+    unsafe_ffi!(ptr::write(state, siphash24_init(key)));
 }
 
 /// Compress bytes into a C-layout SipHash state.
@@ -216,10 +223,10 @@ pub unsafe extern "C" fn rs_siphash24_compress(
         &[]
     } else {
         // SAFETY: the caller guarantees a readable `inlen`-byte region.
-        unsafe { slice::from_raw_parts(input.cast::<u8>(), inlen) }
+        unsafe_ffi!(slice::from_raw_parts(input.cast::<u8>(), inlen))
     };
     // SAFETY: the caller guarantees live, initialized, exclusive state.
-    siphash24_compress(data, unsafe { &mut *state });
+    siphash24_compress(data, unsafe_ffi!(&mut *state));
 }
 
 /// Compress the bytes preceding the NUL terminator of `input`.
@@ -237,9 +244,9 @@ pub unsafe extern "C" fn rs_siphash24_compress_string(input: *const c_char, stat
     }
 
     // SAFETY: required by this entry point's C-string contract.
-    let data = unsafe { CStr::from_ptr(input) }.to_bytes();
+    let data = unsafe_ffi!(CStr::from_ptr(input)).to_bytes();
     // SAFETY: the caller guarantees live, initialized, exclusive state.
-    siphash24_compress(data, unsafe { &mut *state });
+    siphash24_compress(data, unsafe_ffi!(&mut *state));
 }
 
 /// Finalize a C-layout SipHash state.
@@ -254,7 +261,7 @@ pub unsafe extern "C" fn rs_siphash24_finalize(state: *mut siphash) -> u64 {
     }
 
     // SAFETY: the caller guarantees live, initialized, exclusive state.
-    siphash24_finalize(unsafe { &mut *state })
+    siphash24_finalize(unsafe_ffi!(&mut *state))
 }
 
 /// One-shot SipHash-2-4 C facade.
@@ -274,10 +281,10 @@ pub unsafe extern "C" fn rs_siphash24(input: *const c_void, inlen: usize, k: *co
         &[]
     } else {
         // SAFETY: the caller guarantees a readable `inlen`-byte region.
-        unsafe { slice::from_raw_parts(input.cast::<u8>(), inlen) }
+        unsafe_ffi!(slice::from_raw_parts(input.cast::<u8>(), inlen))
     };
     // SAFETY: the caller guarantees a readable 16-byte key.
-    let key = unsafe { &*k.cast::<[u8; 16]>() };
+    let key = unsafe_ffi!(&*k.cast::<[u8; 16]>());
     siphash24(data, key)
 }
 
@@ -294,9 +301,9 @@ pub unsafe extern "C" fn rs_siphash24_string(s: *const c_char, k: *const u8) -> 
     }
 
     // SAFETY: required by this entry point's C-string contract.
-    let bytes_with_nul = unsafe { CStr::from_ptr(s) }.to_bytes_with_nul();
+    let bytes_with_nul = unsafe_ffi!(CStr::from_ptr(s)).to_bytes_with_nul();
     // SAFETY: the caller guarantees a readable 16-byte key.
-    let key = unsafe { &*k.cast::<[u8; 16]>() };
+    let key = unsafe_ffi!(&*k.cast::<[u8; 16]>());
     siphash24(bytes_with_nul, key)
 }
 

@@ -4,6 +4,13 @@
 //
 // Priority queue (min-heap) with custom comparator support.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::{c_int, c_void};
 use std::cmp::Ordering;
 
@@ -241,14 +248,14 @@ impl RsPrioq {
         };
         // SAFETY: the documented queue contract makes both data pointers and
         // the C callback valid for this synchronous comparison.
-        unsafe { compare(self.items[left].data, self.items[right].data) }
+        unsafe_ffi!(compare(self.items[left].data, self.items[right].data))
     }
 
     /// Publish an entry's current heap index to its optional C-owned storage.
     fn publish_index(item: PrioqItem, index: usize) {
         if !item.index.is_null() {
             // SAFETY: guaranteed by the C priority-queue index-pointer contract.
-            unsafe { *item.index = index as u32 };
+            unsafe_ffi!(*item.index = index as u32);
         }
     }
 
@@ -256,7 +263,7 @@ impl RsPrioq {
     fn invalidate_index(item: PrioqItem) {
         if !item.index.is_null() {
             // SAFETY: guaranteed by the C priority-queue index-pointer contract.
-            unsafe { *item.index = PRIOQ_IDX_NULL };
+            unsafe_ffi!(*item.index = PRIOQ_IDX_NULL);
         }
     }
 
@@ -312,7 +319,7 @@ impl RsPrioq {
             return self.items.iter().position(|item| item.data == data);
         }
         // SAFETY: guaranteed by this helper's C index-pointer contract.
-        let current = unsafe { *index };
+        let current = unsafe_ffi!(*index);
         if current == PRIOQ_IDX_NULL {
             return None;
         }
@@ -352,13 +359,13 @@ impl RsPrioq {
 pub unsafe extern "C" fn rs_prioq_new(compare: PrioqCompareFn) -> *mut RsPrioq {
     // SAFETY: libc returns suitably aligned storage for this opaque C handle.
     // The allocation remains wholly owned by `rs_prioq_free` below.
-    let queue = unsafe { libc::malloc(std::mem::size_of::<RsPrioq>()) }.cast::<RsPrioq>();
+    let queue = unsafe_ffi!(libc::malloc(std::mem::size_of::<RsPrioq>())).cast::<RsPrioq>();
     if queue.is_null() {
         return std::ptr::null_mut();
     }
     // SAFETY: `queue` is a fresh, suitably aligned allocation large enough
     // for exactly one initialized RsPrioq.
-    unsafe { std::ptr::write(queue, RsPrioq::new(compare)) };
+    unsafe_ffi!(std::ptr::write(queue, RsPrioq::new(compare)));
     queue
 }
 
@@ -375,17 +382,17 @@ pub unsafe extern "C" fn rs_prioq_free(q: *mut RsPrioq) -> *mut RsPrioq {
     }
     // SAFETY: the function contract establishes unique access to the live
     // allocation and writable external index storage for all entries.
-    let queue = unsafe { &mut *q };
+    let queue = unsafe_ffi!(&mut *q);
     for item in &queue.items {
         RsPrioq::invalidate_index(*item);
     }
     // SAFETY: q was initialized exactly once by rs_prioq_new and is no longer
     // observable through this exclusive C API call. Its Vec drops before the
     // enclosing libc allocation is released.
-    unsafe {
+    unsafe_ffi!({
         std::ptr::drop_in_place(q);
         libc::free(q.cast::<c_void>());
-    }
+    });
     std::ptr::null_mut()
 }
 
@@ -405,7 +412,7 @@ pub unsafe extern "C" fn rs_prioq_put(
         return -EINVAL;
     }
     // SAFETY: `q` is a unique live queue for mutation by the public contract.
-    let queue = unsafe { &mut *q };
+    let queue = unsafe_ffi!(&mut *q);
     if queue.compare.is_none() && !queue.items.is_empty() {
         // C has no defined ordering behavior after using a null comparator for
         // multiple entries. Keep the successfully allocated empty/singleton
@@ -440,7 +447,7 @@ pub unsafe extern "C" fn rs_prioq_remove(
     }
     // SAFETY: the public contract establishes a live queue and valid index
     // storage whenever `index` is non-null.
-    let queue = unsafe { &mut *q };
+    let queue = unsafe_ffi!(&mut *q);
     let Some(position) = queue.find_index(data, index) else {
         return 0;
     };
@@ -461,7 +468,7 @@ pub unsafe extern "C" fn rs_prioq_reshuffle(q: *mut RsPrioq, data: *mut c_void, 
     }
     // SAFETY: the public contract establishes a unique live queue and valid
     // index storage whenever `index` is non-null.
-    let queue = unsafe { &mut *q };
+    let queue = unsafe_ffi!(&mut *q);
     let Some(position) = queue.find_index(data, index) else {
         return;
     };
@@ -481,7 +488,7 @@ pub unsafe extern "C" fn rs_prioq_peek_by_index(q: *mut RsPrioq, index: u32) -> 
     }
     // SAFETY: the public contract establishes a readable live queue. The
     // resulting borrow is used only to inspect its item slice.
-    let items = unsafe { &(*q).items };
+    let items = unsafe_ffi!(&(*q).items);
     items
         .get(index as usize)
         .map_or(std::ptr::null_mut(), |item| item.data)
@@ -498,7 +505,7 @@ pub unsafe extern "C" fn rs_prioq_pop(q: *mut RsPrioq) -> *mut c_void {
         return std::ptr::null_mut();
     }
     // SAFETY: the public contract establishes a unique live queue.
-    let queue = unsafe { &mut *q };
+    let queue = unsafe_ffi!(&mut *q);
     if queue.items.is_empty() {
         return std::ptr::null_mut();
     }
@@ -515,7 +522,7 @@ pub unsafe extern "C" fn rs_prioq_size(q: *mut RsPrioq) -> u32 {
         return 0;
     }
     // SAFETY: the public contract establishes a readable live queue.
-    unsafe { (*q).items.len() as u32 }
+    unsafe_ffi!((*q).items.len() as u32)
 }
 
 /// C ABI facade for `prioq_isempty()`.
@@ -528,7 +535,7 @@ pub unsafe extern "C" fn rs_prioq_isempty(q: *mut RsPrioq) -> bool {
         return true;
     }
     // SAFETY: the public contract establishes a readable live queue.
-    unsafe { (*q).items.is_empty() }
+    unsafe_ffi!((*q).items.is_empty())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────

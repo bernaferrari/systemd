@@ -625,12 +625,12 @@ pub unsafe fn rs_ascii_strcasecmp_n(a: *const c_char, b: *const c_char, n: usize
         // SAFETY: the function contract requires both source ranges to be
         // readable for exactly `n` bytes. This intentionally does not stop at
         // NUL, matching C's byte-counted implementation.
-        let (ua, ub) = unsafe {
+        let (ua, ub) = unsafe_ffi!({
             (
                 ascii_tolower_byte(*a.add(i) as u8),
                 ascii_tolower_byte(*b.add(i) as u8),
             )
-        };
+        });
         if ua != ub {
             return (ua as i32) - (ub as i32);
         }
@@ -1120,31 +1120,31 @@ mod tests {
     #[test]
     fn test_ascii_strcasecmp_n() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let a = c("Hello");
             let b = c("hello");
             assert_eq!(rs_ascii_strcasecmp_n(a, b, 5), 0);
             drop_c_const(a);
             drop_c_const(b);
-        }
+        })
     }
 
     #[test]
     fn test_ascii_strcasecmp_nn() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let a = c("abc");
             let b = c("ABCDEF");
             assert!(rs_ascii_strcasecmp_nn(a, 3, b, 6) < 0);
             drop_c_const(a);
             drop_c_const(b);
-        }
+        })
     }
 
     #[test]
     fn test_chars_intersect() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let a = c("abc");
             let b = c("xyz");
             assert!(!rs_chars_intersect(a, b));
@@ -1154,46 +1154,46 @@ mod tests {
             drop_c_const(a);
             drop_c_const(b);
             drop_c_const(c2);
-        }
+        })
     }
 
     #[test]
     fn test_strdup_to_full() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let src = c("hello");
             let mut ret: *mut c_char = std::ptr::null_mut();
             assert_eq!(rs_strdup_to_full(&mut ret, src), 1);
             assert_eq!(CStr::from_ptr(ret).to_str().unwrap(), "hello");
             drop_c(ret);
             drop_c_const(src);
-        }
+        })
     }
 
     #[test]
     fn test_strdup_to_full_null_src() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let mut ret: *mut c_char = std::ptr::null_mut();
             assert_eq!(rs_strdup_to_full(&mut ret, std::ptr::null()), 0);
             assert!(ret.is_null());
-        }
+        })
     }
 
     #[test]
     fn test_strdup_to_full_null_ret() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let src = c("hello");
             assert_eq!(rs_strdup_to_full(std::ptr::null_mut(), src), 1);
             drop_c_const(src);
-        }
+        })
     }
 
     #[test]
     fn test_split_pair() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let s = c("foo:bar");
             let sep = c(":");
             let mut first: *mut c_char = std::ptr::null_mut();
@@ -1205,13 +1205,13 @@ mod tests {
             drop_c(second);
             drop_c_const(s);
             drop_c_const(sep);
-        }
+        })
     }
 
     #[test]
     fn test_split_pair_no_separator() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let s = c("nospaces");
             let sep = c(":");
             let mut first: *mut c_char = std::ptr::null_mut();
@@ -1222,47 +1222,47 @@ mod tests {
             );
             drop_c_const(s);
             drop_c_const(sep);
-        }
+        })
     }
 
     #[test]
     fn test_str_common_prefix() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let a = c("hello world");
             let b = c("hello there");
             assert_eq!(rs_str_common_prefix(a, b), 6);
             drop_c_const(a);
             drop_c_const(b);
-        }
+        })
     }
 
     #[test]
     fn test_str_common_prefix_identical() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let a = c("hello");
             let b = c("hello");
             assert_eq!(rs_str_common_prefix(a, b), SIZE_MAX);
             drop_c_const(a);
             drop_c_const(b);
-        }
+        })
     }
 
     #[test]
     fn test_strspn_from_end() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let s = c("hello   ");
             assert_eq!(rs_strspn_from_end(s, c(" ")), 3);
             drop_c_const(s);
-        }
+        })
     }
 
     #[test]
     fn test_streq_skip_trailing_chars() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let hello = c("hello");
             let hello_spaces = c("hello   ");
             let space = c(" ");
@@ -1324,100 +1324,100 @@ mod tests {
             drop_c_const(hello_space);
             drop_c_const(hello_tab);
             drop_c_const(space_tab);
-        }
+        })
     }
 
     #[test]
     fn test_strdupspn() {
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        unsafe {
+        unsafe_ffi!({
             let result = rs_strdupspn(c("   hello"), c(" "));
             assert_eq!(CStr::from_ptr(result).to_str().unwrap(), "   ");
             drop_c(result);
-        }
+        })
     }
 
     #[test]
     fn test_strdupcspn() {
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        unsafe {
+        unsafe_ffi!({
             let result = rs_strdupcspn(c("hello world"), c(" "));
             assert_eq!(CStr::from_ptr(result).to_str().unwrap(), "hello");
             drop_c(result);
-        }
+        })
     }
 
     #[test]
     fn test_string_replace_char() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let s = c_mut("hello world");
             rs_string_replace_char(s, b' ' as c_char, b'_' as c_char);
             assert_eq!(CStr::from_ptr(s).to_str().unwrap(), "hello_world");
             reclaim_cstring(s);
-        }
+        })
     }
 
     #[test]
     fn test_strreplace() {
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        unsafe {
+        unsafe_ffi!({
             let result = rs_strreplace(c("foo bar foo"), c("foo"), c("baz"));
             assert_eq!(CStr::from_ptr(result).to_str().unwrap(), "baz bar baz");
             drop_c(result);
-        }
+        })
     }
 
     #[test]
     fn test_strreplace_no_match() {
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        unsafe {
+        unsafe_ffi!({
             let result = rs_strreplace(c("hello world"), c("xyz"), c("abc"));
             assert_eq!(CStr::from_ptr(result).to_str().unwrap(), "hello world");
             drop_c(result);
-        }
+        })
     }
 
     #[test]
     fn test_strreplace_null_text() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let result = rs_strreplace(std::ptr::null(), c("a"), c("b"));
             assert!(result.is_null());
-        }
+        })
     }
 
     #[test]
     fn test_free_and_strdup() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let s = c("hello");
             let mut p: *mut c_char = std::ptr::null_mut();
             assert_eq!(rs_free_and_strdup(&mut p, s), 1);
             assert_eq!(CStr::from_ptr(p).to_str().unwrap(), "hello");
             drop_c(p);
             drop_c_const(s);
-        }
+        })
     }
 
     #[test]
     fn test_free_and_strdup_null_ret() {
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        unsafe {
+        unsafe_ffi!({
             let s = c("hello");
             assert_eq!(
                 rs_free_and_strdup(std::ptr::null_mut(), s),
                 Errno::EINVAL.to_neg_errno()
             );
             drop_c_const(s);
-        }
+        })
     }
 
     #[test]
     fn test_free_and_strdup_uses_null_safe_content_equality() {
         // SAFETY: all allocations are paired with their originating allocator,
         // and every input is a valid NUL-terminated C string.
-        unsafe {
+        unsafe_ffi!({
             let first = c("same");
             let second = c("same");
             let mut p = std::ptr::null_mut();
@@ -1431,14 +1431,14 @@ mod tests {
 
             let mut absent = std::ptr::null_mut();
             assert_eq!(rs_free_and_strdup(&mut absent, std::ptr::null()), 0);
-        }
+        })
     }
 
     #[test]
     fn test_free_and_strndup_accepts_empty_non_null_source() {
         // SAFETY: `empty` is readable for its declared length and all owned
         // output is released with the C allocator.
-        unsafe {
+        unsafe_ffi!({
             let empty = [0 as c_char, 1, 2, 3];
             let mut p = std::ptr::null_mut();
             assert_eq!(rs_free_and_strndup(&mut p, empty.as_ptr(), empty.len()), 1);
@@ -1455,6 +1455,6 @@ mod tests {
                 rs_free_and_strndup(&mut absent, std::ptr::null(), 1),
                 Errno::EINVAL.to_neg_errno()
             );
-        }
+        })
     }
 }

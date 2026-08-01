@@ -4,6 +4,13 @@
 //
 // Small inline validation functions from various headers.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 const CGROUP_WEIGHT_INVALID: u64 = u64::MAX;
 const CGROUP_WEIGHT_MIN: u64 = 1;
 const CGROUP_WEIGHT_MAX: u64 = 10_000;
@@ -44,7 +51,7 @@ unsafe fn maybe_empty_string(ptr: *const c_char, replacement: &'static [u8]) -> 
     }
 
     // SAFETY: guaranteed by this helper's caller contract.
-    if unsafe { *ptr } == 0 {
+    if unsafe_ffi!(*ptr) == 0 {
         replacement.as_ptr().cast()
     } else {
         ptr
@@ -120,7 +127,7 @@ pub extern "C" fn rs_pid_is_automatic(p: pid_t) -> bool {
 pub unsafe extern "C" fn rs_pidref_is_set(pidref: *const PidRef) -> bool {
     // SAFETY: after the null check, validity and alignment are guaranteed by
     // the caller contract.
-    !pidref.is_null() && unsafe { (*pidref).pid > 0 }
+    !pidref.is_null() && unsafe_ffi!((*pidref).pid > 0)
 }
 
 /// Check whether a C `PidRef` requests automatic acquisition.
@@ -132,7 +139,7 @@ pub unsafe extern "C" fn rs_pidref_is_set(pidref: *const PidRef) -> bool {
 pub unsafe extern "C" fn rs_pidref_is_automatic(pidref: *const PidRef) -> bool {
     // SAFETY: after the null check, validity and alignment are guaranteed by
     // the caller contract.
-    !pidref.is_null() && unsafe { (*pidref).pid == PID_AUTOMATIC }
+    !pidref.is_null() && unsafe_ffi!((*pidref).pid == PID_AUTOMATIC)
 }
 
 /// Check whether a C `PidRef` is set or requests automatic acquisition.
@@ -143,7 +150,7 @@ pub unsafe extern "C" fn rs_pidref_is_automatic(pidref: *const PidRef) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_pidref_is_set_or_automatic(pidref: *const PidRef) -> bool {
     // SAFETY: forwarded unchanged under this function's identical contract.
-    unsafe { rs_pidref_is_set(pidref) || rs_pidref_is_automatic(pidref) }
+    unsafe_ffi!(rs_pidref_is_set(pidref) || rs_pidref_is_automatic(pidref))
 }
 
 /// Check whether a set C `PidRef` represents a remote process.
@@ -155,7 +162,7 @@ pub unsafe extern "C" fn rs_pidref_is_set_or_automatic(pidref: *const PidRef) ->
 pub unsafe extern "C" fn rs_pidref_is_remote(pidref: *const PidRef) -> bool {
     // SAFETY: both calls/dereferences are covered by this function's caller
     // contract. Short-circuiting prevents a null dereference.
-    unsafe { rs_pidref_is_set(pidref) && (*pidref).fd == -libc::EREMOTE }
+    unsafe_ffi!(rs_pidref_is_set(pidref) && (*pidref).fd == -libc::EREMOTE)
 }
 
 #[unsafe(no_mangle)]
@@ -221,7 +228,7 @@ pub extern "C" fn rs_enabled_disabled(b: bool) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_empty_to_na(p: *const c_char) -> *const c_char {
     // SAFETY: forwarded under this function's identical caller contract.
-    unsafe { maybe_empty_string(p, b"n/a\0") }
+    unsafe_ffi!(maybe_empty_string(p, b"n/a\0"))
 }
 
 /// Substitute `"-"` for a null or empty C string.
@@ -232,7 +239,7 @@ pub unsafe extern "C" fn rs_empty_to_na(p: *const c_char) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_empty_to_dash(s: *const c_char) -> *const c_char {
     // SAFETY: forwarded under this function's identical caller contract.
-    unsafe { maybe_empty_string(s, b"-\0") }
+    unsafe_ffi!(maybe_empty_string(s, b"-\0"))
 }
 
 /// Check whether a C string is null, empty, or exactly `"-"`.
@@ -249,10 +256,10 @@ pub unsafe extern "C" fn rs_empty_or_dash(s: *const c_char) -> bool {
     // SAFETY: the caller guarantees that `s` points to a readable
     // NUL-terminated string, so the first byte and, for "-", the next byte are
     // readable.
-    let first = unsafe { *s };
+    let first = unsafe_ffi!(*s);
     // SAFETY: the same NUL-terminated caller contract makes `s.add(1)`
     // readable whenever the first byte is `'-'`.
-    first == 0 || (first == b'-' as c_char && unsafe { *s.add(1) } == 0)
+    first == 0 || (first == b'-' as c_char && unsafe_ffi!(*s.add(1)) == 0)
 }
 
 #[cfg(test)]
@@ -262,7 +269,7 @@ mod tests {
 
     fn as_bytes(ptr: *const c_char) -> &'static [u8] {
         // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-        unsafe { CStr::from_ptr(ptr) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(ptr)).to_bytes()
     }
 
     #[test]

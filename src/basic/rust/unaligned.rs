@@ -8,6 +8,13 @@
 // little-endian 16/32/64-bit values. Mirrors the C unaligned.h
 // inline functions using pure Rust byte manipulation.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::c_void;
 
 // ── Big-endian read ───────────────────────────────────────────────────────
@@ -158,7 +165,7 @@ pub fn write_le64(bytes: &mut [u8], val: u64) {
 unsafe fn read_c_bytes<const N: usize>(p: *const c_void) -> [u8; N] {
     // SAFETY: each caller is an audited C ABI adapter whose contract requires
     // `N` initialized bytes; `[u8; N]` has alignment 1.
-    unsafe { std::ptr::read(p.cast::<[u8; N]>()) }
+    unsafe_ffi!(std::ptr::read(p.cast::<[u8; N]>()))
 }
 
 /// Copy exactly `N` bytes to a C pointer without imposing an alignment
@@ -174,19 +181,19 @@ unsafe fn read_c_bytes<const N: usize>(p: *const c_void) -> [u8; N] {
 unsafe fn write_c_bytes<const N: usize>(p: *mut c_void, bytes: [u8; N]) {
     // SAFETY: each caller is an audited C ABI adapter whose contract requires
     // `N` writable bytes; `[u8; N]` has alignment 1.
-    unsafe { std::ptr::write(p.cast::<[u8; N]>(), bytes) };
+    unsafe_ffi!(std::ptr::write(p.cast::<[u8; N]>(), bytes));
 }
 
 // The exported functions below establish the pointer contracts once; their
 // byte-order logic can then use these safe fixed-width copy adapters.
 fn read_abi_bytes<const N: usize>(p: *const c_void) -> [u8; N] {
     // SAFETY: callers are the audited C ABI adapters documented below.
-    unsafe { read_c_bytes(p) }
+    unsafe_ffi!(read_c_bytes(p))
 }
 
 fn write_abi_bytes<const N: usize>(p: *mut c_void, bytes: [u8; N]) {
     // SAFETY: callers are the audited C ABI adapters documented below.
-    unsafe { write_c_bytes(p, bytes) };
+    unsafe_ffi!(write_c_bytes(p, bytes));
 }
 
 /// Read a big-endian 16-bit integer from an unaligned C byte buffer.

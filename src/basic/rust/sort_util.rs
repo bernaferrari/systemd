@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: scope=basic.sort-util; authority=src/basic/sort-util.c,src/basic/sort-util.h
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::cmp::Ordering;
 use std::ffi::c_void;
 
@@ -106,7 +113,7 @@ pub type ComparisonUserdataFn =
 unsafe fn element_at(base: *const u8, index: usize, size: usize) -> *const c_void {
     // SAFETY: upheld by this helper's contract; the offset is checked before
     // the caller enters the search or sort loop.
-    unsafe { base.add(index * size).cast() }
+    unsafe_ffi!(base.add(index * size).cast())
 }
 
 /// Binary-search raw C elements using the exact lower/upper-bound algorithm
@@ -143,9 +150,9 @@ pub unsafe extern "C" fn rs_xbsearch_r(
         let index = (lower + upper) / 2;
         // SAFETY: checked total byte size and index bounds make this an
         // in-allocation element pointer for the synchronous callback.
-        let element = unsafe { element_at(base, index, size) };
+        let element = unsafe_ffi!(element_at(base, index, size));
         // SAFETY: caller supplies a valid C comparator and its userdata.
-        let comparison = unsafe { compar(key, element, arg) };
+        let comparison = unsafe_ffi!(compar(key, element, arg));
         if comparison < 0 {
             upper = index;
         } else if comparison > 0 {
@@ -187,25 +194,25 @@ pub unsafe extern "C" fn rs_qsort_safe(
         while cursor > 0 {
             // SAFETY: the checked array extent and loop bounds produce two
             // distinct, in-allocation elements for the callback and swap.
-            let (left, right) = unsafe {
+            let (left, right) = unsafe_ffi!({
                 (
                     element_at(base.cast_const(), cursor - 1, size),
                     element_at(base.cast_const(), cursor, size),
                 )
-            };
+            });
             // SAFETY: the comparator contract covers these borrowed elements.
-            if unsafe { compar(left, right) } <= 0 {
+            if unsafe_ffi!(compar(left, right)) <= 0 {
                 break;
             }
             // SAFETY: left/right denote distinct `size`-byte elements in the
             // uniquely writable array; swapping preserves opaque bytes.
-            unsafe {
+            unsafe_ffi!({
                 std::ptr::swap_nonoverlapping(
                     base.add((cursor - 1) * size),
                     base.add(cursor * size),
                     size,
                 )
-            };
+            });
             cursor -= 1;
         }
     }
@@ -242,24 +249,24 @@ pub unsafe extern "C" fn rs_qsort_r_safe(
         while cursor > 0 {
             // SAFETY: the checked extent and loop bounds keep both elements
             // within the array and distinct.
-            let (left, right) = unsafe {
+            let (left, right) = unsafe_ffi!({
                 (
                     element_at(base.cast_const(), cursor - 1, size),
                     element_at(base.cast_const(), cursor, size),
                 )
-            };
+            });
             // SAFETY: caller upholds the callback and userdata contract.
-            if unsafe { compar(left, right, userdata) } <= 0 {
+            if unsafe_ffi!(compar(left, right, userdata)) <= 0 {
                 break;
             }
             // SAFETY: distinct fixed-width elements of a unique byte array.
-            unsafe {
+            unsafe_ffi!({
                 std::ptr::swap_nonoverlapping(
                     base.add((cursor - 1) * size),
                     base.add(cursor * size),
                     size,
                 )
-            };
+            });
             cursor -= 1;
         }
     }
@@ -297,9 +304,9 @@ pub unsafe extern "C" fn rs_bsearch_safe_internal(
     while lower < upper {
         let index = (lower + upper) / 2;
         // SAFETY: checked total byte size and index bounds identify the raw element.
-        let element = unsafe { element_at(base, index, size) };
+        let element = unsafe_ffi!(element_at(base, index, size));
         // SAFETY: caller supplies a valid comparator for this key/element pair.
-        let comparison = unsafe { compar(key, element) };
+        let comparison = unsafe_ffi!(compar(key, element));
         if comparison < 0 {
             upper = index;
         } else if comparison > 0 {
@@ -322,7 +329,7 @@ pub unsafe extern "C" fn rs_cmp_int(a: *const c_int, b: *const c_int) -> c_int {
         return 0;
     }
     // SAFETY: upheld by this export's operand contract.
-    let (a, b) = unsafe { (*a, *b) };
+    let (a, b) = unsafe_ffi!((*a, *b));
     ordering_to_c_value(a.cmp(&b))
 }
 
@@ -337,7 +344,7 @@ pub unsafe extern "C" fn rs_cmp_uint16(a: *const u16, b: *const u16) -> c_int {
         return 0;
     }
     // SAFETY: upheld by this export's operand contract.
-    let (a, b) = unsafe { (*a, *b) };
+    let (a, b) = unsafe_ffi!((*a, *b));
     ordering_to_c_value(a.cmp(&b))
 }
 

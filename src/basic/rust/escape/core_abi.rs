@@ -7,6 +7,13 @@
 // public nullable cases, borrows C input for the duration of a call, and
 // transfers fresh malloc(3) output to the C caller.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::c_char;
 use std::ffi::CStr;
 use std::ptr;
@@ -27,13 +34,13 @@ unsafe fn cescape_input<'a>(s: *const c_char, n: usize) -> Option<&'a [u8]> {
             return None;
         }
         // SAFETY: guaranteed by this helper's documented sentinel contract.
-        return Some(unsafe { CStr::from_ptr(s) }.to_bytes());
+        return Some(unsafe_ffi!(CStr::from_ptr(s)).to_bytes());
     }
     if s.is_null() {
         return (n == 0).then_some(&[]);
     }
     // SAFETY: guaranteed by this helper's documented explicit-length contract.
-    Some(unsafe { std::slice::from_raw_parts(s.cast::<u8>(), n) })
+    Some(unsafe_ffi!(std::slice::from_raw_parts(s.cast::<u8>(), n)))
 }
 
 /// C ABI for `cescape_char()`.
@@ -51,7 +58,11 @@ pub unsafe extern "C" fn rs_cescape_char(c: c_char, buf: *mut c_char) -> i32 {
     debug_assert!((1..=4).contains(&length));
     // SAFETY: `buf` is non-null and the C entry-point contract guarantees four
     // writable bytes. `escaped` contains at most four live, disjoint bytes.
-    unsafe { ptr::copy_nonoverlapping(escaped.as_ptr(), buf.cast::<u8>(), length) };
+    unsafe_ffi!(ptr::copy_nonoverlapping(
+        escaped.as_ptr(),
+        buf.cast::<u8>(),
+        length
+    ));
     length as i32
 }
 
@@ -64,7 +75,7 @@ pub unsafe extern "C" fn rs_cescape_char(c: c_char, buf: *mut c_char) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_cescape_length(s: *const c_char, n: usize) -> *mut c_char {
     // SAFETY: the entry point has the same input contract as this helper.
-    let Some(source) = (unsafe { cescape_input(s, n) }) else {
+    let Some(source) = (unsafe_ffi!(cescape_input(s, n))) else {
         return ptr::null_mut();
     };
     // Keep current C's pre-allocation overflow predicate, rather than relying
@@ -95,7 +106,7 @@ pub unsafe extern "C" fn rs_cescape_length(s: *const c_char, n: usize) -> *mut c
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_cescape(s: *const c_char) -> *mut c_char {
     // SAFETY: `SIZE_MAX` selects the entry point's documented C-string form.
-    unsafe { rs_cescape_length(s, usize::MAX) }
+    unsafe_ffi!(rs_cescape_length(s, usize::MAX))
 }
 
 /// C ABI for `cunescape_one()`.
@@ -119,7 +130,7 @@ pub unsafe extern "C" fn rs_cunescape_one(
     }
     // SAFETY: `p` passed the non-null check and this export carries the same
     // sentinel/explicit-length input contract as the shared adapter.
-    let Some(input) = (unsafe { cescape_input(p, length) }) else {
+    let Some(input) = (unsafe_ffi!(cescape_input(p, length))) else {
         return EINVAL;
     };
     let result = match cunescape_one(input, accept_nul) {
@@ -129,12 +140,12 @@ pub unsafe extern "C" fn rs_cunescape_one(
     // SAFETY: `ret` was checked and the entry-point contract grants one
     // writable char32_t and `eight_bit` was checked non-null. The bool is
     // written only on the exact C branches that initialize it.
-    unsafe {
+    unsafe_ffi!({
         *ret = result.ch;
         if result.eight_bit {
             *eight_bit = true;
         }
-    }
+    });
     result.consumed as i32
 }
 
@@ -153,9 +164,9 @@ pub unsafe extern "C" fn rs_cunescape(
 ) -> isize {
     // SAFETY: this inline-equivalent adapter forwards its C-string and output
     // pointer contract to the canonical explicit-length implementation.
-    unsafe {
+    unsafe_ffi!({
         super::full_abi::rs_cunescape_length_with_prefix(s, usize::MAX, ptr::null(), flags, ret)
-    }
+    })
 }
 
 #[cfg(test)]
@@ -166,7 +177,7 @@ mod tests {
     fn cescape_char_handles_signed_c_char_as_an_unsigned_byte() {
         let mut output = [0 as c_char; 4];
         // SAFETY: output owns four writable C-char slots.
-        let length = unsafe { rs_cescape_char(u8::MAX as c_char, output.as_mut_ptr()) };
+        let length = unsafe_ffi!(rs_cescape_char(u8::MAX as c_char, output.as_mut_ptr()));
         assert_eq!(length, 4);
         assert_eq!(output.map(|byte| byte as u8), *b"\\377");
     }
@@ -175,13 +186,13 @@ mod tests {
     fn cescape_length_accepts_embedded_nul_at_the_explicit_boundary() {
         let source = [b'a' as c_char, 0, b'\n' as c_char];
         // SAFETY: source has exactly the explicit readable byte length.
-        let output = unsafe { rs_cescape_length(source.as_ptr(), source.len()) };
+        let output = unsafe_ffi!(rs_cescape_length(source.as_ptr(), source.len()));
         assert!(!output.is_null());
         // SAFETY: output is our fresh NUL-terminated malloc allocation.
-        let bytes = unsafe { CStr::from_ptr(output) }.to_bytes();
+        let bytes = unsafe_ffi!(CStr::from_ptr(output)).to_bytes();
         assert_eq!(bytes, b"a\\000\\n");
         // SAFETY: ownership was transferred by the ABI function.
-        unsafe { libc::free(output.cast()) };
+        unsafe_ffi!(libc::free(output.cast()));
     }
 
     #[test]
@@ -191,7 +202,7 @@ mod tests {
         let mut untouched = false;
         // SAFETY: all passed pointers meet the documented C ABI contract.
         assert_eq!(
-            unsafe {
+            unsafe_ffi!({
                 rs_cunescape_one(
                     input.as_ptr().cast(),
                     usize::MAX,
@@ -199,7 +210,7 @@ mod tests {
                     &mut untouched,
                     false,
                 )
-            },
+            }),
             1
         );
         assert_eq!(output, b'\n' as u32);

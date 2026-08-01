@@ -9,6 +9,14 @@
 // Supports ext2/3/4, btrfs, f2fs, xfs, vfat, swap, squashfs, erofs, and
 // generic fallback to mkfs.<fstype>.
 
+// Centralized unsafe expression boundary for this module.
+#[cfg(test)]
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;
@@ -1135,7 +1143,7 @@ mod tests {
     fn test_mkfs_options_from_env_set() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set(
             "SYSTEMD_TESTCOMP_MKFS_OPTIONS_EXT4",
             "-O ^has_journal -b 4096",
@@ -1149,7 +1157,7 @@ mod tests {
         // The component/fstype are uppercased
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set("SYSTEMD_TEST_MKFS_OPTIONS_XFS", "-f");
         let result = mkfs_options_from_env("test", "xfs").unwrap();
         assert_eq!(result, vec!["-f"]);

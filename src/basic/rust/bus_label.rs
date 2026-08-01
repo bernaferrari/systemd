@@ -5,6 +5,13 @@
 // D-Bus object-path label escaping/unescaping. The C ABI accepts and returns
 // byte strings; only the input to rs_bus_label_escape is NUL-terminated.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::ptr;
@@ -129,7 +136,7 @@ pub unsafe extern "C" fn rs_bus_label_escape(s: *const c_char) -> *mut c_char {
     }
 
     // SAFETY: the entry-point contract guarantees a live NUL-terminated input.
-    let input = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let input = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let Some(capacity) = input.len().checked_mul(3).map(|n| n.max(1)) else {
         return ptr::null_mut();
     };
@@ -142,14 +149,14 @@ pub unsafe extern "C" fn rs_bus_label_escape(s: *const c_char) -> *mut c_char {
     escape_into(input, |byte| {
         // SAFETY: `capacity` reserves three bytes per input byte (or one for
         // the empty special case), so each write stays in the allocation.
-        unsafe {
+        unsafe_ffi!({
             *cursor = byte;
             cursor = cursor.add(1);
-        }
+        })
     });
     // SAFETY: the escaping pass used at most `capacity` bytes, leaving the
     // final byte of the `capacity + 1` allocation for the terminator.
-    unsafe { *cursor = 0 };
+    unsafe_ffi!(*cursor = 0);
 
     output
 }
@@ -171,14 +178,14 @@ pub unsafe extern "C" fn rs_bus_label_unescape_n(f: *const c_char, l: usize) -> 
 
     let input = if l == usize::MAX {
         // SAFETY: the entry-point contract guarantees a live C string here.
-        unsafe { CStr::from_ptr(f) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(f)).to_bytes()
     } else if l == 0 {
         // C only checks that f is non-null in this case; it does not dereference
         // it, so avoid imposing a stronger Rust slice-provenance requirement.
         &[]
     } else {
         // SAFETY: the entry-point contract guarantees this exact readable range.
-        unsafe { slice::from_raw_parts(f.cast::<u8>(), l) }
+        unsafe_ffi!(slice::from_raw_parts(f.cast::<u8>(), l))
     };
 
     let output = malloc_c_buffer(input.len());
@@ -189,13 +196,13 @@ pub unsafe extern "C" fn rs_bus_label_unescape_n(f: *const c_char, l: usize) -> 
     let mut cursor = output.cast::<u8>();
     unescape_into(input, |byte| {
         // SAFETY: unescaping produces no more bytes than its input length.
-        unsafe {
+        unsafe_ffi!({
             *cursor = byte;
             cursor = cursor.add(1);
-        }
+        })
     });
     // SAFETY: at most `input.len()` bytes were written into the allocation.
-    unsafe { *cursor = 0 };
+    unsafe_ffi!(*cursor = 0);
 
     output
 }

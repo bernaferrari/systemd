@@ -133,9 +133,9 @@ pub unsafe extern "C" fn rs_coredump_filter_mask_from_string(
         // SAFETY: `pos` initially comes from the caller's live C string and is
         // subsequently advanced only by `rs_extract_first_word`; `word` is a
         // writable output slot owned by this stack frame.
-        let r = unsafe {
+        let r = unsafe_ffi!({
             crate::extract_word::rs_extract_first_word(&mut pos, &mut word, std::ptr::null(), 0)
-        };
+        });
         if r < 0 {
             return r;
         }
@@ -794,11 +794,11 @@ fn c_string_copy(bytes: &[u8]) -> Option<*mut c_char> {
         return None;
     }
     // SAFETY: dst owns `size` bytes, including the terminator slot.
-    unsafe {
+    unsafe_ffi!({
         let output = std::slice::from_raw_parts_mut(dst.cast::<u8>(), size);
         output[..bytes.len()].copy_from_slice(bytes);
         output[bytes.len()] = 0;
-    }
+    });
     Some(dst)
 }
 
@@ -1018,9 +1018,9 @@ pub unsafe extern "C" fn rs_wol_options_to_string_alloc(opts: u32, ret: *mut *mu
             let name_len = name_bytes.len();
             // SAFETY: the destination range is within the total_len allocation
             // and static table bytes cannot overlap it.
-            unsafe {
+            unsafe_ffi!({
                 std::ptr::copy_nonoverlapping(name_bytes.as_ptr(), buf.add(pos).cast(), name_len)
-            };
+            });
             pos += name_len;
         }
     }

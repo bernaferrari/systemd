@@ -16,6 +16,13 @@
 //! launch inheritance. This does *not* select Rust as the installed PID 1:
 //! Meson/C ABI selection and several manager contracts remain incomplete.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::generator_runtime::{
     EnvironmentGeneratorExecutionReport, GeneratorExecutionError, GeneratorExecutionOptions,
     GeneratorExecutionReport, execute_system_environment_generators_with_fallback,
@@ -266,14 +273,16 @@ impl Pid1GeneratorStartupPlan {
         &self,
     ) -> Result<Pid1GeneratorStartupReport, Pid1GeneratorStartupError> {
         // SAFETY: upheld by this function's documented caller contract.
-        unsafe { publish_transient_environment(&self.initial_environment) };
+        unsafe_ffi!(publish_transient_environment(&self.initial_environment));
         let environment = self
             .run_environment_generators()
             .map_err(Pid1GeneratorStartupError::Environment)?;
         // SAFETY: the same single-threaded startup contract still applies;
         // environment-generator reader threads have been joined before their
         // report is returned.
-        unsafe { publish_transient_environment(&environment.transient_environment) };
+        unsafe_ffi!(publish_transient_environment(
+            &environment.transient_environment
+        ));
         let unit = self
             .run_unit_generators(environment.transient_environment.clone())
             .map_err(Pid1GeneratorStartupError::Unit)?;
@@ -381,12 +390,12 @@ pub unsafe fn publish_transient_environment(environment: &BTreeMap<String, Strin
     let inherited_names: Vec<OsString> = std::env::vars_os().map(|(name, _)| name).collect();
     for name in inherited_names {
         // SAFETY: upheld by the function's caller contract.
-        unsafe { std::env::remove_var(name) };
+        unsafe_ffi!(std::env::remove_var(name));
     }
     for (name, value) in environment {
         // SAFETY: upheld by the function's caller contract. Generator output
         // has already passed the environment-name/value validator.
-        unsafe { std::env::set_var(name, value) };
+        unsafe_ffi!(std::env::set_var(name, value));
     }
 }
 

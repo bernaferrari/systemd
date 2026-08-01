@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/udev/udev-rules.c, src/udev/udev-node.c, src/udev/udev-worker.c
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::udev_builtin::builtin_by_name;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -211,7 +218,7 @@ fn owned_fd(raw: libc::c_int) -> Result<OwnedFd, NodeApplyError> {
 
     // SAFETY: `raw` was just returned by an fd-producing libc call and has
     // not been wrapped or closed. Ownership is transferred exactly once.
-    Ok(unsafe { OwnedFd::from_raw_fd(raw) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(raw)))
 }
 
 #[cfg(target_os = "linux")]
@@ -220,19 +227,19 @@ fn open_device_root(path: &Path) -> Result<OwnedFd, NodeApplyError> {
     // SAFETY: `path` is NUL-terminated and lives through the call. O_PATH
     // avoids granting data access; O_NOFOLLOW rejects a symlink as the root
     // itself, and the returned descriptor is uniquely owned.
-    owned_fd(unsafe {
+    owned_fd(unsafe_ffi!({
         libc::open(
             path.as_ptr(),
             libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
         )
-    })
+    }))
 }
 
 #[cfg(target_os = "linux")]
 fn duplicate_fd(fd: RawFd) -> Result<OwnedFd, NodeApplyError> {
     // SAFETY: `fd` is borrowed for the duration of fcntl. F_DUPFD_CLOEXEC
     // returns a new descriptor with independent ownership.
-    owned_fd(unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3) })
+    owned_fd(unsafe_ffi!(libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3)))
 }
 
 #[cfg(target_os = "linux")]
@@ -240,13 +247,13 @@ fn open_child_directory(parent: RawFd, name: &CStr) -> Result<OwnedFd, NodeApply
     // SAFETY: `parent` is a live directory descriptor and `name` is a
     // NUL-terminated single path component. O_NOFOLLOW|O_DIRECTORY prevents
     // a pre-existing or concurrently substituted symlink from being followed.
-    owned_fd(unsafe {
+    owned_fd(unsafe_ffi!({
         libc::openat(
             parent,
             name.as_ptr(),
             libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
         )
-    })
+    }))
 }
 
 #[cfg(target_os = "linux")]
@@ -266,7 +273,12 @@ fn resolve_parent(root: &OwnedFd, relative: &Path) -> Result<ResolvedPath, NodeA
 
             // SAFETY: both arguments are valid, and `component` is a single
             // validated path component relative to `current`.
-            if unsafe { libc::mkdirat(current.as_raw_fd(), component.as_ptr(), 0o755) } < 0 {
+            if unsafe_ffi!(libc::mkdirat(
+                current.as_raw_fd(),
+                component.as_ptr(),
+                0o755
+            )) < 0
+            {
                 let error = io::Error::last_os_error();
                 if error.raw_os_error() != Some(libc::EEXIST) {
                     return Err(NodeApplyError::from(error));
@@ -288,11 +300,11 @@ fn fstat_fd(fd: RawFd) -> Result<libc::stat, NodeApplyError> {
     let mut stat = MaybeUninit::<libc::stat>::uninit();
     // SAFETY: `fd` is live and `stat` points to writable storage large enough
     // for libc::stat. The value is initialized only after fstat succeeds.
-    if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::fstat(fd, stat.as_mut_ptr())) < 0 {
         return Err(NodeApplyError::from(io::Error::last_os_error()));
     }
     // SAFETY: successful fstat initialized the complete structure.
-    Ok(unsafe { stat.assume_init() })
+    Ok(unsafe_ffi!(stat.assume_init()))
 }
 
 #[cfg(target_os = "linux")]
@@ -301,14 +313,14 @@ fn chmod_opath(fd: RawFd, mode: libc::mode_t) -> Result<(), NodeApplyError> {
 
     // SAFETY: `fd` is live, EMPTY is a valid empty C string, and
     // AT_EMPTY_PATH directs libc/the kernel to the already pinned inode.
-    if unsafe {
+    if unsafe_ffi!({
         libc::fchmodat(
             fd,
             EMPTY.as_ptr().cast(),
             mode & 0o7777,
             libc::AT_EMPTY_PATH,
         )
-    } >= 0
+    }) >= 0
     {
         return Ok(());
     }
@@ -330,7 +342,7 @@ fn chmod_opath(fd: RawFd, mode: libc::mode_t) -> Result<(), NodeApplyError> {
     let proc_path =
         CString::new(format!("/proc/self/fd/{fd}")).map_err(|_| NodeApplyError::InvalidPath)?;
     // SAFETY: `proc_path` is a valid C string and the mode is permission bits.
-    if unsafe { libc::chmod(proc_path.as_ptr(), mode & 0o7777) } < 0 {
+    if unsafe_ffi!(libc::chmod(proc_path.as_ptr(), mode & 0o7777)) < 0 {
         return Err(NodeApplyError::from(io::Error::last_os_error()));
     }
     Ok(())
@@ -358,7 +370,7 @@ fn apply_node_permissions(
         static EMPTY: &[u8] = b"\0";
         // SAFETY: the empty path plus AT_EMPTY_PATH selects the pinned inode.
         // u32::MAX is Linux's documented "leave unchanged" uid/gid sentinel.
-        if unsafe {
+        if unsafe_ffi!({
             libc::fchownat(
                 node.as_raw_fd(),
                 EMPTY.as_ptr().cast(),
@@ -366,7 +378,7 @@ fn apply_node_permissions(
                 gid.unwrap_or(u32::MAX),
                 libc::AT_EMPTY_PATH,
             )
-        } < 0
+        }) < 0
         {
             return Err(NodeApplyError::from(io::Error::last_os_error()));
         }
@@ -396,14 +408,14 @@ fn create_or_open_device_node(
 
     // SAFETY: the parent descriptor is live, the name is a single
     // NUL-terminated component, and mknodat cannot traverse through it.
-    if unsafe {
+    if unsafe_ffi!({
         libc::mknodat(
             path.parent.as_raw_fd(),
             path.name.as_ptr(),
             kind_bits | (mode as libc::mode_t & 0o7777),
             device,
         )
-    } < 0
+    }) < 0
     {
         let error = io::Error::last_os_error();
         if error.raw_os_error() != Some(libc::EEXIST) {
@@ -414,13 +426,13 @@ fn create_or_open_device_node(
     // O_PATH|O_NOFOLLOW pins the directory entry without opening the device
     // itself (which could otherwise have driver-visible side effects).
     // SAFETY: the descriptor and C string remain valid for the call.
-    let node = owned_fd(unsafe {
+    let node = owned_fd(unsafe_ffi!({
         libc::openat(
             path.parent.as_raw_fd(),
             path.name.as_ptr(),
             libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
         )
-    })?;
+    }))?;
     let stat = fstat_fd(node.as_raw_fd())?;
     if stat.st_mode & libc::S_IFMT != kind_bits || stat.st_rdev != device {
         return Err(NodeApplyError::Io(-libc::EEXIST));
@@ -448,17 +460,17 @@ fn relative_symlink_target(node: &Path, link: &Path) -> Result<CString, NodeAppl
 fn fstatat_nofollow(path: &ResolvedPath) -> Result<Option<libc::stat>, NodeApplyError> {
     let mut stat = MaybeUninit::<libc::stat>::uninit();
     // SAFETY: all pointers and descriptors remain valid for the call.
-    if unsafe {
+    if unsafe_ffi!({
         libc::fstatat(
             path.parent.as_raw_fd(),
             path.name.as_ptr(),
             stat.as_mut_ptr(),
             libc::AT_SYMLINK_NOFOLLOW,
         )
-    } >= 0
+    }) >= 0
     {
         // SAFETY: successful fstatat initialized the complete structure.
-        return Ok(Some(unsafe { stat.assume_init() }));
+        return Ok(Some(unsafe_ffi!(stat.assume_init())));
     }
 
     let error = io::Error::last_os_error();
@@ -486,7 +498,7 @@ fn replace_symlink_atomic(path: &ResolvedPath, target: &CStr) -> Result<(), Node
 
         // SAFETY: the target and temporary name are valid C strings and the
         // latter is a single internally generated component.
-        if unsafe { libc::symlinkat(target.as_ptr(), parent, temporary.as_ptr()) } < 0 {
+        if unsafe_ffi!(libc::symlinkat(target.as_ptr(), parent, temporary.as_ptr())) < 0 {
             let error = io::Error::last_os_error();
             if error.raw_os_error() == Some(libc::EEXIST) {
                 continue;
@@ -497,15 +509,21 @@ fn replace_symlink_atomic(path: &ResolvedPath, target: &CStr) -> Result<(), Node
         // renameat atomically replaces an existing symlink, matching
         // symlinkat_atomic_full() in the canonical C implementation.
         // SAFETY: both names are valid and relative to the same live dirfd.
-        if unsafe { libc::renameat(parent, temporary.as_ptr(), parent, path.name.as_ptr()) } >= 0 {
+        if unsafe_ffi!(libc::renameat(
+            parent,
+            temporary.as_ptr(),
+            parent,
+            path.name.as_ptr()
+        )) >= 0
+        {
             return Ok(());
         }
 
         let error = io::Error::last_os_error();
         // SAFETY: cleanup is confined to the internal temporary name.
-        unsafe {
+        unsafe_ffi!({
             libc::unlinkat(parent, temporary.as_ptr(), 0);
-        }
+        });
         return Err(NodeApplyError::from(error));
     }
 
@@ -681,12 +699,16 @@ mod tests {
 
         // SAFETY: `root` is a live directory descriptor, `probe` is one
         // constant NUL-terminated component, and the mode/device are valid.
-        if unsafe { libc::mknodat(root.as_raw_fd(), probe.as_ptr(), kind_bits | 0o600, device) }
-            >= 0
+        if unsafe_ffi!(libc::mknodat(
+            root.as_raw_fd(),
+            probe.as_ptr(),
+            kind_bits | 0o600,
+            device
+        )) >= 0
         {
             // SAFETY: cleanup is confined to the constant probe name below
             // the test-owned directory.
-            if unsafe { libc::unlinkat(root.as_raw_fd(), probe.as_ptr(), 0) } < 0 {
+            if unsafe_ffi!(libc::unlinkat(root.as_raw_fd(), probe.as_ptr(), 0)) < 0 {
                 return Err(NodeApplyError::from(io::Error::last_os_error()));
             }
             return Ok(true);

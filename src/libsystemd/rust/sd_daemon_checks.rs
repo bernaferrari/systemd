@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/libsystemd/sd-daemon/sd-daemon.c
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::BTreeMap;
 use std::env;
 use std::ffi::CString;
@@ -48,7 +55,7 @@ fn parse_with_c<T: Default>(
     let mut parsed = T::default();
     // SAFETY: the private callers supply a parser matching `T`; `value` is
     // NUL-terminated and `parsed` is writable for the duration of the call.
-    let r = unsafe { parser(value.as_ptr(), &mut parsed) };
+    let r = unsafe_ffi!(parser(value.as_ptr(), &mut parsed));
     if r < 0 {
         return Err(DaemonCheckError::Parse(variable));
     }
@@ -99,7 +106,7 @@ fn collect_listen_env() -> BTreeMap<String, String> {
 unsafe fn unsetenv_listen() {
     for key in LISTEN_ENV_VARS {
         // SAFETY: upheld by the caller as required by this function's contract.
-        unsafe { env::remove_var(key) };
+        unsafe_ffi!(env::remove_var(key));
     }
 }
 
@@ -119,7 +126,7 @@ fn collect_watchdog_env() -> BTreeMap<String, String> {
 unsafe fn unsetenv_watchdog() {
     for key in WATCHDOG_ENV_VARS {
         // SAFETY: upheld by the caller as required by this function's contract.
-        unsafe { env::remove_var(key) };
+        unsafe_ffi!(env::remove_var(key));
     }
 }
 
@@ -131,7 +138,7 @@ unsafe fn unsetenv_watchdog() {
 /// environment until this function returns.
 unsafe fn unsetenv_notify() {
     // SAFETY: upheld by the caller as required by this function's contract.
-    unsafe { env::remove_var(NOTIFY_ENV_VAR) };
+    unsafe_ffi!(env::remove_var(NOTIFY_ENV_VAR));
 }
 
 pub fn listen_fds_from_env(
@@ -184,7 +191,7 @@ pub unsafe fn sd_listen_fds(unset_environment: bool) -> Result<i32> {
 
     if unset_environment {
         // SAFETY: required by this function's contract when unsetting.
-        unsafe { unsetenv_listen() };
+        unsafe_ffi!(unsetenv_listen());
     }
 
     result
@@ -246,7 +253,7 @@ pub unsafe fn sd_listen_fds_with_names(unset_environment: bool) -> Result<Vec<Pa
 
     if unset_environment {
         // SAFETY: required by this function's contract when unsetting.
-        unsafe { unsetenv_listen() };
+        unsafe_ffi!(unsetenv_listen());
     }
 
     result
@@ -302,7 +309,7 @@ pub unsafe fn sd_watchdog_enabled(unset_environment: bool) -> Result<Option<u64>
 
     if unset_environment {
         // SAFETY: required by this function's contract when unsetting.
-        unsafe { unsetenv_watchdog() };
+        unsafe_ffi!(unsetenv_watchdog());
     }
 
     result
@@ -328,7 +335,7 @@ pub unsafe fn sd_notify(unset_environment: bool, state: &str) -> Result<bool> {
 
     if unset_environment {
         // SAFETY: required by this function's contract when unsetting.
-        unsafe { unsetenv_notify() };
+        unsafe_ffi!(unsetenv_notify());
     }
 
     result
@@ -361,7 +368,7 @@ fn notify_from_process_env(state: &str) -> Result<bool> {
 pub unsafe fn sd_notifyf(unset_environment: bool, args: std::fmt::Arguments<'_>) -> Result<bool> {
     let message = args.to_string();
     // SAFETY: this function has the same environment-mutation contract.
-    unsafe { sd_notify(unset_environment, &message) }
+    unsafe_ffi!(sd_notify(unset_environment, &message))
 }
 
 pub fn booted_at(path: &Path) -> Result<bool> {
@@ -620,7 +627,8 @@ pub unsafe fn sd_is_socket_sockaddr(
     }
     // SAFETY: upheld by this function's caller: `addr` designates at least a
     // `sa_family_t`, and `read_unaligned` does not impose stronger alignment.
-    let addr_family = unsafe { std::ptr::read_unaligned(addr.cast::<libc::sa_family_t>()) } as i32;
+    let addr_family =
+        unsafe_ffi!(std::ptr::read_unaligned(addr.cast::<libc::sa_family_t>())) as i32;
     match addr_family {
         libc::AF_INET | libc::AF_INET6 => {}
         _ => return Err(DaemonCheckError::InvalidInput("family")),
@@ -641,7 +649,7 @@ pub unsafe fn sd_is_socket_sockaddr(
 
     // SAFETY: after the existing family and length checks, this export's raw
     // address contract supplies a readable, aligned complete address object.
-    let expected = unsafe { read_inet_socket_address(addr, addr_len, addr_family) }?;
+    let expected = unsafe_ffi!(read_inet_socket_address(addr, addr_len, addr_family))?;
     let actual = read_inet_socket_address_from_storage(&storage, actual_len)?;
     Ok(inet_socket_address_matches(actual, expected))
 }
@@ -657,7 +665,9 @@ pub unsafe fn is_socket_sockaddr(
     listening: Option<bool>,
 ) -> Result<bool> {
     // SAFETY: this wrapper preserves the raw address contract documented above.
-    unsafe { sd_is_socket_sockaddr(fd, sock_type, addr, addr_len, listening) }
+    unsafe_ffi!(sd_is_socket_sockaddr(
+        fd, sock_type, addr, addr_len, listening
+    ))
 }
 
 pub fn sd_is_socket_unix(
@@ -688,14 +698,14 @@ pub fn sd_is_socket_unix(
     let actual_path =
         // SAFETY: `path_offset` and `actual_path_len` were checked against the
         // sockaddr bytes initialized by `getsockname` above.
-        unsafe {
+        unsafe_ffi!({
             std::slice::from_raw_parts(
                 std::ptr::from_ref(&storage)
                     .cast::<u8>()
                     .add(path_offset),
                 actual_path_len,
             )
-        };
+        });
 
     Ok(unix_socket_path_matches(actual_path, path))
 }
@@ -714,9 +724,9 @@ pub fn sd_is_mq(fd: RawFd, path: Option<&Path>) -> Result<bool> {
     let fd = validate_fd(fd)?;
     // SAFETY: `libc::mq_attr` and `mq_getattr` come from the target libc ABI;
     // `fd` was validated and `attr` is writable for the duration of the call.
-    let mut attr = unsafe { zeroed::<libc::mq_attr>() };
+    let mut attr = unsafe_ffi!(zeroed::<libc::mq_attr>());
     // SAFETY: `fd` was validated and `attr` is a live writable target-libc value.
-    let r = unsafe { libc::mq_getattr(fd, &mut attr) };
+    let r = unsafe_ffi!(libc::mq_getattr(fd, &mut attr));
     if r < 0 {
         let errno = last_errno();
         if errno == libc::EBADF {
@@ -794,9 +804,9 @@ fn fstat(fd: RawFd) -> Result<libc::stat> {
         return Err(DaemonCheckError::BadFd);
     }
     // SAFETY: `libc::stat` is a POD C struct and may be zero-initialized before `fstat` fills it.
-    let mut st = unsafe { zeroed::<libc::stat>() };
+    let mut st = unsafe_ffi!(zeroed::<libc::stat>());
     // SAFETY: arguments satisfy the libc `fstat` contract and any passed pointers remain valid for the call.
-    let r = unsafe { libc::fstat(fd, &mut st) };
+    let r = unsafe_ffi!(libc::fstat(fd, &mut st));
     if r < 0 {
         return Err(DaemonCheckError::Io(last_errno()));
     }
@@ -807,9 +817,9 @@ fn stat_path(path: &Path) -> Result<libc::stat> {
     let path = CString::new(path.as_os_str().as_encoded_bytes())
         .map_err(|_| DaemonCheckError::InvalidInput("path"))?;
     // SAFETY: `libc::stat` is a POD C struct and may be zero-initialized before `stat` fills it.
-    let mut st = unsafe { zeroed::<libc::stat>() };
+    let mut st = unsafe_ffi!(zeroed::<libc::stat>());
     // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-    let r = unsafe { libc::stat(path.as_ptr(), &mut st) };
+    let r = unsafe_ffi!(libc::stat(path.as_ptr(), &mut st));
     if r < 0 {
         return Err(DaemonCheckError::Io(last_errno()));
     }
@@ -822,7 +832,7 @@ fn validate_fd(fd: RawFd) -> Result<RawFd> {
     }
 
     // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-    let r = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    let r = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD));
     if r < 0 {
         return Err(DaemonCheckError::Io(last_errno()));
     }
@@ -836,13 +846,13 @@ fn set_fd_cloexec(fd: RawFd) -> Result<()> {
     }
 
     // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    let flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD));
     if flags < 0 {
         return Err(DaemonCheckError::Io(last_errno()));
     }
 
     // SAFETY: arguments satisfy the libc `fcntl` contract and any passed pointers remain valid for the call.
-    if unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0 {
+    if unsafe_ffi!(libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC)) < 0 {
         return Err(DaemonCheckError::Io(last_errno()));
     }
 
@@ -870,7 +880,7 @@ struct NotifySocketFd(RawFd);
 fn close_fd(fd: RawFd) {
     // SAFETY: `close` accepts any integer descriptor; callers intentionally
     // ignore the close result to preserve the existing cleanup behavior.
-    unsafe { libc::close(fd) };
+    unsafe_ffi!(libc::close(fd));
 }
 
 impl Drop for NotifySocketFd {
@@ -927,14 +937,14 @@ fn create_socket_cloexec(family: libc::c_int, sock_type: libc::c_int) -> Result<
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         // SAFETY: arguments satisfy the libc `socket` contract and any passed pointers remain valid for the call.
-        let fd = unsafe { libc::socket(family, sock_type | libc::SOCK_CLOEXEC, 0) };
+        let fd = unsafe_ffi!(libc::socket(family, sock_type | libc::SOCK_CLOEXEC, 0));
         if fd >= 0 {
             return Ok(fd);
         }
     }
 
     // SAFETY: arguments satisfy the libc `socket` contract and any passed pointers remain valid for the call.
-    let fd = unsafe { libc::socket(family, sock_type, 0) };
+    let fd = unsafe_ffi!(libc::socket(family, sock_type, 0));
     if fd < 0 {
         return Err(DaemonCheckError::Io(last_errno()));
     }
@@ -951,7 +961,7 @@ fn parse_notify_socket_unix(address: &str) -> Result<(libc::sockaddr_un, libc::s
     }
 
     // SAFETY: `libc::sockaddr_un` is POD and may be zero-initialized before filling `sun_family/sun_path`.
-    let mut sockaddr = unsafe { zeroed::<libc::sockaddr_un>() };
+    let mut sockaddr = unsafe_ffi!(zeroed::<libc::sockaddr_un>());
     sockaddr.sun_family = libc::AF_UNIX as libc::sa_family_t;
     let path_offset = offset_of!(libc::sockaddr_un, sun_path);
     let max_len = sockaddr.sun_path.len();
@@ -1056,11 +1066,11 @@ fn getsockopt_int(fd: RawFd, opt: i32) -> Result<i32> {
 
 fn getsockname(fd: RawFd) -> Result<(libc::sockaddr_storage, libc::socklen_t)> {
     // SAFETY: `libc::sockaddr_storage` is POD and may be zero-initialized before `getsockname` writes it.
-    let mut storage = unsafe { zeroed::<libc::sockaddr_storage>() };
+    let mut storage = unsafe_ffi!(zeroed::<libc::sockaddr_storage>());
     let mut len = size_of::<libc::sockaddr_storage>() as libc::socklen_t;
     let r =
         // SAFETY: arguments satisfy the libc `getsockname` contract and any passed pointers remain valid for the call.
-        unsafe { libc::getsockname(fd, &mut storage as *mut _ as *mut libc::sockaddr, &mut len) };
+        unsafe_ffi!( libc::getsockname(fd, &mut storage as *mut _ as *mut libc::sockaddr, &mut len) );
     if r < 0 {
         return Err(DaemonCheckError::Io(last_errno()));
     }

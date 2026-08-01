@@ -9,6 +9,13 @@
 // each public function's Safety contract. Owned results are created solely by
 // the lower `owned` domain or the explicitly documented malloc site.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 use std::ptr;
 
@@ -26,7 +33,7 @@ fn with_c_string<T>(value: *const c_char, operation: impl FnOnce(&[u8]) -> T) ->
     }
     // SAFETY: each caller upholds the documented readable NUL-terminated C
     // string contract for this synchronous closure.
-    Some(operation(unsafe { CStr::from_ptr(value) }.to_bytes()))
+    Some(operation(unsafe_ffi!(CStr::from_ptr(value)).to_bytes()))
 }
 
 fn with_two_c_strings<T>(
@@ -181,7 +188,7 @@ pub unsafe fn rs_string_replace_char(
         return ptr::null_mut();
     };
     // SAFETY: `string` is writable for all visible bytes by the contract.
-    let bytes = unsafe { std::slice::from_raw_parts_mut(string.cast::<u8>(), length) };
+    let bytes = unsafe_ffi!(std::slice::from_raw_parts_mut(string.cast::<u8>(), length));
     for byte in bytes {
         if *byte == old_char as u8 {
             *byte = new_char as u8;

@@ -17,6 +17,13 @@
 // runtime implementation. The C implementation remains the production
 // authority for actual label lookup and process-global fscreate state.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::error::Error;
 use std::ffi::CString;
@@ -322,14 +329,19 @@ fn fopen_temporary_internal(dir_fd: RawFd, path: &Path) -> Result<File, TempFile
 
     // SAFETY: openat(2) is a POSIX syscall. c_path is a valid NUL-terminated
     // string. dir_fd is validated by the caller.
-    let fd = unsafe { libc::openat(dir_fd, c_path.as_ptr(), OPEN_FLAGS, TEMP_MODE as u32) };
+    let fd = unsafe_ffi!(libc::openat(
+        dir_fd,
+        c_path.as_ptr(),
+        OPEN_FLAGS,
+        TEMP_MODE as u32
+    ));
 
     if fd < 0 {
         return Err(io::Error::last_os_error().into());
     }
 
     // SAFETY: fd is valid (just returned by openat, checked > 0).
-    let file = unsafe { File::from_raw_fd(fd) };
+    let file = unsafe_ffi!(File::from_raw_fd(fd));
 
     Ok(file)
 }

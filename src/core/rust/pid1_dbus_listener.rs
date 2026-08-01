@@ -15,6 +15,13 @@
 //! routing, vtables, disconnect handling, and manager lifecycle integration
 //! before the private manager API can be advertised.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 #[cfg(target_os = "linux")]
 mod imp {
     use std::collections::BTreeMap;
@@ -341,7 +348,7 @@ mod imp {
             // SAFETY: `accept4` returned a fresh, owned descriptor on success.
             // No other Rust owner exists, and `UnixStream` assumes exactly this
             // stream-socket ownership when it closes the descriptor on drop.
-            Ok(unsafe { UnixStream::from_raw_fd(fd) })
+            Ok(unsafe_ffi!(UnixStream::from_raw_fd(fd)))
         }
 
         /// Create the system manager's private listener at

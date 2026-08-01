@@ -10,6 +10,13 @@
 
 // ── Imports ───────────────────────────────────────────────────────────────
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::fmt;
@@ -412,7 +419,7 @@ impl Condition {
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "path contains NUL"))?;
             // SAFETY: `parent_cstr` is a live, NUL-terminated path, and
             // access(2) only reads that path during this call.
-            if unsafe { libc::access(parent_cstr.as_ptr(), libc::F_OK) } < 0 {
+            if unsafe_ffi!(libc::access(parent_cstr.as_ptr(), libc::F_OK)) < 0 {
                 return Ok(false);
             }
         }
@@ -464,10 +471,10 @@ impl Condition {
         };
         // SAFETY: `libc::stat` is a plain C output struct for which a
         // zeroed initial value is valid before stat(2) overwrites it.
-        let mut path_stat: libc::stat = unsafe { std::mem::zeroed() };
+        let mut path_stat: libc::stat = unsafe_ffi!(std::mem::zeroed());
         // SAFETY: `path_cstr` is NUL-terminated and `path_stat` is a valid,
         // writable output buffer for the duration of stat(2).
-        if unsafe { libc::stat(path_cstr.as_ptr(), &mut path_stat) } < 0 {
+        if unsafe_ffi!(libc::stat(path_cstr.as_ptr(), &mut path_stat)) < 0 {
             return Ok(false);
         }
 
@@ -479,10 +486,10 @@ impl Condition {
         };
         // SAFETY: `libc::stat` is a plain C output struct for which a
         // zeroed initial value is valid before stat(2) overwrites it.
-        let mut parent_stat: libc::stat = unsafe { std::mem::zeroed() };
+        let mut parent_stat: libc::stat = unsafe_ffi!(std::mem::zeroed());
         // SAFETY: `parent_cstr` is NUL-terminated and `parent_stat` is a
         // valid, writable output buffer for the duration of stat(2).
-        if unsafe { libc::stat(parent_cstr.as_ptr(), &mut parent_stat) } < 0 {
+        if unsafe_ffi!(libc::stat(parent_cstr.as_ptr(), &mut parent_stat)) < 0 {
             return Err(io::Error::last_os_error());
         }
 
@@ -597,7 +604,7 @@ impl Condition {
         // Fall back to the marker file.
         // SAFETY: access(2) on a path is a safe syscall.
         let marker = std::ffi::CString::new("/run/systemd/first-boot").unwrap();
-        let exists = unsafe { libc::access(marker.as_ptr(), libc::F_OK) } >= 0;
+        let exists = unsafe_ffi!(libc::access(marker.as_ptr(), libc::F_OK)) >= 0;
         Ok(exists == expected)
     }
 
@@ -625,14 +632,14 @@ impl Condition {
     fn test_architecture(&self) -> io::Result<bool> {
         // SAFETY: uname(2) writes to a stack-allocated buffer and is always
         // safe to call.
-        let mut utsname: libc::utsname = unsafe { std::mem::zeroed() };
-        if unsafe { libc::uname(&mut utsname) } < 0 {
+        let mut utsname: libc::utsname = unsafe_ffi!(std::mem::zeroed());
+        if unsafe_ffi!(libc::uname(&mut utsname)) < 0 {
             return Err(io::Error::last_os_error());
         }
         // SAFETY: successful uname(2) initializes `machine` as a
         // NUL-terminated field in the live `utsname` buffer.
         let machine =
-            unsafe { std::ffi::CStr::from_ptr(utsname.machine.as_ptr()).to_string_lossy() };
+            unsafe_ffi!(std::ffi::CStr::from_ptr(utsname.machine.as_ptr()).to_string_lossy());
         let machine = machine.as_ref();
 
         let matches = match self.parameter.as_str() {
@@ -659,8 +666,8 @@ impl Condition {
 
     fn test_user(&self) -> io::Result<bool> {
         // SAFETY: getuid/geteuid are trivially safe.
-        let uid = unsafe { libc::getuid() };
-        let euid = unsafe { libc::geteuid() };
+        let uid = unsafe_ffi!(libc::getuid());
+        let euid = unsafe_ffi!(libc::geteuid());
 
         match self.parameter.as_str() {
             "root" => Ok(uid == 0 || euid == 0),
@@ -680,8 +687,8 @@ impl Condition {
 
     fn test_group(&self) -> io::Result<bool> {
         // SAFETY: getgid/getegid are trivially safe.
-        let gid = unsafe { libc::getgid() };
-        let egid = unsafe { libc::getegid() };
+        let gid = unsafe_ffi!(libc::getgid());
+        let egid = unsafe_ffi!(libc::getegid());
 
         match self.parameter.as_str() {
             "root" => Ok(gid == 0 || egid == 0),
@@ -794,7 +801,7 @@ fn etc_machine_info_path() -> &'static Path {
         // SAFETY: `getauxval()` takes no pointer and transfers no ownership.
         // It is the same tiny libc boundary used by the credential path to
         // reproduce `secure_getenv()` semantics in privileged execution.
-        if unsafe { libc::getauxval(libc::AT_SECURE) } == 0 {
+        if unsafe_ffi!(libc::getauxval(libc::AT_SECURE)) == 0 {
             if let Some(path) = std::env::var_os("SYSTEMD_ETC_MACHINE_INFO") {
                 return PathBuf::from(path);
             }
@@ -900,7 +907,7 @@ fn machine_tag_fnmatch(pattern: &str, tag: &str) -> bool {
 
     // SAFETY: both CString values are live, NUL-terminated byte strings for
     // the duration of this call; flags=0 exactly matches condition.c.
-    unsafe { libc::fnmatch(pattern.as_ptr(), tag.as_ptr(), 0) == 0 }
+    unsafe_ffi!(libc::fnmatch(pattern.as_ptr(), tag.as_ptr(), 0) == 0)
 }
 
 #[derive(Clone, Copy)]

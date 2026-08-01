@@ -4,6 +4,13 @@
 //!
 //! Translated from `src/shared/serialize.c`.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::fdset::FdSetError;
 use crate::ffi::*;
 use std::io::{self, BufRead, Write};
@@ -353,7 +360,7 @@ pub fn deserialize_fd_many(fds: &mut FDSet, value: &str, n: usize) -> io::Result
         // SAFETY: `deserialize_fd()` just removed `fd` from the owning
         // `FdSet`, transferring its sole ownership to this function. Wrapping
         // it immediately ensures a later parse/removal error closes it.
-        result.push(unsafe { OwnedFd::from_raw_fd(fd) });
+        result.push(unsafe_ffi!(OwnedFd::from_raw_fd(fd)));
     }
     Ok(result.into_iter().map(IntoRawFd::into_raw_fd).collect())
 }

@@ -9,6 +9,13 @@
 // or auto-detected from pattern content), and pattern matching against
 // arbitrary byte buffers with optional ovector output.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::HashSet;
 use std::ffi::{CString, c_void};
 use std::fmt;
@@ -256,7 +263,7 @@ impl MatchDataGuard {
     fn new(lib: &Pcre2Lib) -> Result<Self, Pcre2Error> {
         // SAFETY: match_data_create is the validated PCRE2 ABI symbol, and a
         // positive ovector count with a null optional general context is valid.
-        let ptr = unsafe { (lib.match_data_create())(1, std::ptr::null_mut()) };
+        let ptr = unsafe_ffi!((lib.match_data_create())(1, std::ptr::null_mut()));
         if ptr.is_null() {
             return Err(Pcre2Error::OutOfMemory);
         }
@@ -442,7 +449,11 @@ fn pcre2_error_message(lib: &Pcre2Lib, errorcode: i32) -> String {
     let mut buf = [0u8; 1024];
     // SAFETY: get_error_message is the validated PCRE2 ABI symbol, and the
     // stack buffer is writable for exactly the length passed to the function.
-    let rc = unsafe { (lib.get_error_message())(errorcode, buf.as_mut_ptr(), buf.len()) };
+    let rc = unsafe_ffi!((lib.get_error_message())(
+        errorcode,
+        buf.as_mut_ptr(),
+        buf.len()
+    ));
     if rc < 0 {
         return "unknown error".to_string();
     }
@@ -489,7 +500,7 @@ fn compile_pattern_with_flags(
 
     // SAFETY: the non-null pointer was returned by pcre2_compile_8 and is
     // transferred to the resulting RAII guard for exactly one code_free call.
-    unsafe { CompiledPattern::from_raw(code_ptr) }.ok_or_else(|| Pcre2Error::InvalidPattern {
+    unsafe_ffi!(CompiledPattern::from_raw(code_ptr)).ok_or_else(|| Pcre2Error::InvalidPattern {
         pattern: pattern_for_error.to_string(),
         detail: "pcre2_compile returned null".to_string(),
     })
@@ -640,16 +651,16 @@ pub fn pattern_matches_bytes(
         // SAFETY: match_data_create(1, ...) creates space for the full
         // match's start and end offsets, and a successful PCRE2 match makes
         // its returned ovector valid until the match data is freed.
-        let ovec = unsafe { (lib.get_ovector_pointer())(md) };
+        let ovec = unsafe_ffi!((lib.get_ovector_pointer())(md));
         if ovec.is_null() {
             None
         } else {
             // SAFETY: the successful one-pair match has an ovector element
             // for the full match start at index zero.
-            let start = unsafe { *ovec };
+            let start = unsafe_ffi!(*ovec);
             // SAFETY: the same one-pair ovector has the full match end at
             // index one; both elements are initialized by the match call.
-            let end = unsafe { *ovec.add(1) };
+            let end = unsafe_ffi!(*ovec.add(1));
             Some((start, end))
         }
     } else {

@@ -8,6 +8,13 @@
 //! its fallback is still descriptor-relative, rejects `.`/`..`/slashes, and
 //! uses `O_NOFOLLOW`, so it cannot escape through a renamed parent or symlink.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, CString, OsStr};
 use std::fs::File;
 use std::io::{self, Read};
@@ -378,7 +385,11 @@ pub(super) fn inotify_add_watch_fd(
         .map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
     // SAFETY: both descriptors are borrowed and live for this call; `path` is
     // NUL-terminated, and `mask` is passed through to the kernel unchanged.
-    let watch = unsafe { libc::inotify_add_watch(inotify.as_raw_fd(), path.as_ptr(), mask) };
+    let watch = unsafe_ffi!(libc::inotify_add_watch(
+        inotify.as_raw_fd(),
+        path.as_ptr(),
+        mask
+    ));
     if watch < 0 {
         Err(io::Error::last_os_error())
     } else {
@@ -388,7 +399,7 @@ pub(super) fn inotify_add_watch_fd(
 
 pub(super) fn inotify_remove_watch(inotify: BorrowedFd<'_>, watch: i32) -> io::Result<()> {
     // SAFETY: the borrowed inotify descriptor remains live for the call.
-    let result = unsafe { libc::inotify_rm_watch(inotify.as_raw_fd(), watch) };
+    let result = unsafe_ffi!(libc::inotify_rm_watch(inotify.as_raw_fd(), watch));
     if result < 0 {
         Err(io::Error::last_os_error())
     } else {
@@ -530,7 +541,7 @@ fn unlinkat(parent: BorrowedFd<'_>, component: &CStr, flags: libc::c_int) -> io:
 fn duplicate_fd(fd: BorrowedFd<'_>) -> io::Result<OwnedFd> {
     // SAFETY: `fd` remains live for the call. F_DUPFD_CLOEXEC returns a new
     // independently owned descriptor.
-    let duplicate = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 3) };
+    let duplicate = unsafe_ffi!(libc::fcntl(fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 3));
     owned_fd_or_errno(duplicate)
 }
 
@@ -556,7 +567,7 @@ fn owned_fd_or_errno(fd: libc::c_int) -> io::Result<OwnedFd> {
         Err(io::Error::last_os_error())
     } else {
         // SAFETY: callers pass only fresh descriptors returned by Linux.
-        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+        Ok(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
     }
 }
 

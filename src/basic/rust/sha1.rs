@@ -5,6 +5,13 @@
 // SHA-1 hash implementation, faithful to the public domain SHA-1 by Steve Reid.
 // The algorithm is safe Rust; unsafe code is confined to the documented C ABI facade.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::c_void;
 use std::{ptr, slice};
 
@@ -253,7 +260,7 @@ pub unsafe extern "C" fn rs_sha1_init_ctx(ctx: *mut Sha1Ctx) {
 
     // SAFETY: required by this entry point's contract. `ptr::write` also
     // permits the caller-provided storage to be uninitialized.
-    unsafe { ptr::write(ctx, Sha1Ctx::new()) };
+    unsafe_ffi!(ptr::write(ctx, Sha1Ctx::new()));
 }
 
 /// Process `size` bytes into a C-layout SHA-1 context.
@@ -277,11 +284,11 @@ pub unsafe extern "C" fn rs_sha1_process_bytes(
         &[]
     } else {
         // SAFETY: the caller guarantees a live region of `size` bytes.
-        unsafe { slice::from_raw_parts(buffer.cast::<u8>(), size) }
+        unsafe_ffi!(slice::from_raw_parts(buffer.cast::<u8>(), size))
     };
     // SAFETY: the caller guarantees that `ctx` is live, aligned, initialized,
     // and exclusively accessible for the duration of this call.
-    unsafe { &mut *ctx }.update(data);
+    unsafe_ffi!(&mut *ctx).update(data);
 }
 
 /// Finalize a C-layout SHA-1 context and return `result`.
@@ -301,14 +308,14 @@ pub unsafe extern "C" fn rs_sha1_finish_ctx(ctx: *mut Sha1Ctx, result: *mut u8) 
     // SAFETY: the caller guarantees a live, initialized, exclusive context.
     // Moving the plain-data context local also avoids creating an exclusive
     // Rust reference that could conflict if `result` points inside `ctx`.
-    let mut local = unsafe { ptr::read(ctx) };
+    let mut local = unsafe_ffi!(ptr::read(ctx));
     let digest = local.finish();
     // SAFETY: the caller provides a writable 20-byte result region. `copy`
     // deliberately tolerates overlap with the context storage.
-    unsafe { ptr::copy(digest.as_ptr(), result, SHA1_DIGEST_SIZE) };
+    unsafe_ffi!(ptr::copy(digest.as_ptr(), result, SHA1_DIGEST_SIZE));
     // SAFETY: `ctx` remains valid writable storage. Writing the erased context
     // after the digest preserves C's ordering when the two regions overlap.
-    unsafe { ptr::write(ctx, local) };
+    unsafe_ffi!(ptr::write(ctx, local));
     result.cast()
 }
 

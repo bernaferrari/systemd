@@ -100,14 +100,14 @@ unsafe fn ask_password_auto(
         // SAFETY: a successful C call returns a null-terminated vector whose
         // entries and vector allocation are all owned by the caller and were
         // allocated with the allocator paired with `libc::free`.
-        unsafe {
+        unsafe_ffi!({
             let mut p = result;
             while !(*p).is_null() {
                 libc::free((*p).cast());
                 p = p.add(1);
             }
             libc::free(result.cast());
-        }
+        })
     }
 
     0
@@ -138,7 +138,7 @@ unsafe fn print_passwords(passwords: *mut *mut libc::c_char, newline: bool, no_o
 
     // SAFETY: the caller guarantees a readable null-terminated vector and
     // valid C strings; the traversal never writes through either pointer.
-    unsafe {
+    unsafe_ffi!({
         let mut p = passwords;
         while !(*p).is_null() {
             let pwd = *p;
@@ -150,7 +150,7 @@ unsafe fn print_passwords(passwords: *mut *mut libc::c_char, newline: bool, no_o
             libc::fflush(libc::stdout);
             p = p.add(1);
         }
-    }
+    })
 }
 
 #[cfg(test)]

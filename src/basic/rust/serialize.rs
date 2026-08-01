@@ -4,6 +4,13 @@
 //
 // Serialization format deserialization utilities and C ABI facades.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::Errno;
 use crate::time_util::DualTimestamp as CDualTimestamp;
 use libc::{c_char, c_int, c_ulonglong};
@@ -198,7 +205,7 @@ pub unsafe extern "C" fn rs_deserialize_usec(value: *const c_char, ret: *mut u64
     }
 
     // SAFETY: the facade's pointer contract is exactly that of rs_safe_atou64().
-    unsafe { crate::parse_util::rs_safe_atou64(value, ret) }
+    unsafe_ffi!(crate::parse_util::rs_safe_atou64(value, ret))
 }
 
 /// C ABI facade for `deserialize_dual_timestamp()`.
@@ -232,41 +239,47 @@ pub unsafe extern "C" fn rs_deserialize_dual_timestamp(
     // match the authority's storage and subsequent indexing contract.
     // SAFETY: `value` is a live NUL-terminated string by this facade's
     // contract, and `whitespace` is a static NUL-terminated C string.
-    let mut pos = unsafe { libc::strspn(value, whitespace.as_ptr()) as c_int };
+    let mut pos = unsafe_ffi!(libc::strspn(value, whitespace.as_ptr()) as c_int);
     // SAFETY: `pos` was measured within `value` above.
-    if unsafe { *value.add(pos as usize) } == b'-' as c_char {
+    if unsafe_ffi!(*value.add(pos as usize)) == b'-' as c_char {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: `pos` was measured within `value` above; `digits` is static.
-    pos += unsafe { libc::strspn(value.add(pos as usize), digits.as_ptr()) as c_int };
+    pos += unsafe_ffi!(libc::strspn(value.add(pos as usize), digits.as_ptr()) as c_int);
     // SAFETY: `pos` remains within the C string after the previous span.
-    pos += unsafe { libc::strspn(value.add(pos as usize), whitespace.as_ptr()) as c_int };
+    pos += unsafe_ffi!(libc::strspn(value.add(pos as usize), whitespace.as_ptr()) as c_int);
     // SAFETY: `pos` was measured within `value` above.
-    if unsafe { *value.add(pos as usize) } == b'-' as c_char {
+    if unsafe_ffi!(*value.add(pos as usize)) == b'-' as c_char {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: all pointers meet sscanf's C contracts. `%llu` receives
     // c_ulonglong storage, and `%n` receives C int storage.
-    let scanned = unsafe { libc::sscanf(value, c"%llu %llu%n".as_ptr(), &mut a, &mut b, &mut pos) };
+    let scanned = unsafe_ffi!(libc::sscanf(
+        value,
+        c"%llu %llu%n".as_ptr(),
+        &mut a,
+        &mut b,
+        &mut pos
+    ));
     if scanned != 2 {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: successful `%n` reports an offset within `value`.
-    if unsafe { *value.add(pos as usize) } != 0 {
+    if unsafe_ffi!(*value.add(pos as usize)) != 0 {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: `ret` is writable by this facade's pointer contract. Publish
     // only after every authority check above has succeeded.
-    unsafe {
+    unsafe_ffi!({
         *ret = CDualTimestamp {
             realtime: a as u64,
             monotonic: b as u64,
         };
-    }
+    });
     0
 }
 

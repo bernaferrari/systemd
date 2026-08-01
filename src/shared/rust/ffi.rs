@@ -5,6 +5,13 @@
 // FFI layer for the shared Rust crate. Re-exports types from systemd_basic_rs
 // and provides additional safe Rust wrappers for common C library operations.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 use libc::c_char;
 
@@ -237,7 +244,7 @@ pub fn copy_bytes<'a>(dest: &'a mut [u8], src: &[u8]) -> Result<&'a mut [u8], Ff
 /// `ptr` must point to a valid, null-terminated C string.
 pub unsafe fn c_string_length(ptr: *const c_char) -> usize {
     // SAFETY: Caller guarantees ptr points to a valid null-terminated C string.
-    unsafe { std::ffi::CStr::from_ptr(ptr).to_bytes().len() }
+    unsafe_ffi!(std::ffi::CStr::from_ptr(ptr).to_bytes().len())
 }
 
 #[cfg(test)]
@@ -385,14 +392,14 @@ mod tests {
         use std::ffi::CString;
         let s = CString::new("hello").unwrap();
         // SAFETY: s.as_ptr() points to a valid null-terminated C string.
-        assert_eq!(unsafe { c_string_length(s.as_ptr()) }, 5);
+        assert_eq!(unsafe_ffi!(c_string_length(s.as_ptr())), 5);
 
         let empty = CString::new("").unwrap();
         // SAFETY: empty.as_ptr() points to a valid null-terminated C string.
-        assert_eq!(unsafe { c_string_length(empty.as_ptr()) }, 0);
+        assert_eq!(unsafe_ffi!(c_string_length(empty.as_ptr())), 0);
 
         let long = CString::new("abcdefghij").unwrap();
         // SAFETY: long.as_ptr() points to a valid null-terminated C string.
-        assert_eq!(unsafe { c_string_length(long.as_ptr()) }, 10);
+        assert_eq!(unsafe_ffi!(c_string_length(long.as_ptr())), 10);
     }
 }

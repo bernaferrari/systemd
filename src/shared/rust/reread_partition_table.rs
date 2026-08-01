@@ -13,6 +13,13 @@
 //
 // `unsafe` is confined to the BLKRRPART ioctl syscall.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::{HashMap, HashSet};
 use std::os::unix::io::AsRawFd;
 
@@ -246,7 +253,7 @@ pub fn blkrrpart<Fd: AsRawFd>(fd: &Fd) -> Result<()> {
     // SAFETY: `AsRawFd` guarantees the fd is valid. BLKRRPART takes no
     // data argument (we pass 0). The kernel reads the partition table
     // from the device and updates its internal state.
-    let ret = unsafe { libc::ioctl(fd.as_raw_fd(), BLKRRPART, 0) };
+    let ret = unsafe_ffi!(libc::ioctl(fd.as_raw_fd(), BLKRRPART, 0));
     if ret < 0 {
         return Err(std::io::Error::last_os_error().into());
     }

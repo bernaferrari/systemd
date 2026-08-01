@@ -7,6 +7,13 @@
 // ── Enums ─────────────────────────────────────────────────────────────────
 
 /// Unit type enum matching systemd's UnitType.
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnitType {
     Service,
@@ -673,28 +680,28 @@ pub unsafe extern "C" fn rs_unit_dbus_path_from_name(name: *const c_char) -> *mu
     }
 
     // SAFETY: the entry-point contract supplies a live NUL-terminated name.
-    let escaped = unsafe { rs_bus_label_escape(name) };
+    let escaped = unsafe_ffi!(rs_bus_label_escape(name));
     if escaped.is_null() {
         return ptr::null_mut();
     }
 
     // SAFETY: `rs_bus_label_escape` returned this live, NUL-terminated C
     // allocation, whose ownership remains local until the cleanup below.
-    let escaped_len = unsafe { strlen(escaped) };
+    let escaped_len = unsafe_ffi!(strlen(escaped));
     let Some(allocation_size) = UNIT_DBUS_PATH_PREFIX_BYTES
         .len()
         .checked_add(escaped_len)
         .and_then(|size| size.checked_add(1))
     else {
         // SAFETY: `escaped` is the unique live C allocation returned above.
-        unsafe { free(escaped.cast()) };
+        unsafe_ffi!(free(escaped.cast()));
         return ptr::null_mut();
     };
 
     let output = malloc(allocation_size).cast::<c_char>();
     if output.is_null() {
         // SAFETY: `escaped` is the unique live C allocation returned above.
-        unsafe { free(escaped.cast()) };
+        unsafe_ffi!(free(escaped.cast()));
         return ptr::null_mut();
     }
 
@@ -737,7 +744,7 @@ pub unsafe extern "C" fn rs_unit_name_from_dbus_path(
     }
 
     // SAFETY: the entry-point contract supplies a live NUL-terminated path.
-    let path_bytes = unsafe { CStr::from_ptr(path) }.to_bytes();
+    let path_bytes = unsafe_ffi!(CStr::from_ptr(path)).to_bytes();
     if !path_bytes.starts_with(UNIT_DBUS_PATH_PREFIX_BYTES) {
         return EINVAL;
     }
@@ -747,15 +754,17 @@ pub unsafe extern "C" fn rs_unit_name_from_dbus_path(
     // with the same `bus_label_unescape()` byte semantics as the C authority.
     // SAFETY: the exact-prefix proof above makes this derived pointer valid,
     // and `path` stays live and NUL-terminated for the delegated call.
-    let decoded =
-        unsafe { rs_bus_label_unescape_n(path.add(UNIT_DBUS_PATH_PREFIX_BYTES.len()), usize::MAX) };
+    let decoded = unsafe_ffi!(rs_bus_label_unescape_n(
+        path.add(UNIT_DBUS_PATH_PREFIX_BYTES.len()),
+        usize::MAX
+    ));
     if decoded.is_null() {
         return -libc::ENOMEM;
     }
 
     // SAFETY: `name` is writable by the entry-point contract. Publish only
     // after all fallible work succeeds, matching C's output-pointer behavior.
-    unsafe { *name = decoded };
+    unsafe_ffi!(*name = decoded);
     0
 }
 
@@ -790,7 +799,7 @@ pub unsafe extern "C" fn rs_unit_dbus_interface_from_name(name: *const c_char) -
     // SAFETY: the entry-point contract supplies the C string required by the
     // Rust unit-name port. Its result uses the UnitType integer ABI from
     // unit-def.h; invalid names produce a negative errno and map to null.
-    let unit_type = unsafe { crate::unit_name::rs_unit_name_to_type(name) };
+    let unit_type = unsafe_ffi!(crate::unit_name::rs_unit_name_to_type(name));
     rs_unit_dbus_interface_from_type(unit_type)
 }
 

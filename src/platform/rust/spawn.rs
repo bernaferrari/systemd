@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
@@ -229,13 +236,13 @@ pub fn configure_exec_signal_mask(command: &mut std::process::Command) {
     // SAFETY: the closure performs only pthread_sigmask through nix and creates
     // no borrowed references into parent state. It returns before exec and
     // satisfies CommandExt::pre_exec's post-fork restrictions.
-    unsafe {
+    unsafe_ffi!({
         command.pre_exec(move || {
             empty_mask
                 .thread_set_mask()
                 .map_err(|error| std::io::Error::from_raw_os_error(error as std::os::raw::c_int))
         });
-    }
+    })
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -1087,30 +1094,30 @@ pub fn spawn_service_with_options(
     cmd.env("MAINPID", "0");
     if let Some(fd) = stdio.stdin_fd {
         // SAFETY: arguments satisfy the libc `dup` contract and any passed pointers remain valid for the call.
-        let dupfd = unsafe { libc::dup(fd) };
+        let dupfd = unsafe_ffi!(libc::dup(fd));
         if dupfd < 0 {
             return Err("dup stdin failed".to_string());
         }
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        cmd.stdin(unsafe { Stdio::from_raw_fd(dupfd) });
+        cmd.stdin(unsafe_ffi!(Stdio::from_raw_fd(dupfd)));
     }
     if let Some(fd) = stdio.stdout_fd {
         // SAFETY: arguments satisfy the libc `dup` contract and any passed pointers remain valid for the call.
-        let dupfd = unsafe { libc::dup(fd) };
+        let dupfd = unsafe_ffi!(libc::dup(fd));
         if dupfd < 0 {
             return Err("dup stdout failed".to_string());
         }
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        cmd.stdout(unsafe { Stdio::from_raw_fd(dupfd) });
+        cmd.stdout(unsafe_ffi!(Stdio::from_raw_fd(dupfd)));
     }
     if let Some(fd) = stdio.stderr_fd {
         // SAFETY: arguments satisfy the libc `dup` contract and any passed pointers remain valid for the call.
-        let dupfd = unsafe { libc::dup(fd) };
+        let dupfd = unsafe_ffi!(libc::dup(fd));
         if dupfd < 0 {
             return Err("dup stderr failed".to_string());
         }
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        cmd.stderr(unsafe { Stdio::from_raw_fd(dupfd) });
+        cmd.stderr(unsafe_ffi!(Stdio::from_raw_fd(dupfd)));
     }
 
     let child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;

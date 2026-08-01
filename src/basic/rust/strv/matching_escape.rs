@@ -5,6 +5,13 @@
 // C ABI boundary for the strv helpers that delegate matching to libc or
 // replace C-owned strings with byte-escaped copies.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_void};
 
 use libc::c_char;
@@ -19,7 +26,7 @@ fn cstr_fnmatch(pattern: &CStr, subject: &CStr, flags: i32) -> bool {
     // SAFETY: `CStr` guarantees NUL-terminated input for the duration of this
     // call. `flags` is passed unchanged. fnmatch errors map to false exactly
     // as `strv_fnmatch_full()` does in C.
-    unsafe { fnmatch(pattern.as_ptr(), subject.as_ptr(), flags) == 0 }
+    unsafe_ffi!(fnmatch(pattern.as_ptr(), subject.as_ptr(), flags) == 0)
 }
 
 /// Safe matching core: preserve array order and return the first match.
@@ -62,14 +69,14 @@ pub unsafe extern "C" fn rs_strv_fnmatch_full(
     let Some(subject) = (!s.is_null()).then(|| {
         // SAFETY: the entry-point contract guarantees a readable C string
         // after this explicit null check.
-        unsafe { CStr::from_ptr(s) }
+        unsafe_ffi!(CStr::from_ptr(s))
     }) else {
         // C asserts this precondition. A Rust C ABI must not unwind or
         // dereference null, so reject it and return the normal non-match
         // sentinel when an output was supplied.
         if !ret_matched_pos.is_null() {
             // SAFETY: covered by the entry-point contract.
-            unsafe { *ret_matched_pos = SIZE_MAX };
+            unsafe_ffi!(*ret_matched_pos = SIZE_MAX);
         }
         return false;
     };
@@ -85,17 +92,17 @@ pub unsafe extern "C" fn rs_strv_fnmatch_full(
                 // SAFETY: the entry-point contract guarantees the next slot
                 // and each non-null entry are readable. Advancing only after
                 // a non-null slot avoids reading beyond the sentinel.
-                let entry = unsafe { *cursor };
+                let entry = unsafe_ffi!(*cursor);
                 if entry.is_null() {
                     None
                 } else {
                     // SAFETY: the current slot was readable and non-null; the
                     // vector contract provides the next slot and a valid C
                     // string at `entry`.
-                    cursor = unsafe { cursor.add(1) };
+                    cursor = unsafe_ffi!(cursor.add(1));
                     // SAFETY: `entry` was read from the live vector and was
                     // checked non-null immediately above.
-                    Some(unsafe { CStr::from_ptr(entry) })
+                    Some(unsafe_ffi!(CStr::from_ptr(entry)))
                 }
             }),
             subject,
@@ -106,13 +113,13 @@ pub unsafe extern "C" fn rs_strv_fnmatch_full(
     if let Some(position) = matched {
         if !ret_matched_pos.is_null() {
             // SAFETY: covered by the entry-point contract.
-            unsafe { *ret_matched_pos = position };
+            unsafe_ffi!(*ret_matched_pos = position);
         }
         true
     } else {
         if !ret_matched_pos.is_null() {
             // SAFETY: covered by the entry-point contract.
-            unsafe { *ret_matched_pos = SIZE_MAX };
+            unsafe_ffi!(*ret_matched_pos = SIZE_MAX);
         }
         false
     }
@@ -142,7 +149,7 @@ pub unsafe extern "C" fn rs_strv_shell_escape(
     loop {
         // SAFETY: the entry-point contract guarantees each slot through the
         // terminating null is readable and writable.
-        let entry = unsafe { *cursor };
+        let entry = unsafe_ffi!(*cursor);
         if entry.is_null() {
             // Preserve C's empty-array behavior: bad is not inspected when
             // there is no entry to escape.
@@ -156,21 +163,21 @@ pub unsafe extern "C" fn rs_strv_shell_escape(
         // SAFETY: the entry-point contract guarantees entry and bad are C
         // strings and do not have the forbidden ownership alias. The borrows
         // end before the old entry allocation is released.
-        let replacement = unsafe {
+        let replacement = unsafe_ffi!({
             let entry = CStr::from_ptr(entry);
             let bad = CStr::from_ptr(bad);
             escape_strv_entry(entry, bad)
-        };
+        });
         let Some(replacement) = replacement else {
             return std::ptr::null_mut();
         };
 
         // SAFETY: each entry is an owned C allocation and the replacement uses
         // the same allocator. One-at-a-time replacement preserves no-rollback.
-        unsafe {
+        unsafe_ffi!({
             free(entry.cast::<c_void>());
             *cursor = replacement;
             cursor = cursor.add(1);
-        }
+        })
     }
 }

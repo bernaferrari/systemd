@@ -6,6 +6,13 @@
 // Daemon notification utilities for communicating with the systemd service manager
 // via the sd_notify protocol (NOTIFY_SOCKET).
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::env;
 use std::ffi::CString;
 use std::fmt;
@@ -88,11 +95,15 @@ fn monotonic_usec_now() -> io::Result<u64> {
     let mut timestamp = MaybeUninit::<libc::timespec>::uninit();
     // SAFETY: timestamp points to sufficient output storage for clock_gettime,
     // and CLOCK_MONOTONIC is exactly the clock used by daemon-util.c.
-    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, timestamp.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::clock_gettime(
+        libc::CLOCK_MONOTONIC,
+        timestamp.as_mut_ptr()
+    )) < 0
+    {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: a successful clock_gettime initialized timestamp completely.
-    monotonic_usec_from_timespec(unsafe { timestamp.assume_init() })
+    monotonic_usec_from_timespec(unsafe_ffi!(timestamp.assume_init()))
 }
 
 /// C's safe_atou(..., base=0) behavior, limited to the boolean distinction
@@ -197,7 +208,7 @@ pub unsafe fn sd_notify(unset_environment: bool, state: &str) -> io::Result<bool
     let result = sd_notify_preserve_environment(state);
     if unset_environment {
         // SAFETY: required by this function's contract when unsetting.
-        unsafe { env::remove_var("NOTIFY_SOCKET") };
+        unsafe_ffi!(env::remove_var("NOTIFY_SOCKET"));
     }
     result
 }
@@ -222,7 +233,7 @@ pub fn close_and_notify_warn(fd: RawFd, name: Option<&str>) -> io::Result<()> {
     }
     if fd >= 0 {
         // SAFETY: close(2) is a POSIX syscall with well-defined semantics.
-        let r = unsafe { libc::close(fd) };
+        let r = unsafe_ffi!(libc::close(fd));
         if r < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -305,7 +316,7 @@ fn notify_with_fds(message: &[u8], fds: &[RawFd]) -> io::Result<bool> {
     // SAFETY: message is a live NUL-terminated C string, fds is either NULL
     // for zero elements or points to n_fds live integers, and false preserves
     // the process environment. The call does not retain either pointer.
-    let result = unsafe { c_sd_pid_notify_with_fds(0, 0, message.as_ptr(), fds, n_fds) };
+    let result = unsafe_ffi!(c_sd_pid_notify_with_fds(0, 0, message.as_ptr(), fds, n_fds));
     if result < 0 {
         Err(io::Error::from_raw_os_error(-result))
     } else {
@@ -531,11 +542,11 @@ mod tests {
     fn test_sd_notify_unset_env_no_socket() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove("NOTIFY_SOCKET");
         // SAFETY: TestEnvironment serializes process-environment mutation for
         // the full duration of this test.
-        let r = unsafe { sd_notify(true, "READY=1") };
+        let r = unsafe_ffi!(sd_notify(true, "READY=1"));
         assert!(!r.unwrap());
     }
 
@@ -543,7 +554,7 @@ mod tests {
     fn test_sd_notify_sends_before_unsetting_environment() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         let socket_path =
             std::env::temp_dir().join(format!("systemd-daemon-util-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket_path);
@@ -552,7 +563,7 @@ mod tests {
 
         // SAFETY: TestEnvironment serializes process-environment mutation for
         // the full duration of this test.
-        assert!(unsafe { sd_notify(true, "READY=1") }.unwrap());
+        assert!(unsafe_ffi!(sd_notify(true, "READY=1")).unwrap());
         assert!(env::var_os("NOTIFY_SOCKET").is_none());
 
         let mut message = [0u8; 16];

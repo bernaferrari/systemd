@@ -9,6 +9,13 @@
 // explicit pointer/ownership contract; allocation sites additionally document
 // allocator provenance and the exact point where ownership is published.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_void};
 
 use libc::c_char;
@@ -32,7 +39,7 @@ impl COutString {
     fn store(self, value: *mut c_char) {
         if !self.0.is_null() {
             // SAFETY: a non-null pointer is writable under the enclosing C ABI contract.
-            unsafe { *self.0 = value };
+            unsafe_ffi!(*self.0 = value);
         }
     }
 }
@@ -50,19 +57,19 @@ impl OwnedCStringSlot {
 
     fn current(&self) -> *mut c_char {
         // SAFETY: construction requires a writable pointer-sized C ABI slot.
-        unsafe { *self.0 }
+        unsafe_ffi!(*self.0)
     }
 
     fn replace(&self, replacement: *mut c_char) {
         // SAFETY: the slot uniquely owns its old malloc-compatible value; this
         // releases it before publishing `replacement` exactly once.
-        unsafe {
+        unsafe_ffi!({
             let old = *self.0;
             if !old.is_null() {
                 free(old.cast::<c_void>());
             }
             *self.0 = replacement;
-        }
+        })
     }
 }
 
@@ -70,7 +77,7 @@ fn free_unpublished_c_string(value: *mut c_char) {
     if !value.is_null() {
         // SAFETY: this helper only receives allocations made by this module
         // before they have been published to a caller-owned output slot.
-        unsafe { free(value.cast::<c_void>()) };
+        unsafe_ffi!(free(value.cast::<c_void>()));
     }
 }
 
@@ -87,10 +94,10 @@ pub(crate) fn alloc_c_string_from_bytes(bytes: &[u8]) -> *mut c_char {
         return std::ptr::null_mut();
     }
     // SAFETY: `ptr` owns `allocation_size` bytes and `bytes` is live/readable.
-    unsafe {
+    unsafe_ffi!({
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr.cast::<u8>(), bytes.len());
         *ptr.add(bytes.len()) = 0;
-    }
+    });
     ptr
 }
 
@@ -107,7 +114,7 @@ pub unsafe fn rs_strdup_to_full(ret: *mut *mut c_char, src: *const c_char) -> i3
         return 1;
     }
     // SAFETY: non-null `src` is a readable C string by the function contract.
-    let copy = alloc_c_string_from_bytes(unsafe { CStr::from_ptr(src) }.to_bytes());
+    let copy = alloc_c_string_from_bytes(unsafe_ffi!(CStr::from_ptr(src)).to_bytes());
     if copy.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }
@@ -129,7 +136,7 @@ pub unsafe fn rs_free_and_strdup(p: *mut *mut c_char, s: *const c_char) -> i32 {
         (true, true) => true,
         (true, false) | (false, true) => false,
         // SAFETY: both non-null pointers are live C strings by this API's contract.
-        (false, false) => unsafe { CStr::from_ptr(old) == CStr::from_ptr(s) },
+        (false, false) => unsafe_ffi!(CStr::from_ptr(old) == CStr::from_ptr(s)),
     };
     if unchanged {
         return 0;
@@ -138,7 +145,7 @@ pub unsafe fn rs_free_and_strdup(p: *mut *mut c_char, s: *const c_char) -> i32 {
         std::ptr::null_mut()
     } else {
         // SAFETY: non-null `s` is a readable C string by the function contract.
-        let copy = alloc_c_string_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes());
+        let copy = alloc_c_string_from_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes());
         if copy.is_null() {
             return Errno::ENOMEM.to_neg_errno();
         }
@@ -163,7 +170,8 @@ pub unsafe fn rs_free_and_strndup(p: *mut *mut c_char, s: *const c_char, l: usiz
     }
     // SAFETY: `old` is a C string and non-null `s` is readable for `l` bytes
     // by this public function's contract.
-    if !old.is_null() && !s.is_null() && unsafe { strndup_result_matches(old.cast_const(), s, l) } {
+    if !old.is_null() && !s.is_null() && unsafe_ffi!(strndup_result_matches(old.cast_const(), s, l))
+    {
         return 0;
     }
 
@@ -172,11 +180,11 @@ pub unsafe fn rs_free_and_strndup(p: *mut *mut c_char, s: *const c_char, l: usiz
     } else {
         let mut copy_len = 0usize;
         // SAFETY: `s` is readable for `l` bytes by the function contract.
-        while copy_len < l && unsafe { *s.add(copy_len) } != 0 {
+        while copy_len < l && unsafe_ffi!(*s.add(copy_len)) != 0 {
             copy_len += 1;
         }
         // SAFETY: `s` is readable for copy_len bytes by contract.
-        let bytes = unsafe { std::slice::from_raw_parts(s.cast::<u8>(), copy_len) };
+        let bytes = unsafe_ffi!(std::slice::from_raw_parts(s.cast::<u8>(), copy_len));
         let copy = alloc_c_string_from_bytes(bytes);
         if copy.is_null() {
             return Errno::ENOMEM.to_neg_errno();
@@ -200,7 +208,7 @@ unsafe fn strndup_result_matches(old: *const c_char, source: *const c_char, len:
     for index in 0..len {
         // SAFETY: `old` is NUL terminated, so the loop stops at its first NUL
         // before advancing past it; `source` is readable for `len` bytes.
-        let (old_byte, source_byte) = unsafe { (*old.add(index), *source.add(index)) };
+        let (old_byte, source_byte) = unsafe_ffi!((*old.add(index), *source.add(index)));
         if old_byte != source_byte {
             return false;
         }
@@ -211,7 +219,7 @@ unsafe fn strndup_result_matches(old: *const c_char, source: *const c_char, len:
 
     // SAFETY: reaching here means `old[..len]` contained no NUL, so index
     // `len` still denotes a byte in its NUL-terminated allocation.
-    unsafe { *old.add(len) == 0 }
+    unsafe_ffi!(*old.add(len) == 0)
 }
 
 const MAKE_CSTRING_REFUSE_TRAILING_NUL: i32 = 0;
@@ -242,7 +250,7 @@ pub unsafe fn rs_make_cstring(s: *const c_char, n: usize, mode: i32, ret: *mut *
     }
 
     // SAFETY: the function contract grants a readable `n`-byte source range.
-    let bytes = unsafe { std::slice::from_raw_parts(s.cast::<u8>(), n) };
+    let bytes = unsafe_ffi!(std::slice::from_raw_parts(s.cast::<u8>(), n));
     let nul = bytes.iter().position(|&byte| byte == 0);
     let actual_n = match nul {
         Some(position) if position < n - 1 || mode == MAKE_CSTRING_REFUSE_TRAILING_NUL => {
@@ -275,13 +283,13 @@ pub unsafe fn rs_split_pair(
     let first_output = COutString::from_contract(ret_first);
     let second_output = COutString::from_contract(ret_second);
     // SAFETY: non-null `sep` is a readable C string by the function contract.
-    if s.is_null() || sep.is_null() || unsafe { *sep } == 0 {
+    if s.is_null() || sep.is_null() || unsafe_ffi!(*sep) == 0 {
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: `s` and `sep` are readable C strings by the function contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     // SAFETY: `s` and `sep` are readable C strings by the function contract.
-    let separator = unsafe { CStr::from_ptr(sep) }.to_bytes();
+    let separator = unsafe_ffi!(CStr::from_ptr(sep)).to_bytes();
     let Some(position) = bytes
         .windows(separator.len())
         .position(|part| part == separator)

@@ -7,6 +7,13 @@
 // boundary. Rust-owned buffers never cross the ABI: each `rs_*` result is
 // allocated by libc and is therefore valid input to C's `free()`.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi;
 use std::ffi::c_void;
 use std::ptr;
@@ -198,14 +205,14 @@ unsafe fn c_allocate_copy(
         // SAFETY: the extern-C caller supplies `source` readable for
         // `copy_len`; `destination` is a fresh libc allocation of at least
         // `allocation_len >= copy_len` bytes and cannot overlap it.
-        unsafe {
+        unsafe_ffi!({
             ptr::copy_nonoverlapping(source.cast::<u8>(), destination.cast::<u8>(), copy_len);
-        }
+        })
     }
     if append_nul {
         // SAFETY: suffix callers allocate exactly `copy_len + 1` bytes, so
         // this writes the final in-bounds byte of the fresh allocation.
-        unsafe { *destination.cast::<u8>().add(copy_len) = 0 };
+        unsafe_ffi!(*destination.cast::<u8>().add(copy_len) = 0);
     }
 
     destination
@@ -227,7 +234,7 @@ pub unsafe extern "C" fn rs_memdup(p: *const c_void, l: usize) -> *mut c_void {
     let allocation_len = l.max(1);
     // SAFETY: the wrapper contract provides the source validity requirement;
     // `allocation_len` is nonzero and at least `l`.
-    unsafe { c_allocate_copy(p, l, allocation_len, false) }
+    unsafe_ffi!(c_allocate_copy(p, l, allocation_len, false))
 }
 
 /// Exact C ABI facade for `memdup_suffix0(p, l)`.
@@ -247,7 +254,7 @@ pub unsafe extern "C" fn rs_memdup_suffix0(p: *const c_void, l: usize) -> *mut c
 
     // SAFETY: the wrapper contract provides the source validity requirement;
     // the checked allocation has one writable suffix byte after `l`.
-    unsafe { c_allocate_copy(p, l, allocation_len, true) }
+    unsafe_ffi!(c_allocate_copy(p, l, allocation_len, true))
 }
 
 /// Exact C ABI facade for `free_many(p, n)`.
@@ -268,13 +275,13 @@ pub unsafe extern "C" fn rs_free_many(p: *mut *mut c_void, n: usize) {
     // SAFETY: the wrapper contract provides `n` initialized writable slots;
     // each allocation satisfies `ffi::free`'s C-allocator ownership contract
     // and appears only once. Freeing the value does not invalidate its slot.
-    unsafe {
+    unsafe_ffi!({
         for index in 0..n {
             let slot = p.add(index);
             ffi::free(*slot);
             *slot = ptr::null_mut();
         }
-    }
+    })
 }
 
 /// Exact C ABI facade for `malloc_multiply(need, size)`.
@@ -290,7 +297,7 @@ pub extern "C" fn rs_malloc_multiply(need: usize, size: usize) -> *mut c_void {
 
     // SAFETY: no source bytes are copied, and `allocation_len` is nonzero by
     // construction. The returned allocation deliberately belongs to C.
-    unsafe { c_allocate_copy(ptr::null(), 0, allocation_len, false) }
+    unsafe_ffi!(c_allocate_copy(ptr::null(), 0, allocation_len, false))
 }
 
 /// Exact C ABI facade for `memdup_multiply(p, need, size)`.
@@ -315,7 +322,7 @@ pub unsafe extern "C" fn rs_memdup_multiply(
 
     // SAFETY: the wrapper contract provides the source validity requirement;
     // `allocation_len` is the exact nonzero C allocation size.
-    unsafe { c_allocate_copy(p, copy_len, allocation_len, false) }
+    unsafe_ffi!(c_allocate_copy(p, copy_len, allocation_len, false))
 }
 
 /// Exact C ABI facade for `memdup_suffix0_multiply(p, need, size)`.
@@ -342,7 +349,7 @@ pub unsafe extern "C" fn rs_memdup_suffix0_multiply(
 
     // SAFETY: the wrapper contract provides the source validity requirement;
     // the checked suffix allocation has one writable byte after `copy_len`.
-    unsafe { c_allocate_copy(p, copy_len, allocation_len, true) }
+    unsafe_ffi!(c_allocate_copy(p, copy_len, allocation_len, true))
 }
 
 #[cfg(test)]

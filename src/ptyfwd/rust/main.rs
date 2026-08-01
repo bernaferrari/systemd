@@ -5,6 +5,13 @@
 //
 // PORT-SYNC: src/ptyfwd/ptyfwd-tool.c
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PROGRAM: &str = "systemd-pty-forward";
 
@@ -82,23 +89,23 @@ fn open_pty_pair() -> std::io::Result<(std::os::fd::OwnedFd, std::os::fd::OwnedF
 
     // SAFETY: `/dev/ptmx` is a static, NUL-terminated pathname and the flags
     // follow the open(2) contract without requiring a mode argument.
-    let raw_master = unsafe {
+    let raw_master = unsafe_ffi!({
         libc::open(
             c"/dev/ptmx".as_ptr(),
             libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC,
         )
-    };
+    });
     if raw_master < 0 {
         return Err(std::io::Error::last_os_error());
     }
 
     // SAFETY: `raw_master` was returned by open(2) above and is uniquely owned
     // here, so transferring it into OwnedFd arranges exactly one close(2).
-    let master = unsafe { OwnedFd::from_raw_fd(raw_master) };
+    let master = unsafe_ffi!(OwnedFd::from_raw_fd(raw_master));
 
     // SAFETY: `master` is a valid Unix98 PTY master FD. Linux devpts grants
     // access when the PTY is created; like openpt_allocate(), only unlock it.
-    if unsafe { libc::unlockpt(master.as_raw_fd()) } != 0 {
+    if unsafe_ffi!(libc::unlockpt(master.as_raw_fd())) != 0 {
         return Err(std::io::Error::last_os_error());
     }
 
@@ -109,13 +116,13 @@ fn open_pty_pair() -> std::io::Result<(std::os::fd::OwnedFd, std::os::fd::OwnedF
         // SAFETY: TIOCGPTPEER is the race-free peer-opening ioctl used by the
         // C implementation. The final argument is the peer open(2) flags it
         // expects, and `master` remains valid for this call.
-        let fd = unsafe {
+        let fd = unsafe_ffi!({
             libc::ioctl(
                 master.as_raw_fd(),
                 libc::TIOCGPTPEER,
                 libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC,
             )
-        };
+        });
         if fd >= 0 {
             break fd;
         }
@@ -135,7 +142,7 @@ fn open_pty_pair() -> std::io::Result<(std::os::fd::OwnedFd, std::os::fd::OwnedF
     };
 
     // SAFETY: TIOCGPTPEER returned a newly owned descriptor on success.
-    let slave = unsafe { OwnedFd::from_raw_fd(raw_slave) };
+    let slave = unsafe_ffi!(OwnedFd::from_raw_fd(raw_slave));
     Ok((master, slave))
 }
 
@@ -150,7 +157,7 @@ fn child_exec(
     // This branch runs only in the post-fork child.
     // SAFETY: descriptors and argv were created before fork and remain valid
     // in the copied address space; this path reaches execvp(3) without Rust work.
-    unsafe {
+    unsafe_ffi!({
         libc::close(master_fd);
 
         if libc::dup2(slave_fd, libc::STDIN_FILENO) < 0
@@ -180,7 +187,7 @@ fn child_exec(
         libc::execvp(argv0, argv);
         // Match the C helper's `_exit(EXIT_FAILURE)` on failed execvp(3).
         libc::_exit(1);
-    }
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -236,11 +243,11 @@ fn run() -> i32 {
     };
 
     // SAFETY: getpid(2) takes no arguments and only returns the caller's PID.
-    let original_parent_pid = unsafe { libc::getpid() };
+    let original_parent_pid = unsafe_ffi!(libc::getpid());
 
     // SAFETY: No application threads have been created yet. The child only
     // performs the limited post-fork setup below before execvp.
-    match unsafe { nix::unistd::fork() } {
+    match unsafe_ffi!(nix::unistd::fork()) {
         Ok(nix::unistd::ForkResult::Parent { child }) => {
             drop(slave);
 

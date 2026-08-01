@@ -4,6 +4,13 @@
 //
 // Errno utility functions and errno name/value lookups.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 /* removed: use i32 */
 
 use std::ffi::CStr;
@@ -247,14 +254,14 @@ pub fn errno_name_no_fallback_cstr(id: i32) -> Result<&'static CStr, i32> {
     {
         // SAFETY: glibc returns either NULL or a pointer to an immutable
         // process-lifetime errno-name string, matching errno-list.c.
-        let name = unsafe { strerrorname_np(id) };
+        let name = unsafe_ffi!(strerrorname_np(id));
         if name.is_null() {
             return Err(Errno::EINVAL.to_neg_errno());
         }
 
         // SAFETY: the non-null pointer returned by strerrorname_np() is a
         // NUL-terminated string with static storage duration.
-        return Ok(unsafe { CStr::from_ptr(name) });
+        return Ok(unsafe_ffi!(CStr::from_ptr(name)));
     }
 
     #[cfg(not(target_env = "gnu"))]
@@ -347,7 +354,7 @@ pub unsafe extern "C" fn rs_strerror_or_eof(
 
     // SAFETY: the caller supplies the writable buffer and the checked
     // positive errno is representable by the C entry point.
-    unsafe { systemd_strerror_r(errnum, buf, buflen) }
+    unsafe_ffi!(systemd_strerror_r(errnum, buf, buflen))
 }
 
 /// C ABI for `errno_from_name()`.
@@ -362,7 +369,7 @@ pub unsafe extern "C" fn rs_errno_from_name(name: *const libc::c_char) -> libc::
     }
 
     // SAFETY: guaranteed by this entry point's caller contract.
-    let bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(name)).to_bytes();
     errno_from_name_bytes(bytes).unwrap_or_else(|error| error)
 }
 

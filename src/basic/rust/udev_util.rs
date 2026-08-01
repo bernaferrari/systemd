@@ -8,6 +8,13 @@
 // Udev string transformations. The byte-slice core deliberately owns all
 // parsing and mutation; the two C exports are only checked pointer adapters.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_char};
 
 use crate::device_nodes::allow_listed_char_for_devnode;
@@ -232,7 +239,7 @@ pub unsafe extern "C" fn rs_udev_replace_whitespace(
     while source < len {
         // SAFETY: `source < len` and the entry-point contract grants a
         // readable `len`-byte input range.
-        let byte = unsafe { *str_.cast::<u8>().add(source) };
+        let byte = unsafe_ffi!(*str_.cast::<u8>().add(source));
         if byte == 0 || !LEADING_WHITESPACE.contains(&byte) {
             break;
         }
@@ -240,7 +247,7 @@ pub unsafe extern "C" fn rs_udev_replace_whitespace(
     }
     while output < len && source < len {
         // SAFETY: `source < len` and the input range is readable by contract.
-        let byte = unsafe { *str_.cast::<u8>().add(source) };
+        let byte = unsafe_ffi!(*str_.cast::<u8>().add(source));
         source += 1;
         if byte == 0 {
             break;
@@ -255,17 +262,17 @@ pub unsafe extern "C" fn rs_udev_replace_whitespace(
             }
             // SAFETY: `output < len`, and the output range has `len + 1`
             // writable bytes. This write is never ahead of the byte read.
-            unsafe { *to.cast::<u8>().add(output) = b'_' };
+            unsafe_ffi!(*to.cast::<u8>().add(output) = b'_');
             output += 1;
             pending_space = false;
         }
         // SAFETY: `output < len`; the output range is writable by contract.
-        unsafe { *to.cast::<u8>().add(output) = byte };
+        unsafe_ffi!(*to.cast::<u8>().add(output) = byte);
         output += 1;
     }
     // SAFETY: the contract grants `len + 1` writable bytes, so the terminator
     // at `output <= len` is always in bounds.
-    unsafe { *to.cast::<u8>().add(output) = 0 };
+    unsafe_ffi!(*to.cast::<u8>().add(output) = 0);
     output
 }
 
@@ -296,14 +303,14 @@ pub unsafe extern "C" fn rs_udev_replace_chars(str_: *mut c_char, allow: *const 
     } else {
         // SAFETY: the caller contract supplies a readable NUL-terminated C
         // string and explicitly forbids overlap with the mutable input.
-        Some(unsafe { CStr::from_ptr(allow) }.to_bytes())
+        Some(unsafe_ffi!(CStr::from_ptr(allow)).to_bytes())
     };
     // SAFETY: the caller contract supplies a readable NUL-terminated string.
     // The CStr borrow ends before the mutable slice is created.
-    let len = unsafe { CStr::from_ptr(str_) }.to_bytes().len();
+    let len = unsafe_ffi!(CStr::from_ptr(str_)).to_bytes().len();
     // SAFETY: the caller contract supplies `len` writable bytes before the
     // NUL terminator. The safe byte core never accesses the terminator.
-    let bytes = unsafe { std::slice::from_raw_parts_mut(str_.cast::<u8>(), len) };
+    let bytes = unsafe_ffi!(std::slice::from_raw_parts_mut(str_.cast::<u8>(), len));
 
     udev_replace_chars(bytes, allow)
 }

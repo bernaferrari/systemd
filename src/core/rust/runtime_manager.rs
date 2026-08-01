@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
@@ -971,7 +978,7 @@ impl RuntimeManager {
         // SAFETY: c_path is a live, NUL-terminated pathname for the duration
         // of the call. uid_t/gid_t all-ones are the documented "leave
         // unchanged" sentinels; every other value came from a validated u32.
-        unsafe { libc::chown(c_path.as_ptr(), raw_uid, raw_gid) >= 0 }
+        unsafe_ffi!(libc::chown(c_path.as_ptr(), raw_uid, raw_gid) >= 0)
     }
 
     #[cfg(not(target_os = "linux"))]

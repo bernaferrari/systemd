@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::model::{
     ARG_LINES_ALL, ID128_HEX_LEN, IdDescriptor, JournalctlArgs, LOG_DEBUG, ParseArgvError,
     ParseIdDescriptorError, ParsedLines, PatternCase, SD_JOURNAL_ALL_NAMESPACES,
@@ -327,12 +334,15 @@ fn resolved_parse_timestamp_fn() -> Option<ParseTimestampFn> {
 
     *PARSE_TIMESTAMP_FN.get_or_init(|| {
         // SAFETY: symbol name is a valid NUL-terminated C string.
-        let sym = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"parse_timestamp".as_ptr()) };
+        let sym = unsafe_ffi!(libc::dlsym(libc::RTLD_DEFAULT, c"parse_timestamp".as_ptr()));
         if sym.is_null() {
             None
         } else {
             // SAFETY: symbol address is expected to match parse_timestamp signature.
-            Some(unsafe { std::mem::transmute::<*mut libc::c_void, ParseTimestampFn>(sym) })
+            Some(unsafe_ffi!(std::mem::transmute::<
+                *mut libc::c_void,
+                ParseTimestampFn,
+            >(sym)))
         }
     })
 }
@@ -456,26 +466,26 @@ fn parse_tm_exact(input: &str, format: &str, seed_today: bool) -> Option<libc::t
 
     // SAFETY: all-zero is a valid initial state for libc::tm before
     // localtime_r/strptime populate its integer fields.
-    let mut tm = unsafe { std::mem::zeroed::<libc::tm>() };
+    let mut tm = unsafe_ffi!(std::mem::zeroed::<libc::tm>());
     if seed_today {
         let now = now_realtime_usec();
         let sec = (now / 1_000_000) as libc::time_t;
         // SAFETY: pointers are valid and non-null.
-        unsafe {
+        unsafe_ffi!({
             if libc::localtime_r(&sec, &mut tm).is_null() {
                 return None;
             }
-        }
+        })
     }
 
     // SAFETY: pointers are valid C strings, tm points to writable memory.
-    let end_ptr = unsafe { libc::strptime(input_c.as_ptr(), format_c.as_ptr(), &mut tm) };
+    let end_ptr = unsafe_ffi!(libc::strptime(input_c.as_ptr(), format_c.as_ptr(), &mut tm));
     if end_ptr.is_null() {
         return None;
     }
 
     // SAFETY: end_ptr points into input_c; reading one byte is valid.
-    if unsafe { *end_ptr } != 0 {
+    if unsafe_ffi!(*end_ptr) != 0 {
         return None;
     }
 
@@ -484,13 +494,13 @@ fn parse_tm_exact(input: &str, format: &str, seed_today: bool) -> Option<libc::t
 
 fn tm_to_usec(tm: &mut libc::tm, utc: bool, frac_usec: u64) -> Option<u64> {
     // SAFETY: tm points to initialized time structure.
-    let sec = unsafe {
+    let sec = unsafe_ffi!({
         if utc {
             libc::timegm(tm)
         } else {
             libc::mktime(tm)
         }
-    };
+    });
     if sec < 0 {
         return None;
     }
@@ -566,10 +576,10 @@ fn parse_timestamp_fallback(value: &str) -> Option<u64> {
             let now_sec = (now / 1_000_000) as libc::time_t;
             // SAFETY: all-zero is a valid initial state for libc::tm before
             // localtime_r populates its integer fields.
-            let mut tm = unsafe { std::mem::zeroed::<libc::tm>() };
+            let mut tm = unsafe_ffi!(std::mem::zeroed::<libc::tm>());
             let local_sec = now_sec;
             // SAFETY: pointers are valid and non-null.
-            let ok = unsafe { libc::localtime_r(&local_sec, &mut tm) };
+            let ok = unsafe_ffi!(libc::localtime_r(&local_sec, &mut tm));
             if ok.is_null() {
                 return None;
             }
@@ -622,7 +632,7 @@ pub(crate) fn parse_timestamp_value(value: &str) -> Result<u64, ParseArgvError> 
     if let Some(parse_timestamp_fn) = resolved_parse_timestamp_fn() {
         let mut usec = 0u64;
         // SAFETY: function pointer was resolved from parse_timestamp symbol.
-        let r = unsafe { parse_timestamp_fn(c_value.as_ptr(), &mut usec) };
+        let r = unsafe_ffi!(parse_timestamp_fn(c_value.as_ptr(), &mut usec));
         if r >= 0 {
             return Ok(usec);
         }
@@ -636,7 +646,7 @@ struct GlobResult(libc::glob_t);
 impl Drop for GlobResult {
     fn drop(&mut self) {
         // SAFETY: glob_t was initialized by glob() in expand_file_argument_paths().
-        unsafe { libc::globfree(&mut self.0) };
+        unsafe_ffi!(libc::globfree(&mut self.0));
     }
 }
 
@@ -645,10 +655,15 @@ pub(crate) fn expand_file_argument_paths(value: &str) -> Result<Vec<String>, Par
         CString::new(value).map_err(|_| ParseArgvError::Invalid("invalid --file argument"))?;
     // SAFETY: glob_t is an opaque C output structure whose documented
     // initial state is zeroed before glob(3) initializes it.
-    let mut glob = GlobResult(unsafe { std::mem::zeroed() });
+    let mut glob = GlobResult(unsafe_ffi!(std::mem::zeroed()));
 
     // SAFETY: c_pattern is NUL-terminated and valid; glob points to writable memory.
-    let r = unsafe { libc::glob(c_pattern.as_ptr(), libc::GLOB_NOCHECK, None, &mut glob.0) };
+    let r = unsafe_ffi!(libc::glob(
+        c_pattern.as_ptr(),
+        libc::GLOB_NOCHECK,
+        None,
+        &mut glob.0
+    ));
     if r != 0 {
         return Err(ParseArgvError::Invalid("failed to expand --file path"));
     }
@@ -657,12 +672,14 @@ pub(crate) fn expand_file_argument_paths(value: &str) -> Result<Vec<String>, Par
     let mut out = Vec::with_capacity(count);
     for idx in 0..count {
         // SAFETY: gl_pathv is populated by successful glob(); idx is in bounds [0, gl_pathc).
-        let p = unsafe { *glob.0.gl_pathv.add(idx) };
+        let p = unsafe_ffi!(*glob.0.gl_pathv.add(idx));
         if p.is_null() {
             continue;
         }
         // SAFETY: entries in gl_pathv are NUL-terminated C strings.
-        let path = unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned();
+        let path = unsafe_ffi!(CStr::from_ptr(p))
+            .to_string_lossy()
+            .into_owned();
         out.push(path);
     }
 

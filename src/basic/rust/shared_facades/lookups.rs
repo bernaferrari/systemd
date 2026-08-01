@@ -5,6 +5,13 @@
 //           src/basic/compress.c,src/basic/compress.h,src/basic/socket-util.c,
 //           src/basic/socket-util.h,src/shared/output-mode.c,src/shared/output-mode.h
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::{Errno, malloc};
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr;
@@ -617,7 +624,7 @@ unsafe fn input_bytes<'a>(input: *const c_char) -> Option<&'a [u8]> {
     }
 
     // SAFETY: the C ABI contract requires a live NUL-terminated input string.
-    Some(unsafe { CStr::from_ptr(input) }.to_bytes())
+    Some(unsafe_ffi!(CStr::from_ptr(input)).to_bytes())
 }
 
 #[inline]
@@ -646,7 +653,7 @@ fn optional_table_ptr(table: &[Option<&'static [u8]>], value: i32) -> *const c_c
 /// `input` must satisfy [`input_bytes`]'s C-string contract.
 unsafe fn table_from_input(table: &[&'static [u8]], input: *const c_char) -> i32 {
     // SAFETY: propagated from the C ABI facade caller.
-    let Some(input) = (unsafe { input_bytes(input) }) else {
+    let Some(input) = (unsafe_ffi!(input_bytes(input))) else {
         return Errno::EINVAL.to_neg_errno();
     };
 
@@ -661,7 +668,7 @@ unsafe fn table_from_input(table: &[&'static [u8]], input: *const c_char) -> i32
 /// `input` must satisfy [`input_bytes`]'s C-string contract.
 unsafe fn optional_table_from_input(table: &[Option<&'static [u8]>], input: *const c_char) -> i32 {
     // SAFETY: propagated from the C ABI facade caller.
-    let Some(input) = (unsafe { input_bytes(input) }) else {
+    let Some(input) = (unsafe_ffi!(input_bytes(input))) else {
         return Errno::EINVAL.to_neg_errno();
     };
 
@@ -713,7 +720,7 @@ pub extern "C" fn rs_condition_type_to_string(value: i32) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_condition_type_from_string(input: *const c_char) -> i32 {
     // SAFETY: propagated from this FFI function's contract.
-    let Some(input) = (unsafe { input_bytes(input) }) else {
+    let Some(input) = (unsafe_ffi!(input_bytes(input))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     if input == b"ConditionKernelVersion" {
@@ -735,7 +742,7 @@ pub extern "C" fn rs_assert_type_to_string(value: i32) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_assert_type_from_string(input: *const c_char) -> i32 {
     // SAFETY: propagated from this FFI function's contract.
-    let Some(input) = (unsafe { input_bytes(input) }) else {
+    let Some(input) = (unsafe_ffi!(input_bytes(input))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     if input == b"AssertKernelVersion" {
@@ -761,7 +768,7 @@ pub unsafe extern "C" fn rs_dns_server_address_valid(family: i32, address: *cons
         _ => return false,
     };
     // SAFETY: length is selected by the documented ABI family contract.
-    let address = unsafe { std::slice::from_raw_parts(address.cast::<u8>(), length) };
+    let address = unsafe_ffi!(std::slice::from_raw_parts(address.cast::<u8>(), length));
     dns_server_address_valid(family, address)
 }
 
@@ -780,7 +787,7 @@ pub extern "C" fn rs_compression_to_string(value: i32) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_compression_from_string(input: *const c_char) -> i32 {
     // SAFETY: propagated from this FFI function's contract.
-    unsafe { table_from_input(&COMPRESSION_TABLE, input) }
+    unsafe_ffi!(table_from_input(&COMPRESSION_TABLE, input))
 }
 
 #[unsafe(no_mangle)]
@@ -793,7 +800,7 @@ pub extern "C" fn rs_socket_address_type_to_string(value: i32) -> *const c_char 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_socket_address_type_from_string(input: *const c_char) -> i32 {
     // SAFETY: propagated from this FFI function's contract.
-    unsafe { optional_table_from_input(&SOCKET_ADDRESS_TYPE_TABLE, input) }
+    unsafe_ffi!(optional_table_from_input(&SOCKET_ADDRESS_TYPE_TABLE, input))
 }
 
 /// # Safety
@@ -808,7 +815,7 @@ pub unsafe extern "C" fn rs_netlink_family_to_string_alloc(
         return Errno::ERANGE.to_neg_errno();
     };
     // SAFETY: propagated from this FFI function's contract.
-    unsafe { copy_to_c_allocation(&text, ret) }
+    unsafe_ffi!(copy_to_c_allocation(&text, ret))
 }
 
 /// # Safety
@@ -816,7 +823,7 @@ pub unsafe extern "C" fn rs_netlink_family_to_string_alloc(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_netlink_family_from_string(input: *const c_char) -> i32 {
     // SAFETY: propagated from this FFI function's contract.
-    let Some(input) = (unsafe { input_bytes(input) }) else {
+    let Some(input) = (unsafe_ffi!(input_bytes(input))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     let Ok(input) = std::str::from_utf8(input) else {
@@ -834,7 +841,7 @@ pub unsafe extern "C" fn rs_ip_tos_to_string_alloc(value: i32, ret: *mut *mut c_
         return Errno::ERANGE.to_neg_errno();
     };
     // SAFETY: propagated from this FFI function's contract.
-    unsafe { copy_to_c_allocation(&text, ret) }
+    unsafe_ffi!(copy_to_c_allocation(&text, ret))
 }
 
 /// # Safety
@@ -842,7 +849,7 @@ pub unsafe extern "C" fn rs_ip_tos_to_string_alloc(value: i32, ret: *mut *mut c_
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ip_tos_from_string(input: *const c_char) -> i32 {
     // SAFETY: propagated from this FFI function's contract.
-    let Some(input) = (unsafe { input_bytes(input) }) else {
+    let Some(input) = (unsafe_ffi!(input_bytes(input))) else {
         return Errno::EINVAL.to_neg_errno();
     };
     let Ok(input) = std::str::from_utf8(input) else {

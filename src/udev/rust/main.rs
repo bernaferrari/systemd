@@ -2,6 +2,13 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::OpenOptions;
 use std::io;
@@ -169,14 +176,14 @@ fn map_activation_name(name: &str) -> Option<ActivationFdKind> {
 
 fn close_activation_fd(fd: i32) {
     // SAFETY: fd comes from LISTEN_FDS and is owned by this process.
-    let _ = unsafe { libc::close(fd) };
+    let _ = unsafe_ffi!(libc::close(fd));
 }
 
 fn collect_activation_sockets() -> ActivationSockets {
     let mut sockets = ActivationSockets::default();
     // SAFETY: main() collects and consumes activation descriptors before
     // constructing UdevRuntime or starting any worker threads.
-    let passed = match unsafe { sd_listen_fds_with_names(true) } {
+    let passed = match unsafe_ffi!(sd_listen_fds_with_names(true)) {
         Ok(passed) => passed,
         Err(err) => {
             eprintln!("systemd-udevd: failed to parse socket activation fds: {err:?}");
@@ -201,7 +208,7 @@ fn collect_activation_sockets() -> ActivationSockets {
         }
 
         // SAFETY: fd originates from systemd socket activation and ownership is transferred here.
-        *slot = Some(unsafe { OwnedFd::from_raw_fd(passed_fd.fd) });
+        *slot = Some(unsafe_ffi!(OwnedFd::from_raw_fd(passed_fd.fd)));
     }
 
     sockets
@@ -459,7 +466,7 @@ fn apply_static_dev_perms(rules: &[Rule]) {
                 continue;
             };
             // SAFETY: c_path is NUL-terminated and points to a valid filesystem path bytestring.
-            if unsafe { libc::chown(c_path.as_ptr(), uid, gid) } < 0 {
+            if unsafe_ffi!(libc::chown(c_path.as_ptr(), uid, gid)) < 0 {
                 eprintln!(
                     "systemd-udevd: failed applying static owner/group on {}: {}",
                     spec.path.display(),

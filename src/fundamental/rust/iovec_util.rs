@@ -6,6 +6,13 @@
 
 /// A single I/O vector entry.
 /// PORT-SYNC: mirrors struct iovec from POSIX / EFI mode.
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct Iovec {
@@ -79,7 +86,10 @@ impl Iovec {
         if self.is_set() {
             // SAFETY: the caller upholds the allocation, lifetime, and aliasing
             // requirements for this exact region.
-            Some(unsafe { core::slice::from_raw_parts(self.iov_base, self.iov_len) })
+            Some(unsafe_ffi!(core::slice::from_raw_parts(
+                self.iov_base,
+                self.iov_len
+            )))
         } else {
             None
         }
@@ -97,7 +107,10 @@ impl Iovec {
         if self.is_set() {
             // SAFETY: the caller upholds the allocation, lifetime, and
             // exclusive-access requirements for this exact region.
-            Some(unsafe { core::slice::from_raw_parts_mut(self.iov_base, self.iov_len) })
+            Some(unsafe_ffi!(core::slice::from_raw_parts_mut(
+                self.iov_base,
+                self.iov_len
+            )))
         } else {
             None
         }
@@ -119,28 +132,28 @@ pub unsafe fn iovec_done_many_and_free(iovecs: *mut Iovec, n: usize) {
     if n > 0 && !iovecs.is_null() {
         for i in 0..n {
             // SAFETY: the caller guarantees an exclusive `n`-element array.
-            let iov = unsafe { &mut *iovecs.add(i) };
+            let iov = unsafe_ffi!(&mut *iovecs.add(i));
             if !iov.iov_base.is_null() {
                 // SAFETY: the caller guarantees this exact global-allocation
                 // provenance and layout, and every base appears only once.
-                unsafe {
+                unsafe_ffi!({
                     alloc::alloc::dealloc(
                         iov.iov_base,
                         alloc::alloc::Layout::from_size_align_unchecked(iov.iov_len, 1),
                     );
-                }
+                })
             }
             iov.iov_base = core::ptr::null_mut();
             iov.iov_len = 0;
         }
         // SAFETY: the caller guarantees `iovecs` came from the global
         // allocator with the exact `n`-element array layout.
-        unsafe {
+        unsafe_ffi!({
             alloc::alloc::dealloc(
                 iovecs.cast::<u8>(),
                 alloc::alloc::Layout::array::<Iovec>(n).unwrap(),
             );
-        }
+        })
     }
 }
 

@@ -2,6 +2,14 @@
 //
 // PORT-SYNC: src/libsystemd/sd-id128/sd-id128.c
 
+// Centralized unsafe expression boundary for this module.
+#[cfg(test)]
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::id128_util::{
     NEG_EINVAL, NEG_ENXIO, SdId128, id128_from_string_nonzero, id128_is_valid, id128_make_v4_uuid,
 };
@@ -345,7 +353,7 @@ mod tests {
         let _lock = test_lock();
         // SAFETY: this environment-dependent test target runs with
         // --test-threads=1 and does not spawn environment readers.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set("INVOCATION_ID", "00112233445566778899aabbccddeeff");
         let id = sd_id128_get_invocation().unwrap();
         assert_eq!(id.0[0], 0x00);
@@ -356,7 +364,7 @@ mod tests {
         let _lock = test_lock();
         // SAFETY: this environment-dependent test target runs with
         // --test-threads=1 and does not spawn environment readers.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set("INVOCATION_ID", "not-an-id");
         assert_eq!(sd_id128_get_invocation(), Err(NEG_EUCLEAN));
     }

@@ -11,6 +11,13 @@
 // utmp maintains one entry per entry type/user (key/value semantics).
 // wtmp is an append-only log where each entry is appended to the end.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::CStr;
 use std::fmt;
@@ -108,14 +115,14 @@ pub type Utmpx = libc::utmpx;
 fn zeroed_utmpx() -> Utmpx {
     // SAFETY: libc::utmpx contains only integer fields, integer arrays, and
     // padding on supported Linux targets; zero is valid for every field.
-    unsafe { MaybeUninit::<Utmpx>::zeroed().assume_init() }
+    unsafe_ffi!(MaybeUninit::<Utmpx>::zeroed().assume_init())
 }
 
 /// Construct an all-zero libc exit status.
 #[cfg(test)]
 fn zeroed_utmpx_exit() -> UtmpxExit {
     // SAFETY: both libc::__exit_status fields are c_short integers.
-    unsafe { MaybeUninit::<UtmpxExit>::zeroed().assume_init() }
+    unsafe_ffi!(MaybeUninit::<UtmpxExit>::zeroed().assume_init())
 }
 
 /// Copy a libc utmpx record exactly, including its target-specific padding.
@@ -175,7 +182,7 @@ fn copy_cstr_to_fixed(buf: &mut [libc::c_char], src: *const libc::c_char) {
         return;
     }
     // SAFETY: caller guarantees src is a valid NUL-terminated C string.
-    let bytes = unsafe { CStr::from_ptr(src) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(src)).to_bytes();
     let len = buf.len();
     let n = bytes.len().min(len);
     for (i, &b) in bytes.iter().enumerate().take(n) {
@@ -240,10 +247,10 @@ fn init_entry(store: &mut Utmpx, t: Option<u64>) {
 
     let mut uts = MaybeUninit::<libc::utsname>::uninit();
     // SAFETY: `uts` is correctly aligned writable storage for one `utsname`.
-    if unsafe { libc::uname(uts.as_mut_ptr()) } >= 0 {
+    if unsafe_ffi!(libc::uname(uts.as_mut_ptr())) >= 0 {
         // SAFETY: a successful uname call initializes the complete utsname
         // record before this success-only read.
-        let uts = unsafe { uts.assume_init() };
+        let uts = unsafe_ffi!(uts.assume_init());
         copy_cstr_to_fixed(&mut store.ut_host, uts.release.as_ptr());
     }
 

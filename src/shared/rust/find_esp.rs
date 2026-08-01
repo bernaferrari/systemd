@@ -15,6 +15,13 @@
 // probing delegates to the narrow C authority shared with find-esp.c so blkid,
 // udev, optional-feature, and errno behavior cannot drift.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::btrfs_util::btrfs_get_block_device_fd;
 use crate::ffi::*;
 use std::ffi::{CString, OsStr};
@@ -282,7 +289,7 @@ impl XBootLdrInfo {
 pub fn is_unprivileged() -> bool {
     // SAFETY: geteuid() takes no arguments, does not dereference Rust memory,
     // and every uid_t bit pattern it returns is valid.
-    unsafe { libc::geteuid() != 0 }
+    unsafe_ffi!(libc::geteuid() != 0)
 }
 
 /// Parse a boolean environment variable.
@@ -411,7 +418,7 @@ fn verify_fsroot_dir_fd(
 
     // SAFETY: the storage was zeroed before a successful libc call, so all
     // bytes are initialized even if an old kernel omits optional fields.
-    let statx = unsafe { statx.assume_init() };
+    let statx = unsafe_ffi!(statx.assume_init());
     if statx.stx_mask & (libc::STATX_TYPE | libc::STATX_INO) != libc::STATX_TYPE | libc::STATX_INO {
         return Err(FindEspError::Io(io::Error::from_raw_os_error(
             libc::EUNATCH,
@@ -463,11 +470,11 @@ pub fn check_fat_filesystem(path: &Path) -> Result<(), FindEspError> {
 fn check_fat_filesystem_fd(path: &Path, fd: BorrowedFd<'_>) -> Result<(), FindEspError> {
     // SAFETY: Linux's statfs is a C POD struct containing only integers and
     // integer arrays, for which the all-zero bit pattern is valid.
-    let mut statfs_buf: libc::statfs = unsafe { std::mem::zeroed() };
+    let mut statfs_buf: libc::statfs = unsafe_ffi!(std::mem::zeroed());
 
     // SAFETY: `fd` is live and statfs_buf is valid writable target-native
     // storage for the duration of fstatfs.
-    let r = unsafe { libc::fstatfs(fd.as_raw_fd(), &mut statfs_buf) };
+    let r = unsafe_ffi!(libc::fstatfs(fd.as_raw_fd(), &mut statfs_buf));
     if r < 0 {
         return Err(FindEspError::Io(io::Error::last_os_error()));
     }
@@ -659,7 +666,7 @@ fn canonicalize_or_resolve_at(root_fd: BorrowedFd<'_>, p: &Path) -> io::Result<P
 
     // SAFETY: `open_how` consists solely of integer fields, for which zero is
     // valid. All fields understood by this call are initialized below.
-    let mut how: libc::open_how = unsafe { std::mem::zeroed() };
+    let mut how: libc::open_how = unsafe_ffi!(std::mem::zeroed());
     how.flags = (O_PATH | libc::O_CLOEXEC) as u64;
     how.resolve = libc::RESOLVE_IN_ROOT;
 
@@ -678,7 +685,7 @@ fn canonicalize_or_resolve_at(root_fd: BorrowedFd<'_>, p: &Path) -> io::Result<P
     if fd >= 0 {
         // SAFETY: a successful openat2 syscall returns a new descriptor in
         // c_int range, and ownership has not been transferred elsewhere.
-        return readlink_fd(unsafe { OwnedFd::from_raw_fd(fd as i32) });
+        return readlink_fd(unsafe_ffi!(OwnedFd::from_raw_fd(fd as i32)));
     }
 
     let openat2_error = io::Error::last_os_error();
@@ -755,7 +762,7 @@ fn open_path(p: &Path) -> io::Result<OwnedFd> {
     } else {
         // SAFETY: successful open returns a new descriptor, and ownership has
         // not been transferred elsewhere.
-        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+        Ok(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
     }
 }
 
@@ -1136,7 +1143,7 @@ mod tests {
         // Without the env var set, only container policy may request a skip.
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove(ENV_RELAX_ESP_CHECKS);
         let flags = verify_esp_flags_init(Some(false), ENV_RELAX_ESP_CHECKS);
         assert!(!flags.contains(VerifyEspFlags::SKIP_FSTYPE_CHECK));
@@ -1153,7 +1160,7 @@ mod tests {
     fn test_verify_esp_flags_init_unprivileged() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove(ENV_RELAX_ESP_CHECKS);
         let flags = verify_esp_flags_init(Some(true), ENV_RELAX_ESP_CHECKS);
         assert!(flags.contains(VerifyEspFlags::UNPRIVILEGED_MODE));
@@ -1169,7 +1176,7 @@ mod tests {
     fn test_verify_esp_flags_init_relax_skips_every_verification() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set(ENV_RELAX_ESP_CHECKS, "yes");
         let flags = verify_esp_flags_init(Some(false), ENV_RELAX_ESP_CHECKS);
         assert!(flags.contains(VerifyEspFlags::SKIP_FSTYPE_CHECK));
@@ -1237,7 +1244,7 @@ mod tests {
     fn test_parse_env_bool() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set("TEST_FIND_ESP_BOOL", "1");
         assert_eq!(parse_env_bool("TEST_FIND_ESP_BOOL"), Some(true));
 
@@ -1371,7 +1378,7 @@ mod tests {
         // ESP (no FAT filesystem, no GPT partition, etc.)
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove(ENV_ESP_PATH);
         let result = find_esp_and_warn(None, Some(false));
         // We expect either NotFound or some other verification error.
@@ -1388,7 +1395,7 @@ mod tests {
     fn test_find_xbootldr_not_found() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove(ENV_XBOOTLDR_PATH);
         let result = find_xbootldr_and_warn(None, Some(false));
         assert!(
@@ -1441,7 +1448,7 @@ mod tests {
     fn test_take_esp_mount_point_not_found() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove(ENV_ESP_PATH);
         let result = take_esp_mount_point(None, Some(false));
         assert!(result.is_err());

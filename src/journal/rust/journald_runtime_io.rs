@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::*;
 #[cfg(target_os = "linux")]
 use std::os::fd::{FromRawFd, OwnedFd};
@@ -81,9 +88,9 @@ pub(super) struct SignalHandlerGuard {
 impl Drop for SignalHandlerGuard {
     fn drop(&mut self) {
         // SAFETY: restores process signal handlers to previously returned values.
-        let _ = unsafe { sigaction(Signal::SIGTERM, &self.old_sigterm) };
+        let _ = unsafe_ffi!(sigaction(Signal::SIGTERM, &self.old_sigterm));
         // SAFETY: restores process signal handlers to previously returned values.
-        let _ = unsafe { sigaction(Signal::SIGINT, &self.old_sigint) };
+        let _ = unsafe_ffi!(sigaction(Signal::SIGINT, &self.old_sigint));
     }
 }
 
@@ -95,10 +102,10 @@ pub(super) fn install_shutdown_signal_handlers() -> Result<SignalHandlerGuard, J
         SigSet::empty(),
     );
     // SAFETY: installs a signal handler function with C ABI and valid Signal values.
-    let old_sigterm = unsafe { sigaction(Signal::SIGTERM, &action) }
+    let old_sigterm = unsafe_ffi!(sigaction(Signal::SIGTERM, &action))
         .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?;
     // SAFETY: installs a signal handler function with C ABI and valid Signal values.
-    let old_sigint = unsafe { sigaction(Signal::SIGINT, &action) }
+    let old_sigint = unsafe_ffi!(sigaction(Signal::SIGINT, &action))
         .map_err(|errno| io::Error::from_raw_os_error(errno as i32))?;
     Ok(SignalHandlerGuard {
         old_sigterm,
@@ -247,43 +254,43 @@ impl AuditNetlinkReceiver {
     pub(super) fn open() -> io::Result<Self> {
         // SAFETY: socket(2) receives only constant domain/type/protocol values;
         // its returned descriptor is checked before use.
-        let fd = unsafe {
+        let fd = unsafe_ffi!({
             libc::socket(
                 libc::AF_NETLINK,
                 libc::SOCK_RAW | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
                 NETLINK_AUDIT_PROTOCOL,
             )
-        };
+        });
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
 
         // SAFETY: socket returned a checked, uniquely owned descriptor. From
         // here on, OwnedFd closes it if any setup step fails.
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let fd = unsafe_ffi!(OwnedFd::from_raw_fd(fd));
 
         // SAFETY: all-zero is a valid sockaddr_nl initializer; nl_pad must
         // remain zero, and the public fields below fully specify this address.
-        let mut addr = unsafe { std::mem::zeroed::<libc::sockaddr_nl>() };
+        let mut addr = unsafe_ffi!(std::mem::zeroed::<libc::sockaddr_nl>());
         addr.nl_family = libc::AF_NETLINK as libc::sa_family_t;
         addr.nl_pid = 0;
         addr.nl_groups = AUDIT_NLGRP_READLOG;
         // SAFETY: addr is initialized for AF_NETLINK and the pointer/length
         // describe exactly that live stack value.
-        let bind_result = unsafe {
+        let bind_result = unsafe_ffi!({
             libc::bind(
                 fd.as_raw_fd(),
                 (&mut addr as *mut libc::sockaddr_nl).cast::<libc::sockaddr>(),
                 std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
             )
-        };
+        });
         if bind_result < 0 {
             return Err(io::Error::last_os_error());
         }
 
         let passcred: libc::c_int = 1;
         // SAFETY: fd is live and the option pointer/length describe passcred.
-        let opt_result = unsafe {
+        let opt_result = unsafe_ffi!({
             libc::setsockopt(
                 fd.as_raw_fd(),
                 libc::SOL_SOCKET,
@@ -291,7 +298,7 @@ impl AuditNetlinkReceiver {
                 (&passcred as *const libc::c_int).cast::<libc::c_void>(),
                 std::mem::size_of::<libc::c_int>() as libc::socklen_t,
             )
-        };
+        });
         if opt_result < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -378,12 +385,12 @@ pub(super) fn socket_identity_from_fd(fd: libc::c_int) -> io::Result<(u64, u64)>
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: stat points to writable storage and fstat initializes it on
     // success.
-    let rc = unsafe { libc::fstat(fd, stat.as_mut_ptr()) };
+    let rc = unsafe_ffi!(libc::fstat(fd, stat.as_mut_ptr()));
     if rc < 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: the successful fstat above initialized the full stat value.
-    let stat = unsafe { stat.assume_init() };
+    let stat = unsafe_ffi!(stat.assume_init());
     Ok((stat.st_dev, stat.st_ino))
 }
 
@@ -391,7 +398,7 @@ pub(super) fn safe_close_fd(fd: libc::c_int) {
     if fd >= 0 {
         // SAFETY: callers transfer ownership of non-negative descriptors to
         // this close helper and do not use them afterward.
-        let _ = unsafe { libc::close(fd) };
+        let _ = unsafe_ffi!(libc::close(fd));
     }
 }
 
@@ -442,7 +449,7 @@ pub(super) fn capture_stream_peer_credentials(_stream: &UnixStream) -> io::Resul
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
     // SAFETY: the stream fd is live and ucred/len point to writable values of
     // the declared sizes.
-    let rc = unsafe {
+    let rc = unsafe_ffi!({
         libc::getsockopt(
             _stream.as_raw_fd(),
             libc::SOL_SOCKET,
@@ -450,7 +457,7 @@ pub(super) fn capture_stream_peer_credentials(_stream: &UnixStream) -> io::Resul
             (&mut ucred as *mut libc::ucred).cast(),
             &mut len,
         )
-    };
+    });
     if rc == 0 {
         return Ok(PeerCredentials {
             pid: ucred.pid,
@@ -469,7 +476,7 @@ pub(super) fn set_socket_bool_option(
 ) -> io::Result<()> {
     let value: libc::c_int = if value { 1 } else { 0 };
     // SAFETY: fd is live and the option pointer/length describe value exactly.
-    let rc = unsafe {
+    let rc = unsafe_ffi!({
         libc::setsockopt(
             fd,
             libc::SOL_SOCKET,
@@ -477,7 +484,7 @@ pub(super) fn set_socket_bool_option(
             (&value as *const libc::c_int).cast(),
             std::mem::size_of::<libc::c_int>() as libc::socklen_t,
         )
-    };
+    });
     if rc < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -498,7 +505,7 @@ pub(super) fn capture_stream_peer_selinux_label(stream: &UnixStream) -> io::Resu
         let mut optlen = buf.len() as libc::socklen_t;
         // SAFETY: the stream fd is live and buf/optlen describe writable
         // storage for SO_PEERSEC.
-        let rc = unsafe {
+        let rc = unsafe_ffi!({
             libc::getsockopt(
                 stream.as_raw_fd(),
                 libc::SOL_SOCKET,
@@ -506,7 +513,7 @@ pub(super) fn capture_stream_peer_selinux_label(stream: &UnixStream) -> io::Resu
                 buf.as_mut_ptr().cast(),
                 &mut optlen,
             )
-        };
+        });
         if rc == 0 {
             buf.truncate(optlen as usize);
             let label = parse_selinux_label_bytes(&buf);

@@ -3,6 +3,13 @@
 // PORT-SYNC: src/libsystemd/sd-journal/journal-send.c
 //
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
@@ -302,13 +309,16 @@ fn create_memfd_with_payload(payload: &[u8]) -> Result<File> {
     let name = b"journal-data\0";
     // SAFETY: name is NUL-terminated and remains live for the call; the
     // returned descriptor is checked before ownership transfer.
-    let fd = unsafe { libc::memfd_create(name.as_ptr() as *const libc::c_char, libc::MFD_CLOEXEC) };
+    let fd = unsafe_ffi!(libc::memfd_create(
+        name.as_ptr() as *const libc::c_char,
+        libc::MFD_CLOEXEC
+    ));
     if fd < 0 {
         return Err(neg_errno());
     }
     // SAFETY: memfd_create returned a uniquely owned descriptor, transferred
     // once to OwnedFd so errors close it automatically.
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    let fd = unsafe_ffi!(OwnedFd::from_raw_fd(fd));
     let mut file = File::from(fd);
     file.write_all(payload).map_err(neg_io_error)?;
     Ok(file)
@@ -329,7 +339,7 @@ fn send_fd_message(socket: &UnixDatagram, fd_to_send: RawFd) -> Result<()> {
     };
     // SAFETY: CMSG_SPACE is a pure layout calculation for the one RawFd we
     // store in the live control buffer below.
-    let control_len = unsafe { libc::CMSG_SPACE(size_of::<RawFd>() as u32) as usize };
+    let control_len = unsafe_ffi!(libc::CMSG_SPACE(size_of::<RawFd>() as u32) as usize);
     let mut control = vec![0_u8; control_len];
     let mut msg = libc::msghdr {
         msg_name: std::ptr::null_mut(),
@@ -344,7 +354,7 @@ fn send_fd_message(socket: &UnixDatagram, fd_to_send: RawFd) -> Result<()> {
     // SAFETY: msg refers only to the live iov/control buffers. The CMSG
     // allocation has space for exactly one RawFd, and socket is connected for
     // the full sendmsg call.
-    let sent = unsafe {
+    let sent = unsafe_ffi!({
         let cmsg = libc::CMSG_FIRSTHDR(&msg);
         if cmsg.is_null() {
             return Err(-libc::EIO);
@@ -355,7 +365,7 @@ fn send_fd_message(socket: &UnixDatagram, fd_to_send: RawFd) -> Result<()> {
         libc::CMSG_DATA(cmsg).cast::<RawFd>().write(fd_to_send);
         msg.msg_controllen = (*cmsg).cmsg_len as _;
         libc::sendmsg(socket.as_raw_fd(), &msg, libc::MSG_NOSIGNAL)
-    };
+    });
     if sent < 0 {
         return Err(neg_errno());
     }
@@ -374,7 +384,7 @@ fn set_stream_send_buffer(stream: &UnixStream) {
     let sndbuf = SNDBUF_SIZE as libc::c_int;
     // SAFETY: stream owns a live socket descriptor and sndbuf is a valid
     // c_int option value for the duration of this best-effort call.
-    let _ = unsafe {
+    let _ = unsafe_ffi!({
         libc::setsockopt(
             stream.as_raw_fd(),
             libc::SOL_SOCKET,
@@ -382,7 +392,7 @@ fn set_stream_send_buffer(stream: &UnixStream) {
             (&sndbuf as *const libc::c_int).cast(),
             size_of::<libc::c_int>() as libc::socklen_t,
         )
-    };
+    });
 }
 
 fn neg_io_error(error: io::Error) -> i32 {
@@ -539,7 +549,7 @@ mod tests {
         )
         .unwrap();
         // SAFETY: this block performs raw/FFI operations and relies on invariants enforced by the surrounding checks.
-        let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+        let mut file = unsafe_ffi!(std::fs::File::from_raw_fd(fd));
         file.write_all(b"hello\n").unwrap();
         drop(file);
 

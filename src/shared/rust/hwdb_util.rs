@@ -13,6 +13,14 @@
 //
 // All operations are pure Rust. No FFI blocks or no_mangle attributes remain.
 
+// Centralized unsafe expression boundary for this module.
+#[cfg(test)]
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::collections::HashMap;
 use std::env;
@@ -1590,7 +1598,7 @@ usb:v046DpC312d*
     fn test_hwdb_bypass_env() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove(HWDB_BYPASS_ENV);
         assert!(!hwdb_bypass());
 

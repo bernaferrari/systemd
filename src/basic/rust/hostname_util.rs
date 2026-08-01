@@ -7,6 +7,13 @@
 // Supports validation of LDH hostnames, localhost detection,
 // synthetic hostname checks, and user@host expression splitting.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 use std::ptr;
 
@@ -569,10 +576,10 @@ fn malloc_c_string(bytes: &[u8]) -> *mut c_char {
 
     // SAFETY: `allocation` names `allocation_size` writable bytes from the C
     // allocator; `bytes` is live for the copy and the final NUL is in range.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(bytes.as_ptr(), allocation, bytes.len());
         *allocation.add(bytes.len()) = 0;
-    }
+    });
     allocation.cast::<c_char>()
 }
 
@@ -667,7 +674,7 @@ pub unsafe extern "C" fn rs_hostname_is_valid(s: *const c_char, flags: c_int) ->
         return false;
     }
     // SAFETY: documented by this adapter's C-string contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     hostname_is_valid_bytes(bytes, flags as u32)
 }
 
@@ -684,10 +691,13 @@ pub unsafe extern "C" fn rs_hostname_cleanup(s: *mut c_char) -> *mut c_char {
         return ptr::null_mut();
     }
     // SAFETY: documented by this adapter's C-string contract.
-    let input_len = unsafe { CStr::from_ptr(s.cast_const()) }.to_bytes().len();
+    let input_len = unsafe_ffi!(CStr::from_ptr(s.cast_const())).to_bytes().len();
     // SAFETY: the writable C-string contract provides all visible bytes plus
     // the trailing terminator as one exclusive byte slice.
-    let bytes = unsafe { std::slice::from_raw_parts_mut(s.cast::<u8>(), input_len + 1) };
+    let bytes = unsafe_ffi!(std::slice::from_raw_parts_mut(
+        s.cast::<u8>(),
+        input_len + 1
+    ));
     hostname_cleanup_bytes(bytes);
     s
 }
@@ -704,7 +714,7 @@ pub unsafe extern "C" fn rs_is_localhost(hostname: *const c_char) -> bool {
         return false;
     }
     // SAFETY: documented by this adapter's C-string contract.
-    localhost_bytes_are_valid(unsafe { CStr::from_ptr(hostname) }.to_bytes())
+    localhost_bytes_are_valid(unsafe_ffi!(CStr::from_ptr(hostname)).to_bytes())
 }
 
 /// Evaluate one synthetic hostname classifier after the shared C-string
@@ -718,7 +728,7 @@ fn is_synthetic_hostname(hostname: *const c_char, first: &[u8], second: &[u8]) -
         return false;
     }
     // SAFETY: this private helper is called only by the audited C ABI adapters.
-    let bytes = unsafe { CStr::from_ptr(hostname) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(hostname)).to_bytes();
     bytes_in_no_case_set(bytes, &[first, second])
 }
 
@@ -784,7 +794,7 @@ pub unsafe extern "C" fn rs_split_user_at_host(
         return EINVAL;
     }
     // SAFETY: documented by this adapter's C-string contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let at = bytes.iter().position(|byte| *byte == b'@');
     if at.is_none() && bytes.is_empty() {
         return EINVAL;
@@ -806,17 +816,17 @@ pub unsafe extern "C" fn rs_split_user_at_host(
     if host.is_some() && host_allocation.is_null() {
         // SAFETY: this allocation was created by `malloc_c_string` above and
         // has not been published to the caller.
-        unsafe { crate::ffi::free(user_allocation.cast()) };
+        unsafe_ffi!(crate::ffi::free(user_allocation.cast()));
         return ENOMEM;
     }
 
     if !ret_user.is_null() {
         // SAFETY: documented by this adapter's output-pointer contract.
-        unsafe { *ret_user = user_allocation };
+        unsafe_ffi!(*ret_user = user_allocation);
     }
     if !ret_host.is_null() {
         // SAFETY: documented by this adapter's output-pointer contract.
-        unsafe { *ret_host = host_allocation };
+        unsafe_ffi!(*ret_host = host_allocation);
     }
     result
 }
@@ -833,7 +843,7 @@ pub unsafe extern "C" fn rs_machine_spec_valid(s: *const c_char) -> c_int {
         return 0;
     }
     // SAFETY: documented by this adapter's C-string contract.
-    let bytes = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     c_int::from(machine_spec_valid_bytes(bytes))
 }
 

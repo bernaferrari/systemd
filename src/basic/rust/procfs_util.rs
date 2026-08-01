@@ -6,6 +6,13 @@
 // safe Rust. The only unsafe operations are the audited C ABI entry points and
 // `sysconf(_SC_CLK_TCK)`, which has no safe standard-library equivalent.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::Errno;
 use libc::c_char;
 use std::ffi::CStr;
@@ -207,7 +214,7 @@ fn clock_ticks_per_second() -> Result<u64, Errno> {
     // SAFETY: `sysconf` has no pointer or ownership preconditions. C caches
     // this exact `_SC_CLK_TCK` value; querying it per call is semantically
     // equivalent for the POSIX constant and avoids mutable global state.
-    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    let ticks = unsafe_ffi!(libc::sysconf(libc::_SC_CLK_TCK));
     if ticks <= 0 {
         // Current C asserts here. Returning a deterministic error is safer in
         // a C ABI library while preserving the no-output-on-failure contract.
@@ -447,7 +454,7 @@ pub unsafe extern "C" fn rs_convert_meminfo_value_to_uint64_bytes(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: required by the entry point contract and checked for NULL.
-    let input = match unsafe { CStr::from_ptr(s) }.to_str() {
+    let input = match unsafe_ffi!(CStr::from_ptr(s)).to_str() {
         Ok(input) => input,
         Err(_) => return Errno::EINVAL.to_neg_errno(),
     };
@@ -456,7 +463,7 @@ pub unsafe extern "C" fn rs_convert_meminfo_value_to_uint64_bytes(
         Err(error) => return error.to_neg_errno(),
     };
     // SAFETY: `ret` is non-NULL and writable by the entry point contract.
-    unsafe { *ret = value };
+    unsafe_ffi!(*ret = value);
     0
 }
 
@@ -473,7 +480,7 @@ pub unsafe extern "C" fn rs_procfs_get_pid_max(ret: *mut u64) -> libc::c_int {
         Err(error) => return error.to_neg_errno(),
     };
     // SAFETY: validated non-NULL output required by this ABI.
-    unsafe { *ret = value };
+    unsafe_ffi!(*ret = value);
     0
 }
 
@@ -490,7 +497,7 @@ pub unsafe extern "C" fn rs_procfs_get_threads_max(ret: *mut u64) -> libc::c_int
         Err(error) => return error.to_neg_errno(),
     };
     // SAFETY: validated non-NULL output required by this ABI.
-    unsafe { *ret = value };
+    unsafe_ffi!(*ret = value);
     0
 }
 
@@ -507,7 +514,7 @@ pub unsafe extern "C" fn rs_procfs_tasks_get_current(ret: *mut u64) -> libc::c_i
         Err(error) => return error.to_neg_errno(),
     };
     // SAFETY: validated non-NULL output required by this ABI.
-    unsafe { *ret = value };
+    unsafe_ffi!(*ret = value);
     0
 }
 
@@ -524,7 +531,7 @@ pub unsafe extern "C" fn rs_procfs_cpu_get_usage(ret: *mut u64) -> libc::c_int {
         Err(error) => return error.to_neg_errno(),
     };
     // SAFETY: validated non-NULL output required by this ABI.
-    unsafe { *ret = value };
+    unsafe_ffi!(*ret = value);
     0
 }
 
@@ -541,14 +548,14 @@ pub unsafe extern "C" fn rs_procfs_memory_get(
         Err(error) => return error.to_neg_errno(),
     };
     // SAFETY: optional outputs are written only after successful validation.
-    unsafe {
+    unsafe_ffi!({
         if !ret_total.is_null() {
             *ret_total = total;
         }
         if !ret_used.is_null() {
             *ret_used = used;
         }
-    }
+    });
     0
 }
 

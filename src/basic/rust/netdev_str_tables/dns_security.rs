@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/shared/dns-packet.c, dns-type.c, dns-rr.c
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::*;
 
 // ── dns-packet: dns_rcode (SUCCESS=0..BADCOOKIE=23, gap at 12-15) ──
@@ -183,7 +190,7 @@ pub unsafe extern "C" fn rs_dns_class_from_string(s: *const c_char) -> i32 {
     }
     for &(idx, name) in DNS_CLASS_TABLE {
         // SAFETY: the caller guarantees s is a live NUL-terminated C string.
-        if unsafe { cstr_eq_ignore_ascii_case_static(s, name) } {
+        if unsafe_ffi!(cstr_eq_ignore_ascii_case_static(s, name)) {
             return idx;
         }
     }

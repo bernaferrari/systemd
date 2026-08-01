@@ -8,6 +8,13 @@
 // access helpers, cleanup callbacks, conversation prompting, and bus-cache
 // management for PAM modules.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::c_void;
 
 // ── PAM Error ───────────────────────────────────────────────────────────
@@ -456,7 +463,7 @@ where
 pub unsafe fn cleanup_free(data: *mut c_void) {
     if !data.is_null() {
         // SAFETY: the caller guarantees data was allocated by the libc allocator.
-        unsafe { libc::free(data) };
+        unsafe_ffi!(libc::free(data));
     }
 }
 
@@ -483,7 +490,7 @@ pub unsafe fn cleanup_close(data: *mut c_void, flags: PamDataFlags) {
             .and_then(|encoded| i32::try_from(encoded).ok());
         if let Some(fd) = fd.filter(|fd| *fd >= 0) {
             // SAFETY: the caller guarantees data encodes the descriptor owned by this cleanup.
-            unsafe { libc::close(fd) };
+            unsafe_ffi!(libc::close(fd));
         }
     }
 }
@@ -798,21 +805,21 @@ mod tests {
     fn test_cleanup_free_null() {
         // Must not panic on null.
         // SAFETY: a null pointer satisfies cleanup_free's ownership contract.
-        unsafe { cleanup_free(std::ptr::null_mut()) };
+        unsafe_ffi!(cleanup_free(std::ptr::null_mut()));
     }
 
     #[test]
     fn test_cleanup_close_null() {
         // Must not panic on null, regardless of flags.
         // SAFETY: a null pointer is the encoded no-descriptor sentinel.
-        unsafe { cleanup_close(std::ptr::null_mut(), PamDataFlags::empty()) };
+        unsafe_ffi!(cleanup_close(std::ptr::null_mut(), PamDataFlags::empty()));
     }
 
     #[test]
     fn test_cleanup_close_silent_flag() {
         // SILENT suppresses the close of a descriptor encoded with FD_TO_PTR().
         // SAFETY: the silent path does not consume the encoded descriptor.
-        unsafe { cleanup_close(43 as *mut c_void, PamDataFlags::SILENT) };
+        unsafe_ffi!(cleanup_close(43 as *mut c_void, PamDataFlags::SILENT));
     }
 
     // ── Conversation ─────────────────────────────────────────────────

@@ -16,6 +16,13 @@
 // - `check_password_quality()` → strength validation returning quality score
 // - `suggest_passwords()` → random password generation
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, CString, c_void};
 use std::fmt;
 use std::io::ErrorKind;
@@ -348,7 +355,7 @@ fn resolve_symbol<T>(handle: &UnpublishedDlopenHandle, symbol: &str) -> Result<T
     // SAFETY: the caller establishes that `T` is this symbol's exact function
     // pointer type. All supported systemd targets represent data and function
     // pointers at the same width required by the POSIX dlsym contract.
-    Ok(unsafe { std::mem::transmute_copy(&raw) })
+    Ok(unsafe_ffi!(std::mem::transmute_copy(&raw)))
 }
 
 // ── Helper: get pwquality_strerror message ─────────────────────────────────
@@ -374,7 +381,7 @@ fn pwq_strerror(error_code: i32, auxerror: *mut c_void) -> String {
         format!("pwquality error {}", error_code)
     } else {
         // SAFETY: libpwquality returned a non-null NUL-terminated error string.
-        unsafe { CStr::from_ptr(result) }
+        unsafe_ffi!(CStr::from_ptr(result))
             .to_string_lossy()
             .into_owned()
     }
@@ -399,7 +406,11 @@ fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {
 
     let mut dict_path: *const libc::c_char = std::ptr::null();
     // SAFETY: the caller supplies a live settings context; dict_path is a valid out-parameter.
-    let r = unsafe { (syms.pwquality_get_str_value)(pwq, PWQ_SETTING_DICT_PATH, &mut dict_path) };
+    let r = unsafe_ffi!((syms.pwquality_get_str_value)(
+        pwq,
+        PWQ_SETTING_DICT_PATH,
+        &mut dict_path
+    ));
 
     if r < 0 {
         // Failed to read dictionary path, ignore.
@@ -412,7 +423,7 @@ fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {
     }
 
     // SAFETY: a successful getter returned a non-null NUL-terminated library-owned string.
-    let path_str = match unsafe { CStr::from_ptr(dict_path) }.to_str() {
+    let path_str = match unsafe_ffi!(CStr::from_ptr(dict_path)).to_str() {
         Ok(s) => s,
         Err(_) => return,
     };
@@ -434,7 +445,11 @@ fn pwq_maybe_disable_dictionary(pwq: *mut c_void) {
 
     // Dictionary file doesn't exist; disable dictionary checking.
     // SAFETY: pwq remains the live settings context supplied by the caller.
-    let _ = unsafe { (syms.pwquality_set_int_value)(pwq, PWQ_SETTING_DICT_CHECK, 0) };
+    let _ = unsafe_ffi!((syms.pwquality_set_int_value)(
+        pwq,
+        PWQ_SETTING_DICT_CHECK,
+        0
+    ));
 }
 
 // ── Internal: allocate pwquality context ──────────────────────────────────
@@ -455,7 +470,7 @@ fn pwq_allocate_context() -> Result<*mut c_void, PwqualityError> {
     let syms = &library.symbols;
 
     // SAFETY: the resolved function pointer has the library's documented signature.
-    let pwq = unsafe { (syms.pwquality_default_settings)() };
+    let pwq = unsafe_ffi!((syms.pwquality_default_settings)());
     if pwq.is_null() {
         return Err(PwqualityError::ContextAllocationFailed);
     }
@@ -464,7 +479,11 @@ fn pwq_allocate_context() -> Result<*mut c_void, PwqualityError> {
     // pwquality_strerror(), as the public API requires to release it.
     let mut auxerror: *mut c_void = std::ptr::null_mut();
     // SAFETY: pwq is a newly allocated settings context and auxerror is a valid out-parameter.
-    let r = unsafe { (syms.pwquality_read_config)(pwq, std::ptr::null(), &mut auxerror) };
+    let r = unsafe_ffi!((syms.pwquality_read_config)(
+        pwq,
+        std::ptr::null(),
+        &mut auxerror
+    ));
     if r < 0 {
         // libpwquality documents that strerror consumes auxiliary errors.
         let _ = pwq_strerror(r, auxerror);
@@ -489,7 +508,7 @@ fn pwq_free_settings(pwq: *mut c_void) {
     };
     let syms = &library.symbols;
     // SAFETY: the caller guarantees pwq is a live context allocated by libpwquality.
-    unsafe { (syms.pwquality_free_settings)(pwq) };
+    unsafe_ffi!((syms.pwquality_free_settings)(pwq));
 }
 
 // ── Public API: check_password_quality ────────────────────────────────────

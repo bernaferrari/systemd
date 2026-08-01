@@ -4,6 +4,13 @@
 //
 // Device number parsing and formatting utilities.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 use std::ptr;
 
@@ -38,7 +45,7 @@ impl<T> COut<T> {
     fn store(self, value: T) {
         if !self.0.is_null() {
             // SAFETY: a non-null output pointer is writable under the enclosing ABI contract.
-            unsafe { *self.0 = value };
+            unsafe_ffi!(*self.0 = value);
         }
     }
 }
@@ -58,10 +65,10 @@ impl CCharBuffer {
     fn write_nul_terminated(&self, bytes: &[u8]) {
         // SAFETY: the C ABI contract guarantees space for `bytes` plus NUL;
         // `bytes` is a live Rust slice and therefore cannot overlap this output.
-        unsafe {
+        unsafe_ffi!({
             ptr::copy_nonoverlapping(bytes.as_ptr().cast::<c_char>(), self.0, bytes.len());
             *self.0.add(bytes.len()) = 0;
-        }
+        })
     }
 }
 
@@ -219,14 +226,14 @@ fn allocate_c_string_parts(parts: &[&[u8]]) -> Result<*mut c_char, Errno> {
 
     // SAFETY: `allocation` owns `size` bytes from the C allocator. Each input
     // is a live Rust slice; cursor advancement is bounded by `content_len`.
-    unsafe {
+    unsafe_ffi!({
         let mut cursor = allocation;
         for part in parts {
             ptr::copy_nonoverlapping(part.as_ptr(), cursor, part.len());
             cursor = cursor.add(part.len());
         }
         *cursor = 0;
-    }
+    });
     Ok(allocation.cast::<c_char>())
 }
 
@@ -373,7 +380,7 @@ pub unsafe extern "C" fn rs_parse_devnum(s: *const c_char, ret: *mut u64) -> i32
     }
 
     // SAFETY: `s` is a readable NUL-terminated string by this C ABI contract.
-    let result = parse_devnum_bytes(unsafe { CStr::from_ptr(s) }.to_bytes());
+    let result = parse_devnum_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes());
 
     match result {
         Ok(dev) => {
@@ -430,7 +437,7 @@ pub unsafe extern "C" fn rs_device_path_parse_major_minor(
     }
 
     // SAFETY: `path` is a readable NUL-terminated string by this C ABI contract.
-    match parse_device_path(unsafe { CStr::from_ptr(path) }.to_bytes()) {
+    match parse_device_path(unsafe_ffi!(CStr::from_ptr(path)).to_bytes()) {
         Ok((mode, devnum)) => {
             COut::from_contract(ret_mode).store(mode);
             COut::from_contract(ret_devnum).store(devnum);
@@ -474,7 +481,7 @@ pub unsafe extern "C" fn rs_device_path_make_major_minor(
 
     // SAFETY: `size` includes the NUL terminator. This single C allocator
     // boundary preserves the ownership expected by the exported C ABI.
-    let path = unsafe { libc::malloc(size) }.cast::<u8>();
+    let path = unsafe_ffi!(libc::malloc(size)).cast::<u8>();
     if path.is_null() {
         return Errno::ENOMEM.to_neg_errno();
     }

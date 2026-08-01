@@ -7,6 +7,13 @@
 // random generator.  Supports transient (tmpfs bind-mount) and
 // persistent modes, and can commit a transient ID to disk.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::fmt;
@@ -68,7 +75,7 @@ impl CAllocatedCString {
         // SAFETY: `getenv_for_pid()` returned a positive result and its
         // documented contract gives us a newly allocated NUL-terminated
         // string. `self` owns that allocation for this borrow's lifetime.
-        unsafe { CStr::from_ptr(self.0.as_ptr()) }
+        unsafe_ffi!(CStr::from_ptr(self.0.as_ptr()))
     }
 }
 
@@ -77,7 +84,7 @@ impl Drop for CAllocatedCString {
         // SAFETY: this guard owns exactly the allocator-compatible string
         // returned by C's `strdup_to_full()` path in `getenv_for_pid()`.
         // It is dropped once and C `free(NULL)` is not needed here.
-        unsafe { libc::free(self.0.as_ptr().cast()) };
+        unsafe_ffi!(libc::free(self.0.as_ptr().cast()));
     }
 }
 
@@ -95,7 +102,7 @@ impl CAllocatedCredential {
         // SAFETY: a positive `read_credential_with_decryption()` result
         // transfers one non-null NUL-terminated allocation to this guard.
         // The guard keeps it alive for the returned borrow.
-        unsafe { CStr::from_ptr(self.0.as_ptr()) }
+        unsafe_ffi!(CStr::from_ptr(self.0.as_ptr()))
     }
 }
 
@@ -104,7 +111,7 @@ impl Drop for CAllocatedCredential {
         // SAFETY: the positive-result ownership contract of
         // `read_credential_with_decryption()` transfers exactly this
         // allocator-compatible allocation to the guard, which drops it once.
-        unsafe { libc::free(self.0.as_ptr().cast()) };
+        unsafe_ffi!(libc::free(self.0.as_ptr().cast()));
     }
 }
 
@@ -268,8 +275,11 @@ impl SdId128 {
         // for the given length.
         // SAFETY: `bytes` remains writable for its exact length throughout
         // this synchronous call.
-        let ret =
-            unsafe { crate::ffi::getrandom(bytes.as_mut_ptr().cast(), bytes.len(), GRND_NONBLOCK) };
+        let ret = unsafe_ffi!(crate::ffi::getrandom(
+            bytes.as_mut_ptr().cast(),
+            bytes.len(),
+            GRND_NONBLOCK
+        ));
         if ret < 0 {
             let err = io::Error::last_os_error();
             return Err(MachineIdError::Io(err));
@@ -432,7 +442,7 @@ fn acquire_from_dbus(root: &Path) -> MachineIdResult<Option<(SdId128, MachineIdS
     // SAFETY: `root` is NUL-terminated, `id` is valid writable storage with
     // the first sixteen bytes of `sd_id128_t`, and C retains neither pointer.
     // `machine_id_read_dbus()` pins resolution and parsing to its own FD.
-    let result = unsafe { c_machine_id_read_dbus(root.as_ptr(), &mut id) };
+    let result = unsafe_ffi!(c_machine_id_read_dbus(root.as_ptr(), &mut id));
     if result >= 0 {
         Ok(Some((id, MachineIdSource::DbusMachineId)))
     } else {
@@ -463,7 +473,7 @@ fn credential_machine_id_from_c_str(value: &CStr) -> CredentialMachineId {
     // SAFETY: `value` is a valid NUL-terminated string and `id` has the
     // 16-byte `sd_id128_t` representation required by `sd_id128_from_string`.
     // C writes only on success and retains neither pointer.
-    if unsafe { c_sd_id128_from_string(value.as_ptr(), &mut id) } < 0 {
+    if unsafe_ffi!(c_sd_id128_from_string(value.as_ptr(), &mut id)) < 0 {
         // C logs and ignores malformed credentials, then continues with the
         // container/firmware/random fallback chain.
         return CredentialMachineId::MissingOrInvalid;
@@ -543,7 +553,7 @@ fn getenv_for_pid(pid: libc::pid_t, field: &CStr) -> Result<Option<CAllocatedCSt
     // SAFETY: `field` is NUL-terminated, `value` is valid writable storage for
     // one output pointer, and C does not retain either pointer. The result's
     // positive ownership contract is represented by `CAllocatedCString`.
-    let result = unsafe { c_getenv_for_pid(pid, field.as_ptr(), &mut value) };
+    let result = unsafe_ffi!(c_getenv_for_pid(pid, field.as_ptr(), &mut value));
     let value = NonNull::new(value).map(CAllocatedCString);
 
     if result < 0 {
@@ -614,7 +624,7 @@ fn acquire_from_firmware(force_firmware: bool) -> Option<SdId128> {
     // SAFETY: `id` is initialized, uniquely borrowed writable storage with
     // the first sixteen bytes and alignment required by C's `sd_id128_t`.
     // The C helper writes it only on success and retains no pointer.
-    let result = unsafe { c_id128_get_product(&mut id) };
+    let result = unsafe_ffi!(c_id128_get_product(&mut id));
     (result >= 0).then_some(id)
 }
 
@@ -829,7 +839,7 @@ pub fn machine_id_commit(root: &Path) -> MachineIdResult<()> {
     // 1. Sync filesystems (best-effort).
     if root_empty {
         // SAFETY: sync() has no arguments and is always safe to call.
-        unsafe { libc::sync() };
+        unsafe_ffi!(libc::sync());
 
         // syncfs_path equivalents — flush specific directories.
         for sync_dir in &[Path::new("/etc"), Path::new("/var")] {
@@ -883,15 +893,15 @@ fn sync_directory(dir: &Path) -> io::Result<()> {
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains a null byte"))?;
 
     // SAFETY: `dir` is a NUL-terminated path with no interior NUL bytes.
-    let fd = unsafe { libc::open(dir.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC) };
+    let fd = unsafe_ffi!(libc::open(dir.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC));
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
 
     // SAFETY: fd is a valid directory file descriptor just opened above.
-    let ret = unsafe { crate::ffi::syncfs(fd) };
+    let ret = unsafe_ffi!(crate::ffi::syncfs(fd));
     // SAFETY: fd is valid and owned.
-    unsafe { libc::close(fd) };
+    unsafe_ffi!(libc::close(fd));
 
     if ret < 0 {
         Err(io::Error::last_os_error())

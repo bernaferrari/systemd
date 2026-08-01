@@ -9,6 +9,13 @@
 // only unsafe boundary; their successful string outputs are libc allocations
 // and may therefore be released by the C caller with free(3).
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_char, c_int};
 use std::ops::Range;
 use std::ptr;
@@ -143,10 +150,10 @@ fn malloc_c_bytes(bytes: &[u8]) -> Result<*mut c_char, Errno> {
     }
     // SAFETY: malloc returned allocation_size writable bytes. The source is a
     // live byte slice and the terminating byte is within that allocation.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(bytes.as_ptr(), allocation, bytes.len());
         *allocation.add(bytes.len()) = 0;
-    }
+    });
     Ok(allocation.cast::<c_char>())
 }
 
@@ -162,7 +169,7 @@ fn malloc_changed_url(url: &[u8], prefix_end: usize, suffix: &[u8]) -> Result<*m
     }
     // SAFETY: each destination range is disjoint and contained in the freshly
     // allocated buffer. The source slices are live by the safe caller.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(url.as_ptr(), allocation, prefix_end);
         *allocation.add(prefix_end) = b'/';
         ptr::copy_nonoverlapping(
@@ -171,7 +178,7 @@ fn malloc_changed_url(url: &[u8], prefix_end: usize, suffix: &[u8]) -> Result<*m
             suffix.len(),
         );
         *allocation.add(allocation_size - 1) = 0;
-    }
+    });
     Ok(allocation.cast::<c_char>())
 }
 
@@ -229,7 +236,7 @@ pub unsafe extern "C" fn rs_import_url_last_component(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: required by the entry point's C-string contract.
-    let url = unsafe { CStr::from_ptr(url) }.to_bytes();
+    let url = unsafe_ffi!(CStr::from_ptr(url)).to_bytes();
     let range = match import_url_last_component_range(url) {
         Ok(range) => range,
         Err(error) => return error.to_neg_errno(),
@@ -240,7 +247,7 @@ pub unsafe extern "C" fn rs_import_url_last_component(
             Err(error) => return error.to_neg_errno(),
         };
         // SAFETY: required by the entry point's optional output contract.
-        unsafe { *ret = output };
+        unsafe_ffi!(*ret = output);
     }
     0
 }
@@ -261,12 +268,12 @@ pub unsafe extern "C" fn rs_import_url_change_suffix(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: required by the entry point's C-string contracts.
-    let url = unsafe { CStr::from_ptr(url) }.to_bytes();
+    let url = unsafe_ffi!(CStr::from_ptr(url)).to_bytes();
     let suffix = if suffix.is_null() {
         &[][..]
     } else {
         // SAFETY: required by the entry point's C-string contract.
-        unsafe { CStr::from_ptr(suffix) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(suffix)).to_bytes()
     };
     let end = match import_url_change_suffix_prefix_end(url, n_drop_components) {
         Ok(end) => end,
@@ -278,7 +285,7 @@ pub unsafe extern "C" fn rs_import_url_change_suffix(
     };
     // SAFETY: required by the entry point's output contract; failure paths do
     // not modify it, matching the C function.
-    unsafe { *ret = output };
+    unsafe_ffi!(*ret = output);
     0
 }
 
@@ -296,7 +303,7 @@ pub unsafe extern "C" fn rs_tar_strip_suffixes(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: required by the entry point's C-string contract.
-    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    let name = unsafe_ffi!(CStr::from_ptr(name)).to_bytes();
     let end = match tar_strip_suffixes_end(name) {
         Ok(end) => end,
         Err(error) => return error.to_neg_errno(),
@@ -306,7 +313,7 @@ pub unsafe extern "C" fn rs_tar_strip_suffixes(
         Err(error) => return error.to_neg_errno(),
     };
     // SAFETY: required by the entry point's output contract.
-    unsafe { *ret = output };
+    unsafe_ffi!(*ret = output);
     0
 }
 
@@ -324,13 +331,13 @@ pub unsafe extern "C" fn rs_raw_strip_suffixes(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: required by the entry point's C-string contract.
-    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    let name = unsafe_ffi!(CStr::from_ptr(name)).to_bytes();
     let output = match malloc_c_bytes(&name[..raw_strip_suffixes_end(name)]) {
         Ok(output) => output,
         Err(error) => return error.to_neg_errno(),
     };
     // SAFETY: required by the entry point's output contract.
-    unsafe { *ret = output };
+    unsafe_ffi!(*ret = output);
     0
 }
 
@@ -343,7 +350,7 @@ pub unsafe extern "C" fn rs_reboot_parameter_is_valid(parameter: *const c_char) 
         return false;
     }
     // SAFETY: required by the entry point's C-string contract.
-    reboot_parameter_is_valid_bytes(unsafe { CStr::from_ptr(parameter) }.to_bytes())
+    reboot_parameter_is_valid_bytes(unsafe_ffi!(CStr::from_ptr(parameter)).to_bytes())
 }
 
 #[cfg(test)]

@@ -6,6 +6,13 @@
 // computation; the narrow C ABI facade allocates owned output with libc so it
 // remains compatible with C's free(3) and strv_free() ownership contracts.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_char, c_int, c_ulong, c_void};
 use std::mem::size_of;
 use std::ptr;
@@ -251,10 +258,10 @@ unsafe fn free_partial_namespace_strv(vector: *mut *mut c_char, populated: usize
     for index in 0..populated {
         // SAFETY: guaranteed by this helper's contract and the construction
         // loop in `allocate_namespace_strv`.
-        unsafe { ffi::free((*vector.add(index)).cast::<c_void>()) };
+        unsafe_ffi!(ffi::free((*vector.add(index)).cast::<c_void>()));
     }
     // SAFETY: `vector` is the owning C-allocator base pointer.
-    unsafe { ffi::free(vector.cast::<c_void>()) };
+    unsafe_ffi!(ffi::free(vector.cast::<c_void>()));
 }
 
 /// Allocate a NULL-terminated C string vector using the C allocator for both
@@ -287,19 +294,19 @@ fn allocate_namespace_strv(flags: c_ulong) -> Result<*mut *mut c_char, c_int> {
         if string.is_null() {
             // SAFETY: the preceding loop iterations populated exactly
             // `index` slots of the C-allocator vector.
-            unsafe { free_partial_namespace_strv(vector, index) };
+            unsafe_ffi!(free_partial_namespace_strv(vector, index));
             return Err(ENOMEM);
         }
         // SAFETY: `string` owns exactly proc_name_c.len() writable bytes and
         // the source is static NUL-terminated storage of that same length.
-        unsafe {
+        unsafe_ffi!({
             ptr::copy_nonoverlapping(
                 info.proc_name_c.as_ptr().cast::<c_char>(),
                 string,
                 info.proc_name_c.len(),
             );
             *vector.add(index) = string;
-        }
+        });
         index += 1;
     }
 
@@ -345,7 +352,7 @@ pub unsafe extern "C" fn rs_namespace_flags_to_strv(
         Ok(vector) => {
             // SAFETY: `ret` is non-NULL and the entry point contract requires
             // writable storage for one char** result.
-            unsafe { *ret = vector };
+            unsafe_ffi!(*ret = vector);
             0
         }
         Err(error) => error,
@@ -375,7 +382,7 @@ pub unsafe extern "C" fn rs_namespace_flags_to_string(
         Ok(string) => {
             // SAFETY: `ret` is non-NULL and the entry point contract requires
             // writable storage for one char* result.
-            unsafe { *ret = string };
+            unsafe_ffi!(*ret = string);
             0
         }
         Err(error) => error,
@@ -400,12 +407,12 @@ pub unsafe extern "C" fn rs_namespace_flags_from_string(
     }
 
     // SAFETY: guaranteed by this entry point's documented C-string contract.
-    let parsed = unsafe { namespace_flags_from_bytes(CStr::from_ptr(name).to_bytes()) };
+    let parsed = unsafe_ffi!(namespace_flags_from_bytes(CStr::from_ptr(name).to_bytes()));
     match parsed {
         Ok(flags) => {
             // SAFETY: guaranteed by this entry point's documented output
             // pointer contract; the write occurs only after successful parse.
-            unsafe { *ret = flags as c_ulong };
+            unsafe_ffi!(*ret = flags as c_ulong);
             0
         }
         Err(error) => error,

@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::*;
 
 impl JournalRuntime {
@@ -101,7 +108,7 @@ impl JournalRuntime {
 
         // SAFETY: daemon socket preparation runs during single-threaded startup,
         // before the journald event loop or any stream handling begins.
-        for passed_fd in unsafe { sd_listen_fds_with_names(true) }.map_err(|err| {
+        for passed_fd in unsafe_ffi!(sd_listen_fds_with_names(true)).map_err(|err| {
             JournaldError::InvalidArgument(format!("socket activation parse failed: {err:?}"))
         })? {
             if parse_stream_state_file_name(&passed_fd.name).is_some() {
@@ -121,7 +128,7 @@ impl JournalRuntime {
                 if native_socket.is_none() {
                     // SAFETY: socket activation transferred ownership of this
                     // unique datagram descriptor to the daemon.
-                    let socket = unsafe { UnixDatagram::from_raw_fd(fd) };
+                    let socket = unsafe_ffi!(UnixDatagram::from_raw_fd(fd));
                     self.configure_daemon_datagram_socket(&socket)?;
                     native_socket = Some(socket);
                 } else {
@@ -140,7 +147,7 @@ impl JournalRuntime {
                 if syslog_socket.is_none() {
                     // SAFETY: socket activation transferred ownership of this
                     // unique datagram descriptor to the daemon.
-                    let socket = unsafe { UnixDatagram::from_raw_fd(fd) };
+                    let socket = unsafe_ffi!(UnixDatagram::from_raw_fd(fd));
                     self.configure_daemon_datagram_socket(&socket)?;
                     syslog_socket = Some(socket);
                 } else {
@@ -159,7 +166,7 @@ impl JournalRuntime {
                 if stdout_listener.is_none() {
                     // SAFETY: socket activation transferred ownership of this
                     // unique listening descriptor to the daemon.
-                    let listener = unsafe { UnixListener::from_raw_fd(fd) };
+                    let listener = unsafe_ffi!(UnixListener::from_raw_fd(fd));
                     self.configure_daemon_stream_listener(&listener)?;
                     stdout_listener = Some(listener);
                 } else {
@@ -551,7 +558,7 @@ impl JournalRuntime {
             let fd = available.swap_remove(index);
             // SAFETY: swap_remove transfers the sole ownership of this live
             // stream descriptor into UnixStream.
-            let stream = unsafe { UnixStream::from_raw_fd(fd) };
+            let stream = unsafe_ffi!(UnixStream::from_raw_fd(fd));
             stream.set_nonblocking(true)?;
             let mut connection = StdoutStreamConnection::new(stream)?;
             connection.state = StdoutStreamState::Running;

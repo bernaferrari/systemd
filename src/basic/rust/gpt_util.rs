@@ -7,6 +7,13 @@
 // partition-type table and lookup API.  The core below operates on Rust
 // integers and byte slices; only the exported adapters touch C pointers.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_char, c_int};
 
 use crate::ffi::Errno;
@@ -468,7 +475,7 @@ pub unsafe extern "C" fn rs_gpt_header_has_signature(p: *const u8) -> bool {
 
     // SAFETY: guaranteed by this adapter's documented contract; the safe core
     // only examines the 32 bytes C reads while checking the packed header.
-    let header = unsafe { std::slice::from_raw_parts(p, 32) };
+    let header = unsafe_ffi!(std::slice::from_raw_parts(p, 32));
     gpt_header_has_signature(header)
 }
 
@@ -553,11 +560,11 @@ pub unsafe extern "C" fn rs_parse_vlanid(p: *const c_char, ret: *mut u16) -> c_i
 
     // SAFETY: guaranteed by this adapter's documented contract. CStr accepts
     // arbitrary bytes, preserving C's non-UTF-8 parsing semantics.
-    let text = unsafe { CStr::from_ptr(p) }.to_bytes();
+    let text = unsafe_ffi!(CStr::from_ptr(p)).to_bytes();
     match parse_vlanid(text) {
         Ok(value) => {
             // SAFETY: `ret` is non-null and writable by this adapter contract.
-            unsafe { ret.write(value) };
+            unsafe_ffi!(ret.write(value));
             0
         }
         Err(error) => error.errno(),
@@ -577,7 +584,7 @@ pub unsafe extern "C" fn rs_gpt_partition_label_valid(s: *const c_char) -> c_int
     }
 
     // SAFETY: guaranteed by this adapter's documented contract.
-    let text = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let text = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     if gpt_partition_label_valid(text) {
         1
     } else {

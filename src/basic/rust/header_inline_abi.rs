@@ -7,6 +7,13 @@
 // for one call and returns either the original borrowed pointer or a fresh
 // libc allocation, exactly as the corresponding C inline helper does.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 use std::ptr;
 
@@ -46,7 +53,7 @@ unsafe fn input_bytes<'a>(input: *const c_char) -> Option<&'a [u8]> {
         return None;
     }
     // SAFETY: the adapter's C ABI contract guarantees the input terminator.
-    Some(unsafe { CStr::from_ptr(input) }.to_bytes())
+    Some(unsafe_ffi!(CStr::from_ptr(input)).to_bytes())
 }
 
 /// C ABI for utf8.h's `utf8_is_valid()` inline helper.
@@ -57,7 +64,7 @@ unsafe fn input_bytes<'a>(input: *const c_char) -> Option<&'a [u8]> {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_utf8_is_valid(str_: *const c_char) -> *mut c_char {
     // SAFETY: the entry-point contract is exactly input_bytes' contract.
-    let Some(bytes) = (unsafe { input_bytes(str_) }) else {
+    let Some(bytes) = (unsafe_ffi!(input_bytes(str_))) else {
         return ptr::null_mut();
     };
     if utf8_is_valid_bytes(bytes) {
@@ -75,7 +82,7 @@ pub unsafe extern "C" fn rs_utf8_is_valid(str_: *const c_char) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ascii_is_valid(str_: *const c_char) -> *mut c_char {
     // SAFETY: the entry-point contract is exactly input_bytes' contract.
-    let Some(bytes) = (unsafe { input_bytes(str_) }) else {
+    let Some(bytes) = (unsafe_ffi!(input_bytes(str_))) else {
         return ptr::null_mut();
     };
     if ascii_is_valid_bytes(bytes) {
@@ -94,7 +101,7 @@ pub unsafe extern "C" fn rs_ascii_is_valid(str_: *const c_char) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_utf8_escape_non_printable(str_: *const c_char) -> *mut c_char {
     // SAFETY: the entry-point contract is exactly input_bytes' contract.
-    let Some(bytes) = (unsafe { input_bytes(str_) }) else {
+    let Some(bytes) = (unsafe_ffi!(input_bytes(str_))) else {
         return ptr::null_mut();
     };
     match try_utf8_escape_non_printable(bytes, usize::MAX, false) {
@@ -129,13 +136,13 @@ pub extern "C" fn rs_utf16_surrogate_pair_to_unichar(lead: u16, trail: u16) -> u
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_skip_dev_prefix(path: *const c_char) -> *const c_char {
     // SAFETY: the entry-point contract is exactly input_bytes' contract.
-    let Some(bytes) = (unsafe { input_bytes(path) }) else {
+    let Some(bytes) = (unsafe_ffi!(input_bytes(path))) else {
         return ptr::null();
     };
     let offset = skip_dev_prefix_offset(bytes);
     // SAFETY: `offset` is derived from the visible bytes of `path`, so it is
     // within the same borrowed C allocation (including its terminating NUL).
-    unsafe { path.add(offset) }
+    unsafe_ffi!(path.add(offset))
 }
 
 #[cfg(test)]

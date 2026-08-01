@@ -6,6 +6,13 @@
 // configured HAVE_OPENSSL decision, lazy loading, provider lookup, and OpenSSL
 // ABI; Rust owns only validated inputs and returned-allocation lifetime.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CString, c_char, c_void};
 use std::ptr::NonNull;
 use std::sync::Mutex;
@@ -86,7 +93,7 @@ impl CAllocatedDigest {
     fn to_vec(&self) -> Vec<u8> {
         // SAFETY: C's successful `openssl_digest_many()` result is a live
         // malloc allocation of exactly `len` digest bytes, owned by this guard.
-        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }.to_vec()
+        unsafe_ffi!(std::slice::from_raw_parts(self.ptr.as_ptr(), self.len)).to_vec()
     }
 }
 
@@ -94,7 +101,7 @@ impl Drop for CAllocatedDigest {
     fn drop(&mut self) {
         // SAFETY: `ptr` is the single malloc allocation transferred by C to
         // this guard. `libc::free` is allocator-compatible and runs once.
-        unsafe { libc::free(self.ptr.as_ptr().cast()) };
+        unsafe_ffi!(libc::free(self.ptr.as_ptr().cast()));
     }
 }
 
@@ -116,7 +123,7 @@ pub fn digest_size(digest_alg: &str) -> Result<usize> {
 
     // SAFETY: `digest_alg` is NUL-terminated and live for the call; `size` is
     // a writable output slot. C retains neither pointer.
-    let result = unsafe { c_openssl_digest_size(digest_alg.as_ptr(), &mut size) };
+    let result = unsafe_ffi!(c_openssl_digest_size(digest_alg.as_ptr(), &mut size));
     if result < 0 {
         return Err(OpenSslError::from_neg_errno(result));
     }

@@ -9,6 +9,14 @@
     reason = "The dedicated C-mirror test module deliberately lives in time_util/tests.rs."
 )]
 
+// Centralized unsafe expression boundary for this test module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use crate::time_util::arithmetic::{
@@ -40,48 +48,54 @@ mod tests {
     fn timespec_load_for_test(ts: Option<&LibcTimespec>) -> u64 {
         // SAFETY: the helper either passes a null pointer or a reference-derived pointer
         // that remains valid for the duration of this synchronous FFI call.
-        unsafe { rs_timespec_load(ts.map_or(std::ptr::null(), std::ptr::from_ref)) }
+        unsafe_ffi!(rs_timespec_load(
+            ts.map_or(std::ptr::null(), std::ptr::from_ref)
+        ))
     }
 
     fn timespec_load_nsec_for_test(ts: Option<&LibcTimespec>) -> u64 {
         // SAFETY: the helper either passes a null pointer or a reference-derived pointer
         // that remains valid for the duration of this synchronous FFI call.
-        unsafe { rs_timespec_load_nsec(ts.map_or(std::ptr::null(), std::ptr::from_ref)) }
+        unsafe_ffi!(rs_timespec_load_nsec(
+            ts.map_or(std::ptr::null(), std::ptr::from_ref)
+        ))
     }
 
     fn timespec_store_for_test(ts: Option<&mut LibcTimespec>, usec: u64) -> bool {
         let ts = ts.map_or(std::ptr::null_mut(), std::ptr::from_mut);
         // SAFETY: the helper either passes a null pointer or an exclusive reference-derived
         // pointer that remains valid for the duration of this synchronous FFI call.
-        unsafe { rs_timespec_store(ts, usec) == ts }
+        unsafe_ffi!(rs_timespec_store(ts, usec) == ts)
     }
 
     fn timespec_store_nsec_for_test(ts: Option<&mut LibcTimespec>, nsec: u64) -> bool {
         let ts = ts.map_or(std::ptr::null_mut(), std::ptr::from_mut);
         // SAFETY: the helper either passes a null pointer or an exclusive reference-derived
         // pointer that remains valid for the duration of this synchronous FFI call.
-        unsafe { rs_timespec_store_nsec(ts, nsec) == ts }
+        unsafe_ffi!(rs_timespec_store_nsec(ts, nsec) == ts)
     }
 
     fn timeval_load_for_test(tv: Option<&LibcTimeval>) -> u64 {
         // SAFETY: the helper either passes a null pointer or a reference-derived pointer
         // that remains valid for the duration of this synchronous FFI call.
-        unsafe { rs_timeval_load(tv.map_or(std::ptr::null(), std::ptr::from_ref)) }
+        unsafe_ffi!(rs_timeval_load(
+            tv.map_or(std::ptr::null(), std::ptr::from_ref)
+        ))
     }
 
     fn timeval_store_for_test(tv: Option<&mut LibcTimeval>, usec: u64) -> bool {
         let tv = tv.map_or(std::ptr::null_mut(), std::ptr::from_mut);
         // SAFETY: the helper either passes a null pointer or an exclusive reference-derived
         // pointer that remains valid for the duration of this synchronous FFI call.
-        unsafe { rs_timeval_store(tv, usec) == tv }
+        unsafe_ffi!(rs_timeval_store(tv, usec) == tv)
     }
 
     fn triple_timestamp_by_clock_for_test(ts: Option<&mut TripleTimestamp>, clock: i32) -> u64 {
         // SAFETY: the helper either passes a null pointer or an exclusive reference-derived
         // pointer that remains valid for the duration of this synchronous FFI call.
-        unsafe {
+        unsafe_ffi!({
             rs_triple_timestamp_by_clock(ts.map_or(std::ptr::null_mut(), std::ptr::from_mut), clock)
-        }
+        })
     }
 
     fn cstr_from_static_for_test(ptr: *const c_char) -> Option<&'static CStr> {
@@ -89,24 +103,26 @@ mod tests {
             return None;
         }
         // SAFETY: rs_timestamp_style_to_string returns static NUL-terminated strings.
-        Some(unsafe { CStr::from_ptr(ptr) })
+        Some(unsafe_ffi!(CStr::from_ptr(ptr)))
     }
 
     fn timestamp_style_from_string_for_test(input: Option<&CStr>) -> i32 {
         // SAFETY: the helper either passes a null pointer or CStr's NUL-terminated,
         // live byte sequence for the duration of this synchronous FFI call.
-        unsafe { rs_timestamp_style_from_string(input.map_or(std::ptr::null(), CStr::as_ptr)) }
+        unsafe_ffi!(rs_timestamp_style_from_string(
+            input.map_or(std::ptr::null(), CStr::as_ptr)
+        ))
     }
 
     fn parse_gmtoff_for_test(input: Option<&CStr>, output: Option<&mut c_long>) -> i32 {
         // SAFETY: the helper either passes null pointers or pointers derived from live
         // CStr/exclusive references for the duration of this synchronous FFI call.
-        unsafe {
+        unsafe_ffi!({
             rs_parse_gmtoff(
                 input.map_or(std::ptr::null(), CStr::as_ptr),
                 output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
             )
-        }
+        })
     }
 
     fn format_timespan_for_test<'a>(
@@ -119,20 +135,24 @@ mod tests {
         });
         // SAFETY: the helper either passes a null pointer or a mutable slice's writable
         // storage and length. A non-null return points to the NUL-terminated output buffer.
-        let result = unsafe { rs_format_timespan(buffer, buffer_len, usec, accuracy) };
-        (!result.is_null()).then(|| unsafe { CStr::from_ptr(result) })
+        let result = unsafe_ffi!(rs_format_timespan(buffer, buffer_len, usec, accuracy));
+        (!result.is_null()).then(|| unsafe_ffi!(CStr::from_ptr(result)))
     }
 
     fn dual_timestamp_is_set_for_test(ts: Option<&DualTimestamp>) -> bool {
         // SAFETY: the helper either passes a null pointer or a reference-derived pointer
         // that remains valid for the duration of this synchronous FFI call.
-        unsafe { rs_dual_timestamp_is_set(ts.map_or(std::ptr::null(), std::ptr::from_ref)) }
+        unsafe_ffi!(rs_dual_timestamp_is_set(
+            ts.map_or(std::ptr::null(), std::ptr::from_ref)
+        ))
     }
 
     fn triple_timestamp_is_set_for_test(ts: Option<&TripleTimestamp>) -> bool {
         // SAFETY: the helper either passes a null pointer or a reference-derived pointer
         // that remains valid for the duration of this synchronous FFI call.
-        unsafe { rs_triple_timestamp_is_set(ts.map_or(std::ptr::null(), std::ptr::from_ref)) }
+        unsafe_ffi!(rs_triple_timestamp_is_set(
+            ts.map_or(std::ptr::null(), std::ptr::from_ref)
+        ))
     }
 
     fn parse_time_for_test(
@@ -142,46 +162,46 @@ mod tests {
     ) -> i32 {
         // SAFETY: the helper either passes null pointers or pointers derived from live
         // CStr/exclusive references for the duration of this synchronous FFI call.
-        unsafe {
+        unsafe_ffi!({
             rs_parse_time(
                 input.map_or(std::ptr::null(), CStr::as_ptr),
                 output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
                 default_unit,
             )
-        }
+        })
     }
 
     fn parse_sec_for_test(input: Option<&CStr>, output: Option<&mut u64>) -> i32 {
         // SAFETY: the helper either passes null pointers or pointers derived from live
         // CStr/exclusive references for the duration of this synchronous FFI call.
-        unsafe {
+        unsafe_ffi!({
             rs_parse_sec(
                 input.map_or(std::ptr::null(), CStr::as_ptr),
                 output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
             )
-        }
+        })
     }
 
     fn parse_sec_fix_0_for_test(input: Option<&CStr>, output: Option<&mut u64>) -> i32 {
         // SAFETY: the helper either passes null pointers or pointers derived from live
         // CStr/exclusive references for the duration of this synchronous FFI call.
-        unsafe {
+        unsafe_ffi!({
             rs_parse_sec_fix_0(
                 input.map_or(std::ptr::null(), CStr::as_ptr),
                 output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
             )
-        }
+        })
     }
 
     fn parse_sec_def_infinity_for_test(input: Option<&CStr>, output: Option<&mut u64>) -> i32 {
         // SAFETY: the helper either passes null pointers or pointers derived from live
         // CStr/exclusive references for the duration of this synchronous FFI call.
-        unsafe {
+        unsafe_ffi!({
             rs_parse_sec_def_infinity(
                 input.map_or(std::ptr::null(), CStr::as_ptr),
                 output.map_or(std::ptr::null_mut(), std::ptr::from_mut),
             )
-        }
+        })
     }
 
     // ── rs_map_clock_usec_raw ───────────────────────────────────────────────

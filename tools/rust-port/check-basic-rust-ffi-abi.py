@@ -781,8 +781,6 @@ def devnum_parser_matches_current_c() -> bool:
         "value > libc::c_ulong::MAX as u64",
         "fn path_equal_components(",
         "fn path_startswith_components",
-        "parse_devnum_bytes(unsafe { CStr::from_ptr(s) }.to_bytes())",
-        "parse_device_path(unsafe { CStr::from_ptr(path) }.to_bytes())",
     )
     required_fixtures = (
         '"010:010"',
@@ -797,8 +795,17 @@ def devnum_parser_matches_current_c() -> bool:
         '"/dev/./block/8:2"',
         '"/home/\\xff"',
     )
-    return all(snippet in source for snippet in required_source) and all(
-        fixture in test for fixture in required_fixtures
+    return (
+        all(snippet in source for snippet in required_source)
+        and (
+            "parse_devnum_bytes(unsafe { CStr::from_ptr(s) }.to_bytes())" in source
+            or "parse_devnum_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes())" in source
+        )
+        and (
+            "parse_device_path(unsafe { CStr::from_ptr(path) }.to_bytes())" in source
+            or "parse_device_path(unsafe_ffi!(CStr::from_ptr(path)).to_bytes())" in source
+        )
+        and all(fixture in test for fixture in required_fixtures)
     )
 
 
@@ -1006,7 +1013,7 @@ def percent_util_boundary_is_reviewed() -> bool:
         and "libc::strtol(start, &mut end, base as libc::c_int)" in source
         and "clear_errno();" in source
         and "let errno = get_errno();" in source
-        and "if unsafe { *end } != 0" in source
+        and ("if unsafe { *end } != 0" in source or "if unsafe_ffi!(*end) != 0" in source)
         and "value as libc::c_int as libc::c_long != value" in source
         and "v > (i32::MAX - q) / 10" in source
         and "v > (i32::MAX - q) / 100" in source
@@ -1196,7 +1203,10 @@ def virt_boundary_is_reviewed() -> bool:
         and "const VIRTUALIZATION_TABLE: &[FfiEntry]" in source
         and "ffi_string_table::to_str(VIRTUALIZATION_TABLE" in source
         and "ffi_string_table::to_ptr(VIRTUALIZATION_TABLE" in source
-        and "ffi_string_table::from_ptr(VIRTUALIZATION_TABLE" in source
+        and (
+            "ffi_string_table::from_ptr(VIRTUALIZATION_TABLE" in source
+            or "ffi_string_table::from_ptr(\n        VIRTUALIZATION_TABLE" in source
+        )
         and "(VM_FIRST..=VM_LAST).contains(&value)" in source
         and "(CONTAINER_FIRST..=CONTAINER_LAST).contains(&value)" in source
         and "#include <stdbool.h>" in header
@@ -1245,7 +1255,7 @@ def procfs_boundary_is_reviewed() -> bool:
         and "line.len().saturating_add(content_len) >= LONG_LINE_MAX" in source
         and "libc::sysconf(libc::_SC_CLK_TCK)" in source
         and "if s.is_null() || ret.is_null()" in source
-        and "unsafe { *ret = value }" in source
+        and ("unsafe { *ret = value }" in source or "unsafe_ffi!(*ret = value);" in source)
         and all(
             symbol in header
             for symbol in (
@@ -1535,8 +1545,15 @@ def stat_vfs_boundary_is_reviewed() -> bool:
         and "statvfs.f_frsize as u64" in filesystem
         and "statvfs.f_bfree as u64" in filesystem
         and "fragment_size.overflowing_mul(free_blocks)" in filesystem
-        and "unsafe { ret.write(bytes) };" in filesystem
-        and filesystem.index("unsafe { ret.write(bytes) };")
+        and (
+            "unsafe { ret.write(bytes) };" in filesystem
+            or "unsafe_ffi!(ret.write(bytes));" in filesystem
+        )
+        and filesystem.index(
+            "unsafe { ret.write(bytes) };"
+            if "unsafe { ret.write(bytes) };" in filesystem
+            else "unsafe_ffi!(ret.write(bytes));"
+        )
         < filesystem.index("return -libc::ERANGE;")
         and "crate::ffi::get_errno()" in filesystem
         and "-libc::EIO" in filesystem
@@ -1706,8 +1723,12 @@ def stat_filesystem_boundary_is_reviewed() -> bool:
         and "libc::fstatfs(fd, statfs.as_mut_ptr())" in filesystem
         and 'libc::statfs(c".".as_ptr(), statfs.as_mut_ptr())' in filesystem
         and 'libc::statfs(c"/".as_ptr(), statfs.as_mut_ptr())' in filesystem
-        and "libc::openat(dir_fd, path.as_ptr(), libc::O_PATH | libc::O_CLOEXEC)"
-        in filesystem
+        and (
+            "libc::openat(dir_fd, path.as_ptr(), libc::O_PATH | libc::O_CLOEXEC)"
+            in filesystem
+            or "libc::openat(\n        dir_fd,\n        path.as_ptr(),\n        libc::O_PATH | libc::O_CLOEXEC\n    )"
+            in filesystem
+        )
         and "OwnedFd::from_raw_fd(fd)" in filesystem
         and "libc::faccessat(fd, c\"\".as_ptr(), mode, libc::AT_EMPTY_PATH)"
         in filesystem
@@ -1717,10 +1738,16 @@ def stat_filesystem_boundary_is_reviewed() -> bool:
         and "libc::fstatvfs(fd, statvfs.as_mut_ptr())" in filesystem
         and 'libc::statvfs(c".".as_ptr(), statvfs.as_mut_ptr())' in filesystem
         and 'libc::statvfs(c"/".as_ptr(), statvfs.as_mut_ptr())' in filesystem
-        and "Ok(unsafe { statvfs.assume_init() }.f_flag as u64)" in filesystem
+        and (
+            "Ok(unsafe { statvfs.assume_init() }.f_flag as u64)" in filesystem
+            or "unsafe_ffi!(statvfs.assume_init()).f_flag as u64" in filesystem
+        )
         and "flags & ST_RDONLY != 0" in filesystem
         and "access_fd(fd, libc::W_OK) == -libc::EROFS" in filesystem
-        and "unsafe { ret.write(statfs) };" in filesystem
+        and (
+            "unsafe { ret.write(statfs) };" in filesystem
+            or "unsafe_ffi!(ret.write(statfs));" in filesystem
+        )
         and "statfs.f_type as StatFsType == magic_value" in filesystem
         and "CStr::from_ptr(path)" in filesystem
         and "crate::ffi::get_errno()" in filesystem
@@ -1896,7 +1923,6 @@ def stat_xstatx_boundary_is_reviewed() -> bool:
         "Err(-libc::EBADF)",
         "Err(-libc::EINVAL)",
         "crate::ffi::get_errno()",
-        "unsafe { ret.write(statx) };",
     )
     required_vectors = (
         'xstatx(AT_FDCWD, ".", 0, STATX_BASIC_STATS, &c_statx)',
@@ -1931,12 +1957,30 @@ def stat_xstatx_boundary_is_reviewed() -> bool:
         xstatx.count("#[unsafe(no_mangle)]") == 2
         and {"stat-util.c", "stat-util.h", "fd-util.c", "fd-util.h"} <= authority_names
         and all(declaration in header for declaration in required_header)
-        and all(contract in xstatx for contract in required_source_contract)
+        and all(
+            contract in xstatx
+            for contract in required_source_contract
+            if contract != "libc::statx(fd, path.as_ptr(), flags, mask, statx.as_mut_ptr())"
+        )
+        and (
+            "libc::statx(fd, path.as_ptr(), flags, mask, statx.as_mut_ptr())" in xstatx
+            or (
+                "libc::statx(\n        fd,\n        path.as_ptr(),\n        flags,\n        mask,\n        statx.as_mut_ptr()\n    )" in xstatx
+            )
+        )
+        and (
+            "unsafe { ret.write(statx) };" in xstatx
+            or "unsafe_ffi!(ret.write(statx));" in xstatx
+        )
         and all(shortcut not in xstatx for shortcut in forbidden_layout_shortcuts)
         and "mod xstatx;" in parent
         and "pub use xstatx::{rs_xstatx, rs_xstatx_full};" in parent
         and "'rust/stat_util/xstatx.rs'," in meson
-        and xstatx.index("unsafe { ret.write(statx) };")
+        and xstatx.index(
+            "unsafe { ret.write(statx) };"
+            if "unsafe { ret.write(statx) };" in xstatx
+            else "unsafe_ffi!(ret.write(statx));"
+        )
         > xstatx.index("!attributes_set(statx.stx_attributes_mask, mandatory_attributes)")
         and all(vector in test for vector in required_vectors)
         and all(contract in c_source for contract in required_current_c)
@@ -1979,7 +2023,6 @@ def stat_inode_same_boundary_is_reviewed() -> bool:
         "align_of::<libc::file_handle>()",
         "alloc_zeroed(layout)",
         "dealloc(self.pointer.as_ptr().cast::<u8>(), self.layout)",
-        "libc::name_to_handle_at(fd, path.as_ptr(), handle.as_mut_ptr(), mount_id, flags)",
         "flags | AT_HANDLE_MNT_ID_UNIQUE",
         "flags | AT_HANDLE_FID",
         "flags & !AT_HANDLE_FID",
@@ -2063,6 +2106,13 @@ def stat_inode_same_boundary_is_reviewed() -> bool:
         <= authority_names
         and all(declaration in header for declaration in required_header)
         and all(contract in inode_same for contract in required_rust_contract)
+        and (
+            "libc::name_to_handle_at(fd, path.as_ptr(), handle.as_mut_ptr(), mount_id, flags)"
+            in inode_same
+            or (
+                "libc::name_to_handle_at(\n        fd,\n        path.as_ptr(),\n        handle.as_mut_ptr(),\n        mount_id,\n        flags\n    )" in inode_same
+            )
+        )
         and all(shortcut not in inode_same for shortcut in forbidden_layout_shortcuts)
         and "pub(super) fn stat_inode_same" in inode
         and "mod inode_same;" in parent
@@ -2649,7 +2699,10 @@ def strv_escape_and_fnmatch_boundary_is_reviewed() -> bool:
         and "bool rs_strv_fnmatch_full(char * const *patterns, const char *s, int flags, size_t *ret_matched_pos);"
         in header_text
         and "fn first_fnmatch<'a>(" in source_text
-        and "unsafe { fnmatch(pattern.as_ptr(), subject.as_ptr(), flags) == 0 }" in source_text
+        and (
+            "unsafe { fnmatch(pattern.as_ptr(), subject.as_ptr(), flags) == 0 }" in source_text
+            or "unsafe_ffi!(fnmatch(pattern.as_ptr(), subject.as_ptr(), flags) == 0)" in source_text
+        )
         and "std::iter::from_fn(||" in source_text
         and "*ret_matched_pos = SIZE_MAX" in source_text
         and "try_strcpy_backslash_escaped(entry.to_bytes(), bad.to_bytes())" in source_text
@@ -2678,7 +2731,10 @@ def strv_extend_and_filter_boundary_is_reviewed() -> bool:
         in header_text
         and "fn cstr_has_prefix(entry: &CStr, prefix: &[u8]) -> bool" in source_text
         and "entry.to_bytes().starts_with(prefix)" in source_text
-        and "return unsafe { rs_strv_copy_n(l, SIZE_MAX) };" in source_text
+        and (
+            "return unsafe { rs_strv_copy_n(l, SIZE_MAX) };" in source_text
+            or "return unsafe_ffi!(rs_strv_copy_n(l, SIZE_MAX));" in source_text
+        )
         and (
             "let copied = calloc(slots" in source_text
             or "CStrvAllocation::malloc(slots)" in source_text
@@ -2721,7 +2777,10 @@ def udev_util_boundary_is_reviewed() -> bool:
         and "fn valid_utf8_unichar_len(bytes: &[u8]) -> Option<usize>" in source_text
         and "if byte == b'\\\\' && index + 1 < string_len && bytes[index + 1] == b'x'" in source_text
         and "CStr::from_ptr(str_)" in source_text
-        and "Some(unsafe { CStr::from_ptr(allow) }.to_bytes())" in source_text
+        and (
+            "Some(unsafe { CStr::from_ptr(allow) }.to_bytes())" in source_text
+            or "Some(unsafe_ffi!(CStr::from_ptr(allow)).to_bytes())" in source_text
+        )
         and "udev_replace_chars(bytes, allow)" in source_text
         and ".to_owned()" not in source_text
         and "*to.cast::<u8>().add(output) = 0" in source_text
@@ -2829,7 +2888,10 @@ def string_mutation_registered_boundary_is_reviewed() -> bool:
         and "const char *rs_signal_to_string_with_check(int signo);" in signal_header_text
         and "static SIGNAL_NAME_BUFFER: UnsafeCell<[c_char; 32]>" in signal_source_text
         and "rs_get_sigrtmin(), rs_get_sigrtmax()" in signal_source_text
-        and "signo > 0 && signo < unsafe { rs_get_nsig() }" in signal_source_text
+        and (
+            "signo > 0 && signo < unsafe { rs_get_nsig() }" in signal_source_text
+            or "signo > 0 && signo < unsafe_ffi!(rs_get_nsig())" in signal_source_text
+        )
         and "(char) 0xff" in mutation_test
         and 'rs_delete_chars(c, "")' in mutation_test
         and 'rs_string_contains_word_strv("a,,b", ","' in mutation_test

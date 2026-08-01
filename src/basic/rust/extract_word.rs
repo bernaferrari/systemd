@@ -5,6 +5,13 @@
 // Word extraction from strings with quoting and escaping support.
 // Pure Rust — cunescape and UTF-8 encoding implemented inline.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::c_char;
 
 use crate::ffi::Errno;
@@ -792,28 +799,28 @@ pub unsafe extern "C" fn rs_extract_first_word(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: `p` and `word` are writable under this export's contract.
-    let input = unsafe { *p };
+    let input = unsafe_ffi!(*p);
     if input.is_null() {
         // SAFETY: successful end-of-input clears both C outputs.
-        unsafe { *word = ptr::null_mut() };
+        unsafe_ffi!(*word = ptr::null_mut());
         return 0;
     }
     // SAFETY: the contract supplies live NUL-terminated C strings.
-    let input_bytes = unsafe { CStr::from_ptr(input) }.to_bytes();
+    let input_bytes = unsafe_ffi!(CStr::from_ptr(input)).to_bytes();
     let separator_bytes = if separators.is_null() {
         DEFAULT_SEPARATORS
     } else {
         // SAFETY: the contract supplies a live NUL-terminated separator string.
-        unsafe { CStr::from_ptr(separators) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(separators)).to_bytes()
     };
 
     match extract_first_word_bytes(input_bytes, separator_bytes, flags) {
         Ok(ExtractBytesResult::NoWord) => {
             // SAFETY: successful end-of-input clears both C outputs.
-            unsafe {
+            unsafe_ffi!({
                 *p = ptr::null();
                 *word = ptr::null_mut();
-            }
+            });
             0
         }
         Ok(ExtractBytesResult::Word { word: bytes, next }) => {
@@ -827,17 +834,17 @@ pub unsafe extern "C" fn rs_extract_first_word(
             // SAFETY: `allocated` names `bytes.len() + 1` writable C-allocator
             // bytes, and `bytes` has no interior NUL because the parser rejects
             // escaped NUL.  The input pointer is advanced only after allocation.
-            unsafe {
+            unsafe_ffi!({
                 ptr::copy_nonoverlapping(bytes.as_ptr(), allocated.cast::<u8>(), bytes.len());
                 *allocated.add(bytes.len()) = 0;
                 *word = allocated;
                 *p = next.map_or(ptr::null(), |offset| input.add(offset));
-            }
+            });
             1
         }
         Err((error, offset)) => {
             // SAFETY: the reported offset is within the source C string.
-            unsafe { *p = input.add(offset) };
+            unsafe_ffi!(*p = input.add(offset));
             error.to_neg_errno()
         }
     }

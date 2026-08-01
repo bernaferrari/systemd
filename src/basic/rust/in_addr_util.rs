@@ -321,7 +321,7 @@ pub fn rs_in6_addr_is_link_local(a: &In6Addr) -> bool {
 pub unsafe fn rs_in_addr_is_link_local(family: i32, u: *const InAddrUnion) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if u.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -340,7 +340,7 @@ pub unsafe fn rs_in_addr_is_link_local(family: i32, u: *const InAddrUnion) -> i3
             };
         }
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 /// # Safety
@@ -368,7 +368,7 @@ pub fn rs_in6_addr_is_multicast(a: &In6Addr) -> bool {
 pub unsafe fn rs_in_addr_is_multicast(family: i32, u: *const InAddrUnion) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if u.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -387,7 +387,7 @@ pub unsafe fn rs_in_addr_is_multicast(family: i32, u: *const InAddrUnion) -> i32
             };
         }
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 /// # Safety
@@ -415,7 +415,7 @@ pub fn rs_in4_addr_is_non_local(a: &InAddr) -> bool {
 pub unsafe fn rs_in_addr_is_localhost(family: i32, u: *const InAddrUnion) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if u.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -435,7 +435,7 @@ pub unsafe fn rs_in_addr_is_localhost(family: i32, u: *const InAddrUnion) -> i32
             };
         }
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 ///
@@ -447,7 +447,7 @@ pub unsafe fn rs_in_addr_is_localhost(family: i32, u: *const InAddrUnion) -> i32
 pub unsafe fn rs_in_addr_is_localhost_one(family: i32, u: *const InAddrUnion) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if u.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -467,7 +467,7 @@ pub unsafe fn rs_in_addr_is_localhost_one(family: i32, u: *const InAddrUnion) ->
             };
         }
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 // ── Equality ─────────────────────────────────────────────────────────────
@@ -503,7 +503,7 @@ pub unsafe fn rs_in6_addr_equal(a: *const In6Addr, b: *const In6Addr) -> bool {
 pub unsafe fn rs_in_addr_equal(family: i32, a: *const InAddrUnion, b: *const InAddrUnion) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if a.is_null() || b.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -522,7 +522,7 @@ pub unsafe fn rs_in_addr_equal(family: i32, a: *const InAddrUnion, b: *const InA
             };
         }
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 // ── IPv4 mapped address ─────────────────────────────────────────────────
@@ -591,7 +591,7 @@ pub unsafe fn rs_in_addr_prefix_intersect(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if a.is_null() || b.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -610,7 +610,7 @@ pub unsafe fn rs_in_addr_prefix_intersect(
             };
         }
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 // ── Prefix nth ───────────────────────────────────────────────────────────
@@ -629,7 +629,7 @@ pub unsafe fn rs_in_addr_prefix_nth(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if u.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -697,7 +697,7 @@ pub unsafe fn rs_in_addr_prefix_nth(
         }
 
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 ///
@@ -709,12 +709,12 @@ pub unsafe fn rs_in_addr_prefix_nth(
 pub unsafe fn rs_in_addr_prefix_next(family: i32, u: *mut InAddrUnion, prefixlen: u32) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if u.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
         rs_in_addr_prefix_nth(family, u, prefixlen, 1)
-    }
+    })
 }
 
 // ── Netmask from prefix length ──────────────────────────────────────────
@@ -724,12 +724,12 @@ pub unsafe fn rs_in_addr_prefix_next(family: i32, u: *mut InAddrUnion, prefixlen
 pub unsafe fn rs_in4_addr_netmask_to_prefixlen(addr: *const InAddr) -> u8 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if addr.is_null() {
             return 0;
         }
         (32u32 - be32toh((*addr).s_addr).trailing_zeros()) as u8
-    }
+    })
 }
 
 ///
@@ -741,7 +741,7 @@ pub unsafe fn rs_in4_addr_netmask_to_prefixlen(addr: *const InAddr) -> u8 {
 pub unsafe fn rs_in4_addr_prefixlen_to_netmask(addr: *mut InAddr, prefixlen: u8) -> *mut InAddr {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if addr.is_null() {
             return ptr::null_mut();
         }
@@ -754,7 +754,7 @@ pub unsafe fn rs_in4_addr_prefixlen_to_netmask(addr: *mut InAddr, prefixlen: u8)
             (*addr).s_addr = htobe32(0xffffffffu32 << (32 - prefixlen));
         }
         addr
-    }
+    })
 }
 
 ///
@@ -766,7 +766,7 @@ pub unsafe fn rs_in4_addr_prefixlen_to_netmask(addr: *mut InAddr, prefixlen: u8)
 pub unsafe fn rs_in6_addr_prefixlen_to_netmask(addr: *mut In6Addr, prefixlen: u8) -> *mut In6Addr {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if addr.is_null() {
             return ptr::null_mut();
         }
@@ -786,7 +786,7 @@ pub unsafe fn rs_in6_addr_prefixlen_to_netmask(addr: *mut In6Addr, prefixlen: u8
             }
         }
         addr
-    }
+    })
 }
 
 ///
@@ -802,7 +802,7 @@ pub unsafe fn rs_in_addr_prefixlen_to_netmask(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if addr.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -815,7 +815,7 @@ pub unsafe fn rs_in_addr_prefixlen_to_netmask(
             return 0;
         }
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 // ── Default prefix length ───────────────────────────────────────────────
@@ -829,7 +829,7 @@ pub unsafe fn rs_in_addr_prefixlen_to_netmask(
 pub unsafe fn rs_in4_addr_default_prefixlen(addr: *const InAddr, prefixlen: *mut u8) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if addr.is_null() || prefixlen.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -845,7 +845,7 @@ pub unsafe fn rs_in4_addr_default_prefixlen(addr: *const InAddr, prefixlen: *mut
             return Errno::ERANGE.to_neg_errno(); // -ERANGE
         }
         0
-    }
+    })
 }
 
 // ── Mask ──────────────────────────────────────────────────────────────────
@@ -855,7 +855,7 @@ pub unsafe fn rs_in4_addr_default_prefixlen(addr: *const InAddr, prefixlen: *mut
 pub unsafe fn rs_in4_addr_mask(addr: *mut InAddr, prefixlen: u8) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if addr.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -865,7 +865,7 @@ pub unsafe fn rs_in4_addr_mask(addr: *mut InAddr, prefixlen: u8) -> i32 {
         }
         (*addr).s_addr &= mask.s_addr;
         0
-    }
+    })
 }
 
 /// # Safety
@@ -873,7 +873,7 @@ pub unsafe fn rs_in4_addr_mask(addr: *mut InAddr, prefixlen: u8) -> i32 {
 pub unsafe fn rs_in6_addr_mask(addr: *mut In6Addr, prefixlen: u8) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if addr.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -892,7 +892,7 @@ pub unsafe fn rs_in6_addr_mask(addr: *mut In6Addr, prefixlen: u8) -> i32 {
             (*addr).s6_addr[i] &= mask;
         }
         0
-    }
+    })
 }
 
 ///
@@ -904,7 +904,7 @@ pub unsafe fn rs_in6_addr_mask(addr: *mut In6Addr, prefixlen: u8) -> i32 {
 pub unsafe fn rs_in_addr_mask(family: i32, addr: *mut InAddrUnion, prefixlen: u8) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if addr.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -915,7 +915,7 @@ pub unsafe fn rs_in_addr_mask(family: i32, addr: *mut InAddrUnion, prefixlen: u8
             return rs_in6_addr_mask(&mut (*addr).in6, prefixlen);
         }
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 // ── Prefix covers ────────────────────────────────────────────────────────
@@ -933,7 +933,7 @@ pub unsafe fn rs_in4_addr_prefix_covers(
 ) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if prefix.is_null() || address.is_null() {
             return false;
         }
@@ -951,7 +951,7 @@ pub unsafe fn rs_in4_addr_prefix_covers(
         }
 
         rs_in4_addr_equal(&mp, &ma)
-    }
+    })
 }
 
 ///
@@ -967,7 +967,7 @@ pub unsafe fn rs_in6_addr_prefix_covers(
 ) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if prefix.is_null() || address.is_null() {
             return false;
         }
@@ -985,7 +985,7 @@ pub unsafe fn rs_in6_addr_prefix_covers(
         }
 
         rs_in6_addr_equal(&mp, &ma)
-    }
+    })
 }
 
 ///
@@ -1002,7 +1002,7 @@ pub unsafe fn rs_in_addr_prefix_covers(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if prefix.is_null() || address.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1021,7 +1021,7 @@ pub unsafe fn rs_in_addr_prefix_covers(
             };
         }
         Errno::EAFNOSUPPORT.to_neg_errno()
-    }
+    })
 }
 
 // ── in4_addr_prefix_covers_full ─────────────────────────────────────────
@@ -1042,7 +1042,7 @@ pub unsafe fn rs_in4_addr_prefix_covers_full(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if prefix.is_null() || address.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1071,7 +1071,7 @@ pub unsafe fn rs_in4_addr_prefix_covers_full(
         } else {
             0
         }
-    }
+    })
 }
 
 // ── in6_addr_prefix_covers_full ─────────────────────────────────────────
@@ -1092,7 +1092,7 @@ pub unsafe fn rs_in6_addr_prefix_covers_full(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if prefix.is_null() || address.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1121,7 +1121,7 @@ pub unsafe fn rs_in6_addr_prefix_covers_full(
         } else {
             0
         }
-    }
+    })
 }
 
 // ── in_addr_prefix_covers_full ──────────────────────────────────────────
@@ -1143,7 +1143,7 @@ pub unsafe fn rs_in_addr_prefix_covers_full(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if prefix.is_null() || address.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1162,7 +1162,7 @@ pub unsafe fn rs_in_addr_prefix_covers_full(
             ),
             _ => Errno::EAFNOSUPPORT.to_neg_errno(),
         }
-    }
+    })
 }
 
 // ── in6_addr_compare_func ───────────────────────────────────────────────
@@ -1177,12 +1177,12 @@ pub unsafe fn rs_in_addr_prefix_covers_full(
 pub unsafe fn rs_in6_addr_compare_func(a: *const In6Addr, b: *const In6Addr) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if a.is_null() || b.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
         memcmp(a as *const c_void, b as *const c_void, 16)
-    }
+    })
 }
 
 // ── in_addr_data_compare_func ───────────────────────────────────────────
@@ -1197,7 +1197,7 @@ pub unsafe fn rs_in6_addr_compare_func(a: *const In6Addr, b: *const In6Addr) -> 
 pub unsafe fn rs_in_addr_data_compare_func(x: *const InAddrData, y: *const InAddrData) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if x.is_null() || y.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1219,7 +1219,7 @@ pub unsafe fn rs_in_addr_data_compare_func(x: *const InAddrData, y: *const InAdd
             &(*y).address as *const InAddrUnion as *const c_void,
             sz,
         )
-    }
+    })
 }
 
 // -- in_addr_parse_prefixlen ---------------------------------------------------
@@ -1236,7 +1236,7 @@ pub unsafe fn rs_in_addr_data_compare_func(x: *const InAddrData, y: *const InAdd
 pub unsafe fn rs_in_addr_parse_prefixlen(family: i32, p: *const c_char, ret: *mut u8) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if !p.is_null() && (*p as u8) == 0 {
             return Errno::EINVAL.to_neg_errno(); // -EINVAL (empty string)
         }
@@ -1263,7 +1263,7 @@ pub unsafe fn rs_in_addr_parse_prefixlen(family: i32, p: *const c_char, ret: *mu
             *ret = u;
         }
         0
-    }
+    })
 }
 
 // -- in4_addr_default_subnet_mask --------------------------------------------
@@ -1279,7 +1279,7 @@ pub unsafe fn rs_in_addr_parse_prefixlen(family: i32, p: *const c_char, ret: *mu
 pub unsafe fn rs_in4_addr_default_subnet_mask(addr: *const InAddr, mask: *mut InAddr) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if addr.is_null() || mask.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1292,7 +1292,7 @@ pub unsafe fn rs_in4_addr_default_subnet_mask(addr: *const InAddr, mask: *mut In
 
         rs_in4_addr_prefixlen_to_netmask(mask, prefixlen);
         0
-    }
+    })
 }
 
 // ── PTR_TO_IN4_ADDR / IN4_ADDR_TO_PTR ─────────────────────────────────
@@ -1302,12 +1302,12 @@ pub unsafe fn rs_in4_addr_default_subnet_mask(addr: *const InAddr, mask: *mut In
 pub unsafe fn rs_PTR_TO_IN4_ADDR(p: *const c_void, ret: *mut InAddr) {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if ret.is_null() {
             return;
         }
         (*ret).s_addr = p as u32;
-    }
+    })
 }
 
 /// # Safety
@@ -1315,12 +1315,12 @@ pub unsafe fn rs_PTR_TO_IN4_ADDR(p: *const c_void, ret: *mut InAddr) {
 pub unsafe fn rs_IN4_ADDR_TO_PTR(a: *const InAddr) -> *mut c_void {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if a.is_null() {
             return ptr::null_mut();
         }
         (*a).s_addr as *mut c_void
-    }
+    })
 }
 
 // ── in_addr_from_string / in_addr_from_string_auto ────────────────────
@@ -1335,7 +1335,7 @@ use crate::ffi::{free, malloc};
 unsafe fn parse_ip_string(family: i32, src: *const c_char, dst: *mut u8) -> Result<(), i32> {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if src.is_null() || dst.is_null() {
             return Err(Errno::EINVAL.to_neg_errno());
         }
@@ -1358,7 +1358,7 @@ unsafe fn parse_ip_string(family: i32, src: *const c_char, dst: *mut u8) -> Resu
             }
             _ => Err(-EAFNOSUPPORT),
         }
-    }
+    })
 }
 
 /// # Safety
@@ -1367,7 +1367,7 @@ unsafe fn parse_ip_string(family: i32, src: *const c_char, dst: *mut u8) -> Resu
 unsafe fn ip_to_string(family: i32, src: *const u8) -> Result<String, i32> {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if src.is_null() {
             return Err(Errno::EINVAL.to_neg_errno());
         }
@@ -1377,7 +1377,7 @@ unsafe fn ip_to_string(family: i32, src: *const u8) -> Result<String, i32> {
             AF_INET6 => Ok(Ipv6Addr::from(*(src as *const [u8; 16])).to_string()),
             _ => Err(-EAFNOSUPPORT),
         }
-    }
+    })
 }
 
 /// # Safety
@@ -1386,7 +1386,7 @@ unsafe fn ip_to_string(family: i32, src: *const u8) -> Result<String, i32> {
 unsafe fn write_text_to_c_buf(buf: *mut c_char, buf_len: usize, text: &str) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if buf.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1397,7 +1397,7 @@ unsafe fn write_text_to_c_buf(buf: *mut c_char, buf_len: usize, text: &str) -> i
         ptr::copy_nonoverlapping(text.as_ptr(), buf as *mut u8, text.len());
         *buf.add(text.len()) = 0;
         0
-    }
+    })
 }
 
 /// Parse an IP address string for a specific address family.
@@ -1412,7 +1412,7 @@ unsafe fn write_text_to_c_buf(buf: *mut c_char, buf_len: usize, text: &str) -> i
 pub unsafe fn rs_in_addr_from_string(family: i32, s: *const c_char, ret: *mut u8) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         /* C accepts a NULL output pointer and parses into a local union instead.
          * Preserve that query/validation form without dereferencing NULL. */
         let mut discard = [0u8; 16];
@@ -1426,7 +1426,7 @@ pub unsafe fn rs_in_addr_from_string(family: i32, s: *const c_char, ret: *mut u8
             Ok(()) => 0,
             Err(e) => e,
         }
-    }
+    })
 }
 
 /// Parse an IP address string, auto-detecting IPv4 vs IPv6.
@@ -1445,7 +1445,7 @@ pub unsafe fn rs_in_addr_from_string_auto(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if s.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1469,7 +1469,7 @@ pub unsafe fn rs_in_addr_from_string_auto(
         }
 
         Errno::EINVAL.to_neg_errno()
-    }
+    })
 }
 
 /// Convert an IP address to its string representation.
@@ -1485,7 +1485,7 @@ pub unsafe fn rs_in_addr_from_string_auto(
 pub unsafe fn rs_in_addr_to_string(family: i32, u: *const u8, ret: *mut *mut c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if ret.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1508,7 +1508,7 @@ pub unsafe fn rs_in_addr_to_string(family: i32, u: *const u8, ret: *mut *mut c_c
 
         *ret = buf;
         0
-    }
+    })
 }
 
 /// Parse a CIDR prefix string (e.g., "192.168.1.0/24").
@@ -1528,7 +1528,7 @@ pub unsafe fn rs_in_addr_prefix_from_string(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if p.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1605,7 +1605,7 @@ pub unsafe fn rs_in_addr_prefix_from_string(
         }
 
         0
-    }
+    })
 }
 
 // ── FAMILY_ADDRESS_SIZE ────────────────────────────────────────────────
@@ -1637,7 +1637,7 @@ pub unsafe fn rs_in_addr_prefix_range(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if input.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1672,7 +1672,7 @@ pub unsafe fn rs_in_addr_prefix_range(
         }
 
         0
-    }
+    })
 }
 
 // ── in_addr_prefix_to_string ───────────────────────────────────────────
@@ -1696,7 +1696,7 @@ pub unsafe fn rs_in_addr_prefix_to_string(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if u.is_null() || buf.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1712,7 +1712,7 @@ pub unsafe fn rs_in_addr_prefix_to_string(
         };
 
         write_text_to_c_buf(buf, buf_len, &text)
-    }
+    })
 }
 
 // ── in_addr_prefix_from_string_auto_full ───────────────────────────────
@@ -1739,7 +1739,7 @@ pub unsafe fn rs_in_addr_prefix_from_string_auto_full(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if p.is_null() {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -1816,7 +1816,7 @@ pub unsafe fn rs_in_addr_prefix_from_string_auto_full(
         }
 
         0
-    }
+    })
 }
 
 /*

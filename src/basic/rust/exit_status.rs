@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: scope=basic.exit-status; authority=src/shared/exit-status.c,src/shared/exit-status.h,src/shared/securebits-util.c,src/shared/securebits-util.h
 //
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::BTreeSet;
 use std::ffi::CStr;
 use std::fmt;
@@ -331,9 +338,9 @@ pub unsafe extern "C" fn rs_is_clean_exit(
         }
 
         // SAFETY: the FFI contract guarantees the nested C bitmap is readable.
-        return unsafe {
+        return unsafe_ffi!({
             bitmap::rs_bitmap_isset(&raw const (*success_status).status, status as libc::c_uint)
-        };
+        });
     }
 
     // `is_clean_exit()` deliberately treats only non-core-dumping signal
@@ -352,7 +359,10 @@ pub unsafe extern "C" fn rs_is_clean_exit(
     }
 
     // SAFETY: the FFI contract guarantees the nested C bitmap is readable.
-    unsafe { bitmap::rs_bitmap_isset(&raw const (*success_status).signal, status as libc::c_uint) }
+    unsafe_ffi!(bitmap::rs_bitmap_isset(
+        &raw const (*success_status).signal,
+        status as libc::c_uint
+    ))
 }
 
 /// Exact C ABI shadow of `exit_status_set_free()` for a C-layout status set.
@@ -366,10 +376,10 @@ pub unsafe extern "C" fn rs_is_clean_exit(
 pub unsafe extern "C" fn rs_exit_status_set_free(x: *mut CExitStatusSet) {
     // SAFETY: C has the same non-null precondition through assert(x), and the
     // documented FFI contract guarantees each bitmap owns compatible storage.
-    unsafe {
+    unsafe_ffi!({
         bitmap::rs_bitmap_clear(&raw mut (*x).status);
         bitmap::rs_bitmap_clear(&raw mut (*x).signal);
-    }
+    })
 }
 
 /// Exact C ABI shadow of `exit_status_set_is_empty()` for a C-layout set.
@@ -385,10 +395,10 @@ pub unsafe extern "C" fn rs_exit_status_set_is_empty(x: *const CExitStatusSet) -
     }
 
     // SAFETY: the FFI contract guarantees both embedded C bitmaps are readable.
-    unsafe {
+    unsafe_ffi!({
         bitmap::rs_bitmap_isclear(&raw const (*x).status)
             && bitmap::rs_bitmap_isclear(&raw const (*x).signal)
-    }
+    })
 }
 
 /// Exact C ABI shadow of `exit_status_set_test()` for a C-layout status set.
@@ -406,17 +416,17 @@ pub unsafe extern "C" fn rs_exit_status_set_test(
     let bitmap = match code {
         CLD_EXITED => {
             // SAFETY: guaranteed by this entry point's C-layout contract.
-            unsafe { &raw const (*x).status }
+            unsafe_ffi!(&raw const (*x).status)
         }
         CLD_KILLED | CLD_DUMPED => {
             // SAFETY: guaranteed by this entry point's C-layout contract.
-            unsafe { &raw const (*x).signal }
+            unsafe_ffi!(&raw const (*x).signal)
         }
         _ => return false,
     };
 
     // SAFETY: the selected bitmap is readable by the FFI contract.
-    unsafe { bitmap::rs_bitmap_isset(bitmap, status as libc::c_uint) }
+    unsafe_ffi!(bitmap::rs_bitmap_isset(bitmap, status as libc::c_uint))
 }
 
 impl ExitStatusSet {

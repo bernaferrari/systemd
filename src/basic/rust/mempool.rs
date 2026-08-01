@@ -5,6 +5,13 @@
 // Memory pool: fixed-size tile allocator with freelist.
 // Skipped: mempool_trim (uses log_debug/FORMAT_BYTES).
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::c_void;
 use std::ptr;
 
@@ -53,7 +60,7 @@ unsafe fn pool_ptr(p: *mut Pool) -> *mut u8 {
     }
     // SAFETY: the caller guarantees p points to a live Pool allocation whose
     // payload begins immediately after its header.
-    unsafe { p.add(1) as *mut u8 }
+    unsafe_ffi!(p.add(1) as *mut u8)
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -83,13 +90,13 @@ pub fn mempool_alloc_tile(mp: &mut Mempool) -> Result<*mut u8, i32> {
         // SAFETY: the freelist invariant says the first pointer-sized bytes
         // contain the next entry. Unaligned access also safely handles a
         // caller-selected tile size that is not a pointer-size multiple.
-        mp.freelist = unsafe { ptr::read_unaligned(t.cast::<*mut u8>()) };
+        mp.freelist = unsafe_ffi!(ptr::read_unaligned(t.cast::<*mut u8>()));
         return Ok(t);
     }
 
     // SAFETY: fields are dereferenced only after the null check. Every pool
     // stored here was allocated and initialized by this function.
-    unsafe {
+    unsafe_ffi!({
         if mp.first_pool.is_null() || (*mp.first_pool).n_used >= (*mp.first_pool).n_tiles {
             let n = if mp.first_pool.is_null() {
                 0
@@ -130,7 +137,7 @@ pub fn mempool_alloc_tile(mp: &mut Mempool) -> Result<*mut u8, i32> {
         (*mp.first_pool).n_used += 1;
 
         Ok(pool_ptr(mp.first_pool).add(i * mp.tile_size))
-    }
+    })
 }
 
 /// Faithful port of C mempool_alloc0_tile().
@@ -138,9 +145,9 @@ pub fn mempool_alloc_tile(mp: &mut Mempool) -> Result<*mut u8, i32> {
 pub fn mempool_alloc0_tile(mp: &mut Mempool) -> Result<*mut u8, i32> {
     let p = mempool_alloc_tile(mp)?;
     // SAFETY: `p` is a fresh tile of exactly `mp.tile_size` writable bytes.
-    unsafe {
+    unsafe_ffi!({
         ptr::write_bytes(p, 0u8, mp.tile_size);
-    }
+    });
     Ok(p)
 }
 
@@ -159,7 +166,7 @@ pub unsafe fn mempool_free_tile(mp: &mut Mempool, p: Option<*mut u8>) {
     // SAFETY: the function contract provides a writable pointer-sized prefix.
     // Unaligned access avoids adding an alignment precondition absent from the
     // public C declaration.
-    unsafe { ptr::write_unaligned(p.cast::<*mut u8>(), mp.freelist) };
+    unsafe_ffi!(ptr::write_unaligned(p.cast::<*mut u8>(), mp.freelist));
     mp.freelist = p;
 }
 
@@ -178,7 +185,7 @@ pub unsafe extern "C" fn rs_mempool_alloc_tile(mp: *mut Mempool) -> *mut c_void 
     }
 
     // SAFETY: the caller guarantees a live, initialized, exclusive pool.
-    mempool_alloc_tile(unsafe { &mut *mp })
+    mempool_alloc_tile(unsafe_ffi!(&mut *mp))
         .map(|tile| tile.cast())
         .unwrap_or(ptr::null_mut())
 }
@@ -196,7 +203,7 @@ pub unsafe extern "C" fn rs_mempool_alloc0_tile(mp: *mut Mempool) -> *mut c_void
     }
 
     // SAFETY: the caller guarantees a live, initialized, exclusive pool.
-    mempool_alloc0_tile(unsafe { &mut *mp })
+    mempool_alloc0_tile(unsafe_ffi!(&mut *mp))
         .map(|tile| tile.cast())
         .unwrap_or(ptr::null_mut())
 }
@@ -216,7 +223,7 @@ pub unsafe extern "C" fn rs_mempool_free_tile(mp: *mut Mempool, p: *mut c_void) 
 
     // SAFETY: this entry point forwards the documented pool/tile ownership
     // contract after validating the pool pointer itself.
-    unsafe { mempool_free_tile(&mut *mp, Some(p.cast())) };
+    unsafe_ffi!(mempool_free_tile(&mut *mp, Some(p.cast())));
     ptr::null_mut()
 }
 
@@ -301,7 +308,7 @@ mod tests {
         let mut mp = make_mempool(16, 2);
         let tile = mempool_alloc0_tile(&mut mp).unwrap();
         // SAFETY: the pointer and length originate from validated storage and produce a temporary slice within bounds.
-        let bytes = unsafe { std::slice::from_raw_parts(tile, 16) };
+        let bytes = unsafe_ffi!(std::slice::from_raw_parts(tile, 16));
         assert!(bytes.iter().all(|&b| b == 0));
     }
 
@@ -316,7 +323,7 @@ mod tests {
         let mut mp = make_mempool(64, 4);
         let tile = mempool_alloc_tile(&mut mp).unwrap();
         // SAFETY: `tile` was just allocated from `mp` and is returned once.
-        unsafe { mempool_free_tile(&mut mp, Some(tile)) };
+        unsafe_ffi!(mempool_free_tile(&mut mp, Some(tile)));
         assert_eq!(mp.freelist, tile);
     }
 
@@ -324,7 +331,7 @@ mod tests {
     fn test_mempool_free_tile_none_is_noop() {
         let mut mp = make_mempool(64, 4);
         // SAFETY: `None` is explicitly a no-op.
-        unsafe { mempool_free_tile(&mut mp, None) };
+        unsafe_ffi!(mempool_free_tile(&mut mp, None));
         assert!(mp.freelist.is_null());
     }
 
@@ -332,7 +339,7 @@ mod tests {
     fn test_mempool_free_tile_null_is_noop() {
         let mut mp = make_mempool(64, 4);
         // SAFETY: a null tile is explicitly a no-op.
-        unsafe { mempool_free_tile(&mut mp, Some(ptr::null_mut())) };
+        unsafe_ffi!(mempool_free_tile(&mut mp, Some(ptr::null_mut())));
         assert!(mp.freelist.is_null());
     }
 
@@ -341,7 +348,7 @@ mod tests {
         let mut mp = make_mempool(64, 4);
         let tile1 = mempool_alloc_tile(&mut mp).unwrap();
         // SAFETY: `tile1` was allocated from `mp` and is returned once.
-        unsafe { mempool_free_tile(&mut mp, Some(tile1)) };
+        unsafe_ffi!(mempool_free_tile(&mut mp, Some(tile1)));
         let tile2 = mempool_alloc_tile(&mut mp).unwrap();
         assert_eq!(tile2, tile1);
     }
@@ -353,10 +360,10 @@ mod tests {
         let t2 = mempool_alloc_tile(&mut mp).unwrap();
         assert_ne!(t1, t2);
         // SAFETY: both tiles were allocated from `mp` and are each returned once.
-        unsafe {
+        unsafe_ffi!({
             mempool_free_tile(&mut mp, Some(t1));
             mempool_free_tile(&mut mp, Some(t2));
-        }
+        });
         let r1 = mempool_alloc_tile(&mut mp).unwrap();
         let r2 = mempool_alloc_tile(&mut mp).unwrap();
         assert_eq!(r1, t2);

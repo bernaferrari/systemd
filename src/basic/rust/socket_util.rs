@@ -613,7 +613,7 @@ enum CSockaddrRef<'a> {
 unsafe fn sockaddr_ref<'a>(sa: &'a libc::sockaddr) -> CSockaddrRef<'a> {
     // SAFETY: the helper's contract guarantees a readable, aligned sockaddr
     // and the matching complete union member for the selected family.
-    unsafe {
+    unsafe_ffi!({
         match sa.sa_family as c_int {
             libc::AF_INET => CSockaddrRef::Inet(&*ptr::from_ref(sa).cast::<libc::sockaddr_in>()),
             libc::AF_INET6 => CSockaddrRef::Inet6(&*ptr::from_ref(sa).cast::<libc::sockaddr_in6>()),
@@ -622,7 +622,7 @@ unsafe fn sockaddr_ref<'a>(sa: &'a libc::sockaddr) -> CSockaddrRef<'a> {
             AF_VSOCK => CSockaddrRef::Vsock(&*ptr::from_ref(sa).cast::<CSockaddrVm>()),
             family => CSockaddrRef::Other(family),
         }
-    }
+    })
 }
 
 fn sockaddr_port_from_ref(sa: CSockaddrRef<'_>) -> Result<u32, i32> {
@@ -753,7 +753,7 @@ pub unsafe extern "C" fn rs_sockaddr_set_in_addr(
         libc::AF_INET => {
             // SAFETY: `a` contains C `in_addr_union`, whose first member is
             // `in_addr`; `u` has room for the C union's `sockaddr_in` member.
-            unsafe {
+            unsafe_ffi!({
                 let in_addr = ptr::read(a.cast::<libc::in_addr>());
                 ptr::write(
                     u.cast::<libc::sockaddr_in>(),
@@ -764,12 +764,12 @@ pub unsafe extern "C" fn rs_sockaddr_set_in_addr(
                         sin_zero: [0; 8],
                     },
                 );
-            }
+            });
             0
         }
         libc::AF_INET6 => {
             // SAFETY: `in6_addr` starts at the same offset in C's address union.
-            unsafe {
+            unsafe_ffi!({
                 let in6_addr = ptr::read(a.cast::<libc::in6_addr>());
                 ptr::write(
                     u.cast::<libc::sockaddr_in6>(),
@@ -781,7 +781,7 @@ pub unsafe extern "C" fn rs_sockaddr_set_in_addr(
                         sin6_scope_id: 0,
                     },
                 );
-            }
+            });
             0
         }
         _ => -libc::EAFNOSUPPORT,
@@ -1180,12 +1180,12 @@ pub unsafe extern "C" fn rs_socket_address_equal_unix(a: *const c_char, b: *cons
         return r;
     }
     // SAFETY: both initialized local unions remain readable for this comparison.
-    unsafe {
+    unsafe_ffi!({
         rs_sockaddr_equal(
             (&raw const left.sockaddr).cast(),
             (&raw const right.sockaddr).cast(),
         ) as i32
-    }
+    })
 }
 
 #[cfg(test)]

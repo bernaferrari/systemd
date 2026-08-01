@@ -9,6 +9,13 @@
 // platform-specific read-only semantics (btrfs subvolumes, immutable
 // flags, block-device read-only mode).
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::io;
@@ -87,9 +94,9 @@ impl Drop for FdGuard {
         if self.fd >= 0 {
             // SAFETY: this guard exclusively owns `fd`; `take()` invalidates it, so
             // every non-negative descriptor reaches `close()` at most once.
-            unsafe {
+            unsafe_ffi!({
                 libc::close(self.fd);
-            }
+            })
         }
     }
 }
@@ -178,7 +185,7 @@ fn to_cstr(path: &str) -> io::Result<CString> {
 fn open_at(dirfd: RawFd, path: &CString, flags: i32) -> io::Result<FdGuard> {
     // SAFETY: path is a live NUL-terminated string for this call; openat does
     // not retain its pointer and the returned descriptor is guarded on success.
-    let fd = unsafe { libc::openat(dirfd, path.as_ptr(), flags | libc::O_CLOEXEC) };
+    let fd = unsafe_ffi!(libc::openat(dirfd, path.as_ptr(), flags | libc::O_CLOEXEC));
     if fd < 0 {
         return Err(last_io_error());
     }
@@ -190,11 +197,11 @@ fn fstat_fd(fd: RawFd) -> io::Result<libc::stat> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: stat is writable storage for fstat and is read only after a
     // successful return.
-    if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::fstat(fd, stat.as_mut_ptr())) < 0 {
         return Err(last_io_error());
     }
     // SAFETY: fstat initialized the full stat object above.
-    Ok(unsafe { stat.assume_init() })
+    Ok(unsafe_ffi!(stat.assume_init()))
 }
 
 /// Issue a pointer-based ioctl without exposing caller memory to the kernel
@@ -202,7 +209,7 @@ fn fstat_fd(fd: RawFd) -> io::Result<libc::stat> {
 fn ioctl_ref<T>(fd: RawFd, request: libc::c_ulong, value: &mut T) -> io::Result<()> {
     // SAFETY: value is live, correctly aligned storage for the request's ABI,
     // and ioctl does not retain the pointer after it returns.
-    if unsafe { libc::ioctl(fd, request, value) } < 0 {
+    if unsafe_ffi!(libc::ioctl(fd, request, value)) < 0 {
         Err(last_io_error())
     } else {
         Ok(())
@@ -219,7 +226,13 @@ fn rename_at(
 ) -> io::Result<()> {
     // SAFETY: both strings are live NUL-terminated paths and renameat does
     // not retain either pointer.
-    if unsafe { libc::renameat(olddirfd, oldpath.as_ptr(), newdirfd, newpath.as_ptr()) } < 0 {
+    if unsafe_ffi!(libc::renameat(
+        olddirfd,
+        oldpath.as_ptr(),
+        newdirfd,
+        newpath.as_ptr()
+    )) < 0
+    {
         Err(last_io_error())
     } else {
         Ok(())
@@ -230,7 +243,7 @@ fn rename_at(
 fn unlink_at(dirfd: RawFd, path: &CString, flags: i32) -> io::Result<()> {
     // SAFETY: path is a live NUL-terminated path and unlinkat does not retain
     // its pointer.
-    if unsafe { libc::unlinkat(dirfd, path.as_ptr(), flags) } < 0 {
+    if unsafe_ffi!(libc::unlinkat(dirfd, path.as_ptr(), flags)) < 0 {
         Err(last_io_error())
     } else {
         Ok(())
@@ -250,7 +263,7 @@ fn fd_reopen(fd: RawFd, flags: i32) -> io::Result<FdGuard> {
 fn fsync_fd(fd: RawFd) -> io::Result<()> {
     // SAFETY: `fsync()` takes the descriptor by value and does not retain Rust
     // memory; validity is checked by the kernel and reported through `errno`.
-    if unsafe { libc::fsync(fd) } < 0 {
+    if unsafe_ffi!(libc::fsync(fd)) < 0 {
         Err(last_io_error())
     } else {
         Ok(())
@@ -261,7 +274,7 @@ fn fsync_fd(fd: RawFd) -> io::Result<()> {
 fn syncfs_fd(fd: RawFd) -> io::Result<()> {
     // SAFETY: `syncfs()` takes the descriptor by value and does not retain Rust
     // memory; validity is checked by the kernel and reported through `errno`.
-    if unsafe { crate::ffi::syncfs(fd) } < 0 {
+    if unsafe_ffi!(crate::ffi::syncfs(fd)) < 0 {
         Err(last_io_error())
     } else {
         Ok(())
@@ -312,7 +325,7 @@ fn rename_at2(
 ) -> io::Result<()> {
     // SAFETY: both `CString` pointers are live and NUL-terminated for the
     // syscall; the kernel copies their contents and does not retain them.
-    let r = unsafe {
+    let r = unsafe_ffi!({
         libc::syscall(
             SYS_renameat2,
             olddirfd,
@@ -321,7 +334,7 @@ fn rename_at2(
             newpath.as_ptr(),
             flags,
         )
-    };
+    });
     if r < 0 { Err(last_io_error()) } else { Ok(()) }
 }
 
@@ -386,7 +399,7 @@ pub fn fs_make_very_read_only(fd: RawFd) -> io::Result<()> {
                 let new_mode = st.st_mode & 0o7555;
                 // SAFETY: `fchmod()` takes scalar arguments only; descriptor
                 // validity is checked by the kernel.
-                if unsafe { libc::fchmod(fd, new_mode as _) } < 0 {
+                if unsafe_ffi!(libc::fchmod(fd, new_mode as _)) < 0 {
                     return Err(last_io_error());
                 }
             }

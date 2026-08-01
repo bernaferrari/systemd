@@ -886,11 +886,11 @@ impl CodecAllocation {
         debug_assert!(wipe_len <= self.len);
         if secure {
             // SAFETY: the requested prefix lies within this live allocation.
-            unsafe {
+            unsafe_ffi!({
                 for offset in 0..wipe_len {
                     std::ptr::write_volatile(self.ptr.add(offset), 0);
                 }
-            }
+            })
         }
         // SAFETY: this allocation has not escaped and uses libc ownership.
         unsafe_ffi!(libc::free(self.ptr.cast::<c_void>()));
@@ -1122,10 +1122,10 @@ pub unsafe extern "C" fn rs_unbase32hexmem(
     allocation.terminate(decoded_len);
     let allocation = allocation.into_raw();
     // SAFETY: mem and len satisfy this FFI boundary's output-pointer contract.
-    unsafe {
+    unsafe_ffi!({
         *mem = allocation.cast::<c_void>();
         *len = decoded_len;
-    }
+    });
     0
 }
 
@@ -1384,12 +1384,12 @@ pub unsafe extern "C" fn rs_unhexmem(
         return Errno::ENOMEM.to_neg_errno();
     }
     // SAFETY: the allocation is live for `allocation_len` bytes.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         unhex_decode_into(
             input,
             std::slice::from_raw_parts_mut(allocation, allocation_len - 1),
         )
-    };
+    });
     match result {
         Ok(decoded_len) => {
             // SAFETY: the checked allocation has one byte beyond decoded output.
@@ -1447,14 +1447,14 @@ pub unsafe extern "C" fn rs_base64mem(p: *const c_void, l: usize, ret: *mut *mut
         return Errno::ENOMEM.to_neg_errno() as isize;
     }
     // SAFETY: the allocation is live for the encoded output and its terminator.
-    unsafe {
+    unsafe_ffi!({
         base64_encode_into(
             input,
             std::slice::from_raw_parts_mut(allocation, output_len),
         );
         *allocation.add(output_len) = 0;
         *ret = allocation.cast::<c_char>();
-    }
+    });
     output_len as isize
 }
 
@@ -1493,12 +1493,12 @@ pub unsafe extern "C" fn rs_unbase64mem(
         return Errno::ENOMEM.to_neg_errno();
     }
     // SAFETY: the allocation is live for the decoded output and its terminator.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         unbase64_decode_into(
             input,
             std::slice::from_raw_parts_mut(allocation, allocation_len - 1),
         )
-    };
+    });
     match result {
         Ok(decoded_len) => {
             // SAFETY: the checked allocation has one byte beyond decoded output.

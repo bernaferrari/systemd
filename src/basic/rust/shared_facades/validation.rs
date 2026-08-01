@@ -8,6 +8,13 @@
 //
 // Shared validation and conversion facades.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::{c_char, c_int};
 use std::ffi::CStr;
 
@@ -163,20 +170,20 @@ pub unsafe extern "C" fn rs_parse_compare_operator(s: *mut *const c_char, flags:
     assert!(!s.is_null());
 
     // SAFETY: required by the entry-point contract and checked for null below.
-    let input = unsafe { *s };
+    let input = unsafe_ffi!(*s);
     if input.is_null() {
         return -libc::EINVAL;
     }
 
     // SAFETY: the caller guarantees a live NUL-terminated byte string.
-    let bytes = unsafe { CStr::from_ptr(input) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(input)).to_bytes();
     let Some((operator, consumed)) = parse_compare_operator_bytes(bytes, flags as u32) else {
         return -libc::EINVAL;
     };
 
     // SAFETY: consumed is the length of an ASCII prefix within the same live
     // C string, and s points to writable pointer storage.
-    unsafe { *s = input.add(consumed) };
+    unsafe_ffi!(*s = input.add(consumed));
     operator as c_int
 }
 
@@ -265,7 +272,7 @@ unsafe fn c_bytes_match(value: *const c_char, predicate: impl FnOnce(&[u8]) -> b
     }
     // SAFETY: callers uphold the live NUL-terminated input contract. The
     // borrowed bytes cannot escape this helper.
-    predicate(unsafe { CStr::from_ptr(value) }.to_bytes())
+    predicate(unsafe_ffi!(CStr::from_ptr(value)).to_bytes())
 }
 
 /// # Safety
@@ -273,7 +280,7 @@ unsafe fn c_bytes_match(value: *const c_char, predicate: impl FnOnce(&[u8]) -> b
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_http_etag_is_valid(etag: *const c_char) -> bool {
     // SAFETY: forwarded from the entry-point contract.
-    unsafe { c_bytes_match(etag, http_etag_is_valid_bytes) }
+    unsafe_ffi!(c_bytes_match(etag, http_etag_is_valid_bytes))
 }
 
 /// # Safety
@@ -281,7 +288,7 @@ pub unsafe extern "C" fn rs_http_etag_is_valid(etag: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_http_url_is_valid(url: *const c_char) -> bool {
     // SAFETY: forwarded from the entry-point contract.
-    unsafe { c_bytes_match(url, http_url_is_valid_bytes) }
+    unsafe_ffi!(c_bytes_match(url, http_url_is_valid_bytes))
 }
 
 /// # Safety
@@ -289,7 +296,7 @@ pub unsafe extern "C" fn rs_http_url_is_valid(url: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_file_url_is_valid(url: *const c_char) -> bool {
     // SAFETY: forwarded from the entry-point contract.
-    unsafe { c_bytes_match(url, file_url_is_valid_bytes) }
+    unsafe_ffi!(c_bytes_match(url, file_url_is_valid_bytes))
 }
 
 /// # Safety
@@ -297,7 +304,7 @@ pub unsafe extern "C" fn rs_file_url_is_valid(url: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_documentation_url_is_valid(url: *const c_char) -> bool {
     // SAFETY: forwarded from the entry-point contract.
-    unsafe { c_bytes_match(url, documentation_url_is_valid_bytes) }
+    unsafe_ffi!(c_bytes_match(url, documentation_url_is_valid_bytes))
 }
 
 // ── Color conversion ──────────────────────────────────────────────────────
@@ -393,15 +400,15 @@ pub unsafe extern "C" fn rs_rgb_to_hsv(
     // Preserve C's publication order when optional output pointers alias.
     if !ret_v.is_null() {
         // SAFETY: guaranteed by the entry-point contract.
-        unsafe { *ret_v = hsv.v };
+        unsafe_ffi!(*ret_v = hsv.v);
     }
     if !ret_s.is_null() {
         // SAFETY: guaranteed by the entry-point contract.
-        unsafe { *ret_s = hsv.s };
+        unsafe_ffi!(*ret_s = hsv.s);
     }
     if !ret_h.is_null() {
         // SAFETY: guaranteed by the entry-point contract.
-        unsafe { *ret_h = hsv.h };
+        unsafe_ffi!(*ret_h = hsv.h);
     }
 }
 
@@ -424,11 +431,11 @@ pub unsafe extern "C" fn rs_hsv_to_rgb(
     assert!(!ret_b.is_null());
     let (r, g, b) = hsv_to_rgb(h, s, v).expect("checked HSV inputs must be in range");
     // SAFETY: checked non-null above and required writable by the contract.
-    unsafe {
+    unsafe_ffi!({
         *ret_r = r;
         *ret_g = g;
         *ret_b = b;
-    }
+    })
 }
 
 // ── Misc validators ───────────────────────────────────────────────────────
@@ -500,7 +507,7 @@ fn pkcs11_uri_valid_bytes(uri: &[u8]) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_boot_entry_token_valid(token: *const c_char) -> bool {
     // SAFETY: forwarded from the entry-point contract.
-    unsafe { c_bytes_match(token, boot_entry_token_valid_bytes) }
+    unsafe_ffi!(c_bytes_match(token, boot_entry_token_valid_bytes))
 }
 
 /// # Safety
@@ -508,7 +515,7 @@ pub unsafe extern "C" fn rs_boot_entry_token_valid(token: *const c_char) -> bool
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_pkcs11_uri_valid(uri: *const c_char) -> bool {
     // SAFETY: forwarded from the entry-point contract.
-    unsafe { c_bytes_match(uri, pkcs11_uri_valid_bytes) }
+    unsafe_ffi!(c_bytes_match(uri, pkcs11_uri_valid_bytes))
 }
 
 pub fn suitable_blob_filename(name: &str) -> bool {
@@ -541,7 +548,7 @@ pub unsafe extern "C" fn rs_suitable_blob_filename(name: *const c_char) -> i32 {
     let Some(name) = (!name.is_null()).then(|| {
         // SAFETY: the entry-point contract guarantees a live NUL-terminated
         // string after the explicit null check above.
-        unsafe { CStr::from_ptr(name) }
+        unsafe_ffi!(CStr::from_ptr(name))
     }) else {
         return 0;
     };

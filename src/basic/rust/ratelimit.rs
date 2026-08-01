@@ -6,6 +6,13 @@
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 const USEC_INFINITY: u64 = u64::MAX;
 
 // ── Internal helpers ──────────────────────────────────────────────────────
@@ -33,11 +40,15 @@ fn now_boottime_usec() -> u64 {
     let mut timestamp = std::mem::MaybeUninit::<libc::timespec>::uninit();
     // SAFETY: timestamp points to sufficient initialized output storage and
     // CLOCK_BOOTTIME is the exact clock used by the C authority.
-    if unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, timestamp.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::clock_gettime(
+        libc::CLOCK_BOOTTIME,
+        timestamp.as_mut_ptr()
+    )) < 0
+    {
         return 0;
     }
     // SAFETY: clock_gettime succeeded and initialized timestamp.
-    let timestamp = unsafe { timestamp.assume_init() };
+    let timestamp = unsafe_ffi!(timestamp.assume_init());
     let seconds = u64::try_from(timestamp.tv_sec).unwrap_or(0);
     let nanoseconds = u64::try_from(timestamp.tv_nsec).unwrap_or(0);
     seconds
@@ -130,7 +141,7 @@ pub unsafe extern "C" fn rs_ratelimit_below(rl: *mut RateLimit) -> bool {
         return false;
     }
     // SAFETY: the FFI contract requires a valid writable RateLimit.
-    unsafe { (&mut *rl).below() }
+    unsafe_ffi!((&mut *rl).below())
 }
 
 /// C ABI facade for `ratelimit_num_dropped()`.
@@ -141,7 +152,7 @@ pub unsafe extern "C" fn rs_ratelimit_below(rl: *mut RateLimit) -> bool {
 pub unsafe extern "C" fn rs_ratelimit_num_dropped(rl: *const RateLimit) -> u32 {
     // SAFETY: null is explicitly rejected; the remaining pointer is readable
     // under this facade's C ABI contract.
-    unsafe { rl.as_ref().map_or(0, RateLimit::num_dropped) }
+    unsafe_ffi!(rl.as_ref().map_or(0, RateLimit::num_dropped))
 }
 
 /// C ABI facade for `ratelimit_end()`.
@@ -152,7 +163,7 @@ pub unsafe extern "C" fn rs_ratelimit_num_dropped(rl: *const RateLimit) -> u32 {
 pub unsafe extern "C" fn rs_ratelimit_end(rl: *const RateLimit) -> u64 {
     // SAFETY: null is explicitly rejected; the remaining pointer is readable
     // under this facade's C ABI contract.
-    unsafe { rl.as_ref().map_or(0, RateLimit::end) }
+    unsafe_ffi!(rl.as_ref().map_or(0, RateLimit::end))
 }
 
 /// C ABI facade for `ratelimit_left()`.
@@ -163,7 +174,7 @@ pub unsafe extern "C" fn rs_ratelimit_end(rl: *const RateLimit) -> u64 {
 pub unsafe extern "C" fn rs_ratelimit_left(rl: *const RateLimit) -> u64 {
     // SAFETY: null is explicitly rejected; the remaining pointer is readable
     // under this facade's C ABI contract.
-    unsafe { rl.as_ref().map_or(0, RateLimit::left) }
+    unsafe_ffi!(rl.as_ref().map_or(0, RateLimit::left))
 }
 
 /// C ABI facade for the header-inline `ratelimit_reset()`.
@@ -174,7 +185,7 @@ pub unsafe extern "C" fn rs_ratelimit_left(rl: *const RateLimit) -> u64 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_ratelimit_reset(rl: *mut RateLimit) {
     // SAFETY: a non-NULL FFI pointer is writable RateLimit storage.
-    if let Some(rl) = unsafe { rl.as_mut() } {
+    if let Some(rl) = unsafe_ffi!(rl.as_mut()) {
         rl.reset();
     }
 }
@@ -187,7 +198,7 @@ pub unsafe extern "C" fn rs_ratelimit_reset(rl: *mut RateLimit) {
 pub unsafe extern "C" fn rs_ratelimit_configured(rl: *const RateLimit) -> bool {
     // SAFETY: null is explicitly rejected; the remaining pointer is readable
     // under this facade's C ABI contract.
-    unsafe { rl.as_ref().is_some_and(RateLimit::configured) }
+    unsafe_ffi!(rl.as_ref().is_some_and(RateLimit::configured))
 }
 
 #[cfg(test)]

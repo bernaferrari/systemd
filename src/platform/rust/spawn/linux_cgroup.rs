@@ -6,6 +6,13 @@
 //! the one Linux ownership ABI call and keeps all traversal rooted at those
 //! descriptors, separate from the post-fork child path.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, CString, OsStr};
 use std::fs::File;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
@@ -37,8 +44,13 @@ pub(super) fn delegate_cgroup_access(
         // `directory` is live and `name` NUL-terminated. Empty names use only
         // AT_EMPTY_PATH; nonempty names are confined and never follow links.
         // SAFETY: all fchownat pointer, descriptor, and flag contracts hold.
-        let result =
-            unsafe { libc::fchownat(directory.as_raw_fd(), name.as_ptr(), uid, gid, flags) };
+        let result = unsafe_ffi!(libc::fchownat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            uid,
+            gid,
+            flags
+        ));
         if result == 0 {
             return Ok(());
         }

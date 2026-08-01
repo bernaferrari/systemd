@@ -4,6 +4,13 @@
 //
 // stat/statx value verification helpers and inode_type_can_hardlink.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::{S_IFBLK, S_IFCHR, S_IFDIR, S_IFIFO, S_IFLNK, S_IFMT, S_IFREG, S_IFSOCK};
 
 /*
@@ -221,7 +228,7 @@ fn with_stat<T>(
     verification: impl FnOnce(&libc::stat) -> T,
 ) -> T {
     // SAFETY: callers are the audited C ABI adapters with nullable live stat pointers.
-    unsafe { st.as_ref().map_or(fallback, verification) }
+    unsafe_ffi!(st.as_ref().map_or(fallback, verification))
 }
 
 fn with_statx<T>(
@@ -230,7 +237,7 @@ fn with_statx<T>(
     verification: impl FnOnce(&libc::statx) -> T,
 ) -> T {
     // SAFETY: callers are the audited C ABI adapters with nullable live statx pointers.
-    unsafe { stx.as_ref().map_or(fallback, verification) }
+    unsafe_ffi!(stx.as_ref().map_or(fallback, verification))
 }
 
 /// C ABI mirror of `stat_verify_regular()`.

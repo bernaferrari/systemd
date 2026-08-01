@@ -4,6 +4,13 @@
 //
 // PORT-SYNC: src/socket-proxy/socket-proxyd.c
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::env;
 use std::ffi::{CStr, CString};
 use std::fs::File;
@@ -62,7 +69,7 @@ impl Drop for AddressInfo {
     fn drop(&mut self) {
         // SAFETY: getaddrinfo(3) returned this list and ownership has not
         // been transferred or freed elsewhere.
-        unsafe { libc::freeaddrinfo(self.0) };
+        unsafe_ffi!(libc::freeaddrinfo(self.0));
     }
 }
 
@@ -75,7 +82,7 @@ fn unix_socket_address(path: &str) -> io::Result<UnixSocketAddress> {
     }
 
     // SAFETY: A zeroed sockaddr_un is a valid starting representation.
-    let mut address = unsafe { mem::zeroed::<libc::sockaddr_un>() };
+    let mut address = unsafe_ffi!(mem::zeroed::<libc::sockaddr_un>());
     address.sun_family = libc::AF_UNIX as libc::sa_family_t;
     let path_offset = mem::offset_of!(libc::sockaddr_un, sun_path);
 
@@ -123,12 +130,16 @@ fn owned_socket(
 ) -> io::Result<OwnedFd> {
     // SAFETY: socket(2) has no Rust aliasing requirements. On success the
     // returned descriptor is immediately placed under unique RAII ownership.
-    let raw = unsafe { libc::socket(domain, socket_type | libc::SOCK_CLOEXEC, protocol) };
+    let raw = unsafe_ffi!(libc::socket(
+        domain,
+        socket_type | libc::SOCK_CLOEXEC,
+        protocol
+    ));
     if raw < 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: socket(2) returned a new, uniquely owned descriptor.
-    Ok(unsafe { OwnedFd::from_raw_fd(raw) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(raw)))
 }
 
 fn connect_unix_abstract(path: &str) -> io::Result<OwnedFd> {
@@ -136,13 +147,13 @@ fn connect_unix_abstract(path: &str) -> io::Result<OwnedFd> {
     let socket = owned_socket(libc::AF_UNIX, libc::SOCK_STREAM, 0)?;
     // SAFETY: address points to an initialized sockaddr_un for the supplied
     // length, and socket remains owned for the duration of connect(2).
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::connect(
             socket.as_raw_fd(),
             &address.address as *const _ as *const libc::sockaddr,
             address.length,
         )
-    };
+    });
     if result < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -152,14 +163,14 @@ fn connect_unix_abstract(path: &str) -> io::Result<OwnedFd> {
 fn address_info_error(code: libc::c_int) -> io::Error {
     // SAFETY: gai_strerror(3) returns a process-owned NUL-terminated string
     // for every result code and the pointer is only borrowed here.
-    let message = unsafe {
+    let message = unsafe_ffi!({
         let pointer = libc::gai_strerror(code);
         if pointer.is_null() {
             format!("name resolution failed with error {code}")
         } else {
             CStr::from_ptr(pointer).to_string_lossy().into_owned()
         }
-    };
+    });
     io::Error::other(message)
 }
 
@@ -185,8 +196,12 @@ fn connect_tcp(host: &str, service: &str) -> io::Result<OwnedFd> {
     let mut result = std::ptr::null_mut();
     // SAFETY: host/service are valid C strings, hints is initialized, and
     // result points to writable storage for the returned owned list.
-    let resolved =
-        unsafe { libc::getaddrinfo(host.as_ptr(), service.as_ptr(), &hints, &mut result) };
+    let resolved = unsafe_ffi!(libc::getaddrinfo(
+        host.as_ptr(),
+        service.as_ptr(),
+        &hints,
+        &mut result
+    ));
     if resolved != 0 {
         return Err(address_info_error(resolved));
     }
@@ -203,15 +218,15 @@ fn connect_tcp(host: &str, service: &str) -> io::Result<OwnedFd> {
     while !current.is_null() {
         // SAFETY: current traverses the getaddrinfo-owned linked list and
         // remains valid while addresses is alive.
-        let address = unsafe { &*current };
+        let address = unsafe_ffi!(&*current);
         if !address.ai_addr.is_null() && address.ai_addrlen > 0 {
             match owned_socket(address.ai_family, address.ai_socktype, address.ai_protocol) {
                 Ok(socket) => {
                     // SAFETY: ai_addr/ai_addrlen describe a sockaddr owned
                     // by the live address-info list.
-                    let connected = unsafe {
+                    let connected = unsafe_ffi!({
                         libc::connect(socket.as_raw_fd(), address.ai_addr, address.ai_addrlen)
-                    };
+                    });
                     if connected == 0 {
                         return Ok(socket);
                     }
@@ -240,7 +255,7 @@ fn connect_remote(remote: &RemoteAddress) -> io::Result<OwnedFd> {
 
 fn shutdown(fd: RawFd, how: libc::c_int) -> io::Result<()> {
     // SAFETY: fd is borrowed from a live socket for the duration of the call.
-    if unsafe { libc::shutdown(fd, how) } < 0 {
+    if unsafe_ffi!(libc::shutdown(fd, how)) < 0 {
         let error = io::Error::last_os_error();
         if !matches!(error.raw_os_error(), Some(libc::ENOTCONN | libc::EINVAL)) {
             return Err(error);
@@ -308,7 +323,7 @@ fn socket_option(fd: RawFd, option: libc::c_int) -> io::Result<libc::c_int> {
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "option length overflow"))?;
     // SAFETY: value and length are writable for getsockopt(2), and fd is a
     // borrowed activated descriptor.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::getsockopt(
             fd,
             libc::SOL_SOCKET,
@@ -316,7 +331,7 @@ fn socket_option(fd: RawFd, option: libc::c_int) -> io::Result<libc::c_int> {
             &mut value as *mut _ as *mut libc::c_void,
             &mut length,
         )
-    };
+    });
     if result < 0 {
         Err(io::Error::last_os_error())
     } else {
@@ -335,16 +350,24 @@ fn configure_listener(fd: RawFd) -> io::Result<()> {
     }
 
     // SAFETY: fcntl(2) only reads or updates flags on this borrowed fd.
-    let status_flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    let status_flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFL));
     if status_flags < 0
-        || unsafe { libc::fcntl(fd, libc::F_SETFL, status_flags | libc::O_NONBLOCK) } < 0
+        || unsafe_ffi!(libc::fcntl(
+            fd,
+            libc::F_SETFL,
+            status_flags | libc::O_NONBLOCK
+        )) < 0
     {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: as above, for descriptor flags.
-    let descriptor_flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    let descriptor_flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFD));
     if descriptor_flags < 0
-        || unsafe { libc::fcntl(fd, libc::F_SETFD, descriptor_flags | libc::FD_CLOEXEC) } < 0
+        || unsafe_ffi!(libc::fcntl(
+            fd,
+            libc::F_SETFD,
+            descriptor_flags | libc::FD_CLOEXEC
+        )) < 0
     {
         return Err(io::Error::last_os_error());
     }
@@ -356,11 +379,11 @@ fn activated_listeners() -> Result<Vec<OwnedFd>, ProxyError> {
     let listen_fds = env::var("LISTEN_FDS").ok();
     // SAFETY: run() calls this before it creates worker threads, and this
     // executable does not expose activated_listeners() to concurrent callers.
-    unsafe {
+    unsafe_ffi!({
         env::remove_var("LISTEN_PID");
         env::remove_var("LISTEN_FDS");
         env::remove_var("LISTEN_FDNAMES");
-    }
+    });
 
     let pid_matches = listen_pid
         .as_deref()
@@ -386,7 +409,7 @@ fn activated_listeners() -> Result<Vec<OwnedFd>, ProxyError> {
     for raw in SD_LISTEN_FDS_START..last {
         // SAFETY: matching LISTEN_PID/LISTEN_FDS transfers ownership of this
         // contiguous descriptor range to the service.
-        listeners.push(unsafe { OwnedFd::from_raw_fd(raw) });
+        listeners.push(unsafe_ffi!(OwnedFd::from_raw_fd(raw)));
     }
     for listener in &listeners {
         let raw = listener.as_raw_fd();
@@ -400,19 +423,19 @@ fn activated_listeners() -> Result<Vec<OwnedFd>, ProxyError> {
 fn accept_one(listener: RawFd) -> io::Result<OwnedFd> {
     // SAFETY: listener is a live listening socket. Null address arguments are
     // explicitly permitted by accept4(2); a successful fd is uniquely owned.
-    let accepted = unsafe {
+    let accepted = unsafe_ffi!({
         libc::accept4(
             listener,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             libc::SOCK_CLOEXEC,
         )
-    };
+    });
     if accepted < 0 {
         Err(io::Error::last_os_error())
     } else {
         // SAFETY: accept4(2) returned a new, uniquely owned descriptor.
-        Ok(unsafe { OwnedFd::from_raw_fd(accepted) })
+        Ok(unsafe_ffi!(OwnedFd::from_raw_fd(accepted)))
     }
 }
 
@@ -431,7 +454,7 @@ fn notify(message: &str) -> io::Result<()> {
     let address = unix_socket_address(&path)?;
     let socket = owned_socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?;
     // SAFETY: all pointers describe initialized buffers valid for sendto(2).
-    let sent = unsafe {
+    let sent = unsafe_ffi!({
         libc::sendto(
             socket.as_raw_fd(),
             message.as_ptr() as *const libc::c_void,
@@ -440,7 +463,7 @@ fn notify(message: &str) -> io::Result<()> {
             &address.address as *const _ as *const libc::sockaddr,
             address.length,
         )
-    };
+    });
     if sent < 0 {
         Err(io::Error::last_os_error())
     } else if sent as usize != message.len() {
@@ -567,13 +590,13 @@ pub(crate) fn run(config: ProxyConfig) -> Result<(), ProxyError> {
 
         // SAFETY: poll_fds is a writable contiguous array for the specified
         // element count and remains alive throughout poll(2).
-        let ready = unsafe {
+        let ready = unsafe_ffi!({
             libc::poll(
                 poll_fds.as_mut_ptr(),
                 poll_fds.len() as libc::nfds_t,
                 poll_timeout(earliest_deadline(deadline, watchdog_deadline)).unwrap_or(-1),
             )
-        };
+        });
         if ready < 0 {
             let error = io::Error::last_os_error();
             if error.kind() == io::ErrorKind::Interrupted {

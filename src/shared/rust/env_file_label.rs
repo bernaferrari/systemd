@@ -3,6 +3,13 @@
 //            src/basic/label-util.c, src/basic/label-util.h,
 //            src/shared/selinux-util.c, src/shared/selinux-util.h
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::fs::File;
@@ -249,8 +256,12 @@ fn write_atomically_at(dir_fd: RawFd, fname: &Path, data: &[u8]) -> Result<(), E
 
                 // SAFETY: both live C strings name entries in the validated
                 // directory descriptor (or are absolute); renameat retains neither.
-                let rename_result =
-                    unsafe { libc::renameat(dir_fd, temp.as_ptr(), dir_fd, target.as_ptr()) };
+                let rename_result = unsafe_ffi!(libc::renameat(
+                    dir_fd,
+                    temp.as_ptr(),
+                    dir_fd,
+                    target.as_ptr()
+                ));
                 if rename_result < 0 {
                     let err = io::Error::last_os_error();
                     unlink_at(dir_fd, &temp);
@@ -295,13 +306,13 @@ fn open_tempfile(dir_fd: RawFd, temp_name: &CString) -> io::Result<File> {
 
     // SAFETY: a non-negative openat(2) result is a newly owned file
     // descriptor, so File takes responsibility for exactly one close(2).
-    Ok(unsafe { File::from_raw_fd(fd) })
+    Ok(unsafe_ffi!(File::from_raw_fd(fd)))
 }
 
 fn unlink_at(dir_fd: RawFd, path: &CString) {
     // SAFETY: `path` is a live, NUL-terminated pathname relative to the
     // validated descriptor (or absolute); unlinkat(2) retains neither value.
-    let _ = unsafe { libc::unlinkat(dir_fd, path.as_ptr(), 0) };
+    let _ = unsafe_ffi!(libc::unlinkat(dir_fd, path.as_ptr(), 0));
 }
 
 fn validate_dir_fd(dir_fd: RawFd) -> Result<(), EnvFileLabelError> {
@@ -311,7 +322,7 @@ fn validate_dir_fd(dir_fd: RawFd) -> Result<(), EnvFileLabelError> {
 
     // SAFETY: F_GETFD neither dereferences Rust memory nor changes descriptor
     // state; it only checks whether this numeric descriptor is open.
-    let result = unsafe { libc::fcntl(dir_fd, libc::F_GETFD) };
+    let result = unsafe_ffi!(libc::fcntl(dir_fd, libc::F_GETFD));
     if result < 0 {
         return Err(EnvFileLabelError::InvalidDirectoryFd(dir_fd));
     }

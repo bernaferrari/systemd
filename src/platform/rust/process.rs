@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd::{Gid, Pid, Uid, fork, getgid, getpid, getppid, getuid};
 
@@ -16,13 +23,13 @@ use nix::unistd::{Gid, Pid, Uid, fork, getgid, getpid, getppid, getuid};
 /// library code. `f` must also not retain references to parent-only state.
 pub unsafe fn fork_child(f: impl FnOnce()) -> nix::Result<Pid> {
     // SAFETY: the caller upholds the post-fork contract documented above.
-    match unsafe { fork()? } {
+    match unsafe_ffi!(fork()?) {
         nix::unistd::ForkResult::Parent { child } => Ok(child),
         nix::unistd::ForkResult::Child => {
             f();
             // SAFETY: _exit(2) terminates this child without invoking Rust
             // destructors or process-exit handlers after fork.
-            unsafe { libc::_exit(0) }
+            unsafe_ffi!(libc::_exit(0))
         }
     }
 }

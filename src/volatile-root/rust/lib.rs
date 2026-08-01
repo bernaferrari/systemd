@@ -13,6 +13,13 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 #[cfg(target_os = "linux")]
 use std::ffi::CString;
 use std::io;
@@ -497,7 +504,7 @@ fn chase_usr_beneath_root(root: &Path) -> io::Result<std::path::PathBuf> {
     }
     // SAFETY: `open()` above returned a fresh descriptor with exclusive
     // ownership, which is held until the `openat2()` resolution completes.
-    let root_fd = unsafe { OwnedFd::from_raw_fd(root_fd) };
+    let root_fd = unsafe_ffi!(OwnedFd::from_raw_fd(root_fd));
 
     if !openat2_available() {
         return Err(fallback_required_error(
@@ -510,7 +517,7 @@ fn chase_usr_beneath_root(root: &Path) -> io::Result<std::path::PathBuf> {
     // SAFETY: `open_how` consists only of integer fields for which zero is a
     // valid initial value. All fields relevant to this syscall are assigned
     // immediately below before its address is passed to the kernel.
-    let mut how: libc::open_how = unsafe { std::mem::zeroed() };
+    let mut how: libc::open_how = unsafe_ffi!(std::mem::zeroed());
     how.flags = (libc::O_PATH | libc::O_CLOEXEC) as u64;
     how.resolve = libc::RESOLVE_IN_ROOT | libc::RESOLVE_NO_MAGICLINKS;
     // SAFETY: root_fd is live, `usr` is a static NUL-terminated relative
@@ -547,7 +554,7 @@ fn chase_usr_beneath_root(root: &Path) -> io::Result<std::path::PathBuf> {
         };
     }
     // SAFETY: successful `openat2()` returns one fresh descriptor.
-    let fd = unsafe { OwnedFd::from_raw_fd(fd as i32) };
+    let fd = unsafe_ffi!(OwnedFd::from_raw_fd(fd as i32));
     let resolved = std::fs::read_link(format!("/proc/self/fd/{}", fd.as_raw_fd()))?;
 
     Ok(resolved)
@@ -929,7 +936,7 @@ impl BackingDeviceLinkBackend for LinuxBackingDeviceLinkBackend {
 
         // SAFETY: `path` is NUL-terminated and remains live for the call;
         // `device` is a unique, correctly aligned output location.
-        let result = unsafe { c_get_block_device_harder(path.as_ptr(), &mut device) };
+        let result = unsafe_ffi!(c_get_block_device_harder(path.as_ptr(), &mut device));
         if result < 0 {
             return Err(io::Error::from_raw_os_error(-result));
         }

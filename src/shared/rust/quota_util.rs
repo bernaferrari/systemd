@@ -8,6 +8,13 @@
 // with automatic fallback from fd-based to path-based quotactl on
 // kernels older than 5.14.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::c_void;
 
 use crate::ffi::Errno;
@@ -276,7 +283,7 @@ unsafe fn quotactl_path_syscall(
     // SAFETY: the caller guarantees both pointers meet quotactl()'s
     // command-specific contract. libc exposes the data argument as a byte
     // pointer, so this is only a representation-preserving pointer cast.
-    let r = unsafe { libc::quotactl(cmd, special, id, addr.cast()) };
+    let r = unsafe_ffi!(libc::quotactl(cmd, special, id, addr.cast()));
     if r < 0 {
         return Err(QuotaError::from_neg_errno(
             -(crate::ffi::get_errno()) as i32,
@@ -302,7 +309,7 @@ unsafe fn quotactl_fd_syscall(
     addr: *mut c_void,
 ) -> Result<(), QuotaError> {
     // SAFETY: the caller guarantees addr meets the command-specific quotactl_fd contract.
-    let r = unsafe { libc::syscall(libc::SYS_quotactl_fd, fd, cmd, id, addr) };
+    let r = unsafe_ffi!(libc::syscall(libc::SYS_quotactl_fd, fd, cmd, id, addr));
     if r < 0 {
         return Err(QuotaError::from_neg_errno(
             -(crate::ffi::get_errno()) as i32,
@@ -359,7 +366,7 @@ fn quotactl_fd_with_fallback(
     // Try the newer fd-based syscall first.
     // SAFETY: `addr` was derived from the live, properly aligned `req` and
     // remains valid throughout this function.
-    match unsafe { quotactl_fd_syscall(fd, cmd, id, addr) } {
+    match unsafe_ffi!(quotactl_fd_syscall(fd, cmd, id, addr)) {
         Ok(()) => return Ok(()),
         Err(QuotaError::NotSupported) => { /* fall through to path-based */ }
         Err(e) => return Err(e),
@@ -374,7 +381,7 @@ fn quotactl_fd_with_fallback(
 
     // SAFETY: `devnode` is a valid NUL-terminated CString and `addr` still
     // points to the live `req` that meets the command-specific quota ABI.
-    unsafe { quotactl_path_syscall(cmd, devnode.as_ptr(), id, addr) }
+    unsafe_ffi!(quotactl_path_syscall(cmd, devnode.as_ptr(), id, addr))
 }
 
 // ── Safe public API ─────────────────────────────────────────────────────

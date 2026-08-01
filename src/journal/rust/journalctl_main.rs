@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 #![deny(unsafe_op_in_unsafe_fn)]
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -188,7 +195,7 @@ mod tests {
     fn resolve_prefers_explicit_env_backend() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         let dir = unique_tmp("journalctl-shim-env");
         let self_exe = dir.join("journalctl");
         let backend = dir.join("journalctl-c");
@@ -207,7 +214,7 @@ mod tests {
     fn resolve_uses_sibling_backend() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         let dir = unique_tmp("journalctl-shim-sibling");
         let self_exe = dir.join("journalctl");
         let sibling = dir.join("journalctl-c");
@@ -226,7 +233,7 @@ mod tests {
     fn resolve_rejects_self_reference() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         let dir = unique_tmp("journalctl-shim-self");
         let self_exe = dir.join("journalctl");
         make_exec(&self_exe);
@@ -242,7 +249,7 @@ mod tests {
     fn env_flag_enabled_accepts_common_truthy_values() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.set("SYSTEMD_JOURNALCTL_ALLOW_PATH", "1");
         assert!(env_flag_enabled("SYSTEMD_JOURNALCTL_ALLOW_PATH"));
         environment.set("SYSTEMD_JOURNALCTL_ALLOW_PATH", "true");
@@ -260,7 +267,7 @@ mod tests {
     fn backend_candidates_path_visibility_matches_policy() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         let dir = unique_tmp("journalctl-shim-path");
         let self_exe = dir.join("journalctl");
         let path_dir = dir.join("path-bin");

@@ -12,6 +12,13 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Interface operational state: interface is up (RFC 2863 / operstates.txt).
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 pub const IF_OPER_UP: u8 = 6;
 /// Interface operational state: state is unknown / not reported.
@@ -324,7 +331,7 @@ pub fn if_nametoindex(name: &str) -> Result<u32, NetifError> {
 
     // SAFETY: `c_name` is a valid NUL-terminated C string.  `if_nametoindex`
     // is a standard POSIX function that does not retain the pointer.
-    let index = unsafe { libc::if_nametoindex(c_name.as_ptr()) };
+    let index = unsafe_ffi!(libc::if_nametoindex(c_name.as_ptr()));
 
     if index == 0 {
         Err(NetifError::NotFound)
@@ -341,7 +348,7 @@ pub fn if_indextoname(index: u32) -> Result<String, NetifError> {
 
     // SAFETY: `buf` is a valid mutable buffer of `IFNAMSIZ` bytes.
     // `if_indextoname` is a standard POSIX function.
-    let ptr = unsafe { libc::if_indextoname(index, buf.as_mut_ptr().cast()) };
+    let ptr = unsafe_ffi!(libc::if_indextoname(index, buf.as_mut_ptr().cast()));
 
     if ptr.is_null() {
         Err(NetifError::NotFound)

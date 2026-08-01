@@ -2,6 +2,14 @@
 //
 // PORT-SYNC: src/shared/vconsole-util.c
 
+// Centralized unsafe expression boundary for this module.
+#[cfg(test)]
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -775,7 +783,7 @@ mod tests {
     fn find_language_fallback_with_test_map() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         let dir = std::env::temp_dir().join("vconsole_test_lang");
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("lang.map");

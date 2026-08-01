@@ -5,6 +5,13 @@
 // Read-only string scanning, distance, and version validation. No sibling
 // string-util domain is imported, keeping this layer acyclic.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use libc::c_char;
@@ -31,14 +38,14 @@ fn with_c_string_pair<T>(
         &[]
     } else {
         // SAFETY: the non-null pointer is covered by this adapter's C-string contract.
-        unsafe { CStr::from_ptr(left) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(left)).to_bytes()
     };
     // SAFETY: callers use this adapter only under their C-string contracts.
     let right = if right.is_null() {
         &[]
     } else {
         // SAFETY: the non-null pointer is covered by this adapter's C-string contract.
-        unsafe { CStr::from_ptr(right) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(right)).to_bytes()
     };
     Some(operation(left, right))
 }
@@ -88,7 +95,7 @@ pub unsafe fn rs_strshorten(s: *mut c_char, l: usize) -> *mut c_char {
 
     // SAFETY: the caller guarantees that the bounded byte range is readable,
     // and that its last byte is writable if no earlier NUL is found.
-    unsafe {
+    unsafe_ffi!({
         if std::slice::from_raw_parts(s.cast_const(), l + 1).contains(&0) {
             return s;
         }
@@ -96,7 +103,7 @@ pub unsafe fn rs_strshorten(s: *mut c_char, l: usize) -> *mut c_char {
         // No earlier NUL was found, so the contract guarantees byte `l` is
         // writable. This is exactly the byte C's `strshorten()` overwrites.
         *s.add(l) = 0;
-    }
+    });
     s
 }
 
@@ -198,7 +205,7 @@ pub unsafe fn rs_version_is_valid(s: *const c_char, flags: i32) -> bool {
     }
     // SAFETY: non-null `s` is a readable NUL-terminated string by contract
     // and satisfies `rs_filename_part_is_valid()`'s C-string requirement.
-    let Some(bytes) = (unsafe {
+    let Some(bytes) = (unsafe_ffi!({
         let bytes = CStr::from_ptr(s).to_bytes();
         if bytes.is_empty() && flags & VERSION_ALLOW_EMPTY == 0 {
             None
@@ -207,7 +214,7 @@ pub unsafe fn rs_version_is_valid(s: *const c_char, flags: i32) -> bool {
         } else {
             Some(bytes)
         }
-    }) else {
+    })) else {
         return false;
     };
 

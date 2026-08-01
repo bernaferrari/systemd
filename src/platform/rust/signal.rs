@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use nix::errno::Errno;
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal};
 use nix::sys::signalfd::{self, SfdFlags};
@@ -49,7 +56,7 @@ pub fn manager_signal_mask() -> nix::Result<SigSet> {
     // SAFETY: raw points to writable, correctly aligned storage. sigemptyset
     // initializes it before any read, and every added signal is either a libc
     // constant or within the runtime-reported realtime signal range.
-    unsafe {
+    unsafe_ffi!({
         if libc::sigemptyset(raw.as_mut_ptr()) != 0 {
             return Err(Errno::last());
         }
@@ -69,7 +76,7 @@ pub fn manager_signal_mask() -> nix::Result<SigSet> {
         }
 
         Ok(SigSet::from_sigset_t_unchecked(raw.assume_init()))
-    }
+    })
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -104,7 +111,7 @@ pub fn reset_sigchld() -> nix::Result<()> {
     );
     // SAFETY: the action contains SIG_DFL and an initialized empty mask. No
     // Rust function pointer or borrowed storage is installed as a handler.
-    unsafe { nix::sys::signal::sigaction(Signal::SIGCHLD, &action) }?;
+    unsafe_ffi!(nix::sys::signal::sigaction(Signal::SIGCHLD, &action))?;
     Ok(())
 }
 

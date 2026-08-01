@@ -4,6 +4,13 @@
 //
 // statfs/filesystem queries and vfs_free_bytes.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 use std::mem::MaybeUninit;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
@@ -56,7 +63,7 @@ fn with_c_path<T>(
     }
     // SAFETY: exported callers uphold the readable NUL-terminated path contract
     // for the duration of this synchronous query.
-    Ok(query(unsafe { CStr::from_ptr(path) }))
+    Ok(query(unsafe_ffi!(CStr::from_ptr(path))))
 }
 
 /// Borrow an optional C path for one query only.
@@ -65,7 +72,7 @@ fn with_optional_c_path<T>(path: *const libc::c_char, query: impl FnOnce(Option<
         None
     } else {
         // SAFETY: exported callers uphold the readable NUL-terminated path contract.
-        Some(unsafe { CStr::from_ptr(path) })
+        Some(unsafe_ffi!(CStr::from_ptr(path)))
     };
     query(path)
 }
@@ -77,7 +84,7 @@ fn adopt_open_fd(fd: libc::c_int) -> Result<OwnedFd, libc::c_int> {
         return Err(negative_errno());
     }
     // SAFETY: a nonnegative `open`/`openat` result is a newly owned descriptor.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
 }
 
 fn with_statfs_ref<T>(
@@ -88,7 +95,7 @@ fn with_statfs_ref<T>(
         None
     } else {
         // SAFETY: exported callers uphold the live native `statfs` pointer contract.
-        Some(query(unsafe { &*statfs }))
+        Some(query(unsafe_ffi!(&*statfs)))
     }
 }
 
@@ -100,7 +107,7 @@ fn xfstatfs(fd: libc::c_int) -> Result<libc::statfs, libc::c_int> {
     let mut statfs = MaybeUninit::<libc::statfs>::uninit();
     // SAFETY: `statfs` is writable native storage. The special descriptors
     // are mapped to the exact paths used by current C.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         if fd == libc::AT_FDCWD {
             libc::statfs(c".".as_ptr(), statfs.as_mut_ptr())
         } else if fd == XAT_FDROOT {
@@ -108,13 +115,13 @@ fn xfstatfs(fd: libc::c_int) -> Result<libc::statfs, libc::c_int> {
         } else {
             libc::fstatfs(fd, statfs.as_mut_ptr())
         }
-    };
+    });
     if result < 0 {
         return Err(negative_errno());
     }
 
     // SAFETY: the successful libc call initialized the complete native value.
-    Ok(unsafe { statfs.assume_init() })
+    Ok(unsafe_ffi!(statfs.assume_init()))
 }
 
 /// Retrieve the mount flags using `statvfs`, whose `f_flag` field is exposed
@@ -129,7 +136,7 @@ fn xstatvfs_flags(fd: libc::c_int) -> Result<u64, libc::c_int> {
     let mut statvfs = MaybeUninit::<libc::statvfs>::uninit();
     // SAFETY: `statvfs` is writable native storage. The special descriptors
     // use the same paths as `xfstatfs`; all other descriptors are borrowed.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         if fd == libc::AT_FDCWD {
             libc::statvfs(c".".as_ptr(), statvfs.as_mut_ptr())
         } else if fd == XAT_FDROOT {
@@ -137,13 +144,13 @@ fn xstatvfs_flags(fd: libc::c_int) -> Result<u64, libc::c_int> {
         } else {
             libc::fstatvfs(fd, statvfs.as_mut_ptr())
         }
-    };
+    });
     if result < 0 {
         return Err(negative_errno());
     }
 
     // SAFETY: the successful libc call initialized the complete native value.
-    Ok(unsafe { statvfs.assume_init() }.f_flag as u64)
+    Ok(unsafe_ffi!(statvfs.assume_init()).f_flag as u64)
 }
 
 fn xstatfsat(dir_fd: libc::c_int, path: Option<&CStr>) -> Result<libc::statfs, libc::c_int> {
@@ -159,7 +166,11 @@ fn xstatfsat(dir_fd: libc::c_int, path: Option<&CStr>) -> Result<libc::statfs, l
     let (dir_fd, path) = resolve_at_path(dir_fd, Some(path))?;
     // SAFETY: `path` is NUL-terminated and `dir_fd` is a validated descriptor
     // or AT_FDCWD.
-    let fd = unsafe { libc::openat(dir_fd, path.as_ptr(), libc::O_PATH | libc::O_CLOEXEC) };
+    let fd = unsafe_ffi!(libc::openat(
+        dir_fd,
+        path.as_ptr(),
+        libc::O_PATH | libc::O_CLOEXEC
+    ));
     let fd = adopt_open_fd(fd)?;
     xfstatfs(fd.as_raw_fd())
 }
@@ -199,7 +210,7 @@ fn access_fd(fd: libc::c_int, mode: libc::c_int) -> libc::c_int {
 
     // SAFETY: all paths are static NUL-terminated strings; ordinary
     // descriptors use Linux AT_EMPTY_PATH exactly like current C.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         if fd == libc::AT_FDCWD {
             libc::access(c".".as_ptr(), mode)
         } else if fd == XAT_FDROOT {
@@ -207,7 +218,7 @@ fn access_fd(fd: libc::c_int, mode: libc::c_int) -> libc::c_int {
         } else {
             libc::faccessat(fd, c"".as_ptr(), mode, libc::AT_EMPTY_PATH)
         }
-    };
+    });
     if result < 0 { negative_errno() } else { 0 }
 }
 
@@ -234,11 +245,11 @@ fn statfs_path(path: &CStr) -> Result<libc::statfs, libc::c_int> {
     let mut statfs = MaybeUninit::<libc::statfs>::uninit();
     // SAFETY: `path` is NUL-terminated and `statfs` is writable native
     // storage for the duration of the call.
-    if unsafe { libc::statfs(path.as_ptr(), statfs.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::statfs(path.as_ptr(), statfs.as_mut_ptr())) < 0 {
         return Err(negative_errno());
     }
     // SAFETY: successful `statfs()` initialized the complete native value.
-    Ok(unsafe { statfs.assume_init() })
+    Ok(unsafe_ffi!(statfs.assume_init()))
 }
 
 /// Multiply current C's explicitly widened `statvfs` fields.
@@ -270,17 +281,17 @@ pub unsafe extern "C" fn rs_vfs_free_bytes(fd: libc::c_int, ret: *mut u64) -> li
     let mut statvfs = MaybeUninit::<libc::statvfs>::uninit();
     // SAFETY: `statvfs` points to writable native `struct statvfs` storage,
     // and the validated nonnegative descriptor is only borrowed by libc.
-    if unsafe { libc::fstatvfs(fd, statvfs.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::fstatvfs(fd, statvfs.as_mut_ptr())) < 0 {
         let errno = crate::ffi::get_errno();
         return if errno > 0 { -errno } else { -libc::EIO };
     }
 
     // SAFETY: successful `fstatvfs()` initialized the complete native value.
-    let statvfs = unsafe { statvfs.assume_init() };
+    let statvfs = unsafe_ffi!(statvfs.assume_init());
     let (bytes, overflowed) = vfs_free_bytes_from_statvfs(&statvfs);
 
     // SAFETY: the entry-point contract guarantees writable output storage.
-    unsafe { ret.write(bytes) };
+    unsafe_ffi!(ret.write(bytes));
     if overflowed {
         return -libc::ERANGE;
     }
@@ -306,7 +317,7 @@ pub unsafe extern "C" fn rs_xstatfsat(
         Err(error) => return error,
     };
     // SAFETY: the entry-point contract guarantees writable output storage.
-    unsafe { ret.write(statfs) };
+    unsafe_ffi!(ret.write(statfs));
     0
 }
 
@@ -334,7 +345,7 @@ pub extern "C" fn rs_fd_is_read_only_fs(fd: libc::c_int) -> libc::c_int {
 pub unsafe extern "C" fn rs_path_is_read_only_fs(path: *const libc::c_char) -> libc::c_int {
     match with_c_path(path, |path| {
         // SAFETY: `path` is NUL-terminated by `with_c_path`.
-        let fd = unsafe { libc::open(path.as_ptr(), libc::O_CLOEXEC | libc::O_PATH) };
+        let fd = unsafe_ffi!(libc::open(path.as_ptr(), libc::O_CLOEXEC | libc::O_PATH));
         adopt_open_fd(fd).map(|fd| fd_is_read_only_fs(fd.as_raw_fd()))
     }) {
         Ok(Ok(result)) => result,

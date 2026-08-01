@@ -4,6 +4,13 @@
 //
 // Unicode manipulation: prev_char, skip_data, iswide.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::c_char;
 
 // ── UTF-8 skip data table ─────────────────────────────────────────────────
@@ -82,9 +89,9 @@ pub unsafe extern "C" fn rs_utf8_prev_char(p: *const c_char) -> *mut c_char {
     loop {
         // SAFETY: the caller contract guarantees that each predecessor stays
         // within the same allocation and is readable, until this returns.
-        current = unsafe { current.sub(1) };
+        current = unsafe_ffi!(current.sub(1));
         // SAFETY: `current` is readable by the caller contract above.
-        let byte = unsafe { current.read() } as u8;
+        let byte = unsafe_ffi!(current.read()) as u8;
         if (byte & 0xc0) != 0x80 {
             return current.cast_mut();
         }

@@ -4,6 +4,13 @@
 //
 // inode_same_at and related identity helpers.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::alloc::{Layout, alloc_zeroed, dealloc};
 use std::ffi::CStr;
 use std::mem::{MaybeUninit, align_of, offset_of};
@@ -63,18 +70,18 @@ impl NativeFileHandle {
 
         // SAFETY: `layout` is nonzero and was constructed from the native
         // file_handle alignment. Ownership is immediately captured by Drop.
-        let allocation = unsafe { alloc_zeroed(layout) };
+        let allocation = unsafe_ffi!(alloc_zeroed(layout));
         let pointer = NonNull::new(allocation.cast::<libc::file_handle>()).ok_or(-libc::ENOMEM)?;
 
         // SAFETY: the allocation is aligned and large enough for the native
         // header plus `handle_bytes` writable payload bytes.
-        unsafe {
+        unsafe_ffi!({
             pointer.as_ptr().write(libc::file_handle {
                 handle_bytes: handle_bytes as libc::c_uint,
                 handle_type: 0,
                 f_handle: [],
             })
-        };
+        });
         Ok(Self { pointer, layout })
     }
 
@@ -85,7 +92,7 @@ impl NativeFileHandle {
 
     fn reported_size(&self) -> usize {
         // SAFETY: `pointer` remains live for self's lifetime.
-        unsafe { self.pointer.as_ref().handle_bytes as usize }
+        unsafe_ffi!(self.pointer.as_ref().handle_bytes as usize)
     }
 
     fn snapshot(&self) -> Result<FileHandle, libc::c_int> {
@@ -101,10 +108,13 @@ impl NativeFileHandle {
 
         // SAFETY: a successful name_to_handle_at call initialized the native
         // header and exactly `handle_bytes` payload bytes within this allocation.
-        let native = unsafe { self.pointer.as_ref() };
+        let native = unsafe_ffi!(self.pointer.as_ref());
         // SAFETY: capacity was checked above and f_handle begins the payload.
-        let bytes =
-            unsafe { std::slice::from_raw_parts(native.f_handle.as_ptr(), handle_bytes) }.to_vec();
+        let bytes = unsafe_ffi!(std::slice::from_raw_parts(
+            native.f_handle.as_ptr(),
+            handle_bytes
+        ))
+        .to_vec();
         Ok(FileHandle {
             handle_type: native.handle_type,
             bytes,
@@ -116,7 +126,7 @@ impl Drop for NativeFileHandle {
     fn drop(&mut self) {
         // SAFETY: this allocation was created with the same layout in new()
         // and is uniquely owned by this RAII value.
-        unsafe { dealloc(self.pointer.as_ptr().cast::<u8>(), self.layout) };
+        unsafe_ffi!(dealloc(self.pointer.as_ptr().cast::<u8>(), self.layout));
     }
 }
 
@@ -133,8 +143,13 @@ fn call_name_to_handle_at(
 ) -> Result<(), libc::c_int> {
     // SAFETY: `path` is NUL-terminated, `handle` owns writable target-native
     // storage, and mount_id is either null or live storage selected below.
-    if unsafe { libc::name_to_handle_at(fd, path.as_ptr(), handle.as_mut_ptr(), mount_id, flags) }
-        < 0
+    if unsafe_ffi!(libc::name_to_handle_at(
+        fd,
+        path.as_ptr(),
+        handle.as_mut_ptr(),
+        mount_id,
+        flags
+    )) < 0
     {
         Err(-crate::ffi::get_errno())
     } else {
@@ -248,12 +263,12 @@ fn name_to_handle_at_try_fid(
 fn pin_path(fd: libc::c_int, path: &CStr, nofollow: bool) -> Result<OwnedFd, libc::c_int> {
     let flags = libc::O_PATH | libc::O_CLOEXEC | if nofollow { libc::O_NOFOLLOW } else { 0 };
     // SAFETY: path is NUL-terminated and fd has already passed validation.
-    let pinned = unsafe { libc::openat(fd, path.as_ptr(), flags) };
+    let pinned = unsafe_ffi!(libc::openat(fd, path.as_ptr(), flags));
     if pinned < 0 {
         return Err(-crate::ffi::get_errno());
     }
     // SAFETY: openat returned a new uniquely owned descriptor.
-    Ok(unsafe { OwnedFd::from_raw_fd(pinned) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(pinned)))
 }
 
 fn native_fstatat(
@@ -263,11 +278,11 @@ fn native_fstatat(
 ) -> Result<libc::stat, libc::c_int> {
     let mut stat = MaybeUninit::<libc::stat>::uninit();
     // SAFETY: path is NUL-terminated and stat points to writable native storage.
-    if unsafe { libc::fstatat(fd, path.as_ptr(), stat.as_mut_ptr(), flags) } < 0 {
+    if unsafe_ffi!(libc::fstatat(fd, path.as_ptr(), stat.as_mut_ptr(), flags)) < 0 {
         return Err(-crate::ffi::get_errno());
     }
     // SAFETY: successful fstatat initialized the complete native structure.
-    Ok(unsafe { stat.assume_init() })
+    Ok(unsafe_ffi!(stat.assume_init()))
 }
 
 #[inline]
@@ -394,7 +409,7 @@ unsafe fn optional_c_path<'a>(path: *const libc::c_char) -> Option<&'a CStr> {
         None
     } else {
         // SAFETY: the caller guarantees a readable NUL-terminated C string.
-        Some(unsafe { CStr::from_ptr(path) })
+        Some(unsafe_ffi!(CStr::from_ptr(path)))
     }
 }
 
@@ -412,9 +427,9 @@ pub unsafe extern "C" fn rs_inode_same_at(
     flags: libc::c_int,
 ) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let filea = unsafe { optional_c_path(filea) };
+    let filea = unsafe_ffi!(optional_c_path(filea));
     // SAFETY: forwarded from this entry point's pointer contract.
-    let fileb = unsafe { optional_c_path(fileb) };
+    let fileb = unsafe_ffi!(optional_c_path(fileb));
     inode_same_at(fda, filea, fdb, fileb, flags)
 }
 
@@ -430,7 +445,13 @@ pub unsafe extern "C" fn rs_inode_same(
     flags: libc::c_int,
 ) -> libc::c_int {
     // SAFETY: the inline facade forwards both pointer contracts unchanged.
-    unsafe { rs_inode_same_at(libc::AT_FDCWD, filea, libc::AT_FDCWD, fileb, flags) }
+    unsafe_ffi!(rs_inode_same_at(
+        libc::AT_FDCWD,
+        filea,
+        libc::AT_FDCWD,
+        fileb,
+        flags
+    ))
 }
 
 /// C ABI mirror of the header-inline `fd_inode_same()`.

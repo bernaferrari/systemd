@@ -9,6 +9,13 @@
 //! an independently linked crypto backend.  Keep this module at that C seam
 //! instead of duplicating the protocol or its configuration decisions here.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, CString, c_char};
 use std::fmt;
 use std::io;
@@ -116,7 +123,7 @@ impl Drop for CSequence {
         // SAFETY: `CSequence` is constructed only from a non-null sequence
         // allocated by `osc-context.c`; that C code documents `free()` as the
         // matching destructor, and this guard owns it exactly once.
-        unsafe { libc::free(self.0.as_ptr().cast()) };
+        unsafe_ffi!(libc::free(self.0.as_ptr().cast()));
     }
 }
 
@@ -149,7 +156,7 @@ fn sequence_from_c_result(
     // SAFETY: on success a non-null `ret_seq` is an `asprintf()`-allocated,
     // NUL-terminated C string owned by `sequence`; it remains alive until the
     // guard drops after this conversion copies its bytes.
-    let bytes = unsafe { CStr::from_ptr(sequence.0.as_ptr()) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(sequence.0.as_ptr())).to_bytes();
     Ok(Some(String::from_utf8(bytes.to_vec())?))
 }
 
@@ -167,7 +174,7 @@ pub fn osc_context_open_boot() -> Result<String, OscContextError> {
     let mut sequence = std::ptr::null_mut();
     // SAFETY: `sequence` is a live output slot for the duration of this call;
     // `osc_context_open_boot()` retains neither its address nor its contents.
-    let result = unsafe { c_osc_context_open_boot(&mut sequence) };
+    let result = unsafe_ffi!(c_osc_context_open_boot(&mut sequence));
     required_sequence(result, sequence)
 }
 
@@ -198,7 +205,7 @@ pub fn osc_context_open_vm(name: &str) -> Result<(String, Id128), OscContextErro
     let mut id = Id128::NULL;
     // SAFETY: `name` is a non-null NUL-terminated string as required by C;
     // output slots have the exact C ABI layout and outlive the call.
-    let result = unsafe { c_osc_context_open_vm(name.as_ptr(), &mut sequence, &mut id) };
+    let result = unsafe_ffi!(c_osc_context_open_vm(name.as_ptr(), &mut sequence, &mut id));
     Ok((required_sequence(result, sequence)?, id))
 }
 
@@ -210,7 +217,11 @@ pub fn osc_context_open_chpriv(target_user: &str) -> Result<(String, Id128), Osc
     let mut id = Id128::NULL;
     // SAFETY: `target_user` is non-null and NUL-terminated; output slots are
     // valid writable C ABI storage and are not retained by C.
-    let result = unsafe { c_osc_context_open_chpriv(target_user.as_ptr(), &mut sequence, &mut id) };
+    let result = unsafe_ffi!(c_osc_context_open_chpriv(
+        target_user.as_ptr(),
+        &mut sequence,
+        &mut id
+    ));
     Ok((required_sequence(result, sequence)?, id))
 }
 
@@ -270,7 +281,7 @@ pub fn osc_context_close(id: Id128) -> Result<Option<String>, OscContextError> {
     let mut sequence = std::ptr::null_mut();
     // SAFETY: `id` has the C ABI layout and `sequence` is a live output slot;
     // C retains neither and returns an owned sequence when it is non-null.
-    let result = unsafe { c_osc_context_close(id, &mut sequence) };
+    let result = unsafe_ffi!(c_osc_context_close(id, &mut sequence));
     sequence_from_c_result(result, sequence)
 }
 
@@ -280,7 +291,7 @@ pub fn osc_context_id_from_invocation_id(invocation_id: Id128) -> Result<Id128, 
     let mut id = Id128::NULL;
     // SAFETY: `id` is writable `sd_id128_t`-layout storage for the duration of
     // the call, and C retains neither it nor the by-value invocation ID.
-    let result = unsafe { c_osc_context_id_from_invocation_id(invocation_id, &mut id) };
+    let result = unsafe_ffi!(c_osc_context_id_from_invocation_id(invocation_id, &mut id));
     if result < 0 {
         return Err(io::Error::from_raw_os_error(-result).into());
     }

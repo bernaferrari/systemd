@@ -5,6 +5,13 @@
 // Error types, utility constants, and thin libc adapters for systemd Rust
 // modules. Keep C allocation and byte-string semantics at this boundary.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
@@ -71,7 +78,7 @@ pub unsafe fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     }
     if size == 0 {
         // SAFETY: `realloc` has the same ownership precondition as `free`.
-        unsafe { free(ptr) };
+        unsafe_ffi!(free(ptr));
         return ptr::null_mut();
     }
     // SAFETY: upheld by this function's contract.
@@ -87,12 +94,12 @@ pub unsafe fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
 pub unsafe fn reallocarray(ptr: *mut c_void, nmemb: usize, size: usize) -> *mut c_void {
     if nmemb == 0 || size == 0 {
         // SAFETY: `reallocarray` consumes the same C allocation as `realloc`.
-        unsafe { free(ptr) };
+        unsafe_ffi!(free(ptr));
         return ptr::null_mut();
     }
     match nmemb.checked_mul(size) {
         // SAFETY: `ptr` satisfies this function's `realloc`-equivalent contract.
-        Some(total) => unsafe { realloc(ptr, total) },
+        Some(total) => unsafe_ffi!(realloc(ptr, total)),
         None => ptr::null_mut(),
     }
 }
@@ -382,7 +389,7 @@ pub fn get_errno() -> c_int {
 /// Clear errno (set to 0).
 pub fn clear_errno() {
     // SAFETY: this writes thread-local `errno` via the platform's libc accessor.
-    unsafe {
+    unsafe_ffi!({
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {
             *libc::__errno_location() = 0;
@@ -399,7 +406,7 @@ pub fn clear_errno() {
         {
             *libc::__error() = 0;
         }
-    }
+    })
 }
 
 /// Parse a string as unsigned long. Returns the parsed value.

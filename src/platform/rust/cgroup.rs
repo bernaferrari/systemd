@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -256,7 +263,7 @@ fn chown_path(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
     };
 
     // SAFETY: c_path is a valid, NUL-terminated C string.
-    let rc = unsafe { libc::chown(c_path.as_ptr(), uid_t, gid_t) };
+    let rc = unsafe_ffi!(libc::chown(c_path.as_ptr(), uid_t, gid_t));
     if rc < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -465,12 +472,12 @@ pub fn cg_is_delegated(path: &str) -> io::Result<bool> {
 pub fn cg_is_delegated_fd(fd: RawFd) -> io::Result<bool> {
     let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: st points to valid uninitialized memory and fstat initializes it on success.
-    let rc = unsafe { libc::fstat(fd, st.as_mut_ptr()) };
+    let rc = unsafe_ffi!(libc::fstat(fd, st.as_mut_ptr()));
     if rc < 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: fstat succeeded and initialized st.
-    let st = unsafe { st.assume_init() };
+    let st = unsafe_ffi!(st.assume_init());
     Ok(st.st_uid != 0)
 }
 
@@ -584,7 +591,7 @@ mod tests {
             let previous = env::var_os(key);
             // SAFETY: with_temp_cgroup_root holds the test module's environment
             // lock for this guard's complete lifetime.
-            unsafe { env::set_var(key, value) };
+            unsafe_ffi!(env::set_var(key, value));
             Self { key, previous }
         }
     }
@@ -594,11 +601,11 @@ mod tests {
             if let Some(previous) = self.previous.take() {
                 // SAFETY: the environment lock is still held while this guard
                 // restores the value it changed.
-                unsafe { env::set_var(self.key, previous) };
+                unsafe_ffi!(env::set_var(self.key, previous));
             } else {
                 // SAFETY: the environment lock is still held while this guard
                 // restores the value it changed.
-                unsafe { env::remove_var(self.key) };
+                unsafe_ffi!(env::remove_var(self.key));
             }
         }
     }
@@ -616,7 +623,7 @@ mod tests {
         let root = TempRoot::new();
         // SAFETY: this function's caller upholds the environment contract for
         // the complete lifetime of the guard.
-        let _env = unsafe { EnvGuard::set(SYSTEMD_CGROUP_ROOT, root.path()) };
+        let _env = unsafe_ffi!(EnvGuard::set(SYSTEMD_CGROUP_ROOT, root.path()));
         f(root.path())
     }
 
@@ -649,20 +656,20 @@ mod tests {
     fn test_cg_get_path_normalizes_and_joins_root() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        unsafe {
+        unsafe_ffi!({
             with_temp_cgroup_root(|root| {
                 let root = fs::canonicalize(root).unwrap();
                 let path = cg_get_path("/foo/./bar//", Some("cgroup.procs")).unwrap();
                 assert_eq!(path, root.join("foo/bar/cgroup.procs"));
             })
-        };
+        });
     }
 
     #[test]
     fn test_cg_get_path_rejects_parent_and_nul() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        unsafe {
+        unsafe_ffi!({
             with_temp_cgroup_root(|_| {
                 assert_eq!(
                     cg_get_path("/foo/../bar", None).unwrap_err().kind(),
@@ -673,7 +680,7 @@ mod tests {
                     io::ErrorKind::InvalidInput
                 );
             })
-        };
+        });
     }
 
     #[test]
@@ -698,7 +705,7 @@ mod tests {
     fn test_cg_mask_supported_parses_known_controllers() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        unsafe {
+        unsafe_ffi!({
             with_temp_cgroup_root(|root| {
                 fs::write(
                     root.join("cgroup.controllers"),
@@ -712,14 +719,14 @@ mod tests {
                 assert!(mask & CgroupController::Rdma.mask() != 0);
                 assert!(mask & CgroupController::Freezer.mask() == 0);
             })
-        };
+        });
     }
 
     #[test]
     fn test_cg_enable_writes_expected_actions() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        unsafe {
+        unsafe_ffi!({
             with_temp_cgroup_root(|root| {
                 fs::create_dir_all(root.join("demo")).unwrap();
                 fs::write(root.join("demo/cgroup.controllers"), "cpu memory rdma\n").unwrap();
@@ -733,7 +740,7 @@ mod tests {
                     fs::read_to_string(root.join("demo/cgroup.subtree_control")).unwrap();
                 assert_eq!(contents, "+cpu\n-memory\n-rdma\n");
             })
-        };
+        });
     }
 
     #[test]
@@ -759,20 +766,20 @@ mod tests {
     fn test_cgroup_write_rejects_controller_name() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        unsafe {
+        unsafe_ffi!({
             with_temp_cgroup_root(|root| {
                 fs::create_dir_all(root.join("demo")).unwrap();
                 let err = cgroup_write("cpu", "demo", "cgroup.procs", "1");
                 assert_eq!(err.unwrap_err().kind(), io::ErrorKind::InvalidInput);
             })
-        };
+        });
     }
 
     #[test]
     fn test_cg_create_and_attach_writes_pid() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        unsafe {
+        unsafe_ffi!({
             with_temp_cgroup_root(|root| {
                 fs::create_dir_all(root.join("demo")).unwrap();
                 fs::File::create(root.join("demo/cgroup.procs")).unwrap();
@@ -780,14 +787,14 @@ mod tests {
                 let data = fs::read_to_string(root.join("demo/cgroup.procs")).unwrap();
                 assert_eq!(data, "42\n");
             })
-        };
+        });
     }
 
     #[test]
     fn test_cg_migrate_moves_pids() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        unsafe {
+        unsafe_ffi!({
             with_temp_cgroup_root(|root| {
                 fs::create_dir_all(root.join("from")).unwrap();
                 fs::create_dir_all(root.join("to")).unwrap();
@@ -799,14 +806,14 @@ mod tests {
                 let data = fs::read_to_string(root.join("to/cgroup.procs")).unwrap();
                 assert_eq!(data, "11\n12\n");
             })
-        };
+        });
     }
 
     #[test]
     fn test_cg_trim_removes_empty_subdirs() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        unsafe {
+        unsafe_ffi!({
             with_temp_cgroup_root(|root| {
                 fs::create_dir_all(root.join("parent/child/grandchild")).unwrap();
                 fs::write(root.join("parent/leaf.txt"), "x").unwrap();
@@ -814,7 +821,7 @@ mod tests {
                 assert!(!root.join("parent/child/grandchild").exists());
                 assert!(root.join("parent").exists());
             })
-        };
+        });
     }
 
     #[test]

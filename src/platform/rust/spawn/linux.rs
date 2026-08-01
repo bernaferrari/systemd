@@ -902,13 +902,13 @@ impl PreparedLaunch {
 fn cgroup_is_threaded(directory: BorrowedFd<'_>) -> Result<bool, String> {
     // SAFETY: directory is a live descriptor, the filename is a static
     // NUL-terminated component, and openat returns a new descriptor.
-    let fd = unsafe {
+    let fd = unsafe_ffi!({
         libc::openat(
             directory.as_raw_fd(),
             c"cgroup.type".as_ptr(),
             libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
         )
-    };
+    });
     if fd < 0 {
         let errno = std::io::Error::last_os_error()
             .raw_os_error()
@@ -971,13 +971,13 @@ fn child_write_all(status_fd: RawFd, bytes: &[u8]) -> Result<(), i32> {
     while written < bytes.len() {
         // SAFETY: the slice is valid for the requested length and the file
         // descriptor is used only by this child after fork.
-        let result = unsafe {
+        let result = unsafe_ffi!({
             libc::write(
                 status_fd,
                 bytes[written..].as_ptr().cast::<libc::c_void>(),
                 bytes.len() - written,
             )
-        };
+        });
         if result > 0 {
             written += result as usize;
             continue;
@@ -996,14 +996,14 @@ fn child_write_cgroup_procs(cgroup_procs_fd: RawFd) -> Result<(), i32> {
     while written < bytes.len() {
         // SAFETY: this is the async-signal-safe Linux write syscall. The
         // descriptor and static byte slice were prepared before fork.
-        let result = unsafe {
+        let result = unsafe_ffi!({
             libc::syscall(
                 libc::SYS_write,
                 cgroup_procs_fd,
                 bytes[written..].as_ptr(),
                 bytes.len() - written,
             )
-        };
+        });
         if result > 0 {
             written += result as usize;
             continue;
@@ -1050,7 +1050,7 @@ fn child_mount(
     data: Option<&CStr>,
 ) -> Result<(), i32> {
     // SAFETY: all pointers either refer to live prepared C strings or are null.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::mount(
             source.map_or(std::ptr::null(), CStr::as_ptr),
             target.as_ptr(),
@@ -1058,7 +1058,7 @@ fn child_mount(
             flags,
             data.map_or(std::ptr::null(), |value| value.as_ptr().cast()),
         )
-    };
+    });
     if result == 0 {
         Ok(())
     } else {
@@ -1087,9 +1087,9 @@ fn child_write_file(path: &CStr, content: &[u8]) -> Result<(), i32> {
     }
     let result = child_write_all(fd, content);
     // SAFETY: `fd` was opened above and is no longer used after this close.
-    unsafe {
+    unsafe_ffi!({
         libc::close(fd);
-    }
+    });
     result
 }
 
@@ -1157,9 +1157,9 @@ fn child_apply_namespace(namespace: &PreparedNamespace) -> Result<(), i32> {
         for (path, major, minor) in &namespace.device_paths {
             // SAFETY: prepared paths remain valid. Ignoring unlink failure
             // matches the previous implementation before mknod.
-            unsafe {
+            unsafe_ffi!({
                 libc::unlink(path.as_ptr());
-            }
+            });
             let mode = libc::S_IFCHR as libc::mode_t | 0o666;
             // SAFETY: the path is prepared and makedev receives bounded u32s.
             if unsafe_ffi!(libc::mknod(
@@ -1260,7 +1260,7 @@ fn child_set_capability_state(state: PreparedCapabilityState) -> Result<(), i32>
 
 fn child_raise_ambient_capabilities(mask: u64) -> Result<(), i32> {
     // SAFETY: PR_CAP_AMBIENT_CLEAR_ALL accepts zero in all remaining slots.
-    if unsafe {
+    if unsafe_ffi!({
         libc::prctl(
             libc::PR_CAP_AMBIENT,
             libc::PR_CAP_AMBIENT_CLEAR_ALL,
@@ -1268,7 +1268,7 @@ fn child_raise_ambient_capabilities(mask: u64) -> Result<(), i32> {
             0,
             0,
         )
-    } < 0
+    }) < 0
     {
         return Err(child_errno_or_invalid_argument());
     }
@@ -1277,7 +1277,7 @@ fn child_raise_ambient_capabilities(mask: u64) -> Result<(), i32> {
             continue;
         }
         // SAFETY: capability is in the representable kernel capability range.
-        if unsafe {
+        if unsafe_ffi!({
             libc::prctl(
                 libc::PR_CAP_AMBIENT,
                 libc::PR_CAP_AMBIENT_RAISE,
@@ -1285,7 +1285,7 @@ fn child_raise_ambient_capabilities(mask: u64) -> Result<(), i32> {
                 0,
                 0,
             )
-        } < 0
+        }) < 0
         {
             return Err(child_errno_or_invalid_argument());
         }
@@ -1360,14 +1360,14 @@ fn child_install_seccomp_filter(filter: &BpfProgram) -> Result<(), i32> {
     };
     // SAFETY: `program` and its already-compiled instruction slice remain live
     // through the syscall; the kernel copies both before returning.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::syscall(
             libc::SYS_seccomp,
             libc::SECCOMP_SET_MODE_FILTER,
             0,
             &program,
         )
-    };
+    });
     if result == 0 {
         Ok(())
     } else {
@@ -1398,9 +1398,9 @@ fn child_apply_exec_context(context: &PreparedExecContext) -> Result<(), i32> {
     }
     if let Some(mask) = context.umask {
         // SAFETY: raw umask accepts any mode_t and cannot fail.
-        unsafe {
+        unsafe_ffi!({
             libc::syscall(libc::SYS_umask, mask);
-        }
+        })
     }
     for (resource, limit) in &context.limits {
         // SAFETY: `limit` remains live throughout setrlimit.
@@ -1411,13 +1411,13 @@ fn child_apply_exec_context(context: &PreparedExecContext) -> Result<(), i32> {
     if !context.supplementary_groups.is_empty() {
         // SAFETY: the slice is live and uses kernel gid_t elements. A direct
         // syscall avoids glibc's multi-thread setxid coordination after fork.
-        if unsafe {
+        if unsafe_ffi!({
             libc::syscall(
                 libc::SYS_setgroups,
                 context.supplementary_groups.len(),
                 context.supplementary_groups.as_ptr(),
             )
-        } < 0
+        }) < 0
         {
             return Err(child_errno_or_invalid_argument());
         }
@@ -1781,13 +1781,13 @@ fn spawn_service_inner(
             for executable in &launch.executable_candidates {
                 // SAFETY: executable, argv, and envp point into allocations
                 // owned by `launch` and all pointer arrays are NUL terminated.
-                unsafe {
+                unsafe_ffi!({
                     libc::execve(
                         executable.as_ptr(),
                         launch.argv.as_ptr(),
                         child_scratch.pointers.as_ptr(),
                     );
-                }
+                });
                 exec_errno = child_errno_or_invalid_argument();
                 match exec_errno {
                     libc::EACCES => saw_access_denied = true,
@@ -1817,7 +1817,7 @@ mod tests {
         // SAFETY: sigemptyset initializes the action mask. `previous` is
         // initialized by the successful sigaction call before it is returned,
         // and SIGPIPE has a mutable disposition on Linux.
-        unsafe {
+        unsafe_ffi!({
             let mut mask = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
             assert_eq!(libc::sigemptyset(mask.as_mut_ptr()), 0);
             let action = libc::sigaction {
@@ -1832,7 +1832,7 @@ mod tests {
                 0
             );
             previous.assume_init()
-        }
+        })
     }
 
     fn restore_sigpipe_after_test(previous: &libc::sigaction) {

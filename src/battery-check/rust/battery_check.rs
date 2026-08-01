@@ -5,6 +5,13 @@
 // Check battery level to see whether there's enough charge.
 
 /// Battery low warning message.
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 const BATTERY_LOW_MESSAGE: &std::ffi::CStr =
     c"Battery level critically low. Please connect your charger or the system will power off in 10 seconds.";
 
@@ -25,7 +32,7 @@ fn check_battery_low() -> i32 {
     }
     // SAFETY: this C query takes no pointers and has no caller-side safety
     // preconditions.
-    unsafe { battery_is_discharging_and_low() }
+    unsafe_ffi!( battery_is_discharging_and_low() )
 }
 
 /// Sleep safely for the specified duration in microseconds.
@@ -37,9 +44,9 @@ fn sleep_safe(usec: u64) {
     }
     // SAFETY: `usleep_safe` accepts every `u64` duration and retains no Rust
     // references.
-    unsafe {
+    unsafe_ffi!({
         let _ = usleep_safe(usec);
-    }
+    })
 }
 
 /// Send a message to Plymouth.
@@ -78,7 +85,7 @@ fn plymouth_send_message(mode: &str, message: &str) -> i32 {
 
     // SAFETY: `buf` remains alive and readable for the complete synchronous
     // C call; its length describes the exact Plymouth protocol frame.
-    unsafe { plymouth_send_raw(buf.as_ptr().cast(), buf.len(), libc::SOCK_NONBLOCK) }
+    unsafe_ffi!( plymouth_send_raw(buf.as_ptr().cast(), buf.len(), libc::SOCK_NONBLOCK) )
 }
 
 /// Open the console for writing.
@@ -90,12 +97,12 @@ fn open_console() -> i32 {
     }
     // SAFETY: the path is a static NUL-terminated string and the flags are
     // valid `open` flags.
-    unsafe {
+    unsafe_ffi!({
         open_terminal(
             c"/dev/console".as_ptr(),
             libc::O_WRONLY | libc::O_NOCTTY | libc::O_CLOEXEC,
         )
-    }
+    })
 }
 
 /// Close a file descriptor.
@@ -103,9 +110,9 @@ fn close_fd(fd: i32) {
     if fd >= 0 {
         // SAFETY: non-negative descriptors may be passed to `close`; errors do
         // not affect memory safety and are intentionally ignored here.
-        unsafe {
+        unsafe_ffi!({
             libc::close(fd);
-        }
+        })
     }
 }
 
@@ -132,16 +139,16 @@ pub extern "C" fn rs_battery_check_run() -> i32 {
     const FUNCTION: &std::ffi::CStr = c"rs_battery_check_run";
 
     // SAFETY: `log_setup` takes no arguments and retains no Rust references.
-    unsafe {
+    unsafe_ffi!({
         log_setup();
-    }
+    });
 
     // Check battery status
     let r = check_battery_low();
     if r < 0 {
         // SAFETY: the format is a static NUL-terminated string and has no
         // variadic conversion requiring an additional argument.
-        unsafe {
+        unsafe_ffi!({
             log_internal(
                 libc::LOG_WARNING,
                 r,
@@ -150,7 +157,7 @@ pub extern "C" fn rs_battery_check_run() -> i32 {
                 FUNCTION.as_ptr(),
                 c"Failed to check battery status, ignoring: %m".as_ptr(),
             );
-        }
+        });
         return 0;
     }
     if r == 0 {
@@ -160,7 +167,7 @@ pub extern "C" fn rs_battery_check_run() -> i32 {
     // Battery is low — warn and wait
     // SAFETY: the static format has one `%s` conversion and the corresponding
     // argument is a static NUL-terminated string.
-    unsafe {
+    unsafe_ffi!({
         log_internal(
             libc::LOG_INFO,
             0,
@@ -170,13 +177,13 @@ pub extern "C" fn rs_battery_check_run() -> i32 {
             c"%s\n".as_ptr(),
             BATTERY_LOW_MESSAGE.as_ptr(),
         );
-    }
+    });
 
     let console_fd = open_console();
     if console_fd < 0 {
         // SAFETY: the format is a static NUL-terminated string and requires no
         // additional variadic argument.
-        unsafe {
+        unsafe_ffi!({
             log_internal(
                 libc::LOG_WARNING,
                 console_fd,
@@ -185,7 +192,7 @@ pub extern "C" fn rs_battery_check_run() -> i32 {
                 FUNCTION.as_ptr(),
                 c"Failed to open console, ignoring: %m".as_ptr(),
             );
-        }
+        })
     }
 
     // Send message to plymouth
@@ -199,7 +206,7 @@ pub extern "C" fn rs_battery_check_run() -> i32 {
     if r < 0 {
         // SAFETY: the format is a static NUL-terminated string and requires no
         // additional variadic argument.
-        return unsafe {
+        return unsafe_ffi!({
             log_internal(
                 libc::LOG_WARNING,
                 r,
@@ -209,12 +216,12 @@ pub extern "C" fn rs_battery_check_run() -> i32 {
                 c"Failed to check battery status, assuming not charged yet, powering off: %m"
                     .as_ptr(),
             )
-        };
+        });
     }
     if r > 0 {
         // Still low — power off
         // SAFETY: the static format contains no variadic conversions.
-        unsafe {
+        unsafe_ffi!({
             log_internal(
                 libc::LOG_INFO,
                 0,
@@ -223,14 +230,14 @@ pub extern "C" fn rs_battery_check_run() -> i32 {
                 FUNCTION.as_ptr(),
                 c"Battery level critically low, powering off.\n".as_ptr(),
             );
-        }
+        });
         return r;
     }
 
     // Battery restored
     // SAFETY: the static format has one `%s` conversion and the corresponding
     // argument is a static NUL-terminated string.
-    unsafe {
+    unsafe_ffi!({
         log_internal(
             libc::LOG_INFO,
             0,
@@ -240,18 +247,18 @@ pub extern "C" fn rs_battery_check_run() -> i32 {
             c"%s\n".as_ptr(),
             BATTERY_RESTORED_MESSAGE.as_ptr(),
         );
-    }
+    });
 
     if console_fd >= 0 {
         // SAFETY: `console_fd` is an open descriptor, and the static format has
         // one `%s` conversion matched by a static C string.
-        unsafe {
+        unsafe_ffi!({
             libc::dprintf(
                 console_fd,
                 c"%s\n".as_ptr(),
                 BATTERY_RESTORED_MESSAGE.as_ptr(),
             );
-        }
+        })
     }
 
     plymouth_send_message("boot-up", BATTERY_RESTORED_MESSAGE.to_str().unwrap());

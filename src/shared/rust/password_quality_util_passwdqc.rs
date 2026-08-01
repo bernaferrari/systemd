@@ -15,6 +15,13 @@
 // - `check_password_quality()` → strength validation with username awareness
 // - `suggest_passwords()` → random password generation
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::fmt;
 use std::ptr::NonNull;
@@ -334,7 +341,7 @@ unsafe fn resolve_symbol<T>(
     // SAFETY: the caller establishes that `T` is this symbol's exact function
     // pointer type. All supported systemd targets represent data and function
     // pointers at the same width required by the POSIX dlsym contract.
-    Ok(unsafe { std::mem::transmute_copy(&raw) })
+    Ok(unsafe_ffi!(std::mem::transmute_copy(&raw)))
 }
 
 // ── Internal: allocate passwdqc context ───────────────────────────────────
@@ -350,7 +357,7 @@ impl PasswdqcContext {
     fn qc(&self) -> &PasswdqcParamsQc {
         // SAFETY: `params` remains allocated for the context lifetime and
         // `qc` is an inline field of the proven public C layout.
-        unsafe { &self.params.as_ref().qc }
+        unsafe_ffi!(&self.params.as_ref().qc)
     }
 }
 
@@ -414,7 +421,7 @@ fn pwqc_allocate_context() -> Result<PasswdqcContext, PasswdqcError> {
     if !load_reason.is_null() {
         // SAFETY: passwdqc returns the diagnostic through malloc-owned
         // storage, matching the C caller's `_cleanup_free_`.
-        unsafe { libc::free(load_reason.cast()) };
+        unsafe_ffi!(libc::free(load_reason.cast()));
     }
 
     Ok(context)
@@ -633,7 +640,7 @@ mod tests {
     fn test_passwdqc_qc_is_inline() {
         // SAFETY: every field is an integer or raw pointer, for which the
         // all-zero bit pattern is valid.
-        let params: PasswdqcParams = unsafe { std::mem::zeroed() };
+        let params: PasswdqcParams = unsafe_ffi!(std::mem::zeroed());
 
         assert_eq!(
             std::ptr::addr_of!(params.qc).cast::<u8>(),

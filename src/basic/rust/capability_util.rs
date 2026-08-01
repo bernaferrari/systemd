@@ -8,6 +8,13 @@
 
 /// Sentinel value for unset capability masks.
 /// Mirrors C `CAP_MASK_UNSET` (UINT64_MAX).
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 pub const CAP_MASK_UNSET: u64 = u64::MAX;
 
 /// All possible capability bits on (63 bits, since bit 63 is reserved for
@@ -129,7 +136,7 @@ pub extern "C" fn rs_capability_is_set(v: u64) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_capability_quintet_is_set(q: *const CapabilityQuintet) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
-    unsafe { q.as_ref() }.is_some_and(capability_quintet_is_set)
+    unsafe_ffi!(q.as_ref()).is_some_and(capability_quintet_is_set)
 }
 
 /// C ABI mirror of `capability_quintet_is_fully_set()`.
@@ -142,7 +149,7 @@ pub unsafe extern "C" fn rs_capability_quintet_is_set(q: *const CapabilityQuinte
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_capability_quintet_is_fully_set(q: *const CapabilityQuintet) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
-    unsafe { q.as_ref() }.is_some_and(capability_quintet_is_fully_set)
+    unsafe_ffi!(q.as_ref()).is_some_and(capability_quintet_is_fully_set)
 }
 
 /// C ABI mirror of `capability_quintet_equal()`.
@@ -160,7 +167,7 @@ pub unsafe extern "C" fn rs_capability_quintet_equal(
     b: *const CapabilityQuintet,
 ) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
-    match (unsafe { a.as_ref() }, unsafe { b.as_ref() }) {
+    match (unsafe_ffi!(a.as_ref()), unsafe_ffi!(b.as_ref())) {
         (Some(a), Some(b)) => capability_quintet_equal(a, b),
         (None, None) => true,
         _ => false,

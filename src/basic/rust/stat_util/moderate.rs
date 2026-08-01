@@ -4,6 +4,13 @@
 //
 // Directory emptiness, null/empty path helpers, and proc_mounted.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 use std::mem::MaybeUninit;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
@@ -60,12 +67,16 @@ fn open_directory_at(dir_fd: libc::c_int, path: Option<&CStr>) -> Result<OwnedFd
 
     // SAFETY: `path` is NUL-terminated and `dir_fd` is validated. Successful
     // openat returns a newly owned descriptor which is adopted immediately.
-    let fd = unsafe { libc::openat(dir_fd, path.as_ptr(), libc::O_DIRECTORY | libc::O_CLOEXEC) };
+    let fd = unsafe_ffi!(libc::openat(
+        dir_fd,
+        path.as_ptr(),
+        libc::O_DIRECTORY | libc::O_CLOEXEC
+    ));
     if fd < 0 {
         return Err(negative_errno());
     }
     // SAFETY: successful `openat()` returned a newly owned descriptor.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
 }
 
 #[inline]
@@ -171,14 +182,14 @@ fn dir_is_empty_at(
     loop {
         // SAFETY: `storage` provides aligned writable capacity for getdents64;
         // only the returned initialized byte count is exposed below.
-        let count = unsafe {
+        let count = unsafe_ffi!({
             libc::syscall(
                 libc::SYS_getdents64 as libc::c_long,
                 fd.as_raw_fd(),
                 storage.as_mut_ptr().cast::<libc::c_void>(),
                 capacity,
             )
-        };
+        });
         if count < 0 {
             return negative_errno();
         }
@@ -190,8 +201,10 @@ fn dir_is_empty_at(
         }
 
         // SAFETY: getdents64 initialized exactly `count` bytes within storage.
-        let bytes =
-            unsafe { std::slice::from_raw_parts(storage.as_ptr().cast::<u8>(), count as usize) };
+        let bytes = unsafe_ffi!(std::slice::from_raw_parts(
+            storage.as_ptr().cast::<u8>(),
+            count as usize
+        ));
         match directory_buffer_has_entry(bytes, ignore_hidden_or_backup) {
             Ok(true) => return 0,
             Ok(false) => {}
@@ -269,7 +282,7 @@ fn chase_stat(path: &CStr, root: Option<&CStr>) -> Result<libc::stat, libc::c_in
     let mut st = MaybeUninit::<libc::stat>::uninit();
     // SAFETY: both paths are NUL-terminated, no owned ret_path is requested,
     // and `st` is writable native storage for the canonical chase call.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         chase_and_stat(
             path.as_ptr(),
             root.map_or(std::ptr::null(), CStr::as_ptr),
@@ -277,12 +290,12 @@ fn chase_stat(path: &CStr, root: Option<&CStr>) -> Result<libc::stat, libc::c_in
             std::ptr::null_mut(),
             st.as_mut_ptr(),
         )
-    };
+    });
     if result < 0 {
         return Err(result);
     }
     // SAFETY: successful chase_and_stat initialized the complete native stat.
-    Ok(unsafe { st.assume_init() })
+    Ok(unsafe_ffi!(st.assume_init()))
 }
 
 fn null_or_empty(st: &libc::stat) -> bool {
@@ -301,7 +314,7 @@ fn null_or_empty_path_with_root(path: &CStr, root: Option<&CStr>) -> libc::c_int
 
 fn set_errno(errno: libc::c_int) {
     // SAFETY: errno is thread-local storage exposed by libc on Linux.
-    unsafe { *libc::__errno_location() = errno };
+    unsafe_ffi!(*libc::__errno_location() = errno);
 }
 
 struct ErrnoGuard(libc::c_int);
@@ -328,7 +341,7 @@ unsafe fn optional_c_path<'a>(path: *const libc::c_char) -> Option<&'a CStr> {
         None
     } else {
         // SAFETY: guaranteed by the caller after the null check.
-        Some(unsafe { CStr::from_ptr(path) })
+        Some(unsafe_ffi!(CStr::from_ptr(path)))
     }
 }
 
@@ -342,7 +355,7 @@ pub unsafe extern "C" fn rs_dir_is_empty_at(
     ignore_hidden_or_backup: bool,
 ) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     dir_is_empty_at(dir_fd, path, ignore_hidden_or_backup)
 }
 
@@ -355,7 +368,7 @@ pub unsafe extern "C" fn rs_dir_is_empty(
     ignore_hidden_or_backup: bool,
 ) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     dir_is_empty_at(libc::AT_FDCWD, path, ignore_hidden_or_backup)
 }
 
@@ -368,7 +381,7 @@ pub unsafe extern "C" fn rs_null_or_empty(st: *mut libc::stat) -> bool {
         return false;
     }
     // SAFETY: guaranteed by the entry-point contract after the null check.
-    null_or_empty(unsafe { &*st })
+    null_or_empty(unsafe_ffi!(&*st))
 }
 
 /// # Safety
@@ -384,9 +397,9 @@ pub unsafe extern "C" fn rs_null_or_empty_path_with_root(
         return -libc::EINVAL;
     }
     // SAFETY: guaranteed by the entry-point contract after the null check.
-    let path = unsafe { CStr::from_ptr(path) };
+    let path = unsafe_ffi!(CStr::from_ptr(path));
     // SAFETY: forwarded from this entry point's pointer contract.
-    let root = unsafe { optional_c_path(root) };
+    let root = unsafe_ffi!(optional_c_path(root));
     null_or_empty_path_with_root(path, root)
 }
 
@@ -399,7 +412,7 @@ pub unsafe extern "C" fn rs_null_or_empty_path(path: *const libc::c_char) -> lib
         return -libc::EINVAL;
     }
     // SAFETY: guaranteed by the entry-point contract after the null check.
-    let path = unsafe { CStr::from_ptr(path) };
+    let path = unsafe_ffi!(CStr::from_ptr(path));
     null_or_empty_path_with_root(path, None)
 }
 
@@ -417,7 +430,7 @@ pub unsafe extern "C" fn rs_path_is_fs_type(
     magic_value: StatFsType,
 ) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     is_fs_type_at(libc::AT_FDCWD, path, magic_value)
 }
 

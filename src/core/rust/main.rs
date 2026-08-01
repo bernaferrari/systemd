@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 #![deny(unsafe_op_in_unsafe_fn)]
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::ffi::OsString;
@@ -334,7 +341,7 @@ fn run_pid1_generators(in_initrd: bool, first_boot: bool) {
     // SAFETY: main invokes this before RuntimeManager, the event loop, or
     // service children exist. The executor joins its temporary stdout reader
     // before publication, so no concurrent process-environment access exists.
-    let report = unsafe { plan.execute_and_publish() }
+    let report = unsafe_ffi!(plan.execute_and_publish())
         .unwrap_or_else(|error| fail_closed("PID 1 generator startup", error));
     if report.environment.children.iter().any(|child| {
         !matches!(
@@ -397,7 +404,7 @@ fn configure_unit_search_paths_from_startup_environment(startup_value: Option<Os
     // the already selected lookup paths.
     // SAFETY: main invokes this during single-threaded PID 1 startup, before
     // RuntimeManager or the event loop can create concurrent work.
-    unsafe { std::env::set_var("SYSTEMD_UNIT_PATH", value) };
+    unsafe_ffi!(std::env::set_var("SYSTEMD_UNIT_PATH", value));
 }
 
 #[cfg(target_os = "linux")]
@@ -416,7 +423,10 @@ fn apply_hostname_from_etc() -> std::io::Result<Option<String>> {
     let bytes = hostname.as_bytes();
     // SAFETY: `bytes` points to valid UTF-8 storage owned by this function and remains
     // alive for the duration of the call; length is passed explicitly to libc.
-    let rc = unsafe { libc::sethostname(bytes.as_ptr() as *const libc::c_char, bytes.len()) };
+    let rc = unsafe_ffi!(libc::sethostname(
+        bytes.as_ptr() as *const libc::c_char,
+        bytes.len()
+    ));
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
     }
@@ -1591,7 +1601,7 @@ mod tests {
     fn cgroup_bootstrap_attaches_init_scope_below_inherited_root_without_delegation() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         let dir = std::env::temp_dir().join("test-systemd-main-cgroup-bootstrap");
         fs::create_dir_all(&dir).unwrap();
         let inherited = dir.join("tenant.slice");

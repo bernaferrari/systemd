@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/libsystemd/sd-journal/journal-vacuum.c
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::cmp::Ordering;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -62,7 +69,7 @@ fn header_n_entries_offset() -> usize {
     let header = std::mem::MaybeUninit::<Header>::uninit();
     let base = header.as_ptr();
     // SAFETY: no read occurs, we only compute field offset from an uninitialized repr(C) value.
-    let field = unsafe { std::ptr::addr_of!((*base).n_entries) as usize };
+    let field = unsafe_ffi!(std::ptr::addr_of!((*base).n_entries) as usize);
     field - (base as usize)
 }
 

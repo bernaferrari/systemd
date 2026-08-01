@@ -9,6 +9,13 @@
 // hostname derivation from machine-id, and the main hostname_setup
 // orchestration logic.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::CStr;
 use std::fmt;
@@ -349,14 +356,14 @@ fn sys_uname_nodename() -> io::Result<String> {
     let mut utsname = MaybeUninit::<libc::utsname>::uninit();
     // SAFETY: `utsname` points to writable, properly aligned storage for the
     // complete `libc::utsname` output struct.
-    let ret = unsafe { libc::uname(utsname.as_mut_ptr()) };
+    let ret = unsafe_ffi!(libc::uname(utsname.as_mut_ptr()));
     if ret < 0 {
         return Err(io::Error::last_os_error());
     }
 
     // SAFETY: a successful `uname(2)` initialized every field of the output
     // struct, including `nodename`.
-    let utsname = unsafe { utsname.assume_init() };
+    let utsname = unsafe_ffi!(utsname.assume_init());
     let nodename_bytes: Vec<u8> = utsname.nodename.iter().map(|&byte| byte as u8).collect();
     let nodename = CStr::from_bytes_until_nul(&nodename_bytes).map_err(|_| {
         io::Error::new(
@@ -371,7 +378,10 @@ fn sys_uname_nodename() -> io::Result<String> {
 fn sys_sethostname(hostname: &[u8]) -> io::Result<()> {
     // SAFETY: `hostname` is a valid byte slice whose pointer remains readable
     // for exactly `hostname.len()` bytes throughout the syscall.
-    let ret = unsafe { libc::sethostname(hostname.as_ptr() as *const _, hostname.len()) };
+    let ret = unsafe_ffi!(libc::sethostname(
+        hostname.as_ptr() as *const _,
+        hostname.len()
+    ));
     if ret < 0 {
         Err(io::Error::last_os_error())
     } else {

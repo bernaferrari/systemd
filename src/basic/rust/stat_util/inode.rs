@@ -4,6 +4,13 @@
 //
 // Inode type names, chattr predicate, and inode comparisons.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::cmp::Ordering;
 use std::ffi::{CStr, c_char};
 
@@ -193,7 +200,7 @@ pub unsafe extern "C" fn rs_inode_type_from_string(name: *const c_char) -> libc:
     }
 
     // SAFETY: guaranteed by the entry-point contract after the null check.
-    inode_type_from_bytes(unsafe { CStr::from_ptr(name) }.to_bytes())
+    inode_type_from_bytes(unsafe_ffi!(CStr::from_ptr(name)).to_bytes())
 }
 
 /// C ABI mirror of `inode_compare_func()`.
@@ -208,7 +215,7 @@ pub unsafe extern "C" fn rs_inode_compare_func(
     b: *const libc::stat,
 ) -> libc::c_int {
     // SAFETY: the entry-point contract permits null or a live native stat.
-    let (Some(a), Some(b)) = (unsafe { a.as_ref() }, unsafe { b.as_ref() }) else {
+    let (Some(a), Some(b)) = (unsafe_ffi!(a.as_ref()), unsafe_ffi!(b.as_ref())) else {
         return -libc::EINVAL;
     };
     inode_compare(a, b)
@@ -226,7 +233,7 @@ pub unsafe extern "C" fn rs_inode_unmodified_compare_func(
     b: *const libc::stat,
 ) -> libc::c_int {
     // SAFETY: the entry-point contract permits null or a live native stat.
-    let (Some(a), Some(b)) = (unsafe { a.as_ref() }, unsafe { b.as_ref() }) else {
+    let (Some(a), Some(b)) = (unsafe_ffi!(a.as_ref()), unsafe_ffi!(b.as_ref())) else {
         return -libc::EINVAL;
     };
     inode_unmodified_compare(a, b)
@@ -241,7 +248,7 @@ pub unsafe extern "C" fn rs_inode_unmodified_compare_func(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_stat_inode_same(a: *const libc::stat, b: *const libc::stat) -> bool {
     // SAFETY: the entry-point contract permits null or a live native stat.
-    let (Some(a), Some(b)) = (unsafe { a.as_ref() }, unsafe { b.as_ref() }) else {
+    let (Some(a), Some(b)) = (unsafe_ffi!(a.as_ref()), unsafe_ffi!(b.as_ref())) else {
         return false;
     };
     stat_inode_same(a, b)
@@ -259,7 +266,7 @@ pub unsafe extern "C" fn rs_stat_inode_unmodified(
     b: *const libc::stat,
 ) -> bool {
     // SAFETY: the entry-point contract permits null or a live native stat.
-    let (Some(a), Some(b)) = (unsafe { a.as_ref() }, unsafe { b.as_ref() }) else {
+    let (Some(a), Some(b)) = (unsafe_ffi!(a.as_ref()), unsafe_ffi!(b.as_ref())) else {
         return false;
     };
     stat_inode_unmodified(a, b)
@@ -275,7 +282,7 @@ pub unsafe extern "C" fn rs_stat_inode_unmodified(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_statx_inode_same(a: *const libc::statx, b: *const libc::statx) -> bool {
     // SAFETY: the entry-point contract permits null or a live native statx.
-    let (Some(a), Some(b)) = (unsafe { a.as_ref() }, unsafe { b.as_ref() }) else {
+    let (Some(a), Some(b)) = (unsafe_ffi!(a.as_ref()), unsafe_ffi!(b.as_ref())) else {
         return false;
     };
     statx_inode_same(a, b)
@@ -293,7 +300,7 @@ pub unsafe extern "C" fn rs_statx_mount_same(
     b: *const libc::statx,
 ) -> libc::c_int {
     // SAFETY: the entry-point contract permits null or a live native statx.
-    let (Some(a), Some(b)) = (unsafe { a.as_ref() }, unsafe { b.as_ref() }) else {
+    let (Some(a), Some(b)) = (unsafe_ffi!(a.as_ref()), unsafe_ffi!(b.as_ref())) else {
         return 0;
     };
     statx_mount_same(a, b)

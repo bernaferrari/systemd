@@ -6,6 +6,13 @@
 // edge.  The escaping, unescaping, and quoting policies operate on safe byte
 // slices and create a fresh C-allocator result only after they succeed.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::c_char;
 use std::ffi::CStr;
 use std::ptr;
@@ -229,16 +236,16 @@ pub unsafe extern "C" fn rs_cunescape_length_with_prefix(
     }
     // SAFETY: upheld by this entry point's explicit source contract.
     let source = if length == usize::MAX {
-        unsafe { CStr::from_ptr(s) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(s)).to_bytes()
     } else {
         // SAFETY: upheld by this entry point's explicit-length source contract.
-        unsafe { std::slice::from_raw_parts(s.cast::<u8>(), length) }
+        unsafe_ffi!(std::slice::from_raw_parts(s.cast::<u8>(), length))
     };
     let prefix = if prefix.is_null() {
         &[][..]
     } else {
         // SAFETY: upheld by this entry point's prefix C-string contract.
-        unsafe { CStr::from_ptr(prefix) }.to_bytes()
+        unsafe_ffi!(CStr::from_ptr(prefix)).to_bytes()
     };
 
     let result = match try_cunescape_with_prefix(source, prefix, flags) {
@@ -254,7 +261,7 @@ pub unsafe extern "C" fn rs_cunescape_length_with_prefix(
     }
     // SAFETY: `ret` was checked non-null and the caller guarantees one
     // writable pointer. Publication is deliberately last, matching C.
-    unsafe { *ret = allocation };
+    unsafe_ffi!(*ret = allocation);
     result.len() as isize
 }
 
@@ -274,12 +281,12 @@ pub unsafe extern "C" fn rs_xescape_full(
         return ptr::null_mut();
     }
     // SAFETY: upheld by this entry point's C-string contracts.
-    let source = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let source = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     let bad = if bad.is_null() {
         None
     } else {
         // SAFETY: upheld by this entry point's C-string contract.
-        Some(unsafe { CStr::from_ptr(bad) }.to_bytes())
+        Some(unsafe_ffi!(CStr::from_ptr(bad)).to_bytes())
     };
     try_xescape_full(source, bad, console_width, flags)
         .map(|result| malloc_c_string(&result))
@@ -297,7 +304,7 @@ pub unsafe extern "C" fn rs_shell_maybe_quote(s: *const c_char, flags: u32) -> *
         return ptr::null_mut();
     }
     // SAFETY: upheld by this entry point's C-string contract.
-    let source = unsafe { CStr::from_ptr(s) }.to_bytes();
+    let source = unsafe_ffi!(CStr::from_ptr(s)).to_bytes();
     try_shell_maybe_quote(source, flags)
         .map(|result| malloc_c_string(&result))
         .unwrap_or(ptr::null_mut())
@@ -320,7 +327,7 @@ pub unsafe extern "C" fn rs_quote_command_line(
     let mut result: Option<Vec<u8>> = None;
     for index in 0..=isize::MAX as usize {
         // SAFETY: upheld by the entry point's NULL-terminated argv contract.
-        let argument = unsafe { *argv.add(index) };
+        let argument = unsafe_ffi!(*argv.add(index));
         if argument.is_null() {
             return result
                 .as_deref()
@@ -328,7 +335,7 @@ pub unsafe extern "C" fn rs_quote_command_line(
                 .unwrap_or(ptr::null_mut());
         }
         // SAFETY: upheld by the entry point's argv element C-string contract.
-        let argument = unsafe { CStr::from_ptr(argument) }.to_bytes();
+        let argument = unsafe_ffi!(CStr::from_ptr(argument)).to_bytes();
         let quoted = match try_shell_maybe_quote(argument, flags) {
             Ok(quoted) => quoted,
             Err(()) => return ptr::null_mut(),

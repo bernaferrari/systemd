@@ -4,6 +4,13 @@
 //
 // Device node name encoding: allow_listed_char_for_devnode, encode_devnode_name.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::Errno;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
@@ -163,7 +170,7 @@ pub unsafe extern "C" fn rs_allow_listed_char_for_devnode(
         None
     } else {
         // SAFETY: upheld by this function's caller contract.
-        Some(unsafe { CStr::from_ptr(additional) }.to_bytes())
+        Some(unsafe_ffi!(CStr::from_ptr(additional)).to_bytes())
     };
 
     if allow_listed_char_for_devnode(c as u8, additional) {
@@ -190,10 +197,10 @@ pub unsafe extern "C" fn rs_encode_devnode_name(
     }
 
     // SAFETY: the caller supplies a readable NUL-terminated input string.
-    let input = unsafe { CStr::from_ptr(input) }.to_bytes();
+    let input = unsafe_ffi!(CStr::from_ptr(input)).to_bytes();
     // SAFETY: the caller supplies a non-NULL output range of exactly `len`
     // bytes, disjoint from the live input range.
-    let output = unsafe { slice::from_raw_parts_mut(output.cast::<u8>(), len) };
+    let output = unsafe_ffi!(slice::from_raw_parts_mut(output.cast::<u8>(), len));
 
     match encode_devnode_name(input, output) {
         Ok(_) => 0,
@@ -293,12 +300,16 @@ mod tests {
 
         // SAFETY: null inputs are explicitly accepted and rejected before dereference.
         assert_eq!(
-            unsafe { rs_encode_devnode_name(ptr::null(), output.as_mut_ptr(), output.len()) },
+            unsafe_ffi!(rs_encode_devnode_name(
+                ptr::null(),
+                output.as_mut_ptr(),
+                output.len()
+            )),
             Errno::EINVAL.to_neg_errno()
         );
         // SAFETY: null output is explicitly accepted and rejected before dereference.
         assert_eq!(
-            unsafe { rs_encode_devnode_name(c"".as_ptr(), ptr::null_mut(), 0) },
+            unsafe_ffi!(rs_encode_devnode_name(c"".as_ptr(), ptr::null_mut(), 0)),
             Errno::EINVAL.to_neg_errno()
         );
     }

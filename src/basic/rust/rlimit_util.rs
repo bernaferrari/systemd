@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/basic/rlimit-util.c
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::{Errno, malloc};
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::{c_char, c_int, rlim_t, rlimit};
@@ -42,7 +49,10 @@ fn parse_u64_systemd(value: &str) -> Result<u64, Errno> {
     let mut parsed = 0;
     // SAFETY: `value` is a live NUL-terminated string and `parsed` is writable
     // for the duration of the canonical Rust safe_atou64 implementation.
-    let result = unsafe { crate::parse_util::rs_safe_atou64(value.as_ptr(), &mut parsed) };
+    let result = unsafe_ffi!(crate::parse_util::rs_safe_atou64(
+        value.as_ptr(),
+        &mut parsed
+    ));
     if result < 0 {
         return Err(Errno::from_raw(-result).unwrap_or(Errno::EINVAL));
     }
@@ -88,7 +98,11 @@ pub fn rlimit_parse_size(value: &str) -> Result<u64, Errno> {
     let c_value = CString::new(value).map_err(|_| Errno::EINVAL)?;
     let mut parsed = 0_u64;
     // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-    let r = unsafe { crate::parse_util::rs_parse_size(c_value.as_ptr(), 1024, &mut parsed) };
+    let r = unsafe_ffi!(crate::parse_util::rs_parse_size(
+        c_value.as_ptr(),
+        1024,
+        &mut parsed
+    ));
     if r < 0 {
         return Err(Errno::from_raw(-r).unwrap_or(Errno::EINVAL));
     }
@@ -146,7 +160,7 @@ unsafe fn c_input<'a>(value: *const c_char) -> Result<&'a str, Errno> {
 
     // SAFETY: callers of the C ABI wrappers must provide a live NUL-terminated
     // string; the returned borrow is consumed before the wrapper returns.
-    unsafe { CStr::from_ptr(value) }
+    unsafe_ffi!(CStr::from_ptr(value))
         .to_str()
         .map_err(|_| Errno::EINVAL)
 }
@@ -162,14 +176,14 @@ unsafe fn write_parsed(
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: inherited from this helper's C-string contract.
-    let parsed = match unsafe { c_input(value) }.and_then(parser) {
+    let parsed = match unsafe_ffi!(c_input(value)).and_then(parser) {
         Ok(parsed) => parsed,
         Err(error) => return error.to_neg_errno(),
     };
 
     // SAFETY: NULL was rejected above and the C ABI requires `ret` to point to
     // writable `rlim_t` storage. Output is written only after successful parse.
-    unsafe { *ret = parsed as rlim_t };
+    unsafe_ffi!(*ret = parsed as rlim_t);
     0
 }
 
@@ -184,7 +198,11 @@ pub extern "C" fn rs_rlimit_to_string(resource: c_int) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_rlimit_from_string(value: *const c_char) -> c_int {
     // SAFETY: this forwards the entry point's documented C-string contract.
-    unsafe { ffi_string_table::from_ptr(RLIMIT_TABLE, value, Errno::EINVAL.to_neg_errno()) }
+    unsafe_ffi!(ffi_string_table::from_ptr(
+        RLIMIT_TABLE,
+        value,
+        Errno::EINVAL.to_neg_errno()
+    ))
 }
 
 /// # Safety
@@ -193,7 +211,7 @@ pub unsafe extern "C" fn rs_rlimit_from_string(value: *const c_char) -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_rlimit_from_string_harder(value: *const c_char) -> c_int {
     // SAFETY: this forwards the entry point's C-string contract.
-    match unsafe { c_input(value) }.and_then(rlimit_from_string_harder) {
+    match unsafe_ffi!(c_input(value)).and_then(rlimit_from_string_harder) {
         Ok(resource) => resource,
         Err(error) => error.to_neg_errno(),
     }
@@ -205,7 +223,7 @@ pub unsafe extern "C" fn rs_rlimit_from_string_harder(value: *const c_char) -> c
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_rlimit_parse_nice(value: *const c_char, ret: *mut rlim_t) -> c_int {
     // SAFETY: this forwards the entry point's C-string/output contracts.
-    unsafe { write_parsed(value, ret, rlimit_parse_nice) }
+    unsafe_ffi!(write_parsed(value, ret, rlimit_parse_nice))
 }
 
 /// # Safety
@@ -214,7 +232,7 @@ pub unsafe extern "C" fn rs_rlimit_parse_nice(value: *const c_char, ret: *mut rl
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_rlimit_parse_u64(value: *const c_char, ret: *mut rlim_t) -> c_int {
     // SAFETY: this forwards the entry point's C-string/output contracts.
-    unsafe { write_parsed(value, ret, rlimit_parse_u64) }
+    unsafe_ffi!(write_parsed(value, ret, rlimit_parse_u64))
 }
 
 /// # Safety
@@ -223,7 +241,7 @@ pub unsafe extern "C" fn rs_rlimit_parse_u64(value: *const c_char, ret: *mut rli
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_rlimit_parse_size(value: *const c_char, ret: *mut rlim_t) -> c_int {
     // SAFETY: this forwards the entry point's C-string/output contracts.
-    unsafe { write_parsed(value, ret, rlimit_parse_size) }
+    unsafe_ffi!(write_parsed(value, ret, rlimit_parse_size))
 }
 
 /// Format a resource limit into a C-allocator-owned string.
@@ -240,7 +258,7 @@ pub unsafe extern "C" fn rs_rlimit_format(limit: *const rlimit, ret: *mut *mut c
     }
 
     // SAFETY: both pointer contracts are documented above and NULL was rejected.
-    let limit = unsafe { &*limit };
+    let limit = unsafe_ffi!(&*limit);
     let formatted = rlimit_format(RLimit {
         cur: limit.rlim_cur as u64,
         max: limit.rlim_max as u64,
@@ -256,11 +274,11 @@ pub unsafe extern "C" fn rs_rlimit_format(limit: *const rlimit, ret: *mut *mut c
 
     // SAFETY: `allocation` owns `bytes.len() + 1` writable bytes, the source is
     // live and disjoint, and `ret` is writable by the entry-point contract.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(bytes.as_ptr(), allocation, bytes.len());
         *allocation.add(bytes.len()) = 0;
         *ret = allocation.cast::<c_char>();
-    }
+    });
     0
 }
 

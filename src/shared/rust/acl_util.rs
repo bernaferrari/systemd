@@ -9,6 +9,13 @@
 // syscalls themselves are wrapped in minimal unsafe blocks; all public
 // API is safe Rust.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::os::unix::io::AsRawFd;
 
@@ -369,11 +376,11 @@ pub fn fd_acl_make_read_only_fallback(fd: impl AsRawFd) -> Result<FdReadOnlyResu
     // SAFETY: `stat` points to writable, properly aligned storage for a `libc::stat`.
     // `raw_fd` is only borrowed for this syscall; an invalid or closed descriptor is
     // reported by `fstat` as an error. On success, POSIX initializes the entire struct.
-    if unsafe { libc::fstat(raw_fd, stat.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::fstat(raw_fd, stat.as_mut_ptr())) < 0 {
         return Err(errno_from_raw(crate::ffi::get_errno()));
     }
     // SAFETY: the successful `fstat` call above initialized `stat` completely.
-    let stat = unsafe { stat.assume_init() };
+    let stat = unsafe_ffi!(stat.assume_init());
 
     let mode = stat.st_mode as u32;
     if mode_is_read_only(mode) {
@@ -383,7 +390,11 @@ pub fn fd_acl_make_read_only_fallback(fd: impl AsRawFd) -> Result<FdReadOnlyResu
     // SAFETY: `raw_fd` is borrowed for this syscall and `mode_strip_write_bits()`
     // produces a valid permission-bit mask. An invalid descriptor is reported by
     // `fchmod` rather than dereferenced by Rust.
-    if unsafe { libc::fchmod(raw_fd, mode_strip_write_bits(mode) as libc::mode_t) } < 0 {
+    if unsafe_ffi!(libc::fchmod(
+        raw_fd,
+        mode_strip_write_bits(mode) as libc::mode_t
+    )) < 0
+    {
         return Err(errno_from_raw(crate::ffi::get_errno()));
     }
 
@@ -408,11 +419,11 @@ pub fn fd_acl_make_writable_fallback(fd: impl AsRawFd) -> Result<FdWritableResul
     // SAFETY: `stat` points to writable, properly aligned storage for a `libc::stat`.
     // `raw_fd` is only borrowed for this syscall; an invalid or closed descriptor is
     // reported by `fstat` as an error. On success, POSIX initializes the entire struct.
-    if unsafe { libc::fstat(raw_fd, stat.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::fstat(raw_fd, stat.as_mut_ptr())) < 0 {
         return Err(errno_from_raw(crate::ffi::get_errno()));
     }
     // SAFETY: the successful `fstat` call above initialized `stat` completely.
-    let stat = unsafe { stat.assume_init() };
+    let stat = unsafe_ffi!(stat.assume_init());
 
     let mode = stat.st_mode as u32;
     if mode_has_owner_write(mode) {
@@ -422,7 +433,11 @@ pub fn fd_acl_make_writable_fallback(fd: impl AsRawFd) -> Result<FdWritableResul
     // SAFETY: `raw_fd` is borrowed for this syscall and `mode_add_owner_write()`
     // preserves only mode bits accepted by `fchmod`. An invalid descriptor is
     // reported by `fchmod` rather than dereferenced by Rust.
-    if unsafe { libc::fchmod(raw_fd, mode_add_owner_write(mode) as libc::mode_t) } < 0 {
+    if unsafe_ffi!(libc::fchmod(
+        raw_fd,
+        mode_add_owner_write(mode) as libc::mode_t
+    )) < 0
+    {
         return Err(errno_from_raw(crate::ffi::get_errno()));
     }
 

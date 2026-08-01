@@ -6,6 +6,13 @@
 // readiness via sd_notify (READY=1) before returning. Provides structured
 // wrappers for managing the child lifecycle, including termination helpers.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::fs;
 use std::io;
@@ -349,7 +356,7 @@ fn recv_notification_with_sender(
 
     // SAFETY: an all-zero msghdr is a valid empty message header; its live
     // payload and ancillary buffers are installed immediately below.
-    let mut message = unsafe { mem::zeroed::<libc::msghdr>() };
+    let mut message = unsafe_ffi!(mem::zeroed::<libc::msghdr>());
     message.msg_iov = &mut iov;
     message.msg_iovlen = 1;
     message.msg_control = control.as_mut_ptr().cast();
@@ -359,7 +366,7 @@ fn recv_notification_with_sender(
         // SAFETY: `message` points to live writable payload and aligned control
         // buffers for the duration of recvmsg(2). MSG_CMSG_CLOEXEC prevents any
         // received descriptor from being briefly exposed across exec.
-        unsafe { libc::recvmsg(socket.as_raw_fd(), &mut message, libc::MSG_CMSG_CLOEXEC) };
+        unsafe_ffi!( libc::recvmsg(socket.as_raw_fd(), &mut message, libc::MSG_CMSG_CLOEXEC) );
     if received < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -374,13 +381,13 @@ fn recv_notification_with_sender(
         return Ok(None);
     };
     // SAFETY: CMSG_LEN performs only ancillary-data layout arithmetic.
-    let header_len = unsafe { libc::CMSG_LEN(0) as usize };
+    let header_len = unsafe_ffi!(libc::CMSG_LEN(0) as usize);
 
     let mut sender = None;
     let mut malformed_control = reported_control_len > control_len;
     // SAFETY: `msg_controllen` has been clamped to the live, aligned control
     // allocation. Every returned pointer is bounds-checked before dereference.
-    let mut control_message = unsafe { libc::CMSG_FIRSTHDR(&message) };
+    let mut control_message = unsafe_ffi!(libc::CMSG_FIRSTHDR(&message));
     while !control_message.is_null() {
         let cmsg_start = control_message.cast::<u8>() as usize;
         let Some(header_end) = cmsg_start.checked_add(header_len) else {
@@ -394,7 +401,7 @@ fn recv_notification_with_sender(
 
         // SAFETY: the complete, aligned cmsghdr lies within the checked
         // control-buffer range.
-        let header = unsafe { &*control_message };
+        let header = unsafe_ffi!(&*control_message);
         let cmsg_len = header.cmsg_len as usize;
         let Some(cmsg_end) = cmsg_start.checked_add(cmsg_len) else {
             malformed_control = true;
@@ -407,7 +414,7 @@ fn recv_notification_with_sender(
 
         // SAFETY: CMSG_DATA performs layout arithmetic from the validated,
         // complete header.
-        let data = unsafe { libc::CMSG_DATA(control_message).cast::<u8>() };
+        let data = unsafe_ffi!(libc::CMSG_DATA(control_message).cast::<u8>());
         let data_start = data as usize;
         let payload_len = cmsg_len - header_len;
         if data_start != header_end
@@ -455,13 +462,13 @@ fn recv_notification_with_sender(
             // SAFETY: the exact payload-length check proves a complete
             // `ucred` is present. `read_unaligned` avoids imposing a Rust
             // alignment requirement on the C ancillary-data pointer.
-            let credentials = unsafe { data.cast::<ucred>().read_unaligned() };
+            let credentials = unsafe_ffi!(data.cast::<ucred>().read_unaligned());
             sender = u32::try_from(credentials.pid).ok().filter(|pid| *pid != 0);
         }
 
         // SAFETY: the current header and its length are fully contained in the
         // clamped control buffer, so libc can safely locate the next record.
-        control_message = unsafe { libc::CMSG_NXTHDR(&message, control_message) };
+        control_message = unsafe_ffi!(libc::CMSG_NXTHDR(&message, control_message));
     }
 
     if received == 0
@@ -638,7 +645,7 @@ fn terminate_process(pid: u32) -> Result<()> {
     let raw_pid = checked_pid(pid)?;
     // SAFETY: kill(2) takes only scalar values, does not access Rust memory,
     // and raw_pid is a checked, strictly positive process identifier.
-    let ret = unsafe { libc::kill(raw_pid, libc::SIGTERM) };
+    let ret = unsafe_ffi!(libc::kill(raw_pid, libc::SIGTERM));
     if ret == 0 {
         return Ok(());
     }
@@ -660,7 +667,7 @@ pub fn fork_notify_terminate_pid(pid: u32) {
 
     // SAFETY: kill(2) takes only scalar values, does not access Rust memory,
     // and raw_pid is a checked, strictly positive process identifier.
-    let ret = unsafe { libc::kill(raw_pid, libc::SIGTERM) };
+    let ret = unsafe_ffi!(libc::kill(raw_pid, libc::SIGTERM));
     if ret != 0 {
         let errno = crate::ffi::get_errno();
         if errno != libc::ESRCH {

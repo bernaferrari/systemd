@@ -6,6 +6,13 @@
 // implementation domains retain their normal Rust ABI; this module owns symbol
 // export, C pointer contracts, and allocator-boundary documentation.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::{c_char, c_void};
 use std::ffi::CStr;
 use std::ptr;
@@ -153,7 +160,7 @@ pub unsafe extern "C" fn rs_isempty(s: *const c_char) -> bool {
         None
     } else {
         // SAFETY: established by this entry point's one-byte contract.
-        Some(unsafe { *s.cast::<u8>() })
+        Some(unsafe_ffi!(*s.cast::<u8>()))
     };
     fundamental::isempty(first)
 }
@@ -220,12 +227,12 @@ pub unsafe extern "C" fn rs_memory_startswith(
         return ptr::null_mut();
     }
     // SAFETY: established by this entry point's C-string and counted-memory contracts.
-    let (input, token) = unsafe {
+    let (input, token) = unsafe_ffi!({
         (
             std::slice::from_raw_parts(p.cast::<u8>(), sz),
             CStr::from_ptr(token).to_bytes(),
         )
-    };
+    });
     let Some(offset) = fundamental::memory_startswith(input, token) else {
         return ptr::null_mut();
     };

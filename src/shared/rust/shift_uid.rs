@@ -14,6 +14,13 @@
 // - Filesystem compatibility checks
 // - The main `shift_uid_shift` entry point for recursive tree patching
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::fmt;
@@ -285,7 +292,7 @@ fn patch_fd(file: &File, meta: &fs::Metadata, shift: u32) -> Result<bool, ShiftU
     let fd = file.as_raw_fd();
 
     // SAFETY: `fd` remains owned by `file` for both calls.
-    let ret = unsafe { libc::fchown(fd, new_uid, new_gid) };
+    let ret = unsafe_ffi!(libc::fchown(fd, new_uid, new_gid));
     if ret < 0 {
         return Err(ShiftUidError::Io(io::Error::last_os_error()));
     }
@@ -293,7 +300,7 @@ fn patch_fd(file: &File, meta: &fs::Metadata, shift: u32) -> Result<bool, ShiftU
     // The Linux kernel may alter the mode in some cases of chown(). Undo that.
     // SAFETY: `fd` is a valid file descriptor.
     let mode = meta.mode() as libc::mode_t;
-    let ret = unsafe { libc::fchmod(fd, mode) };
+    let ret = unsafe_ffi!(libc::fchmod(fd, mode));
     if ret < 0 {
         return Err(ShiftUidError::Io(io::Error::last_os_error()));
     }
@@ -372,7 +379,12 @@ fn fd_is_effectively_read_only(fd: i32) -> bool {
     // SAFETY: AT_EMPTY_PATH makes the static empty C string refer to `fd` for
     // this synchronous access check. The call neither retains the descriptor
     // nor writes through the pathname pointer.
-    let ret = unsafe { libc::faccessat(fd, c"".as_ptr(), libc::W_OK, libc::AT_EMPTY_PATH) };
+    let ret = unsafe_ffi!(libc::faccessat(
+        fd,
+        c"".as_ptr(),
+        libc::W_OK,
+        libc::AT_EMPTY_PATH
+    ));
     ret < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::EROFS)
 }
 
@@ -517,7 +529,7 @@ pub fn shift_uid_shift(path: &Path, shift: u32, range: u32) -> Result<bool, Shif
 
         let fd = file.as_raw_fd();
         // SAFETY: `file` owns `fd` and remains live through recursion.
-        let ret = unsafe { libc::fchown(fd, busy_uid, busy_gid) };
+        let ret = unsafe_ffi!(libc::fchown(fd, busy_uid, busy_gid));
         if ret < 0 {
             // Non-fatal: we still proceed even if marking fails.
             let _ = io::Error::last_os_error();

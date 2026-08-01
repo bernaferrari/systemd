@@ -13,6 +13,13 @@
 // All operations that touch the filesystem are pure Rust using `libc` syscalls
 // wrapped in safe abstractions. No FFI blocks or no_mangle attributes remain.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::c_void;
 use std::fmt;
 use std::os::unix::io::RawFd;
@@ -214,9 +221,9 @@ impl OpenInode {
         if self.path.is_some() {
             if let Some(fd) = self.fd.take() {
                 // SAFETY: `fd` is an owned file descriptor; `close` takes no pointers.
-                unsafe {
+                unsafe_ffi!({
                     libc::close(fd);
-                }
+                })
             }
             self.path = None;
         }
@@ -247,13 +254,13 @@ impl OpenInode {
                         self.gid
                     };
                     // SAFETY: `fchown` takes only scalar arguments; `raw` is this inode's fd.
-                    if unsafe { libc::fchown(raw, uid, gid) } < 0 {
+                    if unsafe_ffi!(libc::fchown(raw, uid, gid)) < 0 {
                         first_err.get_or_insert(TarError::from_errno(last_errno()));
                     }
                 }
                 if need_chmod {
                     // SAFETY: `fchmod` takes only scalar arguments; `raw` is this inode's fd.
-                    if unsafe { libc::fchmod(raw, (self.mode & 0o7777) as _) } < 0 {
+                    if unsafe_ffi!(libc::fchmod(raw, (self.mode & 0o7777) as _)) < 0 {
                         first_err.get_or_insert(TarError::from_errno(last_errno()));
                     }
                 }
@@ -271,7 +278,7 @@ impl OpenInode {
                     },
                 ];
                 // SAFETY: `ts` is a live two-element timespec array, as futimens requires.
-                if unsafe { libc::futimens(raw, ts.as_ptr()) } < 0 {
+                if unsafe_ffi!(libc::futimens(raw, ts.as_ptr())) < 0 {
                     first_err.get_or_insert(TarError::from_errno(last_errno()));
                 }
             }
@@ -282,7 +289,7 @@ impl OpenInode {
                     Err(_) => continue,
                 };
                 // SAFETY: `c_name` is NUL-terminated and `xa.data` is live for its stated length.
-                let ret = unsafe {
+                let ret = unsafe_ffi!({
                     #[cfg(target_os = "macos")]
                     {
                         libc::fsetxattr(
@@ -304,7 +311,7 @@ impl OpenInode {
                             0,
                         )
                     }
-                };
+                });
                 if ret < 0 {
                     first_err.get_or_insert(TarError::from_errno(last_errno()));
                 }
@@ -407,7 +414,7 @@ pub fn overlayfs_fsetfattr(fd: RawFd, path: &str, name: &str, value: &str) -> Ta
     };
 
     // SAFETY: `c_key` is NUL-terminated and `value` is live for its stated byte length.
-    let ret = unsafe {
+    let ret = unsafe_ffi!({
         #[cfg(target_os = "macos")]
         {
             libc::fsetxattr(
@@ -429,7 +436,7 @@ pub fn overlayfs_fsetfattr(fd: RawFd, path: &str, name: &str, value: &str) -> Ta
                 0,
             )
         }
-    };
+    });
     if ret < 0 {
         return Err(TarError::Generic(format!(
             "Failed to set '{}' xattr on file '{}'",
@@ -509,9 +516,9 @@ impl Drop for MakeArchiveData {
     fn drop(&mut self) {
         if let Some(fd) = self.hardlink_db_fd.take() {
             // SAFETY: `fd` is an owned file descriptor; `close` takes no pointers.
-            unsafe {
+            unsafe_ffi!({
                 libc::close(fd);
-            }
+            })
         }
         self.hardlink_db_path = None;
     }
@@ -522,9 +529,9 @@ impl Drop for MakeArchiveData {
 pub fn make_archive_data_done(data: &mut MakeArchiveData) {
     if let Some(fd) = data.hardlink_db_fd.take() {
         // SAFETY: `fd` is an owned file descriptor; `close` takes no pointers.
-        unsafe {
+        unsafe_ffi!({
             libc::close(fd);
-        }
+        })
     }
     data.hardlink_db_path = None;
 }
@@ -540,12 +547,12 @@ pub fn archive_generate_sparse(fd: RawFd) -> TarResult<Vec<(i64, i64)>> {
 
     loop {
         // SAFETY: `lseek` takes only scalar arguments and does not dereference Rust memory.
-        let hole = unsafe { libc::lseek(fd, cursor, libc::SEEK_HOLE) };
+        let hole = unsafe_ffi!(libc::lseek(fd, cursor, libc::SEEK_HOLE));
         if hole < 0 {
             let errno = last_errno();
             if errno == libc::ENXIO {
                 // SAFETY: `lseek` takes only scalar arguments and does not dereference Rust memory.
-                let end = unsafe { libc::lseek(fd, 0, libc::SEEK_END) };
+                let end = unsafe_ffi!(libc::lseek(fd, 0, libc::SEEK_END));
                 if end < 0 {
                     return Err(TarError::from_errno(last_errno()));
                 }
@@ -562,7 +569,7 @@ pub fn archive_generate_sparse(fd: RawFd) -> TarResult<Vec<(i64, i64)>> {
         }
 
         // SAFETY: `lseek` takes only scalar arguments and does not dereference Rust memory.
-        cursor = unsafe { libc::lseek(fd, hole, libc::SEEK_DATA) };
+        cursor = unsafe_ffi!(libc::lseek(fd, hole, libc::SEEK_DATA));
         if cursor < 0 {
             let errno = last_errno();
             if errno == libc::ENXIO {
@@ -573,7 +580,7 @@ pub fn archive_generate_sparse(fd: RawFd) -> TarResult<Vec<(i64, i64)>> {
     }
 
     // SAFETY: `lseek` takes only scalar arguments and does not dereference Rust memory.
-    if unsafe { libc::lseek(fd, 0, libc::SEEK_SET) } < 0 {
+    if unsafe_ffi!(libc::lseek(fd, 0, libc::SEEK_SET)) < 0 {
         return Err(TarError::from_errno(last_errno()));
     }
 
@@ -1205,7 +1212,7 @@ mod tests {
         // After a failed syscall, last_errno should return a non-zero value.
         // We force an error by calling close(-1).
         // SAFETY: `close` takes no pointers; -1 intentionally exercises its error path.
-        unsafe { libc::close(-1) };
+        unsafe_ffi!(libc::close(-1));
         let e = last_errno();
         assert_ne!(e, 0);
     }

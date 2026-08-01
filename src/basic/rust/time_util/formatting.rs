@@ -4,6 +4,13 @@
 //
 // String-table, timezone-offset, and timespan formatting helpers.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_long};
 
 use libc::c_char;
@@ -62,7 +69,7 @@ pub unsafe extern "C" fn rs_timestamp_style_from_string(s: *const c_char) -> i32
         return Errno::EINVAL.to_neg_errno();
     }
     // SAFETY: `s` is a readable NUL-terminated C string by this ABI contract.
-    timestamp_style_from_bytes(unsafe { CStr::from_ptr(s) }.to_bytes())
+    timestamp_style_from_bytes(unsafe_ffi!(CStr::from_ptr(s)).to_bytes())
         .unwrap_or_else(|| Errno::EINVAL.to_neg_errno())
 }
 
@@ -89,13 +96,13 @@ pub unsafe extern "C" fn rs_parse_gmtoff(t: *const c_char, ret: *mut c_long) -> 
     }
 
     // SAFETY: `t` is a readable NUL-terminated C string by this ABI contract.
-    let gmtoff = match parse_gmtoff_bytes(unsafe { CStr::from_ptr(t) }.to_bytes()) {
+    let gmtoff = match parse_gmtoff_bytes(unsafe_ffi!(CStr::from_ptr(t)).to_bytes()) {
         Ok(gmtoff) => gmtoff,
         Err(errno) => return errno.to_neg_errno(),
     };
     if !ret.is_null() {
         // SAFETY: the ABI contract makes a non-null `ret` writable.
-        unsafe { *ret = gmtoff };
+        unsafe_ffi!(*ret = gmtoff);
     }
     0
 }

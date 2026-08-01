@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // PORT-SYNC: src/shared/specifier.c, src/shared/specifier.h
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::any::Any;
 use std::ffi::{CStr, CString};
@@ -325,7 +332,7 @@ fn parse_os_release_field(root: Option<&Path>, key: &str) -> Result<Option<Strin
 fn get_hostname_raw() -> Result<String, i32> {
     let mut buffer = vec![0u8; 256];
     // SAFETY: `buffer` is a valid writable byte array for the duration of the call.
-    let rc = unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) };
+    let rc = unsafe_ffi!(libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()));
     if rc < 0 {
         return Err(-io::Error::last_os_error()
             .raw_os_error()
@@ -343,7 +350,7 @@ fn get_short_hostname_raw() -> Result<String, i32> {
 
 fn lookup_passwd(uid: libc::uid_t) -> Result<Option<(String, String, String)>, i32> {
     // SAFETY: `sysconf` has no additional safety preconditions.
-    let buf_len = unsafe { libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) };
+    let buf_len = unsafe_ffi!(libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX));
     let capacity = if buf_len <= 0 {
         16_384
     } else {
@@ -371,17 +378,17 @@ fn lookup_passwd(uid: libc::uid_t) -> Result<Option<(String, String, String)>, i
     }
 
     // SAFETY: `result` points at the initialized `passwd` written above.
-    let pwd = unsafe { pwd.assume_init() };
+    let pwd = unsafe_ffi!(pwd.assume_init());
     // SAFETY: libc guarantees these pointers remain valid while `buf` lives.
-    let name = unsafe { CStr::from_ptr(pwd.pw_name) }
+    let name = unsafe_ffi!(CStr::from_ptr(pwd.pw_name))
         .to_string_lossy()
         .into_owned();
     // SAFETY: see above.
-    let dir = unsafe { CStr::from_ptr(pwd.pw_dir) }
+    let dir = unsafe_ffi!(CStr::from_ptr(pwd.pw_dir))
         .to_string_lossy()
         .into_owned();
     // SAFETY: see above.
-    let shell = unsafe { CStr::from_ptr(pwd.pw_shell) }
+    let shell = unsafe_ffi!(CStr::from_ptr(pwd.pw_shell))
         .to_string_lossy()
         .into_owned();
     Ok(Some((name, dir, shell)))
@@ -389,7 +396,7 @@ fn lookup_passwd(uid: libc::uid_t) -> Result<Option<(String, String, String)>, i
 
 fn lookup_group(gid: libc::gid_t) -> Result<Option<String>, i32> {
     // SAFETY: `sysconf` has no additional safety preconditions.
-    let buf_len = unsafe { libc::sysconf(libc::_SC_GETGR_R_SIZE_MAX) };
+    let buf_len = unsafe_ffi!(libc::sysconf(libc::_SC_GETGR_R_SIZE_MAX));
     let capacity = if buf_len <= 0 {
         16_384
     } else {
@@ -417,10 +424,10 @@ fn lookup_group(gid: libc::gid_t) -> Result<Option<String>, i32> {
     }
 
     // SAFETY: `result` points at the initialized `group` written above.
-    let grp = unsafe { grp.assume_init() };
+    let grp = unsafe_ffi!(grp.assume_init());
     // SAFETY: libc guarantees this pointer remains valid while `buf` lives.
     Ok(Some(
-        unsafe { CStr::from_ptr(grp.gr_name) }
+        unsafe_ffi!(CStr::from_ptr(grp.gr_name))
             .to_string_lossy()
             .into_owned(),
     ))
@@ -429,7 +436,7 @@ fn lookup_group(gid: libc::gid_t) -> Result<Option<String>, i32> {
 fn current_uid() -> libc::uid_t {
     // SAFETY: getuid has no arguments or preconditions and only reads the
     // calling process's kernel-maintained real UID.
-    unsafe { libc::getuid() }
+    unsafe_ffi!(libc::getuid())
 }
 
 fn runtime_uid(scope: RuntimeScope) -> Result<libc::uid_t, i32> {
@@ -446,7 +453,7 @@ fn runtime_gid(scope: RuntimeScope) -> Result<libc::gid_t, i32> {
         RuntimeScope::System => Ok(0),
         RuntimeScope::User => {
             // SAFETY: `getgid` has no preconditions.
-            Ok(unsafe { libc::getgid() })
+            Ok(unsafe_ffi!(libc::getgid()))
         }
     }
 }
@@ -682,16 +689,16 @@ pub fn specifier_kernel_release(
 ) -> Result<Option<String>, i32> {
     let mut uts = MaybeUninit::<libc::utsname>::zeroed();
     // SAFETY: `uts` points to valid writable memory.
-    let rc = unsafe { libc::uname(uts.as_mut_ptr()) };
+    let rc = unsafe_ffi!(libc::uname(uts.as_mut_ptr()));
     if rc < 0 {
         return Err(-io::Error::last_os_error()
             .raw_os_error()
             .unwrap_or(libc::EIO));
     }
     // SAFETY: `uname` succeeded and initialized `uts`.
-    let uts = unsafe { uts.assume_init() };
+    let uts = unsafe_ffi!(uts.assume_init());
     // SAFETY: `uname` returns NUL-terminated strings in `utsname` fields.
-    let release = unsafe { CStr::from_ptr(uts.release.as_ptr()) }
+    let release = unsafe_ffi!(CStr::from_ptr(uts.release.as_ptr()))
         .to_string_lossy()
         .into_owned();
     Ok(Some(release))

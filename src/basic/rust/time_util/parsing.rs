@@ -4,6 +4,13 @@
 //
 // Duration parsing and its byte-oriented C-string helpers.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use libc::c_char;
@@ -333,7 +340,7 @@ pub unsafe extern "C" fn rs_parse_time(t: *const c_char, ret: *mut u64, default_
     }
     // SAFETY: the caller guarantees `t` is a live NUL-terminated C string;
     // non-null `ret` is writable for the final publication below.
-    unsafe {
+    unsafe_ffi!({
         let usec = match parse_time_bytes(CStr::from_ptr(t).to_bytes(), default_unit) {
             Ok(usec) => usec,
             Err(error) => return error,
@@ -341,7 +348,7 @@ pub unsafe extern "C" fn rs_parse_time(t: *const c_char, ret: *mut u64, default_
         if !ret.is_null() {
             *ret = usec;
         }
-    }
+    });
     0
 }
 
@@ -359,7 +366,7 @@ pub unsafe extern "C" fn rs_parse_time(t: *const c_char, ret: *mut u64, default_
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_parse_sec(t: *const c_char, ret: *mut u64) -> i32 {
     // SAFETY: the caller supplies the input and optional output contracts forwarded here.
-    unsafe { rs_parse_time(t, ret, USEC_PER_SEC) }
+    unsafe_ffi!(rs_parse_time(t, ret, USEC_PER_SEC))
 }
 
 /// Safe Rust facade for systemd's `parse_sec()` duration grammar.
@@ -389,7 +396,7 @@ pub unsafe extern "C" fn rs_parse_sec_fix_0(t: *const c_char, ret: *mut u64) -> 
 
     let mut k: u64 = 0;
     // SAFETY: t is caller-validated and k is a live writable u64.
-    let r = unsafe { rs_parse_sec(t, &mut k) };
+    let r = unsafe_ffi!(rs_parse_sec(t, &mut k));
     if r < 0 {
         return r;
     }
@@ -415,7 +422,7 @@ pub unsafe extern "C" fn rs_parse_sec_def_infinity(t: *const c_char, ret: *mut u
     }
 
     // SAFETY: the caller supplies a live C string and writable output storage.
-    unsafe {
+    unsafe_ffi!({
         let input = CStr::from_ptr(t).to_bytes();
         if skip_leading_chars_bytes(input, 0) == input.len() {
             *ret = USEC_INFINITY;
@@ -426,6 +433,6 @@ pub unsafe extern "C" fn rs_parse_sec_def_infinity(t: *const c_char, ret: *mut u
             Err(error) => return error,
         };
         *ret = value;
-    }
+    });
     0
 }

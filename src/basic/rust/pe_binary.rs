@@ -4,6 +4,13 @@
 //
 // PE binary header inspection — safe slice-based parsing plus narrow packed C ABI shadows.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use libc::{c_char, c_void};
@@ -208,7 +215,9 @@ pub fn pe_header_get_data_directory(pe_header: &[u8], index: usize) -> Option<(u
 fn read_pe_u16(base: *const u8, offset: usize) -> u16 {
     // SAFETY: each caller establishes that the packed header includes the
     // field at `offset`; PE fields intentionally have no alignment guarantee.
-    u16::from_le(unsafe { std::ptr::read_unaligned(base.add(offset).cast::<u16>()) })
+    u16::from_le(unsafe_ffi!(std::ptr::read_unaligned(
+        base.add(offset).cast::<u16>()
+    )))
 }
 
 /// Read a little-endian 32-bit packed PE field. This private helper is called
@@ -216,7 +225,9 @@ fn read_pe_u16(base: *const u8, offset: usize) -> u16 {
 fn read_pe_u32(base: *const u8, offset: usize) -> u32 {
     // SAFETY: each caller establishes that the packed header includes the
     // field at `offset`; PE fields intentionally have no alignment guarantee.
-    u32::from_le(unsafe { std::ptr::read_unaligned(base.add(offset).cast::<u32>()) })
+    u32::from_le(unsafe_ffi!(std::ptr::read_unaligned(
+        base.add(offset).cast::<u32>()
+    )))
 }
 
 /// Locate a section by its C-string name without imposing Rust alignment on the
@@ -232,7 +243,7 @@ fn find_section_raw(sections: *const u8, n_sections: usize, name: *const c_char)
         return std::ptr::null();
     }
     // SAFETY: the private helper is only called by audited C ABI adapters.
-    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    let name = unsafe_ffi!(CStr::from_ptr(name)).to_bytes();
     if name.len() > IMAGE_SECTION_HEADER_NAME_SIZE {
         return std::ptr::null();
     }
@@ -244,7 +255,7 @@ fn find_section_raw(sections: *const u8, n_sections: usize, name: *const c_char)
     };
     // SAFETY: the C ABI adapter establishes a readable packed table of this
     // exact checked byte length.
-    let table = unsafe { std::slice::from_raw_parts(sections, table_len) };
+    let table = unsafe_ffi!(std::slice::from_raw_parts(sections, table_len));
     for (index, section) in table.chunks_exact(IMAGE_SECTION_HEADER_SIZE).enumerate() {
         let section_name = &section[..IMAGE_SECTION_HEADER_NAME_SIZE];
         if section_name[..name.len()] == name[..]

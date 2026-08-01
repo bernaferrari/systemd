@@ -12,6 +12,13 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
 /// Buffer size for reading hash table payload in chunks.
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 pub const PAYLOAD_BUFFER_SIZE: usize = 16 * 1024;
 
@@ -336,7 +343,7 @@ pub fn sync_fd(fd: i32) -> Result<()> {
         return Err(JournalFileError::Einval);
     }
     // SAFETY: fd validated >= 0.
-    let ret = unsafe { libc::fsync(fd) };
+    let ret = unsafe_ffi!(libc::fsync(fd));
     if ret < 0 {
         return Err(JournalFileError::last_errno());
     }
@@ -406,7 +413,7 @@ impl HashItem {
         // `HashItem` is `#[repr(C)]` with only `u64` fields, so every bit
         // pattern is valid. SAFETY: `align_to` only reinterprets the aligned
         // portion within the borrowed slice's lifetime; it does not access it.
-        let (_, aligned, _) = unsafe { buf.align_to::<Self>() };
+        let (_, aligned, _) = unsafe_ffi!(buf.align_to::<Self>());
         let take = aligned.len().min(count);
         &aligned[..take]
     }

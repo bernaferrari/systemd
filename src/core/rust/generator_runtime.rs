@@ -18,6 +18,13 @@
 //! only when namespace creation itself fails for the narrow reasons accepted
 //! by C.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::generator_setup::{
     GeneratorInvocation, GeneratorRunError, GeneratorRunOutcome, LookupPaths, PreparedGeneratorRun,
     discover_generator_executables, run_generators_with,
@@ -344,7 +351,7 @@ impl PreparedGeneratorSandbox {
 fn child_unshare_mount_namespace() -> std::io::Result<()> {
     // SAFETY: CLONE_NEWNS is a valid unshare(2) flag and changes only the
     // calling post-fork child. No Rust-owned memory crosses the syscall.
-    if unsafe { libc::unshare(libc::CLONE_NEWNS) } != 0 {
+    if unsafe_ffi!(libc::unshare(libc::CLONE_NEWNS)) != 0 {
         return Err(std::io::Error::last_os_error());
     }
     Ok(())
@@ -360,7 +367,7 @@ fn child_mount(
 ) -> std::io::Result<()> {
     // SAFETY: callers pass null or retained NUL-terminated strings prepared
     // in the parent. mount(2) borrows them only for the duration of the call.
-    if unsafe { libc::mount(source, target, filesystem, flags, data) } != 0 {
+    if unsafe_ffi!(libc::mount(source, target, filesystem, flags, data)) != 0 {
         return Err(std::io::Error::last_os_error());
     }
     Ok(())
@@ -558,20 +565,20 @@ impl PreparedGeneratorExec {
         }
         // SAFETY: getpid has no pointer or lifetime preconditions and cannot
         // fail; it returns the process that is about to exec this generator.
-        let pid = unsafe { libc::getpid() };
+        let pid = unsafe_ffi!(libc::getpid());
         set_systemd_exec_pid(&mut self.exec_pid_assignment, pid)?;
         self.environment[self.environment_storage.len()] =
             self.exec_pid_assignment.as_ptr() as usize;
         // SAFETY: argv and environment are NUL-terminated pointer arrays into
         // parent-prepared, still-live CString/fixed storage. On success execve
         // does not return; on failure the errno is immediately preserved.
-        if unsafe {
+        if unsafe_ffi!({
             libc::execve(
                 self.executable.as_ptr(),
                 self.argv.as_ptr().cast(),
                 self.environment.as_ptr().cast(),
             )
-        } != 0
+        }) != 0
         {
             return Err(std::io::Error::last_os_error());
         }
@@ -1230,7 +1237,7 @@ fn configure_generator_child(
     // SAFETY: CommandExt requires the caller to ensure post-fork safety. The
     // closure is intentionally restricted as documented above, and every
     // fallible syscall is translated to an io::Error before returning.
-    unsafe {
+    unsafe_ffi!({
         command.pre_exec(move || {
             close_inherited_file_descriptors()?;
             reset_signal_state()?;
@@ -1244,7 +1251,7 @@ fn configure_generator_child(
             libc::umask(0o022);
             prepared_exec.exec_in_child()
         });
-    }
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -1282,7 +1289,7 @@ fn run_sandbox_probe(sandbox: Option<PreparedGeneratorSandbox>) -> std::io::Resu
     let mut command = Command::new("/proc/self/exe");
     // SAFETY: after fork the closure performs only unshare/mount/_exit and
     // reads parent-prepared storage. It neither allocates nor touches locks.
-    unsafe {
+    unsafe_ffi!({
         command.pre_exec(move || {
             child_unshare_mount_namespace()?;
             if let Some(sandbox) = &sandbox {
@@ -1290,7 +1297,7 @@ fn run_sandbox_probe(sandbox: Option<PreparedGeneratorSandbox>) -> std::io::Resu
             }
             libc::_exit(0)
         });
-    }
+    });
     let mut child = command.spawn()?;
     let status = child.wait()?;
     if status.success() {
@@ -1313,14 +1320,14 @@ fn close_inherited_file_descriptors() -> std::io::Result<()> {
     // closed atomically.
     // SAFETY: this syscall only changes the child descriptor table and does
     // not dereference any Rust pointer.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         libc::syscall(
             libc::SYS_close_range,
             3_u32,
             u32::MAX,
             1_u32 << 2, // CLOSE_RANGE_CLOEXEC from linux/close_range.h
         )
-    };
+    });
     if result != 0 {
         return Err(std::io::Error::last_os_error());
     }
@@ -1332,7 +1339,7 @@ fn reset_signal_state() -> std::io::Result<()> {
     // SAFETY: sigemptyset and sigaction are called on initialized local
     // storage. SIGKILL and SIGSTOP are explicitly skipped because Linux does
     // not permit changing their dispositions.
-    unsafe {
+    unsafe_ffi!({
         let mut signal_set = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
         if libc::sigemptyset(signal_set.as_mut_ptr()) != 0 {
             return Err(std::io::Error::last_os_error());
@@ -1362,7 +1369,7 @@ fn reset_signal_state() -> std::io::Result<()> {
         if libc::sigprocmask(libc::SIG_SETMASK, &signal_set, std::ptr::null_mut()) != 0 {
             return Err(std::io::Error::last_os_error());
         }
-    }
+    });
     Ok(())
 }
 

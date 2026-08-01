@@ -37,11 +37,11 @@ fn c_string_copy(bytes: &[u8]) -> Option<*mut c_char> {
         return None;
     }
     // SAFETY: `value` owns allocation_len bytes, including the final NUL slot.
-    unsafe {
+    unsafe_ffi!({
         let output = std::slice::from_raw_parts_mut(value.cast::<u8>(), allocation_len);
         output[..bytes.len()].copy_from_slice(bytes);
         output[bytes.len()] = 0;
-    }
+    });
     Some(value)
 }
 

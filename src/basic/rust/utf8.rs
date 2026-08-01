@@ -101,7 +101,7 @@ fn decode_utf8_bytes(bytes: &[u8]) -> Result<(u32, usize), i32> {
 unsafe fn utf8_encoded_to_unichar_inner(str: *const c_char, ret_unichar: *mut u32) -> i32 {
     // SAFETY: the caller guarantees the leading byte, complete sequence, and
     // output slot are valid for this short raw-to-slice adaptation.
-    unsafe {
+    unsafe_ffi!({
         let len = utf8_encoded_expected_len(*str as u8);
         if len == 0 {
             return Errno::EINVAL.to_neg_errno();
@@ -113,7 +113,7 @@ unsafe fn utf8_encoded_to_unichar_inner(str: *const c_char, ret_unichar: *mut u3
         };
         *ret_unichar = unichar;
         len as i32
-    }
+    })
 }
 
 /// Expected encoded length from a unicode codepoint.
@@ -243,7 +243,7 @@ pub extern "C" fn rs_unichar_is_valid(ch: u32) -> bool {
 pub unsafe extern "C" fn rs_utf8_is_valid_n(str: *const c_char, len_bytes: usize) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if str.is_null() {
             return ptr::null_mut();
         }
@@ -278,7 +278,7 @@ pub unsafe extern "C" fn rs_utf8_is_valid_n(str: *const c_char, len_bytes: usize
         }
 
         str as *mut c_char
-    }
+    })
 }
 
 ///
@@ -292,7 +292,7 @@ pub unsafe extern "C" fn rs_utf8_is_valid_n(str: *const c_char, len_bytes: usize
 pub unsafe extern "C" fn rs_ascii_is_valid_n(str: *const c_char, len: usize) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if str.is_null() {
             return ptr::null_mut();
         }
@@ -317,7 +317,7 @@ pub unsafe extern "C" fn rs_ascii_is_valid_n(str: *const c_char, len: usize) -> 
         }
 
         str as *mut c_char
-    }
+    })
 }
 
 ///
@@ -331,7 +331,7 @@ pub unsafe extern "C" fn rs_ascii_is_valid_n(str: *const c_char, len: usize) -> 
 pub unsafe extern "C" fn rs_utf8_encoded_valid_unichar(str: *const c_char, length: usize) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if str.is_null() || length == 0 {
             return Errno::EINVAL.to_neg_errno();
         }
@@ -371,7 +371,7 @@ pub unsafe extern "C" fn rs_utf8_encoded_valid_unichar(str: *const c_char, lengt
         }
 
         len as i32
-    }
+    })
 }
 
 ///
@@ -406,7 +406,7 @@ pub unsafe extern "C" fn rs_utf8_to_ascii(
 ) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         let s = CStr::from_ptr(str);
         let byte_len = s.to_bytes().len();
 
@@ -442,7 +442,7 @@ pub unsafe extern "C" fn rs_utf8_to_ascii(
 
         *ret = ans as *mut c_char;
         0
-    }
+    })
 }
 
 ///
@@ -456,7 +456,7 @@ pub unsafe extern "C" fn rs_utf8_to_ascii(
 pub unsafe extern "C" fn rs_utf8_escape_invalid(str: *const c_char) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         let s = CStr::from_ptr(str);
         let byte_len = s.to_bytes().len();
 
@@ -505,7 +505,7 @@ pub unsafe extern "C" fn rs_utf8_escape_invalid(str: *const c_char) -> *mut c_ch
         } else {
             resized
         }
-    }
+    })
 }
 
 ///
@@ -523,7 +523,7 @@ pub unsafe extern "C" fn rs_utf8_is_printable_newline(
 ) -> bool {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if str.is_null() {
             return false;
         }
@@ -550,7 +550,7 @@ pub unsafe extern "C" fn rs_utf8_is_printable_newline(
         }
 
         true
-    }
+    })
 }
 
 ///
@@ -564,7 +564,7 @@ pub unsafe extern "C" fn rs_utf8_is_printable_newline(
 pub unsafe extern "C" fn rs_utf8_char_console_width(str: *const c_char) -> i32 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         let mut c: u32 = 0;
         let r = utf8_encoded_to_unichar_inner(str, &mut c);
         if r < 0 {
@@ -576,7 +576,7 @@ pub unsafe extern "C" fn rs_utf8_char_console_width(str: *const c_char) -> i32 {
         }
 
         if unichar_iswide(c) { 2 } else { 1 }
-    }
+    })
 }
 
 ///
@@ -594,7 +594,7 @@ pub unsafe extern "C" fn rs_utf8_escape_non_printable_full(
 ) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if console_width == 0 {
             let s = malloc(1);
             if s.is_null() {
@@ -723,7 +723,7 @@ pub unsafe extern "C" fn rs_utf8_escape_non_printable_full(
         } else {
             resized
         }
-    }
+    })
 }
 
 ///
@@ -755,7 +755,7 @@ pub unsafe extern "C" fn rs_utf8_encode_unichar(out_utf8: *mut c_char, g: u32) -
 pub unsafe extern "C" fn rs_utf16_encode_unichar(out: *mut u16, c: u32) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         match c {
             0..=0xD7FF | 0xE000..=0xFFFF => {
                 *out = (c as u16).to_le();
@@ -769,7 +769,7 @@ pub unsafe extern "C" fn rs_utf16_encode_unichar(out: *mut u16, c: u32) -> usize
             }
             _ => 0, // invalid (surrogate)
         }
-    }
+    })
 }
 
 ///
@@ -783,7 +783,7 @@ pub unsafe extern "C" fn rs_utf16_encode_unichar(out: *mut u16, c: u32) -> usize
 pub unsafe extern "C" fn rs_utf16_to_utf8(s: *const u16, length: usize) -> *mut c_char {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if length == 0 {
             let r = calloc_bytes(1, 1);
             return r as *mut c_char;
@@ -850,7 +850,7 @@ pub unsafe extern "C" fn rs_utf16_to_utf8(s: *const u16, length: usize) -> *mut 
 
         *t = 0;
         r as *mut c_char
-    }
+    })
 }
 
 ///
@@ -864,7 +864,7 @@ pub unsafe extern "C" fn rs_utf16_to_utf8(s: *const u16, length: usize) -> *mut 
 pub unsafe extern "C" fn rs_utf8_to_utf16(s: *const c_char, length: usize) -> *mut u16 {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if length == 0 {
             let r = calloc_bytes(1, std::mem::size_of::<u16>());
             return r as *mut u16;
@@ -927,7 +927,7 @@ pub unsafe extern "C" fn rs_utf8_to_utf16(s: *const c_char, length: usize) -> *m
 
         *q = 0;
         n as *mut u16
-    }
+    })
 }
 
 ///
@@ -940,7 +940,7 @@ pub unsafe extern "C" fn rs_utf8_to_utf16(s: *const c_char, length: usize) -> *m
 pub unsafe extern "C" fn rs_char16_strlen(s: *const u16) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if s.is_null() {
             return 0;
         }
@@ -951,7 +951,7 @@ pub unsafe extern "C" fn rs_char16_strlen(s: *const u16) -> usize {
             p = p.add(1);
         }
         n
-    }
+    })
 }
 
 ///
@@ -964,12 +964,12 @@ pub unsafe extern "C" fn rs_char16_strlen(s: *const u16) -> usize {
 pub unsafe extern "C" fn rs_char16_strsize(s: *const u16) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if s.is_null() {
             return 0;
         }
         (rs_char16_strlen(s) + 1) * std::mem::size_of::<u16>()
-    }
+    })
 }
 
 ///
@@ -983,7 +983,7 @@ pub unsafe extern "C" fn rs_char16_strsize(s: *const u16) -> usize {
 pub unsafe extern "C" fn rs_utf8_n_codepoints(str: *const c_char) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         let mut n: usize = 0;
         let mut p = str;
 
@@ -997,7 +997,7 @@ pub unsafe extern "C" fn rs_utf8_n_codepoints(str: *const c_char) -> usize {
         }
 
         n
-    }
+    })
 }
 
 ///
@@ -1011,7 +1011,7 @@ pub unsafe extern "C" fn rs_utf8_n_codepoints(str: *const c_char) -> usize {
 pub unsafe extern "C" fn rs_utf8_console_width(str: *const c_char) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if str.is_null() || *str == 0 {
             return 0;
         }
@@ -1029,7 +1029,7 @@ pub unsafe extern "C" fn rs_utf8_console_width(str: *const c_char) -> usize {
         }
 
         n
-    }
+    })
 }
 
 ///
@@ -1043,7 +1043,7 @@ pub unsafe extern "C" fn rs_utf8_console_width(str: *const c_char) -> usize {
 pub unsafe extern "C" fn rs_utf8_last_length(s: *const c_char, n: usize) -> usize {
     // SAFETY: this raw-pointer port is one audited FFI operation region; its
     // documented caller contract covers every pointer traversal and C call below.
-    unsafe {
+    unsafe_ffi!({
         if s.is_null() {
             return 0;
         }
@@ -1068,7 +1068,7 @@ pub unsafe extern "C" fn rs_utf8_last_length(s: *const c_char, n: usize) -> usiz
             remaining -= step;
             last = step;
         }
-    }
+    })
 }
 
 #[cfg(test)]

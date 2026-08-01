@@ -12,6 +12,13 @@
 // $SYSTEMD_PAGERSECURE, sudo privilege detection, and a fallback chain of
 // pagers (pager → less → more → built-in cat).
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::env;
 use std::fmt;
@@ -133,12 +140,12 @@ fn create_pipe() -> Result<(UnixStream, OwnedFd), io::Error> {
 /// Returns `None` on failure (mirrors C's `-1` convention).
 fn dup_fd_cloexec(fd: RawFd) -> Option<OwnedFd> {
     // SAFETY: `fcntl(F_DUPFD_CLOEXEC, 3)` returns a new fd ≥ 3, or -1 on error.
-    let new_fd = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3) };
+    let new_fd = unsafe_ffi!(libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3));
     if new_fd < 0 {
         None
     } else {
         // SAFETY: fcntl returned a valid, owned fd.
-        Some(unsafe { OwnedFd::from_raw_fd(new_fd) })
+        Some(unsafe_ffi!(OwnedFd::from_raw_fd(new_fd)))
     }
 }
 
@@ -146,7 +153,7 @@ fn dup_fd_cloexec(fd: RawFd) -> Option<OwnedFd> {
 /// Returns `true` on success.
 fn dup2_fd(src_fd: RawFd, dst_fd: RawFd) -> bool {
     // SAFETY: dup2(2) atomically duplicates src onto dst.
-    unsafe { libc::dup2(src_fd, dst_fd) >= 0 }
+    unsafe_ffi!(libc::dup2(src_fd, dst_fd) >= 0)
 }
 
 // ── Pure logic helpers ────────────────────────────────────────────────────

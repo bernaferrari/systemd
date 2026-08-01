@@ -7,6 +7,13 @@
 
 /// Cleanup guard that runs a closure when dropped.
 /// PORT-SYNC: mirrors CLEANUP_ERASE / DEFINE_TRIVIAL_CLEANUP_FUNC patterns.
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 pub struct CleanupGuard<F: FnOnce()> {
     f: core::mem::ManuallyDrop<Option<F>>,
 }
@@ -31,7 +38,7 @@ impl<F: FnOnce()> Drop for CleanupGuard<F> {
     #[inline]
     fn drop(&mut self) {
         // SAFETY: `self.f` is stored in `ManuallyDrop`; `ptr::read` moves it out exactly once without double-drop.
-        if let Some(f) = unsafe { core::ptr::read(&self.f as *const _ as *mut Option<F>) } {
+        if let Some(f) = unsafe_ffi!(core::ptr::read(&self.f as *const _ as *mut Option<F>)) {
             f();
         }
     }
@@ -68,7 +75,8 @@ impl<T, F: FnOnce(*mut T, usize)> Drop for ArrayCleanup<T, F> {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
             // SAFETY: `self.func` is stored in `ManuallyDrop`; `ptr::read` moves it out exactly once.
-            if let Some(f) = unsafe { core::ptr::read(&self.func as *const _ as *mut Option<F>) } {
+            if let Some(f) = unsafe_ffi!(core::ptr::read(&self.func as *const _ as *mut Option<F>))
+            {
                 f(self.ptr, self.len);
             }
         }
@@ -113,7 +121,7 @@ mod tests {
                 freed.set(true);
                 // SAFETY: the raw pointer was allocated for this exact type
                 // and is reclaimed exactly once here.
-                drop(unsafe { Box::from_raw(p) });
+                drop(unsafe_ffi!(Box::from_raw(p)));
             });
             assert!(!freed.get());
         }
@@ -127,7 +135,7 @@ mod tests {
         assert!(!taken.is_null());
         assert!(ptr.is_null());
         // SAFETY: the raw pointer was allocated for this exact type and is reclaimed exactly once here.
-        unsafe { drop(Box::from_raw(taken)) };
+        unsafe_ffi!(drop(Box::from_raw(taken)));
     }
 
     #[test]

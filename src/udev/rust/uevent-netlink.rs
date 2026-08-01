@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // PORT-SYNC: src/udev/udev-manager.c
 
+// Centralized unsafe expression boundary for this module.
+#[cfg(test)]
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::udev_db_monitor::create_kobject_uevent_multicast_socket;
 use std::collections::{BTreeMap, VecDeque};
 use std::io;
@@ -383,7 +391,7 @@ mod tests {
         right.set_nonblocking(true).unwrap();
 
         // SAFETY: ownership is transferred from the UnixDatagram into OwnedFd.
-        let owned = unsafe { OwnedFd::from_raw_fd(left.into_raw_fd()) };
+        let owned = unsafe_ffi!(OwnedFd::from_raw_fd(left.into_raw_fd()));
         let mut receiver = KobjectUeventReceiver::from_fd(owned).unwrap();
 
         let payload = uevent_bytes(11, "online", "/devices/tokio");

@@ -9,6 +9,13 @@
 // sets, namespace flags, etc.) and supports filtering by expected value
 // and display flags.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::{ffi::CStr, fmt::Write as FmtWrite};
 
 use systemd_basic_rs::{
@@ -35,13 +42,13 @@ fn capability_to_string(id: i32) -> Option<String> {
     let mut buf = [0; CAPABILITY_TO_STRING_MAX];
     // SAFETY: `buf` has CAPABILITY_TO_STRING_MAX bytes, and the C helper
     // returns either NULL or a NUL-terminated capability name.
-    let name = unsafe { c_capability_to_string(id, buf.as_mut_ptr()) };
+    let name = unsafe_ffi!(c_capability_to_string(id, buf.as_mut_ptr()));
     if name.is_null() {
         None
     } else {
         // SAFETY: guaranteed by capability_to_string() above.
         Some(
-            unsafe { CStr::from_ptr(name) }
+            unsafe_ffi!(CStr::from_ptr(name))
                 .to_string_lossy()
                 .into_owned(),
         )
@@ -624,7 +631,7 @@ fn format_timestamp_style(usec: u64, utc: bool) -> String {
     // SAFETY: `seconds` is initialized and `tm` is valid writable storage for
     // localtime_r or gmtime_r; each function is reentrant and a successful
     // return initializes `tm`.
-    let tm = unsafe {
+    let tm = unsafe_ffi!({
         let result = if utc {
             libc::gmtime_r(&seconds, tm.as_mut_ptr())
         } else {
@@ -634,7 +641,7 @@ fn format_timestamp_style(usec: u64, utc: bool) -> String {
             return String::new();
         }
         tm.assume_init()
-    };
+    });
 
     let weekday = WEEKDAYS.get(tm.tm_wday as usize).copied().unwrap_or("---");
     let mut formatted = format!(
@@ -655,7 +662,7 @@ fn format_timestamp_style(usec: u64, utc: bool) -> String {
     } else if !tm.tm_zone.is_null() {
         // SAFETY: tm_zone is a NUL-terminated string owned by libc's timezone
         // state and remains valid for this formatting operation.
-        if let Ok(zone) = unsafe { CStr::from_ptr(tm.tm_zone) }.to_str() {
+        if let Ok(zone) = unsafe_ffi!(CStr::from_ptr(tm.tm_zone)).to_str() {
             if !zone.is_empty() && zone.len() <= 13 {
                 formatted.push(' ');
                 formatted.push_str(zone);

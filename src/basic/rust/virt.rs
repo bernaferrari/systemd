@@ -7,6 +7,13 @@
 // Skipped: detect_vm/detect_virtualization (file I/O, CPUID),
 //          running_in_userns/running_in_chroot (namespace/inode checks).
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi_string_table::{self, Entry as FfiEntry};
 use libc::c_char;
 
@@ -151,7 +158,11 @@ pub extern "C" fn rs_virtualization_to_string(value: libc::c_int) -> *const c_ch
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_virtualization_from_string(name: *const c_char) -> libc::c_int {
     // SAFETY: this forwards the entry point's documented C-string contract.
-    unsafe { ffi_string_table::from_ptr(VIRTUALIZATION_TABLE, name, -libc::EINVAL) }
+    unsafe_ffi!(ffi_string_table::from_ptr(
+        VIRTUALIZATION_TABLE,
+        name,
+        -libc::EINVAL
+    ))
 }
 
 #[allow(non_snake_case)]

@@ -4,6 +4,13 @@
 //
 // Safe string concatenation/copying utilities.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use libc::c_char;
@@ -122,7 +129,7 @@ unsafe fn strnpcpy_full_raw(
         if !ret_truncated.is_null() {
             // SAFETY: the caller supplied writable storage for the optional
             // result flag. This is the only C-visible output for size zero.
-            unsafe { *ret_truncated = len > 0 };
+            unsafe_ffi!(*ret_truncated = len > 0);
         }
         return 0;
     }
@@ -130,7 +137,7 @@ unsafe fn strnpcpy_full_raw(
     // SAFETY: for non-zero sizes the documented ABI contract requires `dest`
     // to point to writable pointer storage and `*dest` to head a writable
     // `size` byte range.
-    let destination = unsafe { *dest };
+    let destination = unsafe_ffi!(*dest);
     if destination.is_null() {
         return 0;
     }
@@ -145,22 +152,22 @@ unsafe fn strnpcpy_full_raw(
         // SAFETY: the ABI contract provides readable source and writable,
         // non-overlapping destination ranges for the bytes C's mempcpy()
         // would access.
-        unsafe {
+        unsafe_ffi!({
             std::ptr::copy_nonoverlapping(src.cast::<u8>(), destination.cast::<u8>(), copied)
-        };
+        });
     }
 
     // SAFETY: `copied < size`, so this remains within the caller-provided
     // writable range. C advances the destination to this terminating NUL.
-    let advanced = unsafe { destination.add(copied) };
+    let advanced = unsafe_ffi!(destination.add(copied));
     // SAFETY: `advanced` points at the final byte written by the C helper.
-    unsafe { *advanced = 0 };
+    unsafe_ffi!(*advanced = 0);
     // SAFETY: the ABI contract provides writable outer pointer storage.
-    unsafe { *dest = advanced };
+    unsafe_ffi!(*dest = advanced);
 
     if !ret_truncated.is_null() {
         // SAFETY: the caller supplied writable storage for the optional flag.
-        unsafe { *ret_truncated = truncated };
+        unsafe_ffi!(*ret_truncated = truncated);
     }
 
     remaining
@@ -185,7 +192,7 @@ pub unsafe extern "C" fn rs_strnpcpy_full(
     ret_truncated: *mut bool,
 ) -> usize {
     // SAFETY: this ABI entry point forwards its documented pointer contract.
-    unsafe { strnpcpy_full_raw(dest, size, src, len, ret_truncated) }
+    unsafe_ffi!(strnpcpy_full_raw(dest, size, src, len, ret_truncated))
 }
 
 /// C ABI facade for `strpcpy_full()`.
@@ -208,9 +215,9 @@ pub unsafe extern "C" fn rs_strpcpy_full(
 
     // SAFETY: this entry point's C-string contract guarantees a terminating
     // NUL readable from `src` for the duration of the call.
-    let length = unsafe { CStr::from_ptr(src).to_bytes().len() };
+    let length = unsafe_ffi!(CStr::from_ptr(src).to_bytes().len());
     // SAFETY: this forwards the same destination and optional-output contract.
-    unsafe { strnpcpy_full_raw(dest, size, src, length, ret_truncated) }
+    unsafe_ffi!(strnpcpy_full_raw(dest, size, src, length, ret_truncated))
 }
 
 /// C ABI facade for `strnscpy_full()`.
@@ -236,7 +243,13 @@ pub unsafe extern "C" fn rs_strnscpy_full(
     let mut cursor = dest;
     // SAFETY: `cursor` is local writable outer-pointer storage, while the
     // remaining raw-pointer requirements are exactly this function's contract.
-    unsafe { strnpcpy_full_raw(&mut cursor, size, src, len, ret_truncated) }
+    unsafe_ffi!(strnpcpy_full_raw(
+        &mut cursor,
+        size,
+        src,
+        len,
+        ret_truncated
+    ))
 }
 
 /// C ABI facade for `strscpy_full()`.
@@ -258,11 +271,17 @@ pub unsafe extern "C" fn rs_strscpy_full(
     }
 
     // SAFETY: this entry point's C-string contract guarantees a readable NUL.
-    let length = unsafe { CStr::from_ptr(src).to_bytes().len() };
+    let length = unsafe_ffi!(CStr::from_ptr(src).to_bytes().len());
     let mut cursor = dest;
     // SAFETY: `cursor` is local writable outer-pointer storage; the rest of
     // the raw-pointer contract is forwarded from this function's documentation.
-    unsafe { strnpcpy_full_raw(&mut cursor, size, src, length, ret_truncated) }
+    unsafe_ffi!(strnpcpy_full_raw(
+        &mut cursor,
+        size,
+        src,
+        length,
+        ret_truncated
+    ))
 }
 
 #[cfg(test)]

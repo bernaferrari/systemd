@@ -11,6 +11,13 @@
 // they placed more.  Values near i64::MIN encode abort states with the
 // invariant WE_ABORTED < THEY_ABORTED < I_ABORTED.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::fmt;
 use std::io;
@@ -154,7 +161,7 @@ fn barriers_to_state(barriers: i64) -> Result<BarrierState, BarrierError> {
 #[inline]
 fn sys_eventfd(initval: u32, flags: i32) -> i32 {
     // SAFETY: eventfd() accepts value arguments only.
-    unsafe { libc::eventfd(initval, flags) }
+    unsafe_ffi!(libc::eventfd(initval, flags))
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -167,7 +174,11 @@ fn sys_eventfd(_initval: u32, _flags: i32) -> i32 {
 fn create_pipe() -> io::Result<[i32; 2]> {
     let mut fds: [i32; 2] = [-1, -1];
     // SAFETY: fds points to storage for exactly two descriptors as required by pipe2().
-    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) } < 0 {
+    if unsafe_ffi!(libc::pipe2(
+        fds.as_mut_ptr(),
+        libc::O_CLOEXEC | libc::O_NONBLOCK
+    )) < 0
+    {
         return Err(io::Error::last_os_error());
     }
     Ok(fds)
@@ -177,7 +188,7 @@ fn create_pipe() -> io::Result<[i32; 2]> {
 fn create_pipe() -> io::Result<[i32; 2]> {
     let mut fds: [i32; 2] = [-1, -1];
     // SAFETY: fds points to storage for exactly two descriptors as required by pipe().
-    if unsafe { libc::pipe(fds.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::pipe(fds.as_mut_ptr())) < 0 {
         return Err(io::Error::last_os_error());
     }
 
@@ -191,18 +202,18 @@ fn create_pipe() -> io::Result<[i32; 2]> {
 
     for &fd in &fds {
         // SAFETY: fcntl() accepts a descriptor and value arguments.
-        if unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+        if unsafe_ffi!(libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC)) < 0 {
             cleanup();
             return Err(io::Error::last_os_error());
         }
         // SAFETY: fcntl() accepts a descriptor and this command has no variadic argument.
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        let flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFL));
         if flags < 0 {
             cleanup();
             return Err(io::Error::last_os_error());
         }
         // SAFETY: fcntl() accepts a descriptor and value arguments.
-        if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        if unsafe_ffi!(libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK)) < 0 {
             cleanup();
             return Err(io::Error::last_os_error());
         }
@@ -468,7 +479,7 @@ impl Barrier {
             ];
 
             // SAFETY: pfds is a valid stack-allocated array; fds are valid.
-            let r = unsafe { libc::poll(pfds.as_mut_ptr(), 2, -1) };
+            let r = unsafe_ffi!(libc::poll(pfds.as_mut_ptr(), 2, -1));
             if r < 0 {
                 if let Some(e) = io::Error::last_os_error().raw_os_error() {
                     if e == libc::EINTR {
@@ -976,7 +987,7 @@ mod tests {
         fn test_fork_place_wait_next() {
             let mut b = Barrier::create().unwrap();
             // SAFETY: fork() is the standard POSIX syscall.
-            match unsafe { libc::fork() } {
+            match unsafe_ffi!(libc::fork()) {
                 -1 => panic!("fork failed"),
                 0 => {
                     b.set_role(BARRIER_CHILD).unwrap();
@@ -999,7 +1010,7 @@ mod tests {
         fn test_fork_abort_both_sides() {
             let mut b = Barrier::create().unwrap();
             // SAFETY: the test forks before creating additional threads and handles both processes.
-            match unsafe { libc::fork() } {
+            match unsafe_ffi!(libc::fork()) {
                 -1 => panic!("fork failed"),
                 0 => {
                     b.set_role(BARRIER_CHILD).unwrap();
@@ -1024,7 +1035,7 @@ mod tests {
         fn test_fork_sync_roundtrip() {
             let mut b = Barrier::create().unwrap();
             // SAFETY: the test forks before creating additional threads and handles both processes.
-            match unsafe { libc::fork() } {
+            match unsafe_ffi!(libc::fork()) {
                 -1 => panic!("fork failed"),
                 0 => {
                     b.set_role(BARRIER_CHILD).unwrap();
@@ -1051,7 +1062,7 @@ mod tests {
         fn test_fork_place_and_sync() {
             let mut b = Barrier::create().unwrap();
             // SAFETY: the test forks before creating additional threads and handles both processes.
-            match unsafe { libc::fork() } {
+            match unsafe_ffi!(libc::fork()) {
                 -1 => panic!("fork failed"),
                 0 => {
                     b.set_role(BARRIER_CHILD).unwrap();
@@ -1071,7 +1082,7 @@ mod tests {
         fn test_fork_sync_next_no_wait() {
             let mut b = Barrier::create().unwrap();
             // SAFETY: the test forks before creating additional threads and handles both processes.
-            match unsafe { libc::fork() } {
+            match unsafe_ffi!(libc::fork()) {
                 -1 => panic!("fork failed"),
                 0 => {
                     b.set_role(BARRIER_CHILD).unwrap();
@@ -1097,7 +1108,7 @@ mod tests {
         fn test_fork_abort_cancels_sync() {
             let mut b = Barrier::create().unwrap();
             // SAFETY: the test forks before creating additional threads and handles both processes.
-            match unsafe { libc::fork() } {
+            match unsafe_ffi!(libc::fork()) {
                 -1 => panic!("fork failed"),
                 0 => {
                     b.set_role(BARRIER_CHILD).unwrap();

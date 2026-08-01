@@ -6,6 +6,13 @@
 // Memory utilities: alignment, zeroing, uniform-byte checks, and pointer
 // alignment validation.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::macro_fundamental::is_power_of_2;
 use core::ffi::c_void;
 
@@ -159,9 +166,9 @@ pub fn eqzero<T: AsRef<[u8]>>(val: &T) -> bool {
 pub unsafe fn explicit_bzero_safe(p: *mut c_void, len: usize) {
     if !p.is_null() && len > 0 {
         // SAFETY: the caller guarantees that the complete region is writable.
-        unsafe {
+        unsafe_ffi!({
             core::ptr::write_bytes(p.cast::<u8>(), 0, len);
-        }
+        });
         core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
     }
 }
@@ -346,27 +353,27 @@ mod tests {
     fn test_explicit_bzero_safe() {
         let mut buf = [0xABu8; 16];
         // SAFETY: `buf.as_mut_ptr()` is valid for 16 bytes and the call writes exactly those bytes.
-        unsafe {
+        unsafe_ffi!({
             explicit_bzero_safe(buf.as_mut_ptr() as *mut c_void, 16);
-        }
+        });
         assert_eq!(buf, [0u8; 16]);
     }
 
     #[test]
     fn test_explicit_bzero_safe_null() {
         // SAFETY: helper is defined to no-op for null pointers, so this does not dereference memory.
-        unsafe {
+        unsafe_ffi!({
             explicit_bzero_safe(core::ptr::null_mut(), 16);
-        }
+        })
     }
 
     #[test]
     fn test_explicit_bzero_safe_zero_len() {
         let mut buf = [0xABu8; 4];
         // SAFETY: pointer is valid and `len == 0`, so the call is a no-op.
-        unsafe {
+        unsafe_ffi!({
             explicit_bzero_safe(buf.as_mut_ptr() as *mut c_void, 0);
-        }
+        });
         assert_eq!(buf, [0xABu8; 4]);
     }
 

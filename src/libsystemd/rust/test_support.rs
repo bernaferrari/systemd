@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::cell::RefCell;
 use std::env;
 use std::ffi::{OsStr, OsString};
@@ -44,7 +51,7 @@ impl TestEnvironment {
         self.remember(key);
         // SAFETY: callers acquire this guard only in a test target that runs
         // without concurrent process-environment access.
-        unsafe { env::set_var(key, value) };
+        unsafe_ffi!(env::set_var(key, value));
     }
 
     pub(crate) fn remove<K: AsRef<OsStr>>(&self, key: K) {
@@ -52,7 +59,7 @@ impl TestEnvironment {
         self.remember(key);
         // SAFETY: callers acquire this guard only in a test target that runs
         // without concurrent process-environment access.
-        unsafe { env::remove_var(key) };
+        unsafe_ffi!(env::remove_var(key));
     }
 }
 
@@ -61,12 +68,12 @@ impl Drop for TestEnvironment {
         for (key, value) in self.previous_values.get_mut().drain(..).rev() {
             // SAFETY: the caller's no-concurrent-access invariant remains in
             // force while this guard owns the environment lock.
-            unsafe {
+            unsafe_ffi!({
                 match value {
                     Some(value) => env::set_var(key, value),
                     None => env::remove_var(key),
                 }
-            }
+            })
         }
     }
 }

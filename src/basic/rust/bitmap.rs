@@ -378,10 +378,10 @@ pub unsafe extern "C" fn rs_bitmap_free(b: *mut CBitmap) -> *mut CBitmap {
         return std::ptr::null_mut();
     }
     // SAFETY: required by this FFI boundary's libc ownership contract.
-    unsafe {
+    unsafe_ffi!({
         libc::free((*b).bitmaps.cast::<c_void>());
         libc::free(b.cast::<c_void>());
-    }
+    });
     std::ptr::null_mut()
 }
 

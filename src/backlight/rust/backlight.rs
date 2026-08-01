@@ -43,17 +43,17 @@ unsafe fn read_max_brightness(device: *mut libc::c_void, ret_max: *mut u32) -> i
     let mut max_brightness = 0;
     // SAFETY: the caller supplies the live device, `max_brightness` is a live
     // output slot, and the attribute name is a static NUL-terminated string.
-    let result = unsafe {
+    let result = unsafe_ffi!({
         device_get_sysattr_unsigned_full(device, c"max_brightness".as_ptr(), 0, &mut max_brightness)
-    };
+    });
     if result < 0 {
         return result;
     }
 
     // SAFETY: the caller guarantees a writable `ret_max` slot.
-    unsafe {
+    unsafe_ffi!({
         *ret_max = max_brightness;
-    }
+    });
     if max_brightness == 0 { 0 } else { 1 }
 }
 
@@ -82,9 +82,9 @@ unsafe fn read_brightness(
     let mut brightness: u32 = 0;
     // SAFETY: the caller supplies a live device; `brightness` is a valid output
     // slot and the attribute name is a static NUL-terminated string.
-    let r = unsafe {
+    let r = unsafe_ffi!({
         device_get_sysattr_unsigned_full(device, c"brightness".as_ptr(), 0, &mut brightness)
-    };
+    });
     if r < 0 {
         return r;
     }
@@ -94,9 +94,9 @@ unsafe fn read_brightness(
     }
 
     // SAFETY: the caller guarantees a writable `ret_brightness` slot.
-    unsafe {
+    unsafe_ffi!({
         *ret_brightness = brightness;
-    }
+    });
     0
 }
 
@@ -179,9 +179,9 @@ unsafe fn build_save_file_path(device: *mut libc::c_void, ret_path: *mut *mut li
     let escaped_sysname = unsafe_ffi!(cescape(sysname));
     if escaped_sysname.is_null() {
         // SAFETY: `cescape` returned this owned allocation.
-        unsafe {
+        unsafe_ffi!({
             libc::free(escaped_subsystem.cast());
-        }
+        });
         return -libc::ENOMEM;
     }
 
@@ -197,10 +197,10 @@ unsafe fn build_save_file_path(device: *mut libc::c_void, ret_path: *mut *mut li
         let escaped = unsafe_ffi!(cescape(path_id));
         if escaped.is_null() {
             // SAFETY: both pointers came from successful `cescape` calls.
-            unsafe {
+            unsafe_ffi!({
                 libc::free(escaped_subsystem.cast());
                 libc::free(escaped_sysname.cast());
-            }
+            });
             return -libc::ENOMEM;
         }
         escaped
@@ -211,7 +211,7 @@ unsafe fn build_save_file_path(device: *mut libc::c_void, ret_path: *mut *mut li
     // SAFETY: all appendees are live NUL-terminated strings and the final null
     // terminates the C variadic list. Null target/separator arguments are the
     // expansion used by C's `strjoin` macro.
-    let path = unsafe {
+    let path = unsafe_ffi!({
         if escaped_path_id.is_null() {
             strextend_with_separator_internal(
                 std::ptr::null_mut(),
@@ -235,24 +235,24 @@ unsafe fn build_save_file_path(device: *mut libc::c_void, ret_path: *mut *mut li
                 std::ptr::null::<libc::c_char>(),
             )
         }
-    };
+    });
 
     // SAFETY: each non-null pointer came from `cescape`, null is accepted by
     // `free`, and none is used after this point.
-    unsafe {
+    unsafe_ffi!({
         libc::free(escaped_subsystem.cast());
         libc::free(escaped_sysname.cast());
         libc::free(escaped_path_id.cast());
-    }
+    });
 
     if path.is_null() {
         return -libc::ENOMEM;
     }
 
     // SAFETY: the caller guarantees a writable pointer output slot.
-    unsafe {
+    unsafe_ffi!({
         *ret_path = path;
-    }
+    });
     0
 }
 

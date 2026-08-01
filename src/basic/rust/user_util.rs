@@ -4,6 +4,13 @@
 //
 // User/group name validation and closely related pure helpers.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use libc::c_char;
@@ -34,7 +41,7 @@ unsafe fn c_text<'a>(ptr: *const c_char) -> Option<&'a str> {
     }
 
     // SAFETY: the pointer is expected to reference a valid NUL-terminated C string for this call.
-    unsafe { CStr::from_ptr(ptr) }.to_str().ok()
+    unsafe_ffi!(CStr::from_ptr(ptr)).to_str().ok()
 }
 
 fn parse_uid_str(text: &str) -> Result<u32, Errno> {
@@ -181,7 +188,7 @@ fn id128_is_valid_str(text: &str) -> bool {
 #[unsafe(export_name = "rs_valid_user_group_name")]
 pub unsafe extern "C" fn rs_valid_user_group_name(u: *const c_char, flags: u32) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
-    unsafe { c_text(u) }
+    unsafe_ffi!(c_text(u))
         .map(|text| valid_user_group_name_str(text, flags))
         .unwrap_or(false)
 }
@@ -193,7 +200,7 @@ pub unsafe extern "C" fn rs_valid_user_group_name(u: *const c_char, flags: u32) 
 #[unsafe(export_name = "rs_capsule_name_is_valid")]
 pub unsafe extern "C" fn rs_capsule_name_is_valid(name: *const c_char) -> i32 {
     // SAFETY: required by this C ABI entry point's contract.
-    unsafe { c_text(name) }
+    unsafe_ffi!(c_text(name))
         .map(capsule_name_is_valid_str)
         .unwrap_or(0)
 }
@@ -211,7 +218,7 @@ pub extern "C" fn rs_uid_is_valid(uid: u32) -> bool {
 #[unsafe(export_name = "rs_parse_uid")]
 pub unsafe extern "C" fn rs_parse_uid(s: *const c_char, ret: *mut u32) -> i32 {
     // SAFETY: required by this C ABI entry point's contract.
-    let Some(text) = (unsafe { c_text(s) }) else {
+    let Some(text) = (unsafe_ffi!(c_text(s))) else {
         return Errno::EINVAL.to_neg_errno();
     };
 
@@ -219,7 +226,7 @@ pub unsafe extern "C" fn rs_parse_uid(s: *const c_char, ret: *mut u32) -> i32 {
         Ok(uid) => {
             if !ret.is_null() {
                 // SAFETY: required by this C ABI entry point's contract.
-                unsafe { ret.write(uid) };
+                unsafe_ffi!(ret.write(uid));
             }
             0
         }
@@ -243,7 +250,7 @@ pub unsafe extern "C" fn rs_parse_uid_range(
     }
 
     // SAFETY: required by this C ABI entry point's contract.
-    let Some(text) = (unsafe { c_text(s) }) else {
+    let Some(text) = (unsafe_ffi!(c_text(s))) else {
         return Errno::EINVAL.to_neg_errno();
     };
 
@@ -251,10 +258,10 @@ pub unsafe extern "C" fn rs_parse_uid_range(
         Ok((lower, upper)) => {
             // SAFETY: required by this C ABI entry point's contract. Raw
             // writes preserve C's behavior even if the outputs alias.
-            unsafe {
+            unsafe_ffi!({
                 ret_lower.write(lower);
                 ret_upper.write(upper);
-            }
+            });
             0
         }
         Err(errno) => errno.to_neg_errno(),
@@ -268,7 +275,7 @@ pub unsafe extern "C" fn rs_parse_uid_range(
 #[unsafe(export_name = "rs_id128_is_valid")]
 pub unsafe extern "C" fn rs_id128_is_valid(s: *const c_char) -> bool {
     // SAFETY: required by this C ABI entry point's contract.
-    unsafe { c_text(s) }
+    unsafe_ffi!(c_text(s))
         .map(id128_is_valid_str)
         .unwrap_or(false)
 }
@@ -384,7 +391,7 @@ mod tests {
         let input = CString::new("1000").unwrap();
         let mut uid = 0;
         // SAFETY: the raw pointer is derived from a live allocation and is used only for the duration of this operation.
-        unsafe {
+        unsafe_ffi!({
             assert_eq!(rs_parse_uid(input.as_ptr(), &mut uid), 0);
             assert_eq!(uid, 1000);
             assert!(rs_valid_user_group_name(
@@ -400,6 +407,6 @@ mod tests {
                     .unwrap()
                     .as_ptr()
             ));
-        }
+        })
     }
 }

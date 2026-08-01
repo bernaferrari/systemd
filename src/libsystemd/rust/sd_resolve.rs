@@ -5,6 +5,13 @@
 // Asynchronous getaddrinfo/getnameinfo backed by blocking resolver workers.
 // Worker completion is signalled through a pollable Unix datagram socket.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
@@ -246,7 +253,7 @@ impl Resolve {
         };
         // SAFETY: poll_fd points to one initialized pollfd for the duration of
         // this non-blocking poll, and poll does not retain the pointer.
-        unsafe { libc::poll(&mut poll_fd, 1, 0) > 0 && poll_fd.revents & libc::POLLIN != 0 }
+        unsafe_ffi!(libc::poll(&mut poll_fd, 1, 0) > 0 && poll_fd.revents & libc::POLLIN != 0)
     }
 
     pub fn getaddrinfo(
@@ -595,7 +602,7 @@ impl Drop for AddrInfoList {
         if !self.0.is_null() {
             // SAFETY: self.0 is the untouched list head returned by a successful
             // getaddrinfo call and is freed exactly once here.
-            unsafe { libc::freeaddrinfo(self.0) };
+            unsafe_ffi!(libc::freeaddrinfo(self.0));
         }
     }
 }
@@ -609,8 +616,12 @@ fn lookup_addrinfo(host: Option<&str>, service: Option<&str>) -> LookupResult {
 
     // SAFETY: the optional C strings are NUL-terminated and live through the call;
     // raw_result is an initialized out-pointer, and libc permits null hints.
-    let ret_code =
-        unsafe { libc::getaddrinfo(host_ptr, service_ptr, ptr::null(), &mut raw_result) };
+    let ret_code = unsafe_ffi!(libc::getaddrinfo(
+        host_ptr,
+        service_ptr,
+        ptr::null(),
+        &mut raw_result
+    ));
     if ret_code != 0 {
         return LookupResult::AddrInfo {
             ret_code,
@@ -623,13 +634,13 @@ fn lookup_addrinfo(host: Option<&str>, service: Option<&str>) -> LookupResult {
     let mut current = list.0;
     while !current.is_null() {
         // SAFETY: current traverses the getaddrinfo-owned linked list until null.
-        let raw = unsafe { &*current };
+        let raw = unsafe_ffi!(&*current);
         let mut entry = AddrInfo::new(raw.ai_family, raw.ai_socktype, raw.ai_protocol);
         entry.address = sockaddr_to_socket_addr(raw.ai_addr, raw.ai_addrlen);
         if !raw.ai_canonname.is_null() {
             // SAFETY: libc guarantees ai_canonname is NUL-terminated when set.
             entry.canonname = Some(
-                unsafe { CStr::from_ptr(raw.ai_canonname) }
+                unsafe_ffi!(CStr::from_ptr(raw.ai_canonname))
                     .to_string_lossy()
                     .into_owned(),
             );
@@ -683,7 +694,7 @@ fn lookup_nameinfo(address: SocketAddr) -> LookupResult {
         SocketAddr::V4(address) => {
             // SAFETY: zero is a valid base representation for sockaddr_in; all
             // fields consumed by getnameinfo are assigned below.
-            let mut raw: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+            let mut raw: libc::sockaddr_in = unsafe_ffi!(std::mem::zeroed());
             raw.sin_family = libc::AF_INET as libc::sa_family_t;
             raw.sin_port = address.port().to_be();
             raw.sin_addr.s_addr = u32::from_ne_bytes(address.ip().octets());
@@ -695,7 +706,7 @@ fn lookup_nameinfo(address: SocketAddr) -> LookupResult {
         SocketAddr::V6(address) => {
             // SAFETY: zero is a valid base representation for sockaddr_in6; all
             // fields consumed by getnameinfo are assigned below.
-            let mut raw: libc::sockaddr_in6 = unsafe { std::mem::zeroed() };
+            let mut raw: libc::sockaddr_in6 = unsafe_ffi!(std::mem::zeroed());
             raw.sin6_family = libc::AF_INET6 as libc::sa_family_t;
             raw.sin6_port = address.port().to_be();
             // Unlike sin6_port, libc defines sin6_flowinfo in host byte order.
@@ -735,11 +746,11 @@ fn call_getnameinfo(address: *const libc::sockaddr, length: libc::socklen_t) -> 
 
     // SAFETY: successful getnameinfo writes NUL-terminated strings into both
     // buffers because their capacities are non-zero.
-    let host = unsafe { CStr::from_ptr(host.as_ptr()) }
+    let host = unsafe_ffi!(CStr::from_ptr(host.as_ptr()))
         .to_string_lossy()
         .into_owned();
     // SAFETY: same successful getnameinfo contract as the host buffer above.
-    let service = unsafe { CStr::from_ptr(service.as_ptr()) }
+    let service = unsafe_ffi!(CStr::from_ptr(service.as_ptr()))
         .to_string_lossy()
         .into_owned();
     LookupResult::NameInfo {

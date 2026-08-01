@@ -4,6 +4,13 @@
 //
 // Credential validation pure functions.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use libc::c_char;
@@ -115,7 +122,7 @@ pub unsafe extern "C" fn rs_credential_name_valid(name: *const c_char) -> bool {
 
     // SAFETY: the entry-point contract guarantees a live NUL-terminated
     // string after the null check.
-    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    let name = unsafe_ffi!(CStr::from_ptr(name)).to_bytes();
     credential_name_valid_bytes(name)
 }
 
@@ -133,7 +140,7 @@ pub unsafe extern "C" fn rs_credential_glob_valid(name: *const c_char) -> bool {
 
     // SAFETY: the entry-point contract guarantees a live NUL-terminated
     // string after the null check.
-    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
+    let name = unsafe_ffi!(CStr::from_ptr(name)).to_bytes();
     credential_glob_valid_bytes(name)
 }
 

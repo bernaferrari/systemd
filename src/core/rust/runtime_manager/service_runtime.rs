@@ -363,7 +363,7 @@ impl RuntimeManager {
         }
         // SAFETY: sd_journal_stream_fd() returns a newly-created descriptor
         // on success. Convert its documented ownership to RAII immediately.
-        Some(unsafe { OwnedFd::from_raw_fd(fd) })
+        Some(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
     }
 
     pub(super) fn build_spawn_security(
@@ -447,7 +447,7 @@ impl RuntimeManager {
                 const TIOCVHANGUP_IOCTL: libc::c_ulong = 0x5437;
                 // SAFETY: fd is owned and valid; this ioctl takes only an
                 // integer argument and does not dereference the zero value.
-                let _ = unsafe { libc::ioctl(fd.as_raw_fd(), TIOCVHANGUP_IOCTL, 0) };
+                let _ = unsafe_ffi!(libc::ioctl(fd.as_raw_fd(), TIOCVHANGUP_IOCTL, 0));
             }
         }
 
@@ -458,7 +458,7 @@ impl RuntimeManager {
             const VT_DISALLOCATE: libc::c_ulong = 0x5608;
             // SAFETY: fd is owned and valid; this ioctl takes only an
             // integer argument and does not dereference the zero value.
-            let _ = unsafe { libc::ioctl(fd.as_raw_fd(), VT_DISALLOCATE, 0) };
+            let _ = unsafe_ffi!(libc::ioctl(fd.as_raw_fd(), VT_DISALLOCATE, 0));
         }
     }
 

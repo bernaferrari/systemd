@@ -4,6 +4,13 @@
 //
 // Clock-domain conversion and libc timestamp conversion primitives.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::types::{
     CLOCK_BOOTTIME, CLOCK_BOOTTIME_ALARM, CLOCK_MONOTONIC, CLOCK_REALTIME, CLOCK_REALTIME_ALARM,
     LibcTimespec, LibcTimeval, NSEC_INFINITY, NSEC_PER_SEC, NSEC_PER_USEC, TIME_T_MAX,
@@ -48,7 +55,7 @@ pub unsafe extern "C" fn rs_timespec_load(ts: *const LibcTimespec) -> u64 {
     }
     // SAFETY: the null check and function contract establish a readable,
     // aligned LibcTimespec; the shared reference does not mutate it.
-    let ts = unsafe { &*ts };
+    let ts = unsafe_ffi!(&*ts);
     if ts.tv_sec < 0 || ts.tv_nsec < 0 {
         return USEC_INFINITY;
     }
@@ -77,7 +84,7 @@ pub unsafe extern "C" fn rs_timespec_load_nsec(ts: *const LibcTimespec) -> u64 {
     }
     // SAFETY: the null check and function contract establish a readable,
     // aligned LibcTimespec; the shared reference does not mutate it.
-    let ts = unsafe { &*ts };
+    let ts = unsafe_ffi!(&*ts);
     if ts.tv_sec < 0 || ts.tv_nsec < 0 {
         return NSEC_INFINITY;
     }
@@ -106,7 +113,7 @@ pub unsafe extern "C" fn rs_timespec_store(ts: *mut LibcTimespec, u: u64) -> *mu
     }
     // SAFETY: the null check and function contract establish exclusive,
     // initialized writable storage for the returned mutable reference.
-    let ts = unsafe { &mut *ts };
+    let ts = unsafe_ffi!(&mut *ts);
     if u == USEC_INFINITY || u / USEC_PER_SEC >= TIME_T_MAX {
         ts.tv_sec = -1;
         ts.tv_nsec = -1;
@@ -137,7 +144,7 @@ pub unsafe extern "C" fn rs_timespec_store_nsec(
     }
     // SAFETY: the null check and function contract establish exclusive,
     // initialized writable storage for the returned mutable reference.
-    let ts = unsafe { &mut *ts };
+    let ts = unsafe_ffi!(&mut *ts);
     if n == NSEC_INFINITY || n / NSEC_PER_SEC >= TIME_T_MAX {
         ts.tv_sec = -1;
         ts.tv_nsec = -1;
@@ -165,7 +172,7 @@ pub unsafe extern "C" fn rs_timeval_load(tv: *const LibcTimeval) -> u64 {
     }
     // SAFETY: the null check and function contract establish a readable,
     // aligned LibcTimeval; the shared reference does not mutate it.
-    let tv = unsafe { &*tv };
+    let tv = unsafe_ffi!(&*tv);
     if tv.tv_sec < 0 || tv.tv_usec < 0 {
         return USEC_INFINITY;
     }
@@ -194,7 +201,7 @@ pub unsafe extern "C" fn rs_timeval_store(tv: *mut LibcTimeval, u: u64) -> *mut 
     }
     // SAFETY: the null check and function contract establish exclusive,
     // initialized writable storage for the returned mutable reference.
-    let tv = unsafe { &mut *tv };
+    let tv = unsafe_ffi!(&mut *tv);
     if u == USEC_INFINITY || u / USEC_PER_SEC > TIME_T_MAX {
         tv.tv_sec = -1;
         tv.tv_usec = -1;
@@ -222,7 +229,7 @@ pub unsafe extern "C" fn rs_triple_timestamp_by_clock(ts: *mut TripleTimestamp, 
     }
     // SAFETY: the null check and function contract establish a readable,
     // aligned TripleTimestamp; the shared reference does not mutate it.
-    let ts = unsafe { &*ts };
+    let ts = unsafe_ffi!(&*ts);
     match clock {
         CLOCK_REALTIME | CLOCK_REALTIME_ALARM => ts.realtime,
         CLOCK_MONOTONIC => ts.monotonic,

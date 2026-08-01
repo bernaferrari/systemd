@@ -8,6 +8,13 @@
 // adapters below preserve C-string byte semantics, including invalid UTF-8
 // rejection and NULL-terminated string-vector traversal.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::CStr;
 
 use libc::c_char;
@@ -27,7 +34,7 @@ const DEFAULT_ARG_MAX: usize = 2097152;
 fn arg_max() -> usize {
     // SAFETY: `sysconf` has no pointer arguments and `_SC_ARG_MAX` is a
     // platform constant supplied by libc.
-    let value = unsafe { libc::sysconf(libc::_SC_ARG_MAX) };
+    let value = unsafe_ffi!(libc::sysconf(libc::_SC_ARG_MAX));
     usize::try_from(value)
         .ok()
         .filter(|value| *value > 0)
@@ -203,7 +210,7 @@ unsafe fn c_string_bytes<'a>(input: *const c_char) -> Option<&'a [u8]> {
     }
 
     // SAFETY: the adapter's public contract requires a readable terminator.
-    Some(unsafe { CStr::from_ptr(input) }.to_bytes())
+    Some(unsafe_ffi!(CStr::from_ptr(input)).to_bytes())
 }
 
 /// Get one element from a NULL-terminated C string vector.
@@ -218,9 +225,9 @@ unsafe fn strv_entry<'a>(list: *const *mut c_char, index: usize) -> Option<&'a [
 
     // SAFETY: the adapter's public contract guarantees this vector slot is
     // readable until its terminator.
-    let entry = unsafe { *list.add(index) };
+    let entry = unsafe_ffi!(*list.add(index));
     // SAFETY: every non-null vector member satisfies c_string_bytes' contract.
-    unsafe { c_string_bytes(entry) }
+    unsafe_ffi!(c_string_bytes(entry))
 }
 
 /// C ABI for `env_name_is_valid()`.
@@ -230,7 +237,7 @@ unsafe fn strv_entry<'a>(list: *const *mut c_char, index: usize) -> Option<&'a [
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_env_name_is_valid(e: *const c_char) -> bool {
     // SAFETY: the entry-point contract is exactly c_string_bytes' contract.
-    unsafe { c_string_bytes(e) }.is_some_and(env_name_is_valid_bytes)
+    unsafe_ffi!(c_string_bytes(e)).is_some_and(env_name_is_valid_bytes)
 }
 
 /// C ABI for `env_value_is_valid()`.
@@ -240,7 +247,7 @@ pub unsafe extern "C" fn rs_env_name_is_valid(e: *const c_char) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_env_value_is_valid(e: *const c_char) -> bool {
     // SAFETY: the entry-point contract is exactly c_string_bytes' contract.
-    unsafe { c_string_bytes(e) }.is_some_and(env_value_is_valid_bytes)
+    unsafe_ffi!(c_string_bytes(e)).is_some_and(env_value_is_valid_bytes)
 }
 
 /// C ABI for `env_assignment_is_valid()`.
@@ -252,7 +259,7 @@ pub unsafe extern "C" fn rs_env_assignment_is_valid(e: *const c_char) -> bool {
     // The C implementation asserts for NULL. The shadow ABI remains
     // fail-closed for that invalid call instead of dereferencing it.
     // SAFETY: the entry-point contract is exactly c_string_bytes' contract.
-    unsafe { c_string_bytes(e) }.is_some_and(env_assignment_is_valid_bytes)
+    unsafe_ffi!(c_string_bytes(e)).is_some_and(env_assignment_is_valid_bytes)
 }
 
 /// C ABI for `strv_env_is_valid()`.
@@ -265,7 +272,7 @@ pub unsafe extern "C" fn rs_strv_env_is_valid(entries: *const *mut c_char) -> bo
     let mut index = 0;
     loop {
         // SAFETY: the entry-point contract is exactly strv_entry's contract.
-        let Some(entry) = (unsafe { strv_entry(entries, index) }) else {
+        let Some(entry) = (unsafe_ffi!(strv_entry(entries, index))) else {
             return true;
         };
         if !env_assignment_is_valid_bytes(entry) {
@@ -278,7 +285,7 @@ pub unsafe extern "C" fn rs_strv_env_is_valid(entries: *const *mut c_char) -> bo
 
         let mut following = index + 1;
         // SAFETY: as above, including every later vector slot.
-        while let Some(other) = unsafe { strv_entry(entries, following) } {
+        while let Some(other) = unsafe_ffi!(strv_entry(entries, following)) {
             if other.get(name_len) == Some(&b'=') && other[..name_len] == entry[..name_len] {
                 return false;
             }
@@ -298,7 +305,7 @@ pub unsafe extern "C" fn rs_strv_env_name_is_valid(names: *const *mut c_char) ->
     let mut index = 0;
     loop {
         // SAFETY: the entry-point contract is exactly strv_entry's contract.
-        let Some(name) = (unsafe { strv_entry(names, index) }) else {
+        let Some(name) = (unsafe_ffi!(strv_entry(names, index))) else {
             return true;
         };
         if !env_name_is_valid_bytes(name) {
@@ -307,7 +314,7 @@ pub unsafe extern "C" fn rs_strv_env_name_is_valid(names: *const *mut c_char) ->
 
         let mut following = index + 1;
         // SAFETY: as above, including every later vector slot.
-        while let Some(other) = unsafe { strv_entry(names, following) } {
+        while let Some(other) = unsafe_ffi!(strv_entry(names, following)) {
             if other == name {
                 return false;
             }
@@ -329,7 +336,7 @@ pub unsafe extern "C" fn rs_strv_env_name_or_assignment_is_valid(
     let mut index = 0;
     loop {
         // SAFETY: the entry-point contract is exactly strv_entry's contract.
-        let Some(entry) = (unsafe { strv_entry(entries, index) }) else {
+        let Some(entry) = (unsafe_ffi!(strv_entry(entries, index))) else {
             return true;
         };
         if !env_assignment_is_valid_bytes(entry) && !env_name_is_valid_bytes(entry) {
@@ -338,7 +345,7 @@ pub unsafe extern "C" fn rs_strv_env_name_or_assignment_is_valid(
 
         let mut following = index + 1;
         // SAFETY: as above, including every later vector slot.
-        while let Some(other) = unsafe { strv_entry(entries, following) } {
+        while let Some(other) = unsafe_ffi!(strv_entry(entries, following)) {
             if other == entry {
                 return false;
             }

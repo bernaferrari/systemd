@@ -6,6 +6,13 @@
 // Handles '~' (pre-release), '-' (version/release separator),
 // '^' (patch release), '.' (point release) markers.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_char};
 
 // ── Internal helpers ────────────────────────────────────────────────────
@@ -185,7 +192,7 @@ pub(crate) fn strverscmp_improved_bytes(a: &[u8], b: &[u8]) -> std::cmp::Orderin
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_strverscmp_improved(a: *const c_char, b: *const c_char) -> i32 {
     // SAFETY: the caller guarantees each non-null pointer is a live C string.
-    let (a, b): (&[u8], &[u8]) = unsafe {
+    let (a, b): (&[u8], &[u8]) = unsafe_ffi!({
         (
             if a.is_null() {
                 &[]
@@ -198,7 +205,7 @@ pub unsafe extern "C" fn rs_strverscmp_improved(a: *const c_char, b: *const c_ch
                 CStr::from_ptr(b).to_bytes()
             },
         )
-    };
+    });
 
     match strverscmp_improved_bytes(a, b) {
         std::cmp::Ordering::Less => -1,

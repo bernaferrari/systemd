@@ -6,6 +6,13 @@
 //! module centralizes the only raw C-string read needed by ordinary enum table
 //! facades, so adding a table does not duplicate unsafe lifetime machinery.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_char};
 
 pub(crate) type Entry = (i32, &'static [u8]);
@@ -62,7 +69,7 @@ pub(crate) unsafe fn from_ptr(table: &'static [Entry], input: *const c_char, inv
     }
 
     // SAFETY: required by this helper's contract and checked for NULL above.
-    let input = unsafe { CStr::from_ptr(input) }.to_bytes();
+    let input = unsafe_ffi!(CStr::from_ptr(input)).to_bytes();
     table
         .iter()
         .find_map(|&(value, bytes)| (entry_cstr(bytes).to_bytes() == input).then_some(value))

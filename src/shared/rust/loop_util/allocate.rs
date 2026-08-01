@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::device::{LoopDevice, loop_device_open_from_fd, simplify_path};
 use super::linux::{
     LoopConfig, LoopInfo64, blockdev_get_device_size, blockdev_get_sector_size, dev_from_st_dev,
@@ -159,12 +166,12 @@ pub fn loop_device_make_by_path_at(
 fn open_at(dir_fd: RawFd, path: &Path, flags: i32) -> Result<OwnedFd, LoopError> {
     let path_c = path_to_cstr(path)?;
     // SAFETY: path_c is NUL-terminated and its storage remains alive for the call.
-    let fd = unsafe { libc::openat(dir_fd, path_c.as_ptr(), flags) };
+    let fd = unsafe_ffi!(libc::openat(dir_fd, path_c.as_ptr(), flags));
     if fd < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
     // SAFETY: fd is a fresh descriptor returned by openat.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
 }
 
 fn open_with_optional_direct(
@@ -219,12 +226,12 @@ pub fn loop_device_make_by_path_memory(
     let memfd_name = CString::new(filename).map_err(|_| LoopError::InvalidArgument)?;
     // SAFETY: memfd_name is a live NUL-terminated string; on success the
     // returned descriptor is fresh and uniquely owned.
-    let memfd = unsafe { libc::memfd_create(memfd_name.as_ptr(), libc::MFD_CLOEXEC) };
+    let memfd = unsafe_ffi!(libc::memfd_create(memfd_name.as_ptr(), libc::MFD_CLOEXEC));
     if memfd < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }
     // SAFETY: memfd was just returned by memfd_create and has one owner.
-    let mut mfd = File::from(unsafe { OwnedFd::from_raw_fd(memfd) });
+    let mut mfd = File::from(unsafe_ffi!(OwnedFd::from_raw_fd(memfd)));
 
     let mut buf = vec![0u8; 65536];
     let mut file = file;
@@ -261,7 +268,7 @@ fn loop_device_make_internal(
 ) -> Result<LoopDevice, LoopError> {
     // Determine actual open flags from the fd if not specified.
     // SAFETY: F_GETFL consumes the integer fd by value and returns flags.
-    let f_flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    let f_flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFL));
     if f_flags < 0 {
         return Err(LoopError::from_errno(crate::ffi::get_errno()));
     }

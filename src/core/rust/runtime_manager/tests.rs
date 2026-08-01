@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 /* Cross-domain regression coverage for the runtime manager remains test-only. */
 #[cfg(target_os = "linux")]
 use super::notify_runtime::AuthenticatedNotifyDispatch;
@@ -375,7 +382,7 @@ fn test_runtime_manager_production_root_ignores_cgroup_environment_override() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let previous = std::env::var_os("SYSTEMD_CGROUP_ROOT");
     environment.set("SYSTEMD_CGROUP_ROOT", test_temp_dir("ignored-cgroup-root"));
 
@@ -442,7 +449,7 @@ fn test_load_unit_rejects_syntax_errors_in_fragments_and_dropins() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let root = test_temp_dir("unit-load-syntax-errors");
     fs::create_dir_all(&root).unwrap();
     let unit = root.join("broken.service");
@@ -933,7 +940,7 @@ fn test_parse_kill_and_cgroup_context_directives_shared_and_apply_to_unit() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-kill-cgroup-shared");
     fs::create_dir_all(&dir).unwrap();
     let service_path = dir.join("cg.service");
@@ -1347,7 +1354,7 @@ fn test_parse_unit_section_directives_comprehensive() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-unit-section-comprehensive");
     fs::create_dir_all(&dir).unwrap();
     let service_path = dir.join("unitfull.service");
@@ -1595,7 +1602,7 @@ fn test_load_unit_merges_dropins_and_caches_merged_result() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let root = test_temp_dir("test-systemd-dropin-merge-load");
     let etc = root.join("etc");
     let usr = root.join("usr");
@@ -1658,7 +1665,7 @@ fn test_load_instance_unit_uses_template_and_instance_dropins() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let root = test_temp_dir("test-systemd-template-dropins");
     let etc = root.join("etc");
     let usr = root.join("usr");
@@ -1896,7 +1903,7 @@ fn test_expand_unit_specifiers_for_tmp_and_runtime_env_overrides() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-specifiers-env-overrides");
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join("foo.service");
@@ -2036,7 +2043,7 @@ fn test_load_unit_symlink_registers_alias_to_canonical_name() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     use std::os::unix::fs::symlink;
 
     let root = test_temp_dir("test-systemd-load-unit-symlink-alias");
@@ -2105,7 +2112,7 @@ fn test_systemd_unit_path_override() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let prev = std::env::var("SYSTEMD_UNIT_PATH").ok();
     environment.set("SYSTEMD_UNIT_PATH", "/tmp/a:/tmp/b");
     let paths = unit_search_paths();
@@ -2133,7 +2140,7 @@ fn test_start_unit_async_finishes_without_live_job() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-async-start");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -3262,7 +3269,7 @@ fn test_isolate_stops_other_active_units() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-isolate-async");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -3505,7 +3512,7 @@ fn test_service_condition_failure_skips_start() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-service-condition-fail");
     fs::create_dir_all(&dir).unwrap();
     let marker = dir.join("condition.log");
@@ -3560,7 +3567,7 @@ fn test_service_assert_failure_marks_unit_failed() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-service-assert-fail");
     fs::create_dir_all(&dir).unwrap();
     let marker = dir.join("assert.log");
@@ -3624,7 +3631,7 @@ fn test_notify_service_fails_closed_without_authenticated_transport() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-notify-ready");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -3656,7 +3663,7 @@ fn test_idle_service_launch_failure_remains_a_service_failure() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-idle-without-gate");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -3688,7 +3695,7 @@ fn test_dbus_service_without_bus_name_fails_closed() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-dbus-without-name");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4538,7 +4545,7 @@ fn test_service_directories_are_created_and_runtime_removed_on_stop() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-service-directories");
     fs::create_dir_all(&dir).unwrap();
 
@@ -4645,7 +4652,7 @@ fn test_runtime_directory_preserve_keeps_runtime_path() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-runtime-directory-preserve");
     fs::create_dir_all(&dir).unwrap();
 
@@ -4701,7 +4708,7 @@ fn test_dynamic_user_uid_assignment_is_stable_across_manager_restart() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-dynamic-user-stable");
     fs::create_dir_all(&dir).unwrap();
 
@@ -4767,7 +4774,7 @@ fn test_build_transaction_ignore_requirements_allows_missing_required_deps() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-ignore-requirements-mode");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4806,7 +4813,7 @@ fn test_build_transaction_ignore_dependencies_does_not_pull_in_requires() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-ignore-dependencies-mode");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4852,7 +4859,7 @@ fn test_build_transaction_restart_dependencies_starts_forward_requirements() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-restart-dependencies-mode");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4904,7 +4911,7 @@ fn test_build_transaction_loads_direct_conflict_target() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-direct-conflict-loading");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4939,7 +4946,7 @@ fn test_build_transaction_honors_inverse_conflict_from_loaded_unit() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-inverse-conflict");
     fs::create_dir_all(&dir).unwrap();
     fs::write(
@@ -4983,7 +4990,7 @@ fn test_build_transaction_restart_dependencies_requires_start_job() {
     let _test_lock = test_env_lock();
     // SAFETY: this environment-dependent test target runs with --test-threads=1
     // and does not spawn threads that access the process environment.
-    let environment = unsafe { TestEnvironment::lock() };
+    let environment = unsafe_ffi!(TestEnvironment::lock());
     let dir = test_temp_dir("test-systemd-restart-dependencies-invalid-mode");
     fs::create_dir_all(&dir).unwrap();
     fs::write(

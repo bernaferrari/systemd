@@ -129,10 +129,10 @@ unsafe fn bytes_to_malloc(bytes: &[u8]) -> *mut c_char {
     }
 
     // SAFETY: the fresh allocation has room for `bytes` and its terminator.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(bytes.as_ptr(), output as *mut u8, bytes.len());
         *output.add(bytes.len()) = 0;
-    }
+    });
     output
 }
 
@@ -162,10 +162,10 @@ unsafe fn strndup_owned(s: *const c_char, n: usize) -> *mut c_char {
     }
     // SAFETY: `ptr` names `allocation >= copy_len + 1` writable bytes and
     // `s` names at least `copy_len` readable bytes; the allocation is fresh.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(s, ptr, copy_len);
         *ptr.add(copy_len) = 0;
-    }
+    });
     ptr
 }
 
@@ -209,12 +209,12 @@ unsafe fn strjoin3(a: *const c_char, b: *const c_char, c: *const c_char) -> *mut
     }
     // SAFETY: the fresh allocation is large enough for all three source
     // ranges plus the terminator, and the source ranges do not overlap it.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(a, ptr, la);
         ptr::copy_nonoverlapping(b, ptr.add(la), lb);
         ptr::copy_nonoverlapping(c, ptr.add(la + lb), lc);
         *ptr.add(la + lb + lc) = 0;
-    }
+    });
     ptr
 }
 
@@ -226,12 +226,12 @@ unsafe fn memcmp_nn(a: *const c_char, alen: usize, b: *const c_char, blen: usize
     if min_len > 0 {
         // SAFETY: the caller guarantees that both inputs are readable for
         // their supplied lengths; `min_len` cannot exceed either length.
-        let (a_slice, b_slice) = unsafe {
+        let (a_slice, b_slice) = unsafe_ffi!({
             (
                 std::slice::from_raw_parts(a as *const u8, min_len),
                 std::slice::from_raw_parts(b as *const u8, min_len),
             )
-        };
+        });
         let r = a_slice.cmp(b_slice);
         match r {
             std::cmp::Ordering::Less => -1,
@@ -715,11 +715,11 @@ pub unsafe extern "C" fn rs_unit_name_change_suffix(
 
     // SAFETY: the fresh allocation covers both validated source ranges and
     // their terminator, with no overlap.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(n, s, a);
         ptr::copy_nonoverlapping(suffix, s.add(a), b);
         *s.add(a + b) = 0;
-    }
+    });
 
     // SAFETY: `s` is now a live NUL-terminated string.
     if !unsafe_ffi!(unit_name_is_valid_internal(s, UNIT_NAME_ANY)) {
@@ -801,13 +801,13 @@ pub unsafe extern "C" fn rs_unit_name_build_from_type(
         }
         // SAFETY: `total` was checked for every component, the allocation is
         // fresh, and each source range is readable and disjoint from it.
-        unsafe {
+        unsafe_ffi!({
             ptr::copy_nonoverlapping(prefix, ptr, prefix_len);
             *ptr.add(prefix_len) = b'@' as c_char;
             ptr::copy_nonoverlapping(instance, ptr.add(prefix_len + 1), instance_len);
             *ptr.add(prefix_len + 1 + instance_len) = b'.' as c_char;
             ptr::copy_nonoverlapping(ut, ptr.add(prefix_len + 1 + instance_len + 1), ut_len + 1);
-        }
+        });
         ptr
     } else {
         // SAFETY: both pointers name live NUL-terminated strings.
@@ -821,11 +821,11 @@ pub unsafe extern "C" fn rs_unit_name_build_from_type(
         }
         // SAFETY: the checked fresh allocation covers both source ranges,
         // separator, and terminator.
-        unsafe {
+        unsafe_ffi!({
             ptr::copy_nonoverlapping(prefix, ptr, prefix_len);
             *ptr.add(prefix_len) = b'.' as c_char;
             ptr::copy_nonoverlapping(ut, ptr.add(prefix_len + 1), ut_len + 1);
-        }
+        });
         ptr
     };
 
@@ -894,9 +894,9 @@ pub unsafe extern "C" fn rs_slice_build_parent_slice(
     let suffix = b".slice\0";
     // SAFETY: replacing from the dash with the NUL-terminated `.slice` suffix
     // stays within the original validated `.slice` allocation.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(suffix.as_ptr(), s.add(dash_pos) as *mut u8, suffix.len());
-    }
+    });
 
     // SAFETY: the caller guarantees that `ret` is writable.
     unsafe_ffi!(*ret = s);
@@ -941,7 +941,7 @@ pub unsafe extern "C" fn rs_slice_build_subslice(
         let mut p = s as *mut u8;
         // SAFETY: `total` covers every copied component and the trailing NUL
         // already included in `.slice`; all sources are live and disjoint.
-        unsafe {
+        unsafe_ffi!({
             ptr::copy_nonoverlapping(slice as *const u8, p, elen);
             p = p.add(elen);
             *p = b'-';
@@ -950,7 +950,7 @@ pub unsafe extern "C" fn rs_slice_build_subslice(
             p = p.add(nlen);
             let suffix = b".slice\0";
             ptr::copy_nonoverlapping(suffix.as_ptr(), p, suffix.len());
-        }
+        });
         s
     };
 
@@ -1090,22 +1090,22 @@ pub unsafe extern "C" fn rs_unit_name_replace_instance_full(
     }
 
     // SAFETY: `original` was validated above.
-    let (prefix, suffix) = unsafe {
+    let (prefix, suffix) = unsafe_ffi!({
         (
             strchr(original, b'@' as i32),
             strrchr(original, b'.' as i32),
         )
-    };
+    });
 
     // SAFETY: both search results are within `original`, while `instance` and
     // `suffix` are live NUL-terminated strings.
-    let (pl, ilen, slen) = unsafe {
+    let (pl, ilen, slen) = unsafe_ffi!({
         (
             prefix.offset_from(original) as usize + 1,
             strlen(instance),
             strlen(suffix),
         )
-    };
+    });
 
     let Some(allocation) = checked_c_allocation(&[pl, ilen, slen, 1]) else {
         return Errno::ENOMEM.to_neg_errno();
@@ -1117,11 +1117,11 @@ pub unsafe extern "C" fn rs_unit_name_replace_instance_full(
 
     // SAFETY: the checked fresh allocation covers all source ranges, and the
     // sources are live and disjoint from it.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(original, s, pl);
         ptr::copy_nonoverlapping(instance, s.add(pl), ilen);
         ptr::copy_nonoverlapping(suffix, s.add(pl + ilen), slen + 1);
-    }
+    });
 
     // SAFETY: `s` is now a live NUL-terminated string.
     if !accept_glob && !unsafe_ffi!(unit_name_is_valid_internal(s, UNIT_NAME_INSTANCE)) {
@@ -1166,10 +1166,10 @@ pub unsafe extern "C" fn rs_unit_name_template(f: *const c_char, ret: *mut *mut 
 
     // SAFETY: the checked fresh allocation covers the copied prefix and
     // suffix, and the source ranges are live and disjoint from it.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(f, s, a + 1);
         ptr::copy_nonoverlapping(e, s.add(a + 1), elen + 1);
-    }
+    });
 
     // SAFETY: the caller guarantees that `ret` is writable.
     unsafe_ffi!(*ret = s);
@@ -1314,10 +1314,10 @@ unsafe fn unit_name_from_path_simple(
 
     // SAFETY: the checked fresh allocation covers both live source ranges and
     // their terminator, and the sources are disjoint from it.
-    unsafe {
+    unsafe_ffi!({
         ptr::copy_nonoverlapping(escaped, s, elen);
         ptr::copy_nonoverlapping(suffix, s.add(elen), slen + 1);
-    }
+    });
     // SAFETY: `escaped` is the unique allocation returned above.
     unsafe_ffi!(free(escaped as *mut c_void));
 
@@ -1528,22 +1528,22 @@ mod tests {
     fn reclaim_cstring(ptr: *const c_char) {
         if !ptr.is_null() {
             // SAFETY: `ptr` came from `CString::into_raw` in this test module and is reclaimed exactly once.
-            unsafe {
+            unsafe_ffi!({
                 drop(CString::from_raw(ptr as *mut c_char));
-            }
+            })
         }
     }
 
     fn from_raw_mut(ptr: *mut c_char) -> String {
         // SAFETY: the unit-name API returned a live NUL-terminated string from
         // this crate's C-compatible allocator.
-        unsafe {
+        unsafe_ffi!({
             let s = CStr::from_ptr(ptr).to_str().unwrap().to_string();
             // SAFETY: `ptr` is the unique C-allocator allocation returned by
             // the unit-name API and is released exactly once here.
             free(ptr.cast::<c_void>());
             s
-        }
+        })
     }
 
     // ── unit_name_is_valid tests ─────────────────────────────────────────

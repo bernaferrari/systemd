@@ -735,14 +735,14 @@ unsafe fn c_image_policy_entries<'a>(policy: *const CImagePolicy) -> &'a [CParti
 
     // SAFETY: the caller guarantees a complete C allocation including all
     // flexible-array entries immediately after the repr(C) prefix.
-    unsafe {
+    unsafe_ffi!({
         let n_policies = (*policy).n_policies;
         let entries = policy
             .cast::<u8>()
             .add(std::mem::size_of::<CImagePolicy>())
             .cast::<CPartitionPolicy>();
         std::slice::from_raw_parts(entries, n_policies)
-    }
+    })
 }
 
 /// # Safety
@@ -770,12 +770,12 @@ unsafe fn c_image_policy_default(policy: *const CImagePolicy) -> i32 {
 unsafe fn c_image_policy_to_native(policy: *const CImagePolicy) -> Result<ImagePolicy, i32> {
     // SAFETY: forwarded from this helper's complete C flexible-array policy
     // contract for both the prefix and entries.
-    let (default_flags, entries) = unsafe {
+    let (default_flags, entries) = unsafe_ffi!({
         (
             c_image_policy_default(policy),
             c_image_policy_entries(policy),
         )
-    };
+    });
     let mut policies = Vec::new();
     for entry in entries {
         let designator = PartitionDesignator::from_i32(entry.designator)
@@ -810,7 +810,7 @@ fn native_image_policy_to_c(policy: &ImagePolicy) -> Result<*mut CImagePolicy, i
 
     // SAFETY: `result` is a fresh allocation large enough for the C prefix
     // and all flexible-array entries computed above.
-    unsafe {
+    unsafe_ffi!({
         ptr::write(
             result,
             CImagePolicy {
@@ -831,7 +831,7 @@ fn native_image_policy_to_c(policy: &ImagePolicy) -> Result<*mut CImagePolicy, i
                 },
             );
         }
-    }
+    });
     Ok(result)
 }
 
@@ -1349,12 +1349,12 @@ pub unsafe extern "C" fn rs_partition_policy_determine_fstype(
     if count != 1 {
         // SAFETY: the required output and, when supplied, the optional output
         // are writable by this export's contract.
-        unsafe {
+        unsafe_ffi!({
             if !ret_encrypted.is_null() {
                 ptr::write(ret_encrypted, false);
             }
             ptr::write(ret_fstype, ptr::null_mut());
-        }
+        });
         return 0;
     }
 
@@ -1370,12 +1370,12 @@ pub unsafe extern "C" fn rs_partition_policy_determine_fstype(
     };
     // SAFETY: the required output and, when supplied, the optional output
     // are writable by this export's contract.
-    unsafe {
+    unsafe_ffi!({
         if !ret_encrypted.is_null() {
             ptr::write(ret_encrypted, encrypted);
         }
         ptr::write(ret_fstype, output);
-    }
+    });
     1
 }
 

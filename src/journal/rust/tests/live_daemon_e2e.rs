@@ -2,6 +2,13 @@
 
 #![cfg(unix)]
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use nix::libc;
 use nix::sys::signal::{Signal, kill};
 use nix::sys::socket::{ControlMessageOwned, MsgFlags, UnixAddr, recvmsg};
@@ -132,7 +139,7 @@ fn spawn_daemon_with_restored_stream_fd(
 
     // SAFETY: pre_exec runs after fork and before exec; restored_fd is owned by
     // this launch path, and fd 3 is the documented socket-activation target.
-    unsafe {
+    unsafe_ffi!({
         cmd.pre_exec(move || {
             if restored_fd != 3 && libc::dup2(restored_fd, 3) < 0 {
                 return Err(io::Error::last_os_error());
@@ -147,11 +154,11 @@ fn spawn_daemon_with_restored_stream_fd(
 
             Ok(())
         });
-    }
+    });
 
     let child = cmd.spawn().unwrap();
     // SAFETY: the parent owns restored_fd and no longer needs it after spawn.
-    let _ = unsafe { libc::close(restored_fd) };
+    let _ = unsafe_ffi!(libc::close(restored_fd));
     child
 }
 

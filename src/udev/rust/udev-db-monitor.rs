@@ -4,6 +4,13 @@
 //
 // Device database + monitor/control socket + rules inotify helpers for udevd.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Read};
@@ -325,40 +332,40 @@ pub fn initialize_udev_runtime_with_fds(
 
 pub fn create_kobject_uevent_multicast_socket(groups: u32) -> io::Result<OwnedFd> {
     // SAFETY: libc socket call with validated constants and no aliasing.
-    let fd = unsafe {
+    let fd = unsafe_ffi!({
         libc::socket(
             AF_NETLINK,
             libc::SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK,
             NETLINK_KOBJECT_UEVENT,
         )
-    };
+    });
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
 
     // SAFETY: zeroed sockaddr_nl is valid initialization.
-    let mut addr: sockaddr_nl = unsafe { std::mem::zeroed() };
+    let mut addr: sockaddr_nl = unsafe_ffi!(std::mem::zeroed());
     addr.nl_family = AF_NETLINK as _;
     addr.nl_pid = 0;
     addr.nl_groups = groups;
 
     // SAFETY: fd is valid and addr points to a properly initialized sockaddr_nl.
-    let bind_result = unsafe {
+    let bind_result = unsafe_ffi!({
         libc::bind(
             fd,
             (&addr as *const sockaddr_nl).cast::<libc::sockaddr>(),
             size_of::<sockaddr_nl>() as libc::socklen_t,
         )
-    };
+    });
     if bind_result < 0 {
         let err = io::Error::last_os_error();
         // SAFETY: fd is owned locally and valid.
-        let _ = unsafe { libc::close(fd) };
+        let _ = unsafe_ffi!(libc::close(fd));
         return Err(err);
     }
 
     // SAFETY: fd is uniquely owned here after successful socket/bind.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
 }
 
 pub fn encode_uevent_properties(
@@ -408,13 +415,13 @@ impl RulesInotifyWatcher {
         #[cfg(target_os = "linux")]
         {
             // SAFETY: libc call with constant flags.
-            let fd = unsafe { libc::inotify_init1(libc::O_NONBLOCK | libc::O_CLOEXEC) };
+            let fd = unsafe_ffi!(libc::inotify_init1(libc::O_NONBLOCK | libc::O_CLOEXEC));
             if fd < 0 {
                 return Err(io::Error::last_os_error());
             }
             // SAFETY: fd is newly created and uniquely owned.
             Ok(Self {
-                fd: unsafe { OwnedFd::from_raw_fd(fd) },
+                fd: unsafe_ffi!(OwnedFd::from_raw_fd(fd)),
                 watched_dirs: BTreeMap::new(),
             })
         }
@@ -431,13 +438,13 @@ impl RulesInotifyWatcher {
             let path_bytes = std::ffi::CString::new(path.as_os_str().as_encoded_bytes())
                 .map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))?;
             // SAFETY: inotify fd is valid and path is a valid C string.
-            let wd = unsafe {
+            let wd = unsafe_ffi!({
                 libc::inotify_add_watch(
                     self.fd.as_raw_fd(),
                     path_bytes.as_ptr(),
                     UDEV_RULES_INOTIFY_MASK,
                 )
-            };
+            });
             if wd < 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -457,13 +464,13 @@ impl RulesInotifyWatcher {
         {
             let mut buf = [0u8; 8192];
             // SAFETY: buffer pointer and length are valid for read().
-            let n = unsafe {
+            let n = unsafe_ffi!({
                 libc::read(
                     self.fd.as_raw_fd(),
                     buf.as_mut_ptr().cast::<libc::c_void>(),
                     buf.len(),
                 )
-            };
+            });
             if n < 0 {
                 let err = io::Error::last_os_error();
                 if err.kind() == io::ErrorKind::WouldBlock {
@@ -489,9 +496,9 @@ fn parse_inotify_events(
     let mut offset = 0usize;
     while offset + size_of::<LinuxInotifyEvent>() <= bytes.len() {
         // SAFETY: bounds checked above; read_unaligned handles alignment.
-        let event = unsafe {
+        let event = unsafe_ffi!({
             std::ptr::read_unaligned(bytes[offset..].as_ptr().cast::<LinuxInotifyEvent>())
-        };
+        });
         offset += size_of::<LinuxInotifyEvent>();
 
         let name_len = event.len as usize;

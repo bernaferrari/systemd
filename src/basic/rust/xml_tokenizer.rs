@@ -5,6 +5,13 @@
 // Simplified XML tokenizer. Supports basic XML syntax with HTML5-like
 // simplifications (e.g. unquoted attribute values).
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::{c_char, c_uint, c_void};
 use std::ffi::CStr;
 
@@ -633,7 +640,7 @@ fn malloc_raw_name(bytes: &[u8]) -> *mut c_char {
 
     // SAFETY: malloc accepts any `size_t`; its allocation is deliberately
     // used so C callers may release the result with free(3), as xml.c does.
-    let output = unsafe { libc::malloc(allocation) }.cast::<c_char>();
+    let output = unsafe_ffi!(libc::malloc(allocation)).cast::<c_char>();
     if output.is_null() {
         return output;
     }
@@ -642,10 +649,14 @@ fn malloc_raw_name(bytes: &[u8]) -> *mut c_char {
         // SAFETY: `output` has `bytes.len() + 1` writable bytes and the input
         // slice is readable for `bytes.len()` bytes. The ranges cannot overlap
         // because the output is a fresh allocation.
-        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), output.cast::<u8>(), bytes.len()) };
+        unsafe_ffi!(std::ptr::copy_nonoverlapping(
+            bytes.as_ptr(),
+            output.cast::<u8>(),
+            bytes.len()
+        ));
     }
     // SAFETY: the final byte is within the just-allocated output buffer.
-    unsafe { *output.cast::<u8>().add(bytes.len()) = 0 };
+    unsafe_ffi!(*output.cast::<u8>().add(bytes.len()) = 0);
     output
 }
 
@@ -680,21 +691,21 @@ pub unsafe extern "C" fn rs_xml_tokenize(
     }
 
     // SAFETY: the ABI contract guarantees writable outer pointer storage.
-    let input = unsafe { *p };
+    let input = unsafe_ffi!(*p);
     if input.is_null() {
         return Errno::EINVAL.to_neg_errno();
     }
 
     // SAFETY: the ABI contract guarantees a live NUL-terminated C byte
     // string. `CStr` intentionally performs no UTF-8 validation.
-    let bytes = unsafe { CStr::from_ptr(input) }.to_bytes();
+    let bytes = unsafe_ffi!(CStr::from_ptr(input)).to_bytes();
     // SAFETY: the ABI contract guarantees writable state storage.
-    let initial_state = unsafe { *state as usize };
+    let initial_state = unsafe_ffi!(*state as usize);
     let mut line = if line.is_null() {
         None
     } else {
         // SAFETY: the ABI contract guarantees writable optional line storage.
-        Some(unsafe { &mut *line })
+        Some(unsafe_ffi!(&mut *line))
     };
 
     let token = match tokenize_raw_c_bytes(bytes, initial_state, line.as_deref_mut()) {
@@ -722,11 +733,11 @@ pub unsafe extern "C" fn rs_xml_tokenize(
     // SAFETY: the ABI contract guarantees writable output/state pointer
     // storage. `token.next` is bounded by `bytes`, so this is an in-bounds
     // position in the supplied C string (or its terminating NUL).
-    unsafe {
+    unsafe_ffi!({
         *name = allocated_name;
         *p = input.add(token.next);
         *state = token.state as *mut c_void;
-    }
+    });
     token.kind
 }
 

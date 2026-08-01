@@ -3,6 +3,14 @@
     reason = "the C-aligned `unit` facade deliberately keeps its tests in unit/tests.rs"
 )]
 
+// Centralized unsafe expression boundary for this test module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
+
 mod tests {
     use crate::unit::{
         ActiveState, CollectMode, DependencyKind, FUNCTION_INVENTORY, FreezerState, ManagerRecord,
@@ -172,12 +180,12 @@ mod tests {
     fn invocation_id_is_deterministic_for_same_input() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let _environment = unsafe { TestEnvironment::lock() };
+        let _environment = unsafe_ffi!(TestEnvironment::lock());
         let mut a = sample_unit();
         let mut b = sample_unit();
         // SAFETY: TestEnvironment serializes process-environment mutation for
         // the full duration of this test.
-        unsafe { setenv_unit_path("/etc/systemd/system") }.unwrap();
+        unsafe_ffi!(setenv_unit_path("/etc/systemd/system")).unwrap();
         assert_eq!(
             unit_acquire_invocation_id(&mut a).unwrap(),
             unit_acquire_invocation_id(&mut b).unwrap()

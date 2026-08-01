@@ -13,6 +13,13 @@
 // directory-stream boundaries. All traversal and policy decisions remain safe
 // Rust.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::{CStr, CString};
 use std::fs::{self, Metadata};
@@ -238,7 +245,7 @@ fn remove_acl_xattrs(fd: RawFd) -> io::Result<()> {
             let fd_path = proc_fd_path(fd);
             // SAFETY: both arguments are valid NUL-terminated strings for the
             // duration of this synchronous call.
-            ret = unsafe { libc::removexattr(fd_path.as_ptr(), name.as_ptr().cast()) };
+            ret = unsafe_ffi!(libc::removexattr(fd_path.as_ptr(), name.as_ptr().cast()));
         }
 
         if ret < 0 {
@@ -263,7 +270,7 @@ fn remove_acl_xattrs(fd: RawFd) -> io::Result<()> {
 /// 4. Restore `mode & mask`, including bits implicitly cleared by chown.
 fn chmod_fd(fd: RawFd, mode: libc::mode_t) -> io::Result<()> {
     // SAFETY: `fd` is valid and borrowed for this synchronous call.
-    if unsafe { libc::fchmod(fd, mode) } >= 0 {
+    if unsafe_ffi!(libc::fchmod(fd, mode)) >= 0 {
         return Ok(());
     }
 
@@ -277,7 +284,7 @@ fn chmod_fd(fd: RawFd, mode: libc::mode_t) -> io::Result<()> {
     // New enough libc versions route this to fchmodat2(2) themselves.
     // SAFETY: `fd` stays borrowed, the empty pathname is NUL-terminated, and
     // AT_EMPTY_PATH makes the operation apply to that descriptor's inode.
-    if unsafe { libc::fchmodat(fd, c"".as_ptr(), mode, libc::AT_EMPTY_PATH) } >= 0 {
+    if unsafe_ffi!(libc::fchmodat(fd, c"".as_ptr(), mode, libc::AT_EMPTY_PATH)) >= 0 {
         return Ok(());
     }
 
@@ -298,7 +305,13 @@ fn chmod_fd(fd: RawFd, mode: libc::mode_t) -> io::Result<()> {
     if err.raw_os_error() == Some(libc::EINVAL) {
         // SAFETY: `fd` stays borrowed, the empty pathname is NUL-terminated,
         // and the syscall arguments match Linux fchmodat2(2)'s ABI.
-        if unsafe { libc::syscall(SYS_FCHMODAT2, fd, c"".as_ptr(), mode, libc::AT_EMPTY_PATH) } >= 0
+        if unsafe_ffi!(libc::syscall(
+            SYS_FCHMODAT2,
+            fd,
+            c"".as_ptr(),
+            mode,
+            libc::AT_EMPTY_PATH
+        )) >= 0
         {
             return Ok(());
         }
@@ -316,7 +329,7 @@ fn chmod_fd(fd: RawFd, mode: libc::mode_t) -> io::Result<()> {
     let fd_path = proc_fd_path(fd);
     // SAFETY: `fd_path` is a valid NUL-terminated path and `mode` is passed by
     // value.
-    if unsafe { libc::chmod(fd_path.as_ptr(), mode) } < 0 {
+    if unsafe_ffi!(libc::chmod(fd_path.as_ptr(), mode)) < 0 {
         return Err(io::Error::last_os_error());
     }
     Ok(())
@@ -381,22 +394,22 @@ fn open_directory(path: &Path, follow_symlinks: bool) -> io::Result<fs::File> {
 fn openat_file(dir_fd: RawFd, name: &CStr, flags: libc::c_int) -> io::Result<fs::File> {
     // SAFETY: `dir_fd` stays borrowed, `name` is NUL-terminated, and openat
     // returns a new descriptor that is immediately transferred to `File`.
-    let fd = unsafe { libc::openat(dir_fd, name.as_ptr(), flags) };
+    let fd = unsafe_ffi!(libc::openat(dir_fd, name.as_ptr(), flags));
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: `fd` is newly owned by this function and has not been wrapped.
-    Ok(unsafe { fs::File::from_raw_fd(fd) })
+    Ok(unsafe_ffi!(fs::File::from_raw_fd(fd)))
 }
 
 fn duplicate_fd(fd: RawFd) -> io::Result<fs::File> {
     // SAFETY: fcntl borrows `fd` and returns a separately owned descriptor.
-    let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3) };
+    let duplicate = unsafe_ffi!(libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3));
     if duplicate < 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: `duplicate` is newly owned and has not been wrapped elsewhere.
-    Ok(unsafe { fs::File::from_raw_fd(duplicate) })
+    Ok(unsafe_ffi!(fs::File::from_raw_fd(duplicate)))
 }
 
 struct DirStream(*mut libc::DIR);
@@ -406,7 +419,7 @@ impl DirStream {
         let fd = file.as_raw_fd();
         // SAFETY: fdopendir takes ownership only on success. `file` is
         // forgotten in that case and otherwise closes the descriptor.
-        let stream = unsafe { libc::fdopendir(fd) };
+        let stream = unsafe_ffi!(libc::fdopendir(fd));
         if stream.is_null() {
             return Err(io::Error::last_os_error());
         }
@@ -416,16 +429,16 @@ impl DirStream {
 
     fn fd(&self) -> RawFd {
         // SAFETY: `self.0` remains a live DIR until Drop.
-        unsafe { libc::dirfd(self.0) }
+        unsafe_ffi!(libc::dirfd(self.0))
     }
 
     fn next_name(&mut self) -> io::Result<Option<CString>> {
         // SAFETY: this module targets Linux; setting thread-local errno before
         // readdir lets a null result be distinguished from end-of-directory.
-        unsafe { *libc::__errno_location() = 0 };
+        unsafe_ffi!(*libc::__errno_location() = 0);
         // SAFETY: `self.0` is a live DIR and this method has exclusive access
         // while readdir advances its internal position.
-        let entry = unsafe { libc::readdir(self.0) };
+        let entry = unsafe_ffi!(libc::readdir(self.0));
         if entry.is_null() {
             let error = io::Error::last_os_error();
             return if error.raw_os_error() == Some(0) {
@@ -437,7 +450,7 @@ impl DirStream {
 
         // SAFETY: d_name is NUL-terminated for a successful readdir result;
         // copy it before the next call may invalidate the storage.
-        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+        let name = unsafe_ffi!(CStr::from_ptr((*entry).d_name.as_ptr()));
         Ok(Some(name.to_owned()))
     }
 }
@@ -445,7 +458,7 @@ impl DirStream {
 impl Drop for DirStream {
     fn drop(&mut self) {
         // SAFETY: `self.0` is owned by this wrapper and closed exactly once.
-        unsafe { libc::closedir(self.0) };
+        unsafe_ffi!(libc::closedir(self.0));
     }
 }
 
@@ -539,11 +552,11 @@ pub fn fd_chown_recursive<Fd: AsRawFd>(fd: &Fd, opts: &ChownOptions) -> io::Resu
     let mut stat_buf = MaybeUninit::<libc::stat>::uninit();
     // SAFETY: `stat_buf` is writable, properly aligned output storage. `raw`
     // is borrowed from the caller and remains valid for this synchronous call.
-    if unsafe { libc::fstat(raw, stat_buf.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::fstat(raw, stat_buf.as_mut_ptr())) < 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: successful fstat(2) initialized the complete output struct.
-    let stat_buf = unsafe { stat_buf.assume_init() };
+    let stat_buf = unsafe_ffi!(stat_buf.assume_init());
 
     let status = InodeStatus::from_stat(&stat_buf);
     if !status.is_dir() {

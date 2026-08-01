@@ -6,6 +6,13 @@
 // DNS SRV/DNS-SD type parsing lives in dns_label.rs; this module owns the
 // exported validator facades declared by dns_domain_validators.h.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use libc::c_char;
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -65,7 +72,7 @@ pub unsafe extern "C" fn rs_dns_service_name_is_valid(name: *const c_char) -> bo
         return false;
     }
     // SAFETY: the caller guarantees name is a live NUL-terminated C string.
-    let s = unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("");
+    let s = unsafe_ffi!(CStr::from_ptr(name)).to_str().unwrap_or("");
     dns_service_name_is_valid(s)
 }
 
@@ -90,7 +97,7 @@ pub unsafe extern "C" fn rs_dns_subtype_name_is_valid(name: *const c_char) -> bo
     }
 
     // SAFETY: the entry point contract requires a live NUL-terminated string.
-    let value = unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("");
+    let value = unsafe_ffi!(CStr::from_ptr(name)).to_str().unwrap_or("");
     dns_subtype_name_is_valid(value)
 }
 
@@ -107,7 +114,7 @@ pub unsafe extern "C" fn rs_dns_subtype_name_is_valid(name: *const c_char) -> bo
 pub unsafe extern "C" fn rs_dns_srv_type_is_valid(name: *const c_char) -> bool {
     // SAFETY: the entry point contract is exactly the callee's raw C-string
     // contract; the helper performs the NULL check before traversing it.
-    unsafe { crate::dns_label::rs_dns_srv_type_is_valid(name) }
+    unsafe_ffi!(crate::dns_label::rs_dns_srv_type_is_valid(name))
 }
 
 /// C ABI shadow of C `dnssd_srv_type_is_valid()`.
@@ -123,7 +130,7 @@ pub unsafe extern "C" fn rs_dns_srv_type_is_valid(name: *const c_char) -> bool {
 pub unsafe extern "C" fn rs_dnssd_srv_type_is_valid(name: *const c_char) -> bool {
     // SAFETY: the entry point contract is exactly the callee's raw C-string
     // contract; the helper performs the NULL check before traversing it.
-    unsafe { crate::dns_label::rs_dnssd_srv_type_is_valid(name) }
+    unsafe_ffi!(crate::dns_label::rs_dnssd_srv_type_is_valid(name))
 }
 
 #[cfg(test)]

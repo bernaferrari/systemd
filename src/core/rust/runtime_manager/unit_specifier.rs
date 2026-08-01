@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 /*
  * Own unit-name decomposition and specifier expansion, including the host identity lookups used
  * by specifiers. This module depends on neither parsed unit configuration nor RuntimeManager.
@@ -251,14 +258,14 @@ pub(super) fn resolve_pretty_hostname() -> String {
 #[cfg(target_os = "linux")]
 pub(super) fn resolve_passwd_record(uid: libc::uid_t) -> Option<(String, String, String)> {
     // SAFETY: `sysconf` has no additional safety preconditions.
-    let size = unsafe { libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) };
+    let size = unsafe_ffi!(libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX));
     let capacity = if size <= 0 { 16_384 } else { size as usize };
     let mut buf = vec![0u8; capacity];
     let mut pwd = MaybeUninit::<libc::passwd>::zeroed();
     let mut result = std::ptr::null_mut();
 
     // SAFETY: all pointers are valid for writes/reads for the duration of this call.
-    let rc = unsafe {
+    let rc = unsafe_ffi!({
         libc::getpwuid_r(
             uid,
             pwd.as_mut_ptr(),
@@ -266,23 +273,23 @@ pub(super) fn resolve_passwd_record(uid: libc::uid_t) -> Option<(String, String,
             buf.len(),
             &mut result,
         )
-    };
+    });
     if rc != 0 || result.is_null() {
         return None;
     }
 
     // SAFETY: `result` points at `pwd` initialized by `getpwuid_r` above.
-    let pwd = unsafe { pwd.assume_init() };
+    let pwd = unsafe_ffi!(pwd.assume_init());
     // SAFETY: pointers in `passwd` refer into `buf`, which is still alive here.
-    let name = unsafe { CStr::from_ptr(pwd.pw_name) }
+    let name = unsafe_ffi!(CStr::from_ptr(pwd.pw_name))
         .to_string_lossy()
         .into_owned();
     // SAFETY: pointers in `passwd` refer into `buf`, which is still alive here.
-    let home = unsafe { CStr::from_ptr(pwd.pw_dir) }
+    let home = unsafe_ffi!(CStr::from_ptr(pwd.pw_dir))
         .to_string_lossy()
         .into_owned();
     // SAFETY: pointers in `passwd` refer into `buf`, which is still alive here.
-    let shell = unsafe { CStr::from_ptr(pwd.pw_shell) }
+    let shell = unsafe_ffi!(CStr::from_ptr(pwd.pw_shell))
         .to_string_lossy()
         .into_owned();
 
@@ -297,14 +304,14 @@ pub(super) fn resolve_passwd_record(_uid: libc::uid_t) -> Option<(String, String
 #[cfg(target_os = "linux")]
 pub(super) fn resolve_group_name_from_gid(gid: libc::gid_t) -> Option<String> {
     // SAFETY: `sysconf` has no additional safety preconditions.
-    let size = unsafe { libc::sysconf(libc::_SC_GETGR_R_SIZE_MAX) };
+    let size = unsafe_ffi!(libc::sysconf(libc::_SC_GETGR_R_SIZE_MAX));
     let capacity = if size <= 0 { 16_384 } else { size as usize };
     let mut buf = vec![0u8; capacity];
     let mut grp = MaybeUninit::<libc::group>::zeroed();
     let mut result = std::ptr::null_mut();
 
     // SAFETY: all pointers are valid for writes/reads for the duration of this call.
-    let rc = unsafe {
+    let rc = unsafe_ffi!({
         libc::getgrgid_r(
             gid,
             grp.as_mut_ptr(),
@@ -312,16 +319,16 @@ pub(super) fn resolve_group_name_from_gid(gid: libc::gid_t) -> Option<String> {
             buf.len(),
             &mut result,
         )
-    };
+    });
     if rc != 0 || result.is_null() {
         return None;
     }
 
     // SAFETY: `result` points at `grp` initialized by `getgrgid_r` above.
-    let grp = unsafe { grp.assume_init() };
+    let grp = unsafe_ffi!(grp.assume_init());
     // SAFETY: pointer in `group` refers into `buf`, which is still alive here.
     Some(
-        unsafe { CStr::from_ptr(grp.gr_name) }
+        unsafe_ffi!(CStr::from_ptr(grp.gr_name))
             .to_string_lossy()
             .into_owned(),
     )

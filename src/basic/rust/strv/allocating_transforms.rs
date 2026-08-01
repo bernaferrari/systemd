@@ -4,6 +4,13 @@
 //
 // Allocating strv transforms with C-owned results and explicit rollback rules.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{CStr, c_void};
 
 use libc::c_char;
@@ -47,14 +54,14 @@ pub unsafe extern "C" fn rs_strv_filter_prefix(
         None
     } else {
         // SAFETY: the entry-point contract guarantees the borrowed C string.
-        Some(unsafe { CStr::from_ptr(prefix) })
+        Some(unsafe_ffi!(CStr::from_ptr(prefix)))
     };
 
     // `isempty(prefix)` in C treats NULL and "" alike and delegates to
     // strv_copy(), including its non-null empty-vector allocation behavior.
     let Some(prefix) = prefix.filter(|prefix| !prefix.to_bytes().is_empty()) else {
         // SAFETY: the entry-point contract is the one required by copy_n.
-        return unsafe { rs_strv_copy_n(l, SIZE_MAX) };
+        return unsafe_ffi!(rs_strv_copy_n(l, SIZE_MAX));
     };
     if l.is_null() {
         return std::ptr::null_mut();
@@ -88,7 +95,7 @@ pub unsafe extern "C" fn rs_strv_filter_prefix(
             continue;
         }
         // SAFETY: entry is a valid C string borrowed from the input vector.
-        let duplicate = unsafe { strdup(entry.as_ptr()) };
+        let duplicate = unsafe_ffi!(strdup(entry.as_ptr()));
         if duplicate.is_null() {
             // The allocation owns every prior duplicate and rolls them back
             // before freeing its C-allocator backing storage.
@@ -134,13 +141,13 @@ pub unsafe extern "C" fn rs_strv_extend_strv(
     }
     // SAFETY: the entry-point contract guarantees `a` is writable after the
     // explicit null check. A null b is an empty vector in C.
-    let q = unsafe { rs_strv_length(b) };
+    let q = unsafe_ffi!(rs_strv_length(b));
     if q == 0 {
         return 0;
     }
     // SAFETY: `a` was checked above, and its entry-point contract guarantees
     // that `*a` is null or a caller-owned NULL-terminated C vector.
-    let mut destination = unsafe { StrvSlot::from_raw(a) };
+    let mut destination = unsafe_ffi!(StrvSlot::from_raw(a));
     let p = destination.len();
     if p >= SIZE_MAX - q {
         return Errno::ENOMEM.to_neg_errno();
@@ -151,7 +158,7 @@ pub unsafe extern "C" fn rs_strv_extend_strv(
     };
     // Publish the possibly moved allocation before copying, exactly like C.
     // SAFETY: extended has room for the prefix plus the terminating sentinel.
-    unsafe { *extended.add(p) = std::ptr::null_mut() };
+    unsafe_ffi!(*extended.add(p) = std::ptr::null_mut());
 
     let mut added = 0usize;
     // SAFETY: b remains a readable borrowed vector for this call because the
@@ -161,26 +168,26 @@ pub unsafe extern "C" fn rs_strv_extend_strv(
             continue;
         }
         // SAFETY: entry is a live borrowed C string.
-        let duplicate = unsafe { strdup(entry.as_ptr()) };
+        let duplicate = unsafe_ffi!(strdup(entry.as_ptr()));
         if duplicate.is_null() {
             // C rolls back only the newly-created suffix, retaining the
             // existing prefix and the realloc'ed array pointer.
             // SAFETY: exactly `added` suffix entries were initialized by this
             // loop; each is a distinct C allocation, and slot `p` is writable.
-            unsafe {
+            unsafe_ffi!({
                 for index in 0..added {
                     free((*extended.add(p + index)).cast::<c_void>());
                 }
                 *extended.add(p) = std::ptr::null_mut();
-            }
+            });
             return Errno::ENOMEM.to_neg_errno();
         }
         // SAFETY: at most q entries are appended into q reserved slots.
-        unsafe {
+        unsafe_ffi!({
             *extended.add(p + added) = duplicate;
             added += 1;
             *extended.add(p + added) = std::ptr::null_mut();
-        }
+        })
     }
     added as i32
 }

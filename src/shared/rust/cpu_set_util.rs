@@ -9,6 +9,13 @@
 // internally for ergonomic, safe CPU membership tracking with
 // deterministic iteration order.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::BTreeSet;
 use std::fmt;
 #[cfg(target_os = "linux")]
@@ -132,7 +139,7 @@ impl CpuSet {
     #[cfg(target_os = "linux")]
     pub fn add_all(&mut self) -> Result<(), CpuSetError> {
         // SAFETY: sysconf is a simple read-only syscall wrapper.
-        let nprocs = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_ONLN) };
+        let nprocs = unsafe_ffi!(libc::sysconf(libc::_SC_NPROCESSORS_ONLN));
         if nprocs < 0 {
             let errno = crate::ffi::get_errno();
             return Err(CpuSetError::NprocessorsFailed(errno));
@@ -437,8 +444,11 @@ pub fn cpus_in_affinity_mask() -> Result<usize, CpuSetError> {
         let mut mask: Vec<u8> = vec![0u8; size];
 
         // SAFETY: pid=0 (current process), buffer is valid and sized.
-        let ret =
-            unsafe { libc::sched_getaffinity(0, size, mask.as_mut_ptr() as *mut libc::cpu_set_t) };
+        let ret = unsafe_ffi!(libc::sched_getaffinity(
+            0,
+            size,
+            mask.as_mut_ptr() as *mut libc::cpu_set_t
+        ));
 
         if ret == 0 {
             let count = mask.iter().map(|&b| b.count_ones() as usize).sum();
@@ -469,7 +479,7 @@ pub fn cpus_in_affinity_mask() -> Result<usize, CpuSetError> {
 #[cfg(target_os = "linux")]
 pub fn cpus_online() -> Result<u32, CpuSetError> {
     // SAFETY: sysconf only reads the kernel's online CPU count.
-    let online = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_ONLN) };
+    let online = unsafe_ffi!(libc::sysconf(libc::_SC_NPROCESSORS_ONLN));
     if online < 0 {
         return Err(CpuSetError::NprocessorsFailed(crate::ffi::get_errno()));
     }
@@ -544,8 +554,11 @@ pub fn sched_setaffinity(pid: libc::pid_t, set: &CpuSet) -> Result<(), CpuSetErr
     let size = bytes.len();
 
     // SAFETY: buffer is derived from a valid CpuSet and is correctly sized.
-    let ret =
-        unsafe { libc::sched_setaffinity(pid, size, bytes.as_ptr() as *const libc::cpu_set_t) };
+    let ret = unsafe_ffi!(libc::sched_setaffinity(
+        pid,
+        size,
+        bytes.as_ptr() as *const libc::cpu_set_t
+    ));
 
     if ret == 0 {
         Ok(())

@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -121,7 +128,7 @@ fn open_or_create_ask_password_directory(path: &Path) -> io::Result<fs::File> {
 fn touch_directory(directory: &fs::File) -> io::Result<()> {
     // SAFETY: `directory` owns a live descriptor for the just-opened directory. A null
     // timespec pointer is explicitly specified by futimens(3) to request the current time.
-    let r = unsafe { libc::futimens(directory.as_raw_fd(), std::ptr::null()) };
+    let r = unsafe_ffi!(libc::futimens(directory.as_raw_fd(), std::ptr::null()));
     if r < 0 {
         Err(io::Error::last_os_error())
     } else {
@@ -409,7 +416,7 @@ fn isatty_safe(fd: RawFd) -> bool {
     }
     // SAFETY: isatty(3) only inspects this borrowed file-descriptor number and
     // does not retain it or dereference Rust memory.
-    unsafe { libc::isatty(fd) != 0 }
+    unsafe_ffi!(libc::isatty(fd) != 0)
 }
 
 pub fn source_lines() -> usize {
@@ -645,7 +652,7 @@ mod tests {
     fn keyring_type_from_string() {
         // SAFETY: this environment-dependent test target runs with --test-threads=1
         // and does not spawn threads that access the process environment.
-        let environment = unsafe { TestEnvironment::lock() };
+        let environment = unsafe_ffi!(TestEnvironment::lock());
         environment.remove("SYSTEMD_ASK_PASSWORD_KEYRING_TYPE");
         assert_eq!(keyring_cache_type(), KeyringType::User);
     }

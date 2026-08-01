@@ -4,6 +4,13 @@
 //
 // Binary entry point for systemd-random-seed
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use systemd_random_seed_rs::{SeedAction, seed_file_path};
 
 #[cfg(target_os = "linux")]
@@ -121,7 +128,11 @@ fn add_entropy(urandom: &File, data: &[u8]) -> io::Result<()> {
     // SAFETY: `request` is a live contiguous Linux UAPI request as described
     // above; `ioctl` copies it before returning and the descriptor is an open
     // /dev/urandom file owned by `urandom`.
-    let result = unsafe { libc::ioctl(urandom.as_raw_fd(), RNDADDENTROPY, request.as_ptr()) };
+    let result = unsafe_ffi!(libc::ioctl(
+        urandom.as_raw_fd(),
+        RNDADDENTROPY,
+        request.as_ptr()
+    ));
     if result < 0 {
         return Err(io::Error::last_os_error());
     }

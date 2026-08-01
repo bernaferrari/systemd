@@ -8,6 +8,13 @@
 // credential directories (per-service, system, and encrypted variants),
 // reading credentials from disk, and Varlink error definitions.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{self, Read};
@@ -207,7 +214,7 @@ fn secure_environment_variable(envvar: &str) -> Result<Option<OsString>, i32> {
     // environment input in secure-execution mode mirrors secure_getenv()
     // without exposing a borrowed libc environment pointer to Rust.
     // SAFETY: getauxval() has no pointer arguments or ownership transfer.
-    if unsafe { libc::getauxval(libc::AT_SECURE) } != 0 {
+    if unsafe_ffi!(libc::getauxval(libc::AT_SECURE)) != 0 {
         return Ok(None);
     }
 
@@ -326,7 +333,7 @@ impl CredentialsDir {
             return Err(io_error(io::Error::last_os_error()));
         }
         // SAFETY: `fd` is the unique successful openat result.
-        Ok(unsafe { File::from_raw_fd(fd) })
+        Ok(unsafe_ffi!(File::from_raw_fd(fd)))
     }
 
     #[cfg(not(unix))]

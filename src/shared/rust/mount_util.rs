@@ -2,6 +2,13 @@
 //
 // PORT-SYNC: src/shared/mount-util.c, src/shared/mount-util.h
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::ffi::CString;
 use std::io;
@@ -77,7 +84,7 @@ impl Drop for SubMount {
     fn drop(&mut self) {
         if self.mount_fd >= 0 {
             // SAFETY: mount_fd is a valid file descriptor owned exclusively by this struct.
-            unsafe { libc::close(self.mount_fd) };
+            unsafe_ffi!(libc::close(self.mount_fd));
         }
     }
 }
@@ -718,7 +725,7 @@ fn open_mount_target_nofollow(target: &CString) -> io::Result<OwnedFd> {
 
     // SAFETY: open() above returned a fresh non-negative descriptor whose
     // ownership has not been transferred elsewhere.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    Ok(unsafe_ffi!(OwnedFd::from_raw_fd(fd)))
 }
 
 // ── Mount/umount operations (Linux only) ───────────────────────────────────
@@ -792,7 +799,13 @@ pub fn mount_verbose_full_path(
     // `target_fd`, when present, remains alive so its procfs path identifies
     // the pinned final target for the whole mount call.
     // SAFETY: all retained pointer arguments and the optional fd are valid.
-    let ret = unsafe { libc::mount(c_what.as_ptr(), target_ptr, fstype_ptr, flags, options_ptr) };
+    let ret = unsafe_ffi!(libc::mount(
+        c_what.as_ptr(),
+        target_ptr,
+        fstype_ptr,
+        flags,
+        options_ptr
+    ));
 
     if ret < 0 {
         return Err(io::Error::last_os_error());
@@ -860,7 +873,7 @@ pub fn umount_verbose_path(where_: &Path, flags: i32) -> io::Result<()> {
     let c_where = path_to_cstring(where_)?;
 
     // SAFETY: c_where is a valid null-terminated string.
-    let ret = unsafe { libc::umount2(c_where.as_ptr(), flags) };
+    let ret = unsafe_ffi!(libc::umount2(c_where.as_ptr(), flags));
     if ret < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -879,7 +892,7 @@ pub fn repeat_unmount(path: &str, flags: i32) -> io::Result<bool> {
 
     loop {
         // SAFETY: c_path is a valid null-terminated string.
-        let ret = unsafe { libc::umount2(c_path.as_ptr(), flags) };
+        let ret = unsafe_ffi!(libc::umount2(c_path.as_ptr(), flags));
         if ret < 0 {
             let err = io::Error::last_os_error();
             if err.raw_os_error() == Some(libc::EINVAL) {

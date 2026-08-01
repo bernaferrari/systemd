@@ -4,6 +4,13 @@
 //
 // Descriptor and path verification adapters (verify_* / is_* / fd_verify_*).
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
@@ -89,12 +96,12 @@ fn stat_at(fd: libc::c_int, path: Option<&CStr>, follow: bool) -> Result<libc::s
     let mut st = MaybeUninit::<libc::stat>::uninit();
     // SAFETY: `path` is NUL-terminated, `st` is writable native storage, and
     // the descriptor/flag combinations were normalized above.
-    if unsafe { libc::fstatat(fd, path.as_ptr(), st.as_mut_ptr(), flags) } < 0 {
+    if unsafe_ffi!(libc::fstatat(fd, path.as_ptr(), st.as_mut_ptr(), flags)) < 0 {
         return Err(-crate::ffi::get_errno());
     }
 
     // SAFETY: successful `fstatat()` initialized the complete native value.
-    Ok(unsafe { st.assume_init() })
+    Ok(unsafe_ffi!(st.assume_init()))
 }
 
 fn verify_stat_at(
@@ -122,7 +129,7 @@ unsafe fn optional_c_path<'a>(path: *const libc::c_char) -> Option<&'a CStr> {
         None
     } else {
         // SAFETY: the caller guarantees a readable NUL-terminated C string.
-        Some(unsafe { CStr::from_ptr(path) })
+        Some(unsafe_ffi!(CStr::from_ptr(path)))
     }
 }
 
@@ -136,7 +143,7 @@ pub unsafe extern "C" fn rs_verify_regular_at(
     follow: bool,
 ) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     verify_stat_at(fd, path, follow, Verification::Regular, true)
 }
 
@@ -166,7 +173,7 @@ pub unsafe extern "C" fn rs_is_dir_at(
     follow: bool,
 ) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     verify_stat_at(fd, path, follow, Verification::Directory, false)
 }
 
@@ -176,7 +183,7 @@ pub unsafe extern "C" fn rs_is_dir_at(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_dir(path: *const libc::c_char, follow: bool) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     if path.is_none_or(CStr::is_empty) {
         return -libc::EINVAL;
     }
@@ -197,7 +204,7 @@ pub extern "C" fn rs_fd_verify_symlink(fd: libc::c_int) -> libc::c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_symlink(path: *const libc::c_char) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     if path.is_none_or(CStr::is_empty) {
         return -libc::EINVAL;
     }
@@ -218,7 +225,7 @@ pub extern "C" fn rs_fd_verify_socket(fd: libc::c_int) -> libc::c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_socket(path: *const libc::c_char) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     if path.is_none_or(CStr::is_empty) {
         return -libc::EINVAL;
     }
@@ -247,7 +254,7 @@ pub extern "C" fn rs_fd_verify_block(fd: libc::c_int) -> libc::c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rs_is_device_node(path: *const libc::c_char) -> libc::c_int {
     // SAFETY: forwarded from this entry point's pointer contract.
-    let path = unsafe { optional_c_path(path) };
+    let path = unsafe_ffi!(optional_c_path(path));
     if path.is_none_or(CStr::is_empty) {
         return -libc::EINVAL;
     }

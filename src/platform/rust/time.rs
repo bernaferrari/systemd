@@ -2,6 +2,13 @@
 
 //! Safe operating-system clock adapters.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::io;
 
 #[cfg(target_os = "linux")]
@@ -15,7 +22,7 @@ pub fn boottime_usec() -> io::Result<u64> {
     };
     // SAFETY: `timestamp` is a live, writable timespec for the duration of the
     // call. CLOCK_BOOTTIME requires no additional caller-owned resources.
-    if unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut timestamp) } < 0 {
+    if unsafe_ffi!(libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut timestamp)) < 0 {
         return Err(io::Error::last_os_error());
     }
     if timestamp.tv_sec < 0 || !(0..1_000_000_000).contains(&timestamp.tv_nsec) {

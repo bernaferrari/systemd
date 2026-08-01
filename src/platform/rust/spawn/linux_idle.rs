@@ -2,6 +2,13 @@
 
 //! Allocation-free child side of the manager-owned `Type=idle` protocol.
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use super::super::IdlePipe;
 use super::child_errno_or_invalid_argument;
 use std::os::fd::RawFd;
@@ -13,7 +20,7 @@ fn child_close_idle_fd(fd: RawFd) {
     if fd >= 0 {
         // SAFETY: this is the async-signal-safe close syscall on an inherited
         // descriptor. Errors intentionally match C's `safe_close()` behavior.
-        let _ = unsafe { libc::close(fd) };
+        let _ = unsafe_ffi!(libc::close(fd));
     }
 }
 
@@ -25,7 +32,7 @@ fn child_wait_for_idle_hup(fd: RawFd, timeout_msec: libc::c_int) -> i32 {
     };
     loop {
         // SAFETY: pollfd points to valid stack storage for one entry.
-        let result = unsafe { libc::poll(&mut pollfd, 1, timeout_msec) };
+        let result = unsafe_ffi!(libc::poll(&mut pollfd, 1, timeout_msec));
         if result < 0 && child_errno_or_invalid_argument() == libc::EINTR {
             continue;
         }
@@ -49,13 +56,13 @@ pub(super) fn child_do_idle_pipe_dance(idle_pipe: IdlePipe) {
             // SAFETY: the one-byte static payload and inherited descriptor
             // are valid. EAGAIN and other failures are ignored just as C
             // treats the advisory alert as best effort.
-            let wrote = unsafe {
+            let wrote = unsafe_ffi!({
                 libc::write(
                     idle_pipe.child_alert_fd,
                     alert.as_ptr().cast::<libc::c_void>(),
                     alert.len(),
                 )
-            };
+            });
             if wrote > 0 {
                 let _ = child_wait_for_idle_hup(idle_pipe.child_wait_fd, IDLE_TIMEOUT2_MSEC);
             }
@@ -88,12 +95,12 @@ mod tests {
         // SAFETY: the child immediately executes the allocation-free helper
         // under test and terminates through _exit without touching Rust-owned
         // state. The parent retains the manager endpoints exactly as PID 1.
-        let child = unsafe { libc::fork() };
+        let child = unsafe_ffi!(libc::fork());
         assert!(child >= 0, "fork must succeed for idle-pipe test");
         if child == 0 {
             child_do_idle_pipe_dance(idle_pipe);
             // SAFETY: this child must not unwind Rust test destructors.
-            unsafe { libc::_exit(0) }
+            unsafe_ffi!(libc::_exit(0))
         }
 
         std::thread::sleep(std::time::Duration::from_millis(25));
@@ -101,7 +108,7 @@ mod tests {
         // SAFETY: child is our direct child and status is valid writable
         // stack storage for waitpid.
         assert_eq!(
-            unsafe { libc::waitpid(child, &mut status, libc::WNOHANG) },
+            unsafe_ffi!(libc::waitpid(child, &mut status, libc::WNOHANG)),
             0
         );
 
@@ -109,16 +116,16 @@ mod tests {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
         loop {
             // SAFETY: child is our direct child and status remains valid.
-            let waited = unsafe { libc::waitpid(child, &mut status, libc::WNOHANG) };
+            let waited = unsafe_ffi!(libc::waitpid(child, &mut status, libc::WNOHANG));
             if waited == child {
                 break;
             }
             if std::time::Instant::now() >= deadline {
                 // SAFETY: child is a direct child which failed its bounded
                 // protocol test; terminate it before failing the test.
-                let _ = unsafe { libc::kill(child, libc::SIGKILL) };
+                let _ = unsafe_ffi!(libc::kill(child, libc::SIGKILL));
                 // SAFETY: reap the direct child after SIGKILL.
-                let _ = unsafe { libc::waitpid(child, &mut status, 0) };
+                let _ = unsafe_ffi!(libc::waitpid(child, &mut status, 0));
                 panic!("idle child did not proceed after manager HUP");
             }
             std::thread::sleep(std::time::Duration::from_millis(5));

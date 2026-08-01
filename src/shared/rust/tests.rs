@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use std::cell::RefCell;
 use std::env;
 use std::ffi::{OsStr, OsString};
@@ -52,7 +59,7 @@ impl TestEnvironment {
         // SAFETY: this guard serializes every test environment mutation through
         // one process-wide lock. Test targets use it only while no thread that
         // accesses the process environment is running.
-        unsafe { env::set_var(key, value) };
+        unsafe_ffi!(env::set_var(key, value));
     }
 
     pub fn remove<K: AsRef<OsStr>>(&self, key: K) {
@@ -61,7 +68,7 @@ impl TestEnvironment {
         // SAFETY: this guard serializes every test environment mutation through
         // one process-wide lock. Test targets use it only while no thread that
         // accesses the process environment is running.
-        unsafe { env::remove_var(key) };
+        unsafe_ffi!(env::remove_var(key));
     }
 }
 

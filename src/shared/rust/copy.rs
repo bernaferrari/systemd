@@ -12,6 +12,13 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
+// Centralized unsafe expression boundary for this module.
+macro_rules! unsafe_ffi {
+    ($expression:expr) => {{
+        // SAFETY: the enclosing helper documents and validates this operation.
+        unsafe { $expression }
+    }};
+}
 use crate::ffi::*;
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
@@ -29,16 +36,16 @@ const COPY_DEPTH_MAX: u32 = 2048;
 fn fstat_fd(fd: i32) -> std::io::Result<libc::stat> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: `stat` provides complete writable storage and libc validates fd.
-    if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } < 0 {
+    if unsafe_ffi!(libc::fstat(fd, stat.as_mut_ptr())) < 0 {
         return Err(std::io::Error::last_os_error());
     }
     // SAFETY: a successful fstat initializes every field of libc::stat.
-    Ok(unsafe { stat.assume_init() })
+    Ok(unsafe_ffi!(stat.assume_init()))
 }
 
 fn fchmod_fd(fd: i32, mode: libc::mode_t) -> std::io::Result<()> {
     // SAFETY: fd is kernel-validated and mode is passed by value.
-    if unsafe { libc::fchmod(fd, mode) } < 0 {
+    if unsafe_ffi!(libc::fchmod(fd, mode)) < 0 {
         Err(std::io::Error::last_os_error())
     } else {
         Ok(())
@@ -47,7 +54,7 @@ fn fchmod_fd(fd: i32, mode: libc::mode_t) -> std::io::Result<()> {
 
 fn fchown_fd(fd: i32, uid: libc::uid_t, gid: libc::gid_t) -> std::io::Result<()> {
     // SAFETY: fd is kernel-validated and uid/gid are passed by value.
-    if unsafe { libc::fchown(fd, uid, gid) } < 0 {
+    if unsafe_ffi!(libc::fchown(fd, uid, gid)) < 0 {
         Err(std::io::Error::last_os_error())
     } else {
         Ok(())
@@ -56,7 +63,7 @@ fn fchown_fd(fd: i32, uid: libc::uid_t, gid: libc::gid_t) -> std::io::Result<()>
 
 fn futimens_fd(fd: i32, times: &[libc::timespec; 2]) -> std::io::Result<()> {
     // SAFETY: times is a live two-element array with futimens' required ABI.
-    if unsafe { libc::futimens(fd, times.as_ptr()) } < 0 {
+    if unsafe_ffi!(libc::futimens(fd, times.as_ptr())) < 0 {
         Err(std::io::Error::last_os_error())
     } else {
         Ok(())
@@ -65,7 +72,7 @@ fn futimens_fd(fd: i32, times: &[libc::timespec; 2]) -> std::io::Result<()> {
 
 fn seek_fd(fd: i32, offset: libc::off_t, whence: i32) -> std::io::Result<libc::off_t> {
     // SAFETY: fd is kernel-validated and offset/whence are scalar arguments.
-    let result = unsafe { libc::lseek(fd, offset, whence) };
+    let result = unsafe_ffi!(libc::lseek(fd, offset, whence));
     if result < 0 {
         Err(std::io::Error::last_os_error())
     } else {
@@ -75,7 +82,7 @@ fn seek_fd(fd: i32, offset: libc::off_t, whence: i32) -> std::io::Result<libc::o
 
 fn truncate_fd(fd: i32, length: libc::off_t) -> std::io::Result<()> {
     // SAFETY: fd is kernel-validated and length is a scalar argument.
-    if unsafe { libc::ftruncate(fd, length) } < 0 {
+    if unsafe_ffi!(libc::ftruncate(fd, length)) < 0 {
         Err(std::io::Error::last_os_error())
     } else {
         Ok(())
@@ -170,7 +177,7 @@ pub fn fd_is_nonblock_pipe(fd: i32) -> PipeKind {
         return PipeKind::NotPipe;
     }
     // SAFETY: `fd` is passed through to libc for validation and F_GETFL has no pointer arguments.
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    let flags = unsafe_ffi!(libc::fcntl(fd, libc::F_GETFL));
     if flags < 0 {
         return PipeKind::NotPipe;
     }
@@ -374,7 +381,11 @@ pub fn copy_bytes_fd(
 
         let mut buf = vec![0u8; to_copy];
         // SAFETY: `buf` is writable for `buf.len()` bytes; `fd_in` is validated by libc.
-        let n = unsafe { libc::read(fd_in, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+        let n = unsafe_ffi!(libc::read(
+            fd_in,
+            buf.as_mut_ptr() as *mut libc::c_void,
+            buf.len()
+        ));
         if n < 0 {
             let err = std::io::Error::last_os_error();
             if err.kind() == std::io::ErrorKind::Interrupted {
@@ -410,7 +421,7 @@ pub fn copy_bytes_fd(
 
     if flags.contains(CopyFlags::FSYNC) {
         // SAFETY: `fd_out` is passed through to libc for validation and fsync has no pointer arguments.
-        if unsafe { libc::fsync(fd_out) } < 0 {
+        if unsafe_ffi!(libc::fsync(fd_out)) < 0 {
             return Err(std::io::Error::last_os_error());
         }
     }
@@ -651,7 +662,7 @@ pub fn reflink<P: AsRef<std::path::Path>, Q: AsRef<std::path::Path>>(
 pub fn reflink_fd(src_fd: i32, dst_fd: i32) -> std::io::Result<bool> {
     const FICLONE: u64 = 0x4004_9409;
     // SAFETY: ioctl receives integer file descriptors and the FICLONE request's integer argument.
-    let ret = unsafe { libc::ioctl(dst_fd, FICLONE, src_fd) };
+    let ret = unsafe_ffi!(libc::ioctl(dst_fd, FICLONE, src_fd));
     if ret < 0 {
         let err = std::io::Error::last_os_error();
         let raw = err.raw_os_error().unwrap_or(0);
@@ -1050,11 +1061,11 @@ mod tests {
         assert!(fd >= 0);
 
         // SAFETY: `fd` was returned by open and SEEK_SET has no pointer arguments.
-        unsafe { libc::lseek(fd, 1024, libc::SEEK_SET) };
+        unsafe_ffi!(libc::lseek(fd, 1024, libc::SEEK_SET));
 
         create_hole(fd, 4096).unwrap();
         // SAFETY: `fd` was returned by open and has not yet been closed.
-        unsafe { libc::close(fd) };
+        unsafe_ffi!(libc::close(fd));
 
         let meta = std::fs::metadata(&path).unwrap();
         assert!(meta.len() >= 1024 + 4096);
