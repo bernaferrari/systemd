@@ -124,14 +124,26 @@ impl Bus {
         self.auth_iovec.push(IoVec::new(vec![0]));
 
         let mut line = if self.anonymous_auth {
-            b"AUTH ANONYMOUS 73797374656d64\r\n".to_vec()
+            // Keep the fixed trace token in sync with
+            // `sasl_auth_anonymous` in bus-socket.c. It is not an identity,
+            // but peers may retain it for diagnostics.
+            b"AUTH ANONYMOUS 616e6f6e796d6f7573\r\n".to_vec()
         } else {
-            b"AUTH EXTERNAL\r\n".to_vec()
+            // The client pipelines an empty DATA reply for the server's
+            // EXTERNAL challenge. `bus_socket_auth_verify_client()` consumes
+            // the resulting DATA/OK lines; without this frame it could never
+            // advance a standards-compliant server past its challenge.
+            b"AUTH EXTERNAL\r\nDATA\r\n".to_vec()
         };
 
         if self.accept_fd && self.side == BusSide::Client {
             line.extend_from_slice(b"NEGOTIATE_UNIX_FD\r\n");
         }
+
+        // Like C's `bus_socket_start_auth_client()`, queue BEGIN with the
+        // initial request. A server intentionally waits to enter the running
+        // state until its preceding authentication replies have been written.
+        line.extend_from_slice(b"BEGIN\r\n");
 
         self.auth_iovec.push(IoVec::new(line));
         Ok(())
@@ -585,10 +597,21 @@ mod tests {
         assert_eq!(bus.state, BusState::Authenticating);
         assert_eq!(bus.auth_iovec.len(), 2);
         assert_eq!(bus.auth_iovec[0].remaining_bytes(), [0]);
-        assert!(
-            std::str::from_utf8(bus.auth_iovec[1].remaining_bytes())
-                .unwrap()
-                .contains("AUTH ANONYMOUS")
+        assert_eq!(
+            bus.auth_iovec[1].remaining_bytes(),
+            b"AUTH ANONYMOUS 616e6f6e796d6f7573\r\nNEGOTIATE_UNIX_FD\r\nBEGIN\r\n"
+        );
+    }
+
+    #[test]
+    fn start_auth_pipelines_external_data_and_begin() {
+        let mut bus = Bus::new(BusSide::Client);
+        bus.start_auth().unwrap();
+
+        assert_eq!(bus.auth_iovec[0].remaining_bytes(), [0]);
+        assert_eq!(
+            bus.auth_iovec[1].remaining_bytes(),
+            b"AUTH EXTERNAL\r\nDATA\r\nBEGIN\r\n"
         );
     }
 
