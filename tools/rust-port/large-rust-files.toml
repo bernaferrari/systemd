@@ -60,20 +60,15 @@ max_lines = 2050
 issue = "systemd-cpuw"
 reason = "Continue extracting RuntimeManager construction and event-source capability handoffs into focused lifecycle modules without duplicating manager state."
 
-[files."src/core/rust/pid1_dbus_wire.rs"]
-max_lines = 2056
-issue = "systemd-cpuw"
-reason = "Split D-Bus framing, scalar/aggregate value decoding, and header validation behind bounded wire-format modules while keeping one exact length/alignment authority."
-
 [files."src/core/rust/transaction.rs"]
 max_lines = 2124
 issue = "systemd-cpuw"
 reason = "Separate transaction graph construction, conflict/cycle analysis, ordering, and trace-oracle fixtures without weakening the one-job-per-unit invariant."
 
 [files."src/core/rust/main.rs"]
-max_lines = 2061
+max_lines = 2204
 issue = "systemd-cpuw"
-reason = "Extract PID1 startup phases, event-loop sources, and fail-closed outer lifecycle ownership without moving privileged process-global transitions into callbacks."
+reason = "Extract PID1 startup phases, event-loop sources, service start-timeout transitions, and fail-closed outer lifecycle ownership without moving privileged process-global transitions into callbacks."
 
 [files."src/core/rust/runtime_manager/service_runtime.rs"]
 max_lines = 2008
