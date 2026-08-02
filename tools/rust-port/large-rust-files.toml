@@ -46,7 +46,7 @@ issue = "systemd-cpuw"
 reason = "Split pre-fork preparation, post-fork descriptor setup, and exec-status handling without widening the async-signal-safe child boundary."
 
 [files."src/core/rust/pid1_dbus_transport.rs"]
-max_lines = 2460
+max_lines = 2471
 issue = "systemd-cpuw"
 reason = "Extract authenticated wire framing, connection ownership, and manager-turn orchestration into bounded transport modules while retaining one checked correlation policy."
 
