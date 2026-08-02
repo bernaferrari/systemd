@@ -69,6 +69,7 @@ mod handoff;
 mod job_runtime;
 mod linux_cgroup;
 mod notify_runtime;
+mod pid_runtime;
 mod service_jobs;
 mod service_machine;
 mod service_readiness;

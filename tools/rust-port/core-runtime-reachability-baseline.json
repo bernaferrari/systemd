@@ -597,6 +597,7 @@
         "src/core/rust/runtime_manager/job_runtime.rs",
         "src/core/rust/runtime_manager/linux_cgroup.rs",
         "src/core/rust/runtime_manager/notify_runtime.rs",
+        "src/core/rust/runtime_manager/pid_runtime.rs",
         "src/core/rust/runtime_manager/service_jobs.rs",
         "src/core/rust/runtime_manager/service_machine.rs",
         "src/core/rust/runtime_manager/service_readiness.rs",
