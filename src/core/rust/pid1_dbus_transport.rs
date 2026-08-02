@@ -49,6 +49,7 @@ mod imp {
         PrivateBusWireReadOutcome, PrivateBusWireSlotConfig, PrivateBusWireWriteOutcome,
     };
     use crate::pid1_dbus_wire::{MethodCall, PrivateBusWireAccumulator};
+    use crate::pid1_manager_commands::SenderIdentity;
 
     /// All non-event-loop state that must live and die with one authenticated
     /// private-bus peer.
@@ -60,6 +61,7 @@ mod imp {
     pub struct PrivateBusWireSlot {
         id: PrivateBusConnectionId,
         connection: AdmittedPrivateBusConnection,
+        sender: SenderIdentity,
         input: PrivateBusWireAccumulator,
         replies: PrivateBusReplyQueue,
         dispatch_terminal: bool,
@@ -71,12 +73,14 @@ mod imp {
             connection: AdmittedPrivateBusConnection,
             config: PrivateBusWireSlotConfig,
         ) -> Result<Self, PrivateBusWireSlotError> {
-            let buffered = connection
+            let authenticated = connection
                 .authenticated()
-                .ok_or(PrivateBusWireSlotError::UnauthenticatedHandoff)?
-                .buffered();
-            let input =
-                PrivateBusWireAccumulator::from_buffered(config.input_capacity(), buffered)?;
+                .ok_or(PrivateBusWireSlotError::UnauthenticatedHandoff)?;
+            let sender = authenticated.sender();
+            let input = PrivateBusWireAccumulator::from_buffered(
+                config.input_capacity(),
+                authenticated.buffered(),
+            )?;
             let replies = PrivateBusReplyQueue::new(
                 config.max_pending_replies(),
                 config.reply_frame_capacity(),
@@ -85,6 +89,7 @@ mod imp {
             Ok(Self {
                 id,
                 connection,
+                sender,
                 input,
                 replies,
                 dispatch_terminal: false,
@@ -100,6 +105,13 @@ mod imp {
 
         pub fn connection(&self) -> &AdmittedPrivateBusConnection {
             &self.connection
+        }
+
+        /// The kernel-authenticated direct-peer identity captured at the
+        /// successful `BEGIN` handoff. D-Bus header fields never participate
+        /// in this value, and command dispatch reuses this exact identity.
+        pub const fn sender(&self) -> SenderIdentity {
+            self.sender
         }
 
         /// Borrow only the still-owned socket connection for a future
@@ -279,12 +291,7 @@ mod imp {
                 })?)
             };
 
-            let receiver = match adapter.try_send_command(
-                crate::pid1_manager_commands::SenderIdentity::from_authenticated_peer(
-                    self.connection.peer(),
-                ),
-                command,
-            ) {
+            let receiver = match adapter.try_send_command(self.sender, command) {
                 Ok(receiver) => receiver,
                 Err(cause) if no_reply_expected => {
                     // A bounded inbox-full rejection is safe to discard for
@@ -1160,8 +1167,12 @@ mod imp {
                 .promote_authenticated_to_wire(wire_slot_config(call.len()))
                 .unwrap()
                 .unwrap();
-            let expected_sender = SenderIdentity::from_authenticated_peer(
-                owner.wire_slot(wire_id).unwrap().connection().peer(),
+            let expected_sender = owner.wire_slot(wire_id).unwrap().sender();
+            assert_eq!(
+                expected_sender,
+                SenderIdentity::from_authenticated_peer(
+                    owner.wire_slot(wire_id).unwrap().connection().peer(),
+                )
             );
             let (command_sender, mut inbox) =
                 pid1_bus_command_channel(NonZeroUsize::new(1).unwrap()).unwrap();
