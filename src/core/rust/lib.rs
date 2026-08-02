@@ -92,6 +92,7 @@ pub mod pid1_api_bus_instance;
 pub mod pid1_api_bus_name_owner;
 pub mod pid1_bus_source;
 pub mod pid1_cgroup_source;
+pub mod pid1_dbus_ancillary;
 pub mod pid1_dbus_auth;
 pub mod pid1_dbus_command_adapter;
 pub mod pid1_dbus_event_source;
