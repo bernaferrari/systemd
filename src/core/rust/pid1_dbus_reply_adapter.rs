@@ -9,6 +9,7 @@
 //! This module merely preserves those caller-supplied values while selecting a
 //! checked wire encoding. It has no socket, event-loop, or manager ownership.
 
+use crate::ffi::Errno;
 use crate::pid1_dbus_wire::{
     Endian, WireError, encode_empty_reply, encode_error_reply, encode_text_reply,
 };
@@ -20,6 +21,7 @@ const ERROR_ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
 const ERROR_FAILED: &str = "org.freedesktop.DBus.Error.Failed";
 const ERROR_LIMITS_EXCEEDED: &str = "org.freedesktop.DBus.Error.LimitsExceeded";
 const ERROR_DISCONNECTED: &str = "org.freedesktop.DBus.Error.Disconnected";
+const ERROR_NOT_SUPPORTED: &str = "org.freedesktop.DBus.Error.NotSupported";
 const ERROR_NO_SUCH_UNIT: &str = "org.freedesktop.systemd1.NoSuchUnit";
 const ERROR_NO_UNIT_FOR_PID: &str = "org.freedesktop.systemd1.NoUnitForPID";
 const ERROR_NO_UNIT_FOR_INVOCATION_ID: &str = "org.freedesktop.systemd1.NoUnitForInvocationID";
@@ -29,6 +31,7 @@ const MESSAGE_ACCESS_DENIED: &str = "Permission denied.";
 const MESSAGE_RUNTIME_FAILED: &str = "PID 1 manager command failed.";
 const MESSAGE_INBOX_FULL: &str = "PID 1 command inbox is full.";
 const MESSAGE_INBOX_CLOSED: &str = "PID 1 command inbox is closed.";
+const MESSAGE_LIFECYCLE_NOT_SUPPORTED: &str = "PID 1 lifecycle handoff is not implemented.";
 
 /// The bounded developer-shadow interface exposed by `Introspect`.
 ///
@@ -57,6 +60,13 @@ const PID1_SHADOW_INTROSPECTION_XML: &str = concat!(
     "<method name=\"GetJob\"><arg type=\"u\" name=\"id\" direction=\"in\"/><arg type=\"o\" name=\"job\" direction=\"out\"/></method>",
     "<method name=\"ResetFailedUnit\"><arg type=\"s\" name=\"name\" direction=\"in\"/></method>",
     "<method name=\"ResetFailed\"/>",
+    "<method name=\"Reload\"/>",
+    "<method name=\"Reexecute\"/>",
+    "<method name=\"Exit\"/>",
+    "<method name=\"Reboot\"/>",
+    "<method name=\"PowerOff\"/>",
+    "<method name=\"Halt\"/>",
+    "<method name=\"KExec\"/>",
     "</interface>",
     "</node>"
 );
@@ -252,6 +262,9 @@ fn error_details(error: Pid1CommandError) -> (&'static str, &'static str) {
             unreachable!("handled with its caller PID")
         }
         Pid1CommandError::NoSuchJob { .. } => unreachable!("handled with its job ID"),
+        Pid1CommandError::Runtime(Errno::EOPNOTSUPP) => {
+            (ERROR_NOT_SUPPORTED, MESSAGE_LIFECYCLE_NOT_SUPPORTED)
+        }
         Pid1CommandError::Runtime(_) => (ERROR_FAILED, MESSAGE_RUNTIME_FAILED),
         Pid1CommandError::InboxFull => (ERROR_LIMITS_EXCEEDED, MESSAGE_INBOX_FULL),
         Pid1CommandError::InboxClosed => (ERROR_DISCONNECTED, MESSAGE_INBOX_CLOSED),
@@ -355,6 +368,23 @@ mod tests {
                 .windows(b"<method name=\"ResetFailedUnit\">".len())
                 .any(|window| window == b"<method name=\"ResetFailedUnit\">")
         );
+        for member in [
+            "Reload",
+            "Reexecute",
+            "Exit",
+            "Reboot",
+            "PowerOff",
+            "Halt",
+            "KExec",
+        ] {
+            let declaration = format!("<method name=\"{member}\"/>");
+            assert!(
+                introspection
+                    .windows(declaration.len())
+                    .any(|window| window == declaration.as_bytes()),
+                "introspection is missing {member}",
+            );
+        }
         assert!(
             introspection
                 .windows(b"<method name=\"GetJob\">".len())
@@ -440,6 +470,11 @@ mod tests {
                 Pid1CommandError::Runtime(Errno::ENOENT),
                 ERROR_FAILED,
                 MESSAGE_RUNTIME_FAILED,
+            ),
+            (
+                Pid1CommandError::Runtime(Errno::EOPNOTSUPP),
+                ERROR_NOT_SUPPORTED,
+                MESSAGE_LIFECYCLE_NOT_SUPPORTED,
             ),
             (
                 Pid1CommandError::NoSuchUnit {

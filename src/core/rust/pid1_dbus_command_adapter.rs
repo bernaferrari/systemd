@@ -6,8 +6,10 @@
 //! This adapter handles the standard connection-local `Peer.Ping` and
 //! `Peer.GetMachineId`, supports `Introspectable.Introspect`, and only `GetUnit`, `GetUnitByPID`,
 //! `GetUnitByInvocationID`, `LoadUnit`, `StartUnit`, `StopUnit`,
-//! `ReloadUnit`, `RestartUnit`, `ResetFailedUnit`, and `ResetFailed` at the
-//! manager object path.
+//! `ReloadUnit`, `RestartUnit`, `ResetFailedUnit`, `ResetFailed`, and the
+//! no-argument lifecycle methods at the manager object path. Lifecycle calls
+//! are admitted only so the authenticated manager owner can reject them with
+//! an explicit unsupported error until complete handoff exists.
 //! It deliberately has no socket, reply, event-loop, or authorization policy:
 //! callers must supply the `SenderIdentity` derived from the connection's
 //! kernel credentials, and command dispatch still invokes its authorizer.
@@ -22,6 +24,7 @@
 //! method is deliberately mapped to a distinct all-units command rather than
 //! being misrepresented as a named reset.
 
+use crate::manager_tables::ManagerObjective;
 use crate::pid1_bus_source::{Pid1BusCommandSender, Pid1BusSendError};
 use crate::pid1_dbus_wire::{MethodCall, WireError};
 use crate::pid1_manager_commands::{Pid1CommandReplyReceiver, Pid1ManagerCommand, SenderIdentity};
@@ -206,6 +209,20 @@ impl Pid1DbusCommandAdapter {
                 decode_no_args(call)?;
                 Ok(Pid1ManagerCommand::ResetAllFailed)
             }
+            // These correspond to C's no-argument Manager lifecycle vtable
+            // entries. They are intentionally admitted through the same
+            // authenticated command seam as ordinary manager operations, then
+            // rejected by the owner with EOPNOTSUPP until the complete
+            // descriptor/state handoff exists. Keeping the signature check
+            // here prevents a future implementation from accidentally
+            // accepting a peer-controlled body it never modeled.
+            "Reload" => lifecycle_command(call, ManagerObjective::Reload),
+            "Reexecute" => lifecycle_command(call, ManagerObjective::Reexecute),
+            "Exit" => lifecycle_command(call, ManagerObjective::Exit),
+            "Reboot" => lifecycle_command(call, ManagerObjective::Reboot),
+            "PowerOff" => lifecycle_command(call, ManagerObjective::Poweroff),
+            "Halt" => lifecycle_command(call, ManagerObjective::Halt),
+            "KExec" => lifecycle_command(call, ManagerObjective::Kexec),
             _ => Err(Pid1DbusCommandAdapterError::UnsupportedMember {
                 member: call.member.clone(),
             }),
@@ -240,6 +257,14 @@ impl Pid1DbusCommandAdapter {
             .try_send(sender, command)
             .map_err(Into::into)
     }
+}
+
+fn lifecycle_command(
+    call: &MethodCall,
+    objective: ManagerObjective,
+) -> Result<Pid1ManagerCommand, Pid1DbusCommandAdapterError> {
+    decode_no_args(call)?;
+    Ok(Pid1ManagerCommand::RequestObjective { objective })
 }
 
 fn local_machine_id_reply(
@@ -553,6 +578,20 @@ mod tests {
             Pid1DbusCommandAdapter::command_for(&call("ResetFailed", "", &[])),
             Ok(Pid1ManagerCommand::ResetAllFailed)
         );
+        for (member, objective) in [
+            ("Reload", ManagerObjective::Reload),
+            ("Reexecute", ManagerObjective::Reexecute),
+            ("Exit", ManagerObjective::Exit),
+            ("Reboot", ManagerObjective::Reboot),
+            ("PowerOff", ManagerObjective::Poweroff),
+            ("Halt", ManagerObjective::Halt),
+            ("KExec", ManagerObjective::Kexec),
+        ] {
+            assert_eq!(
+                Pid1DbusCommandAdapter::command_for(&call(member, "", &[])),
+                Ok(Pid1ManagerCommand::RequestObjective { objective }),
+            );
+        }
     }
 
     #[test]
@@ -646,6 +685,10 @@ mod tests {
         ));
         assert!(matches!(
             Pid1DbusCommandAdapter::command_for(&call("ResetFailedUnit", "", &[])),
+            Err(Pid1DbusCommandAdapterError::WrongSignature { .. })
+        ));
+        assert!(matches!(
+            Pid1DbusCommandAdapter::command_for(&call("Reboot", "s", &["unexpected"])),
             Err(Pid1DbusCommandAdapterError::WrongSignature { .. })
         ));
         assert!(matches!(

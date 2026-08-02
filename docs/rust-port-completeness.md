@@ -110,11 +110,15 @@ the unprivileged test user; they never substitute a default system-bus call.
 The `--run` gate also forces the CD4 system-bus suite on; it cannot silently
 turn that prerequisite into a passing identity-only run.
 The collector intentionally fails if the Rust private transport is unavailable
-or differs from C. That is the current expected state: Plan 002's complete
-C-vtable, credentials, authorization, and error matrix has not been integrated
-in this branch, so this is an **IN PROGRESS, blocking evidence gate**, not a
-claim of D-Bus, reexec, shutdown, or boot parity. In CI (and in paired mode),
-missing VM prerequisites are failures rather than passing skips.
+or differs from C. Plan 002's reviewed vtable inventory and bounded wire
+decoding are now available to this branch, but production private-socket
+binding, the full authorization/error matrix, system-bus ownership, and state
+adoption are still absent. The newly admitted no-argument lifecycle methods
+therefore preserve kernel-derived sender identity and return the explicit
+standard D-Bus `NotSupported` error instead of entering a partial handoff.
+This is an **IN PROGRESS, blocking evidence gate**, not a claim of D-Bus,
+reexec, shutdown, or boot parity. In CI (and in paired mode), missing VM
+prerequisites are failures rather than passing skips.
 
 ## Representative Completeness Findings
 

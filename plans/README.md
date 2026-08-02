@@ -14,6 +14,7 @@ update the status row when done.
 | 004 | Match C unit dependency, transaction, and manager-side job semantics | P1 | XL | 003 | IN PROGRESS |
 | 005 | Match C PID1 startup, security, watchdog, and reexec contracts | P1 | L | 004 | IN PROGRESS |
 | 006 | Integrate full PID1 D-Bus/lifecycle behavior and Linux differential boot | P1 | XL | 002, 004, 005 | IN PROGRESS |
+| 007 | Move Rust daemons and tools from shadows to measured production waves | P2 | XL | 006 | IN PROGRESS |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
