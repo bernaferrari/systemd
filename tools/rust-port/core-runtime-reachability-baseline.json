@@ -468,7 +468,7 @@
       ]
     },
     "pid1_dbus_ancillary": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_dbus_ancillary.rs"
       ]

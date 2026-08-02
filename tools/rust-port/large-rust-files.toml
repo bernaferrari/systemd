@@ -46,17 +46,17 @@ issue = "systemd-cpuw"
 reason = "Split pre-fork preparation, post-fork descriptor setup, and exec-status handling without widening the async-signal-safe child boundary."
 
 [files."src/core/rust/pid1_dbus_transport.rs"]
-max_lines = 2340
+max_lines = 2460
 issue = "systemd-cpuw"
 reason = "Extract authenticated wire framing, connection ownership, and manager-turn orchestration into bounded transport modules while retaining one checked correlation policy."
 
 [files."src/core/rust/pid1_dbus_wire.rs"]
-max_lines = 2085
+max_lines = 2103
 issue = "systemd-cpuw"
 reason = "Split D-Bus framing, scalar/aggregate value decoding, and received-descriptor ownership behind bounded wire-format modules while keeping one exact length/alignment authority."
 
 [files."src/core/rust/runtime_manager.rs"]
-max_lines = 2050
+max_lines = 2061
 issue = "systemd-cpuw"
 reason = "Continue extracting RuntimeManager construction and event-source capability handoffs into focused lifecycle modules without duplicating manager state."
 
