@@ -61,6 +61,7 @@ EXPORTED_TABLE_MACROS = (
     "string_table_fallback",
     "ffi_string_table",
     "ffi_forward",
+    "ffi_forward_addr_predicate",
 )
 CLAIMED_STATUSES = {"done", "shadow", "replace", "fallback"}
 MACRO_INVOCATION_RE = re.compile(
