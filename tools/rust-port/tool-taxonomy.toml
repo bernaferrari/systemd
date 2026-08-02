@@ -156,4 +156,6 @@ paths = [
     "tools/rust-port/coverage-dashboard.py",
     "tools/rust-port/test-coverage-dashboard.py",
     "tools/rust-port/generate-gpt-table.py",
+    "tools/rust-port/unit-directive-inventory.py",
+    "tools/rust-port/test-unit-directive-inventory.py",
 ]

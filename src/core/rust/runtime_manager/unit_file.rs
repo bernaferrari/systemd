@@ -30,6 +30,40 @@ const VALID_SUFFIXES: &[&str] = &[
     ".scope",
 ];
 
+/// The parser-side classification of an assignment that was not applied as a
+/// normal typed unit setting. This is intentionally informational: loading
+/// keeps C's forward-compatible warn-and-continue policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnitFileDiagnosticClass {
+    UnknownSection,
+    UnknownLvalue,
+    InvalidValue,
+    InvalidSpecifier,
+}
+
+/// Whether parsing changed the decoded value for one assignment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnitFileAssignmentDisposition {
+    Applied,
+    IgnoredPreservingPriorValue,
+    Fatal,
+}
+
+/// A retained counterpart to the syntax diagnostics emitted by C's parser.
+///
+/// These records do not decide whether a unit may later be activated. That is
+/// a manager admission policy, not a parser compatibility decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitFileDiagnostic {
+    pub class: UnitFileDiagnosticClass,
+    pub disposition: UnitFileAssignmentDisposition,
+    pub section: String,
+    pub key: Option<String>,
+    pub line: usize,
+    pub unit_type: UnitType,
+    pub warning: bool,
+}
+
 #[cfg(target_os = "linux")]
 pub(super) const UNIT_SEARCH_PATHS: &[&str] = &[
     "/etc/systemd/system.control",
@@ -98,6 +132,7 @@ pub struct UnitFileInfo {
     pub slice: SliceConfig,
     pub scope: ScopeConfig,
     pub install: InstallConfig,
+    pub diagnostics: Vec<UnitFileDiagnostic>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -564,7 +599,28 @@ impl UnitFileInfo {
             slice: SliceConfig::default(),
             scope: ScopeConfig::default(),
             install: InstallConfig::default(),
+            diagnostics: Vec::new(),
         }
+    }
+
+    fn record_diagnostic(
+        &mut self,
+        class: UnitFileDiagnosticClass,
+        disposition: UnitFileAssignmentDisposition,
+        section: &str,
+        key: Option<&str>,
+        line: usize,
+        warning: bool,
+    ) {
+        self.diagnostics.push(UnitFileDiagnostic {
+            class,
+            disposition,
+            section: section.to_string(),
+            key: key.map(str::to_string),
+            line,
+            unit_type: self.unit_type,
+            warning,
+        });
     }
 }
 
@@ -629,6 +685,18 @@ pub(super) fn parse_unit_content_into(
 
     for section in &parsed.sections {
         let current_section = section.name.to_ascii_lowercase();
+        if !known_section(current_section.as_str()) {
+            let warning = !current_section.starts_with("x-");
+            info.record_diagnostic(
+                UnitFileDiagnosticClass::UnknownSection,
+                UnitFileAssignmentDisposition::IgnoredPreservingPriorValue,
+                current_section.as_str(),
+                None,
+                section.line_number,
+                warning,
+            );
+            continue;
+        }
         for directive in &section.directives {
             let key = directive.key.as_str();
             let value_expanded = match expand_instance_specifiers(
@@ -648,12 +716,47 @@ pub(super) fn parse_unit_content_into(
                         Some(info.path.as_path()),
                     ) {
                         Some(value) => value,
-                        None => continue,
+                        None => {
+                            info.record_diagnostic(
+                                UnitFileDiagnosticClass::InvalidSpecifier,
+                                UnitFileAssignmentDisposition::IgnoredPreservingPriorValue,
+                                current_section.as_str(),
+                                Some(key),
+                                directive.line_number,
+                                true,
+                            );
+                            continue;
+                        }
                     }
                 }
-                None => continue,
+                None => {
+                    info.record_diagnostic(
+                        UnitFileDiagnosticClass::InvalidSpecifier,
+                        UnitFileAssignmentDisposition::IgnoredPreservingPriorValue,
+                        current_section.as_str(),
+                        Some(key),
+                        directive.line_number,
+                        true,
+                    );
+                    continue;
+                }
             };
             let value = value_expanded.as_str();
+
+            if unit_boolean_directive(current_section.as_str(), key)
+                && !value.is_empty()
+                && parse_boolean(value).is_none()
+            {
+                info.record_diagnostic(
+                    UnitFileDiagnosticClass::InvalidValue,
+                    UnitFileAssignmentDisposition::IgnoredPreservingPriorValue,
+                    current_section.as_str(),
+                    Some(key),
+                    directive.line_number,
+                    true,
+                );
+                continue;
+            }
 
             match (current_section.as_str(), key) {
                 ("unit", "Description") => info.description = parse_optional_string(value),
@@ -1173,12 +1276,50 @@ pub(super) fn parse_unit_content_into(
                         info.install.default_instance = Some(value.to_string());
                     }
                 }
-                _ => {}
+                _ => {
+                    info.record_diagnostic(
+                        UnitFileDiagnosticClass::UnknownLvalue,
+                        UnitFileAssignmentDisposition::IgnoredPreservingPriorValue,
+                        current_section.as_str(),
+                        Some(key),
+                        directive.line_number,
+                        !key.starts_with("X-"),
+                    );
+                }
             }
         }
     }
 
     Ok(())
+}
+
+fn known_section(section: &str) -> bool {
+    matches!(
+        section,
+        "unit"
+            | "service"
+            | "socket"
+            | "timer"
+            | "path"
+            | "mount"
+            | "swap"
+            | "automount"
+            | "slice"
+            | "scope"
+            | "install"
+    )
+}
+
+fn unit_boolean_directive(section: &str, key: &str) -> bool {
+    matches!(
+        (section, key),
+        ("unit", "DefaultDependencies")
+            | ("unit", "IgnoreOnIsolate")
+            | ("unit", "StopWhenUnneeded")
+            | ("unit", "RefuseManualStart")
+            | ("unit", "RefuseManualStop")
+            | ("unit", "AllowIsolate")
+    )
 }
 
 pub(super) fn directive_allows_tokenwise_specifier_fallback(section: &str, key: &str) -> bool {
@@ -1527,7 +1668,15 @@ pub(super) fn parse_fd_store_preserve(value: &str) -> Option<FileDescriptorStore
 }
 
 pub(super) fn parse_bool(value: &str) -> bool {
-    matches!(value.to_lowercase().as_str(), "1" | "yes" | "true" | "on")
+    parse_boolean(value).unwrap_or(false)
+}
+
+fn parse_boolean(value: &str) -> Option<bool> {
+    match value.to_ascii_lowercase().as_str() {
+        "1" | "yes" | "true" | "on" => Some(true),
+        "0" | "no" | "false" | "off" => Some(false),
+        _ => None,
+    }
 }
 
 pub(super) fn parse_optional_bool(value: &str) -> Option<bool> {

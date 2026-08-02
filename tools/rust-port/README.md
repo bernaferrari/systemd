@@ -47,3 +47,22 @@ as `PORT-SYNC: scope=<scope>; authority=<path>[,<path>...]`. Those paths must
 be normalized members of the map's `c_paths`. The map may additionally pin
 the reviewed transitive authority closure so changes below a direct helper
 also invalidate the scope's review snapshot.
+
+## Configured unit directive inventory
+
+`unit-directive-inventory.py` reads the gperf C output from a configured Meson
+build, rather than the feature-conditional Jinja template. Build that target
+first, then retain the JSON output with the reviewed profile:
+
+```sh
+meson compile -C build src/core/load-fragment-gperf.c
+python3 tools/rust-port/unit-directive-inventory.py \
+    --generated-gperf build/src/core/load-fragment-gperf.c \
+    --meson-build build \
+    --output /tmp/unit-directive-inventory.json \
+    --allow-unmatched-rust
+```
+
+The output is deliberately conservative: a Rust match arm is only
+`recognized-but-unconsumed` until a later semantic review records its runtime
+consumer and test evidence. Never treat this inventory as a replacement claim.

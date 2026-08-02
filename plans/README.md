@@ -9,6 +9,7 @@ update the status row when done.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |---|---|---|---|---|---|
 | 001 | Install the experimental Rust PID1 as an explicitly selected sidecar | P1 | S | — | DONE |
+| 003 | Build generated unit coverage and lossless Rust parser diagnostics | P1 | M | 001 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
@@ -16,6 +17,8 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
 - Plan 001 is a prerequisite for reproducible image-based Rust PID1 boot
   validation. It deliberately does not make Rust the production default.
+- Plan 003 records the configured C directive table and parser diagnostics;
+  transaction and runtime semantics remain separate work.
 
 ## Findings considered and rejected
 

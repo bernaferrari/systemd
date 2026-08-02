@@ -432,9 +432,64 @@ fn test_unit_parser_ignores_unknown_lvalues_but_rejects_syntax_errors() {
 
     assert_eq!(info.description.as_deref(), Some("Compatible"));
     assert_eq!(info.exec_start.as_deref(), Some("/usr/bin/true"));
+    assert_eq!(info.diagnostics.len(), 1);
+    assert_eq!(
+        info.diagnostics[0].class,
+        UnitFileDiagnosticClass::UnknownLvalue
+    );
+    assert_eq!(
+        info.diagnostics[0].disposition,
+        UnitFileAssignmentDisposition::IgnoredPreservingPriorValue
+    );
+    assert_eq!(info.diagnostics[0].section, "unit");
+    assert_eq!(
+        info.diagnostics[0].key.as_deref(),
+        Some("UnknownFutureDirective")
+    );
+    assert_eq!(info.diagnostics[0].line, 3);
+    assert!(info.diagnostics[0].warning);
 
     let mut invalid = UnitFileInfo::new("broken.service", PathBuf::from("broken.service"));
     assert!(parse_unit_content_into(&mut invalid, "[Unit\nDescription=Broken\n").is_err());
+}
+
+#[test]
+fn parser_diagnostics_preserve_prior_boolean_and_extension_behavior() {
+    let _test_lock = test_env_lock();
+    let mut info = UnitFileInfo::new("diagnostics.service", PathBuf::from("diagnostics.service"));
+    parse_unit_content_into(
+        &mut info,
+        include_str!("testdata/parser-diagnostics.service"),
+    )
+    .unwrap();
+
+    assert!(!info.default_dependencies);
+    assert_eq!(info.diagnostics.len(), 4);
+    assert_eq!(
+        info.diagnostics[0].class,
+        UnitFileDiagnosticClass::InvalidValue
+    );
+    assert_eq!(
+        info.diagnostics[0].disposition,
+        UnitFileAssignmentDisposition::IgnoredPreservingPriorValue
+    );
+    assert_eq!(info.diagnostics[0].line, 4);
+    assert!(info.diagnostics[0].warning);
+    assert_eq!(
+        info.diagnostics[1].class,
+        UnitFileDiagnosticClass::UnknownLvalue
+    );
+    assert!(info.diagnostics[1].warning);
+    assert_eq!(
+        info.diagnostics[2].class,
+        UnitFileDiagnosticClass::UnknownSection
+    );
+    assert!(!info.diagnostics[2].warning);
+    assert_eq!(
+        info.diagnostics[3].class,
+        UnitFileDiagnosticClass::UnknownLvalue
+    );
+    assert!(!info.diagnostics[3].warning);
 }
 
 #[test]

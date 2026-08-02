@@ -1,0 +1,9 @@
+[Unit]
+Description=Diagnostic fixture
+DefaultDependencies=no
+DefaultDependencies=not-a-boolean
+UnknownFutureDirective=yes
+[X-Future]
+Feature=yes
+[Unit]
+X-Extension=yes

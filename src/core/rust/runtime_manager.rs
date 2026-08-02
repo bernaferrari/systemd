@@ -98,7 +98,8 @@ pub use unit_file::{
     AutomountConfig, CgroupConfig, ExecCommandSpec, ExecContextConfig, FileDescriptorStorePreserve,
     InstallConfig, KillConfig, KillMode, MountConfig, PathConfig, ScopeConfig, ServiceConfig,
     ServiceRestartPolicy, SliceConfig, SocketConfig, SwapConfig, TimerConfig, UnitConditionConfig,
-    UnitConditionExpression, UnitFileInfo,
+    UnitConditionExpression, UnitFileAssignmentDisposition, UnitFileDiagnostic,
+    UnitFileDiagnosticClass, UnitFileInfo,
 };
 use unit_file::{
     apply_cgroup_config, apply_exec_context_config, apply_kill_config, unit_search_paths,
