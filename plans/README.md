@@ -33,7 +33,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   by Plans 005 and 006.
 - Plan 005 now keeps explicit kernel-command-line watchdog/crash policy from
   being silently dropped by the experimental sidecar, shares one crash-action
-  vocabulary, and preserves C's independent credential-import attempts. Live
+  vocabulary, and preserves C's independent credential-import attempts. Its
+  watchdog guard recognizes C time units and last-assignment semantics, but
+  deliberately treats a relative `systemd.watchdog_device=` as inactive
+  rather than deriving it from an inherited working directory. Live
   security helper composition, watchdog device ownership, console takeover,
   and descriptor-preserving reexec remain incomplete and continue to block a
   production PID1 switch.

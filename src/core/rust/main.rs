@@ -332,26 +332,79 @@ fn parse_kernel_boolean(value: Option<&str>) -> Option<bool> {
         .unwrap_or(Some(true))
 }
 
-/// C's timeout parser accepts a considerably wider grammar. The sidecar only
-/// needs to decide whether a *valid, nonzero* watchdog request would be lost;
-/// malformed values keep C's warn-and-ignore behavior.
+/// C's `parse_timeout()` accepts decimal values and its complete public time
+/// suffix vocabulary. The sidecar only needs to decide whether a *valid,
+/// nonzero* watchdog request would be lost; malformed values keep C's
+/// warn-and-ignore behavior and must not clobber an earlier assignment.
 fn nonzero_watchdog_timeout(value: &str) -> Option<bool> {
     let value = value.trim();
-    let (number, multiplier) = if let Some(number) = value.strip_suffix("min") {
-        (number, 60_000_000_u64)
-    } else if let Some(number) = value.strip_suffix("ms") {
-        (number, 1_000_u64)
-    } else if let Some(number) = value.strip_suffix("us") {
-        (number, 1_u64)
-    } else if let Some(number) = value.strip_suffix('s') {
-        (number, 1_000_000_u64)
-    } else {
-        // `parse_timeout()` accepts a bare integer too. Its precise unit is
-        // immaterial here: only zero vs. an active request matters.
-        (value, 1_u64)
-    };
-    let parsed = number.trim().parse::<u64>().ok()?;
-    Some(parsed.saturating_mul(multiplier) > 0)
+    if matches!(value, "infinity" | "infinite" | "∞") {
+        return Some(true);
+    }
+
+    const UNITS: [(&str, f64); 30] = [
+        ("microseconds", 1.0),
+        ("milliseconds", 1_000.0),
+        ("seconds", 1_000_000.0),
+        ("minutes", 60_000_000.0),
+        ("months", 1.0),
+        ("hours", 3_600_000_000.0),
+        ("years", 1.0),
+        ("weeks", 604_800_000_000.0),
+        ("usec", 1.0),
+        ("msec", 1_000.0),
+        ("second", 1_000_000.0),
+        ("minute", 60_000_000.0),
+        ("month", 1.0),
+        ("hour", 3_600_000_000.0),
+        ("year", 1.0),
+        ("week", 604_800_000_000.0),
+        ("days", 86_400_000_000.0),
+        ("day", 86_400_000_000.0),
+        ("min", 60_000_000.0),
+        ("ms", 1_000.0),
+        ("us", 1.0),
+        ("hr", 3_600_000_000.0),
+        ("h", 3_600_000_000.0),
+        ("d", 86_400_000_000.0),
+        ("w", 604_800_000_000.0),
+        ("M", 1.0),
+        ("y", 1.0),
+        ("m", 60_000_000.0),
+        ("s", 1_000_000.0),
+    ];
+
+    let (number, multiplier) = UNITS
+        .iter()
+        .find_map(|(suffix, multiplier)| {
+            value
+                .strip_suffix(suffix)
+                .map(|number| (number, *multiplier))
+        })
+        // A bare number is valid C input. Its unit does not matter to this
+        // guard because only zero versus an enabled watchdog is observed.
+        .unwrap_or((value, 1.0));
+    let parsed = number.trim().parse::<f64>().ok()?;
+    (parsed.is_finite() && parsed >= 0.0).then_some(parsed * multiplier > 0.0)
+}
+
+fn watchdog_device_is_active(value: &str) -> bool {
+    // `parse_path_argument()` reduces an empty value to NULL. Retain only an
+    // unambiguous absolute device path here: accepting a relative path would
+    // make an experimental PID 1's policy dependent on its inherited CWD.
+    value.starts_with('/')
+        && !value
+            .as_bytes()
+            .iter()
+            .any(|byte| *byte < 0x20 || *byte == 0x7f)
+}
+
+fn pretimeout_governor_is_safe(value: &str) -> bool {
+    !value.is_empty()
+        && !value
+            .as_bytes()
+            .iter()
+            .any(|byte| *byte < 0x20 || *byte == 0x7f)
 }
 
 /// Return the first explicit startup policy that the current sidecar cannot
@@ -375,22 +428,40 @@ fn unsupported_pid1_policy_from_cmdline(cmdline: &str) -> Option<UnsupportedPid1
         };
         match key {
             "systemd.watchdog_sec" => {
-                runtime_watchdog = value.and_then(nonzero_watchdog_timeout);
+                if let Some(enabled) = value.and_then(nonzero_watchdog_timeout) {
+                    runtime_watchdog = Some(enabled);
+                }
             }
             "systemd.watchdog_pre_sec" => {
-                pretimeout_watchdog = value.and_then(nonzero_watchdog_timeout);
+                if let Some(enabled) = value.and_then(nonzero_watchdog_timeout) {
+                    pretimeout_watchdog = Some(enabled);
+                }
             }
             "systemd.watchdog_device" => {
-                watchdog_device = value.filter(|value| !value.is_empty()).map(str::to_string);
+                if let Some(value) = value {
+                    if value.is_empty() {
+                        watchdog_device = None;
+                    } else if watchdog_device_is_active(value) {
+                        watchdog_device = Some(value.to_string());
+                    }
+                }
             }
-            "systemd.watchdog_pretimeout_governor" => {
-                pretimeout_governor = value.filter(|value| !value.is_empty()).map(str::to_string);
-            }
+            "systemd.watchdog_pretimeout_governor" => match value {
+                None | Some("") => pretimeout_governor = None,
+                Some(value) if pretimeout_governor_is_safe(value) => {
+                    pretimeout_governor = Some(value.to_string());
+                }
+                Some(_) => {}
+            },
             "systemd.service_watchdogs" => {
-                service_watchdogs = parse_kernel_boolean(value);
+                if let Some(enabled) = parse_kernel_boolean(value) {
+                    service_watchdogs = Some(enabled);
+                }
             }
             "systemd.crash_shell" => {
-                crash_shell = parse_kernel_boolean(value);
+                if let Some(enabled) = parse_kernel_boolean(value) {
+                    crash_shell = Some(enabled);
+                }
             }
             "systemd.crash_chvt" => match value {
                 // C treats the key without an argument as enabling the
@@ -1790,6 +1861,25 @@ mod tests {
     }
 
     #[test]
+    fn watchdog_timeout_guard_recognizes_c_time_units_and_fractions() {
+        for value in [
+            "500us", "1ms", "2s", "3min", "1h", "2days", "1week", "1month", "1year", "0.5h",
+        ] {
+            assert_eq!(
+                nonzero_watchdog_timeout(value),
+                Some(true),
+                "{value} is a valid active C timeout"
+            );
+        }
+        for value in ["0", "0s", "0.0h"] {
+            assert_eq!(nonzero_watchdog_timeout(value), Some(false));
+        }
+        assert_eq!(nonzero_watchdog_timeout("infinity"), Some(true));
+        assert_eq!(nonzero_watchdog_timeout("not-a-timeout"), None);
+        assert_eq!(nonzero_watchdog_timeout("-1s"), None);
+    }
+
+    #[test]
     fn later_valid_cmdline_assignments_replace_earlier_watchdog_values() {
         assert_eq!(
             unsupported_pid1_policy_from_cmdline("systemd.watchdog_sec=30s systemd.watchdog_sec=0"),
@@ -1798,6 +1888,56 @@ mod tests {
         assert_eq!(
             unsupported_pid1_policy_from_cmdline("systemd.watchdog_sec=0 systemd.watchdog_sec=30s"),
             Some(UnsupportedPid1Policy::RuntimeWatchdog)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.watchdog_sec=1h systemd.watchdog_sec=invalid"
+            ),
+            Some(UnsupportedPid1Policy::RuntimeWatchdog),
+            "C warns for an invalid later timeout and retains the prior value"
+        );
+    }
+
+    #[test]
+    fn watchdog_device_and_governor_only_reject_active_canonical_values() {
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.watchdog_device=/dev/watchdog0"),
+            Some(UnsupportedPid1Policy::WatchdogDevice)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.watchdog_device=relative-device"),
+            None,
+            "the sidecar intentionally refuses to infer an absolute path from an inherited CWD"
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.watchdog_device=/dev/watchdog0 systemd.watchdog_device="
+            ),
+            None
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.watchdog_device=/dev/watchdog0 systemd.watchdog_device=relative"
+            ),
+            Some(UnsupportedPid1Policy::WatchdogDevice),
+            "an ignored later path retains the prior active setting"
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.watchdog_pretimeout_governor=noop"),
+            Some(UnsupportedPid1Policy::WatchdogPretimeoutGovernor)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.watchdog_pretimeout_governor=noop systemd.watchdog_pretimeout_governor="
+            ),
+            None
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.watchdog_pretimeout_governor=noop systemd.watchdog_pretimeout_governor=bad\u{7f}"
+            ),
+            Some(UnsupportedPid1Policy::WatchdogPretimeoutGovernor),
+            "C ignores an unsafe later governor without clearing its prior value"
         );
     }
 
