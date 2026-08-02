@@ -190,6 +190,14 @@ mod imp {
                     }
                     Ok(PrivateBusWireReadOutcome::Read { bytes: read })
                 }
+                Err(AncillaryReceiveError::Io(Errno::ECONNRESET)) => {
+                    // A Unix stream peer which closes while it still has
+                    // unread server output may report a reset instead of a
+                    // zero-length read. Both are terminal peer closure; the
+                    // previous Read-based path exposed them as PeerClosed.
+                    self.dispatch_terminal = true;
+                    Ok(PrivateBusWireReadOutcome::PeerClosed)
+                }
                 Err(
                     AncillaryReceiveError::WouldBlock | AncillaryReceiveError::Io(Errno::EINTR),
                 ) => Ok(PrivateBusWireReadOutcome::WouldBlock),
@@ -2234,7 +2242,7 @@ mod imp {
         }
 
         #[test]
-        fn terminal_wire_reaping_releases_the_global_cap_for_a_later_accept() {
+        fn reset_style_peer_close_is_terminal_and_releases_the_global_cap() {
             let mut event_loop = EventLoop::new().unwrap();
             let (path, mut owner) = owner(&mut event_loop, "terminal-reap", 1);
             let mut first = UnixStream::connect(&path).unwrap();
@@ -2244,6 +2252,9 @@ mod imp {
                 .unwrap()
                 .unwrap();
 
+            // Leave the server's final auth response unread. Linux may expose
+            // the resulting close to recvmsg as ECONNRESET rather than EOF;
+            // it must retain the same PeerClosed/terminal lifecycle contract.
             drop(first);
             assert_eq!(
                 owner.read_wire_slot_once(wire_id),
