@@ -53,9 +53,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   differential evidence collector. It records a common base-image checksum,
   selected PID1 identity, Rust artifact hash, and literal private-peer calls
   as root and as the test user. The collector deliberately fails while the
-  Rust private `/run/systemd/private` transport is unavailable; Plan 002's
-  reviewed vtable/authorization matrix must land before this gate can become
-  a passing parity claim. Normal/release PID1 ownership remains C.
+  Rust private `/run/systemd/private` transport is unavailable. Plan 002's
+  bounded 23-row review has landed, but the remaining 874 C-vtable rows and
+  production private-transport/authorization work must land before this gate
+  can become a passing parity claim. Normal/release PID1 ownership remains C.
 - Plan 007 begins with `systemd-random-seed` as an explicitly non-promoted
   shadow target. `production-waves.toml` pins its C and Rust source blobs,
   C Meson owner, fallback, and every required evidence category; its gate
