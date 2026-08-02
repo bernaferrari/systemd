@@ -20,7 +20,7 @@
 #[cfg(target_os = "linux")]
 mod imp {
     use std::collections::BTreeMap;
-    use std::io::{Read, Write};
+    use std::io::Write;
     use std::num::NonZeroUsize;
     use std::rc::Rc;
 
@@ -28,6 +28,7 @@ mod imp {
     use systemd_event_loop_rs::loop_::EventLoop;
 
     use crate::pid1_bus_source::Pid1BusSendError;
+    use crate::pid1_dbus_ancillary::{AncillaryReceiveError, recv_bounded};
     use crate::pid1_dbus_command_adapter::{
         Pid1DbusCommandAdapter, Pid1DbusCommandAdapterError, Pid1DbusLocalReply, Pid1DbusRequest,
     };
@@ -157,11 +158,13 @@ mod imp {
         /// Read at most one bounded chunk from the nonblocking peer stream.
         ///
         /// The accumulator's current-frame allowance and strict total cap are
-        /// applied before the syscall. Before a complete primary header is
-        /// known, a peer may pipeline following bytes only within that fixed
-        /// cap; once known, the read stops exactly at the first frame. EOF and
-        /// fatal I/O/framing failures mark the slot terminal; the lifecycle
-        /// owner must then detach its event source and close it.
+        /// applied before the syscall. The first read stops at the primary
+        /// header and subsequent reads stop exactly at the first frame. This
+        /// gives recvmsg one unambiguous frame owner for ancillary data. Since
+        /// Unix-FD negotiation remains unsupported, any SCM_RIGHTS descriptor
+        /// is closed and rejected. EOF and fatal I/O/framing failures mark the
+        /// slot terminal; the lifecycle owner must then detach its event
+        /// source and close it.
         pub fn read_from_stream_once(
             &mut self,
         ) -> Result<PrivateBusWireReadOutcome, PrivateBusWireSlotError> {
@@ -175,26 +178,24 @@ mod imp {
                 Ok(budget) => budget,
                 Err(error) => return self.slot_failure(PrivateBusWireSlotError::Input(error)),
             };
-            let mut bytes = [0_u8; READ_CHUNK];
-            let mut stream = self.connection.stream();
-            match stream.read(&mut bytes[..budget.min(READ_CHUNK)]) {
-                Ok(0) => {
+            match recv_bounded(self.connection.stream(), budget.min(READ_CHUNK), 0) {
+                Ok(received) if received.bytes().is_empty() => {
                     self.dispatch_terminal = true;
                     Ok(PrivateBusWireReadOutcome::PeerClosed)
                 }
-                Ok(read) => {
-                    if let Err(error) = self.input.receive(&bytes[..read]) {
+                Ok(received) => {
+                    let read = received.bytes().len();
+                    if let Err(error) = self.input.receive(received.bytes()) {
                         return self.slot_failure(PrivateBusWireSlotError::Input(error));
                     }
                     Ok(PrivateBusWireReadOutcome::Read { bytes: read })
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    Ok(PrivateBusWireReadOutcome::WouldBlock)
+                Err(
+                    AncillaryReceiveError::WouldBlock | AncillaryReceiveError::Io(Errno::EINTR),
+                ) => Ok(PrivateBusWireReadOutcome::WouldBlock),
+                Err(error) => {
+                    self.slot_failure(PrivateBusWireSlotError::Io(ancillary_receive_errno(error)))
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
-                    Ok(PrivateBusWireReadOutcome::WouldBlock)
-                }
-                Err(error) => self.slot_failure(PrivateBusWireSlotError::Io(io_errno(&error))),
             }
         }
 
@@ -877,14 +878,30 @@ mod imp {
         Errno::from_raw(error.raw_os_error().unwrap_or(libc::EIO))
     }
 
+    fn ancillary_receive_errno(error: AncillaryReceiveError) -> Errno {
+        match error {
+            AncillaryReceiveError::InvalidLimits => Errno::EINVAL,
+            AncillaryReceiveError::WouldBlock => Errno::EAGAIN,
+            AncillaryReceiveError::Truncated => Errno::EMSGSIZE,
+            AncillaryReceiveError::DescriptorCountMismatch { .. } => Errno::EBADMSG,
+            AncillaryReceiveError::Io(error) => error,
+        }
+    }
+
     #[cfg(test)]
     mod tests {
+        const DBUS_PRIMARY_HEADER_SIZE: usize = 16;
+
+        use std::fs::File;
+        use std::io::IoSlice;
         use std::io::{Read, Write};
         use std::num::NonZeroUsize;
+        use std::os::fd::{AsRawFd, OwnedFd};
         use std::os::unix::net::{UnixListener, UnixStream};
         use std::path::PathBuf;
         use std::time::{SystemTime, UNIX_EPOCH};
 
+        use nix::sys::socket::{ControlMessage, MsgFlags, UnixAddr, sendmsg};
         use nix::unistd::geteuid;
 
         use super::*;
@@ -2110,6 +2127,109 @@ mod imp {
             assert!(owner.wire_slot(wire_id).unwrap().is_terminal());
 
             owner.unregister(&mut event_loop).unwrap();
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn stream_reads_stop_at_primary_header_and_exact_frame_end() {
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "stream-frame-boundary", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, b"");
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(512))
+                .unwrap()
+                .unwrap();
+
+            let first = manager_call(21, "Reload", &[]);
+            let second = manager_call(22, "Reload", &[]);
+            let mut pipelined = first.clone();
+            pipelined.extend_from_slice(&second);
+            client.write_all(&pipelined).unwrap();
+
+            assert_eq!(
+                owner.read_wire_slot_once(wire_id),
+                Ok(PrivateBusWireReadOutcome::Read {
+                    bytes: DBUS_PRIMARY_HEADER_SIZE,
+                })
+            );
+            assert_eq!(
+                owner.wire_slot(wire_id).unwrap().input().buffered(),
+                &first[..DBUS_PRIMARY_HEADER_SIZE]
+            );
+            assert_eq!(
+                owner.read_wire_slot_once(wire_id),
+                Ok(PrivateBusWireReadOutcome::Read {
+                    bytes: first.len() - DBUS_PRIMARY_HEADER_SIZE,
+                })
+            );
+            assert_eq!(owner.wire_slot(wire_id).unwrap().input().buffered(), first);
+            assert_eq!(
+                owner.read_wire_slot_once(wire_id),
+                Ok(PrivateBusWireReadOutcome::Backpressured)
+            );
+
+            assert_eq!(
+                owner
+                    .wire_slot_mut(wire_id)
+                    .unwrap()
+                    .take_next_method_call()
+                    .unwrap()
+                    .unwrap()
+                    .serial,
+                21
+            );
+            assert_eq!(
+                owner.read_wire_slot_once(wire_id),
+                Ok(PrivateBusWireReadOutcome::Read {
+                    bytes: DBUS_PRIMARY_HEADER_SIZE,
+                })
+            );
+            assert_eq!(
+                owner.wire_slot(wire_id).unwrap().input().buffered(),
+                &second[..DBUS_PRIMARY_HEADER_SIZE]
+            );
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop(client);
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn stream_read_closes_and_rejects_unexpected_scm_rights() {
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "stream-rights-rejected", 1);
+            let mut client = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut client, b"");
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(512))
+                .unwrap()
+                .unwrap();
+
+            let frame = manager_call(23, "Reload", &[]);
+            let descriptor: OwnedFd = File::open("/dev/null").unwrap().into();
+            let raw_descriptors = [descriptor.as_raw_fd()];
+            sendmsg::<UnixAddr>(
+                client.as_raw_fd(),
+                &[IoSlice::new(&frame)],
+                &[ControlMessage::ScmRights(&raw_descriptors)],
+                MsgFlags::empty(),
+                None,
+            )
+            .unwrap();
+
+            assert_eq!(
+                owner.read_wire_slot_once(wire_id),
+                Err(PrivateBusTransportError::WireSlot(
+                    PrivateBusWireSlotError::Io(Errno::EBADMSG)
+                ))
+            );
+            let slot = owner.wire_slot(wire_id).unwrap();
+            assert!(slot.is_terminal());
+            assert!(slot.input().buffered().is_empty());
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((descriptor, client));
             std::fs::remove_file(path).unwrap();
         }
 

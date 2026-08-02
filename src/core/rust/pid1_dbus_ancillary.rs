@@ -2,11 +2,13 @@
 //
 // PORT-SYNC: src/core/dbus.c (private-peer ancillary-data ownership).
 
-//! Bounded Linux-only SCM_RIGHTS reception for a future private-bus reader.
+//! Bounded Linux-only SCM_RIGHTS reception for the private-bus reader.
 //!
-//! This module deliberately does not associate ancillary data with D-Bus
-//! stream-frame offsets. Until that ordering contract is modeled, the live
-//! stream path continues to reject the Unix-FD header.
+//! The live reader limits each call to the checked remainder of one D-Bus
+//! frame and passes an expected descriptor count of zero. Thus unexpected
+//! rights are closed and rejected without enabling Unix-FD negotiation. The
+//! helper can retain an explicitly expected descriptor set for ownership
+//! tests, but production attachment remains unsupported.
 
 #[cfg(target_os = "linux")]
 mod imp {

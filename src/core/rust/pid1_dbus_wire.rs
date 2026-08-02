@@ -225,14 +225,20 @@ impl PrivateBusWireAccumulator {
     /// Maximum number of bytes the transport may read without buffering past
     /// the current frame or the configured cap.
     ///
+    /// Before the primary header is complete, the budget stops exactly at its
+    /// 16-byte boundary. This mirrors sd-bus' recvmsg framing: ancillary data
+    /// received with those bytes can belong only to the current frame. Once
+    /// the header is available, the budget stops at the declared frame end.
     /// A zero result is backpressure: a complete first frame must be consumed
-    /// with [`Self::take_next_method_call`] before reading again. This method
-    /// checks the primary header as soon as it is available, allowing a peer
-    /// that declares a frame larger than the configured cap to be rejected
-    /// without waiting for or allocating its body.
+    /// with [`Self::take_next_method_call`] before reading again. A peer that
+    /// declares a frame larger than the configured cap is rejected without
+    /// waiting for or allocating its body.
     pub fn read_budget(&self) -> Result<usize, PrivateBusWireAccumulatorError> {
+        if self.bytes.len() < PRIMARY_HEADER_SIZE {
+            return Ok((PRIMARY_HEADER_SIZE - self.bytes.len()).min(self.remaining_capacity()));
+        }
         let Some(frame_length) = frame_length_from_primary(&self.bytes)? else {
-            return Ok(self.remaining_capacity());
+            unreachable!("a complete primary header always declares a frame length");
         };
         if frame_length > self.capacity {
             return Err(PrivateBusWireAccumulatorError::FrameTooLarge {
@@ -1693,10 +1699,12 @@ mod tests {
         let mut accumulator = PrivateBusWireAccumulator::new(bytes.len()).unwrap();
 
         for byte in &bytes[..bytes.len() - 1] {
-            assert_eq!(
-                accumulator.read_budget(),
-                Ok(accumulator.remaining_capacity())
-            );
+            let expected_budget = if accumulator.buffered().len() < PRIMARY_HEADER_SIZE {
+                PRIMARY_HEADER_SIZE - accumulator.buffered().len()
+            } else {
+                accumulator.remaining_capacity()
+            };
+            assert_eq!(accumulator.read_budget(), Ok(expected_budget));
             accumulator.receive(std::slice::from_ref(byte)).unwrap();
             assert_eq!(accumulator.take_next_method_call(), Ok(None));
         }
@@ -1711,7 +1719,7 @@ mod tests {
             Ok(("demo.service".into(), "replace".into()))
         );
         assert!(accumulator.buffered().is_empty());
-        assert_eq!(accumulator.read_budget(), Ok(bytes.len()));
+        assert_eq!(accumulator.read_budget(), Ok(PRIMARY_HEADER_SIZE));
     }
 
     #[test]
@@ -1776,16 +1784,26 @@ mod tests {
             accumulator.receive(&overflowing),
             Err(PrivateBusWireAccumulatorError::ReadBudgetExceeded {
                 incoming: bytes.len() - 7,
-                budget: bytes.len() - 8,
+                budget: PRIMARY_HEADER_SIZE - 8,
             })
         );
         assert_eq!(accumulator.buffered(), retained);
 
-        // Respecting the advertised budget fills the pending frame and stops
-        // the next socket read until dispatch consumes it.
+        // The first budget stops at the primary header so ancillary data from
+        // this read cannot be confused with a following frame.
         let budget = accumulator.read_budget().unwrap();
-        assert_eq!(budget, bytes.len() - 8);
+        assert_eq!(budget, PRIMARY_HEADER_SIZE - 8);
         accumulator.receive(&bytes[8..8 + budget]).unwrap();
+        assert_eq!(accumulator.buffered().len(), PRIMARY_HEADER_SIZE);
+
+        // Once the declared length is known, the next budget stops exactly at
+        // the pending frame and applies backpressure until dispatch consumes
+        // it.
+        let budget = accumulator.read_budget().unwrap();
+        assert_eq!(budget, bytes.len() - PRIMARY_HEADER_SIZE);
+        accumulator
+            .receive(&bytes[PRIMARY_HEADER_SIZE..PRIMARY_HEADER_SIZE + budget])
+            .unwrap();
         assert_eq!(accumulator.read_budget(), Ok(0));
         assert_eq!(
             accumulator.receive(&[0]),
