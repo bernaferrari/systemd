@@ -28,8 +28,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   with checked-in C provenance for required-dependency and conflict jobs. Its
   service slice also makes manual stop cancel a pending auto-restart before
   dispatch, with C-provenance coverage. The socket/non-service promotion
-  matrix, resource-cleanup proof, and the Linux execution gate remain open.
-  Watchdog deadlines,
+  matrix now has repeated-start ownership coverage, and service timeout
+  dispatch has a deterministic start-timeout transition test. The remaining
+  resource-cleanup proof and Linux execution gate remain open. Watchdog
+  deadlines,
   startup security, D-Bus transport, and live C/Rust comparison remain owned
   by Plans 005 and 006.
 - Plan 005 now keeps explicit kernel-command-line watchdog/crash policy from
