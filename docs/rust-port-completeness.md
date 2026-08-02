@@ -234,6 +234,19 @@ nonblocking fallback behavior, anti-regression hashing, ownership/durability
 proof, and isolated Linux differential traces. Those are explicit blockers;
 the tool must not be promoted on Cargo compilation or source-count evidence.
 
+## Second measured daemon/tool wave: `systemd-creds` (shadow)
+
+`systemd-creds` is now separately pinned in the same production-wave ledger,
+but remains C-owned by `src/creds/meson.build`. Its Rust command-line parser
+and vocabulary are useful implementation scaffolding, not operational
+credential parity. The ledger requires distinct passing evidence for the
+external credential format, authenticated encryption/decryption and
+zeroization, TPM2 policy paths, credential-store permissions and interactive
+authorization, failure recovery, real Linux integration, and same-fixture
+C/Rust comparison. Every one is currently missing. The new direct provenance
+marker on the Rust binary makes source drift visible to the ledger; it does
+not change runtime behavior or authorize promotion.
+
 ## Readiness Verdict
 
 Current state is **not ready** for swapping distro `systemd` with Rust implementation on Ubuntu or general Linux distributions.

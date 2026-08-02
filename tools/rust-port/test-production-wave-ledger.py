@@ -59,6 +59,7 @@ fallback_owner = "c"
 c_source = "src/demo/demo.c"
 meson_build = "src/demo/meson.build"
 c_selected_source = "demo.c"
+required_evidence = ["cli", "persistent-state", "entropy-credit", "privilege", "recovery", "linux-integration", "differential"]
 rust_paths = ["src/demo/rust/main.rs", "src/demo/rust/lib.rs"]
 reviewed_c_blobs = {{ "src/demo/demo.c" = "{self.oid("src/demo/demo.c")}" }}
 reviewed_rust_blobs = {{ "src/demo/rust/main.rs" = "{self.oid("src/demo/rust/main.rs")}", "src/demo/rust/lib.rs" = "{self.oid("src/demo/rust/lib.rs")}" }}
@@ -124,6 +125,23 @@ detail = "fixture"
         )
         errors = self.validate()
         self.assertTrue(any("status must be one of" in error for error in errors))
+
+    def test_target_can_define_its_own_evidence_categories(self) -> None:
+        ledger = self.root / "tools/rust-port/production-waves.toml"
+        header = ledger.read_text(encoding="utf-8").split("[[target.evidence]]", 1)[0]
+        ledger.write_text(
+            header.replace(
+                'required_evidence = ["cli", "persistent-state", "entropy-credit", "privilege", "recovery", "linux-integration", "differential"]',
+                'required_evidence = ["credential-format"]',
+            )
+            + '''[[target.evidence]]
+name = "credential-format"
+state = "missing"
+detail = "fixture"
+''',
+            encoding="utf-8",
+        )
+        self.assertEqual(self.validate(), [])
 
 
 if __name__ == "__main__":

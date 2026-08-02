@@ -55,6 +55,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   privilege, recovery, Linux integration, and C/Rust differential evidence
   all pass. The current missing categories are recorded as blockers, not
   inferred from the existence of Rust source files.
+- The second Plan 007 target is `systemd-creds`, also kept as a C-owned
+  shadow. Its independent credential-format, cryptography, TPM2, privilege,
+  recovery, Linux-integration, and differential requirements prevent a
+  partial parser or help-only binary from becoming a replacement claim.
 
 ## Findings considered and rejected
 

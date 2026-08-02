@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -15,17 +16,7 @@ from typing import Any
 SCHEMA = 1
 STATUSES = frozenset({"shadow", "fallback", "replace"})
 EVIDENCE_STATES = frozenset({"missing", "planned", "passed"})
-REQUIRED_EVIDENCE = frozenset(
-    {
-        "cli",
-        "persistent-state",
-        "entropy-credit",
-        "privilege",
-        "recovery",
-        "linux-integration",
-        "differential",
-    }
-)
+EVIDENCE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def normalized_path(value: object, label: str, errors: list[str]) -> Path | None:
@@ -80,6 +71,21 @@ def validate_target(root: Path, index: int, target: object) -> list[str]:
     fallback_owner = target.get("fallback_owner")
     if not isinstance(fallback_owner, str) or fallback_owner != "c":
         errors.append(f"{prefix}.fallback_owner must remain c")
+
+    required_evidence_raw = target.get("required_evidence")
+    required_evidence: set[str] = set()
+    if not isinstance(required_evidence_raw, list) or not required_evidence_raw:
+        errors.append(f"{prefix}.required_evidence must be a non-empty array")
+    else:
+        for evidence_index, name in enumerate(required_evidence_raw):
+            if not isinstance(name, str) or not EVIDENCE_NAME.fullmatch(name):
+                errors.append(
+                    f"{prefix}.required_evidence[{evidence_index}] must be a normalized category name"
+                )
+            elif name in required_evidence:
+                errors.append(f"{prefix}: duplicate required evidence category {name}")
+            else:
+                required_evidence.add(name)
 
     c_source = normalized_path(target.get("c_source"), f"{prefix}.c_source", errors)
     meson_build = normalized_path(target.get("meson_build"), f"{prefix}.meson_build", errors)
@@ -143,7 +149,7 @@ def validate_target(root: Path, index: int, target: object) -> list[str]:
                 errors.append(f"{row_prefix} must be a table")
                 continue
             name, state = row.get("name"), row.get("state")
-            if not isinstance(name, str) or name not in REQUIRED_EVIDENCE:
+            if not isinstance(name, str) or name not in required_evidence:
                 errors.append(f"{row_prefix}.name is not a required evidence category")
                 continue
             if name in observed:
@@ -155,14 +161,14 @@ def validate_target(root: Path, index: int, target: object) -> list[str]:
             observed[name] = state
             if not isinstance(row.get("detail"), str) or not row["detail"].strip():
                 errors.append(f"{row_prefix}.detail must explain the evidence state")
-    missing = REQUIRED_EVIDENCE - set(observed)
+    missing = required_evidence - set(observed)
     if missing:
         errors.append(f"{prefix}: missing evidence categories: {', '.join(sorted(missing))}")
 
     if status == "replace":
         if owner != "rust":
             errors.append(f"{prefix}: replace requires production_owner = rust")
-        if any(observed.get(name) != "passed" for name in REQUIRED_EVIDENCE):
+        if any(observed.get(name) != "passed" for name in required_evidence):
             errors.append(f"{prefix}: replace requires every evidence category to pass")
     elif owner != "c":
         errors.append(f"{prefix}: non-replace target must retain C production ownership")

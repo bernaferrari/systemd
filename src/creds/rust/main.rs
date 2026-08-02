@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+// PORT-SYNC: src/creds/creds.c
 #![deny(unsafe_op_in_unsafe_fn)]
 //
 // Binary entry point for systemd-creds

@@ -8,6 +8,7 @@ fallback_owner = "c"
 c_source = "src/random-seed/random-seed-tool.c"
 meson_build = "src/random-seed/meson.build"
 c_selected_source = "random-seed-tool.c"
+required_evidence = ["cli", "persistent-state", "entropy-credit", "privilege", "recovery", "linux-integration", "differential"]
 rust_paths = [
     "src/random-seed/rust/main.rs",
     "src/random-seed/rust/lib.rs",
@@ -50,3 +51,59 @@ detail = "No real Linux service, filesystem, xattr, and kernel-random-pool integ
 name = "differential"
 state = "missing"
 detail = "No same-fixture C/Rust trace compares exit status, bytes, mode, xattrs, and cleanup."
+
+[[target]]
+id = "creds"
+status = "shadow"
+production_owner = "c"
+fallback_owner = "c"
+c_source = "src/creds/creds.c"
+meson_build = "src/creds/meson.build"
+c_selected_source = "creds.c"
+required_evidence = ["cli", "credential-format", "cryptography", "tpm2", "privilege", "recovery", "linux-integration", "differential"]
+rust_paths = [
+    "src/creds/rust/main.rs",
+    "src/creds/rust/lib.rs",
+]
+reviewed_c_blobs = { "src/creds/creds.c" = "ac405eb3e846987e539102a71198e7f6d420dec0" }
+reviewed_rust_blobs = { "src/creds/rust/main.rs" = "1437aa7414faecd6349ea8cf17dca71394008130", "src/creds/rust/lib.rs" = "42852c84b3c2ad1c744a0cbf7ecb5018bbdb75e2" }
+
+[[target.evidence]]
+name = "cli"
+state = "missing"
+detail = "The binary exposes help/version text only; it does not dispatch the C verb and option surface with matching errors."
+
+[[target.evidence]]
+name = "credential-format"
+state = "missing"
+detail = "No proof covers encrypted credential wire format, metadata, compatibility, or malformed-input handling."
+
+[[target.evidence]]
+name = "cryptography"
+state = "missing"
+detail = "No Rust replacement proves C-equivalent key derivation, encryption, decryption, authentication, or zeroization."
+
+[[target.evidence]]
+name = "tpm2"
+state = "missing"
+detail = "The TPM2 device, PCR policy, PIN, and public-key flows have no Rust runtime evidence."
+
+[[target.evidence]]
+name = "privilege"
+state = "missing"
+detail = "Credential-store ownership, access modes, polkit/ask-password, and privilege transitions have not been compared."
+
+[[target.evidence]]
+name = "recovery"
+state = "missing"
+detail = "Interrupted writes, expired timestamps, invalid key material, and retry/cleanup behavior lack C/Rust evidence."
+
+[[target.evidence]]
+name = "linux-integration"
+state = "missing"
+detail = "No isolated Linux credstore, TPM, or ask-password integration test has passed for Rust."
+
+[[target.evidence]]
+name = "differential"
+state = "missing"
+detail = "No same-fixture C/Rust comparison covers commands, bytes, permissions, diagnostics, and cleanup."
