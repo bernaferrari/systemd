@@ -1,0 +1,201 @@
+{
+  "schema": 1,
+  "handoff": {
+    "direct_private_peer": {
+      "address": "/run/systemd/private",
+      "entry_points": [
+        "src/core/rust/pid1_dbus_listener.rs",
+        "src/core/rust/pid1_dbus_server.rs",
+        "src/core/rust/pid1_private_bus_runtime.rs"
+      ],
+      "production_binding": "deferred: main.rs must not bind this path while the matrix is incomplete"
+    },
+    "system_bus": {
+      "name": "org.freedesktop.systemd1",
+      "owner_state": "src/core/rust/pid1_api_bus_name_owner.rs",
+      "transport": "deferred: no live Rust API-bus transport or name request exists"
+    },
+    "remaining_gaps": [
+      "full Manager, Unit, Job, Properties, and signal vtables",
+      "SELinux and polkit parity",
+      "generic container and Unix-FD D-Bus wire support",
+      "production private-socket binding"
+    ]
+  },
+  "members": [
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "GetUnit",
+      "input": "s",
+      "output": "o",
+      "bindings": [
+        {
+          "path": "/org/freedesktop/systemd1",
+          "interface": "org.freedesktop.systemd1.Manager"
+        }
+      ],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "read-only lookup of an already loaded Rust unit",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "GetUnitByPID",
+      "input": "u",
+      "output": "o",
+      "bindings": [
+        {
+          "path": "/org/freedesktop/systemd1",
+          "interface": "org.freedesktop.systemd1.Manager"
+        }
+      ],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "read-only lookup of an already loaded Rust unit",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "GetUnitByInvocationID",
+      "input": "ay",
+      "output": "o",
+      "bindings": [
+        {
+          "path": "/org/freedesktop/systemd1",
+          "interface": "org.freedesktop.systemd1.Manager"
+        }
+      ],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "read-only lookup of an already loaded Rust unit",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "GetJob",
+      "input": "u",
+      "output": "o",
+      "bindings": [
+        {
+          "path": "/org/freedesktop/systemd1",
+          "interface": "org.freedesktop.systemd1.Manager"
+        }
+      ],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "read-only lookup of an already loaded Rust job",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "LoadUnit",
+      "input": "s",
+      "output": "o",
+      "bindings": [{"path": "/org/freedesktop/systemd1", "interface": "org.freedesktop.systemd1.Manager"}],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "loads a unit through the single RuntimeManager owner",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "StartUnit",
+      "input": "ss",
+      "output": "o",
+      "bindings": [{"path": "/org/freedesktop/systemd1", "interface": "org.freedesktop.systemd1.Manager"}],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "queues a Rust manager job",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "StopUnit",
+      "input": "ss",
+      "output": "o",
+      "bindings": [{"path": "/org/freedesktop/systemd1", "interface": "org.freedesktop.systemd1.Manager"}],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "queues a Rust manager job",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "ReloadUnit",
+      "input": "ss",
+      "output": "o",
+      "bindings": [{"path": "/org/freedesktop/systemd1", "interface": "org.freedesktop.systemd1.Manager"}],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "queues a Rust manager job",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "RestartUnit",
+      "input": "ss",
+      "output": "o",
+      "bindings": [{"path": "/org/freedesktop/systemd1", "interface": "org.freedesktop.systemd1.Manager"}],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "queues a Rust manager job",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "ResetFailedUnit",
+      "input": "s",
+      "output": "",
+      "bindings": [{"path": "/org/freedesktop/systemd1", "interface": "org.freedesktop.systemd1.Manager"}],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "resets one loaded Rust unit's failed state",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    },
+    {
+      "source": "src/core/dbus-manager.c",
+      "vtable": "bus_manager_vtable",
+      "kind": "method",
+      "member": "ResetFailed",
+      "input": "",
+      "output": "",
+      "bindings": [{"path": "/org/freedesktop/systemd1", "interface": "org.freedesktop.systemd1.Manager"}],
+      "authorization": "private-peer transport policy; full C policy parity is deferred",
+      "state_mutation": "resets every loaded Rust unit's failed state",
+      "rust_owner": "src/core/rust/pid1_dbus_command_adapter.rs",
+      "transport": "direct-private-peer shadow only",
+      "status": "shadow"
+    }
+  ]
+}
