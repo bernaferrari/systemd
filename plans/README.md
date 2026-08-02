@@ -9,6 +9,7 @@ update the status row when done.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |---|---|---|---|---|---|
 | 001 | Install the experimental Rust PID1 as an explicitly selected sidecar | P1 | S | — | DONE |
+| 002 | Build the audited Rust PID1 private-bus transport and contract matrix | P1 | L | 001 | IN PROGRESS |
 | 003 | Build generated unit coverage and lossless Rust parser diagnostics | P1 | M | 001 | DONE |
 | 004 | Match C unit dependency, transaction, and manager-side job semantics | P1 | XL | 003 | IN PROGRESS |
 | 005 | Match C PID1 startup, security, watchdog, and reexec contracts | P1 | L | 004 | IN PROGRESS |

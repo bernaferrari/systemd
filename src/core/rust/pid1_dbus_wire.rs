@@ -65,6 +65,22 @@ impl Endian {
         })
     }
 
+    fn read_u16(self, bytes: &[u8]) -> Result<u16, WireError> {
+        let bytes: [u8; 2] = bytes.try_into().map_err(|_| WireError::Truncated)?;
+        Ok(match self {
+            Self::Little => u16::from_le_bytes(bytes),
+            Self::Big => u16::from_be_bytes(bytes),
+        })
+    }
+
+    fn read_u64(self, bytes: &[u8]) -> Result<u64, WireError> {
+        let bytes: [u8; 8] = bytes.try_into().map_err(|_| WireError::Truncated)?;
+        Ok(match self {
+            Self::Little => u64::from_le_bytes(bytes),
+            Self::Big => u64::from_be_bytes(bytes),
+        })
+    }
+
     fn push_u32(self, output: &mut Vec<u8>, value: u32) {
         output.extend_from_slice(&match self {
             Self::Little => value.to_le_bytes(),
@@ -325,11 +341,17 @@ pub struct MethodCall {
 /// This is intentionally an owned representation. It never retains a slice
 /// into a socket buffer, so a caller cannot outlive a connection's input
 /// ownership or accidentally retain unvalidated D-Bus padding.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DbusValue {
     Byte(u8),
     Bool(bool),
+    Int16(i16),
+    Uint16(u16),
+    Int32(i32),
     U32(u32),
+    Int64(i64),
+    Uint64(u64),
+    Double(f64),
     String(String),
     ObjectPath(String),
     Signature(String),
@@ -468,9 +490,10 @@ impl MethodCall {
     ///
     /// The current manager adapter continues to accept only its small scalar
     /// subset. This helper is a bounded, transport-neutral foundation for
-    /// later API rows: it validates arrays, structs, variants, object paths,
-    /// and Unix-FD indices before an adapter chooses whether that API is
-    /// supported. It does not accept SCM_RIGHTS itself.
+    /// later API rows: it validates every D-Bus basic body type, arrays,
+    /// structs, variants, object paths, and Unix-FD indices before an adapter
+    /// chooses whether that API is supported. It does not accept SCM_RIGHTS
+    /// itself.
     pub fn decode_values(&self) -> Result<Vec<DbusValue>, WireError> {
         let signature = self.signature.as_bytes();
         let mut signature_offset = 0;
@@ -575,7 +598,8 @@ fn decode_string(endian: Endian, bytes: &[u8], start: usize) -> Result<(String, 
 fn body_alignment(signature: &[u8]) -> Result<usize, WireError> {
     match signature.first().copied() {
         Some(b'y' | b'g' | b'v') => Ok(1),
-        Some(b'n' | b'q' | b'i' | b'u' | b'b' | b'h' | b's' | b'o') => Ok(4),
+        Some(b'n' | b'q') => Ok(2),
+        Some(b'i' | b'u' | b'b' | b'h' | b's' | b'o') => Ok(4),
         Some(b'x' | b't' | b'd' | b'(' | b'{') => Ok(8),
         Some(b'a') => Ok(4),
         Some(other) => Err(WireError::UnsupportedBodyType(other)),
@@ -583,11 +607,7 @@ fn body_alignment(signature: &[u8]) -> Result<usize, WireError> {
     }
 }
 
-fn align_body_offset(
-    bytes: &[u8],
-    offset: &mut usize,
-    alignment: usize,
-) -> Result<(), WireError> {
+fn align_body_offset(bytes: &[u8], offset: &mut usize, alignment: usize) -> Result<(), WireError> {
     let aligned = align_to(*offset, alignment)?;
     if aligned > bytes.len() {
         return Err(WireError::Truncated);
@@ -597,15 +617,25 @@ fn align_body_offset(
     Ok(())
 }
 
-fn decode_body_u32(
-    endian: Endian,
-    bytes: &[u8],
-    offset: &mut usize,
-) -> Result<u32, WireError> {
+fn decode_body_u32(endian: Endian, bytes: &[u8], offset: &mut usize) -> Result<u32, WireError> {
     align_body_offset(bytes, offset, 4)?;
     let range = checked_range(*offset, 4, bytes.len())?;
     *offset = offset.checked_add(4).ok_or(WireError::Overflow)?;
     endian.read_u32(&bytes[range])
+}
+
+fn decode_body_u16(endian: Endian, bytes: &[u8], offset: &mut usize) -> Result<u16, WireError> {
+    align_body_offset(bytes, offset, 2)?;
+    let range = checked_range(*offset, 2, bytes.len())?;
+    *offset = offset.checked_add(2).ok_or(WireError::Overflow)?;
+    endian.read_u16(&bytes[range])
+}
+
+fn decode_body_u64(endian: Endian, bytes: &[u8], offset: &mut usize) -> Result<u64, WireError> {
+    align_body_offset(bytes, offset, 8)?;
+    let range = checked_range(*offset, 8, bytes.len())?;
+    *offset = offset.checked_add(8).ok_or(WireError::Overflow)?;
+    endian.read_u64(&bytes[range])
 }
 
 fn decode_body_value(
@@ -634,9 +664,27 @@ fn decode_body_value(
                 _ => Err(WireError::InvalidBody),
             }
         }
+        b'n' => Ok(DbusValue::Int16(i16::from_ne_bytes(
+            decode_body_u16(endian, bytes, offset)?.to_ne_bytes(),
+        ))),
+        b'q' => Ok(DbusValue::Uint16(decode_body_u16(endian, bytes, offset)?)),
+        b'i' => Ok(DbusValue::Int32(i32::from_ne_bytes(
+            decode_body_u32(endian, bytes, offset)?.to_ne_bytes(),
+        ))),
         b'u' => Ok(DbusValue::U32(decode_body_u32(endian, bytes, offset)?)),
-        b'h' => Ok(DbusValue::UnixFdIndex(decode_body_u32(endian, bytes, offset)?)),
-        b's' => Ok(DbusValue::String(decode_body_text(endian, bytes, offset, false)?)),
+        b'x' => Ok(DbusValue::Int64(i64::from_ne_bytes(
+            decode_body_u64(endian, bytes, offset)?.to_ne_bytes(),
+        ))),
+        b't' => Ok(DbusValue::Uint64(decode_body_u64(endian, bytes, offset)?)),
+        b'd' => Ok(DbusValue::Double(f64::from_bits(decode_body_u64(
+            endian, bytes, offset,
+        )?))),
+        b'h' => Ok(DbusValue::UnixFdIndex(decode_body_u32(
+            endian, bytes, offset,
+        )?)),
+        b's' => Ok(DbusValue::String(decode_body_text(
+            endian, bytes, offset, false,
+        )?)),
         b'o' => {
             let path = decode_body_text(endian, bytes, offset, false)?;
             if !object_path_is_valid(&path) {
@@ -734,7 +782,9 @@ fn decode_body_struct(
         }
         let length = signature_element_length(inner, signature_offset, false, 0, 0)
             .ok_or(WireError::InvalidSignature)?;
-        let end = signature_offset.checked_add(length).ok_or(WireError::Overflow)?;
+        let end = signature_offset
+            .checked_add(length)
+            .ok_or(WireError::Overflow)?;
         values.push(decode_body_value(
             endian,
             bytes,
@@ -1424,6 +1474,63 @@ mod tests {
         endian.push_u32(output, value);
     }
 
+    fn push_body_u16(endian: Endian, output: &mut Vec<u8>, value: u16) {
+        push_padding(output, 2).unwrap();
+        output.extend_from_slice(&match endian {
+            Endian::Little => value.to_le_bytes(),
+            Endian::Big => value.to_be_bytes(),
+        });
+    }
+
+    fn push_body_u64(endian: Endian, output: &mut Vec<u8>, value: u64) {
+        push_padding(output, 8).unwrap();
+        output.extend_from_slice(&match endian {
+            Endian::Little => value.to_le_bytes(),
+            Endian::Big => value.to_be_bytes(),
+        });
+    }
+
+    #[test]
+    fn decodes_every_scalar_signature_with_its_wire_alignment() {
+        for endian in [Endian::Little, Endian::Big] {
+            let mut body = vec![7];
+            push_body_u16(endian, &mut body, (-2_i16) as u16);
+            push_body_u16(endian, &mut body, 5);
+            push_body_u32(
+                endian,
+                &mut body,
+                u32::from_ne_bytes((-3_i32).to_ne_bytes()),
+            );
+            push_body_u32(endian, &mut body, 9);
+            push_body_u64(
+                endian,
+                &mut body,
+                u64::from_ne_bytes((-4_i64).to_ne_bytes()),
+            );
+            push_body_u64(endian, &mut body, 11);
+            push_body_u64(endian, &mut body, 3.5_f64.to_bits());
+            push_body_u32(endian, &mut body, 0);
+
+            let values = call_with_body(endian, "ynqiuxtdh", body)
+                .decode_values()
+                .unwrap();
+            assert_eq!(
+                values,
+                vec![
+                    DbusValue::Byte(7),
+                    DbusValue::Int16(-2),
+                    DbusValue::Uint16(5),
+                    DbusValue::Int32(-3),
+                    DbusValue::U32(9),
+                    DbusValue::Int64(-4),
+                    DbusValue::Uint64(11),
+                    DbusValue::Double(3.5),
+                    DbusValue::UnixFdIndex(0),
+                ]
+            );
+        }
+    }
+
     #[test]
     fn decodes_bounded_arrays_structs_variants_and_object_paths() {
         for endian in [Endian::Little, Endian::Big] {
@@ -1455,9 +1562,7 @@ mod tests {
                     ]),
                     DbusValue::Variant {
                         signature: "o".to_string(),
-                        value: Box::new(DbusValue::ObjectPath(
-                            "/org/example/Variant".to_string()
-                        )),
+                        value: Box::new(DbusValue::ObjectPath("/org/example/Variant".to_string())),
                     },
                 ])
             );
@@ -1467,8 +1572,8 @@ mod tests {
     #[test]
     fn generic_value_decoder_rejects_bad_padding_and_invalid_object_paths() {
         let mut bad_padding = Vec::new();
-        push_body_u32(Endian::Little, &mut bad_padding, 1);
-        bad_padding.push(7);
+        push_body_u32(Endian::Little, &mut bad_padding, 0);
+        bad_padding.extend_from_slice(&[7, 0, 0, 0]);
         let call = call_with_body(Endian::Little, "a(u)", bad_padding);
         assert_eq!(call.decode_values(), Err(WireError::InvalidBody));
 
@@ -1476,11 +1581,22 @@ mod tests {
         push_marshaled_text(Endian::Little, &mut bad_path, "invalid", false).unwrap();
         let call = call_with_body(Endian::Little, "o", bad_path);
         assert_eq!(call.decode_values(), Err(WireError::InvalidBody));
+
+        let mut truncated_array = Vec::new();
+        push_body_u32(Endian::Little, &mut truncated_array, 2);
+        truncated_array.push(1);
+        let call = call_with_body(Endian::Little, "ay", truncated_array);
+        assert_eq!(call.decode_values(), Err(WireError::Truncated));
+
+        let mut invalid_variant = Vec::new();
+        push_marshaled_text(Endian::Little, &mut invalid_variant, "(", true).unwrap();
+        let call = call_with_body(Endian::Little, "v", invalid_variant);
+        assert_eq!(call.decode_values(), Err(WireError::InvalidSignature));
     }
 
     #[test]
     fn received_unix_fds_transfer_each_descriptor_at_most_once() {
-        let descriptor = File::open("/dev/null").unwrap().into();
+        let descriptor: OwnedFd = File::open("/dev/null").unwrap().into();
         let expected = descriptor.as_raw_fd();
         let mut attachments = ReceivedUnixFds::new(vec![descriptor]);
         assert_eq!(attachments.len(), 1);
