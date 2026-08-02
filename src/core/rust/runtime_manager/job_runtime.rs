@@ -6,7 +6,9 @@
  */
 use std::collections::VecDeque;
 
-use super::{Result, RuntimeManager, active_state_to_job_state};
+use super::{
+    JOB_REMOVED_RECORD_LIMIT, JobRemovedRecord, Result, RuntimeManager, active_state_to_job_state,
+};
 use crate::ffi::Errno;
 use crate::job::{
     InstallDisposition, Job, JobId, UnitDependencyAtom, job_compare, job_install,
@@ -35,12 +37,42 @@ impl RuntimeManager {
         self.job_redispatch_queue.remove(&id);
     }
 
-    fn release_terminal_job_id(&mut self, id: JobId) {
-        // TODO(systemd-yzz): The authenticated transport must emit JobRemoved
-        // from the terminal Job before this release point. Until then, do not
-        // retain a queryable history just to simulate a missing event stream.
-        self.detach_terminal_job_queues(id);
-        self.job_registry.release_id(id);
+    /// Record the C `JobRemoved(uoss)` payload locally without publishing it.
+    ///
+    /// PORT-SYNC: `send_removed_signal()` in `src/core/dbus-job.c` obtains
+    /// `p = job_dbus_path(j)` and appends `j->id`, `p`, `j->unit->id`, and
+    /// `job_result_to_string(j->result)`. The Rust runtime has no live bus
+    /// transport at this point, so this is deliberately an internal audit
+    /// record—not a pending signal and not evidence of bus delivery.
+    fn record_terminal_job_removed(&mut self, job: &Job, result: CanonicalJobResult) {
+        if self.job_removed_records.len() == JOB_REMOVED_RECORD_LIMIT {
+            // Explicit FIFO overflow policy: discard the oldest terminal
+            // record, never grow history and never delay cleanup.
+            self.job_removed_records.pop_front();
+        }
+        self.job_removed_records.push_back(JobRemovedRecord {
+            id: job.id,
+            job_path: format!("/org/freedesktop/systemd1/job/{}", job.id),
+            unit_id: job.unit.clone(),
+            result: result
+                .to_string_val()
+                .expect("canonical JobResult values have string names"),
+        });
+    }
+
+    /// Record a terminal job and release its ID exactly once.
+    ///
+    /// PORT-SYNC: `job_unlink()` in `src/core/job.c` clears manager queues
+    /// before `job_free()` releases the job. We retain that cleanup ordering;
+    /// the record is local only and must not be mistaken for D-Bus emission.
+    fn release_terminal_job(&mut self, job: &Job, result: CanonicalJobResult) {
+        self.record_terminal_job_removed(job, result);
+        self.detach_terminal_job_queues(job.id);
+        self.job_registry.release_id(job.id);
+    }
+
+    pub(crate) fn job_removed_records(&self) -> &VecDeque<JobRemovedRecord> {
+        &self.job_removed_records
     }
 
     pub fn installed_job(&self, id: JobId) -> Option<&Job> {
@@ -130,7 +162,7 @@ impl RuntimeManager {
             }
         };
         let id = installed.id;
-        let (should_dispatch, terminal_id) = match disposition {
+        let (should_dispatch, terminal_job) = match disposition {
             InstallDisposition::Installed => (true, None),
             InstallDisposition::Merged => {
                 self.job_registry.release_id(incoming_id);
@@ -142,9 +174,12 @@ impl RuntimeManager {
                 }
                 (false, None)
             }
-            InstallDisposition::ReplacedConflicting { canceled } => {
+            InstallDisposition::ReplacedConflicting { mut canceled } => {
                 self.service_restart_after_stop.remove(&canceled.unit);
-                (true, Some(canceled.id))
+                canceled.installed = false;
+                canceled.result = Some(CanonicalJobResult::Canceled);
+                canceled.set_state(CanonicalJobState::Failed);
+                (true, Some(canceled))
             }
         };
 
@@ -152,8 +187,8 @@ impl RuntimeManager {
         if let Some(unit) = self.units.get_mut(unit) {
             unit.current_job_id = Some(id);
         }
-        if let Some(canceled_id) = terminal_id {
-            self.release_terminal_job_id(canceled_id);
+        if let Some(canceled) = terminal_job.as_ref() {
+            self.release_terminal_job(canceled, CanonicalJobResult::Canceled);
         }
         Ok((id, should_dispatch))
     }
@@ -210,7 +245,7 @@ impl RuntimeManager {
                 );
             }
             self.enqueue_ordering_neighbours(&job.unit);
-            self.release_terminal_job_id(id);
+            self.release_terminal_job(&job, result);
         }
     }
 

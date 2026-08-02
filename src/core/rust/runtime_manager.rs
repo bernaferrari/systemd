@@ -2,7 +2,7 @@
 #[cfg(target_os = "linux")]
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::env;
 #[cfg(target_os = "linux")]
 use std::ffi::CString;
@@ -467,6 +467,30 @@ enum ManagedDirectoryKind {
     Configuration,
 }
 
+/// Maximum number of terminal-job records retained by one manager.
+///
+/// The overflow policy is deterministic FIFO eviction: when a new terminal
+/// job is recorded, the oldest record is dropped first. This is intentionally
+/// small and fixed so terminal-job activity cannot retain unbounded memory.
+pub(super) const JOB_REMOVED_RECORD_LIMIT: usize = 64;
+
+/// Manager-local snapshot shaped like the `JobRemoved(uoss)` payload.
+///
+/// PORT-SYNC: `send_removed_signal()` in `src/core/dbus-job.c` builds the
+/// `org.freedesktop.systemd1.Manager.JobRemoved` signal with
+/// `sd_bus_message_append(m, "uoss", j->id, p, j->unit->id,
+/// job_result_to_string(j->result))`. This structure records the same four
+/// values only after terminal cleanup; it neither owns a bus connection nor
+/// asserts that any signal was emitted. Sender identity is intentionally
+/// absent: this runtime lifecycle has no authenticated sender model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct JobRemovedRecord {
+    pub(crate) id: JobId,
+    pub(crate) job_path: String,
+    pub(crate) unit_id: String,
+    pub(crate) result: &'static str,
+}
+
 pub struct RuntimeManager {
     units: HashMap<String, Unit>,
     unit_files: HashMap<String, UnitFileInfo>,
@@ -475,6 +499,9 @@ pub struct RuntimeManager {
     /// Canonical installed jobs. Lifecycle decisions use this map and the
     /// owning unit's `current_job_id`.
     installed_jobs: BTreeMap<JobId, Job>,
+    /// A short, manager-local audit trail of terminal jobs. This is not a
+    /// D-Bus transport queue and is deliberately not replayed as one.
+    job_removed_records: VecDeque<JobRemovedRecord>,
     transaction_counter: u64,
     manager_record: UnitManagerRecord,
     process_tracker: ProcessTracker,
@@ -622,6 +649,7 @@ impl RuntimeManager {
             unit_name_map: HashMap::new(),
             job_registry: JobRegistry::default(),
             installed_jobs: BTreeMap::new(),
+            job_removed_records: VecDeque::new(),
             transaction_counter: 0,
             manager_record: UnitManagerRecord::default(),
             process_tracker: ProcessTracker::new(),

@@ -291,6 +291,7 @@ fn validate_preflight(runtime: &RuntimeManager) -> Result<(), PrepareHandoffErro
         unit_name_map,
         job_registry,
         installed_jobs,
+        job_removed_records,
         transaction_counter,
         manager_record,
         process_tracker,
@@ -343,6 +344,7 @@ fn validate_preflight(runtime: &RuntimeManager) -> Result<(), PrepareHandoffErro
     let _retained_without_conversion = (
         unit_files,
         unit_name_map,
+        job_removed_records,
         transaction_counter,
         manager_record,
         bound_stop_queue,

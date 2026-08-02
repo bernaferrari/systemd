@@ -3265,7 +3265,75 @@ fn test_terminal_job_release_is_idempotent_and_clears_all_dispatch_queues() {
     mgr.finish_installed_job(job_id, CanonicalJobResult::Canceled);
     assert!(!mgr.job_run_queue.contains(&job_id));
     assert!(!mgr.job_redispatch_queue.contains(&job_id));
+    assert_eq!(mgr.job_removed_records().len(), 1);
+    assert_eq!(mgr.job_removed_records()[0].id, job_id);
+    assert_eq!(
+        mgr.job_removed_records()[0].job_path,
+        format!("/org/freedesktop/systemd1/job/{job_id}")
+    );
+    assert_eq!(mgr.job_removed_records()[0].unit_id, "terminal.service");
+    assert_eq!(mgr.job_removed_records()[0].result, "canceled");
     assert!(mgr.job_registry.reserve_existing_id(job_id).is_ok());
+}
+
+#[test]
+fn test_terminal_job_removed_records_preserve_uoss_fields_for_success_and_failure() {
+    // C provenance: src/core/dbus-job.c:send_removed_signal() appends the
+    // JobRemoved payload as "uoss": ID, job object path, unit ID, result.
+    // These manager-local records do not assert live D-Bus delivery.
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    insert_test_service(&mut mgr, "done.service", ServiceState::Running);
+    insert_test_service(&mut mgr, "failed.service", ServiceState::Running);
+
+    let (done_id, _) = mgr
+        .install_target_job("done.service", CanonicalJobType::Stop)
+        .unwrap();
+    let (failed_id, _) = mgr
+        .install_target_job("failed.service", CanonicalJobType::Stop)
+        .unwrap();
+    mgr.finish_installed_job(done_id, CanonicalJobResult::Done);
+    mgr.finish_installed_job(failed_id, CanonicalJobResult::Failed);
+
+    let records = mgr.job_removed_records();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].id, done_id);
+    assert_eq!(
+        records[0].job_path,
+        format!("/org/freedesktop/systemd1/job/{done_id}")
+    );
+    assert_eq!(records[0].unit_id, "done.service");
+    assert_eq!(records[0].result, "done");
+    assert_eq!(records[1].id, failed_id);
+    assert_eq!(
+        records[1].job_path,
+        format!("/org/freedesktop/systemd1/job/{failed_id}")
+    );
+    assert_eq!(records[1].unit_id, "failed.service");
+    assert_eq!(records[1].result, "failed");
+}
+
+#[test]
+fn test_terminal_job_removed_records_evict_oldest_at_fixed_limit() {
+    // The internal audit FIFO has an explicit, deterministic overflow policy:
+    // retain the newest JOB_REMOVED_RECORD_LIMIT records and evict the oldest.
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+
+    for index in 0..=JOB_REMOVED_RECORD_LIMIT {
+        let unit = format!("record-{index}.service");
+        insert_test_service(&mut mgr, &unit, ServiceState::Running);
+        let (id, _) = mgr
+            .install_target_job(&unit, CanonicalJobType::Stop)
+            .unwrap();
+        mgr.finish_installed_job(id, CanonicalJobResult::Done);
+    }
+
+    let records = mgr.job_removed_records();
+    assert_eq!(records.len(), JOB_REMOVED_RECORD_LIMIT);
+    assert_eq!(records.front().unwrap().unit_id, "record-1.service");
+    assert_eq!(records.back().unwrap().unit_id, "record-64.service");
+    assert_eq!(records.front().unwrap().result, "done");
 }
 
 #[test]
