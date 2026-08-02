@@ -471,6 +471,28 @@ impl RuntimeManager {
     }
 
     pub(super) fn track_pid(&mut self, unit_name: &str, pid: u32, role: TrackedPidRole) {
+        // A numeric PID may be reused only after the previous identity has
+        // left the manager. If a caller presents a replacement identity
+        // before the old reverse index was reaped, detach every compatibility
+        // reference first. Otherwise a later kill/notify lookup could steer
+        // the new process through the old unit's main/control slot.
+        if let Some(previous_unit) = self.pid_to_unit_map.get(&pid).cloned()
+            && previous_unit != unit_name
+        {
+            if self.unit_pid_map.get(&previous_unit).copied() == Some(pid) {
+                self.unit_pid_map.remove(&previous_unit);
+            }
+            if let Some(unit) = self.units.get_mut(&previous_unit) {
+                if unit.main_pid.map(|pid_ref| pid_ref.0) == Some(pid) {
+                    unit.main_pid = None;
+                }
+                if unit.control_pid.map(|pid_ref| pid_ref.0) == Some(pid) {
+                    unit.control_pid = None;
+                }
+                unit.watched_pids.retain(|pid_ref| pid_ref.0 != pid);
+            }
+        }
+
         // This compatibility index cannot represent main and control children
         // concurrently. Preserve a main PID once one exists; lifecycle code
         // uses Unit's two PID slots and the reverse maps below.

@@ -31,8 +31,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   matrix now has repeated-start ownership coverage, and service timeout
   dispatch has a deterministic start-timeout transition test. The remaining
   terminal job queue cleanup is centralized and idempotent with C-provenance
-  coverage. The remaining resource-cleanup proof and Linux execution gate
-  remain open. Watchdog deadlines,
+  coverage. PID reassignment now detaches stale previous-unit slots and
+  reverse indexes, also with C-provenance coverage. The remaining
+  resource-cleanup proof and Linux execution gate remain open. Watchdog
+  deadlines,
   startup security, D-Bus transport, and live C/Rust comparison remain owned
   by Plans 005 and 006.
 - Plan 005 now keeps explicit kernel-command-line watchdog/crash policy from

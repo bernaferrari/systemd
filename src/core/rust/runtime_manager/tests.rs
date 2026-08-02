@@ -4397,6 +4397,62 @@ fn test_untracked_child_exit_event_is_rejected_without_service_mutation() {
 }
 
 #[test]
+fn test_pid_reassignment_detaches_stale_previous_unit_references() {
+    // C provenance: src/core/unit.c:unit_watch_pidref()/unit_unwatch_pidref()
+    // and src/core/service.c:service_set_main_pidref(). A reused numeric PID
+    // must not remain in the previous unit's PID slots or compatibility map.
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    insert_fsm_service(
+        &mut mgr,
+        "old-owner.service",
+        ServiceState::Running,
+        ServiceType::Simple,
+        |_| {},
+    );
+    insert_fsm_service(
+        &mut mgr,
+        "new-owner.service",
+        ServiceState::Start,
+        ServiceType::Simple,
+        |_| {},
+    );
+
+    let pid = 41_013;
+    if let Some(unit) = mgr.units.get_mut("old-owner.service") {
+        unit.main_pid = Some(crate::unit::PidRef(pid));
+        unit.control_pid = Some(crate::unit::PidRef(pid));
+        unit.watched_pids.insert(crate::unit::PidRef(pid));
+    }
+    mgr.track_pid("old-owner.service", pid, TrackedPidRole::Main);
+    assert_eq!(
+        mgr.unit_pid_map.get("old-owner.service").copied(),
+        Some(pid)
+    );
+
+    mgr.track_pid("new-owner.service", pid, TrackedPidRole::Control);
+
+    let old = mgr.units.get("old-owner.service").unwrap();
+    assert!(old.main_pid.is_none());
+    assert!(old.control_pid.is_none());
+    assert!(old.watched_pids.is_empty());
+    assert!(!mgr.unit_pid_map.contains_key("old-owner.service"));
+    assert_eq!(
+        mgr.pid_to_unit_map.get(&pid).map(String::as_str),
+        Some("new-owner.service")
+    );
+    assert_eq!(
+        mgr.pid_role_map.get(&pid).copied(),
+        Some(TrackedPidRole::Control)
+    );
+
+    mgr.untrack_pid(pid);
+    assert!(!mgr.unit_pid_map.contains_key("new-owner.service"));
+    assert!(!mgr.pid_to_unit_map.contains_key(&pid));
+    assert!(!mgr.pid_role_map.contains_key(&pid));
+}
+
+#[test]
 fn test_cgroup_path_uses_slice_hierarchy() {
     let _test_lock = test_env_lock();
     let dir = test_temp_dir("test-systemd-cgroup-slice-hierarchy");
