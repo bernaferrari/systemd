@@ -16,7 +16,9 @@ use std::time::Duration;
 use systemd_basic_rs::extract_word::{
     EXTRACT_RELAX, EXTRACT_RETAIN_ESCAPE, EXTRACT_UNQUOTE, extract_first_word,
 };
-use systemd_core_rs::crash_handler::unsupported_crash_startup_policy_from_cmdline;
+use systemd_core_rs::crash_handler::{
+    UnsupportedCrashStartupPolicy, unsupported_crash_startup_policy_from_cmdline,
+};
 use systemd_core_rs::generator_setup::{GeneratorEnvironmentFacts, GeneratorRuntimeScope};
 use systemd_core_rs::pid1_bus_source::{
     Pid1BusCommandInbox, Pid1BusCommandSender, pid1_bus_command_channel,
@@ -2020,39 +2022,98 @@ mod tests {
     }
 
     #[test]
-    fn early_core_pattern_fails_closed_only_for_c_accepted_absolute_paths() {
+    fn nondefault_crash_and_service_watchdog_policy_is_not_silently_ignored() {
         assert_eq!(
-            unsupported_pid1_policy_from_cmdline("systemd.early_core_pattern=/run/early-core"),
-            Some(UnsupportedPid1Policy::Crash(
-                systemd_core_rs::crash_handler::UnsupportedCrashStartupPolicy::EarlyCorePattern
+            unsupported_pid1_policy_from_cmdline("systemd.service_watchdogs=no"),
+            Some(UnsupportedPid1Policy::ServiceWatchdogsDisabled)
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_shell"),
+            Some(UnsupportedCrashStartupPolicy::CrashShell)
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_chvt"),
+            Some(UnsupportedCrashStartupPolicy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_action=reboot"),
+            Some(UnsupportedCrashStartupPolicy::CrashAction(
+                "reboot".to_string()
             ))
         );
         assert_eq!(
-            unsupported_pid1_policy_from_cmdline("systemd.early_core_pattern=relative-core"),
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_action=freeze"),
+            None
+        );
+    }
+
+    #[test]
+    fn early_core_policy_helper_preserves_c_accepted_assignment_semantics() {
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline(
+                "systemd.early_core_pattern=/run/early-core"
+            ),
+            Some(UnsupportedCrashStartupPolicy::EarlyCorePattern)
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline(
+                "systemd.early_core_pattern=relative-core"
+            ),
             None,
             "C warns and ignores relative core-pattern values"
         );
         assert_eq!(
-            unsupported_pid1_policy_from_cmdline(
+            unsupported_crash_startup_policy_from_cmdline(
                 "systemd.early_core_pattern=/run/early-core systemd.early_core_pattern=relative-core"
             ),
-            Some(UnsupportedPid1Policy::Crash(
-                systemd_core_rs::crash_handler::UnsupportedCrashStartupPolicy::EarlyCorePattern
-            )),
+            Some(UnsupportedCrashStartupPolicy::EarlyCorePattern),
             "a later C-invalid relative value retains the earlier active core pattern"
         );
         assert_eq!(
-            unsupported_pid1_policy_from_cmdline("systemd.early_core_pattern="),
+            unsupported_crash_startup_policy_from_cmdline("systemd.early_core_pattern="),
             None,
             "a missing C value leaves the default untouched"
         );
     }
 
     #[test]
-    fn nondefault_crash_and_service_watchdog_policy_is_not_silently_ignored() {
+    fn crash_change_vt_policy_helper_matches_c_last_assignment_rules() {
         assert_eq!(
-            unsupported_pid1_policy_from_cmdline("systemd.service_watchdogs=no"),
-            Some(UnsupportedPid1Policy::ServiceWatchdogsDisabled)
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_chvt"),
+            Some(UnsupportedCrashStartupPolicy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_chvt=yes"),
+            Some(UnsupportedCrashStartupPolicy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_chvt=0"),
+            Some(UnsupportedCrashStartupPolicy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_chvt=7"),
+            Some(UnsupportedCrashStartupPolicy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_chvt=no"),
+            None
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline("systemd.crash_chvt=-1"),
+            None
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline(
+                "systemd.crash_chvt=yes systemd.crash_chvt=invalid"
+            ),
+            Some(UnsupportedCrashStartupPolicy::CrashChangeVirtualTerminal),
+            "an invalid later assignment must retain C's earlier valid setting"
+        );
+        assert_eq!(
+            unsupported_crash_startup_policy_from_cmdline(
+                "systemd.crash_chvt=yes systemd.crash_chvt=-1"
+            ),
+            None
         );
     }
 
