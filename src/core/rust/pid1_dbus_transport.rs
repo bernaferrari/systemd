@@ -811,6 +811,29 @@ mod imp {
             true
         }
 
+        /// Detach every slot which has reached a terminal transport or reply
+        /// state and return the number released.
+        ///
+        /// The lifecycle owner calls this after its finite round-robin turn;
+        /// it is intentionally not hidden in an event callback, where
+        /// dropping a peer could consume unbounded work or surprise sibling
+        /// sources. Each removed slot clears retained input and pending reply
+        /// receivers before its socket closes, immediately freeing its place
+        /// in the shared admission cap.
+        pub fn reap_terminal_wire_slots(&mut self) -> usize {
+            let mut released = 0;
+            self.wire_slots.retain(|_, slot| {
+                if !slot.is_terminal() {
+                    return true;
+                }
+
+                slot.clear();
+                released += 1;
+                false
+            });
+            released
+        }
+
         /// Unregister every private-bus source and close all retained streams.
         ///
         /// This is the composite teardown operation a future manager reload,
@@ -2087,6 +2110,38 @@ mod imp {
             assert!(owner.wire_slot(wire_id).unwrap().is_terminal());
 
             owner.unregister(&mut event_loop).unwrap();
+            std::fs::remove_file(path).unwrap();
+        }
+
+        #[test]
+        fn terminal_wire_reaping_releases_the_global_cap_for_a_later_accept() {
+            let mut event_loop = EventLoop::new().unwrap();
+            let (path, mut owner) = owner(&mut event_loop, "terminal-reap", 1);
+            let mut first = UnixStream::connect(&path).unwrap();
+            authenticate_to_handoff_with_initial(&mut owner, &mut event_loop, &mut first, b"");
+            let wire_id = owner
+                .promote_authenticated_to_wire(wire_slot_config(64))
+                .unwrap()
+                .unwrap();
+
+            drop(first);
+            assert_eq!(
+                owner.read_wire_slot_once(wire_id),
+                Ok(PrivateBusWireReadOutcome::PeerClosed)
+            );
+            assert!(owner.wire_slot(wire_id).unwrap().is_terminal());
+            assert_eq!(owner.reap_terminal_wire_slots(), 1);
+            assert_eq!(owner.retained_connection_count(), 0);
+            assert!(owner.wire_slot(wire_id).is_none());
+
+            let second = UnixStream::connect(&path).unwrap();
+            assert_eq!(event_loop.run_once(0), Ok(true));
+            let outcome = dispatch(&mut owner, &mut event_loop);
+            assert_eq!(outcome.accepted, 1);
+            assert_eq!(owner.retained_connection_count(), 1);
+
+            owner.unregister(&mut event_loop).unwrap();
+            drop((second, owner));
             std::fs::remove_file(path).unwrap();
         }
 
