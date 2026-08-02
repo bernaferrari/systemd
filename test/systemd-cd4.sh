@@ -314,6 +314,7 @@ if [[ "${SYSTEMD_CD4_PRIVATE_BUS_CHECKS:-0}" == 1 ]]; then
     private_trace="${trace_dir:-$tmpdir}/private-bus.txt"
     ssh "${ssh_opts[@]}" 'bash -s' >"$private_trace" 2>&1 <<'EOF'
 set +e
+private_bus_address='unix:path=/run/systemd/private'
 run_case() {
     local label="$1"
     shift
@@ -321,10 +322,11 @@ run_case() {
     "$@"
     printf 'status=%s\n' "$?"
 }
-run_case root-introspect sudo -n busctl --address=unix:path=/run/systemd/private --no-pager introspect org.freedesktop.systemd1 /org/freedesktop/systemd1
-run_case root-get-unit sudo -n busctl --address=unix:path=/run/systemd/private --no-pager call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager GetUnit s ssh.service
-run_case user-introspect busctl --address=unix:path=/run/systemd/private --no-pager introspect org.freedesktop.systemd1 /org/freedesktop/systemd1
-run_case user-get-unit busctl --address=unix:path=/run/systemd/private --no-pager call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager GetUnit s ssh.service
+printf 'address=%s\n' "$private_bus_address"
+run_case root-introspect sudo -n busctl --address="$private_bus_address" --no-pager introspect org.freedesktop.systemd1 /org/freedesktop/systemd1
+run_case root-get-unit sudo -n busctl --address="$private_bus_address" --no-pager call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager GetUnit s ssh.service
+run_case user-introspect busctl --address="$private_bus_address" --no-pager introspect org.freedesktop.systemd1 /org/freedesktop/systemd1
+run_case user-get-unit busctl --address="$private_bus_address" --no-pager call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager GetUnit s ssh.service
 EOF
     echo "INFO: private-peer trace recorded at $private_trace" >&2
 fi
