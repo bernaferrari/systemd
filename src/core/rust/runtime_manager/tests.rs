@@ -1160,6 +1160,83 @@ fn test_socket_runtime_rejects_programmatic_non_service_association_before_liste
 }
 
 #[test]
+fn test_repeated_socket_start_preserves_live_service_association() {
+    // C provenance: src/core/socket.c:socket_start() and
+    // socket_enter_running(). A repeated start of an already-running socket
+    // must not redirect its listening descriptors to a newly parsed service.
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    let socket_name = "api.socket";
+    let service_name = "api.service";
+
+    let mut socket_unit = Unit::new(mgr.manager_record.clone(), UnitType::Socket);
+    socket_unit.id = Some(socket_name.to_string());
+    socket_unit.load_state = LoadState::Loaded;
+    mgr.units.insert(socket_name.to_string(), socket_unit);
+
+    let mut service_unit = Unit::new(mgr.manager_record.clone(), UnitType::Service);
+    service_unit.id = Some(service_name.to_string());
+    service_unit.load_state = LoadState::Loaded;
+    mgr.units.insert(service_name.to_string(), service_unit);
+    mgr.services.insert(
+        service_name.to_string(),
+        Service {
+            service_type: ServiceType::Simple,
+            state: ServiceState::Dead,
+            ..Default::default()
+        },
+    );
+
+    let mut info = UnitFileInfo::new(socket_name, PathBuf::from(socket_name));
+    info.socket.listen_stream.push("127.0.0.1:0".to_string());
+    info.socket.service = Some(service_name.to_string());
+    info.socket.file_descriptor_name = Some("api".to_string());
+    mgr.unit_files.insert(socket_name.to_string(), info);
+
+    assert!(mgr.execute_socket_job(socket_name, TxJobType::Start));
+    let first_listener = mgr
+        .socket_mgr
+        .get(socket_name)
+        .and_then(|socket| socket.weak_fd())
+        .expect("socket listener missing after first start");
+    assert!(first_listener.upgrade().is_some());
+    assert_eq!(
+        mgr.service_activation_sockets
+            .get(service_name)
+            .map(|sockets| sockets.contains(socket_name)),
+        Some(true)
+    );
+
+    // Simulate a reload changing Socket.Service= while a repeated Start is
+    // still queued. The active listener must retain its original owner.
+    mgr.unit_files.get_mut(socket_name).unwrap().socket.service = Some("other.service".to_string());
+    assert!(mgr.execute_socket_job(socket_name, TxJobType::Start));
+
+    assert!(first_listener.upgrade().is_some());
+    assert_eq!(
+        mgr.service_activation_sockets
+            .get(service_name)
+            .map(|sockets| sockets.contains(socket_name)),
+        Some(true)
+    );
+    assert!(
+        !mgr.service_activation_sockets
+            .get("other.service")
+            .is_some_and(|sockets| sockets.contains(socket_name))
+    );
+    assert_eq!(mgr.socket_mgr.get(socket_name).unwrap().fd_name(), "api");
+
+    assert!(mgr.execute_socket_job(socket_name, TxJobType::Stop));
+    assert!(first_listener.upgrade().is_none());
+    assert!(mgr.socket_mgr.get(socket_name).is_none());
+    assert!(mgr.service_activation_sockets.is_empty());
+    assert_eq!(
+        mgr.units.get(socket_name).map(|unit| unit.active_state),
+        Some(ActiveState::Inactive)
+    );
+}
+
+#[test]
 fn test_socket_activation_rejects_programmatic_non_service_association() {
     let _test_lock = test_env_lock();
     let mut mgr = new_test_runtime_manager();

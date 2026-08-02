@@ -34,6 +34,26 @@ impl RuntimeManager {
             self.fail_socket_start(unit_name, "unit is not a socket");
             return;
         }
+        // `socket_start()` is idempotent for an already-running socket. Do
+        // not rebind or rewrite the service association on a repeated Start
+        // job: doing so would leave the listener owned by one service while
+        // activation metadata points at another. Restart owns the explicit
+        // stop-then-start transition below.
+        if self.socket_mgr.get(unit_name).is_some() {
+            let association_is_live = self
+                .service_activation_sockets
+                .values()
+                .any(|sockets| sockets.contains(unit_name));
+            if association_is_live {
+                self.publish_nonservice_state(unit_name, ActiveState::Active);
+            } else {
+                self.fail_socket_start(
+                    unit_name,
+                    "existing listener has no live service association",
+                );
+            }
+            return;
+        }
         if info.socket.accept.unwrap_or(false) {
             self.fail_socket_start(
                 unit_name,
@@ -94,14 +114,12 @@ impl RuntimeManager {
             return;
         }
 
-        if self.socket_mgr.get(unit_name).is_none()
-            && let Err(error) = self.socket_mgr.register_listen_streams_with_options(
-                unit_name,
-                &info.socket.listen_stream,
-                info.socket.file_descriptor_name.as_deref(),
-                info.socket.remove_on_stop.unwrap_or(false),
-            )
-        {
+        if let Err(error) = self.socket_mgr.register_listen_streams_with_options(
+            unit_name,
+            &info.socket.listen_stream,
+            info.socket.file_descriptor_name.as_deref(),
+            info.socket.remove_on_stop.unwrap_or(false),
+        ) {
             self.fail_socket_start(unit_name, &error);
             return;
         }
