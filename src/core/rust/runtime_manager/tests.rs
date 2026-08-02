@@ -4364,9 +4364,78 @@ fn test_pid_reverse_map_cleared_on_exact_main_exit_event() {
             state: ChildState::ExitedCleanly,
         },
     ));
+    let unit = mgr.units.get("tracked.service").unwrap();
+    assert!(unit.main_pid.is_none());
+    assert!(unit.control_pid.is_none());
+    assert!(unit.watched_pids.is_empty());
     assert!(!mgr.unit_pid_map.contains_key("tracked.service"));
     assert!(!mgr.pid_to_unit_map.contains_key(&pid));
     assert!(!mgr.pid_role_map.contains_key(&pid));
+}
+
+#[test]
+fn test_untrack_pid_clears_unit_slots_and_is_idempotent() {
+    // C provenance: src/core/unit.c:unit_unwatch_pidref_done() removes the
+    // Unit-local PID reference before dropping manager-side watch indexes.
+    // Repeated calls are valid no-ops and must not resurrect stale ownership.
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    insert_fsm_service(
+        &mut mgr,
+        "tracked.service",
+        ServiceState::Running,
+        ServiceType::Simple,
+        |_| {},
+    );
+
+    let pid = 41_016;
+    if let Some(unit) = mgr.units.get_mut("tracked.service") {
+        unit.main_pid = Some(crate::unit::PidRef(pid));
+        unit.control_pid = Some(crate::unit::PidRef(pid));
+        unit.watched_pids.insert(crate::unit::PidRef(pid));
+    }
+    mgr.track_pid("tracked.service", pid, TrackedPidRole::Main);
+    assert_eq!(
+        mgr.pid_to_unit_map.get(&pid).map(String::as_str),
+        Some("tracked.service")
+    );
+
+    mgr.untrack_pid(pid);
+    let unit = mgr.units.get("tracked.service").unwrap();
+    assert!(unit.main_pid.is_none());
+    assert!(unit.control_pid.is_none());
+    assert!(unit.watched_pids.is_empty());
+    assert!(!mgr.unit_pid_map.contains_key("tracked.service"));
+    assert!(!mgr.pid_to_unit_map.contains_key(&pid));
+    assert!(!mgr.pid_role_map.contains_key(&pid));
+
+    // C's set_remove() early-exit makes the second unwatch idempotent.
+    mgr.untrack_pid(pid);
+    let unit = mgr.units.get("tracked.service").unwrap();
+    assert!(unit.main_pid.is_none());
+    assert!(unit.control_pid.is_none());
+    assert!(unit.watched_pids.is_empty());
+    assert!(mgr.unit_pid_map.is_empty());
+    assert!(mgr.pid_to_unit_map.is_empty());
+    assert!(mgr.pid_role_map.is_empty());
+
+    // A late cleanup can observe the local Unit slot after an earlier path
+    // consumed the reverse map. The fallback still removes that stale state.
+    let late_pid = 41_017;
+    if let Some(unit) = mgr.units.get_mut("tracked.service") {
+        unit.main_pid = Some(crate::unit::PidRef(late_pid));
+        unit.control_pid = Some(crate::unit::PidRef(late_pid));
+        unit.watched_pids.insert(crate::unit::PidRef(late_pid));
+    }
+    mgr.track_pid("tracked.service", late_pid, TrackedPidRole::Main);
+    mgr.pid_to_unit_map.remove(&late_pid);
+    mgr.pid_role_map.remove(&late_pid);
+    mgr.untrack_pid(late_pid);
+    let unit = mgr.units.get("tracked.service").unwrap();
+    assert!(unit.main_pid.is_none());
+    assert!(unit.control_pid.is_none());
+    assert!(unit.watched_pids.is_empty());
+    assert!(mgr.unit_pid_map.is_empty());
 }
 
 #[test]
@@ -4446,7 +4515,15 @@ fn test_pid_reassignment_detaches_stale_previous_unit_references() {
         Some(TrackedPidRole::Control)
     );
 
+    if let Some(unit) = mgr.units.get_mut("new-owner.service") {
+        unit.control_pid = Some(crate::unit::PidRef(pid));
+        unit.watched_pids.insert(crate::unit::PidRef(pid));
+    }
+
     mgr.untrack_pid(pid);
+    let new = mgr.units.get("new-owner.service").unwrap();
+    assert!(new.control_pid.is_none());
+    assert!(new.watched_pids.is_empty());
     assert!(!mgr.unit_pid_map.contains_key("new-owner.service"));
     assert!(!mgr.pid_to_unit_map.contains_key(&pid));
     assert!(!mgr.pid_role_map.contains_key(&pid));

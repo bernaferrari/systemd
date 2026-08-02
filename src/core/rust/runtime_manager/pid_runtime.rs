@@ -49,11 +49,47 @@ impl RuntimeManager {
     pub(super) fn untrack_pid(&mut self, pid: u32) {
         #[cfg(target_os = "linux")]
         self.pending_exec_confirmations.remove(&pid);
-        let unit_name = self.pid_to_unit_map.remove(&pid);
+        let reverse_owner = self.pid_to_unit_map.remove(&pid);
         self.pid_role_map.remove(&pid);
-        if let Some(unit_name) = unit_name {
-            let matches = self.unit_pid_map.get(&unit_name).copied() == Some(pid);
-            if matches {
+
+        // C's unit_unwatch_pidref() clears both the Unit-local PID set and
+        // the manager reverse indexes. Clear the known owner directly. If a
+        // repeated/late call arrives after the reverse index was already
+        // consumed, scan for stale local slots as a defensive fallback. Do
+        // not scan when an owner is known: a newly tracked process may reuse
+        // the same numeric PID in another unit and must remain untouched.
+        let mut owners = Vec::new();
+        if let Some(unit_name) = reverse_owner {
+            if let Some(unit) = self.units.get_mut(&unit_name) {
+                if unit.main_pid.map(|pid_ref| pid_ref.0) == Some(pid) {
+                    unit.main_pid = None;
+                }
+                if unit.control_pid.map(|pid_ref| pid_ref.0) == Some(pid) {
+                    unit.control_pid = None;
+                }
+                unit.watched_pids.retain(|pid_ref| pid_ref.0 != pid);
+            }
+            owners.push(unit_name);
+        } else {
+            for (unit_name, unit) in &mut self.units {
+                let matches = unit.main_pid.map(|pid_ref| pid_ref.0) == Some(pid)
+                    || unit.control_pid.map(|pid_ref| pid_ref.0) == Some(pid)
+                    || unit.watched_pids.iter().any(|pid_ref| pid_ref.0 == pid);
+                if !matches {
+                    continue;
+                }
+                if unit.main_pid.map(|pid_ref| pid_ref.0) == Some(pid) {
+                    unit.main_pid = None;
+                }
+                if unit.control_pid.map(|pid_ref| pid_ref.0) == Some(pid) {
+                    unit.control_pid = None;
+                }
+                unit.watched_pids.retain(|pid_ref| pid_ref.0 != pid);
+                owners.push(unit_name.clone());
+            }
+        }
+        for unit_name in owners {
+            if self.unit_pid_map.get(&unit_name).copied() == Some(pid) {
                 self.unit_pid_map.remove(&unit_name);
             }
         }

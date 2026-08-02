@@ -1815,25 +1815,9 @@ impl RuntimeManager {
             .get(&name)
             .map(|service| service.service_type)
             .unwrap_or_else(|| infer_service_type(&info));
-        if let Some(unit) = self.units.get_mut(&name) {
-            match pid_role {
-                TrackedPidRole::Main => {
-                    if unit.main_pid.map(|p| p.0) == Some(pid) {
-                        unit.main_pid = None;
-                    }
-                }
-                TrackedPidRole::Control => {
-                    if unit.control_pid.map(|p| p.0) == Some(pid) {
-                        unit.control_pid = None;
-                    }
-                }
-                TrackedPidRole::Unknown => {}
-            }
-            unit.watched_pids.retain(|watched_pid| watched_pid.0 != pid);
-        }
         // Snapshot role/state/sequence first, then release all child ownership
-        // exactly once before a transition can spawn its successor and occupy
-        // the same Unit PID slot.
+        // through the authoritative untrack path before a transition can
+        // spawn its successor and occupy the same Unit PID slot.
         self.untrack_pid(pid);
         let _ = self.process_tracker.remove(pid);
         let is_oneshot_main_sequence = pid_role == TrackedPidRole::Main
