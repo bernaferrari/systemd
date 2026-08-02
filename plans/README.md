@@ -12,6 +12,7 @@ update the status row when done.
 | 003 | Build generated unit coverage and lossless Rust parser diagnostics | P1 | M | 001 | DONE |
 | 004 | Match C unit dependency, transaction, and manager-side job semantics | P1 | XL | 003 | IN PROGRESS |
 | 005 | Match C PID1 startup, security, watchdog, and reexec contracts | P1 | L | 004 | IN PROGRESS |
+| 006 | Integrate full PID1 D-Bus/lifecycle behavior and Linux differential boot | P1 | XL | 002, 004, 005 | IN PROGRESS |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
@@ -35,6 +36,13 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   security helper composition, watchdog device ownership, console takeover,
   and descriptor-preserving reexec remain incomplete and continue to block a
   production PID1 switch.
+- Plan 006 has a paired C/Rust disposable-image harness and a strict
+  differential evidence collector. It records a common base-image checksum,
+  selected PID1 identity, Rust artifact hash, and literal private-peer calls
+  as root and as the test user. The collector deliberately fails while the
+  Rust private `/run/systemd/private` transport is unavailable; Plan 002's
+  reviewed vtable/authorization matrix must land before this gate can become
+  a passing parity claim. Normal/release PID1 ownership remains C.
 
 ## Findings considered and rejected
 

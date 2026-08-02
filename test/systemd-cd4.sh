@@ -7,6 +7,10 @@ cd "$repo_root"
 
 skip() {
     echo "SKIP: $*" >&2
+    if [[ -n "${CI:-}" || "${SYSTEMD_CD4_REQUIRE_EVIDENCE:-0}" == 1 ]]; then
+        echo "FAIL: this prerequisite is required for release evidence." >&2
+        exit 1
+    fi
     exit 0
 }
 
@@ -45,6 +49,25 @@ if [[ "$(uname -m)" != x86_64 ]]; then
     skip "currently only x86_64 Ubuntu cloud images are supported."
 fi
 
+# `c` always means the image's canonical systemd binary. `rust` installs the
+# sidecar in a disposable overlay and changes only that overlay's `/sbin/init`
+# selector. `both` is intentionally sequential: it gives the two runs the
+# same cloud image, seed and fixture without making the two PID 1 processes
+# compete for the same forwarded SSH port.
+cd4_mode="${SYSTEMD_CD4_MODE:-rust}"
+case "$cd4_mode" in
+    c|rust) ;;
+    both)
+        trace_root="${SYSTEMD_CD4_TRACE_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/systemd-cd4-traces.XXXXXX")}"
+        mkdir -p "$trace_root"
+        SYSTEMD_CD4_MODE=c SYSTEMD_CD4_TRACE_DIR="$trace_root" SYSTEMD_CD4_REQUIRE_EVIDENCE=1 "$0"
+        SYSTEMD_CD4_MODE=rust SYSTEMD_CD4_TRACE_DIR="$trace_root" SYSTEMD_CD4_REQUIRE_EVIDENCE=1 "$0"
+        echo "PASS: paired C/Rust CD4 runs completed; compare with test/test-rust-pid1-differential.sh $trace_root."
+        exit 0
+        ;;
+    *) fail "SYSTEMD_CD4_MODE must be c, rust, or both (got $cd4_mode)." ;;
+esac
+
 require_cmd qemu-system-x86_64
 require_cmd qemu-img
 require_cmd cloud-localds
@@ -54,9 +77,13 @@ require_cmd ssh-keygen
 require_cmd curl
 require_cmd sha256sum
 
-systemd_bin="${SYSTEMD_CD4_SYSTEMD:-${CARGO_TARGET_DIR:-target}/debug/systemd}"
-if [[ ! -x "$systemd_bin" ]]; then
-    fail "Rust systemd binary not found at $systemd_bin; build it or set SYSTEMD_CD4_SYSTEMD"
+if [[ "$cd4_mode" == rust ]]; then
+    systemd_bin="${SYSTEMD_CD4_SYSTEMD:-${CARGO_TARGET_DIR:-target}/debug/systemd}"
+    if [[ ! -x "$systemd_bin" ]]; then
+        fail "Rust systemd binary not found at $systemd_bin; build it or set SYSTEMD_CD4_SYSTEMD"
+    fi
+else
+    systemd_bin=""
 fi
 
 cache_dir="${SYSTEMD_CD4_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/systemd-cd4}"
@@ -93,6 +120,20 @@ fi
 
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/systemd-cd4.XXXXXX")"
 qemu_pid=""
+trace_dir="${SYSTEMD_CD4_TRACE_DIR:+${SYSTEMD_CD4_TRACE_DIR}/${cd4_mode}}"
+if [[ -n "$trace_dir" ]]; then
+    mkdir -p "$trace_dir"
+    {
+        printf 'mode=%s\n' "$cd4_mode"
+        printf 'base_image=%s\n' "$base_image"
+        printf 'base_image_sha256=%s\n' "$(sha256sum "$base_image" | awk '{print $1}')"
+        printf 'architecture=%s\n' "$(uname -m)"
+        if [[ "$cd4_mode" == rust ]]; then
+            printf 'rust_binary=%s\n' "$systemd_bin"
+            printf 'rust_binary_sha256=%s\n' "$(sha256sum "$systemd_bin" | awk '{print $1}')"
+        fi
+    } >"$trace_dir/metadata.env"
+fi
 
 cleanup() {
     if [[ -n "$qemu_pid" ]] && kill -0 "$qemu_pid" >/dev/null 2>&1; then
@@ -161,13 +202,18 @@ EOF
 
 run cloud-localds "$seed_iso" "$user_data" "$meta_data"
 
-run virt-customize \
-    -a "$overlay" \
-    --upload "$systemd_bin":/root/systemd-rust \
-    --run-command 'install -m 0755 /root/systemd-rust /usr/lib/systemd/systemd-rust' \
-    --run-command 'ln -sfnT /usr/lib/systemd/systemd-rust /sbin/init' \
-    --run-command 'if command -v update-initramfs >/dev/null 2>&1; then update-initramfs -u; fi' \
-    --run-command 'rm -f /root/systemd-rust'
+if [[ "$cd4_mode" == rust ]]; then
+    run virt-customize \
+        -a "$overlay" \
+        --upload "$systemd_bin":/root/systemd-rust \
+        --run-command 'install -m 0755 /root/systemd-rust /usr/lib/systemd/systemd-rust' \
+        --run-command 'ln -sfnT /usr/lib/systemd/systemd-rust /sbin/init' \
+        --run-command 'if command -v update-initramfs >/dev/null 2>&1; then update-initramfs -u; fi' \
+        --run-command 'rm -f /root/systemd-rust'
+else
+    # The C baseline must not be modified by the Rust-sidecar preparation.
+    run virt-customize -a "$overlay" --run-command 'test -x /usr/lib/systemd/systemd'
+fi
 
 echo "+ qemu-system-x86_64 boot"
 run qemu-system-x86_64 \
@@ -217,34 +263,75 @@ if ! wait_for_ssh; then
     fail "QEMU exited before the VM became reachable over SSH"
 fi
 
-guest "boot checks" 'bash -se' <<'EOF'
+guest "boot checks" "bash -se -- $cd4_mode" <<'EOF'
 set -euo pipefail
-
-if ! /proc/1/exe --version | grep -q '^systemd 0\.0\.1$'; then
-    echo "FAIL: PID 1 does not report Rust systemd version 0.0.1" >&2
-    /proc/1/exe --version >&2 || true
-    exit 1
-fi
+mode="$1"
 
 test -x /usr/lib/systemd/systemd
-if /usr/lib/systemd/systemd --version | grep -q '^systemd 0\.0\.1$'; then
-    echo "FAIL: canonical C PID 1 path reports the Rust systemd version" >&2
-    /usr/lib/systemd/systemd --version >&2 || true
-    exit 1
-fi
+if [[ "$mode" == rust ]]; then
+    if ! /proc/1/exe --version | grep -q '^systemd 0\.0\.1$'; then
+        echo "FAIL: PID 1 does not report Rust systemd version 0.0.1" >&2
+        /proc/1/exe --version >&2 || true
+        exit 1
+    fi
 
-test -x /usr/lib/systemd/systemd-rust
-if ! test /proc/1/exe -ef /usr/lib/systemd/systemd-rust; then
-    echo "FAIL: PID 1 is not the installed Rust sidecar" >&2
-    readlink -f /proc/1/exe >&2 || true
-    readlink -f /usr/lib/systemd/systemd-rust >&2 || true
-    exit 1
+    if /usr/lib/systemd/systemd --version | grep -q '^systemd 0\.0\.1$'; then
+        echo "FAIL: canonical C PID 1 path reports the Rust systemd version" >&2
+        /usr/lib/systemd/systemd --version >&2 || true
+        exit 1
+    fi
+
+    test -x /usr/lib/systemd/systemd-rust
+    if ! test /proc/1/exe -ef /usr/lib/systemd/systemd-rust; then
+        echo "FAIL: PID 1 is not the installed Rust sidecar" >&2
+        readlink -f /proc/1/exe >&2 || true
+        readlink -f /usr/lib/systemd/systemd-rust >&2 || true
+        exit 1
+    fi
+else
+    if /proc/1/exe --version | grep -q '^systemd 0\.0\.1$'; then
+        echo "FAIL: C baseline selected the Rust PID 1" >&2
+        exit 1
+    fi
+    if ! test /proc/1/exe -ef /usr/lib/systemd/systemd; then
+        echo "FAIL: C baseline PID 1 is not the canonical executable" >&2
+        readlink -f /proc/1/exe >&2 || true
+        exit 1
+    fi
 fi
 EOF
 
+if [[ -n "$trace_dir" ]]; then
+    ssh "${ssh_opts[@]}" 'uname -r; uname -m; /proc/1/exe --version | head -n1' \
+        >"$trace_dir/boot-identity.txt" 2>&1 || fail "failed to record boot identity"
+fi
+
+if [[ "${SYSTEMD_CD4_PRIVATE_BUS_CHECKS:-0}" == 1 ]]; then
+    # Do not substitute a default system-bus address here. The private peer is
+    # a separate, credential-authenticated transport. Collect both root and
+    # unprivileged results verbatim for the differential gate; that gate owns
+    # interpretation of AccessDenied/NoSuchUnit/InvalidArgs/transport errors.
+    private_trace="${trace_dir:-$tmpdir}/private-bus.txt"
+    ssh "${ssh_opts[@]}" 'bash -s' >"$private_trace" 2>&1 <<'EOF'
+set +e
+run_case() {
+    local label="$1"
+    shift
+    printf 'case=%s\n' "$label"
+    "$@"
+    printf 'status=%s\n' "$?"
+}
+run_case root-introspect sudo -n busctl --address=unix:path=/run/systemd/private --no-pager introspect org.freedesktop.systemd1 /org/freedesktop/systemd1
+run_case root-get-unit sudo -n busctl --address=unix:path=/run/systemd/private --no-pager call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager GetUnit s ssh.service
+run_case user-introspect busctl --address=unix:path=/run/systemd/private --no-pager introspect org.freedesktop.systemd1 /org/freedesktop/systemd1
+run_case user-get-unit busctl --address=unix:path=/run/systemd/private --no-pager call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager GetUnit s ssh.service
+EOF
+    echo "INFO: private-peer trace recorded at $private_trace" >&2
+fi
+
 if [[ "${SYSTEMD_CD4_SYSTEM_BUS_CHECKS:-0}" != 1 ]]; then
     echo "SKIP: system-bus checks require Rust PID1 API-bus parity; set SYSTEMD_CD4_SYSTEM_BUS_CHECKS=1 to run them." >&2
-    echo "PASS: Ubuntu 24.04 Rust PID1 sidecar identity and C fallback checks completed."
+    echo "PASS: Ubuntu 24.04 $cd4_mode PID1 identity and C fallback checks completed."
     exit 0
 fi
 
@@ -277,4 +364,4 @@ test "$(grep -c '^stop ' /run/systemd-cd4.log)" -ge 1
 sudo systemctl show -p ActiveState -p SubState systemd-cd4.service | grep -q '^ActiveState=inactive$'
 EOF
 
-echo "PASS: Ubuntu 24.04 Rust PID1 sidecar and system-bus checks completed."
+echo "PASS: Ubuntu 24.04 $cd4_mode PID1 sidecar and system-bus checks completed."

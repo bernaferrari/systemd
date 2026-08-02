@@ -94,6 +94,28 @@ That evidence is intentionally limited to the selected, link-closed shadow
 surface. It does not exercise an installed Rust PID1, privileged boot paths,
 cross-target ABIs, fault injection, or full daemon integration.
 
+## PID1 differential-evidence gate (in progress)
+
+`test/systemd-cd4.sh` now has explicit `c`, `rust`, and `both` modes. The two
+images are independent QCOW overlays from the same verified Ubuntu base image
+and cloud seed. Only the Rust overlay installs `systemd-rust` and selects it
+through that overlay's `/sbin/init`; the C baseline keeps the canonical
+`/usr/lib/systemd/systemd` executable. Each run records the base-image hash,
+architecture, selected PID1 identity, and (for Rust) the sidecar hash.
+
+`test/test-rust-pid1-differential.sh --run <trace-directory>` runs the paired
+images and compares the evidence. Its private-peer probes use the literal
+`busctl --address=unix:path=/run/systemd/private` address for both root and
+the unprivileged test user; they never substitute a default system-bus call.
+The `--run` gate also forces the CD4 system-bus suite on; it cannot silently
+turn that prerequisite into a passing identity-only run.
+The collector intentionally fails if the Rust private transport is unavailable
+or differs from C. That is the current expected state: Plan 002's complete
+C-vtable, credentials, authorization, and error matrix has not been integrated
+in this branch, so this is an **IN PROGRESS, blocking evidence gate**, not a
+claim of D-Bus, reexec, shutdown, or boot parity. In CI (and in paired mode),
+missing VM prerequisites are failures rather than passing skips.
+
 ## Representative Completeness Findings
 
 ### 1) Core manager/unit-file loading is still partial
