@@ -125,13 +125,16 @@ paths = [
     "tools/rust-port/check-credential-safety-architecture.py",
     "tools/rust-port/check-rust-clean-checkout.py",
     "tools/rust-port/check-rust-production-selection.py",
+    "tools/rust-port/check-production-wave-ledger.py",
     "tools/rust-port/core-runtime-reachability-gate.py",
     "tools/rust-port/core-runtime-reachability-baseline.json",
     "tools/rust-port/workspace-architecture-gate.py",
     "tools/rust-port/test-workspace-architecture-gate.py",
+    "tools/rust-port/test-production-wave-ledger.py",
     "tools/rust-port/workspace-layers.toml",
     "tools/rust-port/large-rust-files.toml",
     "tools/rust-port/large-rust-files-baseline.toml",
+    "tools/rust-port/production-waves.toml",
 ]
 
 [[category]]

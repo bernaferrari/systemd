@@ -215,6 +215,25 @@ Production readiness still requires integration, fuzz, fault-injection, boot,
 and cross-target system testing. The current 141-fixture C/R suite is a strong
 baseline, not a substitute for those environments.
 
+## First measured daemon/tool wave: `systemd-random-seed` (shadow)
+
+The first Plan 007 target is deliberately the small, privileged
+`systemd-random-seed` tool. It remains a **shadow** implementation: Meson
+continues to select `src/random-seed/random-seed-tool.c`, and no install or
+ownership switch is made. [`tools/rust-port/production-waves.toml`](../tools/rust-port/production-waves.toml)
+pins the reviewed C and Rust blobs and records the C fallback plus the seven
+promotion requirements: CLI, persistent state, entropy credit, privilege,
+recovery, Linux integration, and C/Rust differential evidence.
+
+`check-production-wave-ledger.py` is a static release-boundary gate, not a
+replacement test. It rejects stale source pins, missing direct `PORT-SYNC`
+provenance, loss of the C Meson source, incomplete evidence, or any `replace`
+claim before every required category passes. The Rust random-seed code still
+lacks the C xattr/first-boot credit lifecycle, machine-ID mix-in, pool-size and
+nonblocking fallback behavior, anti-regression hashing, ownership/durability
+proof, and isolated Linux differential traces. Those are explicit blockers;
+the tool must not be promoted on Cargo compilation or source-count evidence.
+
 ## Readiness Verdict
 
 Current state is **not ready** for swapping distro `systemd` with Rust implementation on Ubuntu or general Linux distributions.

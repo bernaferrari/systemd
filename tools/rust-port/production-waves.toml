@@ -1,0 +1,52 @@
+schema = 1
+
+[[target]]
+id = "random-seed"
+status = "shadow"
+production_owner = "c"
+fallback_owner = "c"
+c_source = "src/random-seed/random-seed-tool.c"
+meson_build = "src/random-seed/meson.build"
+c_selected_source = "random-seed-tool.c"
+rust_paths = [
+    "src/random-seed/rust/main.rs",
+    "src/random-seed/rust/lib.rs",
+    "src/random-seed/rust/random_seed.rs",
+]
+reviewed_c_blobs = { "src/random-seed/random-seed-tool.c" = "9f9439c8c5779efe2308f48c325b96588b3414b7" }
+reviewed_rust_blobs = { "src/random-seed/rust/main.rs" = "55b07fed671b690c94f327a42f3ae483b444b8fe", "src/random-seed/rust/lib.rs" = "3cb9c444e3f858c51a4d301739bda1b780bdaf25", "src/random-seed/rust/random_seed.rs" = "749f7020a2a6c8069cd285a723b17571cc31869d" }
+
+[[target.evidence]]
+name = "cli"
+state = "planned"
+detail = "Rust help/version and load/save parsing exist, but exact C option, errno, and logging parity lacks a Linux differential test."
+
+[[target.evidence]]
+name = "persistent-state"
+state = "missing"
+detail = "Rust does not yet prove C-equivalent ownership, durable update, anti-regression hashing, or malformed-file recovery."
+
+[[target.evidence]]
+name = "entropy-credit"
+state = "missing"
+detail = "Rust deliberately refuses automatic xattr/first-boot crediting; C's creditable-xattr lifecycle is not ported."
+
+[[target.evidence]]
+name = "privilege"
+state = "missing"
+detail = "The privileged /dev/urandom and seed-file ownership boundary has no isolated Linux comparison."
+
+[[target.evidence]]
+name = "recovery"
+state = "missing"
+detail = "Short reads, getrandom fallback, interrupted writes, and restart recovery lack C/Rust evidence."
+
+[[target.evidence]]
+name = "linux-integration"
+state = "missing"
+detail = "No real Linux service, filesystem, xattr, and kernel-random-pool integration case has passed."
+
+[[target.evidence]]
+name = "differential"
+state = "missing"
+detail = "No same-fixture C/Rust trace compares exit status, bytes, mode, xattrs, and cleanup."

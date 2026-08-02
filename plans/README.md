@@ -48,6 +48,13 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   Rust private `/run/systemd/private` transport is unavailable; Plan 002's
   reviewed vtable/authorization matrix must land before this gate can become
   a passing parity claim. Normal/release PID1 ownership remains C.
+- Plan 007 begins with `systemd-random-seed` as an explicitly non-promoted
+  shadow target. `production-waves.toml` pins its C and Rust source blobs,
+  C Meson owner, fallback, and every required evidence category; its gate
+  rejects a Rust `replace` status unless CLI, persistence, entropy-credit,
+  privilege, recovery, Linux integration, and C/Rust differential evidence
+  all pass. The current missing categories are recorded as blockers, not
+  inferred from the existence of Rust source files.
 
 ## Findings considered and rejected
 

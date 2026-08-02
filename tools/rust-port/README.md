@@ -13,6 +13,7 @@ The taxonomy gate rejects an unclassified Python, TOML, or JSON tool artifact.
 | Audit C ABI/fixture parity | `basic_ffi_review_catalog.py`, `check-*-abi.py` |
 | Executable Linux priority runtime set | [`PRIORITY_RUNTIME_SET.md`](PRIORITY_RUNTIME_SET.md), job `rust-meson-reviewed-shadows` |
 | Enforce safe production boundaries | `truthfulness-gate.py`, `check-*-boundary.py`, `workspace-architecture-gate.py` |
+| Review one daemon/tool production wave | `production-waves.toml`, `check-production-wave-ledger.py` |
 | Review safety, lints, or dependencies | `unsafe-safety-gate.py`, `rust-safety-lint-policy-gate.py`, `cargo-audit-all.py` |
 | Regenerate or inspect reports | `generate-gpt-table.py`, `coverage-dashboard.py`, `audit-port1.py` |
 
@@ -23,6 +24,7 @@ python3 tools/rust-port/check-tool-taxonomy.py
 python3 tools/rust-port/test-tool-taxonomy.py
 python3 tools/rust-port/sync-metadata-gate.py --repo-root .
 python3 tools/rust-port/check-behavior-contract.py --repo-root .
+python3 tools/rust-port/check-production-wave-ledger.py
 ```
 
 Run a focused gate only when its map/contract scope exists. These checks do
