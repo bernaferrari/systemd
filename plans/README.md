@@ -40,11 +40,14 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 - Plan 005 now keeps explicit kernel-command-line watchdog/crash policy from
   being silently dropped by the experimental sidecar, shares one crash-action
   vocabulary, and preserves C's independent credential-import attempts. Its
-  watchdog guard recognizes C time units and last-assignment semantics, but
-  deliberately treats a relative `systemd.watchdog_device=` as inactive
-  rather than deriving it from an inherited working directory. Live
-  security helper composition, watchdog device ownership, console takeover,
-  and descriptor-preserving reexec remain incomplete and continue to block a
+  watchdog guard uses C's duration grammar and last-assignment semantics,
+  including fail-closed handling for `default` and every nonempty
+  `systemd.watchdog_device=` value: C makes relative device paths absolute
+  from PID 1's CWD, so Rust must not silently drop them. Explicit absolute
+  `systemd.early_core_pattern=` and reexec-descriptor requests also fail
+  closed before startup mutation. Live security helper composition, watchdog
+  device ownership, console takeover, core-pattern ownership, and
+  descriptor-preserving reexec remain incomplete and continue to block a
   production PID1 switch.
 - Plan 006 has a paired C/Rust disposable-image harness and a strict
   differential evidence collector. It records a common base-image checksum,

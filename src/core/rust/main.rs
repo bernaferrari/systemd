@@ -389,6 +389,7 @@ enum UnsupportedPid1Policy {
     WatchdogDevice,
     WatchdogPretimeoutGovernor,
     ServiceWatchdogsDisabled,
+    EarlyCorePattern,
     CrashShell,
     CrashChangeVirtualTerminal,
     CrashAction(String),
@@ -402,6 +403,7 @@ impl std::fmt::Display for UnsupportedPid1Policy {
             Self::WatchdogDevice => "systemd.watchdog_device",
             Self::WatchdogPretimeoutGovernor => "systemd.watchdog_pretimeout_governor",
             Self::ServiceWatchdogsDisabled => "systemd.service_watchdogs=no",
+            Self::EarlyCorePattern => "systemd.early_core_pattern",
             Self::CrashShell => "systemd.crash_shell",
             Self::CrashChangeVirtualTerminal => "systemd.crash_chvt",
             Self::CrashAction(_) => "systemd.crash_action",
@@ -454,6 +456,15 @@ fn pretimeout_governor_is_safe(value: &str) -> bool {
             .any(|byte| *byte < 0x20 || *byte == 0x7f)
 }
 
+fn early_core_pattern_is_active(value: &str) -> bool {
+    // C only accepts absolute values here before writing the early
+    // `/proc/sys/kernel/core_pattern` setting; malformed or relative values
+    // warn and retain an earlier valid assignment. The Rust sidecar has no
+    // core-pattern owner, so preserve that assignment behavior and fail
+    // closed for the values C would apply.
+    value.starts_with('/')
+}
+
 /// Return the first explicit startup policy that the current sidecar cannot
 /// implement faithfully. Later valid assignments overwrite earlier ones in C,
 /// so scan from left to right and retain the last applicable result for each
@@ -464,6 +475,7 @@ fn unsupported_pid1_policy_from_cmdline(cmdline: &str) -> Option<UnsupportedPid1
     let mut watchdog_device = None;
     let mut pretimeout_governor = None;
     let mut service_watchdogs = None;
+    let mut early_core_pattern = None;
     let mut crash_shell = None;
     let mut crash_chvt = false;
     let mut crash_action = None;
@@ -503,6 +515,13 @@ fn unsupported_pid1_policy_from_cmdline(cmdline: &str) -> Option<UnsupportedPid1
             "systemd.service_watchdogs" => {
                 if let Some(enabled) = parse_kernel_boolean(value) {
                     service_watchdogs = Some(enabled);
+                }
+            }
+            "systemd.early_core_pattern" => {
+                if let Some(value) = value
+                    && early_core_pattern_is_active(value)
+                {
+                    early_core_pattern = Some(value.to_string());
                 }
             }
             "systemd.crash_shell" => {
@@ -553,6 +572,9 @@ fn unsupported_pid1_policy_from_cmdline(cmdline: &str) -> Option<UnsupportedPid1
     }
     if service_watchdogs == Some(false) {
         return Some(UnsupportedPid1Policy::ServiceWatchdogsDisabled);
+    }
+    if early_core_pattern.is_some() {
+        return Some(UnsupportedPid1Policy::EarlyCorePattern);
     }
     if crash_shell == Some(true) {
         return Some(UnsupportedPid1Policy::CrashShell);
@@ -2058,6 +2080,31 @@ mod tests {
             ),
             Some(UnsupportedPid1Policy::WatchdogPretimeoutGovernor),
             "C ignores an unsafe later governor without clearing its prior value"
+        );
+    }
+
+    #[test]
+    fn early_core_pattern_fails_closed_only_for_c_accepted_absolute_paths() {
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.early_core_pattern=/run/early-core"),
+            Some(UnsupportedPid1Policy::EarlyCorePattern)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.early_core_pattern=relative-core"),
+            None,
+            "C warns and ignores relative core-pattern values"
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.early_core_pattern=/run/early-core systemd.early_core_pattern=relative-core"
+            ),
+            Some(UnsupportedPid1Policy::EarlyCorePattern),
+            "a later C-invalid relative value retains the earlier active core pattern"
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.early_core_pattern="),
+            None,
+            "a missing C value leaves the default untouched"
         );
     }
 
