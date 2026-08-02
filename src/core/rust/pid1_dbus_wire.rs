@@ -6,8 +6,10 @@
 //! This is not a general sd-bus replacement. It accepts complete method-call
 //! frames with the standard scalar header fields and string/object-path
 //! bodies needed by the deliberately small private-manager surface. It rejects
-//! file descriptors, containers, malformed alignment, duplicate fields, and
-//! messages beyond sd-bus' 128 MiB limit before allocating from declared
+//! received file descriptors at the live transport boundary, while exposing a
+//! checked value decoder and an owned-descriptor handoff for a future recvmsg
+//! transport. It rejects malformed alignment, duplicate fields, and messages
+//! beyond sd-bus' 128 MiB limit before allocating from declared
 //! lengths. [`PrivateBusWireAccumulator`] turns a nonblocking byte stream into
 //! complete frames without discarding a partial or pipelined message. Its
 //! caller obtains an exact read budget, so a disconnected private-bus
@@ -15,6 +17,7 @@
 //! reached. Every read is bounds checked and this module contains no `unsafe`.
 
 use std::collections::BTreeMap;
+use std::os::fd::OwnedFd;
 
 const PRIMARY_HEADER_SIZE: usize = 16;
 const MAX_MESSAGE_SIZE: usize = 128 * 1024 * 1024;
@@ -22,6 +25,7 @@ const MAX_MESSAGE_SIZE: usize = 128 * 1024 * 1024;
 const MAX_OBJECT_PATH_LENGTH: usize = 64 * 1024;
 const MAX_NAME_LENGTH: usize = 255;
 const MAX_SIGNATURE_LENGTH: usize = 255;
+const MAX_CONTAINER_ELEMENTS: usize = 64 * 1024;
 const PROTOCOL_VERSION: u8 = 1;
 const MESSAGE_TYPE_METHOD_CALL: u8 = 1;
 const MESSAGE_TYPE_METHOD_RETURN: u8 = 2;
@@ -95,6 +99,9 @@ pub enum WireError {
     InvalidUtf8,
     InvalidSignature,
     InvalidBody,
+    UnsupportedBodyType(u8),
+    InvalidUnixFdIndex(u32),
+    TooManyContainerElements,
     MessageTooLarge,
     Overflow,
     Truncated,
@@ -313,6 +320,68 @@ pub struct MethodCall {
     body: Vec<u8>,
 }
 
+/// One checked D-Bus value decoded from an already bounded method-call body.
+///
+/// This is intentionally an owned representation. It never retains a slice
+/// into a socket buffer, so a caller cannot outlive a connection's input
+/// ownership or accidentally retain unvalidated D-Bus padding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DbusValue {
+    Byte(u8),
+    Bool(bool),
+    U32(u32),
+    String(String),
+    ObjectPath(String),
+    Signature(String),
+    /// Index into the SCM_RIGHTS attachment set for this one message. The
+    /// current stream transport rejects attached FDs; a future recvmsg owner
+    /// must resolve this through ReceivedUnixFds exactly once.
+    UnixFdIndex(u32),
+    Array(Vec<DbusValue>),
+    Struct(Vec<DbusValue>),
+    Variant {
+        signature: String,
+        value: Box<DbusValue>,
+    },
+}
+
+/// Owns SCM_RIGHTS descriptors received for exactly one D-Bus message.
+///
+/// Construction consumes the descriptor vector, and Self::take removes one
+/// descriptor permanently. Thus neither a repeated D-Bus h index nor a
+/// disconnect path can create a second Rust owner for the same descriptor.
+/// The current private stream does not construct this type yet: it continues
+/// to reject Unix-FD negotiation until its recvmsg framing path can retain
+/// ancillary data with the matching byte range.
+#[derive(Debug, Default)]
+pub struct ReceivedUnixFds {
+    descriptors: Vec<Option<OwnedFd>>,
+}
+
+impl ReceivedUnixFds {
+    pub fn new(descriptors: Vec<OwnedFd>) -> Self {
+        Self {
+            descriptors: descriptors.into_iter().map(Some).collect(),
+        }
+    }
+
+    pub const fn len(&self) -> usize {
+        self.descriptors.len()
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.descriptors.is_empty()
+    }
+
+    pub fn take(&mut self, index: u32) -> Result<OwnedFd, WireError> {
+        let slot = self
+            .descriptors
+            .get_mut(usize::try_from(index).map_err(|_| WireError::Overflow)?)
+            .ok_or(WireError::InvalidUnixFdIndex(index))?;
+        slot.take().ok_or(WireError::InvalidUnixFdIndex(index))
+    }
+}
+
 impl MethodCall {
     pub const fn no_reply_expected(&self) -> bool {
         self.flags & 1 != 0
@@ -394,6 +463,39 @@ impl MethodCall {
         }
         Ok((first, second))
     }
+
+    /// Decode every body value selected by this message's validated signature.
+    ///
+    /// The current manager adapter continues to accept only its small scalar
+    /// subset. This helper is a bounded, transport-neutral foundation for
+    /// later API rows: it validates arrays, structs, variants, object paths,
+    /// and Unix-FD indices before an adapter chooses whether that API is
+    /// supported. It does not accept SCM_RIGHTS itself.
+    pub fn decode_values(&self) -> Result<Vec<DbusValue>, WireError> {
+        let signature = self.signature.as_bytes();
+        let mut signature_offset = 0;
+        let mut body_offset = 0;
+        let mut values = Vec::new();
+        while signature_offset < signature.len() {
+            let element_length = signature_element_length(signature, signature_offset, true, 0, 0)
+                .ok_or(WireError::InvalidSignature)?;
+            let element_end = signature_offset
+                .checked_add(element_length)
+                .ok_or(WireError::Overflow)?;
+            values.push(decode_body_value(
+                self.endian,
+                &self.body,
+                &mut body_offset,
+                &signature[signature_offset..element_end],
+                0,
+            )?);
+            signature_offset = element_end;
+        }
+        if body_offset != self.body.len() {
+            return Err(WireError::InvalidBody);
+        }
+        Ok(values)
+    }
 }
 
 fn align_to(value: usize, alignment: usize) -> Result<usize, WireError> {
@@ -468,6 +570,199 @@ fn decode_string(endian: Endian, bytes: &[u8], start: usize) -> Result<(String, 
         WireError::InvalidBody,
     )?;
     Ok((value, offset))
+}
+
+fn body_alignment(signature: &[u8]) -> Result<usize, WireError> {
+    match signature.first().copied() {
+        Some(b'y' | b'g' | b'v') => Ok(1),
+        Some(b'n' | b'q' | b'i' | b'u' | b'b' | b'h' | b's' | b'o') => Ok(4),
+        Some(b'x' | b't' | b'd' | b'(' | b'{') => Ok(8),
+        Some(b'a') => Ok(4),
+        Some(other) => Err(WireError::UnsupportedBodyType(other)),
+        None => Err(WireError::InvalidSignature),
+    }
+}
+
+fn align_body_offset(
+    bytes: &[u8],
+    offset: &mut usize,
+    alignment: usize,
+) -> Result<(), WireError> {
+    let aligned = align_to(*offset, alignment)?;
+    if aligned > bytes.len() {
+        return Err(WireError::Truncated);
+    }
+    validate_zero_padding(bytes, *offset, aligned, WireError::InvalidBody)?;
+    *offset = aligned;
+    Ok(())
+}
+
+fn decode_body_u32(
+    endian: Endian,
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<u32, WireError> {
+    align_body_offset(bytes, offset, 4)?;
+    let range = checked_range(*offset, 4, bytes.len())?;
+    *offset = offset.checked_add(4).ok_or(WireError::Overflow)?;
+    endian.read_u32(&bytes[range])
+}
+
+fn decode_body_value(
+    endian: Endian,
+    bytes: &[u8],
+    offset: &mut usize,
+    signature: &[u8],
+    depth: usize,
+) -> Result<DbusValue, WireError> {
+    if depth >= 32 {
+        return Err(WireError::InvalidSignature);
+    }
+    let tag = *signature.first().ok_or(WireError::InvalidSignature)?;
+    match tag {
+        b'y' => {
+            align_body_offset(bytes, offset, 1)?;
+            let value = *bytes.get(*offset).ok_or(WireError::Truncated)?;
+            *offset = offset.checked_add(1).ok_or(WireError::Overflow)?;
+            Ok(DbusValue::Byte(value))
+        }
+        b'b' => {
+            let value = decode_body_u32(endian, bytes, offset)?;
+            match value {
+                0 => Ok(DbusValue::Bool(false)),
+                1 => Ok(DbusValue::Bool(true)),
+                _ => Err(WireError::InvalidBody),
+            }
+        }
+        b'u' => Ok(DbusValue::U32(decode_body_u32(endian, bytes, offset)?)),
+        b'h' => Ok(DbusValue::UnixFdIndex(decode_body_u32(endian, bytes, offset)?)),
+        b's' => Ok(DbusValue::String(decode_body_text(endian, bytes, offset, false)?)),
+        b'o' => {
+            let path = decode_body_text(endian, bytes, offset, false)?;
+            if !object_path_is_valid(&path) {
+                return Err(WireError::InvalidBody);
+            }
+            Ok(DbusValue::ObjectPath(path))
+        }
+        b'g' => {
+            let value = decode_body_text(endian, bytes, offset, true)?;
+            if !signature_is_valid(&value) {
+                return Err(WireError::InvalidSignature);
+            }
+            Ok(DbusValue::Signature(value))
+        }
+        b'a' => decode_body_array(endian, bytes, offset, signature, depth + 1),
+        b'(' | b'{' => decode_body_struct(endian, bytes, offset, signature, depth + 1),
+        b'v' => decode_body_variant(endian, bytes, offset, depth + 1),
+        other => Err(WireError::UnsupportedBodyType(other)),
+    }
+}
+
+fn decode_body_text(
+    endian: Endian,
+    bytes: &[u8],
+    offset: &mut usize,
+    signature: bool,
+) -> Result<String, WireError> {
+    decode_marshaled_text(
+        endian,
+        bytes,
+        offset,
+        bytes.len(),
+        signature,
+        WireError::InvalidBody,
+    )
+}
+
+fn decode_body_array(
+    endian: Endian,
+    bytes: &[u8],
+    offset: &mut usize,
+    signature: &[u8],
+    depth: usize,
+) -> Result<DbusValue, WireError> {
+    let element = signature.get(1..).ok_or(WireError::InvalidSignature)?;
+    if signature_element_length(element, 0, true, 0, 0) != Some(element.len()) {
+        return Err(WireError::InvalidSignature);
+    }
+    let size = usize::try_from(decode_body_u32(endian, bytes, offset)?)
+        .map_err(|_| WireError::Overflow)?;
+    align_body_offset(bytes, offset, body_alignment(element)?)?;
+    let end = offset.checked_add(size).ok_or(WireError::Overflow)?;
+    if end > bytes.len() {
+        return Err(WireError::Truncated);
+    }
+    let mut values = Vec::new();
+    while *offset < end {
+        if values.len() == MAX_CONTAINER_ELEMENTS {
+            return Err(WireError::TooManyContainerElements);
+        }
+        let previous = *offset;
+        values.push(decode_body_value(endian, bytes, offset, element, depth)?);
+        if *offset <= previous || *offset > end {
+            return Err(WireError::InvalidBody);
+        }
+    }
+    if *offset != end {
+        return Err(WireError::InvalidBody);
+    }
+    Ok(DbusValue::Array(values))
+}
+
+fn decode_body_struct(
+    endian: Endian,
+    bytes: &[u8],
+    offset: &mut usize,
+    signature: &[u8],
+    depth: usize,
+) -> Result<DbusValue, WireError> {
+    let closing = match signature.first() {
+        Some(b'(') => b')',
+        Some(b'{') => b'}',
+        _ => return Err(WireError::InvalidSignature),
+    };
+    if signature.last().copied() != Some(closing) {
+        return Err(WireError::InvalidSignature);
+    }
+    align_body_offset(bytes, offset, 8)?;
+    let inner = &signature[1..signature.len() - 1];
+    let mut signature_offset = 0;
+    let mut values = Vec::new();
+    while signature_offset < inner.len() {
+        if values.len() == MAX_CONTAINER_ELEMENTS {
+            return Err(WireError::TooManyContainerElements);
+        }
+        let length = signature_element_length(inner, signature_offset, false, 0, 0)
+            .ok_or(WireError::InvalidSignature)?;
+        let end = signature_offset.checked_add(length).ok_or(WireError::Overflow)?;
+        values.push(decode_body_value(
+            endian,
+            bytes,
+            offset,
+            &inner[signature_offset..end],
+            depth,
+        )?);
+        signature_offset = end;
+    }
+    Ok(DbusValue::Struct(values))
+}
+
+fn decode_body_variant(
+    endian: Endian,
+    bytes: &[u8],
+    offset: &mut usize,
+    depth: usize,
+) -> Result<DbusValue, WireError> {
+    let signature = decode_body_text(endian, bytes, offset, true)?;
+    let signature_bytes = signature.as_bytes();
+    if signature_element_length(signature_bytes, 0, true, 0, 0) != Some(signature_bytes.len()) {
+        return Err(WireError::InvalidSignature);
+    }
+    let value = decode_body_value(endian, bytes, offset, signature_bytes, depth)?;
+    Ok(DbusValue::Variant {
+        signature,
+        value: Box::new(value),
+    })
 }
 
 fn validate_zero_padding(
@@ -1069,6 +1364,8 @@ pub fn encode_error_reply(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
+    use std::os::fd::AsRawFd;
 
     fn encode_call(
         endian: Endian,
@@ -1105,6 +1402,91 @@ mod tests {
         push_padding(&mut output, 8).unwrap();
         output.extend_from_slice(&body);
         output
+    }
+
+    fn call_with_body(endian: Endian, signature: &str, body: Vec<u8>) -> MethodCall {
+        MethodCall {
+            endian,
+            flags: 0,
+            serial: 1,
+            path: "/org/freedesktop/systemd1".to_string(),
+            interface: Some("org.freedesktop.systemd1.Manager".to_string()),
+            member: "Test".to_string(),
+            destination: None,
+            sender: None,
+            signature: signature.to_string(),
+            body,
+        }
+    }
+
+    fn push_body_u32(endian: Endian, output: &mut Vec<u8>, value: u32) {
+        push_padding(output, 4).unwrap();
+        endian.push_u32(output, value);
+    }
+
+    #[test]
+    fn decodes_bounded_arrays_structs_variants_and_object_paths() {
+        for endian in [Endian::Little, Endian::Big] {
+            let mut body = Vec::new();
+
+            push_body_u32(endian, &mut body, 3);
+            body.extend_from_slice(&[1, 2, 3]);
+
+            push_padding(&mut body, 8).unwrap();
+            push_body_u32(endian, &mut body, 42);
+            push_marshaled_text(endian, &mut body, "/org/example/Unit", false).unwrap();
+
+            push_marshaled_text(endian, &mut body, "o", true).unwrap();
+            push_padding(&mut body, 4).unwrap();
+            push_marshaled_text(endian, &mut body, "/org/example/Variant", false).unwrap();
+
+            let call = call_with_body(endian, "ay(uo)v", body);
+            assert_eq!(
+                call.decode_values(),
+                Ok(vec![
+                    DbusValue::Array(vec![
+                        DbusValue::Byte(1),
+                        DbusValue::Byte(2),
+                        DbusValue::Byte(3),
+                    ]),
+                    DbusValue::Struct(vec![
+                        DbusValue::U32(42),
+                        DbusValue::ObjectPath("/org/example/Unit".to_string()),
+                    ]),
+                    DbusValue::Variant {
+                        signature: "o".to_string(),
+                        value: Box::new(DbusValue::ObjectPath(
+                            "/org/example/Variant".to_string()
+                        )),
+                    },
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn generic_value_decoder_rejects_bad_padding_and_invalid_object_paths() {
+        let mut bad_padding = Vec::new();
+        push_body_u32(Endian::Little, &mut bad_padding, 1);
+        bad_padding.push(7);
+        let call = call_with_body(Endian::Little, "a(u)", bad_padding);
+        assert_eq!(call.decode_values(), Err(WireError::InvalidBody));
+
+        let mut bad_path = Vec::new();
+        push_marshaled_text(Endian::Little, &mut bad_path, "invalid", false).unwrap();
+        let call = call_with_body(Endian::Little, "o", bad_path);
+        assert_eq!(call.decode_values(), Err(WireError::InvalidBody));
+    }
+
+    #[test]
+    fn received_unix_fds_transfer_each_descriptor_at_most_once() {
+        let descriptor = File::open("/dev/null").unwrap().into();
+        let expected = descriptor.as_raw_fd();
+        let mut attachments = ReceivedUnixFds::new(vec![descriptor]);
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments.take(0).unwrap().as_raw_fd(), expected);
+        assert_eq!(attachments.take(0), Err(WireError::InvalidUnixFdIndex(0)));
+        assert_eq!(attachments.take(1), Err(WireError::InvalidUnixFdIndex(1)));
     }
 
     #[test]
