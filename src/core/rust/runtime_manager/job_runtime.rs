@@ -25,10 +25,21 @@ enum DependencyFailureAtom {
 }
 
 impl RuntimeManager {
+    /// Remove every manager-side queue membership before releasing a terminal
+    /// job ID. This mirrors `job_free()` in `src/core/job.c`: a terminal job
+    /// must not remain runnable or eligible for redispatch after its unit
+    /// property has been cleared. The set removals are intentionally
+    /// idempotent so duplicate terminal notifications are harmless.
+    fn detach_terminal_job_queues(&mut self, id: JobId) {
+        self.job_run_queue.remove(&id);
+        self.job_redispatch_queue.remove(&id);
+    }
+
     fn release_terminal_job_id(&mut self, id: JobId) {
         // TODO(systemd-yzz): The authenticated transport must emit JobRemoved
         // from the terminal Job before this release point. Until then, do not
         // retain a queryable history just to simulate a missing event stream.
+        self.detach_terminal_job_queues(id);
         self.job_registry.release_id(id);
     }
 
@@ -132,8 +143,6 @@ impl RuntimeManager {
                 (false, None)
             }
             InstallDisposition::ReplacedConflicting { canceled } => {
-                self.job_run_queue.remove(&canceled.id);
-                self.job_redispatch_queue.remove(&canceled.id);
                 self.service_restart_after_stop.remove(&canceled.unit);
                 (true, Some(canceled.id))
             }
@@ -174,8 +183,6 @@ impl RuntimeManager {
             } else {
                 None
             };
-            self.job_run_queue.remove(&id);
-            self.job_redispatch_queue.remove(&id);
             self.service_restart_after_stop.remove(&job.unit);
             job.installed = false;
             job.result = Some(result);

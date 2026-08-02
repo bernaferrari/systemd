@@ -3233,6 +3233,42 @@ fn test_installed_stop_job_finishes_at_failed_terminal_state() {
 }
 
 #[test]
+fn test_terminal_job_release_is_idempotent_and_clears_all_dispatch_queues() {
+    // C provenance: src/core/job.c:job_finish_and_invalidate() and
+    // job_free(). A terminal job is removed from every dispatch queue before
+    // its ID is released; a duplicate terminal notification must be a no-op.
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    insert_test_service(&mut mgr, "terminal.service", ServiceState::Running);
+
+    let (job_id, installed) = mgr
+        .install_target_job("terminal.service", CanonicalJobType::Stop)
+        .unwrap();
+    assert!(installed);
+    assert!(mgr.mark_installed_job_running(job_id));
+    mgr.job_run_queue.insert(job_id);
+    mgr.job_redispatch_queue.insert(job_id);
+
+    mgr.finish_installed_job(job_id, CanonicalJobResult::Canceled);
+    assert!(!mgr.job_run_queue.contains(&job_id));
+    assert!(!mgr.job_redispatch_queue.contains(&job_id));
+    assert!(mgr.installed_jobs.get(&job_id).is_none());
+    assert_eq!(
+        mgr.units
+            .get("terminal.service")
+            .and_then(|unit| unit.current_job_id),
+        None
+    );
+
+    // Replaying the terminal event cannot resurrect queues or panic. The
+    // already-released ID remains available for one future allocation.
+    mgr.finish_installed_job(job_id, CanonicalJobResult::Canceled);
+    assert!(!mgr.job_run_queue.contains(&job_id));
+    assert!(!mgr.job_redispatch_queue.contains(&job_id));
+    assert!(mgr.job_registry.reserve_existing_id(job_id).is_ok());
+}
+
+#[test]
 fn test_installed_restart_job_keeps_id_across_stop_and_start() {
     let _test_lock = test_env_lock();
     let mut mgr = new_test_runtime_manager();
