@@ -107,7 +107,8 @@ pub enum PrivateBusReplyQueueError {
     /// as part of disconnect teardown before reusing it.
     TerminalFailure,
     /// A socket write acknowledgement exceeds the only frame currently made
-    /// available to the transport.
+    /// available to the transport. This is terminal: the queue can no longer
+    /// prove which reply bytes reached the peer.
     WriteBeyondCurrentFrame { written: usize, available: usize },
 }
 
@@ -589,6 +590,7 @@ impl PrivateBusReplyQueue {
             if written == 0 {
                 return Ok(false);
             }
+            self.terminal = true;
             return Err(PrivateBusReplyQueueError::WriteBeyondCurrentFrame {
                 written,
                 available: 0,
@@ -596,6 +598,7 @@ impl PrivateBusReplyQueue {
         };
         let available = frame.remaining().len();
         if written > available {
+            self.terminal = true;
             return Err(PrivateBusReplyQueueError::WriteBeyondCurrentFrame { written, available });
         }
         frame.offset += written;
@@ -909,6 +912,8 @@ mod tests {
                 available: 0,
             })
         );
+        assert!(queue.is_terminal());
+        queue.clear();
         assert!(!queue.acknowledge_written(0).unwrap());
         assert_eq!(
             queue.track(Endian::Little, 0, false, receiver_from_closed_channel(),),
@@ -926,5 +931,27 @@ mod tests {
         );
         assert!(queue.is_terminal());
         assert!(!queue.can_track_reply());
+    }
+
+    #[test]
+    fn overreported_partial_write_is_terminal_before_a_reply_can_be_reused() {
+        let mut queue = queue(1, FRAME_CAPACITY);
+        queue
+            .enqueue_local_reply(Endian::Little, 17, false, Pid1ManagerReply::Completed)
+            .unwrap();
+        let frame_len = queue.current_frame().unwrap().len();
+
+        assert_eq!(
+            queue.acknowledge_written(frame_len + 1),
+            Err(PrivateBusReplyQueueError::WriteBeyondCurrentFrame {
+                written: frame_len + 1,
+                available: frame_len,
+            })
+        );
+        assert!(queue.is_terminal());
+        assert_eq!(
+            queue.acknowledge_written(0),
+            Err(PrivateBusReplyQueueError::TerminalFailure)
+        );
     }
 }
