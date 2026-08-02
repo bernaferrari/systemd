@@ -50,6 +50,11 @@ max_lines = 2340
 issue = "systemd-cpuw"
 reason = "Extract authenticated wire framing, connection ownership, and manager-turn orchestration into bounded transport modules while retaining one checked correlation policy."
 
+[files."src/core/rust/pid1_dbus_wire.rs"]
+max_lines = 2085
+issue = "systemd-cpuw"
+reason = "Split D-Bus framing, scalar/aggregate value decoding, and received-descriptor ownership behind bounded wire-format modules while keeping one exact length/alignment authority."
+
 [files."src/core/rust/runtime_manager.rs"]
 max_lines = 2050
 issue = "systemd-cpuw"
