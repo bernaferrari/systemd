@@ -1,7 +1,7 @@
 # Plan 006: Integrate full PID1 D-Bus/lifecycle behavior and Linux differential boot
 
-> **Executor instructions**: Follow this plan only after Plans 002–005 are
-> DONE. Run every verification command and confirm the expected result before
+> **Executor instructions**: Follow this plan only after Plans 002–005 have
+> satisfied their required evidence gates. Run every verification command and confirm the expected result before
 > moving on. If a STOP condition occurs, stop and report; do not improvise.
 > Touch only the files listed in **Scope**. Do not flip distro production
 > ownership in this plan. When done, update `plans/README.md`.
@@ -17,6 +17,11 @@
 - **Depends on**: Plans 002, 004, and 005
 - **Category**: correctness / security / tests / migration
 - **Planned at**: commit `0370637b53`, 2026-08-01
+- **Execution status**: IN PROGRESS — the differential self-test and explicit
+  private-address harness are landed. They intentionally fail closed while the
+  Rust production private transport is absent.
+- **Next gate**: obtain passing paired C/Rust real-boot, direct-private-IPC,
+  lifecycle, and recovery traces; the harness alone is not parity evidence.
 
 ## Why this matters
 

@@ -18,6 +18,12 @@
 - **Depends on**: `plans/001-rust-pid1-sidecar-install.md`
 - **Category**: correctness / tests / architecture
 - **Planned at**: commit `0370637b53`, 2026-08-01
+- **Execution status**: IN PROGRESS — the generated directive inventory and
+  retained parser diagnostics are landed; this is not parser or runtime
+  semantic parity.
+- **Next gate**: rerun the configured-profile inventory and diagnostics gates,
+  then keep recognized-but-unconsumed directives blocked until their runtime
+  consumer and differential evidence exist.
 
 ## Why this matters
 

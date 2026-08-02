@@ -17,6 +17,11 @@
 - **Depends on**: `plans/004-unit-transaction-parity.md`
 - **Category**: correctness / security / architecture / tests
 - **Planned at**: commit `0370637b53`, 2026-08-01
+- **Execution status**: IN PROGRESS — crash-policy extraction/coverage and a
+  typed fail-closed refusal of unimplemented reexec handoff are landed.
+- **Next gate**: establish C-compatible security composition, watchdog and
+  console/core-pattern ownership, and descriptor-preserving reexec; refusal is
+  a safety boundary, not reexec parity.
 
 ## Why this matters
 

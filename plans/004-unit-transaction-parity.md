@@ -18,6 +18,11 @@
 - **Depends on**: `plans/003-unit-parser-inventory-and-diagnostics.md`
 - **Category**: correctness / tests / architecture
 - **Planned at**: commit `0370637b53`, 2026-08-01
+- **Execution status**: IN PROGRESS — stale PID cleanup and terminal service
+  cgroup pruning are landed with focused coverage; they do not establish full
+  transaction, job, or lifecycle semantics.
+- **Next gate**: prove the remaining dependency, rollback, resource-cleanup,
+  service/non-service, and Linux execution semantics against the C authority.
 
 ## Why this matters
 

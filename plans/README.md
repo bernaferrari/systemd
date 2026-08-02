@@ -10,7 +10,7 @@ update the status row when done.
 |---|---|---|---|---|---|
 | 001 | Install the experimental Rust PID1 as an explicitly selected sidecar | P1 | S | — | DONE |
 | 002 | Build the audited Rust PID1 private-bus transport and contract matrix | P1 | L | 001 | IN PROGRESS |
-| 003 | Build generated unit coverage and lossless Rust parser diagnostics | P1 | M | 001 | DONE |
+| 003 | Build generated unit coverage and lossless Rust parser diagnostics | P1 | M | 001 | IN PROGRESS |
 | 004 | Match C unit dependency, transaction, and manager-side job semantics | P1 | XL | 003 | IN PROGRESS |
 | 005 | Match C PID1 startup, security, watchdog, and reexec contracts | P1 | L | 004 | IN PROGRESS |
 | 006 | Integrate full PID1 D-Bus/lifecycle behavior and Linux differential boot | P1 | XL | 002, 004, 005 | IN PROGRESS |
@@ -74,6 +74,24 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   harness, and separate mode, mount, privilege, recovery, Linux, and
   differential evidence. None of those categories is currently a promotion
   claim.
+
+## Immediate gates
+
+- **002:** extend the reviewed C-vtable matrix beyond its 23 of 897 rows, then
+  connect the bounded ancillary-FD helper to authenticated private-peer
+  transport. Production private-socket binding and system-bus name ownership
+  remain deferred.
+- **003:** rerun the generated-inventory and parser-diagnostics checks against
+  the configured Linux profile; inventory is landed, but semantic consumers
+  and parser parity are not.
+- **004:** prove remaining unit/job lifecycle and resource-cleanup behavior
+  beyond PID cleanup and terminal-cgroup pruning.
+- **005:** compose and test security, watchdog, and descriptor-preserving
+  reexec behavior beyond crash-policy extraction and typed refusal.
+- **006:** replace self-test/address evidence with passing paired C/Rust real
+  boot, private-IPC, lifecycle, and recovery traces.
+- **007:** add per-target Linux, persistence, privilege, and C/Rust
+  differential evidence before any C-owned shadow can advance.
 
 ## Findings considered and rejected
 

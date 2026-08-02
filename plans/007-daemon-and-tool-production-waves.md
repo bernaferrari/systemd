@@ -1,6 +1,7 @@
 # Plan 007: Move Rust daemons and tools from shadows to measured production waves
 
-> **Executor instructions**: Follow this plan only after Plan 006 is DONE. Run
+> **Executor instructions**: Follow this plan only after Plan 006 has satisfied
+> its required evidence gates. Run
 > every verification command and confirm the expected result before moving on.
 > If a STOP condition occurs, stop and report; do not improvise. Promote one
 > binary at a time and keep its C fallback. When done, update `plans/README.md`.
@@ -16,6 +17,12 @@
 - **Depends on**: `plans/006-dbus-lifecycle-and-linux-differential-gate.md`
 - **Category**: migration / correctness / security / tests
 - **Planned at**: commit `0370637b53`, 2026-08-01
+- **Execution status**: IN PROGRESS — production-wave ledgers for
+  `systemd-creds`, `systemd-random-seed`, and `systemd-volatile-root` are
+  landed. Every one remains a C-owned `shadow`.
+- **Next gate**: complete the ledger-required Linux, persistence, privilege,
+  recovery, and C/Rust differential evidence for one target at a time before
+  considering fallback or replacement.
 
 ## Why this matters
 

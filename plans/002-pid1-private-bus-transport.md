@@ -18,6 +18,13 @@
 - **Depends on**: `plans/001-rust-pid1-sidecar-install.md`
 - **Category**: security / correctness / architecture / tests
 - **Planned at**: commit `0370637b53`, 2026-08-01
+- **Execution status**: IN PROGRESS — 23 of 897 C-vtable rows have been
+  reviewed. A bounded ancillary-FD receive helper compiles, but is deliberately
+  disconnected from the production listener.
+- **Next gate**: expand the C-authoritative row review and connect the helper
+  only through authenticated direct-private-peer admission, bounded ownership,
+  and cleanup tests. Production `/run/systemd/private` binding and system-bus
+  name ownership remain deferred.
 
 ## Why this matters
 
