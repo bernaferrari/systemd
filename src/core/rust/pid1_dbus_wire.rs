@@ -1415,7 +1415,7 @@ pub fn encode_error_reply(
 mod tests {
     use super::*;
     use std::fs::File;
-    use std::os::fd::AsRawFd;
+    use std::os::fd::{AsFd, AsRawFd};
 
     fn encode_call(
         endian: Endian,
@@ -1608,6 +1608,35 @@ mod tests {
         assert!(matches!(
             attachments.take(1),
             Err(WireError::InvalidUnixFdIndex(1))
+        ));
+    }
+
+    /// The future private-bus `recvmsg` owner must first turn every
+    /// SCM_RIGHTS descriptor into an `OwnedFd`, then give it to the checked
+    /// attachment table exactly once. This exercises that ownership handoff
+    /// against a real Linux ancillary-data receive without enabling Unix-FD
+    /// negotiation on the private bus itself.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn received_scm_rights_descriptor_is_cloexec_and_taken_once() {
+        use std::os::unix::net::UnixDatagram;
+
+        use nix::fcntl::{FcntlArg, FdFlag, fcntl};
+
+        let (sender, receiver) = UnixDatagram::pair().unwrap();
+        let sent: OwnedFd = File::open("/dev/null").unwrap().into();
+        systemd_platform_rs::io::send_fd(sender.as_fd(), sent.as_fd()).unwrap();
+        let received = systemd_platform_rs::io::recv_fd(receiver.as_fd()).unwrap();
+
+        let flags = fcntl(&received, FcntlArg::F_GETFD).unwrap();
+        assert!(FdFlag::from_bits_retain(flags).contains(FdFlag::FD_CLOEXEC));
+
+        let mut attachments = ReceivedUnixFds::new(vec![received]);
+        let received = attachments.take(0).unwrap();
+        assert!(received.as_raw_fd() >= 0);
+        assert!(matches!(
+            attachments.take(0),
+            Err(WireError::InvalidUnixFdIndex(0))
         ));
     }
 
