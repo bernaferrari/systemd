@@ -90,6 +90,111 @@ pub struct AppliedTransaction {
     pub anchor_job: usize,
 }
 
+/// Versioned, deterministic representation of a planned transaction.
+///
+/// This is intentionally an oracle for the Rust transaction planner, not a
+/// claim that a live C manager and a live Rust manager have been compared.
+/// Plan 006 owns that paired-runtime differential harness.  Keeping this
+/// small text-oriented contract here gives graph changes a reviewable fixture
+/// format without coupling the planner to D-Bus or manager-side execution.
+pub const TRANSACTION_TRACE_SCHEMA_VERSION: u8 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransactionTrace {
+    pub schema_version: u8,
+    pub anchor_job: usize,
+    pub events: Vec<TransactionTraceEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransactionTraceEvent {
+    pub job_id: usize,
+    pub unit: String,
+    pub job_type: JobType,
+    pub matters_to_anchor: bool,
+    pub irreversible: bool,
+    pub ignore_order: bool,
+}
+
+/// Metadata stored beside each checked-in expected trace.
+///
+/// `c_provenance` must name the C source function or upstream test whose
+/// narrow semantic assertion is being mirrored.  It deliberately does not
+/// imply byte-for-byte or live-runtime parity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransactionTraceFixture<'a> {
+    pub name: &'a str,
+    pub c_provenance: &'a str,
+    pub assertion: &'a str,
+    pub expected: &'a str,
+}
+
+impl AppliedTransaction {
+    pub fn deterministic_trace(&self) -> TransactionTrace {
+        let mut events: Vec<_> = self
+            .jobs
+            .iter()
+            .map(|job| TransactionTraceEvent {
+                job_id: job.id,
+                unit: job.unit.clone(),
+                job_type: job.job_type,
+                matters_to_anchor: job.matters_to_anchor,
+                irreversible: job.irreversible,
+                ignore_order: job.ignore_order,
+            })
+            .collect();
+        // Do not let a future execution-order optimization alter the oracle.
+        events.sort_by_key(|event| event.job_id);
+        TransactionTrace {
+            schema_version: TRANSACTION_TRACE_SCHEMA_VERSION,
+            anchor_job: self.anchor_job,
+            events,
+        }
+    }
+}
+
+impl TransactionTrace {
+    /// Stable, dependency-free fixture encoding. New schema versions must use
+    /// a new version number rather than silently changing this output.
+    pub fn canonical_text(&self) -> String {
+        let mut text = format!(
+            "schema={} anchor={}\n",
+            self.schema_version, self.anchor_job
+        );
+        for event in &self.events {
+            text.push_str(&format!(
+                "job={} unit={} type={} matters={} irreversible={} ignore-order={}\n",
+                event.job_id,
+                event.unit,
+                transaction_trace_job_type(event.job_type),
+                event.matters_to_anchor,
+                event.irreversible,
+                event.ignore_order,
+            ));
+        }
+        text
+    }
+
+    pub fn matches_fixture(&self, fixture: TransactionTraceFixture<'_>) -> bool {
+        !fixture.name.is_empty()
+            && !fixture.c_provenance.is_empty()
+            && !fixture.assertion.is_empty()
+            && self.canonical_text() == fixture.expected
+    }
+}
+
+fn transaction_trace_job_type(job_type: JobType) -> &'static str {
+    match job_type {
+        JobType::Start => "start",
+        JobType::VerifyActive => "verify-active",
+        JobType::Stop => "stop",
+        JobType::Reload => "reload",
+        JobType::Restart => "restart",
+        JobType::TryRestart => "try-restart",
+        JobType::Nop => "nop",
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransactionError {
     MissingUnit(String),
@@ -1040,6 +1145,92 @@ mod tests {
                 triggered_by: vec![],
             },
         ]
+    }
+
+    #[test]
+    fn provenance_backed_transaction_traces_are_stable() {
+        let fixture = TransactionTraceFixture {
+            name: "start-required-active",
+            c_provenance: "src/core/transaction.c:transaction_add_job_and_dependencies()",
+            assertion: "an already-active required dependency is removed as redundant while the explicit start anchor remains",
+            expected: concat!(
+                "schema=1 anchor=1\n",
+                "job=1 unit=a.service type=start matters=true irreversible=false ignore-order=false\n",
+            ),
+        };
+
+        let build_trace = || {
+            let mut transaction = Transaction::new(units(), false, 17).unwrap();
+            transaction
+                .add_job_and_dependencies(JobType::Start, "a.service", None, true, false, false)
+                .unwrap();
+            transaction
+                .activate(JobMode::Replace)
+                .unwrap()
+                .deterministic_trace()
+        };
+
+        let first = build_trace();
+        let second = build_trace();
+        assert_eq!(first, second);
+        assert!(first.matches_fixture(fixture));
+    }
+
+    #[test]
+    fn provenance_backed_conflict_trace_records_both_jobs() {
+        let fixture = TransactionTraceFixture {
+            name: "start-conflicting-active-unit",
+            c_provenance: "src/core/transaction.c:transaction_add_job_and_dependencies()",
+            assertion: "starting a unit queues a required stop job for its direct Conflicts= peer",
+            expected: concat!(
+                "schema=1 anchor=1\n",
+                "job=1 unit=a.service type=start matters=true irreversible=false ignore-order=false\n",
+                "job=2 unit=b.service type=stop matters=true irreversible=false ignore-order=false\n",
+            ),
+        };
+        let conflict_units = vec![
+            UnitSpec {
+                id: "a.service".into(),
+                state: UnitState::Inactive,
+                ignore_on_isolate: false,
+                installed_job: None,
+                deps_start: vec![],
+                deps_verify: vec![],
+                deps_start_ignored: vec![],
+                deps_stop: vec![],
+                conflicts: vec!["b.service".into()],
+                conflicts_ignored: vec![],
+                deps_reload: vec![],
+                before: vec![],
+                after: vec![],
+                triggered_by: vec![],
+            },
+            UnitSpec {
+                id: "b.service".into(),
+                state: UnitState::Active,
+                ignore_on_isolate: false,
+                installed_job: None,
+                deps_start: vec![],
+                deps_verify: vec![],
+                deps_start_ignored: vec![],
+                deps_stop: vec![],
+                conflicts: vec![],
+                conflicts_ignored: vec![],
+                deps_reload: vec![],
+                before: vec![],
+                after: vec![],
+                triggered_by: vec![],
+            },
+        ];
+        let mut transaction = Transaction::new(conflict_units, false, 18).unwrap();
+        transaction
+            .add_job_and_dependencies(JobType::Start, "a.service", None, true, false, false)
+            .unwrap();
+        let trace = transaction
+            .activate(JobMode::Replace)
+            .unwrap()
+            .deterministic_trace();
+        assert!(trace.matches_fixture(fixture));
     }
 
     #[test]

@@ -10,6 +10,7 @@ update the status row when done.
 |---|---|---|---|---|---|
 | 001 | Install the experimental Rust PID1 as an explicitly selected sidecar | P1 | S | — | DONE |
 | 003 | Build generated unit coverage and lossless Rust parser diagnostics | P1 | M | 001 | DONE |
+| 004 | Match C unit dependency, transaction, and manager-side job semantics | P1 | XL | 003 | IN PROGRESS |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
@@ -19,6 +20,12 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   validation. It deliberately does not make Rust the production default.
 - Plan 003 records the configured C directive table and parser diagnostics;
   transaction and runtime semantics remain separate work.
+- Plan 004 has a graph/job trace-oracle slice: versioned deterministic traces
+  with checked-in C provenance for required-dependency and conflict jobs. Its
+  service lifecycle, socket/non-service promotion matrix, resource-cleanup
+  proof, and the Linux execution gate remain open. Watchdog deadlines,
+  startup security, D-Bus transport, and live C/Rust comparison remain owned
+  by Plans 005 and 006.
 
 ## Findings considered and rejected
 
