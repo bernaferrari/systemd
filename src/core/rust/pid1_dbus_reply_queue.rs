@@ -586,6 +586,9 @@ impl PrivateBusReplyQueue {
         &mut self,
         written: usize,
     ) -> Result<bool, PrivateBusReplyQueueError> {
+        if self.terminal {
+            return Err(PrivateBusReplyQueueError::TerminalFailure);
+        }
         let Some(frame) = self.outbound.front_mut() else {
             if written == 0 {
                 return Ok(false);
@@ -913,6 +916,10 @@ mod tests {
             })
         );
         assert!(queue.is_terminal());
+        assert_eq!(
+            queue.acknowledge_written(0),
+            Err(PrivateBusReplyQueueError::TerminalFailure)
+        );
         queue.clear();
         assert!(!queue.acknowledge_written(0).unwrap());
         assert_eq!(
