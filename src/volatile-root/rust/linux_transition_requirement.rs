@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
+// PORT-SYNC: src/volatile-root/volatile-root.c
 // PORT-SYNC: src/basic/chase.c, src/shared/mount-util.c
 
 //! Fail-closed diagnostics for Linux volatile-root syscall fallback boundaries.

@@ -67,6 +67,12 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   shadow. Its independent credential-format, cryptography, TPM2, privilege,
   recovery, Linux-integration, and differential requirements prevent a
   partial parser or help-only binary from becoming a replacement claim.
+- The third Plan 007 target is `systemd-volatile-root`, kept C-owned because
+  its Rust path is only a fail-closed/static-library shadow. The ledger pins
+  the C Meson executable, every Rust backend source, the private C ABI
+  harness, and separate mode, mount, privilege, recovery, Linux, and
+  differential evidence. None of those categories is currently a promotion
+  claim.
 
 ## Findings considered and rejected
 

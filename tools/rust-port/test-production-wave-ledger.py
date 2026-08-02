@@ -117,6 +117,12 @@ detail = "fixture"
         errors = self.validate()
         self.assertTrue(any("changed since its reviewed blob pin" in error for error in errors))
 
+    def test_replace_claim_cannot_bypass_a_stale_blob_pin(self) -> None:
+        self.write_ledger(status="replace", owner="rust", all_passed=True)
+        self.write("src/demo/rust/main.rs", "// PORT-SYNC: src/demo/demo.c\n// changed\n")
+        errors = self.validate()
+        self.assertTrue(any("changed since its reviewed blob pin" in error for error in errors))
+
     def test_malformed_status_reports_a_gate_error(self) -> None:
         ledger = self.root / "tools/rust-port/production-waves.toml"
         ledger.write_text(

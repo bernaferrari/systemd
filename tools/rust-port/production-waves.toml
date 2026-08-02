@@ -107,3 +107,64 @@ detail = "No isolated Linux credstore, TPM, or ask-password integration test has
 name = "differential"
 state = "missing"
 detail = "No same-fixture C/Rust comparison covers commands, bytes, permissions, diagnostics, and cleanup."
+
+[[target]]
+id = "volatile-root"
+status = "shadow"
+production_owner = "c"
+fallback_owner = "c"
+c_source = "src/volatile-root/volatile-root.c"
+meson_build = "src/volatile-root/meson.build"
+c_selected_source = "volatile-root.c"
+required_evidence = ["cli", "mode-selection", "abi", "mount-transition", "privilege", "recovery", "linux-integration", "differential"]
+rust_paths = [
+    "src/volatile-root/rust/main.rs",
+    "src/volatile-root/rust/lib.rs",
+    "src/volatile-root/rust/linux_mount.rs",
+    "src/volatile-root/rust/linux_transition_requirement.rs",
+    "src/volatile-root/rust/linux_unmount.rs",
+    "src/volatile-root/rust/integration_harness.rs",
+    "src/volatile-root/rust/orchestration.rs",
+]
+reviewed_c_blobs = { "src/volatile-root/volatile-root.c" = "9e337958ab0a251fdb2df2e884894539f6afd4a8" }
+reviewed_rust_blobs = { "src/volatile-root/rust/main.rs" = "c43592ab3cdae3bdcb02109c177c62bd02eb2261", "src/volatile-root/rust/lib.rs" = "14c5f1439ba2b074ce4902260c705b3135b215d7", "src/volatile-root/rust/linux_mount.rs" = "96d01fa9ee163b5ea010d0bd324e189641b9a433", "src/volatile-root/rust/linux_transition_requirement.rs" = "e741dbfa18cf4f706072ac0f4709f5337c17f7e9", "src/volatile-root/rust/linux_unmount.rs" = "ff4c3a5f35aec4dfc4246cef9e221e277c622f79", "src/volatile-root/rust/integration_harness.rs" = "95f0cc208ed55a1596a7be535729cf817e8f23dc", "src/volatile-root/rust/orchestration.rs" = "774e0a3143456b27e776e04d8933c530bdde8cb0" }
+
+[[target.evidence]]
+name = "cli"
+state = "planned"
+detail = "Rust has help/version and mode/path parsing, but exact C argument-count, errno, and diagnostic parity has no reviewed Linux comparison."
+
+[[target.evidence]]
+name = "mode-selection"
+state = "planned"
+detail = "Rust resolves the kernel command line before positional arguments, but every query_volatile_mode precedence and malformed-value case is not yet compared with C."
+
+[[target.evidence]]
+name = "abi"
+state = "planned"
+detail = "Meson builds a non-installed Rust static library and private C harness exports three test entry points; a release ABI inventory and ownership contract are not yet complete."
+
+[[target.evidence]]
+name = "mount-transition"
+state = "missing"
+detail = "The installed Rust binary intentionally refuses active mount transitions; no evidence proves C-equivalent bind, remount, move, overlay, or mount-attribute fallback behavior."
+
+[[target.evidence]]
+name = "privilege"
+state = "missing"
+detail = "Initrd root privileges, mount namespace assumptions, capability requirements, and symlink exposure have not been compared against the C executable."
+
+[[target.evidence]]
+name = "recovery"
+state = "missing"
+detail = "Failure injection does not yet prove cleanup and rollback for every temporary tmpfs, bind mount, overlay directory, unmount, and informational symlink path."
+
+[[target.evidence]]
+name = "linux-integration"
+state = "planned"
+detail = "A private-namespace Meson harness exists for preflight and active transitions, but no reproducible Linux CI result has been recorded for the complete matrix."
+
+[[target.evidence]]
+name = "differential"
+state = "missing"
+detail = "No same-fixture C/Rust trace compares mode selection, exit status, mount topology, symlink state, diagnostics, and cleanup."

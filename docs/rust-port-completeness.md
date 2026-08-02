@@ -247,6 +247,22 @@ C/Rust comparison. Every one is currently missing. The new direct provenance
 marker on the Rust binary makes source drift visible to the ledger; it does
 not change runtime behavior or authorize promotion.
 
+## Third measured daemon/tool wave: `systemd-volatile-root` (shadow)
+
+`systemd-volatile-root` is now inventoried as a third Plan 007 shadow target.
+Meson still selects `src/volatile-root/volatile-root.c`; the Rust crate is
+built only as a non-installed static library for private C harnesses, and its
+installed binary refuses active mount transitions. The ledger pins the C
+authority and all Rust orchestration, mount, unmount, fallback, and harness
+sources, including direct provenance for the helper that also mirrors
+`chase.c` and `mount-util.c` requirements.
+
+The ledger keeps mode selection, the test-only C ABI, mount-transition
+semantics, privilege assumptions, failure cleanup, real Linux integration, and
+same-fixture C/Rust differential traces separate. These categories are
+planned or missing; the existing private-namespace harness is useful evidence
+for future work but is not a production replacement claim.
+
 ## Readiness Verdict
 
 Current state is **not ready** for swapping distro `systemd` with Rust implementation on Ubuntu or general Linux distributions.
