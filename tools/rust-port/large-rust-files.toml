@@ -66,9 +66,9 @@ issue = "systemd-cpuw"
 reason = "Separate transaction graph construction, conflict/cycle analysis, ordering, and trace-oracle fixtures without weakening the one-job-per-unit invariant."
 
 [files."src/core/rust/main.rs"]
-max_lines = 2204
+max_lines = 2228
 issue = "systemd-cpuw"
-reason = "Extract PID1 startup phases, event-loop sources, service start-timeout transitions, and fail-closed outer lifecycle ownership without moving privileged process-global transitions into callbacks."
+reason = "Extract PID1 startup phases, event-loop sources, service start-timeout transitions, and fail-closed reexec/lifecycle ownership without moving privileged process-global transitions into callbacks."
 
 [files."src/core/rust/runtime_manager/unit_file.rs"]
 max_lines = 2147
