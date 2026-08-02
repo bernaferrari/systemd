@@ -419,71 +419,31 @@ fn parse_kernel_boolean(value: Option<&str>) -> Option<bool> {
         .unwrap_or(Some(true))
 }
 
-/// C's `parse_timeout()` accepts decimal values and its complete public time
-/// suffix vocabulary. The sidecar only needs to decide whether a *valid,
-/// nonzero* watchdog request would be lost; malformed values keep C's
+/// C's `parse_timeout()` accepts `off`, `default`, and the complete
+/// `parse_sec()` duration grammar. The sidecar only needs to decide whether a
+/// *valid, nonzero* watchdog request would be lost; malformed values keep C's
 /// warn-and-ignore behavior and must not clobber an earlier assignment.
+///
+/// `default` maps to `USEC_INFINITY` in C. Passing that value to
+/// `watchdog_setup()` can open an available device and retain its programmed
+/// timeout, so it is not safe for the sidecar to treat it as disabled.
 fn nonzero_watchdog_timeout(value: &str) -> Option<bool> {
-    let value = value.trim();
-    if matches!(value, "infinity" | "infinite" | "∞") {
-        return Some(true);
+    match value.trim() {
+        "off" => Some(false),
+        "default" => Some(true),
+        value => systemd_basic_rs::time_util::parse_sec(value)
+            .ok()
+            .map(|timeout| timeout > 0),
     }
-
-    const UNITS: [(&str, f64); 29] = [
-        ("microseconds", 1.0),
-        ("milliseconds", 1_000.0),
-        ("seconds", 1_000_000.0),
-        ("minutes", 60_000_000.0),
-        ("months", 1.0),
-        ("hours", 3_600_000_000.0),
-        ("years", 1.0),
-        ("weeks", 604_800_000_000.0),
-        ("usec", 1.0),
-        ("msec", 1_000.0),
-        ("second", 1_000_000.0),
-        ("minute", 60_000_000.0),
-        ("month", 1.0),
-        ("hour", 3_600_000_000.0),
-        ("year", 1.0),
-        ("week", 604_800_000_000.0),
-        ("days", 86_400_000_000.0),
-        ("day", 86_400_000_000.0),
-        ("min", 60_000_000.0),
-        ("ms", 1_000.0),
-        ("us", 1.0),
-        ("hr", 3_600_000_000.0),
-        ("h", 3_600_000_000.0),
-        ("d", 86_400_000_000.0),
-        ("w", 604_800_000_000.0),
-        ("M", 1.0),
-        ("y", 1.0),
-        ("m", 60_000_000.0),
-        ("s", 1_000_000.0),
-    ];
-
-    let (number, multiplier) = UNITS
-        .iter()
-        .find_map(|(suffix, multiplier)| {
-            value
-                .strip_suffix(suffix)
-                .map(|number| (number, *multiplier))
-        })
-        // A bare number is valid C input. Its unit does not matter to this
-        // guard because only zero versus an enabled watchdog is observed.
-        .unwrap_or((value, 1.0));
-    let parsed = number.trim().parse::<f64>().ok()?;
-    (parsed.is_finite() && parsed >= 0.0).then_some(parsed * multiplier > 0.0)
 }
 
 fn watchdog_device_is_active(value: &str) -> bool {
-    // `parse_path_argument()` reduces an empty value to NULL. Retain only an
-    // unambiguous absolute device path here: accepting a relative path would
-    // make an experimental PID 1's policy dependent on its inherited CWD.
-    value.starts_with('/')
-        && !value
-            .as_bytes()
-            .iter()
-            .any(|byte| *byte < 0x20 || *byte == 0x7f)
+    // `parse_path_argument()` reduces an empty value to NULL and makes every
+    // other value absolute relative to PID 1's CWD. Rust must not silently
+    // ignore a relative value merely because it deliberately does not model
+    // that inherited CWD: any nonempty request selects a watchdog device that
+    // this sidecar cannot own safely.
+    !value.is_empty()
 }
 
 fn pretimeout_governor_is_safe(value: &str) -> bool {
@@ -2004,9 +1964,10 @@ mod tests {
     }
 
     #[test]
-    fn watchdog_timeout_guard_recognizes_c_time_units_and_fractions() {
+    fn watchdog_timeout_guard_uses_c_timeout_grammar_and_fail_closed_default() {
         for value in [
             "500us", "1ms", "2s", "3min", "1h", "2days", "1week", "1month", "1year", "0.5h",
+            "1h30min",
         ] {
             assert_eq!(
                 nonzero_watchdog_timeout(value),
@@ -2018,8 +1979,12 @@ mod tests {
             assert_eq!(nonzero_watchdog_timeout(value), Some(false));
         }
         assert_eq!(nonzero_watchdog_timeout("infinity"), Some(true));
+        assert_eq!(nonzero_watchdog_timeout("default"), Some(true));
+        assert_eq!(nonzero_watchdog_timeout("off"), Some(false));
         assert_eq!(nonzero_watchdog_timeout("not-a-timeout"), None);
         assert_eq!(nonzero_watchdog_timeout("-1s"), None);
+        assert_eq!(nonzero_watchdog_timeout("infinite"), None);
+        assert_eq!(nonzero_watchdog_timeout("∞"), None);
     }
 
     #[test]
@@ -2039,18 +2004,30 @@ mod tests {
             Some(UnsupportedPid1Policy::RuntimeWatchdog),
             "C warns for an invalid later timeout and retains the prior value"
         );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.watchdog_sec=30s systemd.watchdog_sec=off"
+            ),
+            None,
+            "C's explicit off value clears a prior active watchdog request"
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.watchdog_sec=default"),
+            Some(UnsupportedPid1Policy::RuntimeWatchdog),
+            "C may reopen the selected device and retain its programmed timeout for default"
+        );
     }
 
     #[test]
-    fn watchdog_device_and_governor_only_reject_active_canonical_values() {
+    fn watchdog_device_and_governor_preserve_c_path_and_assignment_semantics() {
         assert_eq!(
             unsupported_pid1_policy_from_cmdline("systemd.watchdog_device=/dev/watchdog0"),
             Some(UnsupportedPid1Policy::WatchdogDevice)
         );
         assert_eq!(
             unsupported_pid1_policy_from_cmdline("systemd.watchdog_device=relative-device"),
-            None,
-            "the sidecar intentionally refuses to infer an absolute path from an inherited CWD"
+            Some(UnsupportedPid1Policy::WatchdogDevice),
+            "C makes a relative device path absolute from PID 1's CWD; Rust must fail closed rather than drop it"
         );
         assert_eq!(
             unsupported_pid1_policy_from_cmdline(
@@ -2063,7 +2040,7 @@ mod tests {
                 "systemd.watchdog_device=/dev/watchdog0 systemd.watchdog_device=relative"
             ),
             Some(UnsupportedPid1Policy::WatchdogDevice),
-            "an ignored later path retains the prior active setting"
+            "the later relative path remains an active C watchdog-device request"
         );
         assert_eq!(
             unsupported_pid1_policy_from_cmdline("systemd.watchdog_pretimeout_governor=noop"),
