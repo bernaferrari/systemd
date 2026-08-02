@@ -3812,6 +3812,46 @@ fn test_service_restart_policy_queues_after_exact_main_exit_event() {
 }
 
 #[test]
+fn test_manual_stop_cancels_pending_auto_restart_before_dispatch() {
+    // C provenance: src/core/service.c:service_stop(). A manual stop wins
+    // over SERVICE_AUTO_RESTART_QUEUED and must remove the restart timer
+    // before it can schedule another start transaction.
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    insert_fsm_service(
+        &mut mgr,
+        "manual-stop.service",
+        ServiceState::AutoRestartQueued,
+        ServiceType::Simple,
+        |_| {},
+    );
+    mgr.schedule_service_restart("manual-stop.service".to_string(), std::time::Duration::ZERO);
+    assert!(
+        mgr.service_restart_deadlines
+            .contains_key("manual-stop.service")
+    );
+
+    mgr.execute_service_stop("manual-stop.service");
+
+    assert_eq!(
+        mgr.services
+            .get("manual-stop.service")
+            .map(|service| service.state),
+        Some(ServiceState::Dead)
+    );
+    assert!(
+        !mgr.service_restart_deadlines
+            .contains_key("manual-stop.service")
+    );
+    assert!(
+        !mgr.units
+            .get("manual-stop.service")
+            .is_some_and(|unit| unit.stop_pending)
+    );
+    assert!(mgr.process_due_service_restarts().is_empty());
+}
+
+#[test]
 fn test_ignore_failure_condition_advances_only_after_its_exact_exit_event() {
     let _test_lock = test_env_lock();
     let mut mgr = new_test_runtime_manager();

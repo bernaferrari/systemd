@@ -22,8 +22,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   transaction and runtime semantics remain separate work.
 - Plan 004 has a graph/job trace-oracle slice: versioned deterministic traces
   with checked-in C provenance for required-dependency and conflict jobs. Its
-  service lifecycle, socket/non-service promotion matrix, resource-cleanup
-  proof, and the Linux execution gate remain open. Watchdog deadlines,
+  service slice also makes manual stop cancel a pending auto-restart before
+  dispatch, with C-provenance coverage. The socket/non-service promotion
+  matrix, resource-cleanup proof, and the Linux execution gate remain open.
+  Watchdog deadlines,
   startup security, D-Bus transport, and live C/Rust comparison remain owned
   by Plans 005 and 006.
 

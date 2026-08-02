@@ -32,6 +32,14 @@ use super::service_machine::{
 use super::service_readiness::readiness_rejection;
 
 impl RuntimeManager {
+    /// Cancel a manager-owned delayed restart before a manual lifecycle
+    /// operation changes the service state.  This is deliberately separate
+    /// from watchdog deadlines: it owns only the restart timer created by
+    /// `service_enter_dead()`-equivalent policy.
+    pub(super) fn cancel_pending_service_restart(&mut self, name: &str) -> bool {
+        self.service_restart_deadlines.remove(name).is_some()
+    }
+
     pub(super) fn clear_service_tracking(&mut self, name: &str) {
         self.service_operation_deadlines.remove(name);
         self.service_runtime_deadlines.remove(name);
@@ -1360,7 +1368,7 @@ impl RuntimeManager {
         ) {
             return;
         }
-        self.service_restart_deadlines.remove(unit_name);
+        self.cancel_pending_service_restart(unit_name);
         let service_type = infer_service_type(&info);
         if let Some(service) = self.services.get_mut(unit_name) {
             service.service_type = service_type;
@@ -1414,7 +1422,7 @@ impl RuntimeManager {
     }
 
     pub(super) fn execute_service_stop(&mut self, unit_name: &str) {
-        self.service_restart_deadlines.remove(unit_name);
+        self.cancel_pending_service_restart(unit_name);
         if let Some(unit) = self.units.get_mut(unit_name) {
             unit.stop_pending = true;
         }
