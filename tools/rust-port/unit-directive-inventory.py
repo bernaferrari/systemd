@@ -21,6 +21,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RUST_PARSER = ROOT / "src/core/rust/runtime_manager/unit_file.rs"
 BUILD_OPTIONS = Path("meson-info/intro-buildoptions.json")
+PARSER_CONSUMER_METADATA = ROOT / "tools/rust-port/unit-directive-inventory-metadata.json"
+SCHEMA = 2
+PARSER_CONSUMER_METADATA_SCHEMA = 1
 SETTING = re.compile(
     r'\{\s*"(?P<name>[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*)"\s*,'
     r'\s*(?P<callback>[A-Za-z_][A-Za-z0-9_]*)\s*,\s*(?P<ltype>[^,]+),'
@@ -29,6 +32,12 @@ RUST_ARM = re.compile(
     r'\("(?P<section>[a-z]+)",\s*(?P<keys>(?:"[A-Za-z][A-Za-z0-9]*"\s*(?:\|\s*)?)+)\)'
 )
 KEY = re.compile(r'"([A-Za-z][A-Za-z0-9]*)"')
+DIRECTIVE = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
+CONSERVATIVE_STATUSES = {
+    "not-present",
+    "recognized-but-unconsumed",
+    "recognized-and-stored",
+}
 
 
 def fail(message: str) -> None:
@@ -101,32 +110,137 @@ def parse_rust_arms(path: Path) -> set[tuple[str, str]]:
     return arms
 
 
-def inventory(generated_gperf: Path, meson_build: Path) -> dict[str, object]:
+def load_parser_consumers(
+    path: Path, profile_fingerprint: str
+) -> dict[tuple[str, str], str]:
+    if not path.is_file():
+        fail(f"parser-consumer metadata is missing: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"cannot parse {path}: {error}")
+    if (
+        not isinstance(data, dict)
+        or data.get("schema") != PARSER_CONSUMER_METADATA_SCHEMA
+    ):
+        fail(f"{path}: expected schema={PARSER_CONSUMER_METADATA_SCHEMA}")
+
+    profiles = data.get("profiles")
+    if not isinstance(profiles, list):
+        fail(f"{path}: profiles must be an array")
+    matching_profiles = []
+    seen_profiles: set[str] = set()
+    for record in profiles:
+        if not isinstance(record, dict):
+            fail(f"{path}: parser-consumer profile must be an object")
+        metadata_profile = record.get("profile_fingerprint")
+        if not isinstance(metadata_profile, str) or not metadata_profile:
+            fail(f"{path}: profile_fingerprint must be a non-empty string")
+        if metadata_profile in seen_profiles:
+            fail(f"{path}: duplicate parser-consumer metadata profile {metadata_profile}")
+        seen_profiles.add(metadata_profile)
+        if metadata_profile == profile_fingerprint:
+            matching_profiles.append(record)
+    if profiles and not matching_profiles:
+        fail(
+            f"{path}: stale parser-consumer metadata profile "
+            f"(expected {profile_fingerprint})"
+        )
+
+    records = matching_profiles[0].get("consumers", []) if matching_profiles else []
+    if not isinstance(records, list):
+        fail(f"{path}: parser-consumer profile consumers must be an array")
+    consumers: dict[tuple[str, str], str] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            fail(f"{path}: parser-consumer metadata entry must be an object")
+        section, key, consumer = (
+            record.get(field) for field in ("section", "key", "consumer")
+        )
+        if not isinstance(section, str) or not DIRECTIVE.fullmatch(section):
+            fail(f"{path}: parser-consumer metadata has invalid section")
+        if not isinstance(key, str) or not DIRECTIVE.fullmatch(key):
+            fail(f"{path}: parser-consumer metadata has invalid key")
+        identity = (section.lower(), key)
+        if not isinstance(consumer, str) or not consumer.strip():
+            fail(
+                f"{path}: parser-consumer metadata misses consumer for "
+                f"{section}.{key}"
+            )
+        if identity in consumers:
+            fail(
+                f"{path}: duplicate parser-consumer metadata for "
+                f"{section}.{key}"
+            )
+        consumers[identity] = consumer
+    return consumers
+
+
+def require_conservative_statuses(rows: list[dict[str, object]]) -> None:
+    for row in rows:
+        status = row.get("rust_status")
+        if status not in CONSERVATIVE_STATUSES:
+            fail(
+                "generated C directive has no conservative Rust status: "
+                f"{row.get('section')}.{row.get('key')}"
+            )
+        if status == "recognized-and-stored" and not row.get("consumer"):
+            fail(
+                "recognized-and-stored directive has no parser consumer: "
+                f"{row.get('section')}.{row.get('key')}"
+            )
+
+
+def inventory(
+    generated_gperf: Path,
+    meson_build: Path,
+    parser_consumer_metadata: Path = PARSER_CONSUMER_METADATA,
+) -> dict[str, object]:
     meson_profile = profile(meson_build)
-    c_rows = parse_c_table(generated_gperf, str(meson_profile["fingerprint"]))
+    profile_fingerprint = str(meson_profile["fingerprint"])
+    c_rows = parse_c_table(generated_gperf, profile_fingerprint)
     rust_arms = parse_rust_arms(RUST_PARSER)
+    consumers = load_parser_consumers(parser_consumer_metadata, profile_fingerprint)
+    stale_consumers = sorted(
+        f"{section}.{key}"
+        for section, key in consumers
+        if (section, key) not in rust_arms
+    )
+    if stale_consumers:
+        fail(
+            "parser-consumer metadata directive has no Rust parser arm: "
+            + ", ".join(stale_consumers)
+        )
     c_keys = {(str(row["section"]), str(row["key"])) for row in c_rows}
     rows = []
     for row in c_rows:
         identity = (str(row["section"]), str(row["key"]))
         row = dict(row)
-        # This inventory cannot prove a runtime consumer. Be conservative until
-        # a later semantic plan records one explicitly.
-        row["rust_status"] = (
-            "recognized-but-unconsumed" if identity in rust_arms else "not-present"
-        )
-        row["consumer"] = None
-        row["test_classification"] = "unreviewed"
+        consumer = consumers.get(identity)
+        if consumer is not None:
+            row["rust_status"] = "recognized-and-stored"
+            row["consumer"] = consumer
+            row["test_classification"] = "reviewed-parser-consumer"
+        elif identity in rust_arms:
+            row["rust_status"] = "recognized-but-unconsumed"
+            row["consumer"] = None
+            row["test_classification"] = "unreviewed"
+        else:
+            row["rust_status"] = "not-present"
+            row["consumer"] = None
+            row["test_classification"] = "unreviewed"
         rows.append(row)
+    require_conservative_statuses(rows)
 
     unmatched_rust = sorted(
         {f"{section}.{key}" for section, key in rust_arms - c_keys}
     )
     return {
-        "schema_version": 1,
+        "schema_version": SCHEMA,
         "source_commit": git_revision(),
         "generated_gperf": str(generated_gperf.resolve()),
         "meson_profile": meson_profile,
+        "parser_consumer_metadata": str(parser_consumer_metadata.resolve()),
         "rows": rows,
         "unmatched_rust_directives": unmatched_rust,
     }
@@ -138,13 +252,23 @@ def main() -> int:
     parser.add_argument("--meson-build", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
+        "--parser-consumer-metadata",
+        type=Path,
+        default=PARSER_CONSUMER_METADATA,
+        help="reviewed parser-consumer metadata (default: %(default)s)",
+    )
+    parser.add_argument(
         "--allow-unmatched-rust",
         action="store_true",
         help="report Rust-only parser arms without treating them as an inventory error",
     )
     args = parser.parse_args()
     try:
-        result = inventory(args.generated_gperf, args.meson_build)
+        result = inventory(
+            args.generated_gperf,
+            args.meson_build,
+            args.parser_consumer_metadata,
+        )
         if result["unmatched_rust_directives"] and not args.allow_unmatched_rust:
             fail(
                 "Rust parser directives absent from generated C profile: "

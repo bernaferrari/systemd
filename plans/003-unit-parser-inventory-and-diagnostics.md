@@ -23,7 +23,8 @@
   semantic parity.
 - **Next gate**: rerun the configured-profile inventory and diagnostics gates,
   then keep recognized-but-unconsumed directives blocked until their runtime
-  consumer and differential evidence exist.
+  consumer and differential evidence exist. `recognized-and-stored` requires
+  reviewed parser-consumer metadata, not merely a matching Rust arm or field.
 
 ## Why this matters
 

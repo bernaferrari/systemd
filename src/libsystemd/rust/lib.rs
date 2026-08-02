@@ -23,6 +23,8 @@ pub mod bus_kernel;
 pub mod bus_match_types;
 pub mod bus_message;
 pub mod bus_signature;
+#[cfg(test)]
+mod bus_socket;
 pub mod device_action;
 pub mod event_source_type;
 pub mod ffi;

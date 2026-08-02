@@ -65,6 +65,11 @@ python3 tools/rust-port/unit-directive-inventory.py \
     --allow-unmatched-rust
 ```
 
-The output is deliberately conservative: a Rust match arm is only
-`recognized-but-unconsumed` until a later semantic review records its runtime
-consumer and test evidence. Never treat this inventory as a replacement claim.
+The output is deliberately conservative. Every generated C row receives one
+status: `not-present`, `recognized-but-unconsumed`, or
+`recognized-and-stored`. The last status is only available when the reviewed
+`unit-directive-inventory-metadata.json` names an explicit Rust parser consumer
+for the generated Meson profile fingerprint. A Rust match arm without that
+metadata remains `recognized-but-unconsumed`; a stored field alone is not
+evidence of a runtime consumer. Never treat this inventory as a replacement or
+runtime-parity claim.
