@@ -207,9 +207,19 @@ fn test_smoke_is_supported(action: CliAction, is_pid1: bool) -> bool {
 /// a cold boot (which would orphan or accidentally consume inherited
 /// descriptors). The returned descriptor is diagnostic only; it is never
 /// borrowed, closed, or otherwise touched by this sidecar.
+/// C clears `O_CLOEXEC` only after serializing the manager-owned descriptor
+/// set. Until Rust can prove the same ownership transfer, seeing a
+/// serialization descriptor has exactly one valid disposition: leave it
+/// untouched and reject the reexec before startup changes state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReexecHandoff {
-    Deserialize { serialization_fd: i32 },
+enum ReexecDescriptorDisposition {
+    UntouchedAndRefused,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ReexecHandoff {
+    serialization_fd: i32,
+    descriptor_disposition: ReexecDescriptorDisposition,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,7 +273,10 @@ fn reexec_handoff_from_args(
             .ok()
             .filter(|fd| *fd >= 0)
             .ok_or_else(|| ReexecHandoffParseError::InvalidDescriptor(descriptor.to_string()))?;
-        handoff = Some(ReexecHandoff::Deserialize { serialization_fd });
+        handoff = Some(ReexecHandoff {
+            serialization_fd,
+            descriptor_disposition: ReexecDescriptorDisposition::UntouchedAndRefused,
+        });
     }
 
     Ok(handoff)
@@ -276,9 +289,10 @@ fn reexec_handoff_from_args(
 fn reject_unimplemented_reexec_handoff(args: &[String]) -> Result<(), ReexecHandoffParseError> {
     match reexec_handoff_from_args(args)? {
         None => Ok(()),
-        Some(ReexecHandoff::Deserialize { serialization_fd }) => {
-            Err(ReexecHandoffParseError::UnsupportedHandoff { serialization_fd })
-        }
+        Some(ReexecHandoff {
+            serialization_fd,
+            descriptor_disposition: ReexecDescriptorDisposition::UntouchedAndRefused,
+        }) => Err(ReexecHandoffParseError::UnsupportedHandoff { serialization_fd }),
     }
 }
 
@@ -1760,8 +1774,9 @@ mod tests {
         ];
         assert_eq!(
             reexec_handoff_from_args(&args),
-            Ok(Some(ReexecHandoff::Deserialize {
-                serialization_fd: 9
+            Ok(Some(ReexecHandoff {
+                serialization_fd: 9,
+                descriptor_disposition: ReexecDescriptorDisposition::UntouchedAndRefused,
             })),
             "C replaces the previous serialization stream when a later --deserialize wins"
         );
