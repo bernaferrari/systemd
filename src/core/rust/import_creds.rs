@@ -103,11 +103,18 @@ pub fn import_credentials(
             return Ok(outcome);
         }
 
-        ret_gather(&mut gathered, backend.import_credentials_boot());
-        outcome.imported_boot = gathered.is_ok();
+        // `RET_GATHER()` in C records the first failure but still attempts
+        // every independent credential source. Preserve both parts of that
+        // contract: do not short-circuit the trusted pass after a boot-source
+        // failure, and do not claim that a pass was imported when its own
+        // backend operation failed.
+        let boot_result = backend.import_credentials_boot();
+        outcome.imported_boot = boot_result.is_ok();
+        ret_gather(&mut gathered, boot_result);
 
-        ret_gather(&mut gathered, backend.import_credentials_trusted());
-        outcome.imported_trusted = true;
+        let trusted_result = backend.import_credentials_trusted();
+        outcome.imported_trusted = trusted_result.is_ok();
+        ret_gather(&mut gathered, trusted_result);
     }
 
     backend.report_credentials();
@@ -126,6 +133,8 @@ mod tests {
         import_enabled: Result<bool>,
         boot_result: Result<()>,
         trusted_result: Result<()>,
+        boot_attempts: usize,
+        trusted_attempts: usize,
         symlinks: Vec<(String, String, String)>,
         merged: Vec<Option<String>>,
         reported: usize,
@@ -140,6 +149,8 @@ mod tests {
                 import_enabled: Ok(true),
                 boot_result: Ok(()),
                 trusted_result: Ok(()),
+                boot_attempts: 0,
+                trusted_attempts: 0,
                 symlinks: Vec::new(),
                 merged: Vec::new(),
                 reported: 0,
@@ -178,10 +189,12 @@ mod tests {
         }
 
         fn import_credentials_boot(&mut self) -> Result<()> {
+            self.boot_attempts += 1;
             self.boot_result
         }
 
         fn import_credentials_trusted(&mut self) -> Result<()> {
+            self.trusted_attempts += 1;
             self.trusted_result
         }
 
@@ -229,5 +242,41 @@ mod tests {
         assert!(!outcome.import_enabled);
         assert_eq!(backend.reported, 0);
         assert_eq!(backend.notify_set, 0);
+    }
+
+    #[test]
+    fn independent_sources_are_both_attempted_when_boot_import_fails() {
+        let mut backend = FakeBackend {
+            creds_dir: Err(Errno::ENXIO),
+            encrypted_dir: Err(Errno::ENXIO),
+            import_enabled: Ok(true),
+            boot_result: Err(Errno::EIO),
+            trusted_result: Ok(()),
+            ..FakeBackend::default()
+        };
+
+        assert_eq!(import_credentials(&mut backend), Err(Errno::EIO));
+        assert_eq!(backend.boot_attempts, 1);
+        assert_eq!(backend.trusted_attempts, 1);
+        assert_eq!(backend.reported, 1);
+        assert_eq!(backend.notify_set, 1);
+    }
+
+    #[test]
+    fn trusted_import_failure_is_reported_without_claiming_success() {
+        let mut backend = FakeBackend {
+            creds_dir: Err(Errno::ENXIO),
+            encrypted_dir: Err(Errno::ENXIO),
+            import_enabled: Ok(true),
+            boot_result: Ok(()),
+            trusted_result: Err(Errno::EPERM),
+            ..FakeBackend::default()
+        };
+
+        assert_eq!(import_credentials(&mut backend), Err(Errno::EPERM));
+        assert_eq!(backend.boot_attempts, 1);
+        assert_eq!(backend.trusted_attempts, 1);
+        assert_eq!(backend.reported, 1);
+        assert_eq!(backend.notify_set, 1);
     }
 }

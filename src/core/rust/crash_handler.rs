@@ -2,16 +2,10 @@
 //
 // PORT-SYNC: src/core/crash-handler.c, src/core/crash-handler.h
 
+use crate::crash_action::CrashAction;
 use crate::ffi::Errno;
 
 pub const EXIT_EXCEPTION: i32 = 255;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CrashAction {
-    Freeze,
-    Reboot,
-    Poweroff,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CrashDisposition {

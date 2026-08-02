@@ -11,6 +11,7 @@ update the status row when done.
 | 001 | Install the experimental Rust PID1 as an explicitly selected sidecar | P1 | S | — | DONE |
 | 003 | Build generated unit coverage and lossless Rust parser diagnostics | P1 | M | 001 | DONE |
 | 004 | Match C unit dependency, transaction, and manager-side job semantics | P1 | XL | 003 | IN PROGRESS |
+| 005 | Match C PID1 startup, security, watchdog, and reexec contracts | P1 | L | 004 | IN PROGRESS |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
@@ -28,6 +29,12 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
   Watchdog deadlines,
   startup security, D-Bus transport, and live C/Rust comparison remain owned
   by Plans 005 and 006.
+- Plan 005 now keeps explicit kernel-command-line watchdog/crash policy from
+  being silently dropped by the experimental sidecar, shares one crash-action
+  vocabulary, and preserves C's independent credential-import attempts. Live
+  security helper composition, watchdog device ownership, console takeover,
+  and descriptor-preserving reexec remain incomplete and continue to block a
+  production PID1 switch.
 
 ## Findings considered and rejected
 

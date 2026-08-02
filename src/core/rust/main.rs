@@ -286,6 +286,175 @@ fn detect_first_boot(in_initrd: bool) -> bool {
     }
 }
 
+/// The subset of PID 1 kernel-command-line policy that would otherwise be
+/// silently accepted while the live Rust manager has no corresponding kernel
+/// object or crash-handler owner.
+///
+/// C parses these settings in `parse_proc_cmdline_item()` and wires them into
+/// `initialize_runtime()` / `set_manager_settings()`.  The Rust sidecar must
+/// not claim a successful boot while ignoring an operator's explicit safety
+/// policy.  Default C values remain usable: they do not arm a runtime
+/// watchdog and Rust does not yet implement shutdown/reexec handoff either.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum UnsupportedPid1Policy {
+    RuntimeWatchdog,
+    PretimeoutWatchdog,
+    WatchdogDevice,
+    WatchdogPretimeoutGovernor,
+    ServiceWatchdogsDisabled,
+    CrashShell,
+    CrashChangeVirtualTerminal,
+    CrashAction(String),
+}
+
+impl std::fmt::Display for UnsupportedPid1Policy {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let option = match self {
+            Self::RuntimeWatchdog => "systemd.watchdog_sec",
+            Self::PretimeoutWatchdog => "systemd.watchdog_pre_sec",
+            Self::WatchdogDevice => "systemd.watchdog_device",
+            Self::WatchdogPretimeoutGovernor => "systemd.watchdog_pretimeout_governor",
+            Self::ServiceWatchdogsDisabled => "systemd.service_watchdogs=no",
+            Self::CrashShell => "systemd.crash_shell",
+            Self::CrashChangeVirtualTerminal => "systemd.crash_chvt",
+            Self::CrashAction(_) => "systemd.crash_action",
+        };
+        write!(
+            formatter,
+            "{option} was explicitly requested, but this experimental Rust PID 1 cannot yet apply its C-compatible runtime policy"
+        )
+    }
+}
+
+fn parse_kernel_boolean(value: Option<&str>) -> Option<bool> {
+    value
+        .map(|value| systemd_basic_rs::string_table::parse_boolean(value))
+        .unwrap_or(Some(true))
+}
+
+/// C's timeout parser accepts a considerably wider grammar. The sidecar only
+/// needs to decide whether a *valid, nonzero* watchdog request would be lost;
+/// malformed values keep C's warn-and-ignore behavior.
+fn nonzero_watchdog_timeout(value: &str) -> Option<bool> {
+    let value = value.trim();
+    let (number, multiplier) = if let Some(number) = value.strip_suffix("min") {
+        (number, 60_000_000_u64)
+    } else if let Some(number) = value.strip_suffix("ms") {
+        (number, 1_000_u64)
+    } else if let Some(number) = value.strip_suffix("us") {
+        (number, 1_u64)
+    } else if let Some(number) = value.strip_suffix('s') {
+        (number, 1_000_000_u64)
+    } else {
+        // `parse_timeout()` accepts a bare integer too. Its precise unit is
+        // immaterial here: only zero vs. an active request matters.
+        (value, 1_u64)
+    };
+    let parsed = number.trim().parse::<u64>().ok()?;
+    Some(parsed.saturating_mul(multiplier) > 0)
+}
+
+/// Return the first explicit startup policy that the current sidecar cannot
+/// implement faithfully. Later valid assignments overwrite earlier ones in C,
+/// so scan from left to right and retain the last applicable result for each
+/// setting before making the fail-closed decision.
+fn unsupported_pid1_policy_from_cmdline(cmdline: &str) -> Option<UnsupportedPid1Policy> {
+    let mut runtime_watchdog = None;
+    let mut pretimeout_watchdog = None;
+    let mut watchdog_device = None;
+    let mut pretimeout_governor = None;
+    let mut service_watchdogs = None;
+    let mut crash_shell = None;
+    let mut crash_chvt = false;
+    let mut crash_action = None;
+
+    for word in cmdline.split_ascii_whitespace() {
+        let (key, value) = match word.split_once('=') {
+            Some((key, value)) => (key, Some(value)),
+            None => (word, None),
+        };
+        match key {
+            "systemd.watchdog_sec" => {
+                runtime_watchdog = value.and_then(nonzero_watchdog_timeout);
+            }
+            "systemd.watchdog_pre_sec" => {
+                pretimeout_watchdog = value.and_then(nonzero_watchdog_timeout);
+            }
+            "systemd.watchdog_device" => {
+                watchdog_device = value.filter(|value| !value.is_empty()).map(str::to_string);
+            }
+            "systemd.watchdog_pretimeout_governor" => {
+                pretimeout_governor = value.filter(|value| !value.is_empty()).map(str::to_string);
+            }
+            "systemd.service_watchdogs" => {
+                service_watchdogs = parse_kernel_boolean(value);
+            }
+            "systemd.crash_shell" => {
+                crash_shell = parse_kernel_boolean(value);
+            }
+            "systemd.crash_chvt" => match value {
+                // C treats the key without an argument as enabling the
+                // feature. `parse_crash_chvt()` returns -1 for `no` and
+                // otherwise returns the selected VT (0 means enabled without
+                // selecting a concrete VT); malformed values keep the prior
+                // setting and are only warned about.
+                None => crash_chvt = true,
+                Some(value) => {
+                    if let Ok(chvt) = systemd_core_rs::load_fragment::parse_crash_chvt(value) {
+                        crash_chvt = chvt >= 0;
+                    }
+                }
+            },
+            "systemd.crash_action" => {
+                if let Some(value) = value
+                    && matches!(value, "freeze" | "reboot" | "poweroff")
+                {
+                    crash_action = Some(value.to_string());
+                }
+            }
+            "systemd.crash_reboot" => {
+                if let Some(enabled) = parse_kernel_boolean(value) {
+                    crash_action = Some(if enabled { "reboot" } else { "freeze" }.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if runtime_watchdog == Some(true) {
+        return Some(UnsupportedPid1Policy::RuntimeWatchdog);
+    }
+    if pretimeout_watchdog == Some(true) {
+        return Some(UnsupportedPid1Policy::PretimeoutWatchdog);
+    }
+    if watchdog_device.is_some() {
+        return Some(UnsupportedPid1Policy::WatchdogDevice);
+    }
+    if pretimeout_governor.is_some() {
+        return Some(UnsupportedPid1Policy::WatchdogPretimeoutGovernor);
+    }
+    if service_watchdogs == Some(false) {
+        return Some(UnsupportedPid1Policy::ServiceWatchdogsDisabled);
+    }
+    if crash_shell == Some(true) {
+        return Some(UnsupportedPid1Policy::CrashShell);
+    }
+    if crash_chvt {
+        return Some(UnsupportedPid1Policy::CrashChangeVirtualTerminal);
+    }
+    if let Some(action) = crash_action
+        && action != "freeze"
+    {
+        return Some(UnsupportedPid1Policy::CrashAction(action));
+    }
+    None
+}
+
+fn ensure_supported_pid1_boot_policy() -> Result<(), UnsupportedPid1Policy> {
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    unsupported_pid1_policy_from_cmdline(&cmdline).map_or(Ok(()), Err)
+}
+
 /// Translate Rust target architecture spelling to the public spelling used by
 /// `architecture_to_string(uname_architecture())`. A future full PID 1 port
 /// should replace this target-based subset with the shared uname/personality
@@ -1288,6 +1457,13 @@ fn main() {
     let manager_cgroup_root = if is_pid1 {
         boot_log("running as PID 1, starting early boot sequence");
 
+        // Do this before any mount, cgroup, or manager mutation. A requested
+        // watchdog/crash policy is safety-critical; continuing would create a
+        // system whose effective policy differs from the operator's command
+        // line. The normal no-override path remains unchanged.
+        ensure_supported_pid1_boot_policy()
+            .unwrap_or_else(|error| fail_closed("PID 1 startup policy", error));
+
         if let Err(error) = prepare_pid1_process_environment() {
             fail_closed("PID 1 process environment setup", error);
         }
@@ -1572,6 +1748,118 @@ mod tests {
         );
         assert_eq!(
             kernel_cmdline_override_target_from("rd.systemd.unit=@bad.target", true),
+            None
+        );
+    }
+
+    #[test]
+    fn default_pid1_kernel_policy_needs_no_unimplemented_owner() {
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("quiet loglevel=3"),
+            None
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.watchdog_sec=not-a-timeout systemd.crash_action=invalid"
+            ),
+            None,
+            "C warns and ignores malformed values instead of making startup fatal"
+        );
+    }
+
+    #[test]
+    fn explicit_watchdog_requests_fail_closed_before_manager_mutation() {
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.watchdog_sec=45s"),
+            Some(UnsupportedPid1Policy::RuntimeWatchdog)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.watchdog_pre_sec=500ms"),
+            Some(UnsupportedPid1Policy::PretimeoutWatchdog)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.watchdog_device=/dev/watchdog0 systemd.watchdog_sec=0"
+            ),
+            Some(UnsupportedPid1Policy::WatchdogDevice)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.watchdog_pretimeout_governor=noop"),
+            Some(UnsupportedPid1Policy::WatchdogPretimeoutGovernor)
+        );
+    }
+
+    #[test]
+    fn later_valid_cmdline_assignments_replace_earlier_watchdog_values() {
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.watchdog_sec=30s systemd.watchdog_sec=0"),
+            None
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.watchdog_sec=0 systemd.watchdog_sec=30s"),
+            Some(UnsupportedPid1Policy::RuntimeWatchdog)
+        );
+    }
+
+    #[test]
+    fn nondefault_crash_and_service_watchdog_policy_is_not_silently_ignored() {
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.service_watchdogs=no"),
+            Some(UnsupportedPid1Policy::ServiceWatchdogsDisabled)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_shell"),
+            Some(UnsupportedPid1Policy::CrashShell)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_chvt"),
+            Some(UnsupportedPid1Policy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_action=reboot"),
+            Some(UnsupportedPid1Policy::CrashAction("reboot".to_string()))
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_action=freeze"),
+            None
+        );
+    }
+
+    #[test]
+    fn crash_change_vt_matches_c_boolean_integer_and_last_assignment_rules() {
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_chvt"),
+            Some(UnsupportedPid1Policy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_chvt=yes"),
+            Some(UnsupportedPid1Policy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_chvt=0"),
+            Some(UnsupportedPid1Policy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_chvt=7"),
+            Some(UnsupportedPid1Policy::CrashChangeVirtualTerminal)
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_chvt=no"),
+            None
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_chvt=-1"),
+            None
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline(
+                "systemd.crash_chvt=yes systemd.crash_chvt=invalid"
+            ),
+            Some(UnsupportedPid1Policy::CrashChangeVirtualTerminal),
+            "an invalid later assignment must retain C's earlier valid setting"
+        );
+        assert_eq!(
+            unsupported_pid1_policy_from_cmdline("systemd.crash_chvt=yes systemd.crash_chvt=-1"),
             None
         );
     }
