@@ -192,6 +192,93 @@ fn test_smoke_is_supported(action: CliAction, is_pid1: bool) -> bool {
     action != CliAction::Test || is_pid1
 }
 
+/// The serialization file descriptor is a state-transfer capability, not an
+/// ordinary command-line input. C accepts it through `--deserialize=FD`,
+/// marks the descriptor close-on-exec while reading it, then deliberately
+/// preserves the manager-owned descriptors selected by `manager_serialize()`
+/// for the next image. See `src/core/main.c:1228-1241` and
+/// `src/core/main.c:1312-1363`.
+///
+/// Rust has not implemented that transaction yet. Recognize the exact C
+/// spellings before any startup mutation so a reexec can never be mistaken for
+/// a cold boot (which would orphan or accidentally consume inherited
+/// descriptors). The returned descriptor is diagnostic only; it is never
+/// borrowed, closed, or otherwise touched by this sidecar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReexecHandoff {
+    Deserialize { serialization_fd: i32 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ReexecHandoffParseError {
+    MissingDescriptor,
+    InvalidDescriptor(String),
+    UnsupportedHandoff { serialization_fd: i32 },
+}
+
+impl std::fmt::Display for ReexecHandoffParseError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingDescriptor => {
+                write!(formatter, "--deserialize requires a file descriptor")
+            }
+            Self::InvalidDescriptor(value) => {
+                write!(formatter, "invalid serialization file descriptor {value:?}")
+            }
+            Self::UnsupportedHandoff { serialization_fd } => write!(
+                formatter,
+                "refusing --deserialize={serialization_fd}: Rust PID 1 has no descriptor/state handoff implementation"
+            ),
+        }
+    }
+}
+
+/// Return C's effective final `--deserialize` request. `parse_argv()` closes
+/// a preceding serialization stream when a later occurrence wins, so the last
+/// valid occurrence is the one whose ownership must be preserved. A malformed
+/// occurrence is an error and must not fall back to an earlier descriptor.
+fn reexec_handoff_from_args(
+    args: &[String],
+) -> Result<Option<ReexecHandoff>, ReexecHandoffParseError> {
+    let mut handoff = None;
+    let mut arguments = args.iter();
+
+    while let Some(argument) = arguments.next() {
+        let descriptor = if let Some(descriptor) = argument.strip_prefix("--deserialize=") {
+            descriptor
+        } else if argument == "--deserialize" {
+            arguments
+                .next()
+                .map(String::as_str)
+                .ok_or(ReexecHandoffParseError::MissingDescriptor)?
+        } else {
+            continue;
+        };
+
+        let serialization_fd = descriptor
+            .parse::<i32>()
+            .ok()
+            .filter(|fd| *fd >= 0)
+            .ok_or_else(|| ReexecHandoffParseError::InvalidDescriptor(descriptor.to_string()))?;
+        handoff = Some(ReexecHandoff::Deserialize { serialization_fd });
+    }
+
+    Ok(handoff)
+}
+
+/// Refuse reexec before `prepare_pid1_process_environment()`, mounts, cgroups,
+/// logging, or any descriptor-bearing manager object is initialized. This is
+/// intentionally stricter than C's early setup skip: without the complete
+/// serialization/deserialization contract, proceeding would be unsafe.
+fn reject_unimplemented_reexec_handoff(args: &[String]) -> Result<(), ReexecHandoffParseError> {
+    match reexec_handoff_from_args(args)? {
+        None => Ok(()),
+        Some(ReexecHandoff::Deserialize { serialization_fd }) => {
+            Err(ReexecHandoffParseError::UnsupportedHandoff { serialization_fd })
+        }
+    }
+}
+
 fn print_version() {
     println!("systemd {}", VERSION);
 }
@@ -1491,6 +1578,13 @@ fn run_event_loop(
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if let Err(error) = reject_unimplemented_reexec_handoff(&args[1..]) {
+        // This is before CLI parsing by design: `--deserialize` is an
+        // internal C reexec option, not a supported Rust user-facing option,
+        // and it must be rejected before it can be mistaken for a cold boot.
+        eprintln!("systemd: {error}");
+        std::process::exit(CLI_ERROR_EXIT_STATUS);
+    }
     let options = match parse_cli_options(&args[1..]) {
         Ok(options) => options,
         Err(error) => {
@@ -1733,6 +1827,55 @@ mod tests {
         assert_eq!(
             parse_cli_options(&args),
             Err(CliParseError::PositionalArgument("default.target"))
+        );
+    }
+
+    #[test]
+    fn reexec_handoff_parser_matches_c_deserialize_spellings_and_last_value() {
+        let args = vec![
+            "--deserialize=3".to_string(),
+            "--switched-root".to_string(),
+            "--deserialize".to_string(),
+            "9".to_string(),
+        ];
+        assert_eq!(
+            reexec_handoff_from_args(&args),
+            Ok(Some(ReexecHandoff::Deserialize {
+                serialization_fd: 9
+            })),
+            "C replaces the previous serialization stream when a later --deserialize wins"
+        );
+    }
+
+    #[test]
+    fn reexec_handoff_parser_rejects_missing_or_invalid_descriptors() {
+        assert_eq!(
+            reexec_handoff_from_args(&["--deserialize".to_string()]),
+            Err(ReexecHandoffParseError::MissingDescriptor)
+        );
+        assert_eq!(
+            reexec_handoff_from_args(&["--deserialize=-1".to_string()]),
+            Err(ReexecHandoffParseError::InvalidDescriptor("-1".to_string()))
+        );
+        assert_eq!(
+            reexec_handoff_from_args(&["--deserialize=not-a-fd".to_string()]),
+            Err(ReexecHandoffParseError::InvalidDescriptor(
+                "not-a-fd".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn reexec_handoff_is_refused_before_pid1_startup_can_mutate_state() {
+        assert_eq!(
+            reject_unimplemented_reexec_handoff(&["--deserialize=42".to_string()]),
+            Err(ReexecHandoffParseError::UnsupportedHandoff {
+                serialization_fd: 42
+            })
+        );
+        assert_eq!(
+            reject_unimplemented_reexec_handoff(&["--help".to_string()]),
+            Ok(())
         );
     }
 
