@@ -881,18 +881,20 @@ fn test_service_timeout_action_matches_all_c_timer_phase_and_policy_cases() {
 }
 
 #[test]
-fn test_expired_start_timeout_enters_canonical_stop_phase() {
-    // C provenance: src/core/service.c:service_dispatch_timer() around the
-    // SERVICE_START/SERVICE_START_PRE timeout cases. A timed-out start with
-    // TimeoutStartFailureMode=terminate transitions into StopSigterm and
-    // records the timeout result instead of publishing Dead directly.
+fn test_expired_notify_start_timeout_enters_canonical_stop_phase() {
+    // C provenance: src/core/service.c:service_enter_start() makes
+    // Type=simple/idle starts unbounded and advances them out of SERVICE_START;
+    // Type=notify remains in SERVICE_START with TimeoutStartSec=. The matching
+    // service_dispatch_timer() case transitions a timed-out start with
+    // TimeoutStartFailureMode=terminate into StopSigterm and records timeout
+    // rather than publishing Dead directly.
     let _test_lock = test_env_lock();
     let mut mgr = new_test_runtime_manager();
     insert_fsm_service(
         &mut mgr,
         "timeout-start.service",
         ServiceState::Start,
-        ServiceType::Simple,
+        ServiceType::Notify,
         |info| {
             info.service.timeout_start_failure_mode = Some(ServiceTimeoutFailureMode::Terminate);
         },
