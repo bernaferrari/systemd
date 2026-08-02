@@ -20,11 +20,13 @@
 - **Planned at**: commit `0370637b53`, 2026-08-01
 - **Execution status**: IN PROGRESS — 23 of 897 C-vtable rows have been
   reviewed. A bounded ancillary-FD receive helper compiles, but is deliberately
-  disconnected from the production listener.
+  disconnected from the production listener. The initial client authentication
+  frame now matches C's `EXTERNAL`, `DATA`, optional Unix-FD negotiation, and
+  `BEGIN` sequence, with ten Linux tests.
 - **Next gate**: expand the C-authoritative row review and connect the helper
   only through authenticated direct-private-peer admission, bounded ownership,
-  and cleanup tests. Production `/run/systemd/private` binding and system-bus
-  name ownership remain deferred.
+  and cleanup tests. The client-frame slice neither binds production
+  `/run/systemd/private` nor owns the system-bus name; both remain deferred.
 
 ## Why this matters
 

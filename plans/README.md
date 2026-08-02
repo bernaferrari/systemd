@@ -22,8 +22,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
 - Plan 001 is a prerequisite for reproducible image-based Rust PID1 boot
   validation. It deliberately does not make Rust the production default.
-- Plan 003 records the configured C directive table and parser diagnostics;
-  transaction and runtime semantics remain separate work.
+- Plan 003 records the configured C directive table, parser diagnostics, and a
+  conservative parser-consumer inventory overlay. Only explicitly reviewed
+  consumers can be `recognized-and-stored`; transaction and runtime semantics
+  remain separate work.
 - Plan 004 has a graph/job trace-oracle slice: versioned deterministic traces
   with checked-in C provenance for required-dependency and conflict jobs. Its
   service slice also makes manual stop cancel a pending auto-restart before
@@ -77,13 +79,14 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
 
 ## Immediate gates
 
-- **002:** extend the reviewed C-vtable matrix beyond its 23 of 897 rows, then
-  connect the bounded ancillary-FD helper to authenticated private-peer
-  transport. Production private-socket binding and system-bus name ownership
-  remain deferred.
-- **003:** rerun the generated-inventory and parser-diagnostics checks against
-  the configured Linux profile; inventory is landed, but semantic consumers
-  and parser parity are not.
+- **002:** the initial D-Bus client authentication frame now matches C's
+  EXTERNAL/DATA/optional-FD/BEGIN sequence in ten Linux tests. Extend the
+  reviewed C-vtable matrix beyond 23 of 897 rows, then connect the bounded
+  ancillary-FD helper to authenticated private-peer transport. Production
+  private-socket binding and system-bus name ownership remain deferred.
+- **003:** the parser-consumer overlay is landed; rerun its generated-inventory
+  and parser-diagnostics checks against the configured Linux profile, then
+  expand only reviewed consumers. Semantic parser parity is not claimed.
 - **004:** prove remaining unit/job lifecycle and resource-cleanup behavior
   beyond PID cleanup and terminal-cgroup pruning.
 - **005:** compose and test security, watchdog, and descriptor-preserving

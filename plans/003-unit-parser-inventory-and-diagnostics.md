@@ -19,12 +19,14 @@
 - **Category**: correctness / tests / architecture
 - **Planned at**: commit `0370637b53`, 2026-08-01
 - **Execution status**: IN PROGRESS — the generated directive inventory and
-  retained parser diagnostics are landed; this is not parser or runtime
-  semantic parity.
+  retained parser diagnostics are landed. Its parser-consumer inventory overlay
+  now promotes only explicitly reviewed consumers; this is not parser or
+  runtime semantic parity.
 - **Next gate**: rerun the configured-profile inventory and diagnostics gates,
-  then keep recognized-but-unconsumed directives blocked until their runtime
-  consumer and differential evidence exist. `recognized-and-stored` requires
-  reviewed parser-consumer metadata, not merely a matching Rust arm or field.
+  then expand the overlay only with reviewed consumers. Keep
+  recognized-but-unconsumed directives blocked until their runtime consumer and
+  differential evidence exist; `recognized-and-stored` requires metadata, not
+  merely a matching Rust arm or field.
 
 ## Why this matters
 
