@@ -1601,8 +1601,14 @@ mod tests {
         let mut attachments = ReceivedUnixFds::new(vec![descriptor]);
         assert_eq!(attachments.len(), 1);
         assert_eq!(attachments.take(0).unwrap().as_raw_fd(), expected);
-        assert_eq!(attachments.take(0), Err(WireError::InvalidUnixFdIndex(0)));
-        assert_eq!(attachments.take(1), Err(WireError::InvalidUnixFdIndex(1)));
+        assert!(matches!(
+            attachments.take(0),
+            Err(WireError::InvalidUnixFdIndex(0))
+        ));
+        assert!(matches!(
+            attachments.take(1),
+            Err(WireError::InvalidUnixFdIndex(1))
+        ));
     }
 
     #[test]

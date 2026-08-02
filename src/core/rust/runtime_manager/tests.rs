@@ -3965,7 +3965,13 @@ fn test_manual_stop_cancels_pending_auto_restart_before_dispatch() {
             .get("manual-stop.service")
             .is_some_and(|unit| unit.stop_pending)
     );
-    assert!(mgr.process_due_service_restarts().is_empty());
+    // The public next-deadline view must not retain the canceled immediate
+    // restart. This observes the event-loop contract without exposing the
+    // internal restart-drain helper solely for a unit test.
+    assert_eq!(
+        mgr.service_event_timeout(std::time::Duration::from_secs(7)),
+        std::time::Duration::from_secs(7)
+    );
 }
 
 #[test]

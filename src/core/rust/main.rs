@@ -342,7 +342,7 @@ fn nonzero_watchdog_timeout(value: &str) -> Option<bool> {
         return Some(true);
     }
 
-    const UNITS: [(&str, f64); 30] = [
+    const UNITS: [(&str, f64); 29] = [
         ("microseconds", 1.0),
         ("milliseconds", 1_000.0),
         ("seconds", 1_000_000.0),
