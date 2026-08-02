@@ -2023,7 +2023,9 @@ mod tests {
     fn early_core_pattern_fails_closed_only_for_c_accepted_absolute_paths() {
         assert_eq!(
             unsupported_pid1_policy_from_cmdline("systemd.early_core_pattern=/run/early-core"),
-            Some(UnsupportedPid1Policy::EarlyCorePattern)
+            Some(UnsupportedPid1Policy::Crash(
+                systemd_core_rs::crash_handler::UnsupportedCrashStartupPolicy::EarlyCorePattern
+            ))
         );
         assert_eq!(
             unsupported_pid1_policy_from_cmdline("systemd.early_core_pattern=relative-core"),
@@ -2034,7 +2036,9 @@ mod tests {
             unsupported_pid1_policy_from_cmdline(
                 "systemd.early_core_pattern=/run/early-core systemd.early_core_pattern=relative-core"
             ),
-            Some(UnsupportedPid1Policy::EarlyCorePattern),
+            Some(UnsupportedPid1Policy::Crash(
+                systemd_core_rs::crash_handler::UnsupportedCrashStartupPolicy::EarlyCorePattern
+            )),
             "a later C-invalid relative value retains the earlier active core pattern"
         );
         assert_eq!(
