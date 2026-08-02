@@ -147,6 +147,9 @@ pub struct PrivateBusReplyQueue {
     reserved_reply: Option<u32>,
     next_outgoing_serial: u32,
     terminal: bool,
+    // Unlike other terminal failures, an invalid write acknowledgement makes
+    // every later byte count untrustworthy, including a zero-byte retry.
+    write_accounting_broken: bool,
 }
 
 impl PrivateBusReplyQueue {
@@ -178,6 +181,7 @@ impl PrivateBusReplyQueue {
             reserved_reply: None,
             next_outgoing_serial: 1,
             terminal: false,
+            write_accounting_broken: false,
         })
     }
 
@@ -586,7 +590,7 @@ impl PrivateBusReplyQueue {
         &mut self,
         written: usize,
     ) -> Result<bool, PrivateBusReplyQueueError> {
-        if self.terminal {
+        if self.write_accounting_broken {
             return Err(PrivateBusReplyQueueError::TerminalFailure);
         }
         let Some(frame) = self.outbound.front_mut() else {
@@ -594,6 +598,7 @@ impl PrivateBusReplyQueue {
                 return Ok(false);
             }
             self.terminal = true;
+            self.write_accounting_broken = true;
             return Err(PrivateBusReplyQueueError::WriteBeyondCurrentFrame {
                 written,
                 available: 0,
@@ -602,6 +607,7 @@ impl PrivateBusReplyQueue {
         let available = frame.remaining().len();
         if written > available {
             self.terminal = true;
+            self.write_accounting_broken = true;
             return Err(PrivateBusReplyQueueError::WriteBeyondCurrentFrame { written, available });
         }
         frame.offset += written;
@@ -624,6 +630,7 @@ impl PrivateBusReplyQueue {
         self.outbound_bytes = 0;
         self.reserved_reply = None;
         self.terminal = false;
+        self.write_accounting_broken = false;
     }
 
     fn reply_serial_is_reserved(&self, reply_serial: u32) -> bool {
