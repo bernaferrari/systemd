@@ -47,6 +47,14 @@ impl RuntimeManager {
         if let Some(unit) = self.units.get_mut(name) {
             unit.active_state = new_state;
         }
+        // C's unit_notify() prunes an empty cgroup whenever a unit enters an
+        // inactive or failed state. Keep that manager-owned capability cleanup
+        // before job propagation so terminal/canceled jobs cannot retain a
+        // cgroup FD, event watch, or compatibility index until a later kernel
+        // event (or forever when no event arrives).
+        if matches!(new_state, ActiveState::Inactive | ActiveState::Failed) {
+            self.prune_unit_cgroup(name);
+        }
         // Like unit_notify() in the C manager, process every low-level
         // transition, including transitions with an unchanged translated
         // state. The installed canonical job is the only lifecycle owner.

@@ -4656,6 +4656,43 @@ fn test_stop_prunes_unit_cgroup_when_empty() {
 }
 
 #[test]
+fn test_terminal_service_state_prunes_empty_cgroup_idempotently() {
+    // C provenance: src/core/unit.c:unit_notify() calls
+    // src/core/cgroup.c:unit_prune_cgroup() whenever a unit becomes inactive
+    // or failed. The manager must release its cgroup capability and indexes
+    // at the terminal transition, without requiring a later cgroup event.
+    let _test_lock = test_env_lock();
+    let dir = test_temp_dir("test-systemd-terminal-cgroup-cleanup");
+    let cgroup_root = dir.join("cgroup-root");
+    let mut mgr = RuntimeManager::new_with_test_cgroup_root(cgroup_root.clone());
+    let info = UnitFileInfo::new("terminal.service", dir.join("terminal.service"));
+    mgr.unit_files.insert(info.name.clone(), info.clone());
+    insert_test_service(&mut mgr, "terminal.service", ServiceState::Running);
+    mgr.ensure_unit_cgroup("terminal.service", &info).unwrap();
+    let cgroup_path = mgr
+        .unit_cgroup_paths
+        .get("terminal.service")
+        .cloned()
+        .expect("missing terminal cgroup path");
+    assert!(cgroup_path.exists());
+
+    mgr.set_service_state("terminal.service", ServiceState::Dead);
+    assert!(!cgroup_path.exists());
+    assert!(!mgr.unit_cgroups.contains_key("terminal.service"));
+    assert!(!mgr.unit_cgroup_paths.contains_key("terminal.service"));
+    assert!(!mgr.unit_cgroup_populated.contains_key("terminal.service"));
+
+    // Replaying the terminal state must not resurrect or double-release the
+    // capability, matching C's idempotent inactive-state notification path.
+    mgr.set_service_state("terminal.service", ServiceState::Dead);
+    assert!(!mgr.unit_cgroups.contains_key("terminal.service"));
+    assert!(!mgr.unit_cgroup_paths.contains_key("terminal.service"));
+    assert!(!mgr.unit_cgroup_populated.contains_key("terminal.service"));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn test_delegate_owns_distinct_payload_and_control_capabilities() {
     let dir = test_temp_dir("test-systemd-cgroup-delegate-targets");
     let mut info = UnitFileInfo::new("delegate.service", dir.join("delegate.service"));
