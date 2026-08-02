@@ -39,6 +39,56 @@ MACROS = (
 )
 MACRO_RE = re.compile(r"\b(" + "|".join(MACROS) + r")\s*\(")
 
+# This standard Peer method is dispatched by sd-bus itself, rather than by an
+# object-local SD_BUS_* vtable. The vtable field records C's exact dispatcher.
+STANDARD_DISPATCH_MEMBERS = (
+    {
+        "source": "src/libsystemd/sd-bus/sd-bus.c",
+        "vtable": "process_builtin",
+        "kind": "method",
+        "member": "Ping",
+        "input": "",
+        "output": "",
+        "flags": "sd-bus built-in",
+        "bindings": [{"path": "*", "interface": "org.freedesktop.DBus.Peer"}],
+    },
+    {
+        "source": "src/libsystemd/sd-bus/sd-bus.c",
+        "vtable": "process_builtin",
+        "kind": "method",
+        "member": "GetMachineId",
+        "input": "",
+        "output": "s",
+        "flags": "sd-bus built-in",
+        "bindings": [{"path": "*", "interface": "org.freedesktop.DBus.Peer"}],
+    },
+    {
+        "source": "src/libsystemd/sd-bus/bus-objects.c",
+        "vtable": "bus_process_object",
+        "kind": "method",
+        "member": "Introspect",
+        "input": "",
+        "output": "s",
+        "flags": "sd-bus built-in",
+        "bindings": [{"path": "*", "interface": "org.freedesktop.DBus.Introspectable"}],
+    },
+)
+
+IMPLEMENTED_ADAPTER_MEMBER_KEYS = (
+    "src/libsystemd/sd-bus/sd-bus.c:process_builtin:method:Ping",
+    "src/libsystemd/sd-bus/sd-bus.c:process_builtin:method:GetMachineId",
+    "src/libsystemd/sd-bus/bus-objects.c:bus_process_object:method:Introspect",
+    "src/core/dbus-manager.c:bus_manager_vtable:method:Reexecute",
+    "src/core/dbus-manager.c:bus_manager_vtable:method:Exit",
+    "src/core/dbus-manager.c:bus_manager_vtable:method:Reboot",
+    "src/core/dbus-manager.c:bus_manager_vtable:method:SoftReboot",
+    "src/core/dbus-manager.c:bus_manager_vtable:method:PowerOff",
+    "src/core/dbus-manager.c:bus_manager_vtable:method:Halt",
+    "src/core/dbus-manager.c:bus_manager_vtable:method:KExec",
+    "src/core/dbus-manager.c:bus_manager_vtable:method:SwitchRoot",
+    "src/core/dbus-manager.c:bus_manager_vtable:method:SetExitCode",
+)
+
 
 def balanced(text: str, opening: int, left: str = "(", right: str = ")") -> tuple[str, int]:
     """Return the balanced contents after *opening* and its closing index."""
@@ -209,6 +259,9 @@ def inventory(root: Path) -> list[dict[str, Any]]:
                     member["bindings"] = bindings.get(match.group(1), [])
                     member["feature_predicate"] = "selected-by-src/core/meson.build"
                     members.append(member)
+    for member in STANDARD_DISPATCH_MEMBERS:
+        if (root / member["source"]).is_file():
+            members.append(member | {"feature_predicate": "always-built sd-bus dispatch"})
     members.sort(key=lambda value: (value["source"], value["vtable"], value["kind"], value["member"]))
     keys = [member_key(member) for member in members]
     if len(keys) != len(set(keys)):
@@ -282,6 +335,24 @@ def apply_metadata(members: list[dict[str, Any]], metadata: dict[str, dict[str, 
     return members, unreviewed
 
 
+def require_implemented_adapter_metadata(
+    members: list[dict[str, Any]], metadata: dict[str, dict[str, Any]]
+) -> None:
+    """Keep the bounded Rust adapter surface explicitly reviewed."""
+    available = {member_key(member) for member in members}
+    missing_authority = sorted(set(IMPLEMENTED_ADAPTER_MEMBER_KEYS) - available)
+    if missing_authority:
+        raise ValueError(
+            "implemented Rust adapter method is absent from C inventory: "
+            + ", ".join(missing_authority)
+        )
+    missing_metadata = sorted(set(IMPLEMENTED_ADAPTER_MEMBER_KEYS) - set(metadata))
+    if missing_metadata:
+        raise ValueError(
+            "implemented Rust adapter method lacks metadata: " + ", ".join(missing_metadata)
+        )
+
+
 def meson_profile(build: Path | None) -> dict[str, Any] | None:
     if build is None:
         return None
@@ -320,6 +391,7 @@ def main() -> int:
         members = inventory(root)
         metadata = load_metadata(metadata_path)
         members, unreviewed = apply_metadata(members, metadata)
+        require_implemented_adapter_metadata(members, metadata)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"D-Bus vtable inventory failed: {error}", file=sys.stderr)
         return 1

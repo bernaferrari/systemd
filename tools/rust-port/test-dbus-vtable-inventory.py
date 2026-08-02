@@ -152,13 +152,37 @@ static const BusObjectImplementation fallback_object = {
     def test_repository_inventory_keeps_the_existing_shadow_subset_reviewed(self) -> None:
         repository = Path(__file__).resolve().parents[2]
         members = TOOL.inventory(repository)
-        _, unreviewed = TOOL.apply_metadata(
-            members,
-            TOOL.load_metadata(repository / TOOL.METADATA_NAME),
-        )
+        metadata = TOOL.load_metadata(repository / TOOL.METADATA_NAME)
+        _, unreviewed = TOOL.apply_metadata(members, metadata)
+        TOOL.require_implemented_adapter_metadata(members, metadata)
         reviewed = len(members) - len(unreviewed)
-        self.assertGreaterEqual(reviewed, 11)
+        self.assertGreaterEqual(reviewed, 23)
         self.assertGreater(len(unreviewed), 0)
+
+    def test_adapter_rows_have_reviewed_statuses_and_c_signatures(self) -> None:
+        repository = Path(__file__).resolve().parents[2]
+        metadata = TOOL.load_metadata(repository / TOOL.METADATA_NAME)
+        expected = {
+            "src/libsystemd/sd-bus/sd-bus.c:process_builtin:method:Ping": ("", "", "shadow"),
+            "src/libsystemd/sd-bus/sd-bus.c:process_builtin:method:GetMachineId": ("", "s", "shadow"),
+            "src/libsystemd/sd-bus/bus-objects.c:bus_process_object:method:Introspect": ("", "s", "shadow"),
+        }
+        for key in TOOL.IMPLEMENTED_ADAPTER_MEMBER_KEYS:
+            self.assertIn(key, metadata)
+            self.assertNotEqual(metadata[key]["status"], "ready-for-integration")
+        for key, (input_signature, output_signature, status) in expected.items():
+            self.assertEqual(
+                (metadata[key]["input"], metadata[key]["output"], metadata[key]["status"]),
+                (input_signature, output_signature, status),
+            )
+
+    def test_missing_adapter_metadata_is_rejected(self) -> None:
+        repository = Path(__file__).resolve().parents[2]
+        members = TOOL.inventory(repository)
+        metadata = TOOL.load_metadata(repository / TOOL.METADATA_NAME)
+        metadata.pop(TOOL.IMPLEMENTED_ADAPTER_MEMBER_KEYS[0])
+        with self.assertRaisesRegex(ValueError, "implemented Rust adapter method lacks metadata"):
+            TOOL.require_implemented_adapter_metadata(members, metadata)
 
 
 if __name__ == "__main__":
