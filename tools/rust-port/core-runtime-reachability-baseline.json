@@ -99,13 +99,13 @@
       ]
     },
     "crash_action": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/crash_action.rs"
       ]
     },
     "crash_handler": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/crash_handler.rs"
       ]
@@ -372,7 +372,7 @@
       ]
     },
     "load_fragment": {
-      "classification": "compiled-but-disconnected",
+      "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/load_fragment.rs"
       ]
@@ -465,6 +465,12 @@
       "classification": "runtime-reachable",
       "source_files": [
         "src/core/rust/pid1_cgroup_source.rs"
+      ]
+    },
+    "pid1_dbus_ancillary": {
+      "classification": "compiled-but-disconnected",
+      "source_files": [
+        "src/core/rust/pid1_dbus_ancillary.rs"
       ]
     },
     "pid1_dbus_auth": {
