@@ -896,6 +896,10 @@ fn test_expired_notify_start_timeout_enters_canonical_stop_phase() {
         ServiceState::Start,
         ServiceType::Notify,
         |info| {
+            // Service::default() uses an infinite start timeout. Mirror an
+            // explicit finite TimeoutStartSec= so this synthetic notify start
+            // actually owns the timer dispatched below.
+            info.service.timeout_start_sec = Some(1);
             info.service.timeout_start_failure_mode = Some(ServiceTimeoutFailureMode::Terminate);
         },
     );
