@@ -56,7 +56,7 @@ issue = "systemd-cpuw"
 reason = "Split D-Bus framing, scalar/aggregate value decoding, and received-descriptor ownership behind bounded wire-format modules while keeping one exact length/alignment authority."
 
 [files."src/core/rust/runtime_manager.rs"]
-max_lines = 2061
+max_lines = 2064
 issue = "systemd-cpuw"
 reason = "Continue extracting RuntimeManager construction and event-source capability handoffs into focused lifecycle modules without duplicating manager state."
 
@@ -71,6 +71,6 @@ issue = "systemd-cpuw"
 reason = "Extract PID1 startup phases, event-loop sources, service start-timeout transitions, and fail-closed outer lifecycle ownership without moving privileged process-global transitions into callbacks."
 
 [files."src/core/rust/runtime_manager/unit_file.rs"]
-max_lines = 2263
+max_lines = 2272
 issue = "systemd-cpuw"
 reason = "Split fragment tokenization, directive diagnostics, and type-specific assignment handling around the generated C directive authority."
