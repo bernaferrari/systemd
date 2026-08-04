@@ -749,7 +749,7 @@ fn test_service_timeout_parser_matches_c_zero_and_invalid_value_semantics() {
 
 #[test]
 fn test_oneshot_start_timeout_is_disabled_unless_explicit() {
-    let mut mgr = new_test_runtime_manager();
+    let mgr = new_test_runtime_manager();
     let mut info = UnitFileInfo::new("oneshot.service", PathBuf::from("oneshot.service"));
     info.service_type = Some(ServiceType::Oneshot);
 
