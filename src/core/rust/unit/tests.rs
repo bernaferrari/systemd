@@ -11,14 +11,14 @@ mod tests {
         activation_details_deserialize, activation_details_new, activation_details_serialize,
         collect_mode_from_string, collect_mode_to_string, oom_policy_from_string,
         oom_policy_to_string, port_status, setenv_unit_path, unit_acquire_invocation_id,
-        unit_active_state, unit_add_alias, unit_add_default_target_dependency, unit_add_mounts_for,
-        unit_add_to_load_queue, unit_add_to_stop_notify_queue, unit_add_two_dependencies_by_name,
-        unit_can_freeze, unit_compare_priority, unit_export_state_files, unit_freezer_action,
-        unit_freezer_complete, unit_has_dependency, unit_has_name, unit_invocation_log_field,
-        unit_log_field, unit_mount_dependency_type_from_string,
-        unit_mount_dependency_type_to_string, unit_needs_console, unit_new_for_name,
-        unit_remove_from_stop_notify_queue, unit_start, unit_stop, unit_test_start_limit,
-        unit_unlink_state_files,
+        unit_active_state, unit_add_alias, unit_add_default_target_dependency,
+        unit_add_dependency_by_name, unit_add_mounts_for, unit_add_to_load_queue,
+        unit_add_to_stop_notify_queue, unit_add_two_dependencies_by_name, unit_can_freeze,
+        unit_compare_priority, unit_export_state_files, unit_freezer_action, unit_freezer_complete,
+        unit_has_dependency, unit_has_name, unit_invocation_log_field, unit_log_field,
+        unit_mount_dependency_type_from_string, unit_mount_dependency_type_to_string,
+        unit_needs_console, unit_new_for_name, unit_remove_from_stop_notify_queue, unit_start,
+        unit_stop, unit_test_start_limit, unit_unlink_state_files,
     };
     use systemd_shared_rs::tests::TestEnvironment;
 
@@ -88,6 +88,48 @@ mod tests {
             DependencyKind::After,
             "network.target"
         ));
+    }
+
+    #[test]
+    fn dependency_name_templates_use_the_source_unit_instance() {
+        let mut unit =
+            unit_new_for_name(sample_manager(), UnitType::Service, "worker@blue.service").unwrap();
+
+        unit_add_dependency_by_name(&mut unit, DependencyKind::After, "helper@.service", true, 0)
+            .unwrap();
+
+        assert!(unit_has_dependency(
+            &unit,
+            DependencyKind::After,
+            "helper@blue.service"
+        ));
+        assert!(unit.manager.known_units.contains("helper@blue.service"));
+        assert!(!unit.manager.known_units.contains("helper@.service"));
+    }
+
+    #[test]
+    fn two_dependency_name_templates_use_the_source_unit_prefix() {
+        let mut unit = sample_unit();
+
+        unit_add_two_dependencies_by_name(
+            &mut unit,
+            DependencyKind::Requires,
+            DependencyKind::After,
+            "helper@.service",
+            true,
+            0,
+        )
+        .unwrap();
+
+        for dependency in [DependencyKind::Requires, DependencyKind::After] {
+            assert!(unit_has_dependency(
+                &unit,
+                dependency,
+                "helper@demo.service"
+            ));
+        }
+        assert!(unit.manager.known_units.contains("helper@demo.service"));
+        assert!(!unit.manager.known_units.contains("helper@.service"));
     }
 
     #[test]

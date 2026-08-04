@@ -43,8 +43,9 @@ pub fn unit_add_dependency_by_name(
     add_reference: bool,
     mask: DependencyMask,
 ) -> Result<()> {
-    unit.manager.known_units.insert(name.to_string());
-    unit_add_dependency(unit, dependency, name, add_reference, mask)
+    let name = resolve_dependency_template_name(unit, name);
+    unit.manager.known_units.insert(name.clone());
+    unit_add_dependency(unit, dependency, &name, add_reference, mask)
 }
 
 pub fn unit_add_two_dependencies_by_name(
@@ -55,7 +56,79 @@ pub fn unit_add_two_dependencies_by_name(
     add_reference: bool,
     mask: DependencyMask,
 ) -> Result<()> {
-    unit_add_two_dependencies(unit, first, second, name, add_reference, mask)
+    let name = resolve_dependency_template_name(unit, name);
+    unit.manager.known_units.insert(name.clone());
+    unit_add_two_dependencies(unit, first, second, &name, add_reference, mask)
+}
+
+/// Resolve a valid template name in the same narrow circumstances as C's
+/// `resolve_template()` in `src/core/unit.c`: use this unit's instance, or
+/// its primary-name prefix when the unit is not instanced. The Rust model does
+/// not retain C's separate `Unit.instance`, but that value is derived from the
+/// primary ID when the unit is named.
+fn resolve_dependency_template_name(unit: &Unit, name: &str) -> String {
+    let Some((template_prefix, suffix)) = valid_template_parts(name) else {
+        return name.to_string();
+    };
+
+    let instance_or_prefix = unit
+        .id
+        .as_deref()
+        .and_then(unit_instance)
+        .or_else(|| unit.id.as_deref().and_then(unit_prefix));
+
+    let Some(instance_or_prefix) = instance_or_prefix else {
+        return name.to_string();
+    };
+
+    format!("{template_prefix}@{instance_or_prefix}.{suffix}")
+}
+
+fn valid_template_parts(name: &str) -> Option<(&str, &str)> {
+    let (prefix, suffix) = name.rsplit_once('.')?;
+    if prefix.is_empty()
+        || !matches!(
+            suffix,
+            "service"
+                | "mount"
+                | "swap"
+                | "socket"
+                | "target"
+                | "device"
+                | "automount"
+                | "timer"
+                | "path"
+                | "slice"
+                | "scope"
+        )
+    {
+        return None;
+    }
+
+    let template_prefix = prefix.strip_suffix('@')?;
+    if template_prefix.is_empty()
+        || !template_prefix.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'-' | b'_' | b'.' | b'\\')
+        })
+    {
+        return None;
+    }
+
+    Some((template_prefix, suffix))
+}
+
+fn unit_instance(id: &str) -> Option<&str> {
+    let (prefix_and_instance, _) = id.rsplit_once('.')?;
+    let (_, instance) = prefix_and_instance.split_once('@')?;
+    (!instance.is_empty()).then_some(instance)
+}
+
+fn unit_prefix(id: &str) -> Option<&str> {
+    let (prefix_and_instance, _) = id.rsplit_once('.')?;
+    let prefix = prefix_and_instance
+        .split_once('@')
+        .map_or(prefix_and_instance, |(prefix, _)| prefix);
+    (!prefix.is_empty()).then_some(prefix)
 }
 
 /// Set the process-wide unit search path and update the Rust-side cache.
