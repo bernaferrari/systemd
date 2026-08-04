@@ -743,13 +743,23 @@ pub(super) fn parse_unit_content_into(
                     info.service.restart = parse_restart_policy(value);
                 }
                 ("service", "RestartSec") => {
-                    info.service.restart_sec = parse_duration_seconds(value);
+                    // C's config_parse_sec() retains the previous value when
+                    // an assignment is empty or otherwise invalid.
+                    if let Some(restart_sec) = parse_duration_seconds(value) {
+                        info.service.restart_sec = Some(restart_sec);
+                    }
                 }
                 ("service", "RestartSteps") => {
-                    info.service.restart_steps = parse_optional_u32(value);
+                    // config_parse_unsigned() has the same retain-on-failure
+                    // semantics as config_parse_sec().
+                    if let Some(restart_steps) = parse_optional_u32(value) {
+                        info.service.restart_steps = Some(restart_steps);
+                    }
                 }
                 ("service", "RestartMaxDelaySec") => {
-                    info.service.restart_max_delay_sec = parse_duration_seconds(value);
+                    if let Some(restart_max_delay_sec) = parse_duration_seconds(value) {
+                        info.service.restart_max_delay_sec = Some(restart_max_delay_sec);
+                    }
                 }
                 ("service", "TimeoutStartSec") => {
                     // C's config_parse_service_timeout() ignores invalid values
@@ -795,10 +805,14 @@ pub(super) fn parse_unit_content_into(
                     }
                 }
                 ("service", "RuntimeMaxSec") => {
-                    info.service.runtime_max_sec = parse_duration_seconds(value);
+                    if let Some(runtime_max_sec) = parse_duration_seconds(value) {
+                        info.service.runtime_max_sec = Some(runtime_max_sec);
+                    }
                 }
                 ("service", "WatchdogSec") => {
-                    info.service.watchdog_sec = parse_duration_seconds(value);
+                    if let Some(watchdog_sec) = parse_duration_seconds(value) {
+                        info.service.watchdog_sec = Some(watchdog_sec);
+                    }
                 }
                 ("service", "SuccessExitStatus") => {
                     append_or_clear_list(&mut info.service.success_exit_status, value);

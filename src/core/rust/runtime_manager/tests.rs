@@ -661,6 +661,33 @@ fn test_parse_service_directives_comprehensive() {
 }
 
 #[test]
+fn test_service_duration_directives_retain_prior_value_on_invalid_assignment() {
+    let _test_lock = test_env_lock();
+    let dir = test_temp_dir("test-systemd-service-duration-invalid-retains-prior");
+    fs::create_dir_all(&dir).unwrap();
+    let service_path = dir.join("demo.service");
+    fs::write(
+        &service_path,
+        "[Service]\nRestartSec=5s\nRestartSec=\nRestartSec=not-a-duration\nRestartSteps=7\nRestartSteps=\nRestartSteps=not-a-number\nRestartMaxDelaySec=10s\nRestartMaxDelaySec=\nRestartMaxDelaySec=not-a-duration\nRuntimeMaxSec=15s\nRuntimeMaxSec=\nRuntimeMaxSec=not-a-duration\nWatchdogSec=20s\nWatchdogSec=\nWatchdogSec=not-a-duration\n",
+    )
+    .unwrap();
+
+    let info = parse_unit_file(&service_path).unwrap().unwrap();
+
+    // Service.Restart{,MaxDelay}Sec, RuntimeMaxSec, and WatchdogSec map to
+    // config_parse_sec(), while RestartSteps maps to config_parse_unsigned().
+    // Both C parsers leave the destination untouched on an empty or invalid
+    // assignment.
+    assert_eq!(info.service.restart_sec, Some(5));
+    assert_eq!(info.service.restart_steps, Some(7));
+    assert_eq!(info.service.restart_max_delay_sec, Some(10));
+    assert_eq!(info.service.runtime_max_sec, Some(15));
+    assert_eq!(info.service.watchdog_sec, Some(20));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn test_service_timeout_parser_matches_c_zero_and_invalid_value_semantics() {
     let _test_lock = test_env_lock();
     let dir = test_temp_dir("test-systemd-service-timeout-parser-parity");
