@@ -328,10 +328,27 @@ fn verify_external_token(argument: Option<&[u8]>, peer_uid: u32) -> bool {
         return false;
     }
 
-    std::str::from_utf8(&decoded)
-        .ok()
-        .and_then(|uid| uid.parse::<u32>().ok())
-        == Some(peer_uid)
+    parse_external_uid(&decoded) == Some(peer_uid)
+}
+
+/// Match C's `parse_uid()` rules used by `verify_external_token()`. The
+/// authentication token is textual, but it must be a canonical UID spelling,
+/// not merely a value that Rust can parse as `u32`.
+fn parse_external_uid(decoded: &[u8]) -> Option<u32> {
+    if decoded.is_empty()
+        || (decoded.len() > 1 && decoded[0] == b'0')
+        || !decoded.iter().all(u8::is_ascii_digit)
+    {
+        return None;
+    }
+
+    let uid = std::str::from_utf8(decoded).ok()?.parse::<u32>().ok()?;
+    // `uid_is_valid()` in src/basic/user-util.c rejects both libc's invalid
+    // UID sentinel and the legacy 16-bit sentinel.
+    if uid == u32::MAX || uid == u32::from(u16::MAX) {
+        return None;
+    }
+    Some(uid)
 }
 
 const fn decode_hex_digit(byte: u8) -> Option<u8> {
@@ -444,6 +461,27 @@ mod tests {
             Ok(ServerAuthProgress::Authenticating)
         );
         assert_eq!(auth.pending_output(), ERROR_RESPONSE);
+    }
+
+    #[test]
+    fn external_token_requires_canonical_uid_spelling() {
+        let mut auth = auth(1000);
+        // C's parse_uid(), called by verify_external_token(), rejects a
+        // leading zero even though it denotes the same numeric UID.
+        auth.receive(b"\0AUTH EXTERNAL 3031303030\r\n").unwrap();
+        assert_eq!(auth.pending_output(), REJECTED_RESPONSE);
+
+        assert!(!verify_external_token(Some(b"3031303030"), 1000));
+        assert!(!verify_external_token(Some(b"2b31303030"), 1000));
+        assert!(!verify_external_token(
+            Some(b"3635353335"),
+            u32::from(u16::MAX)
+        ));
+        assert!(!verify_external_token(
+            Some(b"34323934393637323935"),
+            u32::MAX
+        ));
+        assert!(verify_external_token(Some(b"30"), 0));
     }
 
     #[test]
