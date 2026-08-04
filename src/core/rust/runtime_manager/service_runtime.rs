@@ -790,12 +790,31 @@ impl RuntimeManager {
         }
     }
 
-    fn phase_timeout(
+    pub(super) fn phase_timeout(
         &self,
         name: &str,
         info: &UnitFileInfo,
         phase: ServiceExecCommand,
     ) -> Option<Duration> {
+        let is_stop_phase = matches!(
+            phase,
+            ServiceExecCommand::Stop | ServiceExecCommand::StopPost
+        );
+        // service.c disables the start timeout by default for Type=oneshot.
+        // TimeoutStartSec= and TimeoutSec= make it explicit; `Some(0)` is our
+        // seconds-only representation of parse_sec_fix_0()'s infinity.
+        if !is_stop_phase
+            && info.service.timeout_start_sec.is_none()
+            && self
+                .services
+                .get(name)
+                .map(|service| service.service_type)
+                .unwrap_or_else(|| infer_service_type(info))
+                == ServiceType::Oneshot
+        {
+            return None;
+        }
+
         let configured = match phase {
             ServiceExecCommand::Stop | ServiceExecCommand::StopPost => {
                 info.service.timeout_stop_sec.or_else(|| {

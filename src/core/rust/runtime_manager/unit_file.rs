@@ -752,10 +752,18 @@ pub(super) fn parse_unit_content_into(
                     info.service.restart_max_delay_sec = parse_duration_seconds(value);
                 }
                 ("service", "TimeoutStartSec") => {
-                    info.service.timeout_start_sec = parse_duration_seconds(value);
+                    // C's config_parse_service_timeout() ignores invalid values
+                    // and uses parse_sec_fix_0(), where zero disables the timeout.
+                    if let Some(timeout) = parse_duration_seconds(value) {
+                        info.service.timeout_start_sec = Some(timeout);
+                    }
                 }
                 ("service", "TimeoutStopSec") => {
-                    info.service.timeout_stop_sec = parse_duration_seconds(value);
+                    // C's config_parse_sec_fix_0() likewise leaves the prior
+                    // setting alone on a parse failure.
+                    if let Some(timeout) = parse_duration_seconds(value) {
+                        info.service.timeout_stop_sec = Some(timeout);
+                    }
                 }
                 ("service", "TimeoutAbortSec") => {
                     info.service.timeout_abort_sec = parse_duration_seconds(value);
@@ -779,9 +787,12 @@ pub(super) fn parse_unit_content_into(
                         })?;
                 }
                 ("service", "TimeoutSec") => {
-                    let timeout = parse_duration_seconds(value);
-                    info.service.timeout_start_sec = timeout;
-                    info.service.timeout_stop_sec = timeout;
+                    // config_parse_service_timeout() updates both values only
+                    // after parse_sec_fix_0() has accepted the setting.
+                    if let Some(timeout) = parse_duration_seconds(value) {
+                        info.service.timeout_start_sec = Some(timeout);
+                        info.service.timeout_stop_sec = Some(timeout);
+                    }
                 }
                 ("service", "RuntimeMaxSec") => {
                     info.service.runtime_max_sec = parse_duration_seconds(value);
