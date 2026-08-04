@@ -1974,6 +1974,43 @@ fn test_parse_scope_section_directives() {
 }
 
 #[test]
+fn test_scope_kill_signals_are_scoped_and_oom_policy_retains_invalid_values() {
+    let _test_lock = test_env_lock();
+    let mut info = UnitFileInfo::new(
+        "scope-kill-oom.scope",
+        PathBuf::from("scope-kill-oom.scope"),
+    );
+
+    parse_unit_content_into(
+        &mut info,
+        "[Scope]\nOOMPolicy=stop\nOOMPolicy=STOP\nOOMPolicy=\nKillSignal=15\nFinalKillSignal=9\nSendSIGKILL=no\n",
+    )
+    .unwrap();
+
+    // Scope-specific signal fields must not be routed into the shared
+    // KillConfig. Other KILL_CONTEXT settings remain shared with services.
+    assert_eq!(info.scope.kill_signal, Some(15));
+    assert_eq!(info.scope.final_kill_signal, Some(9));
+    assert_eq!(info.kill.kill_signal, None);
+    assert_eq!(info.kill.final_kill_signal, None);
+    assert_eq!(info.kill.send_sigkill, Some(false));
+
+    // config_parse_oom_policy() is an exact, retain-on-invalid parser.
+    assert_eq!(info.scope.oom_policy, Some(OomPolicy::Stop));
+    assert_eq!(info.diagnostics.len(), 2);
+    for diagnostic in &info.diagnostics {
+        assert_eq!(diagnostic.class, UnitFileDiagnosticClass::InvalidValue);
+        assert_eq!(
+            diagnostic.disposition,
+            UnitFileAssignmentDisposition::IgnoredPreservingPriorValue
+        );
+        assert_eq!(diagnostic.section, "scope");
+        assert_eq!(diagnostic.key.as_deref(), Some("OOMPolicy"));
+        assert!(diagnostic.warning);
+    }
+}
+
+#[test]
 fn test_parse_slice_section_cgroup_directives_and_reset() {
     let _test_lock = test_env_lock();
     let dir = test_temp_dir("test-systemd-slice-directives");

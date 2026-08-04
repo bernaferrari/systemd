@@ -1322,6 +1322,8 @@ pub(super) fn parse_unit_content_into(
                 }
                 (section, key)
                     if matches!(section, "service" | "socket" | "mount" | "swap" | "scope")
+                        && !(section == "scope"
+                            && matches!(key, "KillSignal" | "FinalKillSignal"))
                         && parse_kill_context_directive(&mut info.kill, key, value) => {}
                 (section, key)
                     if matches!(section, "service" | "socket" | "mount" | "swap")
@@ -1342,11 +1344,17 @@ pub(super) fn parse_unit_content_into(
                     info.scope.timeout_stop_sec = parse_duration_seconds(value);
                 }
                 ("scope", "OOMPolicy") => {
-                    info.scope.oom_policy = if value.is_empty() {
-                        None
+                    // config_parse_oom_policy() retains the prior value on
+                    // empty or invalid assignments while recording a warning.
+                    if let Ok(oom_policy) = oom_policy_from_string(value) {
+                        info.scope.oom_policy = Some(oom_policy);
                     } else {
-                        oom_policy_from_string(value).ok()
-                    };
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
+                    }
                 }
                 ("scope", "KillSignal") => {
                     info.scope.kill_signal = parse_optional_i32(value);
