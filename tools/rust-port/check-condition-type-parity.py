@@ -159,7 +159,7 @@ def main() -> int:
         pin in rust_machine_info_path
         for pin in (
             "OnceLock<PathBuf>",
-            "ifunsafe{libc::getauxval(libc::AT_SECURE)}==0",
+            "ifunsafe_ffi!(libc::getauxval(libc::AT_SECURE))==0",
             "std::env::var_os(\"SYSTEMD_ETC_MACHINE_INFO\")",
             "PathBuf::from(\"/etc/machine-info\")",
         )
