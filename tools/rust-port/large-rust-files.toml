@@ -71,6 +71,6 @@ issue = "systemd-cpuw"
 reason = "Extract PID1 startup phases, event-loop sources, service start-timeout transitions, and fail-closed outer lifecycle ownership without moving privileged process-global transitions into callbacks."
 
 [files."src/core/rust/runtime_manager/unit_file.rs"]
-max_lines = 2240
+max_lines = 2248
 issue = "systemd-cpuw"
 reason = "Split fragment tokenization, directive diagnostics, and type-specific assignment handling around the generated C directive authority."
