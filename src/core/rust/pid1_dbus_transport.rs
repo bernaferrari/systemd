@@ -510,6 +510,7 @@ mod imp {
                 | Pid1BusSendError::Command(
                     crate::pid1_manager_commands::Pid1CommandError::Unauthorized
                     | crate::pid1_manager_commands::Pid1CommandError::NoSuchUnit { .. }
+                    | crate::pid1_manager_commands::Pid1CommandError::NoUnitForCaller
                     | crate::pid1_manager_commands::Pid1CommandError::NoUnitForPid { .. }
                     | crate::pid1_manager_commands::Pid1CommandError::NoUnitForInvocationId {
                         ..

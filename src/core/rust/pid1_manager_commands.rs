@@ -75,7 +75,9 @@ pub enum Pid1ManagerCommand {
     /// not inspect or mutate the runtime manager.
     Introspect,
     /// Return the object path for an already-loaded unit. Unlike `LoadUnit`,
-    /// this does not read unit files or otherwise mutate manager state.
+    /// this does not read unit files or otherwise mutate manager state. An
+    /// empty name resolves the authenticated caller's unit, as it does in
+    /// C's `bus_get_unit_by_name()`.
     GetUnit {
         name: String,
     },
@@ -160,6 +162,9 @@ pub enum Pid1CommandError {
     NoSuchUnit {
         name: String,
     },
+    /// An empty `GetUnit` name asks for the kernel-authenticated caller's
+    /// unit. C reports a miss as `NoSuchUnit` without including the PID.
+    NoUnitForCaller,
     NoUnitForPid {
         pid: u32,
     },
@@ -411,13 +416,23 @@ fn dispatch(
     let reply = match command {
         Pid1ManagerCommand::Introspect => Ok(Pid1ManagerReply::IntrospectionXml),
         Pid1ManagerCommand::GetUnit { name } => {
-            return match crate::dbus_manager::manager_get_unit_path(runtime, &name) {
-                Ok(path) => Ok(Pid1CommandEffect::Reply(Pid1ManagerReply::UnitLoaded {
-                    path,
-                })),
-                Err(Errno::ENOENT) => Err(Pid1CommandError::NoSuchUnit { name }),
-                Err(error) => Err(Pid1CommandError::Runtime(error)),
+            let path = if name.is_empty() {
+                crate::dbus_manager::manager_get_unit_path_by_pid(runtime, sender.peer().pid())
+                    .map_err(|error| match error {
+                        Errno::ENOENT => Pid1CommandError::NoUnitForCaller,
+                        error => Pid1CommandError::Runtime(error),
+                    })?
+            } else {
+                crate::dbus_manager::manager_get_unit_path(runtime, &name).map_err(|error| {
+                    match error {
+                        Errno::ENOENT => Pid1CommandError::NoSuchUnit { name },
+                        error => Pid1CommandError::Runtime(error),
+                    }
+                })?
             };
+            return Ok(Pid1CommandEffect::Reply(Pid1ManagerReply::UnitLoaded {
+                path,
+            }));
         }
         Pid1ManagerCommand::GetUnitByPid { pid } => {
             let pid = if pid == 0 { sender.peer().pid() } else { pid };
@@ -823,6 +838,68 @@ mod tests {
                 name: "missing.target".into(),
             }))
         );
+        assert_eq!(runtime.unit_count(), 0);
+    }
+
+    #[test]
+    fn get_unit_empty_name_resolves_the_callers_loaded_unit_without_loading() {
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender
+            .try_send(
+                sender_identity(),
+                Pid1ManagerCommand::GetUnit {
+                    name: String::new(),
+                },
+            )
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+        runtime.inject_test_unit(
+            "example.service",
+            "Example Service",
+            crate::unit::ActiveState::Active,
+            "running",
+        );
+        runtime.inject_test_main_pid("example.service", 42);
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(
+            reply.try_recv(),
+            Ok(Ok(Pid1ManagerReply::UnitLoaded {
+                path: "/org/freedesktop/systemd1/unit/example_2eservice".into(),
+            }))
+        );
+        assert_eq!(runtime.unit_count(), 1);
+    }
+
+    #[test]
+    fn get_unit_empty_name_missing_returns_c_no_such_unit_without_loading() {
+        let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+        let reply = sender
+            .try_send(
+                sender_identity(),
+                Pid1ManagerCommand::GetUnit {
+                    name: String::new(),
+                },
+            )
+            .unwrap();
+        let mut runtime = RuntimeManager::new();
+
+        assert_no_objective(
+            inbox.dispatch_pending(
+                &mut runtime,
+                &mut AllowAuthorizer,
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            1,
+        );
+        assert_eq!(reply.try_recv(), Ok(Err(Pid1CommandError::NoUnitForCaller)));
         assert_eq!(runtime.unit_count(), 0);
     }
 

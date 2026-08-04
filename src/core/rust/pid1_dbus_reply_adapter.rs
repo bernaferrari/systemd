@@ -151,6 +151,13 @@ impl Pid1DbusReplyAdapter {
                 let message = format!("Unit {name} not loaded.");
                 encode_error_reply(endian, serial, reply_serial, ERROR_NO_SUCH_UNIT, &message)
             }
+            Err(Pid1CommandError::NoUnitForCaller) => encode_error_reply(
+                endian,
+                serial,
+                reply_serial,
+                ERROR_NO_SUCH_UNIT,
+                "Client not member of any unit.",
+            ),
             Err(Pid1CommandError::NoUnitForPid { pid }) => {
                 let message = format!("PID {pid} does not belong to any loaded unit.");
                 encode_error_reply(
@@ -244,6 +251,7 @@ fn error_details(error: Pid1CommandError) -> (&'static str, &'static str) {
     match error {
         Pid1CommandError::Unauthorized => (ERROR_ACCESS_DENIED, MESSAGE_ACCESS_DENIED),
         Pid1CommandError::NoSuchUnit { .. } => unreachable!("handled with its unit name"),
+        Pid1CommandError::NoUnitForCaller => unreachable!("handled with its caller"),
         Pid1CommandError::NoUnitForPid { .. } => unreachable!("handled with its PID"),
         Pid1CommandError::NoUnitForInvocationId { .. } => {
             unreachable!("handled with its invocation ID")
@@ -447,6 +455,11 @@ mod tests {
                 },
                 ERROR_NO_SUCH_UNIT,
                 "Unit missing.service not loaded.",
+            ),
+            (
+                Pid1CommandError::NoUnitForCaller,
+                ERROR_NO_SUCH_UNIT,
+                "Client not member of any unit.",
             ),
             (
                 Pid1CommandError::NoUnitForPid { pid: 4242 },
