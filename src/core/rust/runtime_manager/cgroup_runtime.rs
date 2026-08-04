@@ -1778,10 +1778,13 @@ impl RuntimeManager {
         };
         let components = Self::unit_cgroup_components_for(unit_name, info);
 
-        self.unwatch_unit_cgroup_events(unit_name);
-        let pruned = self.cgroup_root.remove_directory(&components).is_ok();
-
-        if pruned {
+        // `unit_prune_cgroup()` only releases C's cgroup runtime (including
+        // its inotify watches) after `unit_maybe_release_cgroup()` confirmed
+        // the cgroup is empty. Keep our ownership indexes and event watch
+        // until deletion succeeds too: a failed deletion can leave a live
+        // cgroup whose later empty event is needed to retry cleanup.
+        if self.cgroup_root.remove_directory(&components).is_ok() {
+            self.unwatch_unit_cgroup_events(unit_name);
             self.unit_cgroup_paths.remove(unit_name);
             self.unit_cgroups.remove(unit_name);
             self.unit_cgroup_populated.remove(unit_name);

@@ -4498,6 +4498,50 @@ fn test_cgroup_events_watch_installed_for_direct_realization() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn test_failed_cgroup_prune_retains_event_watch_for_later_cleanup() {
+    let _test_lock = test_env_lock();
+    let dir = test_temp_dir("test-systemd-cgroup-prune-retains-watch");
+    let cgroup_root = dir.join("cgroup-root");
+    let mut mgr = RuntimeManager::new_with_test_cgroup_root(cgroup_root.clone());
+    let info = UnitFileInfo::new("watch.service", dir.join("watch.service"));
+    mgr.unit_files.insert(info.name.clone(), info.clone());
+    mgr.ensure_unit_cgroup("watch.service", &info).unwrap();
+
+    let cgroup_path = mgr
+        .unit_cgroup_paths
+        .get("watch.service")
+        .cloned()
+        .expect("missing cgroup path");
+    let wd = *mgr
+        .cgroup_watch_by_unit
+        .get("watch.service")
+        .expect("missing cgroup event watch");
+
+    // Make descriptor-relative traversal of the parent fail without touching
+    // the still-open cgroup capability or its inotify watch.
+    fs::rename(
+        cgroup_root.join("system.slice"),
+        cgroup_root.join("renamed-system.slice"),
+    )
+    .unwrap();
+    mgr.prune_unit_cgroup("watch.service");
+
+    assert!(mgr.unit_cgroups.contains_key("watch.service"));
+    assert_eq!(
+        mgr.unit_cgroup_paths.get("watch.service"),
+        Some(&cgroup_path)
+    );
+    assert_eq!(mgr.cgroup_watch_by_unit.get("watch.service"), Some(&wd));
+    assert_eq!(
+        mgr.cgroup_watch_by_wd.get(&wd).map(String::as_str),
+        Some("watch.service")
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn test_cgroup_realization_rejects_shared_events_capability_atomically() {
     let _test_lock = test_env_lock();
     let dir = test_temp_dir("test-systemd-cgroup-shared-events");
