@@ -3,7 +3,7 @@
 // PORT-SYNC: src/core/service.c
 
 use crate::ffi::Errno;
-use crate::service_tables::{ServiceExecCommand, ServiceResult};
+use crate::service_tables::{ServiceExecCommand, ServiceExitType, ServiceResult};
 
 pub const SOURCE_PATH: &str = "src/core/service.c";
 pub const USEC_INFINITY: u64 = u64::MAX;
@@ -168,6 +168,10 @@ pub struct PidRef {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Service {
     pub service_type: ServiceType,
+    /// How service liveness is determined once the main process exits.
+    /// `main` is the C default; `cgroup` keeps the service active while any
+    /// process remains in its cgroup.
+    pub exit_type: ServiceExitType,
     pub timeout_start_usec: u64,
     pub timeout_stop_usec: u64,
     pub timeout_abort_usec: u64,
@@ -249,6 +253,7 @@ impl Default for Service {
     fn default() -> Self {
         Self {
             service_type: ServiceType::Invalid,
+            exit_type: ServiceExitType::Main,
             timeout_start_usec: 0,
             timeout_stop_usec: 0,
             timeout_abort_usec: 0,
@@ -427,6 +432,7 @@ pub fn service_init(service: &mut Service, manager: &Manager) {
     service.runtime_max_usec = USEC_INFINITY;
     service.runtime_rand_extra_usec = 0;
     service.service_type = ServiceType::Invalid;
+    service.exit_type = ServiceExitType::Main;
     service.socket_fd = Errno::EBADF.to_neg_errno();
     service.stdin_fd = Errno::EBADF.to_neg_errno();
     service.stdout_fd = Errno::EBADF.to_neg_errno();

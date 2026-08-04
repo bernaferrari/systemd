@@ -4,6 +4,7 @@
 
 use super::unit_file::UnitFileInfo;
 use crate::service::{NotifyAccess, ServiceType};
+use crate::service_tables::ServiceExitType;
 
 /// Return the fail-closed reason for service types whose manager transport is
 /// not yet available. Linux `Type=idle` is backed by the real manager-owned
@@ -15,6 +16,16 @@ pub(super) fn readiness_rejection(
     info: &UnitFileInfo,
     authenticated_notify_socket_configured: bool,
 ) -> Option<&'static str> {
+    // service_verify() rejects this combination before activation: a
+    // oneshot's completion is the main command's exit status, so retaining
+    // the cgroup after that command would make the unit's terminal state
+    // ambiguous.
+    if service_type == ServiceType::Oneshot
+        && info.service.exit_type == Some(ServiceExitType::Cgroup)
+    {
+        return Some("Type=oneshot does not support ExitType=cgroup");
+    }
+
     match service_type {
         ServiceType::Idle => {
             #[cfg(target_os = "linux")]

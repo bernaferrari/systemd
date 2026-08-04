@@ -15,7 +15,7 @@ use crate::pid1_notify_source::{
     AuthenticatedNotifyDatagram, NotifyPeerCredentials, NotifySourceOwner,
 };
 use crate::service::{NotifyAccess, PidRef, service_restart_usec_next_jittered};
-use crate::service_tables::{ServiceExecCommand, ServiceResult};
+use crate::service_tables::{ServiceExecCommand, ServiceExitType, ServiceResult};
 use crate::unit::OomPolicy;
 #[cfg(target_os = "linux")]
 use std::num::NonZeroUsize;
@@ -345,6 +345,21 @@ fn notify_readiness_allows_only_the_wired_direct_main_subset() {
 }
 
 #[test]
+fn oneshot_cgroup_exit_type_is_rejected_before_activation() {
+    let mut info = UnitFileInfo::new(
+        "oneshot-cgroup.service",
+        PathBuf::from("oneshot-cgroup.service"),
+    );
+    info.service_type = Some(ServiceType::Oneshot);
+    info.service.exit_type = Some(ServiceExitType::Cgroup);
+
+    assert_eq!(
+        super::service_readiness::readiness_rejection(ServiceType::Oneshot, &info, false),
+        Some("Type=oneshot does not support ExitType=cgroup")
+    );
+}
+
+#[test]
 fn test_suffix_to_unit_type() {
     let _test_lock = test_env_lock();
     assert_eq!(suffix_to_unit_type("foo.service"), UnitType::Service);
@@ -654,6 +669,25 @@ fn test_service_type_rejects_mixed_case_and_retains_prior_value() {
     // Service.Type uses C's DEFINE_CONFIG_PARSE_ENUM: "Simple" and an empty
     // value are invalid and leave the preceding, exact enum value unchanged.
     assert_eq!(info.service_type, Some(ServiceType::Simple));
+}
+
+#[test]
+fn test_service_exit_type_parser_is_exact_and_retains_prior_value() {
+    let _test_lock = test_env_lock();
+    let mut info = UnitFileInfo::new("exit-type.service", PathBuf::from("exit-type.service"));
+
+    parse_unit_content_into(
+        &mut info,
+        "[Service]\nExitType=cgroup\nExitType=Cgroup\nExitType=\n",
+    )
+    .unwrap();
+
+    assert_eq!(info.service.exit_type, Some(ServiceExitType::Cgroup));
+    assert_eq!(info.diagnostics.len(), 2);
+    assert!(info.diagnostics.iter().all(|diagnostic| {
+        diagnostic.class == UnitFileDiagnosticClass::InvalidValue
+            && diagnostic.disposition == UnitFileAssignmentDisposition::IgnoredPreservingPriorValue
+    }));
 }
 
 #[test]
@@ -4722,6 +4756,69 @@ fn test_alien_cgroup_empty_event_clears_the_untracked_main_pid() {
             .map(|service| service.state),
         Some(ServiceState::Dead)
     );
+}
+
+#[test]
+fn exit_type_cgroup_keeps_service_running_after_main_exit_with_members() {
+    let _test_lock = test_env_lock();
+    let dir = test_temp_dir("test-systemd-exit-type-cgroup-main-exit");
+    let cgroup_root = dir.join("cgroup-root");
+    let mut mgr = RuntimeManager::new_with_test_cgroup_root(cgroup_root);
+    insert_fsm_service(
+        &mut mgr,
+        "cgroup.service",
+        ServiceState::Start,
+        ServiceType::Simple,
+        |info| info.service.exit_type = Some(ServiceExitType::Cgroup),
+    );
+    let info = mgr.unit_files["cgroup.service"].clone();
+    mgr.ensure_unit_cgroup("cgroup.service", &info).unwrap();
+    mgr.inject_test_service_command("cgroup.service", ServiceExecCommand::Start, 42_101, "")
+        .unwrap();
+    // Model a helper left in the service cgroup after the main process exits.
+    mgr.set_unit_cgroup_populated("cgroup.service", true);
+
+    assert!(mgr.inject_test_service_event(
+        "cgroup.service",
+        ServiceTestEvent::ChildExited {
+            pid: 42_101,
+            state: systemd_platform_rs::spawn::ChildState::ExitedCleanly,
+        },
+    ));
+    assert_eq!(
+        mgr.services
+            .get("cgroup.service")
+            .map(|service| service.state),
+        Some(ServiceState::Running)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn exit_type_cgroup_empty_start_completes_via_stop_post() {
+    let _test_lock = test_env_lock();
+    let dir = test_temp_dir("test-systemd-exit-type-cgroup-empty-start");
+    let mut mgr = RuntimeManager::new_with_test_cgroup_root(dir.join("cgroup-root"));
+    insert_fsm_service(
+        &mut mgr,
+        "empty-cgroup.service",
+        ServiceState::Start,
+        ServiceType::Simple,
+        |info| info.service.exit_type = Some(ServiceExitType::Cgroup),
+    );
+    let info = mgr.unit_files["empty-cgroup.service"].clone();
+    mgr.ensure_unit_cgroup("empty-cgroup.service", &info)
+        .unwrap();
+    mgr.set_unit_cgroup_populated("empty-cgroup.service", false);
+
+    assert!(mgr.inject_test_service_event("empty-cgroup.service", ServiceTestEvent::CgroupEmpty,));
+    assert_eq!(
+        mgr.services
+            .get("empty-cgroup.service")
+            .map(|service| service.state),
+        Some(ServiceState::Dead)
+    );
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

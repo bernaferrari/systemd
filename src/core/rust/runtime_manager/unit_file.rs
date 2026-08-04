@@ -14,6 +14,7 @@ use super::unit_specifier::{
     is_instance_unit_name, is_template_unit_name,
 };
 use crate::service::{NotifyAccess, ServiceType};
+use crate::service_tables::{ServiceExitType, service_exit_type_from_string};
 use crate::unit::{KillContext, OomPolicy, Unit, UnitType, oom_policy_from_string};
 use systemd_shared_rs::unit_file::{UnitFile, UnitFileParseError};
 
@@ -326,6 +327,10 @@ pub struct ServiceConfig {
     pub exec_reload_post: Vec<ExecCommandSpec>,
     pub exec_condition: Vec<ExecCommandSpec>,
     pub restart: Option<ServiceRestartPolicy>,
+    /// C's `Service.exit_type`, defaulting to `main` when omitted.  Keeping
+    /// the setting in the parsed service configuration lets lifecycle code
+    /// distinguish a dead main PID from an alive service cgroup.
+    pub exit_type: Option<ServiceExitType>,
     pub restart_sec: Option<u64>,
     pub restart_steps: Option<u32>,
     pub restart_max_delay_sec: Option<u64>,
@@ -832,6 +837,20 @@ pub(super) fn parse_unit_content_into(
                     // untouched when C rejects an empty or invalid enum.
                     if let Some(service_type) = parse_service_type(value) {
                         info.service_type = Some(service_type);
+                    } else {
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
+                    }
+                }
+                ("service", "ExitType") => {
+                    // config_parse_service_exit_type() is an exact enum
+                    // parser. Empty and invalid assignments leave the prior
+                    // value untouched while emitting a syntax warning.
+                    if let Ok(exit_type) = service_exit_type_from_string(value) {
+                        info.service.exit_type = Some(exit_type);
                     } else {
                         info.record_invalid_value(
                             current_section.as_str(),

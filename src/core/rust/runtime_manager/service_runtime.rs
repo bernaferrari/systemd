@@ -17,6 +17,7 @@ use crate::service::{
     service_record_reload_result, service_record_result, service_reset_reload_result,
     service_reset_result, service_restart_usec_next_jittered,
 };
+use crate::service_tables::ServiceExitType;
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use crate::transaction::JobMode;
 use crate::unit::DependencyKind;
@@ -1262,13 +1263,20 @@ impl RuntimeManager {
             .get(name)
             .map(|service| service.service_type)
             .unwrap_or_else(|| infer_service_type(&info));
+        let exit_type = self
+            .services
+            .get(name)
+            .map(|service| service.exit_type)
+            .or(info.service.exit_type)
+            .unwrap_or(ServiceExitType::Main);
         let main_pid_alive = self
             .units
             .get(name)
             .and_then(|unit| unit.main_pid)
             .is_some();
-        let cgroup_only_alive = service_type == ServiceType::Forking
-            && !info.service.guess_main_pid.unwrap_or(true)
+        let cgroup_only_alive = (exit_type == ServiceExitType::Cgroup
+            || (service_type == ServiceType::Forking
+                && !info.service.guess_main_pid.unwrap_or(true)))
             && self.read_unit_cgroup_populated(name) == Some(true);
         let main_alive = main_pid_alive || cgroup_only_alive;
         if main_alive {
@@ -1682,6 +1690,48 @@ impl RuntimeManager {
         self.record_service_main_exit_status(name, state);
         if let Some(service) = self.services.get_mut(name) {
             service_record_result(service, result);
+        }
+
+        // C's service_sigchld_event() defers the main-PID transition for
+        // ExitType=cgroup while the unit cgroup still contains a process.
+        // The only exception is the initial start state for ordinary service
+        // types: once the starter exits successfully, proceed to StartPost
+        // while retaining the cgroup as the liveness authority. Notify and
+        // D-Bus services still wait for their external readiness protocol.
+        let exit_type = self
+            .services
+            .get(name)
+            .map(|service| service.exit_type)
+            .or(info.service.exit_type)
+            .unwrap_or(ServiceExitType::Main);
+        if exit_type == ServiceExitType::Cgroup {
+            let cgroup_populated = self.read_unit_cgroup_populated(name) == Some(true);
+            let is_external_ready = matches!(
+                self.services.get(name).map(|service| service.service_type),
+                Some(ServiceType::Notify | ServiceType::NotifyReload | ServiceType::Dbus)
+            );
+            if cgroup_populated {
+                if service_state == ServiceState::Start && !is_external_ready {
+                    self.enter_start_post(name);
+                }
+                return;
+            }
+            if service_state == ServiceState::Start && !is_external_ready {
+                // With an empty cgroup, C falls through to
+                // service_enter_running(), whose service_good() result then
+                // publishes Exited/Stop according to RemainAfterExit=.
+                self.enter_running(name);
+                return;
+            }
+            if service_state == ServiceState::Start && is_external_ready {
+                let result = if result == ServiceResult::Success {
+                    ServiceResult::FailureProtocol
+                } else {
+                    result
+                };
+                self.begin_stop_signal(name, result);
+                return;
+            }
         }
 
         match service_state {

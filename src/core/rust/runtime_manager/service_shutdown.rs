@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 use super::unit_file::{KillMode, ServiceRestartPolicy, ServiceTimeoutFailureMode, UnitFileInfo};
 use super::{RuntimeManager, status_list_matches};
 use crate::service::{ServiceExitStatus, ServiceState, ServiceType, service_record_result};
-use crate::service_tables::{ServiceExecCommand, ServiceResult};
+use crate::service_tables::{ServiceExecCommand, ServiceExitType, ServiceResult};
 use crate::unit::DependencyKind;
 use systemd_platform_rs::spawn::ChildState;
 
@@ -555,6 +555,40 @@ impl RuntimeManager {
             .units
             .get(name)
             .is_none_or(|unit| unit.main_pid.is_none() && unit.control_pid.is_none());
+        let exit_type = self
+            .services
+            .get(name)
+            .map(|service| service.exit_type)
+            .or_else(|| {
+                self.unit_files
+                    .get(name)
+                    .and_then(|info| info.service.exit_type)
+            })
+            .unwrap_or(ServiceExitType::Main);
+        let service_type = self
+            .services
+            .get(name)
+            .map(|service| service.service_type)
+            .or_else(|| self.unit_files.get(name).map(super::infer_service_type));
+        if self.services.get(name).map(|service| service.state) == Some(ServiceState::Start)
+            && exit_type == ServiceExitType::Cgroup
+            && pids_gone
+        {
+            // C's cgroup-empty/start path re-evaluates service_good(). For
+            // ordinary services this publishes Exited or starts the stop
+            // path according to RemainAfterExit=; readiness protocols fail
+            // closed because no READY= or D-Bus owner can arrive.
+            let external_ready = matches!(
+                service_type,
+                Some(ServiceType::Notify | ServiceType::NotifyReload)
+            ) || matches!(service_type, Some(ServiceType::Dbus));
+            if external_ready {
+                self.begin_stop_signal(name, ServiceResult::FailureProtocol);
+            } else {
+                self.enter_running(name);
+            }
+            return;
+        }
         match self.services.get(name).map(|service| service.state) {
             Some(ServiceState::Running) => self.enter_running(name),
             Some(

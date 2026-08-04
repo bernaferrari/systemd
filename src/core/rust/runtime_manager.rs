@@ -23,6 +23,7 @@ use crate::ffi::Errno;
 use crate::job::{Job, JobId, JobRegistry, UnitActiveState as JobUnitActiveState};
 use crate::job_tables::JobType as CanonicalJobType;
 use crate::service::{Manager as ServiceManager, Service, ServiceState, ServiceType};
+use crate::service_tables::ServiceExitType;
 use crate::socket_activation::{ListenerDescriptor, SocketActivationManager};
 use crate::transaction::{
     AppliedTransaction, JobMode, JobType as TxJobType, Transaction, TransactionError, UnitSpec,
@@ -1358,6 +1359,7 @@ impl RuntimeManager {
             let mut svc = Service::default();
             crate::service::service_init(&mut svc, &self.service_manager);
             svc.service_type = infer_service_type(&info);
+            svc.exit_type = info.service.exit_type.unwrap_or(ServiceExitType::Main);
             if let Some(timeout) = info.service.timeout_start_sec {
                 svc.timeout_start_usec = timeout.saturating_mul(1_000_000);
             }
