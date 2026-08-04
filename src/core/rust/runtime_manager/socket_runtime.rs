@@ -123,13 +123,6 @@ impl RuntimeManager {
             self.fail_socket_start(unit_name, &error);
             return;
         }
-        // `config_parse_socket_service()` replaces Socket.Service= through
-        // unit_ref_set(). Keep this derived service-to-listener index in sync
-        // when an already-open socket is started after its association changed.
-        self.service_activation_sockets.retain(|_, sockets| {
-            sockets.remove(unit_name);
-            !sockets.is_empty()
-        });
         self.service_activation_sockets
             .entry(service_name)
             .or_default()

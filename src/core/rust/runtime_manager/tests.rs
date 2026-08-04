@@ -1446,8 +1446,22 @@ fn test_socket_start_replaces_service_listener_association() {
         Some(&std::collections::BTreeSet::from([socket_name.to_string()]))
     );
 
-    // C's config_parse_socket_service() uses unit_ref_set(), replacing the
-    // old Socket.Service= reference rather than retaining both associations.
+    // Preserve the live association until stop. This matches socket.c's
+    // idempotent start behavior: a running listener is not rebound to a
+    // changed Socket.Service= until the socket lifecycle is restarted.
+    info.socket.service = Some("second.service".to_string());
+    mgr.unit_files.insert(socket_name.to_string(), info.clone());
+    assert!(mgr.execute_socket_job(socket_name, TxJobType::Start));
+    assert_eq!(
+        mgr.service_activation_sockets.get("first.service"),
+        Some(&std::collections::BTreeSet::from([socket_name.to_string()]))
+    );
+
+    assert!(mgr.execute_socket_job(socket_name, TxJobType::Stop));
+    assert!(mgr.socket_mgr.get(socket_name).is_none());
+    assert!(!mgr.service_activation_sockets.contains_key("first.service"));
+
+    // C's config_parse_socket_service() uses unit_ref_set(), so the next
     info.socket.service = Some("second.service".to_string());
     mgr.unit_files.insert(socket_name.to_string(), info);
     assert!(mgr.execute_socket_job(socket_name, TxJobType::Start));
