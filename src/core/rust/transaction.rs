@@ -842,7 +842,22 @@ impl Transaction {
         Ok(())
     }
 
+    fn abort(&mut self) {
+        self.jobs.clear();
+        self.jobs_by_unit.clear();
+        self.deps.clear();
+        self.anchor_job = None;
+    }
+
     pub fn activate(&mut self, mode: JobMode) -> Result<AppliedTransaction, TransactionError> {
+        let result = self.activate_inner(mode);
+        if result.is_err() {
+            self.abort();
+        }
+        result
+    }
+
+    fn activate_inner(&mut self, mode: JobMode) -> Result<AppliedTransaction, TransactionError> {
         self.find_jobs_that_matter_to_anchor();
         self.minimize_impact(mode)?;
         self.drop_redundant();
@@ -859,10 +874,7 @@ impl Transaction {
             return Err(TransactionError::DuplicateAnchor);
         }
         let jobs = self.jobs.values().cloned().collect();
-        self.jobs.clear();
-        self.jobs_by_unit.clear();
-        self.deps.clear();
-        self.anchor_job = None;
+        self.abort();
         Ok(AppliedTransaction { jobs, anchor_job })
     }
 
@@ -1702,6 +1714,14 @@ mod tests {
             err,
             TransactionError::ConflictingJobs("a.service <-> b.service".into())
         );
+
+        /* C provenance: transaction_abort() in src/core/transaction.c removes
+         * every prospective job when manager.c's transaction_abort_and_free()
+         * cleanup handles a rejected transaction. */
+        assert!(transaction.jobs.is_empty());
+        assert!(transaction.jobs_by_unit.is_empty());
+        assert!(transaction.deps.is_empty());
+        assert_eq!(transaction.anchor_job, None);
     }
 
     #[test]
