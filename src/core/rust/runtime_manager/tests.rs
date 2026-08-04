@@ -1402,6 +1402,44 @@ fn test_socket_activation_rejects_programmatic_non_service_association() {
 }
 
 #[test]
+fn test_socket_start_replaces_service_listener_association() {
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    let socket_name = "replacement.socket";
+
+    let mut socket = Unit::new(mgr.manager_record.clone(), UnitType::Socket);
+    socket.id = Some(socket_name.to_string());
+    socket.load_state = LoadState::Loaded;
+    mgr.units.insert(socket_name.to_string(), socket);
+    insert_test_service(&mut mgr, "first.service", ServiceState::Dead);
+    insert_test_service(&mut mgr, "second.service", ServiceState::Dead);
+
+    let mut info = UnitFileInfo::new(socket_name, PathBuf::from(socket_name));
+    info.socket.listen_stream.push("127.0.0.1:0".to_string());
+    info.socket.service = Some("first.service".to_string());
+    mgr.unit_files.insert(socket_name.to_string(), info.clone());
+
+    assert!(mgr.execute_socket_job(socket_name, TxJobType::Start));
+    assert_eq!(
+        mgr.service_activation_sockets.get("first.service"),
+        Some(&std::collections::BTreeSet::from([socket_name.to_string()]))
+    );
+
+    // C's config_parse_socket_service() uses unit_ref_set(), replacing the
+    // old Socket.Service= reference rather than retaining both associations.
+    info.socket.service = Some("second.service".to_string());
+    mgr.unit_files.insert(socket_name.to_string(), info);
+    assert!(mgr.execute_socket_job(socket_name, TxJobType::Start));
+
+    assert!(!mgr.service_activation_sockets.contains_key("first.service"));
+    assert_eq!(
+        mgr.service_activation_sockets.get("second.service"),
+        Some(&std::collections::BTreeSet::from([socket_name.to_string()]))
+    );
+    mgr.execute_socket_stop(socket_name);
+}
+
+#[test]
 fn test_parse_socket_directives_comprehensive() {
     let _test_lock = test_env_lock();
     let dir = test_temp_dir("test-systemd-socket-directives-comprehensive");
