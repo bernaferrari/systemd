@@ -716,6 +716,78 @@ fn test_parse_service_directives_comprehensive() {
 }
 
 #[test]
+fn test_service_timeout_parser_matches_c_zero_and_invalid_value_semantics() {
+    let _test_lock = test_env_lock();
+    let dir = test_temp_dir("test-systemd-service-timeout-parser-parity");
+    fs::create_dir_all(&dir).unwrap();
+    let service_path = dir.join("timeouts.service");
+    fs::write(
+        &service_path,
+        "[Service]\nTimeoutStartSec=5\nTimeoutStartSec=invalid\nTimeoutStopSec=7\nTimeoutStopSec=invalid\nTimeoutSec=11\nTimeoutSec=invalid\n",
+    )
+    .unwrap();
+
+    let info = parse_unit_file(&service_path).unwrap().unwrap();
+    // C config_parse_service_timeout()/config_parse_sec_fix_0() ignore an
+    // invalid assignment rather than clearing its previous value.
+    assert_eq!(info.service.timeout_start_sec, Some(11));
+    assert_eq!(info.service.timeout_stop_sec, Some(11));
+
+    fs::write(
+        &service_path,
+        "[Service]\nTimeoutStartSec=0\nTimeoutStopSec=0\n",
+    )
+    .unwrap();
+    let info = parse_unit_file(&service_path).unwrap().unwrap();
+    // parse_sec_fix_0() maps zero to USEC_INFINITY. The runtime represents
+    // that with zero seconds and consequently does not arm a deadline.
+    assert_eq!(info.service.timeout_start_sec, Some(0));
+    assert_eq!(info.service.timeout_stop_sec, Some(0));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_oneshot_start_timeout_is_disabled_unless_explicit() {
+    let mut mgr = new_test_runtime_manager();
+    let mut info = UnitFileInfo::new("oneshot.service", PathBuf::from("oneshot.service"));
+    info.service_type = Some(ServiceType::Oneshot);
+
+    // service.c makes an unset start timeout infinite for Type=oneshot.
+    assert!(
+        mgr.phase_timeout("oneshot.service", &info, ServiceExecCommand::StartPre)
+            .is_none()
+    );
+
+    // TimeoutStartSec=0 follows parse_sec_fix_0() and remains infinite.
+    info.service.timeout_start_sec = Some(0);
+    assert!(
+        mgr.phase_timeout("oneshot.service", &info, ServiceExecCommand::StartPre)
+            .is_none()
+    );
+
+    info.service.timeout_start_sec = Some(5);
+    assert!(
+        mgr.phase_timeout("oneshot.service", &info, ServiceExecCommand::StartPre)
+            .is_some()
+    );
+
+    info.service_type = Some(ServiceType::Simple);
+    info.service.timeout_start_sec = Some(0);
+    info.service.timeout_stop_sec = Some(0);
+    // The zero representation is also infinity for non-oneshot start and
+    // stop phases, as parse_sec_fix_0() requires.
+    assert!(
+        mgr.phase_timeout("oneshot.service", &info, ServiceExecCommand::StartPre)
+            .is_none()
+    );
+    assert!(
+        mgr.phase_timeout("oneshot.service", &info, ServiceExecCommand::Stop)
+            .is_none()
+    );
+}
+
+#[test]
 fn test_timeout_failure_modes_reject_unknown_values_and_allow_reset() {
     let _test_lock = test_env_lock();
     for key in ["TimeoutStartFailureMode", "TimeoutStopFailureMode"] {
