@@ -1264,10 +1264,11 @@ impl RuntimeManager {
             .map(|service| service.service_type)
             .unwrap_or_else(|| infer_service_type(&info));
         let exit_type = self
-            .services
+            .unit_files
             .get(name)
-            .map(|service| service.exit_type)
+            .and_then(|loaded| loaded.service.exit_type)
             .or(info.service.exit_type)
+            .or_else(|| self.services.get(name).map(|service| service.exit_type))
             .unwrap_or(ServiceExitType::Main);
         let main_pid_alive = self
             .units
@@ -1699,10 +1700,11 @@ impl RuntimeManager {
         // while retaining the cgroup as the liveness authority. Notify and
         // D-Bus services still wait for their external readiness protocol.
         let exit_type = self
-            .services
+            .unit_files
             .get(name)
-            .map(|service| service.exit_type)
+            .and_then(|loaded| loaded.service.exit_type)
             .or(info.service.exit_type)
+            .or_else(|| self.services.get(name).map(|service| service.exit_type))
             .unwrap_or(ServiceExitType::Main);
         if exit_type == ServiceExitType::Cgroup {
             let cgroup_populated = self.read_unit_cgroup_populated(name) == Some(true);

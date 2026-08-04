@@ -556,14 +556,10 @@ impl RuntimeManager {
             .get(name)
             .is_none_or(|unit| unit.main_pid.is_none() && unit.control_pid.is_none());
         let exit_type = self
-            .services
+            .unit_files
             .get(name)
-            .map(|service| service.exit_type)
-            .or_else(|| {
-                self.unit_files
-                    .get(name)
-                    .and_then(|info| info.service.exit_type)
-            })
+            .and_then(|info| info.service.exit_type)
+            .or_else(|| self.services.get(name).map(|service| service.exit_type))
             .unwrap_or(ServiceExitType::Main);
         let service_type = self
             .services
