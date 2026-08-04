@@ -843,7 +843,11 @@ pub(super) fn parse_unit_content_into(
                     append_or_clear_exec_list(&mut info.service.exec_condition, value);
                 }
                 ("service", "Restart") => {
-                    info.service.restart = parse_restart_policy(value);
+                    // C's config_parse_service_restart() leaves the previous
+                    // setting intact when the enum input is empty or invalid.
+                    if let Some(restart) = parse_restart_policy(value) {
+                        info.service.restart = Some(restart);
+                    }
                 }
                 ("service", "RestartSec") => {
                     // C's config_parse_sec() retains the previous value when
@@ -882,22 +886,16 @@ pub(super) fn parse_unit_content_into(
                     info.service.timeout_abort_sec = parse_duration_seconds(value);
                 }
                 ("service", "TimeoutStartFailureMode") => {
-                    info.service.timeout_start_failure_mode = parse_timeout_failure_mode(value)
-                        .ok_or_else(|| UnitFileParseError::InvalidDirectiveValue {
-                            line: directive.line_number,
-                            section: current_section.clone(),
-                            key: key.to_string(),
-                            value: value.to_string(),
-                        })?;
+                    // C's config_parse_service_timeout_failure_mode() retains
+                    // the preceding mode for empty or invalid input.
+                    if let Some(mode) = parse_timeout_failure_mode(value) {
+                        info.service.timeout_start_failure_mode = Some(mode);
+                    }
                 }
                 ("service", "TimeoutStopFailureMode") => {
-                    info.service.timeout_stop_failure_mode = parse_timeout_failure_mode(value)
-                        .ok_or_else(|| UnitFileParseError::InvalidDirectiveValue {
-                            line: directive.line_number,
-                            section: current_section.clone(),
-                            key: key.to_string(),
-                            value: value.to_string(),
-                        })?;
+                    if let Some(mode) = parse_timeout_failure_mode(value) {
+                        info.service.timeout_stop_failure_mode = Some(mode);
+                    }
                 }
                 ("service", "TimeoutSec") => {
                     // config_parse_service_timeout() updates both values only
@@ -939,7 +937,9 @@ pub(super) fn parse_unit_content_into(
                     info.service.bus_name = parse_optional_string(value);
                 }
                 ("service", "NotifyAccess") => {
-                    info.service.notify_access = parse_notify_access(value);
+                    if let Some(notify_access) = parse_notify_access(value) {
+                        info.service.notify_access = Some(notify_access);
+                    }
                 }
                 ("service", "Sockets") => {
                     append_or_clear_list(&mut info.service.sockets, value);
@@ -948,7 +948,9 @@ pub(super) fn parse_unit_content_into(
                     info.service.file_descriptor_store_max = parse_optional_u64(value);
                 }
                 ("service", "FileDescriptorStorePreserve") => {
-                    info.service.file_descriptor_store_preserve = parse_fd_store_preserve(value);
+                    if let Some(preserve) = parse_fd_store_preserve(value) {
+                        info.service.file_descriptor_store_preserve = Some(preserve);
+                    }
                 }
                 ("service", "OOMPolicy") => {
                     info.service.oom_policy = if value.is_empty() {
@@ -1635,11 +1637,7 @@ pub(super) fn parse_service_type(value: &str) -> Option<ServiceType> {
 }
 
 pub(super) fn parse_restart_policy(value: &str) -> Option<ServiceRestartPolicy> {
-    if value.is_empty() {
-        return None;
-    }
-
-    match value.to_ascii_lowercase().as_str() {
+    match value {
         "no" => Some(ServiceRestartPolicy::No),
         "on-success" => Some(ServiceRestartPolicy::OnSuccess),
         "on-failure" => Some(ServiceRestartPolicy::OnFailure),
@@ -1651,25 +1649,17 @@ pub(super) fn parse_restart_policy(value: &str) -> Option<ServiceRestartPolicy> 
     }
 }
 
-pub(super) fn parse_timeout_failure_mode(value: &str) -> Option<Option<ServiceTimeoutFailureMode>> {
-    if value.is_empty() {
-        return Some(None);
-    }
-
-    match value.to_ascii_lowercase().as_str() {
-        "terminate" => Some(Some(ServiceTimeoutFailureMode::Terminate)),
-        "abort" => Some(Some(ServiceTimeoutFailureMode::Abort)),
-        "kill" => Some(Some(ServiceTimeoutFailureMode::Kill)),
+pub(super) fn parse_timeout_failure_mode(value: &str) -> Option<ServiceTimeoutFailureMode> {
+    match value {
+        "terminate" => Some(ServiceTimeoutFailureMode::Terminate),
+        "abort" => Some(ServiceTimeoutFailureMode::Abort),
+        "kill" => Some(ServiceTimeoutFailureMode::Kill),
         _ => None,
     }
 }
 
 pub(super) fn parse_notify_access(value: &str) -> Option<NotifyAccess> {
-    if value.is_empty() {
-        return None;
-    }
-
-    match value.to_ascii_lowercase().as_str() {
+    match value {
         "none" => Some(NotifyAccess::None),
         "main" => Some(NotifyAccess::Main),
         "exec" => Some(NotifyAccess::Exec),
@@ -1679,13 +1669,11 @@ pub(super) fn parse_notify_access(value: &str) -> Option<NotifyAccess> {
 }
 
 pub(super) fn parse_fd_store_preserve(value: &str) -> Option<FileDescriptorStorePreserve> {
-    if value.is_empty() {
-        return None;
-    }
-
+    // C's DEFINE_STRING_TABLE_LOOKUP_WITH_BOOLEAN() accepts its exact enum
+    // values and case-insensitive parse_boolean() aliases first.
     match value.to_ascii_lowercase().as_str() {
-        "no" => Some(FileDescriptorStorePreserve::No),
-        "yes" => Some(FileDescriptorStorePreserve::Yes),
+        "0" | "n" | "no" | "false" | "f" | "off" => Some(FileDescriptorStorePreserve::No),
+        "1" | "y" | "yes" | "true" | "t" | "on" => Some(FileDescriptorStorePreserve::Yes),
         "restart" => Some(FileDescriptorStorePreserve::Restart),
         "on-success" => Some(FileDescriptorStorePreserve::OnSuccess),
         _ => None,

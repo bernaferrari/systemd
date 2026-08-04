@@ -815,23 +815,29 @@ fn test_oneshot_start_timeout_is_disabled_unless_explicit() {
 }
 
 #[test]
-fn test_timeout_failure_modes_reject_unknown_values_and_allow_reset() {
+fn test_service_enum_directives_match_c_retention_and_value_rules() {
     let _test_lock = test_env_lock();
-    for key in ["TimeoutStartFailureMode", "TimeoutStopFailureMode"] {
-        let mut invalid = UnitFileInfo::new("invalid.service", PathBuf::from("invalid.service"));
-        assert!(
-            parse_unit_content_into(&mut invalid, &format!("[Service]\n{key}=later\n")).is_err()
-        );
+    let mut info = UnitFileInfo::new("enum.service", PathBuf::from("enum.service"));
+    parse_unit_content_into(
+        &mut info,
+        "[Service]\nRestart=always\nRestart=ALWAYS\nRestart=\nTimeoutStartFailureMode=abort\nTimeoutStartFailureMode=ABORT\nTimeoutStartFailureMode=\nTimeoutStopFailureMode=kill\nTimeoutStopFailureMode=later\nTimeoutStopFailureMode=\nNotifyAccess=exec\nNotifyAccess=EXEC\nNotifyAccess=\nFileDescriptorStorePreserve=on-success\nFileDescriptorStorePreserve=later\nFileDescriptorStorePreserve=\n",
+    )
+    .unwrap();
 
-        let mut reset = UnitFileInfo::new("reset.service", PathBuf::from("reset.service"));
-        parse_unit_content_into(&mut reset, &format!("[Service]\n{key}=kill\n{key}=\n")).unwrap();
-        let value = match key {
-            "TimeoutStartFailureMode" => reset.service.timeout_start_failure_mode,
-            "TimeoutStopFailureMode" => reset.service.timeout_stop_failure_mode,
-            _ => unreachable!(),
-        };
-        assert_eq!(value, None);
-    }
+    // C routes the first four through DEFINE_CONFIG_PARSE_ENUM: invalid and
+    // empty input leaves the destination unchanged, and enum spellings are
+    // case-sensitive. FileDescriptorStorePreserve uses the same parser with
+    // exec_preserve_mode_from_string(), which also accepts parse_boolean().
+    assert_eq!(info.service.restart, Some(ServiceRestartPolicy::Always));
+    assert_eq!(info.service.timeout_start_failure_mode, Some(ServiceTimeoutFailureMode::Abort));
+    assert_eq!(info.service.timeout_stop_failure_mode, Some(ServiceTimeoutFailureMode::Kill));
+    assert_eq!(info.service.notify_access, Some(NotifyAccess::Exec));
+    assert_eq!(info.service.file_descriptor_store_preserve, Some(FileDescriptorStorePreserve::OnSuccess));
+
+    parse_unit_content_into(&mut info, "[Service]\nFileDescriptorStorePreserve=TRUE\n").unwrap();
+    assert_eq!(info.service.file_descriptor_store_preserve, Some(FileDescriptorStorePreserve::Yes));
+    parse_unit_content_into(&mut info, "[Service]\nFileDescriptorStorePreserve=off\n").unwrap();
+    assert_eq!(info.service.file_descriptor_store_preserve, Some(FileDescriptorStorePreserve::No));
 }
 
 #[test]
