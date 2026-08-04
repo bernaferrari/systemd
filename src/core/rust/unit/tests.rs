@@ -88,6 +88,9 @@ mod tests {
             DependencyKind::After,
             "network.target"
         ));
+        // C provenance: src/core/unit.c:unit_add_two_dependencies_by_name()
+        // calls manager_load_unit() before creating either edge.
+        assert!(unit.manager.known_units.contains("network.target"));
     }
 
     #[test]

@@ -55,6 +55,11 @@ pub fn unit_add_two_dependencies_by_name(
     add_reference: bool,
     mask: DependencyMask,
 ) -> Result<()> {
+    // C provenance: src/core/unit.c:unit_add_two_dependencies_by_name() resolves
+    // the name through manager_load_unit() before adding either relationship.
+    // `known_units` is this Rust facade's corresponding manager-load record, so
+    // preserve it for named pairs such as Requires= plus After=.
+    unit.manager.known_units.insert(name.to_string());
     unit_add_two_dependencies(unit, first, second, name, add_reference, mask)
 }
 
