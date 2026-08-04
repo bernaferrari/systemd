@@ -878,7 +878,7 @@ fn test_service_enum_rejections_retain_values_and_record_diagnostics() {
     );
     parse_unit_content_into(
         &mut info,
-        "[Service]\nType=notify\nType=Notify\nType=\nRestart=always\nRestart=ALWAYS\nRestart=\nTimeoutStartFailureMode=abort\nTimeoutStartFailureMode=ABORT\nTimeoutStartFailureMode=\nTimeoutStopFailureMode=kill\nTimeoutStopFailureMode=KILL\nTimeoutStopFailureMode=\nNotifyAccess=exec\nNotifyAccess=EXEC\nNotifyAccess=\nFileDescriptorStorePreserve=restart\nFileDescriptorStorePreserve=invalid\nFileDescriptorStorePreserve=\n",
+        "[Service]\nType=notify\nType=Notify\nType=\nRestart=always\nRestart=ALWAYS\nRestart=\nTimeoutStartFailureMode=abort\nTimeoutStartFailureMode=ABORT\nTimeoutStartFailureMode=\nTimeoutStopFailureMode=kill\nTimeoutStopFailureMode=KILL\nTimeoutStopFailureMode=\nNotifyAccess=exec\nNotifyAccess=EXEC\nNotifyAccess=\nFileDescriptorStorePreserve=restart\nFileDescriptorStorePreserve=invalid\nFileDescriptorStorePreserve=\nOOMPolicy=stop\nOOMPolicy=STOP\nOOMPolicy=\n",
     )
     .unwrap();
 
@@ -897,8 +897,9 @@ fn test_service_enum_rejections_retain_values_and_record_diagnostics() {
         info.service.file_descriptor_store_preserve,
         Some(FileDescriptorStorePreserve::Restart)
     );
+    assert_eq!(info.service.oom_policy, Some(OomPolicy::Stop));
 
-    assert_eq!(info.diagnostics.len(), 12);
+    assert_eq!(info.diagnostics.len(), 14);
     for diagnostic in &info.diagnostics {
         assert_eq!(diagnostic.class, UnitFileDiagnosticClass::InvalidValue);
         assert_eq!(
@@ -926,6 +927,8 @@ fn test_service_enum_rejections_retain_values_and_record_diagnostics() {
             "NotifyAccess",
             "FileDescriptorStorePreserve",
             "FileDescriptorStorePreserve",
+            "OOMPolicy",
+            "OOMPolicy",
         ]
     );
 }

@@ -1006,11 +1006,18 @@ pub(super) fn parse_unit_content_into(
                     }
                 }
                 ("service", "OOMPolicy") => {
-                    info.service.oom_policy = if value.is_empty() {
-                        None
+                    // config_parse_oom_policy() is a C enum parser: empty
+                    // and invalid assignments warn without clearing the prior
+                    // configured policy.
+                    if let Ok(oom_policy) = oom_policy_from_string(value) {
+                        info.service.oom_policy = Some(oom_policy);
                     } else {
-                        oom_policy_from_string(value).ok()
-                    };
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
+                    }
                 }
                 ("service", "OpenFile") => {
                     append_or_clear_list(&mut info.service.open_file, value);
