@@ -350,9 +350,19 @@ impl Pid1CommandInbox {
                 Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
             };
 
-            let result = authorizer
-                .authorize(queued.sender, &queued.command)
-                .and_then(|()| dispatch(runtime, queued.sender, queued.command));
+            // The C D-Bus handlers reject requests that cannot be admitted in
+            // the current manager context before security checks or an
+            // objective write. The Rust lifecycle owner cannot complete any
+            // outer objective yet, so reject it before invoking the mutable
+            // authorization seam as well. This keeps the documented errno
+            // stable and prevents a refused request from being an admission
+            // path for authorizer-side state.
+            let result = match reject_unavailable_lifecycle_request(&queued.command) {
+                Some(error) => Err(error),
+                None => authorizer
+                    .authorize(queued.sender, &queued.command)
+                    .and_then(|()| dispatch(runtime, queued.sender, queued.command)),
+            };
             dispatched += 1;
             match result {
                 Ok(Pid1CommandEffect::Reply(reply)) => {
@@ -377,6 +387,20 @@ impl Pid1CommandInbox {
             objective: None,
         }
     }
+}
+
+fn reject_unavailable_lifecycle_request(command: &Pid1ManagerCommand) -> Option<Pid1CommandError> {
+    let Pid1ManagerCommand::RequestObjective { objective } = command else {
+        return None;
+    };
+
+    Some(Pid1CommandError::Runtime(
+        if *objective == ManagerObjective::Ok {
+            Errno::EINVAL
+        } else {
+            Errno::EOPNOTSUPP
+        },
+    ))
 }
 
 fn dispatch(
@@ -467,21 +491,10 @@ fn dispatch(
         Pid1ManagerCommand::ResetAllFailed => runtime
             .reset_all_failed()
             .map(|()| Pid1ManagerReply::Completed),
-        Pid1ManagerCommand::RequestObjective { objective } => {
-            if objective == ManagerObjective::Ok {
-                return Err(Pid1CommandError::Runtime(Errno::EINVAL));
-            }
-
-            // Do not accept a request and then discover, after all epoll
-            // sources have been unregistered, that the outer transition has
-            // no versioned state/descriptors/shutdown implementation. That
-            // used to turn an authenticated test-bus request for reexec,
-            // exit, or shutdown into a fatal PID 1 path. C routes accepted
-            // objectives through `invoke_main_loop()` and can finish them;
-            // until Rust can do the same, reject synchronously while the
-            // exact manager and every queued command remain live.
-            return Err(Pid1CommandError::Runtime(Errno::EOPNOTSUPP));
-        }
+        // `dispatch_pending()` rejects this before authorization. Keeping the
+        // arm explicit makes a future lifecycle implementation add an
+        // admission path intentionally, rather than silently authorizing it.
+        Pid1ManagerCommand::RequestObjective { .. } => unreachable!(),
     }
     .map_err(Pid1CommandError::Runtime)?;
 
@@ -711,6 +724,39 @@ mod tests {
                 1,
             );
             assert_eq!(reply.try_recv(), Ok(Err(Pid1CommandError::Runtime(error))));
+        }
+    }
+
+    #[test]
+    fn unavailable_lifecycle_objectives_precede_authorization() {
+        for objective in [
+            ManagerObjective::Reload,
+            ManagerObjective::Reexecute,
+            ManagerObjective::Exit,
+        ] {
+            let (sender, mut inbox) = pid1_manager_command_channel(NonZeroUsize::new(1).unwrap());
+            let reply = sender
+                .try_send(
+                    sender_identity(),
+                    Pid1ManagerCommand::RequestObjective { objective },
+                )
+                .unwrap();
+            let mut runtime = RuntimeManager::new();
+            let mut authorizer = DenyAuthorizer::default();
+
+            assert_no_objective(
+                inbox.dispatch_pending(
+                    &mut runtime,
+                    &mut authorizer,
+                    NonZeroUsize::new(1).unwrap(),
+                ),
+                1,
+            );
+            assert_eq!(authorizer.calls, 0);
+            assert_eq!(
+                reply.try_recv(),
+                Ok(Err(Pid1CommandError::Runtime(Errno::EOPNOTSUPP)))
+            );
         }
     }
 
