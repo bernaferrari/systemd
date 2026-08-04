@@ -622,6 +622,17 @@ impl UnitFileInfo {
             warning,
         });
     }
+
+    fn record_invalid_value(&mut self, section: &str, key: &str, line: usize) {
+        self.record_diagnostic(
+            UnitFileDiagnosticClass::InvalidValue,
+            UnitFileAssignmentDisposition::IgnoredPreservingPriorValue,
+            section,
+            Some(key),
+            line,
+            true,
+        );
+    }
 }
 
 pub(super) fn suffix_to_unit_type(name: &str) -> UnitType {
@@ -819,6 +830,12 @@ pub(super) fn parse_unit_content_into(
                     // untouched when C rejects an empty or invalid enum.
                     if let Some(service_type) = parse_service_type(value) {
                         info.service_type = Some(service_type);
+                    } else {
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
                     }
                 }
                 ("service", "ExecStart") => {
@@ -853,6 +870,12 @@ pub(super) fn parse_unit_content_into(
                     // setting intact when the enum input is empty or invalid.
                     if let Some(restart) = parse_restart_policy(value) {
                         info.service.restart = Some(restart);
+                    } else {
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
                     }
                 }
                 ("service", "RestartSec") => {
@@ -896,11 +919,23 @@ pub(super) fn parse_unit_content_into(
                     // the preceding mode for empty or invalid input.
                     if let Some(mode) = parse_timeout_failure_mode(value) {
                         info.service.timeout_start_failure_mode = Some(mode);
+                    } else {
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
                     }
                 }
                 ("service", "TimeoutStopFailureMode") => {
                     if let Some(mode) = parse_timeout_failure_mode(value) {
                         info.service.timeout_stop_failure_mode = Some(mode);
+                    } else {
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
                     }
                 }
                 ("service", "TimeoutSec") => {
@@ -945,6 +980,12 @@ pub(super) fn parse_unit_content_into(
                 ("service", "NotifyAccess") => {
                     if let Some(notify_access) = parse_notify_access(value) {
                         info.service.notify_access = Some(notify_access);
+                    } else {
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
                     }
                 }
                 ("service", "Sockets") => {
@@ -956,6 +997,12 @@ pub(super) fn parse_unit_content_into(
                 ("service", "FileDescriptorStorePreserve") => {
                     if let Some(preserve) = parse_fd_store_preserve(value) {
                         info.service.file_descriptor_store_preserve = Some(preserve);
+                    } else {
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
                     }
                 }
                 ("service", "OOMPolicy") => {

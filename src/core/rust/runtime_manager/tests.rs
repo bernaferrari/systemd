@@ -870,6 +870,67 @@ fn test_service_enum_directives_match_c_retention_and_value_rules() {
 }
 
 #[test]
+fn test_service_enum_rejections_retain_values_and_record_diagnostics() {
+    let _test_lock = test_env_lock();
+    let mut info = UnitFileInfo::new(
+        "enum-diagnostics.service",
+        PathBuf::from("enum-diagnostics.service"),
+    );
+    parse_unit_content_into(
+        &mut info,
+        "[Service]\nType=notify\nType=Notify\nType=\nRestart=always\nRestart=ALWAYS\nRestart=\nTimeoutStartFailureMode=abort\nTimeoutStartFailureMode=ABORT\nTimeoutStartFailureMode=\nTimeoutStopFailureMode=kill\nTimeoutStopFailureMode=KILL\nTimeoutStopFailureMode=\nNotifyAccess=exec\nNotifyAccess=EXEC\nNotifyAccess=\nFileDescriptorStorePreserve=restart\nFileDescriptorStorePreserve=invalid\nFileDescriptorStorePreserve=\n",
+    )
+    .unwrap();
+
+    assert_eq!(info.service_type, Some(ServiceType::Notify));
+    assert_eq!(info.service.restart, Some(ServiceRestartPolicy::Always));
+    assert_eq!(
+        info.service.timeout_start_failure_mode,
+        Some(ServiceTimeoutFailureMode::Abort)
+    );
+    assert_eq!(
+        info.service.timeout_stop_failure_mode,
+        Some(ServiceTimeoutFailureMode::Kill)
+    );
+    assert_eq!(info.service.notify_access, Some(NotifyAccess::Exec));
+    assert_eq!(
+        info.service.file_descriptor_store_preserve,
+        Some(FileDescriptorStorePreserve::Restart)
+    );
+
+    assert_eq!(info.diagnostics.len(), 12);
+    for diagnostic in &info.diagnostics {
+        assert_eq!(diagnostic.class, UnitFileDiagnosticClass::InvalidValue);
+        assert_eq!(
+            diagnostic.disposition,
+            UnitFileAssignmentDisposition::IgnoredPreservingPriorValue
+        );
+        assert_eq!(diagnostic.section, "service");
+        assert!(diagnostic.warning);
+    }
+    assert_eq!(
+        info.diagnostics
+            .iter()
+            .filter_map(|diagnostic| diagnostic.key.as_deref())
+            .collect::<Vec<_>>(),
+        vec![
+            "Type",
+            "Type",
+            "Restart",
+            "Restart",
+            "TimeoutStartFailureMode",
+            "TimeoutStartFailureMode",
+            "TimeoutStopFailureMode",
+            "TimeoutStopFailureMode",
+            "NotifyAccess",
+            "NotifyAccess",
+            "FileDescriptorStorePreserve",
+            "FileDescriptorStorePreserve",
+        ]
+    );
+}
+
+#[test]
 fn test_service_timeout_action_matches_all_c_timer_phase_and_policy_cases() {
     use ServiceTimeoutAction::{Dead, Mount, Reload, Signal, Stop, StopPost};
     use ServiceTimeoutFailureMode::{Abort, Kill, Terminate};
