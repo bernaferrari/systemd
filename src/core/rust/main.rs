@@ -269,14 +269,10 @@ fn detect_first_boot(in_initrd: bool) -> bool {
         return false;
     }
 
-    if let Ok(cmdline) = std::fs::read_to_string("/proc/cmdline") {
-        for word in cmdline.split_ascii_whitespace() {
-            if let Some(value) = word.strip_prefix("systemd.condition_first_boot=")
-                && let Some(value) = systemd_basic_rs::string_table::parse_boolean(value)
-            {
-                return value;
-            }
-        }
+    if let Ok(cmdline) = std::fs::read_to_string("/proc/cmdline")
+        && let Some(value) = kernel_cmdline_bool_from(&cmdline, "systemd.condition_first_boot")
+    {
+        return value;
     }
 
     match std::fs::read_to_string("/etc/machine-id") {
@@ -284,6 +280,33 @@ fn detect_first_boot(in_initrd: bool) -> bool {
         // C treats a missing or unreadable machine ID as first boot.
         Err(_) => true,
     }
+}
+
+/// Parse a boolean kernel-command-line switch with C PID 1's override rules.
+///
+/// C provenance: `src/core/main.c` calls
+/// `proc_cmdline_get_bool("systemd.condition_first_boot", 0, ...)`. Its
+/// `proc_cmdline_strv_internal()` tokenizer accepts quoted values, a bare key
+/// means true, and the last matching assignment wins. If that last assignment
+/// is malformed, `proc_cmdline_get_bool()` fails and C falls back to machine-ID
+/// detection; do not retain an earlier valid, security-relevant override.
+fn kernel_cmdline_bool_from(cmdline: &str, key: &str) -> Option<bool> {
+    let mut remaining = cmdline;
+    let mut selected = None;
+    let key_with_value = format!("{key}=");
+    let flags = EXTRACT_UNQUOTE | EXTRACT_RELAX | EXTRACT_RETAIN_ESCAPE;
+
+    while let Ok(Some((word, rest))) = extract_first_word(remaining, None, flags) {
+        remaining = rest;
+
+        if word == key {
+            selected = Some(Some(true));
+        } else if let Some(value) = word.strip_prefix(&key_with_value) {
+            selected = Some(systemd_basic_rs::string_table::parse_boolean(value));
+        }
+    }
+
+    selected.flatten()
 }
 
 /// Translate Rust target architecture spelling to the public spelling used by
@@ -1573,6 +1596,31 @@ mod tests {
         assert_eq!(
             kernel_cmdline_override_target_from("rd.systemd.unit=@bad.target", true),
             None
+        );
+    }
+
+    #[test]
+    fn kernel_first_boot_override_uses_c_cmdline_precedence_and_fallback_rules() {
+        assert_eq!(
+            kernel_cmdline_bool_from(
+                "systemd.condition_first_boot=no systemd.condition_first_boot=yes",
+                "systemd.condition_first_boot",
+            ),
+            Some(true),
+        );
+        assert_eq!(
+            kernel_cmdline_bool_from(
+                "systemd.condition_first_boot='no' systemd.condition_first_boot",
+                "systemd.condition_first_boot",
+            ),
+            Some(true),
+        );
+        assert_eq!(
+            kernel_cmdline_bool_from(
+                "systemd.condition_first_boot=yes systemd.condition_first_boot=invalid",
+                "systemd.condition_first_boot",
+            ),
+            None,
         );
     }
 
