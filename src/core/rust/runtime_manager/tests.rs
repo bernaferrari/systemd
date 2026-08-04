@@ -829,15 +829,30 @@ fn test_service_enum_directives_match_c_retention_and_value_rules() {
     // case-sensitive. FileDescriptorStorePreserve uses the same parser with
     // exec_preserve_mode_from_string(), which also accepts parse_boolean().
     assert_eq!(info.service.restart, Some(ServiceRestartPolicy::Always));
-    assert_eq!(info.service.timeout_start_failure_mode, Some(ServiceTimeoutFailureMode::Abort));
-    assert_eq!(info.service.timeout_stop_failure_mode, Some(ServiceTimeoutFailureMode::Kill));
+    assert_eq!(
+        info.service.timeout_start_failure_mode,
+        Some(ServiceTimeoutFailureMode::Abort)
+    );
+    assert_eq!(
+        info.service.timeout_stop_failure_mode,
+        Some(ServiceTimeoutFailureMode::Kill)
+    );
     assert_eq!(info.service.notify_access, Some(NotifyAccess::Exec));
-    assert_eq!(info.service.file_descriptor_store_preserve, Some(FileDescriptorStorePreserve::OnSuccess));
+    assert_eq!(
+        info.service.file_descriptor_store_preserve,
+        Some(FileDescriptorStorePreserve::OnSuccess)
+    );
 
     parse_unit_content_into(&mut info, "[Service]\nFileDescriptorStorePreserve=TRUE\n").unwrap();
-    assert_eq!(info.service.file_descriptor_store_preserve, Some(FileDescriptorStorePreserve::Yes));
+    assert_eq!(
+        info.service.file_descriptor_store_preserve,
+        Some(FileDescriptorStorePreserve::Yes)
+    );
     parse_unit_content_into(&mut info, "[Service]\nFileDescriptorStorePreserve=off\n").unwrap();
-    assert_eq!(info.service.file_descriptor_store_preserve, Some(FileDescriptorStorePreserve::No));
+    assert_eq!(
+        info.service.file_descriptor_store_preserve,
+        Some(FileDescriptorStorePreserve::No)
+    );
 }
 
 #[test]
