@@ -1367,6 +1367,10 @@ fn test_kill_mode_matches_c_empty_reset_invalid_retention_and_diagnostics() {
         assert_eq!(diagnostic.key.as_deref(), Some("KillMode"));
         assert!(diagnostic.warning);
     }
+
+    let mut scope = UnitFileInfo::new("kill-mode.scope", PathBuf::from("kill-mode.scope"));
+    parse_unit_content_into(&mut scope, "[Scope]\nKillMode=process\n").unwrap();
+    assert_eq!(scope.kill.kill_mode, Some(KillMode::Process));
 }
 
 #[test]

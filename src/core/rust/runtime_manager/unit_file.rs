@@ -1305,7 +1305,7 @@ pub(super) fn parse_unit_content_into(
                     info.automount.timeout_idle_sec = parse_duration_seconds(value);
                 }
                 (section, "KillMode")
-                    if matches!(section, "service" | "socket" | "mount" | "swap") =>
+                    if matches!(section, "service" | "socket" | "mount" | "swap" | "scope") =>
                 {
                     // config_parse_kill_mode() resets an empty assignment to
                     // control-group, but warns and preserves the prior value
@@ -1321,7 +1321,7 @@ pub(super) fn parse_unit_content_into(
                     }
                 }
                 (section, key)
-                    if matches!(section, "service" | "socket" | "mount" | "swap")
+                    if matches!(section, "service" | "socket" | "mount" | "swap" | "scope")
                         && parse_kill_context_directive(&mut info.kill, key, value) => {}
                 (section, key)
                     if matches!(section, "service" | "socket" | "mount" | "swap")
