@@ -789,6 +789,46 @@ fn test_service_timeout_parser_matches_c_zero_and_invalid_value_semantics() {
 }
 
 #[test]
+fn test_service_timeout_abort_matches_c_reset_and_invalid_retention() {
+    let _test_lock = test_env_lock();
+    let mut info = UnitFileInfo::new(
+        "timeout-abort.service",
+        PathBuf::from("timeout-abort.service"),
+    );
+
+    parse_unit_content_into(&mut info, "[Service]\nTimeoutAbortSec=5s\n").unwrap();
+    assert_eq!(info.service.timeout_abort_sec, Some(5));
+    assert!(info.diagnostics.is_empty());
+
+    // config_parse_timeout_abort() logs and ignores invalid non-empty input,
+    // retaining the previous value.
+    parse_unit_content_into(&mut info, "[Service]\nTimeoutAbortSec=invalid\n").unwrap();
+    assert_eq!(info.service.timeout_abort_sec, Some(5));
+    assert_eq!(info.diagnostics.len(), 1);
+    assert_eq!(
+        info.diagnostics[0].class,
+        UnitFileDiagnosticClass::InvalidValue
+    );
+    assert_eq!(
+        info.diagnostics[0].disposition,
+        UnitFileAssignmentDisposition::IgnoredPreservingPriorValue
+    );
+    assert_eq!(info.diagnostics[0].section, "service");
+    assert_eq!(info.diagnostics[0].key.as_deref(), Some("TimeoutAbortSec"));
+    assert!(info.diagnostics[0].warning);
+
+    // An empty assignment is a valid reset in C: the setting becomes unset
+    // and the warning count is unchanged.
+    parse_unit_content_into(&mut info, "[Service]\nTimeoutAbortSec=\n").unwrap();
+    assert_eq!(info.service.timeout_abort_sec, None);
+    assert_eq!(info.diagnostics.len(), 1);
+
+    // Zero is a valid parse_sec() value and remains explicitly configured.
+    parse_unit_content_into(&mut info, "[Service]\nTimeoutAbortSec=0\n").unwrap();
+    assert_eq!(info.service.timeout_abort_sec, Some(0));
+}
+
+#[test]
 fn test_oneshot_start_timeout_is_disabled_unless_explicit() {
     let mgr = new_test_runtime_manager();
     let mut info = UnitFileInfo::new("oneshot.service", PathBuf::from("oneshot.service"));

@@ -912,7 +912,22 @@ pub(super) fn parse_unit_content_into(
                     }
                 }
                 ("service", "TimeoutAbortSec") => {
-                    info.service.timeout_abort_sec = parse_duration_seconds(value);
+                    // config_parse_service_timeout_abort() clears the
+                    // optional setting for an empty assignment, but retains
+                    // the prior value when parse_sec() rejects a non-empty
+                    // value. Keep the warning visible in the parser
+                    // diagnostics just as C's log_syntax() does.
+                    if value.is_empty() {
+                        info.service.timeout_abort_sec = None;
+                    } else if let Some(timeout) = parse_duration_seconds(value) {
+                        info.service.timeout_abort_sec = Some(timeout);
+                    } else {
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
+                    }
                 }
                 ("service", "TimeoutStartFailureMode") => {
                     // C's config_parse_service_timeout_failure_mode() retains
