@@ -1304,6 +1304,22 @@ pub(super) fn parse_unit_content_into(
                 ("automount", "TimeoutIdleSec") => {
                     info.automount.timeout_idle_sec = parse_duration_seconds(value);
                 }
+                (section, "KillMode")
+                    if matches!(section, "service" | "socket" | "mount" | "swap") =>
+                {
+                    // config_parse_kill_mode() resets an empty assignment to
+                    // control-group, but warns and preserves the prior value
+                    // for a nonempty invalid enum spelling.
+                    if let Some(kill_mode) = parse_kill_mode(value) {
+                        info.kill.kill_mode = Some(kill_mode);
+                    } else {
+                        info.record_invalid_value(
+                            current_section.as_str(),
+                            key,
+                            directive.line_number,
+                        );
+                    }
+                }
                 (section, key)
                     if matches!(section, "service" | "socket" | "mount" | "swap")
                         && parse_kill_context_directive(&mut info.kill, key, value) => {}
@@ -1958,10 +1974,10 @@ pub(super) fn parse_exec_context_directive(
 
 pub(super) fn parse_kill_mode(value: &str) -> Option<KillMode> {
     if value.is_empty() {
-        return None;
+        return Some(KillMode::ControlGroup);
     }
 
-    match value.to_ascii_lowercase().as_str() {
+    match value {
         "control-group" => Some(KillMode::ControlGroup),
         "process" => Some(KillMode::Process),
         "mixed" => Some(KillMode::Mixed),
@@ -1972,7 +1988,11 @@ pub(super) fn parse_kill_mode(value: &str) -> Option<KillMode> {
 
 pub(super) fn parse_kill_context_directive(kill: &mut KillConfig, key: &str, value: &str) -> bool {
     match key {
-        "KillMode" => kill.kill_mode = parse_kill_mode(value),
+        "KillMode" => {
+            if let Some(kill_mode) = parse_kill_mode(value) {
+                kill.kill_mode = Some(kill_mode);
+            }
+        }
         "KillSignal" => kill.kill_signal = parse_optional_i32(value),
         "RestartKillSignal" => kill.restart_kill_signal = parse_optional_i32(value),
         "FinalKillSignal" => kill.final_kill_signal = parse_optional_i32(value),

@@ -1344,6 +1344,32 @@ fn test_parse_kill_and_cgroup_context_directives_shared_and_apply_to_unit() {
 }
 
 #[test]
+fn test_kill_mode_matches_c_empty_reset_invalid_retention_and_diagnostics() {
+    let _test_lock = test_env_lock();
+    let mut info = UnitFileInfo::new("kill-mode.service", PathBuf::from("kill-mode.service"));
+    parse_unit_content_into(
+        &mut info,
+        "[Service]\nKillMode=mixed\nKillMode=Mixed\nKillMode=\nKillMode=PROCESS\n",
+    )
+    .unwrap();
+
+    // C accepts exact enum spellings, resets empty input to control-group,
+    // and ignores invalid nonempty input after issuing a syntax warning.
+    assert_eq!(info.kill.kill_mode, Some(KillMode::ControlGroup));
+    assert_eq!(info.diagnostics.len(), 2);
+    for diagnostic in &info.diagnostics {
+        assert_eq!(diagnostic.class, UnitFileDiagnosticClass::InvalidValue);
+        assert_eq!(
+            diagnostic.disposition,
+            UnitFileAssignmentDisposition::IgnoredPreservingPriorValue
+        );
+        assert_eq!(diagnostic.section, "service");
+        assert_eq!(diagnostic.key.as_deref(), Some("KillMode"));
+        assert!(diagnostic.warning);
+    }
+}
+
+#[test]
 fn test_parse_socket_service_override() {
     let _test_lock = test_env_lock();
     let dir = test_temp_dir("test-systemd-socket-service");
