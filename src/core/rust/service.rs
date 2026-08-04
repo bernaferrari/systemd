@@ -179,6 +179,8 @@ pub struct Service {
     /// Jitter chosen for the currently pending automatic restart.
     pub restart_randomized_delay_chosen_usec: u64,
     pub runtime_max_usec: u64,
+    /// Configured upper bound for randomized service runtime jitter.
+    pub runtime_rand_extra_usec: u64,
     pub socket_fd: i32,
     pub stdin_fd: i32,
     pub stdout_fd: i32,
@@ -256,6 +258,7 @@ impl Default for Service {
             restart_randomized_delay_usec: 0,
             restart_randomized_delay_chosen_usec: 0,
             runtime_max_usec: USEC_INFINITY,
+            runtime_rand_extra_usec: 0,
             socket_fd: 0,
             stdin_fd: 0,
             stdout_fd: 0,
@@ -422,6 +425,7 @@ pub fn service_init(service: &mut Service, manager: &Manager) {
     service.restart_randomized_delay_usec = 0;
     service.restart_randomized_delay_chosen_usec = 0;
     service.runtime_max_usec = USEC_INFINITY;
+    service.runtime_rand_extra_usec = 0;
     service.service_type = ServiceType::Invalid;
     service.socket_fd = Errno::EBADF.to_neg_errno();
     service.stdin_fd = Errno::EBADF.to_neg_errno();

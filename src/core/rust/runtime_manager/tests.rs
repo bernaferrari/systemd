@@ -24,6 +24,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixDatagram;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use systemd_shared_rs::tests::TestEnvironment;
 
 fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -663,7 +664,7 @@ fn test_parse_service_directives_comprehensive() {
     let service_path = dir.join("demo.service");
     fs::write(
             &service_path,
-            "[Service]\nType=notify-reload\nExecStartPre=-/usr/bin/pre\nExecStartPre=+/usr/bin/pre2\nExecStart=\nExecStart=/usr/bin/main --flag\nExecStartPost=!/usr/bin/post\nExecStop=/usr/bin/stop\nExecStopPost=-!/usr/bin/stop-post\nExecReload=+/usr/bin/reload\nExecReloadPost=-/usr/bin/reload-post\nExecCondition=-!/usr/bin/cond\nRestart=on-failure\nRestartSec=2min\nRestartSteps=7\nRestartMaxDelaySec=1h\nRestartRandomizedDelaySec=3s\nTimeoutStartSec=30s\nTimeoutStopSec=40\nTimeoutAbortSec=50\nTimeoutStartFailureMode=abort\nTimeoutStopFailureMode=kill\nTimeoutSec=60\nRuntimeMaxSec=90\nWatchdogSec=1500ms\nSuccessExitStatus=0 1 SIGTERM\nRestartPreventExitStatus=2\nRestartForceExitStatus=3 4\nRemainAfterExit=yes\nGuessMainPID=no\nPIDFile=/run/demo.pid\nBusName=org.demo.Service\nNotifyAccess=all\nSockets=alpha.socket beta.socket\nFileDescriptorStoreMax=32\nFileDescriptorStorePreserve=restart\nOOMPolicy=stop\nOpenFile=/etc/demo\nOpenFile=\nOpenFile=/var/lib/demo\n",
+            "[Service]\nType=notify-reload\nExecStartPre=-/usr/bin/pre\nExecStartPre=+/usr/bin/pre2\nExecStart=\nExecStart=/usr/bin/main --flag\nExecStartPost=!/usr/bin/post\nExecStop=/usr/bin/stop\nExecStopPost=-!/usr/bin/stop-post\nExecReload=+/usr/bin/reload\nExecReloadPost=-/usr/bin/reload-post\nExecCondition=-!/usr/bin/cond\nRestart=on-failure\nRestartSec=2min\nRestartSteps=7\nRestartMaxDelaySec=1h\nRestartRandomizedDelaySec=3s\nTimeoutStartSec=30s\nTimeoutStopSec=40\nTimeoutAbortSec=50\nTimeoutStartFailureMode=abort\nTimeoutStopFailureMode=kill\nTimeoutSec=60\nRuntimeMaxSec=90\nRuntimeRandomizedExtraSec=4s\nWatchdogSec=1500ms\nSuccessExitStatus=0 1 SIGTERM\nRestartPreventExitStatus=2\nRestartForceExitStatus=3 4\nRemainAfterExit=yes\nGuessMainPID=no\nPIDFile=/run/demo.pid\nBusName=org.demo.Service\nNotifyAccess=all\nSockets=alpha.socket beta.socket\nFileDescriptorStoreMax=32\nFileDescriptorStorePreserve=restart\nOOMPolicy=stop\nOpenFile=/etc/demo\nOpenFile=\nOpenFile=/var/lib/demo\n",
         )
         .unwrap();
 
@@ -708,6 +709,7 @@ fn test_parse_service_directives_comprehensive() {
         Some(ServiceTimeoutFailureMode::Kill)
     );
     assert_eq!(info.service.runtime_max_sec, Some(90));
+    assert_eq!(info.service.runtime_randomized_extra_sec, Some(4));
     assert_eq!(info.service.watchdog_sec, Some(2));
 
     assert_eq!(info.service.success_exit_status, vec!["0", "1", "SIGTERM"]);
@@ -738,13 +740,14 @@ fn test_service_duration_directives_retain_prior_value_on_invalid_assignment() {
     let service_path = dir.join("demo.service");
     fs::write(
         &service_path,
-        "[Service]\nRestartSec=5s\nRestartSec=\nRestartSec=not-a-duration\nRestartSteps=7\nRestartSteps=\nRestartSteps=not-a-number\nRestartMaxDelaySec=10s\nRestartMaxDelaySec=\nRestartMaxDelaySec=not-a-duration\nRestartRandomizedDelaySec=6s\nRestartRandomizedDelaySec=\nRestartRandomizedDelaySec=not-a-duration\nRuntimeMaxSec=15s\nRuntimeMaxSec=\nRuntimeMaxSec=not-a-duration\nWatchdogSec=20s\nWatchdogSec=\nWatchdogSec=not-a-duration\n",
+        "[Service]\nRestartSec=5s\nRestartSec=\nRestartSec=not-a-duration\nRestartSteps=7\nRestartSteps=\nRestartSteps=not-a-number\nRestartMaxDelaySec=10s\nRestartMaxDelaySec=\nRestartMaxDelaySec=not-a-duration\nRestartRandomizedDelaySec=6s\nRestartRandomizedDelaySec=\nRestartRandomizedDelaySec=not-a-duration\nRuntimeMaxSec=15s\nRuntimeMaxSec=\nRuntimeMaxSec=not-a-duration\nRuntimeRandomizedExtraSec=7s\nRuntimeRandomizedExtraSec=\nRuntimeRandomizedExtraSec=not-a-duration\nWatchdogSec=20s\nWatchdogSec=\nWatchdogSec=not-a-duration\n",
     )
     .unwrap();
 
     let info = parse_unit_file(&service_path).unwrap().unwrap();
 
-    // Service.Restart{,MaxDelay,RandomizedDelay}Sec, RuntimeMaxSec, and WatchdogSec map to
+    // Service.Restart{,MaxDelay,RandomizedDelay}Sec, RuntimeMaxSec,
+    // RuntimeRandomizedExtraSec, and WatchdogSec map to
     // config_parse_sec(), while RestartSteps maps to config_parse_unsigned().
     // Both C parsers leave the destination untouched on an empty or invalid
     // assignment.
@@ -753,6 +756,7 @@ fn test_service_duration_directives_retain_prior_value_on_invalid_assignment() {
     assert_eq!(info.service.restart_max_delay_sec, Some(10));
     assert_eq!(info.service.restart_randomized_delay_sec, Some(6));
     assert_eq!(info.service.runtime_max_sec, Some(15));
+    assert_eq!(info.service.runtime_randomized_extra_sec, Some(7));
     assert_eq!(info.service.watchdog_sec, Some(20));
 
     let _ = fs::remove_dir_all(&dir);
@@ -4427,6 +4431,49 @@ fn test_service_restart_randomized_delay_is_applied_and_added_to_restart_deadlin
         environment.remove("SYSTEMD_UNIT_PATH");
     }
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_service_runtime_randomized_extra_sec_bounds_running_deadline() {
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    let mut info = UnitFileInfo::new(
+        "runtime-randomized.service",
+        PathBuf::from("runtime-randomized.service"),
+    );
+    info.service.runtime_max_sec = Some(2);
+    info.service.runtime_randomized_extra_sec = Some(1);
+
+    let before = Instant::now();
+    mgr.arm_running_deadlines("runtime-randomized.service", &info);
+    let after = Instant::now();
+    let deadline = mgr.service_runtime_deadlines["runtime-randomized.service"];
+
+    // C's service_running_timeout() draws uniformly from [0, extra) and
+    // adds it to the active-enter timestamp plus RuntimeMaxSec=.
+    assert!(deadline >= before + Duration::from_secs(2));
+    assert!(deadline < after + Duration::from_secs(3));
+}
+
+#[test]
+fn test_service_runtime_zero_max_is_an_immediate_c_deadline() {
+    let _test_lock = test_env_lock();
+    let mut mgr = new_test_runtime_manager();
+    let mut info = UnitFileInfo::new(
+        "runtime-zero.service",
+        PathBuf::from("runtime-zero.service"),
+    );
+    info.service.runtime_max_sec = Some(0);
+
+    let before = Instant::now();
+    mgr.arm_running_deadlines("runtime-zero.service", &info);
+    let after = Instant::now();
+    let deadline = mgr.service_runtime_deadlines["runtime-zero.service"];
+
+    // RuntimeMaxSec= is parsed with config_parse_sec(), so zero is not the
+    // config_parse_sec_fix_0() "infinity" sentinel used by start/stop timeouts.
+    assert!(deadline >= before);
+    assert!(deadline <= after);
 }
 
 #[test]

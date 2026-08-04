@@ -336,6 +336,7 @@ pub struct ServiceConfig {
     pub timeout_start_failure_mode: Option<ServiceTimeoutFailureMode>,
     pub timeout_stop_failure_mode: Option<ServiceTimeoutFailureMode>,
     pub runtime_max_sec: Option<u64>,
+    pub runtime_randomized_extra_sec: Option<u64>,
     pub watchdog_sec: Option<u64>,
     pub success_exit_status: Vec<String>,
     pub restart_prevent_exit_status: Vec<String>,
@@ -973,6 +974,14 @@ pub(super) fn parse_unit_content_into(
                 ("service", "RuntimeMaxSec") => {
                     if let Some(runtime_max_sec) = parse_duration_seconds(value) {
                         info.service.runtime_max_sec = Some(runtime_max_sec);
+                    }
+                }
+                ("service", "RuntimeRandomizedExtraSec") => {
+                    // C's config_parse_sec() retains the previous value when
+                    // an assignment is empty or otherwise invalid.
+                    if let Some(runtime_randomized_extra_sec) = parse_duration_seconds(value) {
+                        info.service.runtime_randomized_extra_sec =
+                            Some(runtime_randomized_extra_sec);
                     }
                 }
                 ("service", "WatchdogSec") => {

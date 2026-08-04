@@ -1382,6 +1382,9 @@ impl RuntimeManager {
             if let Some(runtime_max) = info.service.runtime_max_sec {
                 svc.runtime_max_usec = runtime_max.saturating_mul(1_000_000);
             }
+            if let Some(runtime_randomized_extra) = info.service.runtime_randomized_extra_sec {
+                svc.runtime_rand_extra_usec = runtime_randomized_extra.saturating_mul(1_000_000);
+            }
             if let Some(watchdog) = info.service.watchdog_sec {
                 svc.watchdog_usec = watchdog.saturating_mul(1_000_000);
             }

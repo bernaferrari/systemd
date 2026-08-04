@@ -50,13 +50,23 @@ impl RuntimeManager {
         self.service_operation_deadlines.remove(name);
 
         if let Some(runtime_max_sec) = info.service.runtime_max_sec {
-            if runtime_max_sec > 0 {
-                self.service_runtime_deadlines
-                    .entry(name.to_string())
-                    .or_insert_with(|| Instant::now() + Duration::from_secs(runtime_max_sec));
-            } else {
-                self.service_runtime_deadlines.remove(name);
-            }
+            // RuntimeMaxSec= uses C's config_parse_sec(), not
+            // config_parse_sec_fix_0(): an explicit zero is a finite
+            // deadline (and RuntimeRandomizedExtraSec= may extend it).
+            let randomized_extra_usec = info
+                .service
+                .runtime_randomized_extra_sec
+                .unwrap_or_default()
+                .saturating_mul(1_000_000);
+            self.service_runtime_deadlines
+                .entry(name.to_string())
+                .or_insert_with(|| {
+                    let randomized_extra_usec =
+                        service_randomized_delay_usec(randomized_extra_usec);
+                    Instant::now()
+                        + Duration::from_secs(runtime_max_sec)
+                        + Duration::from_micros(randomized_extra_usec)
+                });
         } else {
             self.service_runtime_deadlines.remove(name);
         }
