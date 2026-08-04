@@ -814,7 +814,13 @@ pub(super) fn parse_unit_content_into(
                 ("unit", key)
                     if parse_unit_condition_directive(&mut info.conditions, key, value) => {}
                 ("unit", key) if parse_unit_assert_directive(&mut info.asserts, key, value) => {}
-                ("service", "Type") => info.service_type = parse_service_type(value),
+                ("service", "Type") => {
+                    // config_parse_service_type() leaves its destination
+                    // untouched when C rejects an empty or invalid enum.
+                    if let Some(service_type) = parse_service_type(value) {
+                        info.service_type = Some(service_type);
+                    }
+                }
                 ("service", "ExecStart") => {
                     append_or_clear_exec_list(&mut info.service.exec_start, value);
                     info.exec_start = info.service.exec_start.last().map(|s| s.command.clone());
@@ -1623,7 +1629,7 @@ pub(super) fn append_or_clear_exec_list(target: &mut Vec<ExecCommandSpec>, value
 }
 
 pub(super) fn parse_service_type(value: &str) -> Option<ServiceType> {
-    match value.to_ascii_lowercase().as_str() {
+    match value {
         "simple" => Some(ServiceType::Simple),
         "forking" => Some(ServiceType::Forking),
         "oneshot" => Some(ServiceType::Oneshot),
@@ -1686,8 +1692,8 @@ pub(super) fn parse_bool(value: &str) -> bool {
 
 fn parse_boolean(value: &str) -> Option<bool> {
     match value.to_ascii_lowercase().as_str() {
-        "1" | "yes" | "true" | "on" => Some(true),
-        "0" | "no" | "false" | "off" => Some(false),
+        "1" | "y" | "yes" | "true" | "t" | "on" => Some(true),
+        "0" | "n" | "no" | "false" | "f" | "off" => Some(false),
         _ => None,
     }
 }

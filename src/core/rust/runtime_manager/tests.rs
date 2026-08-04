@@ -354,11 +354,13 @@ fn test_suffix_to_unit_type() {
 #[test]
 fn test_parse_bool() {
     let _test_lock = test_env_lock();
-    assert!(parse_bool("yes"));
-    assert!(parse_bool("true"));
-    assert!(parse_bool("1"));
-    assert!(!parse_bool("no"));
-    assert!(!parse_bool("0"));
+    // C parse_boolean() accepts these case-insensitively.
+    for value in ["1", "y", "yes", "true", "t", "on", "Y", "TRUE"] {
+        assert!(parse_bool(value), "{value}");
+    }
+    for value in ["0", "n", "no", "false", "f", "off", "N", "FALSE"] {
+        assert!(!parse_bool(value), "{value}");
+    }
 }
 
 #[test]
@@ -639,6 +641,18 @@ fn test_parse_service_type_directives() {
     assert_eq!(exec_info.service_type, Some(ServiceType::Exec));
 
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_service_type_rejects_mixed_case_and_retains_prior_value() {
+    let _test_lock = test_env_lock();
+    let mut info = UnitFileInfo::new("type.service", PathBuf::from("type.service"));
+
+    parse_unit_content_into(&mut info, "[Service]\nType=simple\nType=Simple\nType=\n").unwrap();
+
+    // Service.Type uses C's DEFINE_CONFIG_PARSE_ENUM: "Simple" and an empty
+    // value are invalid and leave the preceding, exact enum value unchanged.
+    assert_eq!(info.service_type, Some(ServiceType::Simple));
 }
 
 #[test]
