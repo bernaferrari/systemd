@@ -13,9 +13,9 @@ use super::{
 };
 use crate::ffi::Errno;
 use crate::service::{
-    ServiceState, ServiceType, service_exec_needs_notify_socket, service_record_reload_result,
-    service_record_result, service_reset_reload_result, service_reset_result,
-    service_restart_usec_next,
+    ServiceState, ServiceType, service_exec_needs_notify_socket, service_randomized_delay_usec,
+    service_record_reload_result, service_record_result, service_reset_reload_result,
+    service_reset_result, service_restart_usec_next_jittered,
 };
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use crate::transaction::JobMode;
@@ -593,7 +593,9 @@ impl RuntimeManager {
     pub(super) fn restart_delay_for(&mut self, name: &str) -> Duration {
         self.set_service_state(name, ServiceState::AutoRestartQueued);
         if let Some(service) = self.services.get_mut(name) {
-            let delay_usec = service_restart_usec_next(service);
+            service.restart_randomized_delay_chosen_usec =
+                service_randomized_delay_usec(service.restart_randomized_delay_usec);
+            let delay_usec = service_restart_usec_next_jittered(service);
             service.n_restarts = service.n_restarts.saturating_add(1);
             return Duration::from_micros(delay_usec);
         }

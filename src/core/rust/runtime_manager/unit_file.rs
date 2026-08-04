@@ -329,6 +329,7 @@ pub struct ServiceConfig {
     pub restart_sec: Option<u64>,
     pub restart_steps: Option<u32>,
     pub restart_max_delay_sec: Option<u64>,
+    pub restart_randomized_delay_sec: Option<u64>,
     pub timeout_start_sec: Option<u64>,
     pub timeout_stop_sec: Option<u64>,
     pub timeout_abort_sec: Option<u64>,
@@ -895,6 +896,14 @@ pub(super) fn parse_unit_content_into(
                 ("service", "RestartMaxDelaySec") => {
                     if let Some(restart_max_delay_sec) = parse_duration_seconds(value) {
                         info.service.restart_max_delay_sec = Some(restart_max_delay_sec);
+                    }
+                }
+                ("service", "RestartRandomizedDelaySec") => {
+                    // C's config_parse_sec() retains the previous value when
+                    // an assignment is empty or otherwise invalid.
+                    if let Some(restart_randomized_delay_sec) = parse_duration_seconds(value) {
+                        info.service.restart_randomized_delay_sec =
+                            Some(restart_randomized_delay_sec);
                     }
                 }
                 ("service", "TimeoutStartSec") => {

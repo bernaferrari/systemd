@@ -174,6 +174,10 @@ pub struct Service {
     pub timeout_abort_set: bool,
     pub restart_usec: u64,
     pub restart_max_delay_usec: u64,
+    /// Configured upper bound for random restart jitter.
+    pub restart_randomized_delay_usec: u64,
+    /// Jitter chosen for the currently pending automatic restart.
+    pub restart_randomized_delay_chosen_usec: u64,
     pub runtime_max_usec: u64,
     pub socket_fd: i32,
     pub stdin_fd: i32,
@@ -249,6 +253,8 @@ impl Default for Service {
             timeout_abort_set: false,
             restart_usec: 0,
             restart_max_delay_usec: USEC_INFINITY,
+            restart_randomized_delay_usec: 0,
+            restart_randomized_delay_chosen_usec: 0,
             runtime_max_usec: USEC_INFINITY,
             socket_fd: 0,
             stdin_fd: 0,
@@ -413,6 +419,8 @@ pub fn service_init(service: &mut Service, manager: &Manager) {
     service.timeout_abort_set = manager.defaults.timeout_abort_set;
     service.restart_usec = manager.defaults.restart_usec;
     service.restart_max_delay_usec = USEC_INFINITY;
+    service.restart_randomized_delay_usec = 0;
+    service.restart_randomized_delay_chosen_usec = 0;
     service.runtime_max_usec = USEC_INFINITY;
     service.service_type = ServiceType::Invalid;
     service.socket_fd = Errno::EBADF.to_neg_errno();
@@ -610,6 +618,32 @@ pub fn service_restart_usec_next(service: &Service) -> u64 {
     let ratio = service.restart_max_delay_usec as f64 / service.restart_usec as f64;
     let exponent = (n_restarts_next - 1) as f64 / service.restart_steps as f64;
     (service.restart_usec as f64 * ratio.powf(exponent)) as u64
+}
+
+/// Return the restart delay including the jitter selected for the pending
+/// automatic restart. C keeps the random draw separate from the exponential
+/// backoff calculation so reload/coldplug can reconstruct the same deadline.
+pub fn service_restart_usec_next_jittered(service: &Service) -> u64 {
+    service_restart_usec_next(service).saturating_add(service.restart_randomized_delay_chosen_usec)
+}
+
+/// Draw an unbiased value in `0..max` from the kernel random source. A failed
+/// random read produces a zero draw, keeping restart scheduling available.
+pub fn service_randomized_delay_usec(max: u64) -> u64 {
+    if max <= 1 {
+        return 0;
+    }
+
+    let remainder = u64::MAX % max;
+    let limit = u64::MAX.saturating_sub(remainder);
+    loop {
+        let Ok(value) = systemd_libsystemd_rs::sd_id128_api::random_u64() else {
+            return 0;
+        };
+        if value < limit {
+            return value % max;
+        }
+    }
 }
 
 pub fn service_extend_timeout(service: &mut Service, now_monotonic: u64, extend_timeout_usec: u64) {

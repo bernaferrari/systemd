@@ -39,6 +39,14 @@ pub fn sd_id128_randomize() -> Result<SdId128> {
     Ok(id128_make_v4_uuid(SdId128(bytes)))
 }
 
+/// Return one kernel-randomized machine word for callers that need the same
+/// unbiased raw entropy primitive as `random_u64()` in random-util.c.
+pub fn random_u64() -> Result<u64> {
+    let mut bytes = [0u8; 8];
+    fill_random(&mut bytes)?;
+    Ok(u64::from_ne_bytes(bytes))
+}
+
 pub fn sd_id128_get_machine() -> Result<SdId128> {
     read_cached_id(&MACHINE_ID_CACHE, || {
         read_id128_file(&machine_id_path(), false)

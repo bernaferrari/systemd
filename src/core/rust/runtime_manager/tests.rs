@@ -14,7 +14,7 @@ use crate::job_tables::{JobResult as CanonicalJobResult, JobState as CanonicalJo
 use crate::pid1_notify_source::{
     AuthenticatedNotifyDatagram, NotifyPeerCredentials, NotifySourceOwner,
 };
-use crate::service::{NotifyAccess, PidRef};
+use crate::service::{NotifyAccess, PidRef, service_restart_usec_next_jittered};
 use crate::service_tables::{ServiceExecCommand, ServiceResult};
 use crate::unit::OomPolicy;
 #[cfg(target_os = "linux")]
@@ -663,7 +663,7 @@ fn test_parse_service_directives_comprehensive() {
     let service_path = dir.join("demo.service");
     fs::write(
             &service_path,
-            "[Service]\nType=notify-reload\nExecStartPre=-/usr/bin/pre\nExecStartPre=+/usr/bin/pre2\nExecStart=\nExecStart=/usr/bin/main --flag\nExecStartPost=!/usr/bin/post\nExecStop=/usr/bin/stop\nExecStopPost=-!/usr/bin/stop-post\nExecReload=+/usr/bin/reload\nExecReloadPost=-/usr/bin/reload-post\nExecCondition=-!/usr/bin/cond\nRestart=on-failure\nRestartSec=2min\nRestartSteps=7\nRestartMaxDelaySec=1h\nTimeoutStartSec=30s\nTimeoutStopSec=40\nTimeoutAbortSec=50\nTimeoutStartFailureMode=abort\nTimeoutStopFailureMode=kill\nTimeoutSec=60\nRuntimeMaxSec=90\nWatchdogSec=1500ms\nSuccessExitStatus=0 1 SIGTERM\nRestartPreventExitStatus=2\nRestartForceExitStatus=3 4\nRemainAfterExit=yes\nGuessMainPID=no\nPIDFile=/run/demo.pid\nBusName=org.demo.Service\nNotifyAccess=all\nSockets=alpha.socket beta.socket\nFileDescriptorStoreMax=32\nFileDescriptorStorePreserve=restart\nOOMPolicy=stop\nOpenFile=/etc/demo\nOpenFile=\nOpenFile=/var/lib/demo\n",
+            "[Service]\nType=notify-reload\nExecStartPre=-/usr/bin/pre\nExecStartPre=+/usr/bin/pre2\nExecStart=\nExecStart=/usr/bin/main --flag\nExecStartPost=!/usr/bin/post\nExecStop=/usr/bin/stop\nExecStopPost=-!/usr/bin/stop-post\nExecReload=+/usr/bin/reload\nExecReloadPost=-/usr/bin/reload-post\nExecCondition=-!/usr/bin/cond\nRestart=on-failure\nRestartSec=2min\nRestartSteps=7\nRestartMaxDelaySec=1h\nRestartRandomizedDelaySec=3s\nTimeoutStartSec=30s\nTimeoutStopSec=40\nTimeoutAbortSec=50\nTimeoutStartFailureMode=abort\nTimeoutStopFailureMode=kill\nTimeoutSec=60\nRuntimeMaxSec=90\nWatchdogSec=1500ms\nSuccessExitStatus=0 1 SIGTERM\nRestartPreventExitStatus=2\nRestartForceExitStatus=3 4\nRemainAfterExit=yes\nGuessMainPID=no\nPIDFile=/run/demo.pid\nBusName=org.demo.Service\nNotifyAccess=all\nSockets=alpha.socket beta.socket\nFileDescriptorStoreMax=32\nFileDescriptorStorePreserve=restart\nOOMPolicy=stop\nOpenFile=/etc/demo\nOpenFile=\nOpenFile=/var/lib/demo\n",
         )
         .unwrap();
 
@@ -695,6 +695,7 @@ fn test_parse_service_directives_comprehensive() {
     assert_eq!(info.service.restart_sec, Some(120));
     assert_eq!(info.service.restart_steps, Some(7));
     assert_eq!(info.service.restart_max_delay_sec, Some(3600));
+    assert_eq!(info.service.restart_randomized_delay_sec, Some(3));
     assert_eq!(info.service.timeout_start_sec, Some(60));
     assert_eq!(info.service.timeout_stop_sec, Some(60));
     assert_eq!(info.service.timeout_abort_sec, Some(50));
@@ -737,19 +738,20 @@ fn test_service_duration_directives_retain_prior_value_on_invalid_assignment() {
     let service_path = dir.join("demo.service");
     fs::write(
         &service_path,
-        "[Service]\nRestartSec=5s\nRestartSec=\nRestartSec=not-a-duration\nRestartSteps=7\nRestartSteps=\nRestartSteps=not-a-number\nRestartMaxDelaySec=10s\nRestartMaxDelaySec=\nRestartMaxDelaySec=not-a-duration\nRuntimeMaxSec=15s\nRuntimeMaxSec=\nRuntimeMaxSec=not-a-duration\nWatchdogSec=20s\nWatchdogSec=\nWatchdogSec=not-a-duration\n",
+        "[Service]\nRestartSec=5s\nRestartSec=\nRestartSec=not-a-duration\nRestartSteps=7\nRestartSteps=\nRestartSteps=not-a-number\nRestartMaxDelaySec=10s\nRestartMaxDelaySec=\nRestartMaxDelaySec=not-a-duration\nRestartRandomizedDelaySec=6s\nRestartRandomizedDelaySec=\nRestartRandomizedDelaySec=not-a-duration\nRuntimeMaxSec=15s\nRuntimeMaxSec=\nRuntimeMaxSec=not-a-duration\nWatchdogSec=20s\nWatchdogSec=\nWatchdogSec=not-a-duration\n",
     )
     .unwrap();
 
     let info = parse_unit_file(&service_path).unwrap().unwrap();
 
-    // Service.Restart{,MaxDelay}Sec, RuntimeMaxSec, and WatchdogSec map to
+    // Service.Restart{,MaxDelay,RandomizedDelay}Sec, RuntimeMaxSec, and WatchdogSec map to
     // config_parse_sec(), while RestartSteps maps to config_parse_unsigned().
     // Both C parsers leave the destination untouched on an empty or invalid
     // assignment.
     assert_eq!(info.service.restart_sec, Some(5));
     assert_eq!(info.service.restart_steps, Some(7));
     assert_eq!(info.service.restart_max_delay_sec, Some(10));
+    assert_eq!(info.service.restart_randomized_delay_sec, Some(6));
     assert_eq!(info.service.runtime_max_sec, Some(15));
     assert_eq!(info.service.watchdog_sec, Some(20));
 
@@ -4393,6 +4395,38 @@ fn test_service_restart_policy_queues_after_exact_main_exit_event() {
         mgr.service_restart_deadlines
             .contains_key("restart.service")
     );
+}
+
+#[test]
+fn test_service_restart_randomized_delay_is_applied_and_added_to_restart_deadline() {
+    let _test_lock = test_env_lock();
+    // SAFETY: this environment-dependent test target runs with --test-threads=1
+    // and does not spawn threads that access the process environment.
+    let environment = unsafe_ffi!(TestEnvironment::lock());
+    let dir = test_temp_dir("test-systemd-restart-randomized-delay");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("randomized.service"),
+        "[Service]\nExecStart=/usr/bin/true\nRestartRandomizedDelaySec=3s\n",
+    )
+    .unwrap();
+
+    let previous = std::env::var("SYSTEMD_UNIT_PATH").ok();
+    environment.set("SYSTEMD_UNIT_PATH", dir.display().to_string());
+    let mut mgr = new_test_runtime_manager();
+    mgr.load_unit("randomized.service").unwrap();
+
+    let service = mgr.services.get_mut("randomized.service").unwrap();
+    assert_eq!(service.restart_randomized_delay_usec, 3_000_000);
+    service.restart_randomized_delay_chosen_usec = 1_250_000;
+    assert_eq!(service_restart_usec_next_jittered(service), 1_350_000);
+
+    if let Some(value) = previous {
+        environment.set("SYSTEMD_UNIT_PATH", value);
+    } else {
+        environment.remove("SYSTEMD_UNIT_PATH");
+    }
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

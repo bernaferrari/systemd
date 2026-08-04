@@ -1376,6 +1376,9 @@ impl RuntimeManager {
             if let Some(max_delay) = info.service.restart_max_delay_sec {
                 svc.restart_max_delay_usec = max_delay.saturating_mul(1_000_000);
             }
+            if let Some(randomized_delay) = info.service.restart_randomized_delay_sec {
+                svc.restart_randomized_delay_usec = randomized_delay.saturating_mul(1_000_000);
+            }
             if let Some(runtime_max) = info.service.runtime_max_sec {
                 svc.runtime_max_usec = runtime_max.saturating_mul(1_000_000);
             }
